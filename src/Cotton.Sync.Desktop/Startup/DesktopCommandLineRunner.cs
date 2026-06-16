@@ -150,6 +150,37 @@ namespace Cotton.Sync.Desktop.Startup
                 cancellationToken).ConfigureAwait(false);
         }
 
+        public static async Task<int> RunWindowsVirtualFilesSmokeAsync(
+            DesktopStartupOptions startupOptions,
+            TextWriter output,
+            CancellationToken cancellationToken = default)
+        {
+            return await RunWindowsVirtualFilesSmokeAsync(
+                DesktopStartupPathResolver.Resolve(startupOptions),
+                startupOptions,
+                output,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+
+        internal static async Task<int> RunWindowsVirtualFilesSmokeAsync(
+            DesktopAppPaths paths,
+            DesktopStartupOptions startupOptions,
+            TextWriter output,
+            IWindowsCloudFilesAdapter? cloudFilesAdapter = null,
+            Func<string, CancellationToken, Task<string>>? readAllTextAsync = null,
+            CancellationToken cancellationToken = default)
+        {
+            return await DesktopWindowsVirtualFilesSmokeRunner
+                .RunAsync(
+                    paths,
+                    startupOptions,
+                    output,
+                    cloudFilesAdapter,
+                    readAllTextAsync,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         internal static async Task<int> RunLiveSyncSmokeAsync(
             DesktopAppPaths paths,
             DesktopStartupOptions startupOptions,

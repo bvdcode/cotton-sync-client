@@ -29,6 +29,7 @@ namespace Cotton.Sync.Desktop
             if (!startupOptions.RunSelfTest
                 && !startupOptions.ExportDiagnostics
                 && !startupOptions.CleanupCloudFiles
+                && !startupOptions.RunWindowsVirtualFilesSmoke
                 && !startupOptions.RunLiveSyncSmoke
                 && DesktopPendingUpdateStartup.TryStartPendingUpdate(paths, DesktopAppVersion.Current))
             {
@@ -47,6 +48,14 @@ namespace Cotton.Sync.Desktop
             {
                 return DesktopCommandLineRunner
                     .RunLiveSyncSmokeAsync(paths, startupOptions, Console.Out)
+                    .GetAwaiter()
+                    .GetResult();
+            }
+
+            if (startupOptions.RunWindowsVirtualFilesSmoke)
+            {
+                return DesktopCommandLineRunner
+                    .RunWindowsVirtualFilesSmokeAsync(paths, startupOptions, Console.Out)
                     .GetAwaiter()
                     .GetResult();
             }
