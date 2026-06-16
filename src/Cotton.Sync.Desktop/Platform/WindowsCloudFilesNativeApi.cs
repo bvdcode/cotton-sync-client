@@ -2,7 +2,6 @@
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
 using System.Runtime.InteropServices;
-using System.Collections.Concurrent;
 
 namespace Cotton.Sync.Desktop.Platform
 {
@@ -571,9 +570,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         private sealed class NativeCallbackState : IDisposable
         {
-            private readonly IWindowsCloudFilesCallbackHandler _handler;
-            private readonly WindowsCloudFilesNativeApi _owner;
-            private readonly ConcurrentDictionary<long, CancellationTokenSource> _pendingFetches = new();
+            private readonly WindowsCloudFilesCallbackDispatcher _dispatcher;
             private readonly GCHandle _contextHandle;
             private readonly CfCallback _fetchDataCallback;
             private readonly CfCallback _cancelFetchDataCallback;
@@ -583,8 +580,10 @@ namespace Cotton.Sync.Desktop.Platform
                 IWindowsCloudFilesCallbackHandler handler,
                 WindowsCloudFilesNativeApi owner)
             {
-                _handler = handler ?? throw new ArgumentNullException(nameof(handler));
-                _owner = owner ?? throw new ArgumentNullException(nameof(owner));
+                ArgumentNullException.ThrowIfNull(owner);
+                _dispatcher = new WindowsCloudFilesCallbackDispatcher(
+                    handler,
+                    owner.TransferData);
                 _fetchDataCallback = HandleFetchData;
                 _cancelFetchDataCallback = HandleCancelFetchData;
                 _contextHandle = GCHandle.Alloc(this);
@@ -611,10 +610,7 @@ namespace Cotton.Sync.Desktop.Platform
                     return;
                 }
 
-                foreach (CancellationTokenSource pending in _pendingFetches.Values)
-                {
-                    pending.Cancel();
-                }
+                _dispatcher.Dispose();
 
                 if (_contextHandle.IsAllocated)
                 {
@@ -653,29 +649,7 @@ namespace Cotton.Sync.Desktop.Platform
                     return;
                 }
 
-                var cancellation = new CancellationTokenSource();
-                _pendingFetches[request.RequestKey.Value] = cancellation;
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await _handler.HandleFetchDataAsync(request, cancellation.Token).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
-                    {
-                    }
-                    catch
-                    {
-                        TryTransferFailure(request);
-                    }
-                    finally
-                    {
-                        if (_pendingFetches.TryRemove(request.RequestKey.Value, out CancellationTokenSource? pending))
-                        {
-                            pending.Dispose();
-                        }
-                    }
-                });
+                _dispatcher.QueueFetchData(request);
             }
 
             private void HandleCancelFetchData(IntPtr callbackInfo, IntPtr callbackParameters)
@@ -697,23 +671,7 @@ namespace Cotton.Sync.Desktop.Platform
                         parameters.FileOffset,
                         parameters.Length);
 
-                    if (_pendingFetches.TryGetValue(request.RequestKey.Value, out CancellationTokenSource? pending))
-                    {
-                        pending.Cancel();
-                    }
-
-                    _handler.CancelFetchData(request);
-                }
-                catch
-                {
-                }
-            }
-
-            private void TryTransferFailure(WindowsCloudFilesFetchDataRequest request)
-            {
-                try
-                {
-                    _owner.TransferData(WindowsCloudFilesTransferData.Failure(request));
+                    _dispatcher.CancelFetchData(request);
                 }
                 catch
                 {
