@@ -9,6 +9,7 @@ using Cotton.Nodes;
 using Cotton.Sync.Local;
 using Cotton.Sync.Remote;
 using Cotton.Sync.State;
+using Cotton.Sync.VirtualFiles;
 
 namespace Cotton.Sync.Tests
 {
@@ -210,6 +211,73 @@ namespace Cotton.Sync.Tests
                 Assert.That(result.Activities.Select(activity => activity.RelativePath), Is.EqualTo(new[] { changedPath }));
                 Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
                 Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(2)));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesCreatesTenThousandPlaceholdersWithinSmokeTarget()
+        {
+            VirtualPlaceholderPopulationSmokeResult smoke = await VerifyVirtualPlaceholderPopulationScaleAsync(
+                "performance-vfs-placeholders-10k",
+                fileCount: 10_000,
+                relativePathFactory: index => "LargeTree/file-" + index.ToString("D5", System.Globalization.CultureInfo.InvariantCulture) + ".txt",
+                smokeTarget: TimeSpan.FromSeconds(20),
+                managedHeapDeltaTargetBytes: 160L * MiB);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(smoke.Elapsed, Is.LessThan(TimeSpan.FromSeconds(20)));
+                Assert.That(smoke.CooperativeYieldCount, Is.GreaterThanOrEqualTo(300));
+                Assert.That(smoke.RunProgressCount, Is.GreaterThanOrEqualTo(300));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesCreatesSixtyThousandNodeModulesPlaceholdersResponsively()
+        {
+            VirtualPlaceholderPopulationSmokeResult smoke = await VerifyVirtualPlaceholderPopulationScaleAsync(
+                "performance-vfs-placeholders-node-modules-60k",
+                fileCount: 60_000,
+                relativePathFactory: index =>
+                    "node_modules/package-"
+                    + (index / 100).ToString("D4", System.Globalization.CultureInfo.InvariantCulture)
+                    + "/dist/file-"
+                    + index.ToString("D5", System.Globalization.CultureInfo.InvariantCulture)
+                    + ".js",
+                smokeTarget: TimeSpan.FromSeconds(60),
+                managedHeapDeltaTargetBytes: 256L * MiB);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(smoke.Elapsed, Is.LessThan(TimeSpan.FromSeconds(60)));
+                Assert.That(smoke.CooperativeYieldCount, Is.GreaterThanOrEqualTo(500));
+                Assert.That(smoke.RunProgressCount, Is.GreaterThanOrEqualTo(500));
+                Assert.That(smoke.FirstPlaceholderPath, Is.EqualTo("node_modules/package-0000/dist/file-00000.js"));
+                Assert.That(smoke.LastPlaceholderPath, Is.EqualTo("node_modules/package-0599/dist/file-59999.js"));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesCreatesOneHundredThousandPlaceholdersWithBoundedMemory()
+        {
+            VirtualPlaceholderPopulationSmokeResult smoke = await VerifyVirtualPlaceholderPopulationScaleAsync(
+                "performance-vfs-placeholders-100k",
+                fileCount: 100_000,
+                relativePathFactory: index => "HugeTree/"
+                    + (index / 1_000).ToString("D3", System.Globalization.CultureInfo.InvariantCulture)
+                    + "/file-"
+                    + index.ToString("D6", System.Globalization.CultureInfo.InvariantCulture)
+                    + ".bin",
+                smokeTarget: TimeSpan.FromSeconds(90),
+                managedHeapDeltaTargetBytes: 384L * MiB);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(smoke.Elapsed, Is.LessThan(TimeSpan.FromSeconds(90)));
+                Assert.That(smoke.ManagedHeapDeltaBytes, Is.LessThan(384L * MiB));
+                Assert.That(smoke.CooperativeYieldCount, Is.GreaterThanOrEqualTo(900));
+                Assert.That(smoke.RetainedActivityCount, Is.EqualTo(100));
+                Assert.That(smoke.IsActivityListTruncated, Is.True);
             });
         }
 
@@ -589,6 +657,117 @@ namespace Cotton.Sync.Tests
             });
         }
 
+        private async Task<VirtualPlaceholderPopulationSmokeResult> VerifyVirtualPlaceholderPopulationScaleAsync(
+            string syncPairId,
+            int fileCount,
+            Func<int, string> relativePathFactory,
+            TimeSpan smokeTarget,
+            long managedHeapDeltaTargetBytes)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
+            ArgumentNullException.ThrowIfNull(relativePathFactory);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(fileCount);
+
+            List<RemoteFileSnapshot> remoteFiles = new(fileCount);
+            for (int index = 0; index < fileCount; index++)
+            {
+                string relativePath = relativePathFactory(index);
+                remoteFiles.Add(new RemoteFileSnapshot
+                {
+                    RelativePath = relativePath,
+                    File = LightweightRemoteFile(relativePath, index),
+                });
+            }
+
+            var remoteCrawler = new StaticRemoteTreeCrawler(remoteFiles);
+            var remoteFilesClient = new GuardedRemoteFileSynchronizer();
+            var stateStore = new CountingVirtualPlaceholderStateStore();
+            var placeholderWriter = new CountingRemoteFilePlaceholderWriter();
+            var runProgress = new RecordingProgress<SyncRunProgress>();
+            var cooperativeYieldCompletedCounts = new List<int>();
+            var engine = new SyncEngine(
+                new EmptyLocalFileScanner(),
+                remoteCrawler,
+                remoteFilesClient,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            MemorySample beforeRunMemory = CaptureMemorySample();
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            SyncRunResult result = await engine.RunOnceAsync(
+                new SyncPair
+                {
+                    SyncPairId = syncPairId,
+                    LocalRootPath = _root,
+                    RemoteRootNodeId = RemoteRootNodeId,
+                    MaterializationMode = SyncPairMaterializationMode.WindowsVirtualFiles,
+                },
+                new SyncRunOptions
+                {
+                    MaximumStoredResultActivities = 100,
+                    RunProgress = runProgress,
+                    CooperativeYieldAsync = _ =>
+                    {
+                        cooperativeYieldCompletedCounts.Add(placeholderWriter.Count);
+                        return ValueTask.CompletedTask;
+                    },
+                });
+            stopwatch.Stop();
+            MemorySample afterRunMemory = CaptureMemorySample();
+
+            List<SyncRunProgress> placeholderProgress = runProgress.Values
+                .Where(progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders)
+                .ToList();
+            long managedHeapDeltaBytes = afterRunMemory.ManagedHeapBytes - beforeRunMemory.ManagedHeapBytes;
+            TestContext.WriteLine(
+                "Virtual-files placeholder population for {0:N0} files completed in {1:N0} ms; placeholder writes {2:N0}; state upserts {3:N0}; retained activities {4:N0}/{5:N0}; progress samples {6:N0}; cooperative yields {7:N0}; managed heap delta {8:N1} MiB; working set delta {9:N1} MiB.",
+                fileCount,
+                stopwatch.Elapsed.TotalMilliseconds,
+                placeholderWriter.Count,
+                stateStore.FileUpserts,
+                result.Activities.Count,
+                result.TotalActivityCount,
+                placeholderProgress.Count,
+                cooperativeYieldCompletedCounts.Count,
+                ToMiB(managedHeapDeltaBytes),
+                ToMiB(afterRunMemory.WorkingSetBytes - beforeRunMemory.WorkingSetBytes));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFilesClient.UploadCalls, Is.Zero);
+                Assert.That(remoteFilesClient.DownloadCalls, Is.Zero);
+                Assert.That(remoteFilesClient.DeleteCalls, Is.Zero);
+                Assert.That(remoteFilesClient.MoveCalls, Is.Zero);
+                Assert.That(remoteCrawler.FullCrawlCalls, Is.EqualTo(1));
+                Assert.That(placeholderWriter.Count, Is.EqualTo(fileCount));
+                Assert.That(stateStore.FileUpserts, Is.EqualTo(fileCount));
+                Assert.That(stateStore.RemoteOnlyPlaceholderUpserts, Is.EqualTo(fileCount));
+                Assert.That(result.TotalActivityCount, Is.EqualTo(fileCount));
+                Assert.That(result.Activities, Has.Count.EqualTo(100));
+                Assert.That(result.IsActivityListTruncated, Is.True);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.All.EqualTo(SyncActivityKind.PlaceholderCreated));
+                Assert.That(placeholderProgress, Is.Not.Empty);
+                Assert.That(placeholderProgress.Any(progress => progress.FilesCompleted > 0 && progress.FilesCompleted < fileCount), Is.True);
+                Assert.That(placeholderProgress.Last().FilesTotal, Is.EqualTo(fileCount));
+                Assert.That(cooperativeYieldCompletedCounts, Is.Not.Empty);
+                Assert.That(cooperativeYieldCompletedCounts, Has.All.GreaterThan(0));
+                Assert.That(cooperativeYieldCompletedCounts, Has.All.LessThan(fileCount));
+                Assert.That(stopwatch.Elapsed, Is.LessThan(smokeTarget));
+                Assert.That(managedHeapDeltaBytes, Is.LessThan(managedHeapDeltaTargetBytes));
+            });
+
+            return new VirtualPlaceholderPopulationSmokeResult(
+                stopwatch.Elapsed,
+                managedHeapDeltaBytes,
+                placeholderWriter.Count,
+                placeholderWriter.FirstRelativePath,
+                placeholderWriter.LastRelativePath,
+                placeholderProgress.Count,
+                cooperativeYieldCompletedCounts.Count,
+                result.Activities.Count,
+                result.IsActivityListTruncated);
+        }
+
         private static string Hash(byte[] bytes)
         {
             return Convert.ToHexStringLower(SHA256.HashData(bytes));
@@ -652,6 +831,35 @@ namespace Cotton.Sync.Tests
             };
         }
 
+        private static NodeFileManifestDto LightweightRemoteFile(string relativePath, int index)
+        {
+            string hash = index.ToString("x64", System.Globalization.CultureInfo.InvariantCulture);
+            return new NodeFileManifestDto
+            {
+                Id = GuidFromIndex(index, 1),
+                CreatedAt = new DateTime(2026, 6, 16, 12, 0, 0, DateTimeKind.Utc),
+                UpdatedAt = new DateTime(2026, 6, 16, 12, 0, 0, DateTimeKind.Utc),
+                NodeId = GuidFromIndex(index, 2),
+                FileManifestId = GuidFromIndex(index, 3),
+                OriginalNodeFileId = GuidFromIndex(index, 4),
+                OwnerId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                Name = Path.GetFileName(relativePath),
+                ContentType = "application/octet-stream",
+                SizeBytes = 128 + index,
+                ContentHash = hash,
+                ETag = "sha256-" + hash,
+                Metadata = [],
+            };
+        }
+
+        private static Guid GuidFromIndex(int index, byte salt)
+        {
+            Span<byte> bytes = stackalloc byte[16];
+            BitConverter.TryWriteBytes(bytes, index);
+            bytes[15] = salt;
+            return new Guid(bytes);
+        }
+
         private class StaticRemoteTreeCrawler : IRemoteTreeCrawler, IRemotePathLookupCrawler
         {
             private readonly IReadOnlyList<RemoteFileSnapshot> _files;
@@ -704,6 +912,16 @@ namespace Cotton.Sync.Tests
                 }
 
                 return Task.FromResult(snapshot);
+            }
+        }
+
+        private sealed class EmptyLocalFileScanner : ILocalFileScanner
+        {
+            public Task<IReadOnlyList<LocalFileSnapshot>> ScanAsync(
+                string rootPath,
+                CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult<IReadOnlyList<LocalFileSnapshot>>(Array.Empty<LocalFileSnapshot>());
             }
         }
 
@@ -858,6 +1076,123 @@ namespace Cotton.Sync.Tests
             }
         }
 
+        private sealed class CountingVirtualPlaceholderStateStore : ISyncStateStore
+        {
+            public int FileUpserts { get; private set; }
+
+            public int RemoteOnlyPlaceholderUpserts { get; private set; }
+
+            public Task InitializeAsync(CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public Task<IReadOnlyList<SyncStateEntry>> LoadPairAsync(
+                string syncPairId,
+                CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult<IReadOnlyList<SyncStateEntry>>(Array.Empty<SyncStateEntry>());
+            }
+
+            public async IAsyncEnumerable<SyncStateEntry> LoadPairEntriesAsync(
+                string syncPairId,
+                [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+            {
+                await Task.CompletedTask.ConfigureAwait(false);
+                yield break;
+            }
+
+            public Task<DateTime?> GetPairLastSyncedAtUtcAsync(
+                string syncPairId,
+                CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult<DateTime?>(null);
+            }
+
+            public Task<SyncChangeCursor> GetChangeCursorAsync(
+                string syncPairId,
+                CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(new SyncChangeCursor { SyncPairId = syncPairId });
+            }
+
+            public Task<SyncStateEntry?> GetAsync(
+                string syncPairId,
+                string relativePath,
+                CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult<SyncStateEntry?>(null);
+            }
+
+            public Task UpsertAsync(SyncStateEntry entry, CancellationToken cancellationToken = default)
+            {
+                if (entry.Kind == SyncEntryKind.File)
+                {
+                    FileUpserts++;
+                    if (entry.PlaceholderHydrationState == SyncPlaceholderHydrationState.RemoteOnly
+                        && entry.PlaceholderIdentity is { Length: > 0 }
+                        && entry.LocalContentHash is null
+                        && entry.LocalSizeBytes is null)
+                    {
+                        RemoteOnlyPlaceholderUpserts++;
+                    }
+                }
+
+                return Task.CompletedTask;
+            }
+
+            public Task SaveChangeCursorAsync(SyncChangeCursor cursor, CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public Task DeleteAsync(
+                string syncPairId,
+                string relativePath,
+                CancellationToken cancellationToken = default)
+            {
+                throw new InvalidOperationException("Virtual placeholder population smoke must not delete state.");
+            }
+
+            public Task DeletePairAsync(string syncPairId, CancellationToken cancellationToken = default)
+            {
+                throw new InvalidOperationException("Virtual placeholder population smoke must not delete pair state.");
+            }
+
+            public Task ReplacePairAsync(
+                string syncPairId,
+                IReadOnlyCollection<SyncStateEntry> entries,
+                CancellationToken cancellationToken = default)
+            {
+                throw new InvalidOperationException("Virtual placeholder population smoke must not replace full state.");
+            }
+        }
+
+        private sealed class CountingRemoteFilePlaceholderWriter : IRemoteFilePlaceholderWriter
+        {
+            private static readonly byte[] PlaceholderIdentity = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E];
+
+            public int Count { get; private set; }
+
+            public string FirstRelativePath { get; private set; } = string.Empty;
+
+            public string LastRelativePath { get; private set; } = string.Empty;
+
+            public Task<RemoteFilePlaceholderResult> CreatePlaceholderAsync(
+                RemoteFilePlaceholderRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                Count++;
+                if (Count == 1)
+                {
+                    FirstRelativePath = request.RelativePath;
+                }
+
+                LastRelativePath = request.RelativePath;
+                return Task.FromResult(new RemoteFilePlaceholderResult(PlaceholderIdentity));
+            }
+        }
+
         private class GuardedRemoteFileSynchronizer : IRemoteFileSynchronizer
         {
             public int UploadCalls { get; private set; }
@@ -987,6 +1322,17 @@ namespace Cotton.Sync.Tests
             NodeFileManifestDto ReturnedFile);
 
         private record MemorySample(long ManagedHeapBytes, long WorkingSetBytes);
+
+        private sealed record VirtualPlaceholderPopulationSmokeResult(
+            TimeSpan Elapsed,
+            long ManagedHeapDeltaBytes,
+            int PlaceholderCount,
+            string FirstPlaceholderPath,
+            string LastPlaceholderPath,
+            int RunProgressCount,
+            int CooperativeYieldCount,
+            int RetainedActivityCount,
+            bool IsActivityListTruncated);
 
         private class RecordingProgress<T> : IProgress<T>
         {
