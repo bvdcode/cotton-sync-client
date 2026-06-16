@@ -105,6 +105,28 @@ namespace Cotton.Sync.Desktop.Platform
             return new RemoteFilePlaceholderResult(fileIdentity, SyncPlaceholderHydrationState.RemoteOnly);
         }
 
+        public void UnregisterSyncRoot(SyncPairSettings syncPair)
+        {
+            ArgumentNullException.ThrowIfNull(syncPair);
+            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
+            try
+            {
+                _nativeApi.UnregisterSyncRoot(registration.LocalRootPath);
+                _diagnostics.Record(
+                    "unregister-sync-root",
+                    "completed",
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    null,
+                    "Windows Cloud Files sync root was unregistered.");
+            }
+            catch (Exception exception)
+            {
+                RecordFailure("unregister-sync-root", syncPair.Id.ToString(), registration.LocalRootPath, null, exception);
+                throw;
+            }
+        }
+
         private void EnsureNoReparsePointDescendant(string syncRootPath, string targetDirectoryPath)
         {
             string root = Path.GetFullPath(syncRootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);

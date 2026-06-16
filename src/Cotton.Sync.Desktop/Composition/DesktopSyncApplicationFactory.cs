@@ -76,6 +76,9 @@ namespace Cotton.Sync.Desktop.Composition
                 cloudFilesAdapter,
                 cloudFilesHydration,
                 _loggerFactory.CreateLogger<WindowsCloudFilesSyncRootConnectionCoordinator>());
+            var cloudFilesDeletionHandler = new WindowsCloudFilesSyncPairDeletionHandler(
+                cloudFilesAdapter,
+                _loggerFactory.CreateLogger<WindowsCloudFilesSyncPairDeletionHandler>());
             var remoteFilePlaceholderWriter = new DesktopCloudFilesPlaceholderWriter(
                 cloudFilesAdapter: cloudFilesAdapter,
                 logger: _loggerFactory.CreateLogger<DesktopCloudFilesPlaceholderWriter>());
@@ -142,6 +145,7 @@ namespace Cotton.Sync.Desktop.Composition
                 syncCoreLifecycleComponents: [cloudFilesConnections],
                 stateStore,
                 new SyncPairSettingsValidator(DesktopCloudFilesCapabilities.CreateSyncPairModeCapabilities()),
+                syncPairDeletionHandler: cloudFilesDeletionHandler,
                 logger: _loggerFactory.CreateLogger<SyncApplicationService>());
             var remoteRootResolver = new RemoteRootResolver(cottonClient.Nodes);
 

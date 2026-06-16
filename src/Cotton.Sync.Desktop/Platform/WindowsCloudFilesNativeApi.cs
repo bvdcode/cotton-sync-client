@@ -42,6 +42,13 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
+        public void UnregisterSyncRoot(string localRootPath)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(localRootPath);
+            int result = CfUnregisterSyncRoot(localRootPath);
+            ThrowIfFailed(result, nameof(CfUnregisterSyncRoot));
+        }
+
         public void CreatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder)
         {
             ArgumentNullException.ThrowIfNull(placeholder);
@@ -217,6 +224,9 @@ namespace Cotton.Sync.Desktop.Platform
             ref CfSyncRegistration Registration,
             ref CfSyncPolicies Policies,
             CfRegisterFlags RegisterFlags);
+
+        [DllImport("CldApi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+        private static extern int CfUnregisterSyncRoot(string SyncRootPath);
 
         [DllImport("CldApi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
         private static extern int CfCreatePlaceholders(

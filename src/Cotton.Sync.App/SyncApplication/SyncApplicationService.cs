@@ -31,6 +31,7 @@ namespace Cotton.Sync.App.SyncApplication
         private readonly IRemoteChangeSyncCoordinator _remoteChanges;
         private readonly IReadOnlyList<ISyncCoreLifecycleComponent> _syncCoreLifecycleComponents;
         private readonly ISyncStateStore? _syncStateStore;
+        private readonly ISyncPairDeletionHandler _syncPairDeletionHandler;
         private readonly ISyncSupervisor _supervisor;
         private readonly ISyncPairSettingsStore _syncPairs;
         private readonly SyncPairSettingsValidator _validator;
@@ -55,6 +56,7 @@ namespace Cotton.Sync.App.SyncApplication
             IEnumerable<ISyncCoreLifecycleComponent>? syncCoreLifecycleComponents = null,
             ISyncStateStore? syncStateStore = null,
             SyncPairSettingsValidator? validator = null,
+            ISyncPairDeletionHandler? syncPairDeletionHandler = null,
             ILogger<SyncApplicationService>? logger = null)
         {
             _syncPairs = syncPairs ?? throw new ArgumentNullException(nameof(syncPairs));
@@ -70,6 +72,7 @@ namespace Cotton.Sync.App.SyncApplication
             _syncCoreLifecycleComponents = (syncCoreLifecycleComponents ?? []).ToList();
             _syncStateStore = syncStateStore;
             _validator = validator ?? new SyncPairSettingsValidator();
+            _syncPairDeletionHandler = syncPairDeletionHandler ?? NullSyncPairDeletionHandler.Instance;
             _logger = logger ?? NullLogger<SyncApplicationService>.Instance;
         }
 
@@ -216,15 +219,53 @@ namespace Cotton.Sync.App.SyncApplication
         /// <inheritdoc />
         public async Task DeleteSyncPairAsync(Guid syncPairId, CancellationToken cancellationToken = default)
         {
-            await _syncPairs.InitializeAsync(cancellationToken).ConfigureAwait(false);
-            await _syncPairs.DeleteAsync(syncPairId, cancellationToken).ConfigureAwait(false);
-            if (_syncStateStore is not null)
+            bool shouldRestartSyncCore = false;
+            bool restartAttempted = false;
+            await _syncCoreGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
             {
-                await _syncStateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
-                await _syncStateStore.DeletePairAsync(syncPairId.ToString(), cancellationToken).ConfigureAwait(false);
-            }
+                await _syncPairs.InitializeAsync(cancellationToken).ConfigureAwait(false);
+                SyncPairSettings? syncPair = await _syncPairs.GetAsync(syncPairId, cancellationToken).ConfigureAwait(false);
+                if (_isSyncCoreStarted)
+                {
+                    await StopSyncCoreUnlockedAsync(cancellationToken, force: false).ConfigureAwait(false);
+                    shouldRestartSyncCore = true;
+                }
 
-            await RestartSyncCoreIfStartedAsync(cancellationToken).ConfigureAwait(false);
+                if (syncPair is not null)
+                {
+                    await _syncPairDeletionHandler.BeforeDeleteAsync(syncPair, cancellationToken).ConfigureAwait(false);
+                }
+
+                await _syncPairs.DeleteAsync(syncPairId, cancellationToken).ConfigureAwait(false);
+                if (_syncStateStore is not null)
+                {
+                    await _syncStateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+                    await _syncStateStore.DeletePairAsync(syncPairId.ToString(), cancellationToken).ConfigureAwait(false);
+                }
+
+                if (shouldRestartSyncCore)
+                {
+                    restartAttempted = true;
+                    await StartSyncCoreUnlockedAsync(cancellationToken).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                if (shouldRestartSyncCore && !restartAttempted && !_isSyncCoreStarted)
+                {
+                    try
+                    {
+                        await StartSyncCoreUnlockedAsync(CancellationToken.None).ConfigureAwait(false);
+                    }
+                    catch (Exception exception)
+                    {
+                        _logger.LogError(exception, "Failed to restart sync core after sync pair deletion was interrupted.");
+                    }
+                }
+
+                _syncCoreGate.Release();
+            }
         }
 
         /// <inheritdoc />

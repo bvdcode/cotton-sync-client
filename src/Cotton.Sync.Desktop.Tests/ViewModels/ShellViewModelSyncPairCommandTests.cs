@@ -109,6 +109,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.SelectedSyncPair?.IsEditorVisible, Is.True);
                 Assert.That(viewModel.IsRemoveSyncPairConfirmationVisible, Is.True);
                 Assert.That(viewModel.RemoveSyncPairConfirmationTitle, Is.EqualTo("Remove Documents?"));
+                Assert.That(viewModel.RemoveSyncPairConfirmationMessage, Is.EqualTo("Stops syncing this folder. Local files stay on this device; cloud files stay online."));
                 Assert.That(viewModel.RemoveSyncPairConfirmationPath, Does.EndWith("Documents"));
                 Assert.That(viewModel.ConfirmRemoveSelectedSyncPairCommand.CanExecute(null), Is.True);
                 Assert.That(viewModel.RemoveSelectedSyncPairCommand.CanExecute(null), Is.False);
@@ -136,6 +137,25 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.SyncPairs.Single().IsEditorVisible, Is.False);
                 Assert.That(viewModel.IsRemoveSyncPairConfirmationVisible, Is.False);
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Ready"));
+            });
+        }
+
+        [Test]
+        public async Task RemoveSelectedSyncPairCommand_WarnsBeforeRemovingVirtualFilesPair()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(
+                CreateSignedInSnapshot(CreatePair(syncPairId, "Desktop", "Idle", mode: SyncPairMode.WindowsVirtualFiles)));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            await ExecuteAsync(viewModel.RemoveSelectedSyncPairCommand);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.RemoveSyncPairConfirmationTitle, Is.EqualTo("Remove Desktop?"));
+                Assert.That(viewModel.RemoveSyncPairConfirmationMessage, Is.EqualTo("Stops syncing this folder. Cloud files stay online; Windows may remove local placeholders from this device."));
+                Assert.That(viewModel.RemoveSyncPairConfirmationPath, Does.EndWith("Desktop"));
             });
         }
 

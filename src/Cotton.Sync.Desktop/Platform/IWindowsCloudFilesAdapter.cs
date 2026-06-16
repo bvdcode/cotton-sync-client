@@ -10,6 +10,8 @@ namespace Cotton.Sync.Desktop.Platform
     {
         RemoteFilePlaceholderResult CreateFilePlaceholder(RemoteFilePlaceholderRequest request);
 
+        void UnregisterSyncRoot(SyncPairSettings syncPair);
+
         WindowsCloudFilesConnection ConnectSyncRoot(
             SyncPairSettings syncPair,
             IWindowsCloudFilesCallbackHandler callbackHandler);

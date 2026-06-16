@@ -7,6 +7,8 @@ namespace Cotton.Sync.Desktop.Platform
     {
         void RegisterSyncRoot(WindowsCloudFilesNativeSyncRootRegistration registration);
 
+        void UnregisterSyncRoot(string localRootPath);
+
         void CreatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder);
 
         WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request);

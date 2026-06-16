@@ -813,7 +813,7 @@
                             BorderThickness="1"
                             IsVisible="{Binding IsRemoveSyncPairConfirmationVisible}">
                       <Grid ColumnDefinitions="*,Auto,Auto"
-                            RowDefinitions="Auto,Auto"
+                            RowDefinitions="Auto,Auto,Auto"
                             ColumnSpacing="6"
                             RowSpacing="2">
                         <TextBlock Text="{Binding RemoveSyncPairConfirmationTitle}"
@@ -829,6 +829,12 @@
                                 Classes="compact"
                                 Command="{Binding ConfirmRemoveSelectedSyncPairCommand}" />
                         <TextBlock Grid.Row="1"
+                                   Grid.ColumnSpan="3"
+                                   Text="{Binding RemoveSyncPairConfirmationMessage}"
+                                   Classes="secondary"
+                                   FontSize="11"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Grid.Row="2"
                                    Grid.ColumnSpan="3"
                                    Text="{Binding RemoveSyncPairConfirmationPath}"
                                    ToolTip.Tip="{Binding RemoveSyncPairConfirmationPath}"

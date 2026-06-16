@@ -338,6 +338,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(installerScript, Does.Contain("Source: \"{#SourceDir}\\*\""));
                 Assert.That(installerScript, Does.Contain("recursesubdirs createallsubdirs"));
                 AssertCloudFilesImport(nativeApiType, "CfRegisterSyncRoot");
+                AssertCloudFilesImport(nativeApiType, "CfUnregisterSyncRoot");
                 AssertCloudFilesImport(nativeApiType, "CfCreatePlaceholders");
                 AssertCloudFilesImport(nativeApiType, "CfConnectSyncRoot");
                 AssertCloudFilesImport(nativeApiType, "CfDisconnectSyncRoot");
