@@ -29,6 +29,14 @@ namespace Cotton.Sync.Desktop.Tests.Updates
         }
 
         [Test]
+        public void DefaultManifestUri_UsesLatestReleaseRedirect()
+        {
+            Assert.That(
+                DesktopUpdateService.DefaultManifestUri.ToString(),
+                Is.EqualTo("https://github.com/bvdcode/cotton-sync-client/releases/latest/download/release-manifest.json"));
+        }
+
+        [Test]
         public void ReleaseManifest_FromJson_ParsesReleaseMetadata()
         {
             byte[] installerBytes = Encoding.UTF8.GetBytes("installer");
@@ -41,7 +49,7 @@ namespace Cotton.Sync.Desktop.Tests.Updates
                 Assert.That(manifest.SchemaVersion, Is.EqualTo(1));
                 Assert.That(manifest.Product, Is.EqualTo("Cotton Sync"));
                 Assert.That(manifest.Version, Is.EqualTo("0.0.2"));
-                Assert.That(manifest.Tag, Is.EqualTo("sync-client-latest"));
+                Assert.That(manifest.Tag, Is.EqualTo("v0.0.2"));
                 Assert.That(manifest.Assets, Has.Count.EqualTo(1));
                 Assert.That(manifest.Assets[0].Name, Is.EqualTo("CottonSync-Windows-Setup.exe"));
                 Assert.That(manifest.Assets[0].Sha256, Is.EqualTo(Sha256(installerBytes)));
@@ -253,10 +261,10 @@ namespace Cotton.Sync.Desktop.Tests.Updates
               "schemaVersion": 1,
               "product": "Cotton Sync",
               "version": "__VERSION__",
-              "tag": "sync-client-latest",
+              "tag": "v__VERSION__",
               "commit": "0123456789abcdef",
               "branch": "main",
-              "releaseUrl": "https://github.com/bvdcode/cotton-sync-client/releases/tag/sync-client-latest",
+              "releaseUrl": "https://github.com/bvdcode/cotton-sync-client/releases/tag/v__VERSION__",
               "assets": [
                 {
                   "name": "CottonSync-Windows-Setup.exe",

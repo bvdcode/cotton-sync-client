@@ -768,16 +768,16 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 1,
                 "Cotton Sync",
                 version,
-                "sync-client-latest",
+                "v" + version,
                 "0123456789abcdef",
                 "main",
-                new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/sync-client-latest"),
+                new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/v" + version),
                 [
                     new DesktopReleaseAsset(
                         "CottonSync-Windows-Setup.exe",
                         new string('a', 64),
                         1024,
-                        new Uri("https://github.com/bvdcode/cotton-sync-client/releases/download/sync-client-latest/CottonSync-Windows-Setup.exe")),
+                        new Uri("https://github.com/bvdcode/cotton-sync-client/releases/download/v" + version + "/CottonSync-Windows-Setup.exe")),
                 ]);
         }
 

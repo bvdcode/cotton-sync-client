@@ -663,7 +663,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             Assert.Multiple(() =>
             {
                 Assert.That(script, Does.Contain("[string]$ExpectedAppVersion"));
-                Assert.That(script, Does.Contain("[string]$ReleaseTag = \"sync-client-latest\""));
+                Assert.That(script, Does.Contain("[string]$ReleaseTag = \"\""));
+                Assert.That(script, Does.Contain("$ReleaseTag = \"v$ExpectedAppVersion\""));
                 Assert.That(script, Does.Contain("gh release download $ReleaseTag"));
                 Assert.That(script, Does.Contain("--pattern CottonSync-Windows.zip"));
                 Assert.That(script, Does.Contain("--pattern CottonSync-Windows-Setup.exe"));
@@ -811,9 +812,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Delete stale release assets"));
                 Assert.That(workflow, Does.Contain("gh release delete-asset \"$tag\" \"$asset_name\""));
                 Assert.That(workflow, Does.Contain("allowed_names=$'CottonSync-CLI-Windows.zip"));
-                Assert.That(workflow, Does.Contain("tag=\"sync-client-latest\""));
+                Assert.That(workflow, Does.Contain("tag=\"v${version}\""));
                 Assert.That(workflow, Does.Contain("prerelease=\"false\""));
-                Assert.That(workflow, Does.Contain("RELEASE_TAG: sync-client-latest"));
+                Assert.That(workflow, Does.Contain("RELEASE_TAG: v${{ needs.linux.outputs.Version }}"));
                 Assert.That(workflow, Does.Contain("release-manifest.json"));
                 Assert.That(workflow, Does.Contain("\"schemaVersion\": 1"));
                 Assert.That(workflow, Does.Contain("\"product\": \"Cotton Sync\""));
@@ -821,7 +822,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("release_download_url = f\"{server_url}/{repository}/releases/download/{tag}\""));
                 Assert.That(workflow, Does.Contain("\"url\": f\"{release_download_url}/{path.name}\""));
                 Assert.That(workflow, Does.Contain("ncipollo/release-action@v1"));
-                Assert.That(workflow, Does.Contain("name: Cotton Sync Client"));
+                Assert.That(workflow, Does.Contain("name: Cotton Sync Client ${{ needs.linux.outputs.Version }}"));
                 Assert.That(workflow, Does.Contain("artifacts: \"release-assets/*\""));
                 Assert.That(workflow, Does.Contain("artifactErrorsFailBuild: true"));
                 Assert.That(workflow, Does.Contain("allowUpdates: true"));
