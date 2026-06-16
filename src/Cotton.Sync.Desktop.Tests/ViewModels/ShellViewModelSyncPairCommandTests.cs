@@ -4785,6 +4785,39 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task SignOutThenSignInAgain_ReusesSameInstallationFlow()
+        {
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            {
+                ServerProbeResult = new DesktopServerProbeResult(
+                    new Uri("https://app.cottoncloud.dev/"),
+                    true,
+                    "Cotton Cloud",
+                    "instance-hash"),
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            await ExecuteAsync(viewModel.SignOutCommand);
+            viewModel.ServerUrl = "app.cottoncloud.dev";
+            viewModel.Username = "desktop@example.test";
+            viewModel.Password = "password";
+            await WaitForAsync(() => viewModel.IsSignInStepVisible);
+            await ExecuteAsync(viewModel.SignInCommand);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(controller.SignOutCalls, Is.EqualTo(1));
+                Assert.That(viewModel.IsSignedIn, Is.True);
+                Assert.That(viewModel.IsDashboardVisible, Is.True);
+                Assert.That(viewModel.HeaderTitleText, Is.EqualTo("desktop@example.test"));
+                Assert.That(viewModel.HeaderStatusText, Is.EqualTo("Connected"));
+                Assert.That(viewModel.ActionRequiredMessage, Is.Empty);
+                Assert.That(controller.SignInRequest?.ServerUrl, Is.EqualTo("https://app.cottoncloud.dev/"));
+            });
+        }
+
+        [Test]
         public async Task SignOutCommand_ShowsNativeNotificationWhenSupported()
         {
             var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")));
