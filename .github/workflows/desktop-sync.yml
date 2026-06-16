@@ -34,14 +34,10 @@ jobs:
           lfs: "true"
           fetch-depth: 0
 
-      - name: Install GitVersion
-        uses: gittools/actions/gitversion/setup@v3.1.11
-        with:
-          versionSpec: 5.x
-
       - name: Determine Version
-        uses: gittools/actions/gitversion/execute@v3.1.11
         id: gitversion
+        shell: pwsh
+        run: ./.github/scripts/determine-version.ps1
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
@@ -258,14 +254,10 @@ jobs:
           lfs: "true"
           fetch-depth: 0
 
-      - name: Install GitVersion
-        uses: gittools/actions/gitversion/setup@v3.1.11
-        with:
-          versionSpec: 5.x
-
       - name: Determine Version
-        uses: gittools/actions/gitversion/execute@v3.1.11
         id: gitversion
+        shell: pwsh
+        run: ./.github/scripts/determine-version.ps1
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
@@ -569,14 +561,10 @@ jobs:
           lfs: "true"
           fetch-depth: 0
 
-      - name: Install GitVersion
-        uses: gittools/actions/gitversion/setup@v3.1.11
-        with:
-          versionSpec: 5.x
-
       - name: Determine Version
-        uses: gittools/actions/gitversion/execute@v3.1.11
         id: gitversion
+        shell: pwsh
+        run: ./.github/scripts/determine-version.ps1
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
