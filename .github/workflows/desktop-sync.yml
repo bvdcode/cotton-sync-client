@@ -390,6 +390,9 @@ jobs:
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-shortcut-app-id.ps1" `
             -ShortcutPath $startMenuShortcut `
             -ExpectedAppUserModelId "Cotton.Sync.Desktop"
+          & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-start-menu-launch.ps1" `
+            -ShortcutPath $startMenuShortcut `
+            -ExpectedExecutablePath $installedExe
           & $installedExe --self-test --data-dir "$dataDir"
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-checksums.ps1" `
             -PublishDirectory $installDir

@@ -608,6 +608,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Packaging/windows/verify-shortcut-app-id.ps1"));
                 Assert.That(workflow, Does.Contain("-ShortcutPath $startMenuShortcut"));
                 Assert.That(workflow, Does.Contain("-ExpectedAppUserModelId \"Cotton.Sync.Desktop\""));
+                Assert.That(workflow, Does.Contain("Packaging/windows/smoke-start-menu-launch.ps1"));
+                Assert.That(workflow, Does.Contain("-ExpectedExecutablePath $installedExe"));
                 Assert.That(workflow, Does.Contain("Cotton.Sync.Desktop.exe\""));
                 Assert.That(workflow, Does.Contain("--self-test --data-dir"));
                 Assert.That(workflow, Does.Contain("-PublishDirectory $installDir"));
@@ -629,6 +631,27 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Start Menu shortcut remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Start Menu uninstall shortcut remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Autostart registry value remained after uninstall."));
+            });
+        }
+
+        [Test]
+        public void WindowsStartMenuLaunchSmokeScript_VerifiesShortcutTargetAndProcessLifecycle()
+        {
+            string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/smoke-start-menu-launch.ps1"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(script, Does.Contain("[string]$ShortcutPath"));
+                Assert.That(script, Does.Contain("[string]$ExpectedExecutablePath"));
+                Assert.That(script, Does.Contain("WScript.Shell"));
+                Assert.That(script, Does.Contain("CreateShortcut($resolvedShortcut)"));
+                Assert.That(script, Does.Contain("Start Menu shortcut target was"));
+                Assert.That(script, Does.Contain("Get-CimInstance Win32_Process"));
+                Assert.That(script, Does.Contain("Start-Process -FilePath $resolvedShortcut"));
+                Assert.That(script, Does.Contain("Start Menu shortcut did not launch"));
+                Assert.That(script, Does.Contain("process exited immediately"));
+                Assert.That(script, Does.Contain("Stop-Process -Id $process.ProcessId -Force"));
+                Assert.That(script, Does.Contain("Verified Start Menu shortcut launch"));
             });
         }
 
