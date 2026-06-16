@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Text.Json;
 using Cotton.Sync.Desktop.Composition;
@@ -173,6 +174,50 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                 Assert.That(item.GetProperty("status").GetString(), Is.EqualTo("failed"));
                 Assert.That(item.GetProperty("relativePath").GetString(), Is.EqualTo("remote-only.txt"));
                 Assert.That(item.GetProperty("hResult").GetInt32(), Is.EqualTo(unchecked((int)0x8007017C)));
+            });
+        }
+
+        [Test]
+        public async Task ExportAsync_RemainsBoundedAfterLargeCloudFilesDiagnosticStorm()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            var exporter = new DesktopDiagnosticsExporter();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+
+            for (int index = 0; index < 10_000; index++)
+            {
+                diagnostics.Record(
+                    "create-placeholder",
+                    "failed",
+                    "11111111-1111-1111-1111-111111111111",
+                    @"S:\CottonSyncVfsQa\root",
+                    "node_modules/package-" + index.ToString("D5", System.Globalization.CultureInfo.InvariantCulture) + ".js",
+                    "Placeholder creation failed.",
+                    unchecked((int)0x8007017C));
+            }
+
+            IReadOnlyList<WindowsCloudFilesDiagnosticEvent> events = diagnostics.Snapshot();
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            string archivePath = await exporter.ExportAsync(paths, CreateBundle(paths, events));
+            stopwatch.Stop();
+
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
+            using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
+            JsonElement cloudFilesEvents = document.RootElement.GetProperty("cloudFilesEvents");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(events, Has.Count.EqualTo(200));
+                Assert.That(cloudFilesEvents.GetArrayLength(), Is.EqualTo(200));
+                Assert.That(
+                    cloudFilesEvents[0].GetProperty("relativePath").GetString(),
+                    Is.EqualTo("node_modules/package-09800.js"));
+                Assert.That(
+                    cloudFilesEvents[199].GetProperty("relativePath").GetString(),
+                    Is.EqualTo("node_modules/package-09999.js"));
+                Assert.That(new FileInfo(archivePath).Length, Is.LessThan(512 * 1024));
+                Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(2)));
             });
         }
 
