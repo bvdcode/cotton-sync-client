@@ -28,6 +28,7 @@ namespace Cotton.Sync.Desktop
             DesktopUnhandledExceptionReporter.Install();
             if (!startupOptions.RunSelfTest
                 && !startupOptions.ExportDiagnostics
+                && !startupOptions.CleanupCloudFiles
                 && !startupOptions.RunLiveSyncSmoke
                 && DesktopPendingUpdateStartup.TryStartPendingUpdate(paths, DesktopAppVersion.Current))
             {
@@ -46,6 +47,14 @@ namespace Cotton.Sync.Desktop
             {
                 return DesktopCommandLineRunner
                     .RunLiveSyncSmokeAsync(paths, startupOptions, Console.Out)
+                    .GetAwaiter()
+                    .GetResult();
+            }
+
+            if (startupOptions.CleanupCloudFiles)
+            {
+                return DesktopCommandLineRunner
+                    .RunCloudFilesCleanupAsync(paths, startupOptions, Console.Out)
                     .GetAwaiter()
                     .GetResult();
             }

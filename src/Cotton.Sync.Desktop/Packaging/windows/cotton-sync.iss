@@ -70,6 +70,9 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 [Run]
 Filename: "{app}\Cotton.Sync.Desktop.exe"; Description: "Launch Cotton Sync"; Flags: nowait postinstall; Check: ShouldLaunchAfterInstall
 
+[UninstallRun]
+Filename: "{app}\Cotton.Sync.Desktop.exe"; Parameters: "--cleanup-cloud-files"; Flags: runhidden waituntilterminated; RunOnceId: "CottonSyncCloudFilesCleanup"
+
 [Code]
 function PowerShellSingleQuotedLiteral(Value: String): String;
 begin

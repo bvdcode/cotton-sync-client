@@ -337,6 +337,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     Does.Contain("dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj /p:PublishProfile=win-x64"));
                 Assert.That(installerScript, Does.Contain("Source: \"{#SourceDir}\\*\""));
                 Assert.That(installerScript, Does.Contain("recursesubdirs createallsubdirs"));
+                Assert.That(installerScript, Does.Contain("[UninstallRun]"));
+                Assert.That(installerScript, Does.Contain("Parameters: \"--cleanup-cloud-files\""));
                 AssertCloudFilesImport(nativeApiType, "CfRegisterSyncRoot");
                 AssertCloudFilesImport(nativeApiType, "CfUnregisterSyncRoot");
                 AssertCloudFilesImport(nativeApiType, "CfCreatePlaceholders");
