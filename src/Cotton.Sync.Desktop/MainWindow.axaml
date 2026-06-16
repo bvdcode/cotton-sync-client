@@ -1187,7 +1187,7 @@
                               Background="{DynamicResource CottonPrimarySoftBrush}"
                               BorderBrush="{DynamicResource CottonPrimaryBrush}"
                               BorderThickness="1">
-                        <Grid RowDefinitions="Auto,Auto"
+                        <Grid RowDefinitions="Auto,Auto,Auto"
                               RowSpacing="2">
                           <TextBlock Text="{Binding SelectedSyncModeLabel}"
                                      FontSize="12"
@@ -1197,6 +1197,11 @@
                                      Text="Available"
                                      Classes="secondary"
                                      FontSize="11" />
+                          <TextBlock Grid.Row="2"
+                                     Text="Stores every file on this device."
+                                     Classes="secondary"
+                                     FontSize="11"
+                                     TextWrapping="Wrap" />
                         </Grid>
                       </Border>
                       <Border Grid.Column="1"
@@ -1206,7 +1211,7 @@
                               BorderBrush="{DynamicResource CottonBorderBrush}"
                               BorderThickness="1"
                               Opacity="0.62">
-                        <Grid RowDefinitions="Auto,Auto"
+                        <Grid RowDefinitions="Auto,Auto,Auto"
                               RowSpacing="2">
                           <TextBlock Text="Virtual files"
                                      FontSize="12"
@@ -1216,6 +1221,11 @@
                                      Text="Not implemented"
                                      Classes="secondary"
                                      FontSize="11" />
+                          <TextBlock Grid.Row="2"
+                                     Text="Saves disk space; downloads on open."
+                                     Classes="secondary"
+                                     FontSize="11"
+                                     TextWrapping="Wrap" />
                         </Grid>
                       </Border>
                     </Grid>

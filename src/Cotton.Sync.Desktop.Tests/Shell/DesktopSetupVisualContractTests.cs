@@ -895,6 +895,23 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             });
         }
 
+        [Test]
+        public void AddFolderWizard_ExplainsSyncModeDiskSpaceBehavior()
+        {
+            string mainWindowXaml = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml"));
+            string addFolderWizard = GetSlice(
+                mainWindowXaml,
+                "IsVisible=\"{Binding IsAddSyncPairWizardVisible}\"",
+                "IsVisible=\"{Binding IsSettingsVisible}\"");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(addFolderWizard, Does.Contain("Text=\"Stores every file on this device.\""));
+                Assert.That(addFolderWizard, Does.Contain("Text=\"Saves disk space; downloads on open.\""));
+                Assert.That(addFolderWizard, Does.Contain("Text=\"Not implemented\""));
+            });
+        }
+
         private static string GetDesktopFilePath(string fileName)
         {
             string directory = TestContext.CurrentContext.TestDirectory;
