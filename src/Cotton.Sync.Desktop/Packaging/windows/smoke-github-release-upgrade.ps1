@@ -134,13 +134,15 @@ if (-not (Test-Path $installedExe)) {
     throw "Upgraded desktop executable was not found."
 }
 
-$actualVersion = ((& $installedExe --version) -join "`n").Trim()
-if ($LASTEXITCODE -ne 0) {
-    throw "Upgraded desktop executable --version exited with code $LASTEXITCODE."
+$versionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($installedExe)
+$actualVersion = ([string]$versionInfo.ProductVersion).Trim()
+$metadataStart = $actualVersion.IndexOf('+')
+if ($metadataStart -gt 0) {
+    $actualVersion = $actualVersion.Substring(0, $metadataStart)
 }
 
 if ($actualVersion -ne $ExpectedAppVersion) {
-    throw "Upgraded desktop executable version was '$actualVersion', expected '$ExpectedAppVersion'."
+    throw "Upgraded desktop executable product version was '$actualVersion', expected '$ExpectedAppVersion'."
 }
 
 & (Join-Path $Workspace "src/Cotton.Sync.Desktop/Packaging/windows/smoke-diagnostics-export.ps1") `

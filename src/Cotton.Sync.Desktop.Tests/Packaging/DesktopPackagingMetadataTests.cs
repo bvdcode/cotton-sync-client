@@ -670,7 +670,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("$oldAppVersion = $ExpectedAppVersion + \"-ci-github-upgrade\""));
                 Assert.That(script, Does.Contain("/DAppVersion=$oldAppVersion"));
                 Assert.That(script, Does.Contain("-FilePath $releaseInstaller"));
-                Assert.That(script, Does.Contain("& $installedExe --version"));
+                Assert.That(script, Does.Contain("[System.Diagnostics.FileVersionInfo]::GetVersionInfo($installedExe)"));
+                Assert.That(script, Does.Contain("$metadataStart = $actualVersion.IndexOf('+')"));
+                Assert.That(script, Does.Contain("Upgraded desktop executable product version was"));
                 Assert.That(script, Does.Contain("-ExpectedAppVersion $ExpectedAppVersion"));
                 Assert.That(script, Does.Contain("Verified GitHub release Windows installer upgrade"));
             });
