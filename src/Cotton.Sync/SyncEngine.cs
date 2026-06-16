@@ -938,6 +938,18 @@ namespace Cotton.Sync
                 return;
             }
 
+            if (remoteDeleted && IsRemoteOnlyPlaceholderBaseline(syncPair, state))
+            {
+                if (local is null)
+                {
+                    await _stateStore.DeleteAsync(syncPair.SyncPairId, relativePath, cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
+                await DeleteLocalAsync(syncPair, options, result, deleteGuard, relativePath, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
             if (local is not null && remote is not null && ContentMatches(local.ContentHash, remote.File.ContentHash))
             {
                 if (!BaselineMatchesCurrentFile(syncPair, relativePath, state, local, remote.File))
