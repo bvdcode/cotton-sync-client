@@ -21,6 +21,8 @@ namespace Cotton.Sync
         private const int RunProgressDetailedItemInterval = 25;
         private const int RunProgressDetailedItemLimit = 50_000;
         private const int RunProgressSparseItemInterval = 100;
+        private const string RemoteOnlyPlaceholderLocalChangeRequiresActionMessage =
+            "Windows virtual-files placeholder was deleted or moved locally. Restore the placeholder or delete/rename it from Cotton web before syncing.";
         private static readonly TimeSpan RunProgressReportTimeInterval = TimeSpan.FromMilliseconds(250);
         private static readonly StringComparer PathComparer = StringComparer.OrdinalIgnoreCase;
         private readonly ILocalFileScanner _localScanner;
@@ -156,6 +158,11 @@ namespace Cotton.Sync
                 directoryStateByPath,
                 localDirectoryContentIndex,
                 remoteDirectoryContentIndex);
+            bool hasMissingRemoteOnlyPlaceholder = HasMissingRemoteOnlyPlaceholder(
+                syncPair,
+                localByPath,
+                remoteByPath,
+                stateByPath);
 
             if (hasLocalDirectoryDeleteCandidates || hasRemoteDirectoryDeleteCandidates || hasStaleDirectoryState)
             {
@@ -219,7 +226,15 @@ namespace Cotton.Sync
 
                 if (state is null)
                 {
-                    await ReconcileWithoutBaselineAsync(syncPair, options, result, relativePath, local, remote, cancellationToken).ConfigureAwait(false);
+                    await ReconcileWithoutBaselineAsync(
+                        syncPair,
+                        options,
+                        result,
+                        relativePath,
+                        local,
+                        remote,
+                        hasMissingRemoteOnlyPlaceholder,
+                        cancellationToken).ConfigureAwait(false);
                     filesCompleted++;
                     completedTransferBytes += plannedTransferBytes;
                     ReportItemRunProgress(
@@ -832,10 +847,22 @@ namespace Cotton.Sync
             string relativePath,
             LocalFileSnapshot? local,
             RemoteFileSnapshot? remote,
+            bool blockLocalOnlyUploads,
             CancellationToken cancellationToken)
         {
             if (local is not null && remote is null)
             {
+                if (blockLocalOnlyUploads)
+                {
+                    Report(
+                        result,
+                        options,
+                        SyncActivityKind.Skipped,
+                        relativePath,
+                        "Local upload skipped because a Windows virtual-files placeholder change in the same sync pass requires review.");
+                    return;
+                }
+
                 await UploadAsync(syncPair, options, result, relativePath, local, null, cancellationToken).ConfigureAwait(false);
                 return;
             }
@@ -887,6 +914,20 @@ namespace Cotton.Sync
             if (local is null && remote is null)
             {
                 await _stateStore.DeleteAsync(syncPair.SyncPairId, relativePath, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            if (local is null
+                && remote is not null
+                && IsRemoteOnlyPlaceholderBaseline(syncPair, state))
+            {
+                Report(
+                    result,
+                    options,
+                    SyncActivityKind.Skipped,
+                    relativePath,
+                    RemoteOnlyPlaceholderLocalChangeRequiresActionMessage,
+                    requiresUserAction: true);
                 return;
             }
 
@@ -2240,6 +2281,11 @@ namespace Cotton.Sync
                 return SyncDeleteDirection.None;
             }
 
+            if (local is null && remote is not null && IsRemoteOnlyPlaceholderState(state))
+            {
+                return SyncDeleteDirection.None;
+            }
+
             if (local is not null && remote is not null && ContentMatches(local.ContentHash, remote.File.ContentHash))
             {
                 return SyncDeleteDirection.None;
@@ -2277,6 +2323,43 @@ namespace Cotton.Sync
             }
 
             return SyncDeleteDirection.None;
+        }
+
+        private static bool HasMissingRemoteOnlyPlaceholder(
+            SyncPair syncPair,
+            IReadOnlyDictionary<string, LocalFileSnapshot> localByPath,
+            IReadOnlyDictionary<string, RemoteFileSnapshot> remoteByPath,
+            IReadOnlyDictionary<string, SyncStateEntry> stateByPath)
+        {
+            if (syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles)
+            {
+                return false;
+            }
+
+            foreach (KeyValuePair<string, SyncStateEntry> state in stateByPath)
+            {
+                if (IsRemoteOnlyPlaceholderState(state.Value)
+                    && !localByPath.ContainsKey(state.Key)
+                    && remoteByPath.ContainsKey(state.Key))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsRemoteOnlyPlaceholderBaseline(SyncPair syncPair, SyncStateEntry state)
+        {
+            return syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
+                && IsRemoteOnlyPlaceholderState(state);
+        }
+
+        private static bool IsRemoteOnlyPlaceholderState(SyncStateEntry state)
+        {
+            return state.Kind == SyncEntryKind.File
+                && state.PlaceholderHydrationState == SyncPlaceholderHydrationState.RemoteOnly
+                && state.PlaceholderIdentity is { Length: > 0 };
         }
 
         private static bool ContentMatches(string? left, string? right)
