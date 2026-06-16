@@ -1,14 +1,22 @@
 $ErrorActionPreference = "Stop"
 
-$nextVersion = "0.5.0"
+$nextVersion = "0.0.1"
+$runNumberOffset = 0
 if (Test-Path "GitVersion.yml") {
-    $configuredVersion = Get-Content "GitVersion.yml" |
+    $settings = @{}
+    Get-Content "GitVersion.yml" |
         ForEach-Object { $_.Trim() } |
-        Where-Object { $_ -match "^next-version:\s*(?<version>\S+)\s*$" } |
-        Select-Object -First 1
+        Where-Object { $_ -match "^(?<name>[A-Za-z0-9_-]+):\s*(?<value>\S+)\s*$" } |
+        ForEach-Object {
+            $settings[$Matches.name] = $Matches.value
+        }
 
-    if ($configuredVersion -match "^next-version:\s*(?<version>\S+)\s*$") {
-        $nextVersion = $Matches.version
+    if ($settings.ContainsKey("next-version")) {
+        $nextVersion = $settings["next-version"]
+    }
+
+    if ($settings.ContainsKey("version-run-number-offset")) {
+        $runNumberOffset = [int]$settings["version-run-number-offset"]
     }
 }
 
@@ -17,16 +25,19 @@ if ($env:GITHUB_REF_TYPE -eq "tag" -and $env:GITHUB_REF_NAME -match "^v?(?<versi
 }
 else {
     $parts = $nextVersion.Split(".")
-    if ($parts.Length -lt 3) {
+    if ($parts.Length -ne 3) {
         throw "GitVersion.yml next-version must use major.minor.patch format."
     }
 
     $runNumber = $env:GITHUB_RUN_NUMBER
     if ([string]::IsNullOrWhiteSpace($runNumber)) {
-        $runNumber = (git rev-list --count HEAD).Trim()
+        $version = $nextVersion
     }
-
-    $version = "$($parts[0]).$($parts[1]).$runNumber"
+    else {
+        $runNumberValue = [int]$runNumber
+        $patch = [int]$parts[2] + [Math]::Max(0, $runNumberValue - $runNumberOffset - 1)
+        $version = "$($parts[0]).$($parts[1]).$patch"
+    }
 }
 
 if ($env:GITHUB_OUTPUT) {

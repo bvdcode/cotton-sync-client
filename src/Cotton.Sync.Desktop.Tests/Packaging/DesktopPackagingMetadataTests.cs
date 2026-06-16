@@ -755,6 +755,22 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             });
         }
 
+        [Test]
+        public void ReleaseVersioning_StartsStandaloneClientAtZeroZeroOne()
+        {
+            string gitVersion = File.ReadAllText(GetRepositoryFilePath("GitVersion.yml"));
+            string versionScript = File.ReadAllText(GetRepositoryFilePath(Path.Combine(".github", "scripts", "determine-version.ps1")));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(gitVersion, Does.Contain("next-version: 0.0.1"));
+                Assert.That(gitVersion, Does.Contain("version-run-number-offset: 4"));
+                Assert.That(versionScript, Does.Contain("$nextVersion = \"0.0.1\""));
+                Assert.That(versionScript, Does.Contain("version-run-number-offset"));
+                Assert.That(versionScript, Does.Not.Contain("0.5.0"));
+            });
+        }
+
         private static string? GetProperty(XElement propertyGroup, string name)
         {
             return propertyGroup.Element(name)?.Value;
