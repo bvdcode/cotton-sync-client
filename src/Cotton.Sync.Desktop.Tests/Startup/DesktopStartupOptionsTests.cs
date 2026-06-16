@@ -91,6 +91,14 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void Parse_LoadsCloudFilesCleanupFlag()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(["--cleanup-cloud-files"]);
+
+            Assert.That(options.CleanupCloudFiles, Is.True);
+        }
+
+        [Test]
         public void Parse_LoadsVersionFlag()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(["--version"]);

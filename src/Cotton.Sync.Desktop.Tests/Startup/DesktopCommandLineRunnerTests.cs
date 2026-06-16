@@ -3,7 +3,10 @@
 
 using Cotton.Sync.Desktop.Composition;
 using Cotton.Sync.Desktop.Auth;
+using Cotton.Sync.App.SyncPairs;
+using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Startup;
+using Cotton.Sync.VirtualFiles;
 
 namespace Cotton.Sync.Desktop.Tests.Startup
 {
@@ -71,6 +74,63 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public async Task RunCloudFilesCleanupAsync_UnregistersOnlyVirtualFilesPairs()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(["--data-dir", _tempDirectory, "--cleanup-cloud-files"]);
+            var store = new SqliteSyncPairSettingsStore(DesktopAppPaths.CreateForDataDirectory(_tempDirectory).AppDatabasePath);
+            await store.InitializeAsync();
+            SyncPairSettings fullMirror = CreateSyncPair("Full", SyncPairMode.FullMirror, Path.Combine(_tempDirectory, "full"));
+            SyncPairSettings virtualFiles = CreateSyncPair("Virtual", SyncPairMode.WindowsVirtualFiles, Path.Combine(_tempDirectory, "virtual"));
+            await store.UpsertAsync(fullMirror);
+            await store.UpsertAsync(virtualFiles);
+            var adapter = new FakeCloudFilesAdapter();
+            using var output = new StringWriter();
+
+            int exitCode = await DesktopCommandLineRunner.RunCloudFilesCleanupAsync(
+                DesktopAppPaths.CreateForDataDirectory(_tempDirectory),
+                options,
+                output,
+                adapter);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(0));
+                Assert.That(adapter.UnregisteredPairs.Select(static pair => pair.Id), Is.EqualTo(new[] { virtualFiles.Id }));
+                Assert.That(output.ToString(), Does.Contain("Roots cleaned: 1"));
+                Assert.That(output.ToString(), Does.Contain("Result: passed"));
+            });
+        }
+
+        [Test]
+        public async Task RunCloudFilesCleanupAsync_ReturnsFailureWhenUnregisterFails()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(["--data-dir", _tempDirectory, "--cleanup-cloud-files"]);
+            var store = new SqliteSyncPairSettingsStore(DesktopAppPaths.CreateForDataDirectory(_tempDirectory).AppDatabasePath);
+            await store.InitializeAsync();
+            SyncPairSettings virtualFiles = CreateSyncPair("Virtual", SyncPairMode.WindowsVirtualFiles, Path.Combine(_tempDirectory, "virtual"));
+            await store.UpsertAsync(virtualFiles);
+            var adapter = new FakeCloudFilesAdapter
+            {
+                Exception = new InvalidOperationException("unregister failed"),
+            };
+            using var output = new StringWriter();
+
+            int exitCode = await DesktopCommandLineRunner.RunCloudFilesCleanupAsync(
+                DesktopAppPaths.CreateForDataDirectory(_tempDirectory),
+                options,
+                output,
+                adapter);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(1));
+                Assert.That(adapter.UnregisteredPairs.Select(static pair => pair.Id), Is.EqualTo(new[] { virtualFiles.Id }));
+                Assert.That(output.ToString(), Does.Contain("Failures: 1"));
+                Assert.That(output.ToString(), Does.Contain("Result: failed"));
+            });
+        }
+
+        [Test]
         public async Task RunLiveSyncSmokeAsync_RequiresExplicitDataDirectory()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(
@@ -129,6 +189,55 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(exitCode, Is.EqualTo(2));
                 Assert.That(output.ToString(), Does.Contain("--local-root must be empty or missing"));
             });
+        }
+
+        private static SyncPairSettings CreateSyncPair(string displayName, SyncPairMode mode, string localRootPath)
+        {
+            return new SyncPairSettings
+            {
+                Id = Guid.NewGuid(),
+                DisplayName = displayName,
+                LocalRootPath = localRootPath,
+                RemoteDisplayPath = "/" + displayName,
+                RemoteRootNodeId = Guid.NewGuid(),
+                IsEnabled = true,
+                Mode = mode,
+                CreatedAtUtc = new DateTime(2026, 06, 16, 10, 00, 00, DateTimeKind.Utc),
+                UpdatedAtUtc = new DateTime(2026, 06, 16, 10, 00, 00, DateTimeKind.Utc),
+            };
+        }
+
+        private sealed class FakeCloudFilesAdapter : IWindowsCloudFilesAdapter
+        {
+            public List<SyncPairSettings> UnregisteredPairs { get; } = [];
+
+            public Exception? Exception { get; set; }
+
+            public RemoteFilePlaceholderResult CreateFilePlaceholder(RemoteFilePlaceholderRequest request)
+            {
+                throw new NotSupportedException();
+            }
+
+            public void UnregisterSyncRoot(SyncPairSettings syncPair)
+            {
+                UnregisteredPairs.Add(syncPair);
+                if (Exception is not null)
+                {
+                    throw Exception;
+                }
+            }
+
+            public WindowsCloudFilesConnection ConnectSyncRoot(
+                SyncPairSettings syncPair,
+                IWindowsCloudFilesCallbackHandler callbackHandler)
+            {
+                throw new NotSupportedException();
+            }
+
+            public void TransferData(WindowsCloudFilesTransferData transfer)
+            {
+                throw new NotSupportedException();
+            }
         }
     }
 }

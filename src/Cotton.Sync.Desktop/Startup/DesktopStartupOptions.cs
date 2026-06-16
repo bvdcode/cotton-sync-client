@@ -12,6 +12,7 @@ namespace Cotton.Sync.Desktop.Startup
             bool startMinimizedToTray,
             bool runSelfTest,
             bool exportDiagnostics,
+            bool cleanupCloudFiles,
             bool runLiveSyncSmoke,
             bool printVersion,
             DesktopVisualSmokeScenario? visualSmokeScenario,
@@ -25,6 +26,7 @@ namespace Cotton.Sync.Desktop.Startup
             StartMinimizedToTray = startMinimizedToTray;
             RunSelfTest = runSelfTest;
             ExportDiagnostics = exportDiagnostics;
+            CleanupCloudFiles = cleanupCloudFiles;
             RunLiveSyncSmoke = runLiveSyncSmoke;
             PrintVersion = printVersion;
             VisualSmokeScenario = visualSmokeScenario;
@@ -37,6 +39,7 @@ namespace Cotton.Sync.Desktop.Startup
             null,
             null,
             null,
+            false,
             false,
             false,
             false,
@@ -58,6 +61,8 @@ namespace Cotton.Sync.Desktop.Startup
         public bool RunSelfTest { get; }
 
         public bool ExportDiagnostics { get; }
+
+        public bool CleanupCloudFiles { get; }
 
         public bool RunLiveSyncSmoke { get; }
 
@@ -88,6 +93,8 @@ namespace Cotton.Sync.Desktop.Startup
                 || HasFlag(args, "--smoke-test");
             bool exportDiagnostics = HasFlag(args, "--export-diagnostics")
                 || HasFlag(args, "--diagnostics");
+            bool cleanupCloudFiles = HasFlag(args, "--cleanup-cloud-files")
+                || HasFlag(args, "--cleanup-sync-roots");
             bool runLiveSyncSmoke = HasFlag(args, "--live-sync-smoke")
                 || HasFlag(args, "--desktop-live-sync-smoke");
             bool printVersion = HasFlag(args, "--version")
@@ -100,6 +107,7 @@ namespace Cotton.Sync.Desktop.Startup
                 startMinimizedToTray,
                 runSelfTest,
                 exportDiagnostics,
+                cleanupCloudFiles,
                 runLiveSyncSmoke,
                 printVersion,
                 ParseVisualSmokeScenario(visualSmokeScenario),

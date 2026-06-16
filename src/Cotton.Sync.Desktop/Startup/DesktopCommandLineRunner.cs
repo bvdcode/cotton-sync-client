@@ -90,6 +90,54 @@ namespace Cotton.Sync.Desktop.Startup
             return 0;
         }
 
+        internal static async Task<int> RunCloudFilesCleanupAsync(
+            DesktopAppPaths paths,
+            DesktopStartupOptions startupOptions,
+            TextWriter output,
+            IWindowsCloudFilesAdapter? cloudFilesAdapter = null,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(paths);
+            ArgumentNullException.ThrowIfNull(startupOptions);
+            ArgumentNullException.ThrowIfNull(output);
+
+            DesktopTraceLogging.Install(paths);
+            var syncPairs = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            await syncPairs.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<SyncPairSettings> configuredPairs = await syncPairs
+                .ListAsync(cancellationToken)
+                .ConfigureAwait(false);
+            IWindowsCloudFilesAdapter cloudFiles = cloudFilesAdapter ?? new WindowsCloudFilesAdapter();
+            int cleaned = 0;
+            int failures = 0;
+
+            await output.WriteLineAsync("Cotton Sync Desktop Cloud Files cleanup").ConfigureAwait(false);
+            foreach (SyncPairSettings syncPair in configuredPairs.Where(static pair => pair.Mode == SyncPairMode.WindowsVirtualFiles))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    cloudFiles.UnregisterSyncRoot(syncPair);
+                    cleaned++;
+                    await output.WriteLineAsync("Unregistered: " + syncPair.LocalRootPath).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    failures++;
+                    await output
+                        .WriteLineAsync("Failed: " + syncPair.LocalRootPath + " - " + CleanSingleLine(exception.Message))
+                        .ConfigureAwait(false);
+                }
+            }
+
+            await output.WriteLineAsync("Roots cleaned: " + cleaned.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .ConfigureAwait(false);
+            await output.WriteLineAsync("Failures: " + failures.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .ConfigureAwait(false);
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
         public static async Task<int> RunLiveSyncSmokeAsync(
             DesktopStartupOptions startupOptions,
             TextWriter output,
