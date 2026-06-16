@@ -18,6 +18,7 @@ namespace Cotton.Sync.Desktop.Startup
             bool printVersion,
             DesktopVisualSmokeScenario? visualSmokeScenario,
             TimeSpan windowsVirtualFilesSmokeHoldAfterPlaceholder,
+            string? windowsVirtualFilesSmokePhase,
             string? localRoot,
             string? secondLocalRoot,
             string? remotePath)
@@ -34,6 +35,7 @@ namespace Cotton.Sync.Desktop.Startup
             PrintVersion = printVersion;
             VisualSmokeScenario = visualSmokeScenario;
             WindowsVirtualFilesSmokeHoldAfterPlaceholder = windowsVirtualFilesSmokeHoldAfterPlaceholder;
+            WindowsVirtualFilesSmokePhase = windowsVirtualFilesSmokePhase;
             LocalRoot = localRoot;
             SecondLocalRoot = secondLocalRoot;
             RemotePath = remotePath;
@@ -52,6 +54,7 @@ namespace Cotton.Sync.Desktop.Startup
             false,
             null,
             TimeSpan.Zero,
+            null,
             null,
             null,
             null);
@@ -80,6 +83,8 @@ namespace Cotton.Sync.Desktop.Startup
 
         public TimeSpan WindowsVirtualFilesSmokeHoldAfterPlaceholder { get; }
 
+        public string? WindowsVirtualFilesSmokePhase { get; }
+
         public string? LocalRoot { get; }
 
         public string? SecondLocalRoot { get; }
@@ -95,6 +100,7 @@ namespace Cotton.Sync.Desktop.Startup
             string? visualSmokeScenario = ReadOption(args, "--visual-smoke") ?? ReadOption(args, "--screenshot-state");
             string? windowsVirtualFilesSmokeHoldAfterPlaceholder =
                 ReadOption(args, "--vfs-smoke-hold-after-placeholder-seconds");
+            string? windowsVirtualFilesSmokePhase = ReadOption(args, "--vfs-smoke-phase");
             string? localRoot = ReadOption(args, "--local-root");
             string? secondLocalRoot = ReadOption(args, "--second-local-root");
             string? remotePath = ReadOption(args, "--remote-path");
@@ -127,6 +133,7 @@ namespace Cotton.Sync.Desktop.Startup
                 printVersion,
                 ParseVisualSmokeScenario(visualSmokeScenario),
                 ParseNonNegativeSeconds(windowsVirtualFilesSmokeHoldAfterPlaceholder),
+                NormalizeOptional(windowsVirtualFilesSmokePhase),
                 NormalizeOptional(localRoot),
                 NormalizeOptional(secondLocalRoot),
                 NormalizeOptional(remotePath));
