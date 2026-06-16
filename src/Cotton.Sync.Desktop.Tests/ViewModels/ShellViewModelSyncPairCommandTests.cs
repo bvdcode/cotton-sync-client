@@ -4607,6 +4607,48 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task SignInCommand_RetriesSuccessfullyAfterTotpRequired()
+        {
+            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
+            {
+                ServerProbeResult = new DesktopServerProbeResult(
+                    new Uri("https://app.cottoncloud.dev/"),
+                    true,
+                    "Cotton Cloud",
+                    "instance-hash"),
+                SignInException = new CottonApiException(
+                    HttpStatusCode.Forbidden,
+                    "{\"success\":false,\"message\":\"Two-factor authentication code is required\"}",
+                    "Cotton API request POST /api/v1/auth/login failed with status 403 (Forbidden)."),
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            viewModel.ServerUrl = "app.cottoncloud.dev";
+            viewModel.Username = "desktop@example.test";
+            viewModel.Password = "password";
+            await WaitForAsync(() => viewModel.IsSignInStepVisible);
+
+            viewModel.SignInCommand.Execute(null);
+            await WaitForAsync(() => viewModel.HasActionRequired);
+
+            controller.SignInException = null;
+            viewModel.TotpCode = "123456";
+            await ExecuteAsync(viewModel.SignInCommand);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(controller.SignInRequest?.TotpCode, Is.EqualTo("123456"));
+                Assert.That(viewModel.IsSignedIn, Is.True);
+                Assert.That(viewModel.IsDashboardVisible, Is.True);
+                Assert.That(viewModel.IsSetupVisible, Is.False);
+                Assert.That(viewModel.ActionRequiredMessage, Is.Empty);
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Connected"));
+                Assert.That(viewModel.Password, Is.Empty);
+                Assert.That(viewModel.TotpCode, Is.Empty);
+            });
+        }
+
+        [Test]
         public async Task SignInCommand_ShowsHumanInvalidPasswordMessage()
         {
             var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
