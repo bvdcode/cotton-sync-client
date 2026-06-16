@@ -62,12 +62,14 @@ namespace Cotton.Sync.Desktop.Startup
             bool reconnectExisting = string.Equals(phase, "reconnect-existing", StringComparison.Ordinal);
             bool largeTree = string.Equals(phase, "large-tree", StringComparison.Ordinal);
             bool largeHydration = string.Equals(phase, "large-hydration-progress", StringComparison.Ordinal);
+            bool removePairCleanup = string.Equals(phase, "remove-pair-cleanup", StringComparison.Ordinal);
             bool remoteUpdateAfterDehydrate = string.Equals(phase, "remote-update-after-dehydrate", StringComparison.Ordinal);
             if (!string.IsNullOrEmpty(phase)
                 && !leaveRegistered
                 && !reconnectExisting
                 && !largeTree
                 && !largeHydration
+                && !removePairCleanup
                 && !remoteUpdateAfterDehydrate)
             {
                 await output.WriteLineAsync(FormatCheck(false, "Unsupported Windows virtual-files smoke phase: " + phase))
@@ -88,6 +90,18 @@ namespace Cotton.Sync.Desktop.Startup
                     startupOptions,
                     output,
                     cloudFiles,
+                    syncPair,
+                    diagnostics,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (removePairCleanup)
+            {
+                return await RunRemovePairCleanupAsync(
+                    output,
+                    cloudFiles,
+                    nativeApi,
                     syncPair,
                     diagnostics,
                     cancellationToken)
@@ -392,6 +406,102 @@ namespace Cotton.Sync.Desktop.Startup
                 {
                     failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
                 }
+            }
+
+            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
+            {
+                await output.WriteLineAsync(
+                    "Diagnostic: "
+                    + item.Operation
+                    + " "
+                    + item.Status
+                    + " "
+                    + CleanSingleLine(item.Details))
+                    .ConfigureAwait(false);
+            }
+
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> RunRemovePairCleanupAsync(
+            TextWriter output,
+            IWindowsCloudFilesAdapter cloudFiles,
+            IWindowsCloudFilesNativeApi? nativeApi,
+            SyncPairSettings syncPair,
+            WindowsCloudFilesDiagnostics diagnostics,
+            CancellationToken cancellationToken)
+        {
+            if (nativeApi is null)
+            {
+                await output.WriteLineAsync(FormatCheck(false, "Remove-pair cleanup smoke requires the native Windows Cloud Files API."))
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                return 2;
+            }
+
+            string rootPath = syncPair.LocalRootPath;
+            string placeholderPath = Path.Combine(rootPath, RelativePlaceholderPath);
+            byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
+            string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
+            int failures = 0;
+
+            try
+            {
+                TryUnregisterExistingRoot(cloudFiles, syncPair, output);
+                PrepareRoot(rootPath);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Isolated QA root prepared for remove-pair cleanup smoke.")
+                    + " root="
+                    + rootPath)
+                    .ConfigureAwait(false);
+
+                cloudFiles.CreateFilePlaceholder(CreatePlaceholderRequest(
+                    syncPair,
+                    RelativePlaceholderPath,
+                    expectedContent.LongLength,
+                    expectedHash));
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Registered Cloud Files root and placeholder before pair removal.")
+                    + " path="
+                    + placeholderPath
+                    + ", attributes="
+                    + FormatAttributes(File.GetAttributes(placeholderPath)))
+                    .ConfigureAwait(false);
+
+                var deletionHandler = new WindowsCloudFilesSyncPairDeletionHandler(cloudFiles);
+                await deletionHandler.BeforeDeleteAsync(syncPair, cancellationToken).ConfigureAwait(false);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Removing the virtual-files sync pair unregistered the Cloud Files root.")
+                    + " root="
+                    + rootPath)
+                    .ConfigureAwait(false);
+
+                Directory.Delete(rootPath, recursive: true);
+                if (!Directory.Exists(rootPath))
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Unregistered sync root could be removed from the filesystem cleanly.")
+                        + " root="
+                        + rootPath)
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Unregistered sync root still exists after filesystem cleanup.")
+                        + " root="
+                        + rootPath)
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                failures++;
+                await output.WriteLineAsync(
+                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
+                    .ConfigureAwait(false);
             }
 
             foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
