@@ -13,6 +13,7 @@ namespace Cotton.Sync.Desktop.Startup
             bool runSelfTest,
             bool exportDiagnostics,
             bool cleanupCloudFiles,
+            bool runWindowsVirtualFilesSmoke,
             bool runLiveSyncSmoke,
             bool printVersion,
             DesktopVisualSmokeScenario? visualSmokeScenario,
@@ -27,6 +28,7 @@ namespace Cotton.Sync.Desktop.Startup
             RunSelfTest = runSelfTest;
             ExportDiagnostics = exportDiagnostics;
             CleanupCloudFiles = cleanupCloudFiles;
+            RunWindowsVirtualFilesSmoke = runWindowsVirtualFilesSmoke;
             RunLiveSyncSmoke = runLiveSyncSmoke;
             PrintVersion = printVersion;
             VisualSmokeScenario = visualSmokeScenario;
@@ -39,6 +41,7 @@ namespace Cotton.Sync.Desktop.Startup
             null,
             null,
             null,
+            false,
             false,
             false,
             false,
@@ -63,6 +66,8 @@ namespace Cotton.Sync.Desktop.Startup
         public bool ExportDiagnostics { get; }
 
         public bool CleanupCloudFiles { get; }
+
+        public bool RunWindowsVirtualFilesSmoke { get; }
 
         public bool RunLiveSyncSmoke { get; }
 
@@ -95,6 +100,8 @@ namespace Cotton.Sync.Desktop.Startup
                 || HasFlag(args, "--diagnostics");
             bool cleanupCloudFiles = HasFlag(args, "--cleanup-cloud-files")
                 || HasFlag(args, "--cleanup-sync-roots");
+            bool runWindowsVirtualFilesSmoke = HasFlag(args, "--windows-virtual-files-smoke")
+                || HasFlag(args, "--vfs-smoke");
             bool runLiveSyncSmoke = HasFlag(args, "--live-sync-smoke")
                 || HasFlag(args, "--desktop-live-sync-smoke");
             bool printVersion = HasFlag(args, "--version")
@@ -108,6 +115,7 @@ namespace Cotton.Sync.Desktop.Startup
                 runSelfTest,
                 exportDiagnostics,
                 cleanupCloudFiles,
+                runWindowsVirtualFilesSmoke,
                 runLiveSyncSmoke,
                 printVersion,
                 ParseVisualSmokeScenario(visualSmokeScenario),

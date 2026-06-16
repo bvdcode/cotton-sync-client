@@ -133,6 +133,35 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        [Platform(Include = "Win")]
+        public async Task RunWindowsVirtualFilesSmokeAsync_RejectsRootOutsideIsolatedQaDrive()
+        {
+            string unsafeRoot = Path.Combine(_tempDirectory, "vfs-root");
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--windows-virtual-files-smoke",
+                    "--data-dir",
+                    Path.Combine(_tempDirectory, "state"),
+                    "--local-root",
+                    unsafeRoot,
+                ]);
+            using var output = new StringWriter();
+
+            int exitCode = await DesktopCommandLineRunner.RunWindowsVirtualFilesSmokeAsync(
+                DesktopAppPaths.CreateForDataDirectory(Path.Combine(_tempDirectory, "state")),
+                options,
+                output,
+                new FakeCloudFilesAdapter());
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(2));
+                Assert.That(output.ToString(), Does.Contain(@"refuses to touch paths outside S:\CottonSyncVfsQa\..."));
+                Assert.That(output.ToString(), Does.Contain("Result: failed"));
+            });
+        }
+
+        [Test]
         public async Task RunLiveSyncSmokeAsync_RequiresExplicitDataDirectory()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(

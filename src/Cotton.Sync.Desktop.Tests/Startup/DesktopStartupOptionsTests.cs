@@ -99,6 +99,22 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void Parse_LoadsWindowsVirtualFilesSmokeFlag()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(["--windows-virtual-files-smoke"]);
+
+            Assert.That(options.RunWindowsVirtualFilesSmoke, Is.True);
+        }
+
+        [Test]
+        public void Parse_LoadsWindowsVirtualFilesSmokeAlias()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(["--vfs-smoke"]);
+
+            Assert.That(options.RunWindowsVirtualFilesSmoke, Is.True);
+        }
+
+        [Test]
         public void Parse_LoadsVersionFlag()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(["--version"]);
