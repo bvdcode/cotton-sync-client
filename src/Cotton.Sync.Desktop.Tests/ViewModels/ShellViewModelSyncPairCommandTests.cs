@@ -154,7 +154,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Assert.Multiple(() =>
             {
                 Assert.That(viewModel.RemoveSyncPairConfirmationTitle, Is.EqualTo("Remove Desktop?"));
-                Assert.That(viewModel.RemoveSyncPairConfirmationMessage, Is.EqualTo("Stops syncing this folder. Cloud files stay online; Windows may remove local placeholders from this device."));
+                Assert.That(viewModel.RemoveSyncPairConfirmationMessage, Is.EqualTo("Stops syncing this folder. Cloud files stay online; Windows may remove local File Explorer entries from this device."));
                 Assert.That(viewModel.RemoveSyncPairConfirmationPath, Does.EndWith("Desktop"));
             });
         }
@@ -1570,13 +1570,13 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.HasCurrentRunProgress, Is.True);
                 Assert.That(viewModel.IsCurrentRunProgressIndeterminate, Is.False);
                 Assert.That(viewModel.CurrentRunProgressValue, Is.EqualTo(30).Within(0.01));
-                Assert.That(viewModel.CurrentRunProgressDetails, Is.EqualTo("Creating placeholders \u00B7 3 of 10 placeholders"));
-                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Creating placeholders \u00B7 3 of 10 placeholders"));
-                Assert.That(row.CurrentOperation, Is.EqualTo("Creating placeholders 3 of 10"));
+                Assert.That(viewModel.CurrentRunProgressDetails, Is.EqualTo("Making cloud files available \u00B7 3 of 10 cloud files"));
+                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Making cloud files available \u00B7 3 of 10 cloud files"));
+                Assert.That(row.CurrentOperation, Is.EqualTo("Making cloud files available 3 of 10"));
                 Assert.That(row.HasCurrentOperation, Is.True);
                 Assert.That(row.HasCurrentProgress, Is.True);
                 Assert.That(row.CurrentProgressValue, Is.EqualTo(30).Within(0.01));
-                Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Documents: Creating placeholders 3 of 10"));
+                Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Documents: Making cloud files available 3 of 10"));
             });
         }
 

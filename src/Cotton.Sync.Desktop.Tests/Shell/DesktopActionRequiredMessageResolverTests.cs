@@ -154,7 +154,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public void FromStatus_PreservesWindowsVirtualFilesPlaceholderDeleteOrRenameAction()
         {
             const string expected =
-                "Windows virtual-files placeholder was deleted or moved locally. Restore the placeholder or delete/rename it from Cotton web before syncing.";
+                "An online-only file was deleted or moved locally. Restore it from Cotton Sync or delete/rename it from Cotton web before syncing.";
             var status = new DesktopSyncStatusSnapshot(
             [
                 new DesktopSyncPairStatusSnapshot(Guid.NewGuid(), "Error", expected),
@@ -181,6 +181,24 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             Assert.That(
                 message,
                 Is.EqualTo("Windows virtual files could not register this sync folder with File Explorer. Restart Cotton Sync, then export diagnostics if it repeats."));
+        }
+
+        [Test]
+        public void FromStatus_ExplainsCloudFilesPlaceholderFailure()
+        {
+            var status = new DesktopSyncStatusSnapshot(
+            [
+                new DesktopSyncPairStatusSnapshot(
+                    Guid.NewGuid(),
+                    "Error",
+                    "CfCreatePlaceholders failed with HRESULT 0x8007017C."),
+            ]);
+
+            string message = DesktopActionRequiredMessageResolver.FromStatus(status);
+
+            Assert.That(
+                message,
+                Is.EqualTo("Windows virtual files could not make a cloud file available in File Explorer. Check diagnostics and retry sync."));
         }
 
         [Test]
@@ -434,6 +452,18 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             Assert.That(
                 message,
                 Is.EqualTo("Windows virtual files could not connect this sync folder to File Explorer. Restart Cotton Sync, then export diagnostics if it repeats."));
+        }
+
+        [Test]
+        public void FromException_ExplainsCloudFilesPlaceholderFailure()
+        {
+            var exception = new WindowsCloudFilesNativeException("CfCreatePlaceholders", unchecked((int)0x8007017C));
+
+            string message = DesktopActionRequiredMessageResolver.FromException(exception);
+
+            Assert.That(
+                message,
+                Is.EqualTo("Windows virtual files could not make a cloud file available in File Explorer. Check diagnostics and retry sync."));
         }
 
         [Test]

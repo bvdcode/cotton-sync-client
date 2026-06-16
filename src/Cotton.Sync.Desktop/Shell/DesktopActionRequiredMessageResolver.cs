@@ -5,6 +5,7 @@ using System.Text.Json;
 using Cotton.Sdk;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Local;
+using Cotton.Sync.VirtualFiles;
 
 namespace Cotton.Sync.Desktop.Shell
 {
@@ -56,9 +57,6 @@ namespace Cotton.Sync.Desktop.Shell
 
         private const string CloudFilesSyncRootConnectionFailedMessage =
             "Windows virtual files could not connect this sync folder to File Explorer. Restart Cotton Sync, then export diagnostics if it repeats.";
-
-        private const string CloudFilesPlaceholderFailedMessage =
-            "Windows virtual files could not create a placeholder. Check diagnostics and retry sync.";
 
         public static string FromStatus(DesktopSyncStatusSnapshot status)
         {
@@ -295,7 +293,7 @@ namespace Cotton.Sync.Desktop.Shell
                 : message.Contains("CfConnectSyncRoot", StringComparison.OrdinalIgnoreCase)
                     ? CloudFilesSyncRootConnectionFailedMessage
                     : message.Contains("CfCreatePlaceholders", StringComparison.OrdinalIgnoreCase)
-                        ? CloudFilesPlaceholderFailedMessage
+                        ? VirtualFileUserFacingCopy.CloudFilesPlaceholderFailedMessage
                         : null;
         }
 
@@ -306,7 +304,7 @@ namespace Cotton.Sync.Desktop.Shell
                 : string.Equals(operation, "CfConnectSyncRoot", StringComparison.Ordinal)
                     ? CloudFilesSyncRootConnectionFailedMessage
                     : string.Equals(operation, "CfCreatePlaceholders", StringComparison.Ordinal)
-                        ? CloudFilesPlaceholderFailedMessage
+                        ? VirtualFileUserFacingCopy.CloudFilesPlaceholderFailedMessage
                         : null;
         }
 

@@ -2,6 +2,7 @@
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.SyncPairs;
+using Cotton.Sync.VirtualFiles;
 
 namespace Cotton.Sync.Desktop.ViewModels
 {
@@ -149,8 +150,8 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public string ModeLabel => Mode switch
         {
-            SyncPairMode.WindowsVirtualFiles => "Windows virtual files",
-            _ => "Full mirror",
+            SyncPairMode.WindowsVirtualFiles => VirtualFileUserFacingCopy.WindowsVirtualFilesModeLabel,
+            _ => VirtualFileUserFacingCopy.FullMirrorModeLabel,
         };
 
         public DateTime? LastSyncedAtUtc

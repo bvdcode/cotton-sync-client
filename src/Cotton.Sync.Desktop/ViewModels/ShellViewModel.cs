@@ -13,6 +13,7 @@ using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Shell;
 using Cotton.Sync.Desktop.Startup;
+using Cotton.Sync.VirtualFiles;
 
 namespace Cotton.Sync.Desktop.ViewModels
 {
@@ -1441,7 +1442,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             : "Remove " + _pendingRemoveSyncPair.DisplayName + "?";
 
         public string RemoveSyncPairConfirmationMessage => _pendingRemoveSyncPair?.Mode == SyncPairMode.WindowsVirtualFiles
-            ? "Stops syncing this folder. Cloud files stay online; Windows may remove local placeholders from this device."
+            ? "Stops syncing this folder. Cloud files stay online; Windows may remove local File Explorer entries from this device."
             : "Stops syncing this folder. Local files stay on this device; cloud files stay online.";
 
         public string RemoveSyncPairConfirmationPath => _pendingRemoveSyncPair?.LocalPath ?? string.Empty;
@@ -5196,7 +5197,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                     : progressValues.All(static progress => progress.Stage == SyncRunProgressStage.ReconcilingFiles)
                         ? "Preparing file checks"
                         : progressValues.All(static progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders)
-                            ? "Preparing placeholders"
+                            ? VirtualFileUserFacingCopy.PreparingCloudFilesProgressLabel
                             : "Preparing sync";
                 return prefix
                     + " across "
@@ -5205,7 +5206,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
 
             string aggregateUnitName = progressValues.All(static progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders)
-                ? "placeholders"
+                ? VirtualFileUserFacingCopy.CloudFilesProgressUnit
                 : "files";
             return completedFiles.ToString(CultureInfo.CurrentCulture)
                 + " of "
@@ -5289,7 +5290,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 SyncRunProgressStage.ScanningLocal => CreateLocalScanProgressDetails(progress),
                 SyncRunProgressStage.ScanningRemote => CreateRemoteScanProgressDetails(progress),
                 SyncRunProgressStage.ReconcilingDirectories => "Preparing folders.",
-                SyncRunProgressStage.CreatingPlaceholders => "Preparing placeholders.",
+                SyncRunProgressStage.CreatingPlaceholders => VirtualFileUserFacingCopy.PreparingCloudFilesProgressLabel + ".",
                 SyncRunProgressStage.Completed => "Sync pass completed.",
                 _ => "Preparing sync.",
             };
@@ -5363,7 +5364,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
             if (stage == SyncRunProgressStage.CreatingPlaceholders)
             {
-                return singular ? "placeholder" : "placeholders";
+                return VirtualFileUserFacingCopy.CloudFilesProgressUnit;
             }
 
             return singular ? "file" : "files";
@@ -5399,7 +5400,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 SyncRunProgressStage.ScanningRemote => "Scanning Cotton Cloud",
                 SyncRunProgressStage.ReconcilingDirectories => "Preparing folders",
                 SyncRunProgressStage.ReconcilingFiles => "Checking files",
-                SyncRunProgressStage.CreatingPlaceholders => "Creating placeholders",
+                SyncRunProgressStage.CreatingPlaceholders => VirtualFileUserFacingCopy.CreatingCloudFilesProgressLabel,
                 SyncRunProgressStage.Completed => "Finishing sync",
                 _ => "Syncing",
             };
@@ -5411,7 +5412,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             {
                 SyncRunProgressStage.ReconcilingDirectories => "Preparing folders",
                 SyncRunProgressStage.ReconcilingFiles => "Preparing file checks",
-                SyncRunProgressStage.CreatingPlaceholders => "Preparing placeholders",
+                SyncRunProgressStage.CreatingPlaceholders => VirtualFileUserFacingCopy.PreparingCloudFilesProgressLabel,
                 _ => "Preparing sync",
             };
         }
