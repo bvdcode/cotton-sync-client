@@ -68,7 +68,7 @@ Name: "{userdesktop}\Cotton Sync"; Filename: "{app}\Cotton.Sync.Desktop.exe"; Ic
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Cotton Sync"; ValueData: """{app}\Cotton.Sync.Desktop.exe"" --start-minimized"; Flags: uninsdeletevalue
 
 [Run]
-Filename: "{app}\Cotton.Sync.Desktop.exe"; Description: "Launch Cotton Sync"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Cotton.Sync.Desktop.exe"; Description: "Launch Cotton Sync"; Flags: nowait postinstall; Check: ShouldLaunchAfterInstall
 
 [Code]
 function PowerShellSingleQuotedLiteral(Value: String): String;
@@ -124,6 +124,11 @@ function InitializeUninstall(): Boolean;
 begin
   StopInstalledAppForSilentUninstall();
   Result := True;
+end;
+
+function ShouldLaunchAfterInstall(): Boolean;
+begin
+  Result := (not WizardSilent) or (ExpandConstant('{param:LaunchAfterUpdate|0}') = '1');
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

@@ -554,7 +554,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(installerScript, Does.Contain("ValueName: \"Cotton Sync\""));
                 Assert.That(installerScript, Does.Contain("ValueData: \"\"\"{app}\\Cotton.Sync.Desktop.exe\"\" --start-minimized\""));
                 Assert.That(installerScript, Does.Contain("Flags: uninsdeletevalue"));
-                Assert.That(installerScript, Does.Contain("Flags: nowait postinstall skipifsilent"));
+                Assert.That(installerScript, Does.Contain("Flags: nowait postinstall; Check: ShouldLaunchAfterInstall"));
+                Assert.That(installerScript, Does.Contain("function ShouldLaunchAfterInstall(): Boolean;"));
+                Assert.That(installerScript, Does.Contain("ExpandConstant('{param:LaunchAfterUpdate|0}') = '1'"));
                 Assert.That(installerScript, Does.Contain("CurUninstallStepChanged"));
                 Assert.That(installerScript, Does.Contain("RegDeleteValue(HKCU, 'Software\\Microsoft\\Windows\\CurrentVersion\\Run', 'Cotton Sync')"));
             });
