@@ -64,6 +64,7 @@ namespace Cotton.Sync.Desktop.Startup
             bool largeHydration = string.Equals(phase, "large-hydration-progress", StringComparison.Ordinal);
             bool removePairCleanup = string.Equals(phase, "remove-pair-cleanup", StringComparison.Ordinal);
             bool trayQuitDisconnect = string.Equals(phase, "tray-quit-disconnect", StringComparison.Ordinal);
+            bool explorerFreeUpSpace = string.Equals(phase, "explorer-free-up-space", StringComparison.Ordinal);
             bool remoteUpdateAfterDehydrate = string.Equals(phase, "remote-update-after-dehydrate", StringComparison.Ordinal);
             if (!string.IsNullOrEmpty(phase)
                 && !leaveRegistered
@@ -72,6 +73,7 @@ namespace Cotton.Sync.Desktop.Startup
                 && !largeHydration
                 && !removePairCleanup
                 && !trayQuitDisconnect
+                && !explorerFreeUpSpace
                 && !remoteUpdateAfterDehydrate)
             {
                 await output.WriteLineAsync(FormatCheck(false, "Unsupported Windows virtual-files smoke phase: " + phase))
@@ -113,6 +115,19 @@ namespace Cotton.Sync.Desktop.Startup
             if (trayQuitDisconnect)
             {
                 return await RunTrayQuitDisconnectAsync(
+                    paths,
+                    output,
+                    cloudFiles,
+                    nativeApi,
+                    syncPair,
+                    diagnostics,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (explorerFreeUpSpace)
+            {
+                return await RunExplorerFreeUpSpaceAsync(
                     paths,
                     output,
                     cloudFiles,
@@ -421,6 +436,196 @@ namespace Cotton.Sync.Desktop.Startup
                 {
                     failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
                 }
+            }
+
+            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
+            {
+                await output.WriteLineAsync(
+                    "Diagnostic: "
+                    + item.Operation
+                    + " "
+                    + item.Status
+                    + " "
+                    + CleanSingleLine(item.Details))
+                    .ConfigureAwait(false);
+            }
+
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> RunExplorerFreeUpSpaceAsync(
+            DesktopAppPaths paths,
+            TextWriter output,
+            IWindowsCloudFilesAdapter cloudFiles,
+            IWindowsCloudFilesNativeApi? nativeApi,
+            SyncPairSettings syncPair,
+            WindowsCloudFilesDiagnostics diagnostics,
+            CancellationToken cancellationToken)
+        {
+            if (nativeApi is null)
+            {
+                await output.WriteLineAsync(FormatCheck(false, "Explorer Free up space smoke requires the native Windows Cloud Files API."))
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                return 2;
+            }
+
+            string rootPath = syncPair.LocalRootPath;
+            string placeholderPath = Path.Combine(rootPath, RelativePlaceholderPath);
+            byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
+            string expectedText = Encoding.UTF8.GetString(expectedContent);
+            string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
+            var contentProvider = new StaticSmokeContentProvider(expectedContent);
+            var callbackHandler = new WindowsCloudFilesHydrationCoordinator(
+                contentProvider,
+                nativeApi,
+                Path.Combine(paths.DataDirectory, "vfs-smoke-temp"),
+                diagnostics);
+            WindowsCloudFilesConnection? connection = null;
+            int failures = 0;
+
+            try
+            {
+                TryUnregisterExistingRoot(cloudFiles, syncPair, output);
+                PrepareRoot(rootPath);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Isolated QA root prepared for Explorer Free up space smoke.")
+                    + " root="
+                    + rootPath)
+                    .ConfigureAwait(false);
+
+                cloudFiles.CreateFilePlaceholder(CreatePlaceholderRequest(
+                    syncPair,
+                    RelativePlaceholderPath,
+                    expectedContent.LongLength,
+                    expectedHash));
+                connection = cloudFiles.ConnectSyncRoot(syncPair, callbackHandler);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Cloud Files callbacks connected for Explorer Free up space smoke.")
+                    + " root="
+                    + connection.LocalRootPath)
+                    .ConfigureAwait(false);
+
+                string hydratedText = await File.ReadAllTextAsync(placeholderPath, cancellationToken).ConfigureAwait(false);
+                string hydratedHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(hydratedText)));
+                if (string.Equals(hydratedText, expectedText, StringComparison.Ordinal)
+                    && string.Equals(hydratedHash, expectedHash, StringComparison.OrdinalIgnoreCase)
+                    && contentProvider.DownloadCount == 1)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Placeholder hydrated before invoking Explorer Free up space.")
+                        + " sha256="
+                        + hydratedHash
+                        + ", attributes="
+                        + FormatAttributes(File.GetAttributes(placeholderPath))
+                        + ", downloads="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Placeholder did not hydrate correctly before Explorer Free up space.")
+                        + " expectedSha256="
+                        + expectedHash
+                        + ", actualSha256="
+                        + hydratedHash
+                        + ", downloads="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+
+                int downloadsBeforeVerb = contentProvider.DownloadCount;
+                ShellVerbInvocationResult verbResult = await InvokeExplorerFreeUpSpaceAsync(
+                    placeholderPath,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync(
+                    FormatCheck(verbResult.Invoked, "Explorer shell exposed and invoked the Free up space verb.")
+                    + " verb="
+                    + (verbResult.InvokedVerbName ?? "missing")
+                    + ", availableVerbs="
+                    + string.Join("|", verbResult.AvailableVerbNames))
+                    .ConfigureAwait(false);
+                if (!verbResult.Invoked)
+                {
+                    failures++;
+                }
+
+                bool becameOnlineOnly = await WaitForAttributesAsync(
+                    placeholderPath,
+                    HasRecallOnDataAccess,
+                    TimeSpan.FromSeconds(10),
+                    cancellationToken)
+                    .ConfigureAwait(false);
+                FileAttributes dehydratedAttributes = File.GetAttributes(placeholderPath);
+                if (becameOnlineOnly && contentProvider.DownloadCount == downloadsBeforeVerb)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Explorer Free up space returned the file to online-only state without remote transfer.")
+                        + " attributes="
+                        + FormatAttributes(dehydratedAttributes)
+                        + ", downloads="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Explorer Free up space did not return the file to online-only state cleanly.")
+                        + " attributes="
+                        + FormatAttributes(dehydratedAttributes)
+                        + ", downloadsBeforeVerb="
+                        + downloadsBeforeVerb.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", downloadsAfterVerb="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+
+                string rehydratedText = await File.ReadAllTextAsync(placeholderPath, cancellationToken).ConfigureAwait(false);
+                string rehydratedHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(rehydratedText)));
+                if (string.Equals(rehydratedText, expectedText, StringComparison.Ordinal)
+                    && string.Equals(rehydratedHash, expectedHash, StringComparison.OrdinalIgnoreCase)
+                    && contentProvider.DownloadCount == downloadsBeforeVerb + 1)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Opening the Explorer-dehydrated placeholder hydrated unchanged remote content.")
+                        + " sha256="
+                        + rehydratedHash
+                        + ", downloads="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Explorer-dehydrated placeholder did not rehydrate unchanged remote content.")
+                        + " expectedSha256="
+                        + expectedHash
+                        + ", actualSha256="
+                        + rehydratedHash
+                        + ", downloadsBeforeVerb="
+                        + downloadsBeforeVerb.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", downloadsAfterRehydrate="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                failures++;
+                await output.WriteLineAsync(
+                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                connection?.Dispose();
+                failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
             }
 
             foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
@@ -1342,6 +1547,133 @@ namespace Cotton.Sync.Desktop.Startup
 
             return true;
         }
+
+        private static async Task<bool> WaitForAttributesAsync(
+            string filePath,
+            Func<FileAttributes, bool> predicate,
+            TimeSpan timeout,
+            CancellationToken cancellationToken)
+        {
+            var timer = Stopwatch.StartNew();
+            while (timer.Elapsed < timeout)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (File.Exists(filePath) && predicate(File.GetAttributes(filePath)))
+                {
+                    return true;
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken).ConfigureAwait(false);
+            }
+
+            return File.Exists(filePath) && predicate(File.GetAttributes(filePath));
+        }
+
+        private static Task<ShellVerbInvocationResult> InvokeExplorerFreeUpSpaceAsync(
+            string filePath,
+            CancellationToken cancellationToken)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+            cancellationToken.ThrowIfCancellationRequested();
+            var completion = new TaskCompletionSource<ShellVerbInvocationResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var thread = new Thread(() =>
+            {
+                try
+                {
+                    completion.TrySetResult(InvokeExplorerFreeUpSpaceCore(filePath));
+                }
+                catch (Exception exception)
+                {
+                    completion.TrySetException(exception);
+                }
+            });
+            if (OperatingSystem.IsWindows())
+            {
+                thread.SetApartmentState(ApartmentState.STA);
+            }
+
+            thread.IsBackground = true;
+            thread.Start();
+            cancellationToken.Register(
+                static state => ((TaskCompletionSource<ShellVerbInvocationResult>)state!).TrySetCanceled(),
+                completion);
+            return completion.Task;
+        }
+
+        private static ShellVerbInvocationResult InvokeExplorerFreeUpSpaceCore(string filePath)
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                return new ShellVerbInvocationResult(false, null, []);
+            }
+
+            string? directory = Path.GetDirectoryName(filePath);
+            string fileName = Path.GetFileName(filePath);
+            if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(fileName))
+            {
+                return new ShellVerbInvocationResult(false, null, []);
+            }
+
+            Type? shellType = Type.GetTypeFromProgID("Shell.Application");
+            if (shellType is null)
+            {
+                return new ShellVerbInvocationResult(false, null, []);
+            }
+
+            dynamic shell = Activator.CreateInstance(shellType)
+                ?? throw new InvalidOperationException("Shell.Application COM object could not be created.");
+            dynamic folder = shell.Namespace(directory);
+            if (folder is null)
+            {
+                return new ShellVerbInvocationResult(false, null, []);
+            }
+
+            dynamic item = folder.ParseName(fileName);
+            if (item is null)
+            {
+                return new ShellVerbInvocationResult(false, null, []);
+            }
+
+            var names = new List<string>();
+            dynamic verbs = item.Verbs();
+            int count = verbs.Count;
+            for (int index = 0; index < count; index++)
+            {
+                dynamic verb = verbs.Item(index);
+                string name = CleanShellVerbName((string)verb.Name);
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    names.Add(name);
+                }
+
+                if (IsFreeUpSpaceVerb(name))
+                {
+                    verb.DoIt();
+                    return new ShellVerbInvocationResult(true, name, names);
+                }
+            }
+
+            return new ShellVerbInvocationResult(false, null, names);
+        }
+
+        private static string CleanShellVerbName(string? value)
+        {
+            return (value ?? string.Empty)
+                .Replace("&", string.Empty, StringComparison.Ordinal)
+                .Trim();
+        }
+
+        private static bool IsFreeUpSpaceVerb(string value)
+        {
+            return value.Contains("Free up space", StringComparison.OrdinalIgnoreCase)
+                || value.Contains("Освободить место", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private sealed record ShellVerbInvocationResult(
+            bool Invoked,
+            string? InvokedVerbName,
+            IReadOnlyList<string> AvailableVerbNames);
 
         private sealed class RecordingTransferProgress : IProgress<SyncTransferProgress>
         {
