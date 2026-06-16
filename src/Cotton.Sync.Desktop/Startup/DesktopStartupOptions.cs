@@ -17,6 +17,7 @@ namespace Cotton.Sync.Desktop.Startup
             bool runLiveSyncSmoke,
             bool printVersion,
             DesktopVisualSmokeScenario? visualSmokeScenario,
+            TimeSpan windowsVirtualFilesSmokeHoldAfterPlaceholder,
             string? localRoot,
             string? secondLocalRoot,
             string? remotePath)
@@ -32,6 +33,7 @@ namespace Cotton.Sync.Desktop.Startup
             RunLiveSyncSmoke = runLiveSyncSmoke;
             PrintVersion = printVersion;
             VisualSmokeScenario = visualSmokeScenario;
+            WindowsVirtualFilesSmokeHoldAfterPlaceholder = windowsVirtualFilesSmokeHoldAfterPlaceholder;
             LocalRoot = localRoot;
             SecondLocalRoot = secondLocalRoot;
             RemotePath = remotePath;
@@ -49,6 +51,7 @@ namespace Cotton.Sync.Desktop.Startup
             false,
             false,
             null,
+            TimeSpan.Zero,
             null,
             null,
             null);
@@ -75,6 +78,8 @@ namespace Cotton.Sync.Desktop.Startup
 
         public DesktopVisualSmokeScenario? VisualSmokeScenario { get; }
 
+        public TimeSpan WindowsVirtualFilesSmokeHoldAfterPlaceholder { get; }
+
         public string? LocalRoot { get; }
 
         public string? SecondLocalRoot { get; }
@@ -88,6 +93,8 @@ namespace Cotton.Sync.Desktop.Startup
             string? username = ReadOption(args, "--username") ?? ReadOption(args, "--user");
             string? dataDirectory = ReadOption(args, "--data-dir") ?? ReadOption(args, "--data-directory");
             string? visualSmokeScenario = ReadOption(args, "--visual-smoke") ?? ReadOption(args, "--screenshot-state");
+            string? windowsVirtualFilesSmokeHoldAfterPlaceholder =
+                ReadOption(args, "--vfs-smoke-hold-after-placeholder-seconds");
             string? localRoot = ReadOption(args, "--local-root");
             string? secondLocalRoot = ReadOption(args, "--second-local-root");
             string? remotePath = ReadOption(args, "--remote-path");
@@ -119,6 +126,7 @@ namespace Cotton.Sync.Desktop.Startup
                 runLiveSyncSmoke,
                 printVersion,
                 ParseVisualSmokeScenario(visualSmokeScenario),
+                ParseNonNegativeSeconds(windowsVirtualFilesSmokeHoldAfterPlaceholder),
                 NormalizeOptional(localRoot),
                 NormalizeOptional(secondLocalRoot),
                 NormalizeOptional(remotePath));
@@ -174,6 +182,19 @@ namespace Cotton.Sync.Desktop.Startup
             return Enum.TryParse(enumName, ignoreCase: true, out DesktopVisualSmokeScenario scenario)
                 ? scenario
                 : null;
+        }
+
+        private static TimeSpan ParseNonNegativeSeconds(string? value)
+        {
+            string? normalized = NormalizeOptional(value);
+            if (normalized is null)
+            {
+                return TimeSpan.Zero;
+            }
+
+            return int.TryParse(normalized, out int seconds) && seconds > 0
+                ? TimeSpan.FromSeconds(seconds)
+                : TimeSpan.Zero;
         }
     }
 }

@@ -115,6 +115,19 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void Parse_LoadsWindowsVirtualFilesSmokeHoldSeconds()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--windows-virtual-files-smoke",
+                    "--vfs-smoke-hold-after-placeholder-seconds",
+                    "15",
+                ]);
+
+            Assert.That(options.WindowsVirtualFilesSmokeHoldAfterPlaceholder, Is.EqualTo(TimeSpan.FromSeconds(15)));
+        }
+
+        [Test]
         public void Parse_LoadsVersionFlag()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(["--version"]);

@@ -122,6 +122,22 @@ namespace Cotton.Sync.Desktop.Startup
                     + " root=" + connection.LocalRootPath)
                     .ConfigureAwait(false);
 
+                if (startupOptions.WindowsVirtualFilesSmokeHoldAfterPlaceholder > TimeSpan.Zero)
+                {
+                    await output.WriteLineAsync(
+                        "Holding after remote-only placeholder creation for "
+                        + startupOptions.WindowsVirtualFilesSmokeHoldAfterPlaceholder.TotalSeconds.ToString(
+                            "0.###",
+                            System.Globalization.CultureInfo.InvariantCulture)
+                        + " seconds; inspect "
+                        + placeholderPath
+                        + " before hydration starts.")
+                        .ConfigureAwait(false);
+                    await Task
+                        .Delay(startupOptions.WindowsVirtualFilesSmokeHoldAfterPlaceholder, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
                 string hydratedText = await reader(placeholderPath, cancellationToken).ConfigureAwait(false);
                 byte[] hydratedBytes = Encoding.UTF8.GetBytes(hydratedText);
                 string hydratedHash = Convert.ToHexStringLower(SHA256.HashData(hydratedBytes));
