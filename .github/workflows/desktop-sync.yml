@@ -12,6 +12,8 @@ on:
       - "src/Cotton.Sync.Desktop.Tests/**"
       - "src/Cotton.sln"
       - "GitVersion.yml"
+      - "dotnet-tools.json"
+      - ".github/scripts/determine-version.ps1"
       - ".github/workflows/desktop-sync.yml"
     branches:
       - main

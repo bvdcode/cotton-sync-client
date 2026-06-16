@@ -1,35 +1,27 @@
 $ErrorActionPreference = "Stop"
 
-$nextVersion = "0.0.1"
-if (Test-Path "GitVersion.yml") {
-    $settings = @{}
-    Get-Content "GitVersion.yml" |
-        ForEach-Object { $_.Trim() } |
-        Where-Object { $_ -match "^(?<name>[A-Za-z0-9_-]+):\s*(?<value>\S+)\s*$" } |
-        ForEach-Object {
-            $settings[$Matches.name] = $Matches.value
-        }
+dotnet tool restore
 
-    if ($settings.ContainsKey("next-version")) {
-        $nextVersion = $settings["next-version"]
-    }
+$gitVersionJson = (& dotnet gitversion /output json) -join [Environment]::NewLine
+if ($LASTEXITCODE -ne 0) {
+    throw "GitVersion exited with code $LASTEXITCODE."
 }
 
-if ($env:GITHUB_REF_TYPE -eq "tag" -and $env:GITHUB_REF_NAME -match "^v?(?<version>\d+\.\d+\.\d+([-.+][0-9A-Za-z.-]+)?)$") {
-    $version = $Matches.version
-}
-else {
-    $parts = $nextVersion.Split(".")
-    if ($parts.Length -ne 3) {
-        throw "GitVersion.yml next-version must use major.minor.patch format."
-    }
-
-    $version = $nextVersion
+$gitVersion = $gitVersionJson | ConvertFrom-Json
+$version = [string]$gitVersion.MajorMinorPatch
+if ([string]::IsNullOrWhiteSpace($version)) {
+    throw "GitVersion did not return MajorMinorPatch."
 }
 
 if ($env:GITHUB_OUTPUT) {
     "SemVer=$version" >> $env:GITHUB_OUTPUT
     "semVer=$version" >> $env:GITHUB_OUTPUT
+    "MajorMinorPatch=$version" >> $env:GITHUB_OUTPUT
+    "GitVersionSemVer=$($gitVersion.SemVer)" >> $env:GITHUB_OUTPUT
+    "InformationalVersion=$($gitVersion.InformationalVersion)" >> $env:GITHUB_OUTPUT
+    "Sha=$($gitVersion.Sha)" >> $env:GITHUB_OUTPUT
 }
 
-Write-Host "Version: $version"
+Write-Host "GitVersion SemVer: $($gitVersion.SemVer)"
+Write-Host "GitVersion MajorMinorPatch: $version"
+Write-Host "GitVersion InformationalVersion: $($gitVersion.InformationalVersion)"
