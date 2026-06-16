@@ -151,6 +151,23 @@
       <Setter Property="HorizontalContentAlignment" Value="Center" />
       <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
+    <Style Selector="RadioButton.sync-mode-card">
+      <Setter Property="MinHeight" Value="74" />
+      <Setter Property="Padding" Value="9" />
+      <Setter Property="Background" Value="{DynamicResource CottonSurfaceMutedBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CottonBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="RadioButton.sync-mode-card:pointerover">
+      <Setter Property="Background" Value="{DynamicResource CottonPrimarySoftBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CottonPrimaryBrush}" />
+    </Style>
+    <Style Selector="RadioButton.sync-mode-card:checked">
+      <Setter Property="Background" Value="{DynamicResource CottonPrimarySoftBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CottonPrimaryBrush}" />
+    </Style>
     <Style Selector="TabControl.settingsTabs TabItem">
       <Setter Property="FontSize" Value="13" />
       <Setter Property="Padding" Value="8,4" />

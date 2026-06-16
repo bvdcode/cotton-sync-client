@@ -900,6 +900,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public void AddFolderWizard_ExplainsSyncModeDiskSpaceBehavior()
         {
             string mainWindowXaml = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml"));
+            string appXaml = File.ReadAllText(GetDesktopFilePath("App.axaml"));
             string addFolderWizard = GetSlice(
                 mainWindowXaml,
                 "IsVisible=\"{Binding IsAddSyncPairWizardVisible}\"",
@@ -907,10 +908,16 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             Assert.Multiple(() =>
             {
+                Assert.That(addFolderWizard, Does.Contain("GroupName=\"AddSyncPairMode\""));
+                Assert.That(addFolderWizard, Does.Contain("IsFullMirrorSyncModeSelected"));
+                Assert.That(addFolderWizard, Does.Contain("IsWindowsVirtualFilesSyncModeSelected"));
+                Assert.That(addFolderWizard, Does.Contain("Classes=\"sync-mode-card\""));
                 Assert.That(addFolderWizard, Does.Contain("Text=\"Stores every file on this device.\""));
                 Assert.That(addFolderWizard, Does.Contain("Text=\"Saves disk space; downloads on open.\""));
                 Assert.That(addFolderWizard, Does.Contain("Text=\"Available\""));
                 Assert.That(addFolderWizard, Does.Not.Contain("Text=\"Not implemented\""));
+                Assert.That(appXaml, Does.Contain("Style Selector=\"RadioButton.sync-mode-card\""));
+                Assert.That(appXaml, Does.Contain("Style Selector=\"RadioButton.sync-mode-card:checked\""));
             });
         }
 

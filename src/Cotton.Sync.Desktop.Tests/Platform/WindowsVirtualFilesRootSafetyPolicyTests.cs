@@ -63,6 +63,21 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             });
         }
 
+        [Test]
+        public void Validate_AcceptsDesktopFolderUnderUserProfile()
+        {
+            WindowsVirtualFilesRootSafetyPolicy policy = CreatePolicy();
+
+            WindowsVirtualFilesRootSafetyResult result = policy.Validate(@"C:\Users\Vadim\Desktop");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.IsSafe, Is.True);
+                Assert.That(result.Issue, Is.EqualTo(WindowsVirtualFilesRootSafetyIssue.None));
+                Assert.That(result.FullPath, Is.EqualTo(@"C:\Users\Vadim\Desktop"));
+            });
+        }
+
         [TestCase("", (int)WindowsVirtualFilesRootSafetyIssue.EmptyPath)]
         [TestCase("CottonSyncVfsQa", (int)WindowsVirtualFilesRootSafetyIssue.RelativePath)]
         [TestCase(@"C:\", (int)WindowsVirtualFilesRootSafetyIssue.DriveRoot)]
