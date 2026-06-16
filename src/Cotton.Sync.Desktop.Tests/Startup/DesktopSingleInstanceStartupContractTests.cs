@@ -52,6 +52,20 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void Program_AppliesPendingUpdateBeforeSingleInstanceGuard()
+        {
+            string program = File.ReadAllText(GetDesktopFilePath("Program.cs"));
+            int pendingUpdateIndex = program.IndexOf("DesktopPendingUpdateStartup.TryStartPendingUpdate", StringComparison.Ordinal);
+            int singleInstanceIndex = program.IndexOf("DesktopSingleInstanceGuard", StringComparison.Ordinal);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(pendingUpdateIndex, Is.GreaterThanOrEqualTo(0));
+                Assert.That(singleInstanceIndex, Is.GreaterThan(pendingUpdateIndex));
+            });
+        }
+
+        [Test]
         public void App_StartsActivationServerForRunningInstance()
         {
             string app = File.ReadAllText(GetDesktopFilePath("App.axaml.cs"));

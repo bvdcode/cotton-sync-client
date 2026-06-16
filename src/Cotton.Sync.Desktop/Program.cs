@@ -7,6 +7,7 @@ using Cotton.Sync.Desktop.Diagnostics;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Shell;
 using Cotton.Sync.Desktop.Startup;
+using Cotton.Sync.Desktop.Updates;
 
 namespace Cotton.Sync.Desktop
 {
@@ -25,6 +26,13 @@ namespace Cotton.Sync.Desktop
             DesktopAppPaths paths = DesktopStartupPathResolver.Resolve(startupOptions);
             DesktopTraceLogging.Install(paths);
             DesktopUnhandledExceptionReporter.Install();
+            if (!startupOptions.RunSelfTest
+                && !startupOptions.ExportDiagnostics
+                && DesktopPendingUpdateStartup.TryStartPendingUpdate(paths, DesktopAppVersion.Current))
+            {
+                return 0;
+            }
+
             if (startupOptions.RunSelfTest)
             {
                 return DesktopCommandLineRunner

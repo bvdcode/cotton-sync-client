@@ -629,13 +629,18 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public async Task DownloadUpdateAsync_ReturnsReadyInstallerPath()
         {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             string installerPath = Path.Combine(_tempDirectory, "CottonSync-Windows-Setup.exe");
             var updateService = new FakeUpdateService(
                 CreateUpdateCheckResult(isUpdateAvailable: true),
                 CreateUpdateDownloadResult(installerPath));
-            using DesktopShellController controller = CreateController(updateService: updateService);
+            using DesktopShellController controller = CreateController(
+                paths,
+                new SqliteSyncPairSettingsStore(paths.AppDatabasePath),
+                updateService: updateService);
 
             DesktopUpdateStatusSnapshot result = await controller.DownloadUpdateAsync();
+            DesktopPendingUpdate? pending = new DesktopPendingUpdateStore(paths.UpdateCacheDirectory).TryLoad();
 
             Assert.Multiple(() =>
             {
@@ -644,6 +649,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(result.IsInstallerReady, Is.True);
                 Assert.That(result.InstallerPath, Is.EqualTo(installerPath));
                 Assert.That(result.Details, Is.EqualTo("Update 0.0.2 is ready. Restart Cotton Sync to install it."));
+                Assert.That(pending?.Version, Is.EqualTo("0.0.2"));
+                Assert.That(pending?.InstallerPath, Is.EqualTo(installerPath));
             });
         }
 

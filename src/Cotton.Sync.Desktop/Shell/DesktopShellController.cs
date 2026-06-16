@@ -870,6 +870,12 @@ namespace Cotton.Sync.Desktop.Shell
             DesktopUpdateDownloadResult download = await _updateService
                 .DownloadInstallerAsync(check, cancellationToken)
                 .ConfigureAwait(false);
+            new DesktopPendingUpdateStore(_paths.UpdateCacheDirectory).Save(new DesktopPendingUpdate(
+                check.LatestVersion.ToString(),
+                download.FilePath,
+                download.Sha256,
+                download.SizeBytes,
+                DateTime.UtcNow));
             return ToUpdateStatus(check, download.FilePath);
         }
 
