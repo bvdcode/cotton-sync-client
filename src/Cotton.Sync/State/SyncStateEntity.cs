@@ -73,6 +73,12 @@ namespace Cotton.Sync.State
         public long? LocalSizeBytes { get; set; }
 
         /// <summary>
+        /// Gets or sets the last known remote file size.
+        /// </summary>
+        [Column("remote_size_bytes")]
+        public long? RemoteSizeBytes { get; set; }
+
+        /// <summary>
         /// Gets or sets the remote folder identifier for directory entries.
         /// </summary>
         [Column("remote_node_id")]
@@ -97,6 +103,18 @@ namespace Cotton.Sync.State
         [MaxLength(256)]
         [Column("remote_etag")]
         public string? RemoteETag { get; set; }
+
+        /// <summary>
+        /// Gets or sets the opaque placeholder identity used by the virtual-files provider.
+        /// </summary>
+        [Column("placeholder_identity")]
+        public byte[]? PlaceholderIdentity { get; set; }
+
+        /// <summary>
+        /// Gets or sets the local hydration state for a virtual-files placeholder.
+        /// </summary>
+        [Column("placeholder_hydration_state")]
+        public SyncPlaceholderHydrationState PlaceholderHydrationState { get; set; }
 
         /// <summary>
         /// Gets or sets the timestamp when this baseline was recorded.

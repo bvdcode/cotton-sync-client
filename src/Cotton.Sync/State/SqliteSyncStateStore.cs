@@ -319,6 +319,11 @@ namespace Cotton.Sync.State
                 ArgumentOutOfRangeException.ThrowIfNegative(entry.LocalSizeBytes.Value);
             }
 
+            if (entry.RemoteSizeBytes.HasValue)
+            {
+                ArgumentOutOfRangeException.ThrowIfNegative(entry.RemoteSizeBytes.Value);
+            }
+
             entity.SyncPairId = entry.SyncPairId;
             entity.RelativePathKey = key;
             entity.RelativePath = SyncPath.Normalize(entry.RelativePath);
@@ -326,10 +331,13 @@ namespace Cotton.Sync.State
             entity.LocalContentHash = NormalizeNullable(entry.LocalContentHash);
             entity.LocalLastWriteUtc = ToUtc(entry.LocalLastWriteUtc);
             entity.LocalSizeBytes = entry.LocalSizeBytes;
+            entity.RemoteSizeBytes = entry.RemoteSizeBytes;
             entity.RemoteNodeId = entry.RemoteNodeId;
             entity.RemoteFileId = entry.RemoteFileId;
             entity.RemoteContentHash = NormalizeNullable(entry.RemoteContentHash);
             entity.RemoteETag = NormalizeNullable(entry.RemoteETag);
+            entity.PlaceholderIdentity = Clone(entry.PlaceholderIdentity);
+            entity.PlaceholderHydrationState = entry.PlaceholderHydrationState;
             entity.SyncedAtUtc = ToUtc(entry.SyncedAtUtc) ?? DateTime.UtcNow;
         }
 
@@ -343,10 +351,13 @@ namespace Cotton.Sync.State
                 LocalContentHash = entity.LocalContentHash,
                 LocalLastWriteUtc = ToUtc(entity.LocalLastWriteUtc),
                 LocalSizeBytes = entity.LocalSizeBytes,
+                RemoteSizeBytes = entity.RemoteSizeBytes,
                 RemoteNodeId = entity.RemoteNodeId,
                 RemoteFileId = entity.RemoteFileId,
                 RemoteContentHash = entity.RemoteContentHash,
                 RemoteETag = entity.RemoteETag,
+                PlaceholderIdentity = Clone(entity.PlaceholderIdentity),
+                PlaceholderHydrationState = entity.PlaceholderHydrationState,
                 SyncedAtUtc = ToUtc(entity.SyncedAtUtc) ?? DateTime.UtcNow,
             };
         }
@@ -431,6 +442,11 @@ namespace Cotton.Sync.State
         private static string? NormalizeNullable(string? value)
         {
             return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+
+        private static byte[]? Clone(byte[]? value)
+        {
+            return value is null ? null : (byte[])value.Clone();
         }
 
         private static DateTime? ToUtc(DateTime? value)

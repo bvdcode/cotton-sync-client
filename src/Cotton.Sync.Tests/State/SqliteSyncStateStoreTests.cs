@@ -151,6 +151,43 @@ namespace Cotton.Sync.Tests.State
         }
 
         [Test]
+        public async Task InitializeAsync_MigratesLocalSizeStateDatabaseToVirtualFileMetadata()
+        {
+            string databasePath = DatabasePath();
+            await CreateLocalSizeStateDatabaseAsync(databasePath);
+            var store = new SqliteSyncStateStore(databasePath);
+            Guid fileId = Guid.NewGuid();
+            byte[] placeholderIdentity = [0x01, 0x02, 0x03, 0x04];
+
+            await store.InitializeAsync();
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "Docs/placeholder.txt",
+                Kind = SyncEntryKind.File,
+                RemoteFileId = fileId,
+                RemoteContentHash = "remote-hash",
+                RemoteETag = "etag-1",
+                RemoteSizeBytes = 12345,
+                PlaceholderIdentity = placeholderIdentity,
+                PlaceholderHydrationState = SyncPlaceholderHydrationState.RemoteOnly,
+            });
+
+            SyncStateEntry? entry = await store.GetAsync("pair-a", "docs/PLACEHOLDER.txt");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.RemoteFileId, Is.EqualTo(fileId));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo("remote-hash"));
+                Assert.That(entry.RemoteETag, Is.EqualTo("etag-1"));
+                Assert.That(entry.RemoteSizeBytes, Is.EqualTo(12345));
+                Assert.That(entry.PlaceholderIdentity, Is.EqualTo(placeholderIdentity));
+                Assert.That(entry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+            });
+        }
+
+        [Test]
         public async Task UpsertAsync_InitializesNewDatabaseWithoutExplicitInitialize()
         {
             var store = CreateStore();
@@ -241,6 +278,7 @@ namespace Cotton.Sync.Tests.State
             await first.InitializeAsync();
             Guid fileId = Guid.NewGuid();
             Guid nodeId = Guid.NewGuid();
+            byte[] placeholderIdentity = [0x43, 0x46, 0x41, 0x50, 0x49];
             await first.UpsertAsync(new SyncStateEntry
             {
                 SyncPairId = "pair-a",
@@ -251,8 +289,11 @@ namespace Cotton.Sync.Tests.State
                 LocalSizeBytes = 4096,
                 RemoteNodeId = nodeId,
                 RemoteFileId = fileId,
+                RemoteSizeBytes = 8192,
                 RemoteContentHash = "remote-hash",
                 RemoteETag = "sha256-remote-hash",
+                PlaceholderIdentity = placeholderIdentity,
+                PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated,
                 SyncedAtUtc = new DateTime(2026, 6, 2, 12, 1, 0, DateTimeKind.Utc),
             });
 
@@ -270,7 +311,11 @@ namespace Cotton.Sync.Tests.State
                 Assert.That(entry.LocalSizeBytes, Is.EqualTo(4096));
                 Assert.That(entry.RemoteNodeId, Is.EqualTo(nodeId));
                 Assert.That(entry.RemoteFileId, Is.EqualTo(fileId));
+                Assert.That(entry.RemoteSizeBytes, Is.EqualTo(8192));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo("remote-hash"));
                 Assert.That(entry.RemoteETag, Is.EqualTo("sha256-remote-hash"));
+                Assert.That(entry.PlaceholderIdentity, Is.EqualTo(placeholderIdentity));
+                Assert.That(entry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
             });
         }
 
@@ -363,6 +408,9 @@ namespace Cotton.Sync.Tests.State
                     RelativePath = "new.txt",
                     Kind = SyncEntryKind.File,
                     LocalContentHash = "new",
+                    RemoteSizeBytes = 2048,
+                    PlaceholderIdentity = [0x10, 0x20],
+                    PlaceholderHydrationState = SyncPlaceholderHydrationState.RemoteOnly,
                 },
             });
 
@@ -372,6 +420,9 @@ namespace Cotton.Sync.Tests.State
             Assert.Multiple(() =>
             {
                 Assert.That(pairA.Select(x => x.RelativePath), Is.EqualTo(new[] { "new.txt" }));
+                Assert.That(pairA.Single().RemoteSizeBytes, Is.EqualTo(2048));
+                Assert.That(pairA.Single().PlaceholderIdentity, Is.EqualTo(new byte[] { 0x10, 0x20 }));
+                Assert.That(pairA.Single().PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
                 Assert.That(pairB.Select(x => x.RelativePath), Is.EqualTo(new[] { "keep.txt" }));
             });
         }
@@ -480,6 +531,16 @@ namespace Cotton.Sync.Tests.State
 
         private static async Task CreateInitialStateDatabaseAsync(string databasePath)
         {
+            await CreateMigratedStateDatabaseAsync(databasePath, "20260602175534_InitialSyncState");
+        }
+
+        private static async Task CreateLocalSizeStateDatabaseAsync(string databasePath)
+        {
+            await CreateMigratedStateDatabaseAsync(databasePath, "20260606223759_AddLocalSizeToSyncState");
+        }
+
+        private static async Task CreateMigratedStateDatabaseAsync(string databasePath, string migration)
+        {
             var connectionString = new System.Data.Common.DbConnectionStringBuilder
             {
                 ["Data Source"] = databasePath,
@@ -489,7 +550,7 @@ namespace Cotton.Sync.Tests.State
                 .UseSqlite(connectionString)
                 .Options;
             await using var context = new SyncStateDbContext(options);
-            await context.Database.MigrateAsync("20260602175534_InitialSyncState");
+            await context.Database.MigrateAsync(migration);
         }
     }
 }
