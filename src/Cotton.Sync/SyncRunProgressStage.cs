@@ -37,5 +37,10 @@ namespace Cotton.Sync
         /// The synchronization pass completed.
         /// </summary>
         Completed = 5,
+
+        /// <summary>
+        /// The sync engine is creating remote-only virtual-file placeholders.
+        /// </summary>
+        CreatingPlaceholders = 6,
     }
 }

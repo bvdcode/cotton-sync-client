@@ -212,10 +212,11 @@ namespace Cotton.Sync
                 remoteByPath.TryGetValue(key, out RemoteFileSnapshot? remote);
                 stateByPath.TryGetValue(key, out SyncStateEntry? state);
                 string relativePath = local?.RelativePath ?? remote?.RelativePath ?? state?.RelativePath ?? key;
+                SyncRunProgressStage fileProgressStage = ResolveFileRunProgressStage(syncPair, local, remote, state);
                 long plannedTransferBytes = CalculatePlannedTransferBytes(syncPair, key, localByPath, remoteByPath, stateByPath);
                 ReportItemRunProgress(
                     options,
-                    SyncRunProgressStage.ReconcilingFiles,
+                    fileProgressStage,
                     filesCompleted,
                     pathKeys.Count,
                     relativePath,
@@ -239,7 +240,7 @@ namespace Cotton.Sync
                     completedTransferBytes += plannedTransferBytes;
                     ReportItemRunProgress(
                         options,
-                        SyncRunProgressStage.ReconcilingFiles,
+                        fileProgressStage,
                         filesCompleted,
                         pathKeys.Count,
                         relativePath,
@@ -256,7 +257,7 @@ namespace Cotton.Sync
                 completedTransferBytes += plannedTransferBytes;
                 ReportItemRunProgress(
                     options,
-                    SyncRunProgressStage.ReconcilingFiles,
+                    fileProgressStage,
                     filesCompleted,
                     pathKeys.Count,
                     relativePath,
@@ -1346,6 +1347,29 @@ namespace Cotton.Sync
                 .UpsertAsync(BuildPlaceholderBaseline(syncPair, relativePath, remoteFile, placeholder), cancellationToken)
                 .ConfigureAwait(false);
             Report(result, options, SyncActivityKind.PlaceholderCreated, relativePath, null);
+        }
+
+        private static SyncRunProgressStage ResolveFileRunProgressStage(
+            SyncPair syncPair,
+            LocalFileSnapshot? local,
+            RemoteFileSnapshot? remote,
+            SyncStateEntry? state)
+        {
+            if (syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles
+                || local is not null
+                || remote is null)
+            {
+                return SyncRunProgressStage.ReconcilingFiles;
+            }
+
+            if (state is null
+                || (IsRemoteOnlyPlaceholderBaseline(syncPair, state)
+                    && !RemoteMatchesBaseline(remote.File, state)))
+            {
+                return SyncRunProgressStage.CreatingPlaceholders;
+            }
+
+            return SyncRunProgressStage.ReconcilingFiles;
         }
 
         private async Task DeleteRemoteAsync(

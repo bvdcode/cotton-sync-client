@@ -1147,6 +1147,9 @@ namespace Cotton.Sync.Tests
                 Assert.That(placeholderWriter.Requests[0].RemoteFile.Id, Is.EqualTo(remote.Id));
                 Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.PlaceholderCreated }));
                 Assert.That(transferProgress.Values, Is.Empty);
+                Assert.That(runProgress.Values.Any(progress =>
+                    progress.Stage == SyncRunProgressStage.CreatingPlaceholders
+                    && progress.CurrentPath == "remote-only.txt"), Is.True);
                 Assert.That(runProgress.Values.Last(progress => progress.IsCompleted).BytesTotal, Is.Zero);
                 Assert.That(entry, Is.Not.Null);
                 Assert.That(entry!.LocalContentHash, Is.Null);

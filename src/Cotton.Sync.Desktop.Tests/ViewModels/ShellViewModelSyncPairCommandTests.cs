@@ -1527,6 +1527,40 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task RunProgressChanged_UpdatesPlaceholderCreationProgressState()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.CreatingPlaceholders,
+                FilesCompleted: 3,
+                FilesTotal: 10,
+                CurrentPath: "remote-only.txt",
+                StartedAtUtc: new DateTime(2026, 6, 16, 9, 0, 0, DateTimeKind.Utc),
+                IsCompleted: false,
+                OccurredAtUtc: new DateTime(2026, 6, 16, 9, 0, 5, DateTimeKind.Utc)));
+
+            Assert.Multiple(() =>
+            {
+                SyncPairRowViewModel row = viewModel.SyncPairs.Single();
+                Assert.That(viewModel.HasCurrentRunProgress, Is.True);
+                Assert.That(viewModel.IsCurrentRunProgressIndeterminate, Is.False);
+                Assert.That(viewModel.CurrentRunProgressValue, Is.EqualTo(30).Within(0.01));
+                Assert.That(viewModel.CurrentRunProgressDetails, Is.EqualTo("Creating placeholders \u00B7 3 of 10 placeholders"));
+                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Creating placeholders \u00B7 3 of 10 placeholders"));
+                Assert.That(row.CurrentOperation, Is.EqualTo("Creating placeholders 3 of 10"));
+                Assert.That(row.HasCurrentOperation, Is.True);
+                Assert.That(row.HasCurrentProgress, Is.True);
+                Assert.That(row.CurrentProgressValue, Is.EqualTo(30).Within(0.01));
+                Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Documents: Creating placeholders 3 of 10"));
+            });
+        }
+
+        [Test]
         public async Task RunProgressChanged_HidesZeroOfTotalBeforeFirstCountedFile()
         {
             Guid syncPairId = Guid.NewGuid();

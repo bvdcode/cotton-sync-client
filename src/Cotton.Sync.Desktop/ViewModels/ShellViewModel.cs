@@ -5190,17 +5190,24 @@ namespace Cotton.Sync.Desktop.ViewModels
                     ? "Preparing folders"
                     : progressValues.All(static progress => progress.Stage == SyncRunProgressStage.ReconcilingFiles)
                         ? "Preparing file checks"
-                        : "Preparing sync";
+                        : progressValues.All(static progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders)
+                            ? "Preparing placeholders"
+                            : "Preparing sync";
                 return prefix
                     + " across "
                     + progressValues.Count.ToString(CultureInfo.CurrentCulture)
                     + " folders";
             }
 
+            string aggregateUnitName = progressValues.All(static progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders)
+                ? "placeholders"
+                : "files";
             return completedFiles.ToString(CultureInfo.CurrentCulture)
                 + " of "
                 + totalFiles.ToString(CultureInfo.CurrentCulture)
-                + " files across "
+                + " "
+                + aggregateUnitName
+                + " across "
                 + progressValues.Count.ToString(CultureInfo.CurrentCulture)
                 + " folders";
         }
@@ -5277,6 +5284,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 SyncRunProgressStage.ScanningLocal => CreateLocalScanProgressDetails(progress),
                 SyncRunProgressStage.ScanningRemote => CreateRemoteScanProgressDetails(progress),
                 SyncRunProgressStage.ReconcilingDirectories => "Preparing folders.",
+                SyncRunProgressStage.CreatingPlaceholders => "Preparing placeholders.",
                 SyncRunProgressStage.Completed => "Sync pass completed.",
                 _ => "Preparing sync.",
             };
@@ -5307,7 +5315,8 @@ namespace Cotton.Sync.Desktop.ViewModels
         private static bool IsCountedRunStage(SyncRunProgressStage stage)
         {
             return stage == SyncRunProgressStage.ReconcilingDirectories
-                || stage == SyncRunProgressStage.ReconcilingFiles;
+                || stage == SyncRunProgressStage.ReconcilingFiles
+                || stage == SyncRunProgressStage.CreatingPlaceholders;
         }
 
         private static bool IsIndeterminateRunProgress(DesktopRunProgressSnapshot progress)
@@ -5347,6 +5356,11 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return singular ? "folder" : "folders";
             }
 
+            if (stage == SyncRunProgressStage.CreatingPlaceholders)
+            {
+                return singular ? "placeholder" : "placeholders";
+            }
+
             return singular ? "file" : "files";
         }
 
@@ -5380,6 +5394,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 SyncRunProgressStage.ScanningRemote => "Scanning Cotton Cloud",
                 SyncRunProgressStage.ReconcilingDirectories => "Preparing folders",
                 SyncRunProgressStage.ReconcilingFiles => "Checking files",
+                SyncRunProgressStage.CreatingPlaceholders => "Creating placeholders",
                 SyncRunProgressStage.Completed => "Finishing sync",
                 _ => "Syncing",
             };
@@ -5391,6 +5406,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             {
                 SyncRunProgressStage.ReconcilingDirectories => "Preparing folders",
                 SyncRunProgressStage.ReconcilingFiles => "Preparing file checks",
+                SyncRunProgressStage.CreatingPlaceholders => "Preparing placeholders",
                 _ => "Preparing sync",
             };
         }
