@@ -21,8 +21,6 @@ namespace Cotton.Sync
         private const int RunProgressDetailedItemInterval = 25;
         private const int RunProgressDetailedItemLimit = 50_000;
         private const int RunProgressSparseItemInterval = 100;
-        private const string RemoteOnlyPlaceholderLocalChangeRequiresActionMessage =
-            "Windows virtual-files placeholder was deleted or moved locally. Restore the placeholder or delete/rename it from Cotton web before syncing.";
         private static readonly TimeSpan RunProgressReportTimeInterval = TimeSpan.FromMilliseconds(250);
         private static readonly StringComparer PathComparer = StringComparer.OrdinalIgnoreCase;
         private readonly ILocalFileScanner _localScanner;
@@ -939,7 +937,7 @@ namespace Cotton.Sync
                     options,
                     SyncActivityKind.Skipped,
                     relativePath,
-                    RemoteOnlyPlaceholderLocalChangeRequiresActionMessage,
+                    VirtualFileUserFacingCopy.RemoteOnlyLocalChangeRequiresActionMessage,
                     requiresUserAction: true);
                 return;
             }

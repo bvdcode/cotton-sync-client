@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
+using Cotton.Sync.VirtualFiles;
+
 namespace Cotton.Sync.Cli
 {
     internal sealed class SyncCliRunProgressWriter : IProgress<SyncRunProgress>
@@ -104,7 +106,7 @@ namespace Cotton.Sync.Cli
                 SyncRunProgressStage.ScanningRemote => "scanning remote",
                 SyncRunProgressStage.ReconcilingDirectories => "reconciling folders",
                 SyncRunProgressStage.ReconcilingFiles => "reconciling files",
-                SyncRunProgressStage.CreatingPlaceholders => "creating placeholders",
+                SyncRunProgressStage.CreatingPlaceholders => VirtualFileUserFacingCopy.CreatingCloudFilesCliStage,
                 SyncRunProgressStage.Completed => "completed",
                 _ => "syncing",
             };
@@ -115,7 +117,7 @@ namespace Cotton.Sync.Cli
             return stage switch
             {
                 SyncRunProgressStage.ReconcilingDirectories => "folders",
-                SyncRunProgressStage.CreatingPlaceholders => "placeholders",
+                SyncRunProgressStage.CreatingPlaceholders => VirtualFileUserFacingCopy.CloudFilesProgressUnit,
                 _ => "files",
             };
         }
