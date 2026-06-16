@@ -375,6 +375,53 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesPreservesRemoteOnlyPlaceholderStateAfterEngineRestart()
+        {
+            const string relativePath = "remote-only-restart.txt";
+            NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote-content"), sizeBytes: 1024);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var firstPlaceholderWriter = new FakeRemoteFilePlaceholderWriter();
+            var firstStateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine firstEngine = new(
+                new FakeLocalFileScanner(),
+                new FakeRemoteTreeCrawler(RemoteTree(remote)),
+                remoteFiles,
+                firstStateStore,
+                remoteFilePlaceholderWriter: firstPlaceholderWriter);
+
+            SyncRunResult firstResult = await firstEngine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            var restartedPlaceholderWriter = new FakeRemoteFilePlaceholderWriter();
+            var restartedStateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine restartedEngine = new(
+                new LocalFileScanner(),
+                new PathOnlyRemoteTreeCrawler(RemoteTree(remote)),
+                remoteFiles,
+                restartedStateStore,
+                remoteFilePlaceholderWriter: restartedPlaceholderWriter);
+            SyncRunResult restartedResult = await restartedEngine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { Scope = SyncRunScope.ForLocalChangedPaths([relativePath]) });
+
+            SyncStateEntry? entry = await restartedStateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(firstResult.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.PlaceholderCreated }));
+                Assert.That(firstPlaceholderWriter.Requests, Has.Count.EqualTo(1));
+                Assert.That(restartedResult.Activities, Is.Empty);
+                Assert.That(restartedResult.RequiresUserAction, Is.False);
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(restartedPlaceholderWriter.Requests, Is.Empty);
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.RemoteFileId, Is.EqualTo(remote.Id));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(remote.ContentHash));
+                Assert.That(entry.PlaceholderIdentity, Is.EqualTo(firstPlaceholderWriter.PlaceholderIdentity));
+                Assert.That(entry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesHydratedEditUploadsNormally()
         {
             const string relativePath = "hydrated-edited.txt";
