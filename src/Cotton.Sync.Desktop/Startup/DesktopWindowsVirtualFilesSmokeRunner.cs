@@ -2,9 +2,12 @@
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
 using Cotton.Files;
+using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Composition;
 using Cotton.Sync.Desktop.Platform;
+using Cotton.Sync.Local;
+using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
 using System.Diagnostics;
 using System.Security.Cryptography;
@@ -482,11 +485,13 @@ namespace Cotton.Sync.Desktop.Startup
                 nativeApi,
                 Path.Combine(paths.DataDirectory, "vfs-smoke-temp"),
                 diagnostics);
+            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
             WindowsCloudFilesConnection? connection = null;
             int failures = 0;
 
             try
             {
+                await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
                 TryUnregisterExistingRoot(cloudFiles, syncPair, output);
                 PrepareRoot(rootPath);
                 await output.WriteLineAsync(
@@ -495,11 +500,17 @@ namespace Cotton.Sync.Desktop.Startup
                     + rootPath)
                     .ConfigureAwait(false);
 
-                cloudFiles.CreateFilePlaceholder(CreatePlaceholderRequest(
+                RemoteFilePlaceholderRequest placeholderRequest = CreatePlaceholderRequest(
                     syncPair,
                     RelativePlaceholderPath,
                     expectedContent.LongLength,
-                    expectedHash));
+                    expectedHash);
+                RemoteFilePlaceholderResult placeholder = cloudFiles.CreateFilePlaceholder(placeholderRequest);
+                await stateStore
+                    .UpsertAsync(
+                        CreatePlaceholderState(syncPair, placeholderRequest, placeholder),
+                        cancellationToken)
+                    .ConfigureAwait(false);
                 connection = cloudFiles.ConnectSyncRoot(syncPair, callbackHandler);
                 await output.WriteLineAsync(
                     FormatCheck(true, "Cloud Files callbacks connected for Explorer Free up space smoke.")
@@ -552,6 +563,26 @@ namespace Cotton.Sync.Desktop.Startup
                 if (!verbResult.Invoked)
                 {
                     failures++;
+                }
+                else
+                {
+                    var dehydrationWork = new WindowsVirtualFilesDehydrationPairWork(
+                        NoopSyncPairWork.Instance,
+                        stateStore,
+                        cloudFiles,
+                        new LocalFileScanner(),
+                        diagnostics);
+                    await dehydrationWork
+                        .RunOnceAsync(
+                            syncPair,
+                            SyncRunRequest.ForLocalChangedPaths([RelativePlaceholderPath]),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Production app Free up space handler processed the Explorer attribute change.")
+                        + " path="
+                        + RelativePlaceholderPath)
+                        .ConfigureAwait(false);
                 }
 
                 bool becameOnlineOnly = await WaitForAttributesAsync(
@@ -642,6 +673,27 @@ namespace Cotton.Sync.Desktop.Startup
 
             await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
             return failures == 0 ? 0 : 1;
+        }
+
+        private static SyncStateEntry CreatePlaceholderState(
+            SyncPairSettings syncPair,
+            RemoteFilePlaceholderRequest request,
+            RemoteFilePlaceholderResult placeholder)
+        {
+            return new SyncStateEntry
+            {
+                SyncPairId = syncPair.Id.ToString("D"),
+                RelativePath = Cotton.Sync.State.SyncPath.Normalize(request.RelativePath),
+                Kind = SyncEntryKind.File,
+                RemoteSizeBytes = request.RemoteFile.SizeBytes,
+                RemoteFileId = request.RemoteFile.Id,
+                RemoteNodeId = request.RemoteFile.NodeId,
+                RemoteContentHash = request.RemoteFile.ContentHash,
+                RemoteETag = request.RemoteFile.ETag,
+                PlaceholderIdentity = placeholder.PlaceholderIdentity,
+                PlaceholderHydrationState = placeholder.HydrationState,
+                SyncedAtUtc = DateTime.UtcNow,
+            };
         }
 
         private static async Task<int> RunTrayQuitDisconnectAsync(
@@ -1836,6 +1888,28 @@ namespace Cotton.Sync.Desktop.Startup
             public void NotifyDehydrateCompleted(WindowsCloudFilesDehydrateCompletionNotification notification)
             {
                 _inner.NotifyDehydrateCompleted(notification);
+            }
+        }
+
+        private sealed class NoopSyncPairWork : ISyncPairWork
+        {
+            public static NoopSyncPairWork Instance { get; } = new();
+
+            private NoopSyncPairWork()
+            {
+            }
+
+            public Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public Task RunOnceAsync(
+                SyncPairSettings syncPair,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
             }
         }
 

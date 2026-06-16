@@ -12,6 +12,14 @@ namespace Cotton.Sync.App.LocalChanges
     public class FileSystemLocalSyncRootWatcher : ILocalSyncRootWatcher
     {
         private const int InternalBufferSizeBytes = 64 * 1024;
+        internal const NotifyFilters WatchedNotifyFilters =
+            NotifyFilters.FileName
+            | NotifyFilters.DirectoryName
+            | NotifyFilters.LastWrite
+            | NotifyFilters.Size
+            | NotifyFilters.CreationTime
+            | NotifyFilters.Attributes;
+
         private readonly Guid _syncPairId;
         private readonly string _localRootPath;
         private readonly LocalSyncRootChangeFilter _changeFilter;
@@ -53,12 +61,7 @@ namespace Cotton.Sync.App.LocalChanges
             _watcher = new FileSystemWatcher(_localRootPath)
             {
                 IncludeSubdirectories = true,
-                NotifyFilter =
-                    NotifyFilters.FileName
-                    | NotifyFilters.DirectoryName
-                    | NotifyFilters.LastWrite
-                    | NotifyFilters.Size
-                    | NotifyFilters.CreationTime,
+                NotifyFilter = WatchedNotifyFilters,
                 InternalBufferSize = InternalBufferSizeBytes,
             };
             _watcher.Created += OnCreated;

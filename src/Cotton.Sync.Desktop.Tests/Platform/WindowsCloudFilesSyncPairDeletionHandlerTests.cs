@@ -77,6 +77,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 UnregisteredPairs.Add(syncPair);
             }
 
+            public void DehydratePlaceholder(SyncPairSettings syncPair, string relativePath)
+            {
+                throw new NotSupportedException();
+            }
+
             public WindowsCloudFilesConnection ConnectSyncRoot(
                 SyncPairSettings syncPair,
                 IWindowsCloudFilesCallbackHandler callbackHandler)
