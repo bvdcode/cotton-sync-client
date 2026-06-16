@@ -17,8 +17,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(snapshot.WindowsVirtualFilesDetails, Is.Not.Empty);
                 if (OperatingSystem.IsWindows() && OperatingSystem.IsWindowsVersionAtLeast(10, 0, 16299))
                 {
-                    Assert.That(snapshot.IsWindowsVirtualFilesSupported, Is.True);
+                    Assert.That(snapshot.IsWindowsVirtualFilesSupported, Is.False);
                     Assert.That(snapshot.WindowsVirtualFilesDetails, Does.Contain("Cloud Files API"));
+                    Assert.That(snapshot.WindowsVirtualFilesDetails, Does.Contain("StorageProvider"));
                 }
                 else
                 {

@@ -24,8 +24,8 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             return new SyncPairModeCapabilitySnapshot(
-                true,
-                "Windows Cloud Files API is available.");
+                false,
+                "Windows Cloud Files API is available, but Cotton Sync virtual files require StorageProvider/Desktop Bridge shell integration before this mode can be enabled.");
         }
     }
 }
