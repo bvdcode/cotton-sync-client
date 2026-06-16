@@ -21,6 +21,7 @@ namespace Cotton.Sync.Desktop.Startup
             DesktopVisualSmokeScenario? visualSmokeScenario,
             TimeSpan windowsVirtualFilesSmokeHoldAfterPlaceholder,
             string? windowsVirtualFilesSmokePhase,
+            TimeSpan liveSyncSmokeApprovalHold,
             string? localRoot,
             string? secondLocalRoot,
             string? remotePath,
@@ -40,6 +41,7 @@ namespace Cotton.Sync.Desktop.Startup
             VisualSmokeScenario = visualSmokeScenario;
             WindowsVirtualFilesSmokeHoldAfterPlaceholder = windowsVirtualFilesSmokeHoldAfterPlaceholder;
             WindowsVirtualFilesSmokePhase = windowsVirtualFilesSmokePhase;
+            LiveSyncSmokeApprovalHold = liveSyncSmokeApprovalHold;
             LocalRoot = localRoot;
             SecondLocalRoot = secondLocalRoot;
             RemotePath = remotePath;
@@ -61,6 +63,7 @@ namespace Cotton.Sync.Desktop.Startup
             null,
             TimeSpan.Zero,
             null,
+            TimeSpan.Zero,
             null,
             null,
             null,
@@ -93,6 +96,8 @@ namespace Cotton.Sync.Desktop.Startup
 
         public string? WindowsVirtualFilesSmokePhase { get; }
 
+        public TimeSpan LiveSyncSmokeApprovalHold { get; }
+
         public string? LocalRoot { get; }
 
         public string? SecondLocalRoot { get; }
@@ -113,6 +118,8 @@ namespace Cotton.Sync.Desktop.Startup
             string? windowsVirtualFilesSmokeHoldAfterPlaceholder =
                 ReadOption(args, "--vfs-smoke-hold-after-placeholder-seconds");
             string? windowsVirtualFilesSmokePhase = ReadOption(args, "--vfs-smoke-phase");
+            string? liveSyncSmokeApprovalHold = ReadOption(args, "--live-sync-smoke-approval-hold-seconds")
+                ?? ReadOption(args, "--desktop-live-sync-smoke-approval-hold-seconds");
             string? localRoot = ReadOption(args, "--local-root");
             string? secondLocalRoot = ReadOption(args, "--second-local-root");
             string? remotePath = ReadOption(args, "--remote-path");
@@ -148,6 +155,7 @@ namespace Cotton.Sync.Desktop.Startup
                 ParseVisualSmokeScenario(visualSmokeScenario),
                 ParseNonNegativeSeconds(windowsVirtualFilesSmokeHoldAfterPlaceholder),
                 NormalizeOptional(windowsVirtualFilesSmokePhase),
+                ParseNonNegativeSeconds(liveSyncSmokeApprovalHold),
                 NormalizeOptional(localRoot),
                 NormalizeOptional(secondLocalRoot),
                 NormalizeOptional(remotePath),

@@ -283,6 +283,18 @@ namespace Cotton.Sync.Tests.Local
         }
 
         [Test]
+        public void IsCloudFilesReparseTag_RecognizesWindowsCloudFilesFamilyOnly()
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(LocalFileScanner.IsCloudFilesReparseTag(0x9000401A), Is.True);
+                Assert.That(LocalFileScanner.IsCloudFilesReparseTag(0x9000601A), Is.True);
+                Assert.That(LocalFileScanner.IsCloudFilesReparseTag(0xA000000C), Is.False);
+                Assert.That(LocalFileScanner.IsCloudFilesReparseTag(0x80000017), Is.False);
+            });
+        }
+
+        [Test]
         public async Task ScanAsync_ThrowsForLockedFile()
         {
             WriteFile("keep.txt", "keep");
