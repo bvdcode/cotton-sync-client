@@ -7,6 +7,7 @@ using Cotton.Nodes;
 using Cotton.Sync.Local;
 using Cotton.Sync.Remote;
 using Cotton.Sync.State;
+using Cotton.Sync.VirtualFiles;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -36,6 +37,7 @@ namespace Cotton.Sync
         private readonly IRemoteFileSynchronizer _remoteFiles;
         private readonly ISyncStateStore _stateStore;
         private readonly ILocalFileSyncWriter _localWriter;
+        private readonly IRemoteFilePlaceholderWriter? _remoteFilePlaceholderWriter;
         private readonly ILogger<SyncEngine> _logger;
 
         /// <summary>
@@ -48,6 +50,7 @@ namespace Cotton.Sync
             ISyncStateStore stateStore,
             ILocalFileSyncWriter? localWriter = null,
             IRemoteDirectorySynchronizer? remoteDirectories = null,
+            IRemoteFilePlaceholderWriter? remoteFilePlaceholderWriter = null,
             ILogger<SyncEngine>? logger = null)
         {
             _localScanner = localScanner ?? throw new ArgumentNullException(nameof(localScanner));
@@ -64,6 +67,7 @@ namespace Cotton.Sync
             _stateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
             _localWriter = localWriter ?? new AtomicLocalFileSyncWriter();
             _remoteDirectories = remoteDirectories;
+            _remoteFilePlaceholderWriter = remoteFilePlaceholderWriter;
             _logger = logger ?? NullLogger<SyncEngine>.Instance;
         }
 
@@ -171,12 +175,13 @@ namespace Cotton.Sync
 
             IReadOnlyList<string> pathKeys = BuildPathKeys(localByPath.Keys, remoteByPath.Keys, stateByPath.Keys);
             EnsureEnoughLocalFreeSpaceForPlannedDownloads(
-                syncPair.LocalRootPath,
+                syncPair,
                 pathKeys,
                 localByPath,
                 remoteByPath,
                 stateByPath);
             long plannedTransferBytesTotal = CalculatePlannedTransferBytesTotal(
+                syncPair,
                 pathKeys,
                 localByPath,
                 remoteByPath,
@@ -200,7 +205,7 @@ namespace Cotton.Sync
                 remoteByPath.TryGetValue(key, out RemoteFileSnapshot? remote);
                 stateByPath.TryGetValue(key, out SyncStateEntry? state);
                 string relativePath = local?.RelativePath ?? remote?.RelativePath ?? state?.RelativePath ?? key;
-                long plannedTransferBytes = CalculatePlannedTransferBytes(key, localByPath, remoteByPath, stateByPath);
+                long plannedTransferBytes = CalculatePlannedTransferBytes(syncPair, key, localByPath, remoteByPath, stateByPath);
                 ReportItemRunProgress(
                     options,
                     SyncRunProgressStage.ReconcilingFiles,
@@ -837,7 +842,8 @@ namespace Cotton.Sync
 
             if (local is null && remote is not null)
             {
-                await DownloadAsync(syncPair, options, result, relativePath, remote.File, cancellationToken).ConfigureAwait(false);
+                await MaterializeRemoteOnlyFileAsync(syncPair, options, result, relativePath, remote.File, cancellationToken)
+                    .ConfigureAwait(false);
                 return;
             }
 
@@ -1218,6 +1224,50 @@ namespace Cotton.Sync
             Report(result, options, SyncActivityKind.Downloaded, relativePath, null);
         }
 
+        private async Task MaterializeRemoteOnlyFileAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            SyncRunResult result,
+            string relativePath,
+            NodeFileManifestDto remoteFile,
+            CancellationToken cancellationToken)
+        {
+            if (syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles)
+            {
+                await DownloadAsync(syncPair, options, result, relativePath, remoteFile, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            if (_remoteFilePlaceholderWriter is null)
+            {
+                Report(
+                    result,
+                    options,
+                    SyncActivityKind.Skipped,
+                    relativePath,
+                    "Windows virtual-files placeholder writer is not available.",
+                    requiresUserAction: true);
+                return;
+            }
+
+            RemoteFilePlaceholderResult placeholder = await _remoteFilePlaceholderWriter
+                .CreatePlaceholderAsync(
+                    new RemoteFilePlaceholderRequest(
+                        syncPair.SyncPairId,
+                        syncPair.LocalRootPath,
+                        syncPair.RemoteRootNodeId,
+                        SyncPath.Normalize(relativePath),
+                        remoteFile),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            await _stateStore
+                .UpsertAsync(BuildPlaceholderBaseline(syncPair, relativePath, remoteFile, placeholder), cancellationToken)
+                .ConfigureAwait(false);
+            Report(result, options, SyncActivityKind.PlaceholderCreated, relativePath, null);
+        }
+
         private async Task DeleteRemoteAsync(
             SyncPair syncPair,
             SyncRunOptions options,
@@ -1520,6 +1570,31 @@ namespace Cotton.Sync
             };
         }
 
+        private static SyncStateEntry BuildPlaceholderBaseline(
+            SyncPair syncPair,
+            string relativePath,
+            NodeFileManifestDto remoteFile,
+            RemoteFilePlaceholderResult placeholder)
+        {
+            SyncPlaceholderHydrationState hydrationState = placeholder.HydrationState == SyncPlaceholderHydrationState.None
+                ? SyncPlaceholderHydrationState.RemoteOnly
+                : placeholder.HydrationState;
+            return new SyncStateEntry
+            {
+                SyncPairId = syncPair.SyncPairId,
+                RelativePath = SyncPath.Normalize(relativePath),
+                Kind = SyncEntryKind.File,
+                RemoteSizeBytes = remoteFile.SizeBytes,
+                RemoteFileId = remoteFile.Id,
+                RemoteNodeId = remoteFile.NodeId,
+                RemoteContentHash = remoteFile.ContentHash,
+                RemoteETag = remoteFile.ETag,
+                PlaceholderIdentity = placeholder.PlaceholderIdentity,
+                PlaceholderHydrationState = hydrationState,
+                SyncedAtUtc = DateTime.UtcNow,
+            };
+        }
+
         private static SyncStateEntry BuildDirectoryBaseline(
             SyncPair syncPair,
             string relativePath,
@@ -1670,13 +1745,13 @@ namespace Cotton.Sync
         }
 
         private static void EnsureEnoughLocalFreeSpaceForPlannedDownloads(
-            string localRootPath,
+            SyncPair syncPair,
             IReadOnlyList<string> pathKeys,
             IReadOnlyDictionary<string, LocalFileSnapshot> localByPath,
             IReadOnlyDictionary<string, RemoteFileSnapshot> remoteByPath,
             IReadOnlyDictionary<string, SyncStateEntry> stateByPath)
         {
-            long? availableFreeBytes = TryGetAvailableFreeBytes(localRootPath);
+            long? availableFreeBytes = TryGetAvailableFreeBytes(syncPair.LocalRootPath);
             if (!availableFreeBytes.HasValue)
             {
                 return;
@@ -1686,6 +1761,7 @@ namespace Cotton.Sync
             foreach (string key in pathKeys)
             {
                 if (!TryCreatePlannedLocalDownload(
+                        syncPair,
                         key,
                         localByPath,
                         remoteByPath,
@@ -1712,6 +1788,7 @@ namespace Cotton.Sync
         }
 
         private static long CalculatePlannedTransferBytesTotal(
+            SyncPair syncPair,
             IReadOnlyList<string> pathKeys,
             IReadOnlyDictionary<string, LocalFileSnapshot> localByPath,
             IReadOnlyDictionary<string, RemoteFileSnapshot> remoteByPath,
@@ -1720,7 +1797,7 @@ namespace Cotton.Sync
             long totalBytes = 0;
             foreach (string key in pathKeys)
             {
-                if (TryCalculatePlannedTransferBytes(key, localByPath, remoteByPath, stateByPath, out long transferBytes)
+                if (TryCalculatePlannedTransferBytes(syncPair, key, localByPath, remoteByPath, stateByPath, out long transferBytes)
                     && transferBytes > 0)
                 {
                     totalBytes += transferBytes;
@@ -1731,17 +1808,19 @@ namespace Cotton.Sync
         }
 
         private static long CalculatePlannedTransferBytes(
+            SyncPair syncPair,
             string key,
             IReadOnlyDictionary<string, LocalFileSnapshot> localByPath,
             IReadOnlyDictionary<string, RemoteFileSnapshot> remoteByPath,
             IReadOnlyDictionary<string, SyncStateEntry> stateByPath)
         {
-            return TryCalculatePlannedTransferBytes(key, localByPath, remoteByPath, stateByPath, out long transferBytes)
+            return TryCalculatePlannedTransferBytes(syncPair, key, localByPath, remoteByPath, stateByPath, out long transferBytes)
                 ? transferBytes
                 : 0;
         }
 
         private static bool TryCalculatePlannedTransferBytes(
+            SyncPair syncPair,
             string key,
             IReadOnlyDictionary<string, LocalFileSnapshot> localByPath,
             IReadOnlyDictionary<string, RemoteFileSnapshot> remoteByPath,
@@ -1754,7 +1833,7 @@ namespace Cotton.Sync
 
             if (state is null)
             {
-                return TryCalculateUntrackedTransferBytes(local, remote, out transferBytes);
+                return TryCalculateUntrackedTransferBytes(syncPair, local, remote, out transferBytes);
             }
 
             if (local is not null && remote is not null && ContentMatches(local.ContentHash, remote.File.ContentHash))
@@ -1819,6 +1898,7 @@ namespace Cotton.Sync
         }
 
         private static bool TryCalculateUntrackedTransferBytes(
+            SyncPair syncPair,
             LocalFileSnapshot? local,
             RemoteFileSnapshot? remote,
             out long transferBytes)
@@ -1831,6 +1911,12 @@ namespace Cotton.Sync
 
             if (local is null && remote is not null)
             {
+                if (syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles)
+                {
+                    transferBytes = 0;
+                    return false;
+                }
+
                 transferBytes = remote.File.SizeBytes;
                 return true;
             }
@@ -1870,6 +1956,7 @@ namespace Cotton.Sync
         }
 
         private static bool TryCreatePlannedLocalDownload(
+            SyncPair syncPair,
             string key,
             IReadOnlyDictionary<string, LocalFileSnapshot> localByPath,
             IReadOnlyDictionary<string, RemoteFileSnapshot> remoteByPath,
@@ -1885,7 +1972,7 @@ namespace Cotton.Sync
 
             if (state is null)
             {
-                return TryCreateRemoteOnlyDownload(local, remote, out downloadBytes, out replacedLocalBytes);
+                return TryCreateRemoteOnlyDownload(syncPair, local, remote, out downloadBytes, out replacedLocalBytes);
             }
 
             if (local is not null && remote is not null && ContentMatches(local.ContentHash, remote.File.ContentHash))
@@ -1938,6 +2025,7 @@ namespace Cotton.Sync
         }
 
         private static bool TryCreateRemoteOnlyDownload(
+            SyncPair syncPair,
             LocalFileSnapshot? local,
             RemoteFileSnapshot? remote,
             out long downloadBytes,
@@ -1945,6 +2033,13 @@ namespace Cotton.Sync
         {
             if (local is null && remote is not null)
             {
+                if (syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles)
+                {
+                    downloadBytes = 0;
+                    replacedLocalBytes = 0;
+                    return false;
+                }
+
                 downloadBytes = remote.File.SizeBytes;
                 replacedLocalBytes = 0;
                 return true;

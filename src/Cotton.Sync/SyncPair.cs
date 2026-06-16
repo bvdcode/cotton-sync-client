@@ -22,5 +22,10 @@ namespace Cotton.Sync
         /// Gets or sets the remote Cotton node used as the synchronization root.
         /// </summary>
         public Guid RemoteRootNodeId { get; set; }
+
+        /// <summary>
+        /// Gets or sets how remote-only files are materialized locally.
+        /// </summary>
+        public SyncPairMaterializationMode MaterializationMode { get; set; } = SyncPairMaterializationMode.FullMirror;
     }
 }

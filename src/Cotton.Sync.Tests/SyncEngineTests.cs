@@ -10,6 +10,7 @@ using Cotton.Nodes;
 using Cotton.Sync.Local;
 using Cotton.Sync.Remote;
 using Cotton.Sync.State;
+using Cotton.Sync.VirtualFiles;
 using Microsoft.Extensions.Logging;
 
 namespace Cotton.Sync.Tests
@@ -846,6 +847,74 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry, Is.Not.Null);
                 Assert.That(entry!.LocalContentHash, Is.EqualTo(remote.ContentHash));
                 Assert.That(entry.RemoteFileId, Is.EqualTo(remote.Id));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesCreatesRemoteOnlyPlaceholderWithoutDownloadingContent()
+        {
+            NodeFileManifestDto remote = RemoteFile("remote-only.txt", HashText("remote-content"), sizeBytes: long.MaxValue);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            var runProgress = new RecordingProgress<SyncRunProgress>();
+            var transferProgress = new RecordingProgress<SyncTransferProgress>();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(),
+                RemoteTree(remote),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions
+                {
+                    RunProgress = runProgress,
+                    TransferProgress = transferProgress,
+                });
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", "remote-only.txt");
+            Assert.Multiple(() =>
+            {
+                Assert.That(File.Exists(Path.Combine(_root, "remote-only.txt")), Is.False);
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(placeholderWriter.Requests, Has.Count.EqualTo(1));
+                Assert.That(placeholderWriter.Requests[0].LocalRootPath, Is.EqualTo(_root));
+                Assert.That(placeholderWriter.Requests[0].RelativePath, Is.EqualTo("remote-only.txt"));
+                Assert.That(placeholderWriter.Requests[0].RemoteFile.Id, Is.EqualTo(remote.Id));
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.PlaceholderCreated }));
+                Assert.That(transferProgress.Values, Is.Empty);
+                Assert.That(runProgress.Values.Last(progress => progress.IsCompleted).BytesTotal, Is.Zero);
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.Null);
+                Assert.That(entry.LocalSizeBytes, Is.Null);
+                Assert.That(entry.RemoteFileId, Is.EqualTo(remote.Id));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(remote.ContentHash));
+                Assert.That(entry.RemoteSizeBytes, Is.EqualTo(remote.SizeBytes));
+                Assert.That(entry.RemoteETag, Is.EqualTo(remote.ETag));
+                Assert.That(entry.PlaceholderIdentity, Is.EqualTo(placeholderWriter.PlaceholderIdentity));
+                Assert.That(entry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesDoesNotFallBackToDownloadWhenPlaceholderWriterIsMissing()
+        {
+            NodeFileManifestDto remote = RemoteFile("remote-only.txt", HashText("remote-content"), sizeBytes: 1024);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", "remote-only.txt");
+            Assert.Multiple(() =>
+            {
+                Assert.That(File.Exists(Path.Combine(_root, "remote-only.txt")), Is.False);
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(entry, Is.Null);
+                Assert.That(result.RequiresUserAction, Is.True);
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.Skipped }));
+                Assert.That(result.ActionRequiredMessage, Does.Contain("placeholder writer"));
             });
         }
 
@@ -2691,9 +2760,10 @@ namespace Cotton.Sync.Tests
             RemoteTreeSnapshot remoteTree,
             FakeRemoteFileSynchronizer remoteFiles,
             out SqliteSyncStateStore stateStore,
-            ILogger<SyncEngine>? logger = null)
+            ILogger<SyncEngine>? logger = null,
+            IRemoteFilePlaceholderWriter? remoteFilePlaceholderWriter = null)
         {
-            return CreateEngineWithLogger(scanner, remoteFiles, out stateStore, logger, remoteTree);
+            return CreateEngineWithLogger(scanner, remoteFiles, out stateStore, logger, remoteFilePlaceholderWriter, remoteTree);
         }
 
         private SyncEngine CreateEngine(
@@ -2702,7 +2772,7 @@ namespace Cotton.Sync.Tests
             out SqliteSyncStateStore stateStore,
             params RemoteTreeSnapshot[] remoteTrees)
         {
-            return CreateEngineWithLogger(scanner, remoteFiles, out stateStore, null, remoteTrees);
+            return CreateEngineWithLogger(scanner, remoteFiles, out stateStore, null, null, remoteTrees);
         }
 
         private SyncEngine CreateEngineWithLogger(
@@ -2710,10 +2780,17 @@ namespace Cotton.Sync.Tests
             FakeRemoteFileSynchronizer remoteFiles,
             out SqliteSyncStateStore stateStore,
             ILogger<SyncEngine>? logger,
+            IRemoteFilePlaceholderWriter? remoteFilePlaceholderWriter,
             params RemoteTreeSnapshot[] remoteTrees)
         {
             stateStore = new SqliteSyncStateStore(_databasePath);
-            return new SyncEngine(scanner, new FakeRemoteTreeCrawler(remoteTrees), remoteFiles, stateStore, logger: logger);
+            return new SyncEngine(
+                scanner,
+                new FakeRemoteTreeCrawler(remoteTrees),
+                remoteFiles,
+                stateStore,
+                remoteFilePlaceholderWriter: remoteFilePlaceholderWriter,
+                logger: logger);
         }
 
         private SyncEngine CreateEngine(
@@ -2734,13 +2811,14 @@ namespace Cotton.Sync.Tests
                 logger: logger);
         }
 
-        private SyncPair Pair()
+        private SyncPair Pair(SyncPairMaterializationMode materializationMode = SyncPairMaterializationMode.FullMirror)
         {
             return new SyncPair
             {
                 SyncPairId = "pair-a",
                 LocalRootPath = _root,
                 RemoteRootNodeId = _remoteRootNodeId,
+                MaterializationMode = materializationMode,
             };
         }
 
@@ -3317,6 +3395,21 @@ namespace Cotton.Sync.Tests
             }
         }
 
+        private class FakeRemoteFilePlaceholderWriter : IRemoteFilePlaceholderWriter
+        {
+            public byte[] PlaceholderIdentity { get; } = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E];
+
+            public List<RemoteFilePlaceholderRequest> Requests { get; } = [];
+
+            public Task<RemoteFilePlaceholderResult> CreatePlaceholderAsync(
+                RemoteFilePlaceholderRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                Requests.Add(request);
+                return Task.FromResult(new RemoteFilePlaceholderResult(PlaceholderIdentity));
+            }
+        }
+
         private class FakeRemoteFileSynchronizer : IRemoteFileSynchronizer
         {
             public List<UploadCall> Uploads { get; } = [];
@@ -3324,6 +3417,8 @@ namespace Cotton.Sync.Tests
             public List<MoveCall> Moves { get; } = [];
 
             public List<string> UploadInputContentHashes { get; } = [];
+
+            public List<Guid> DownloadCalls { get; } = [];
 
             public List<(Guid NodeFileId, bool SkipTrash, string? ExpectedETag)> Deletes { get; } = [];
 
@@ -3446,6 +3541,7 @@ namespace Cotton.Sync.Tests
 
             public Task DownloadFileAsync(Guid nodeFileId, Stream destination, CancellationToken cancellationToken = default)
             {
+                DownloadCalls.Add(nodeFileId);
                 if (DownloadFailureIds.Contains(nodeFileId))
                 {
                     throw new InvalidOperationException("Remote download failed.");

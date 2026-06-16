@@ -47,5 +47,10 @@ namespace Cotton.Sync
         /// A baseline-known file was moved or renamed without re-uploading content.
         /// </summary>
         Moved = 7,
+
+        /// <summary>
+        /// A remote-only file was exposed locally as a virtual-files placeholder without downloading content.
+        /// </summary>
+        PlaceholderCreated = 8,
     }
 }

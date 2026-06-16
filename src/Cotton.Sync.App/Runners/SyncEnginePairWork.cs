@@ -6,6 +6,7 @@ using Cotton.Sync.App.Progress;
 using Cotton.Sync.App.SyncPairs;
 using CoreSyncEngine = Cotton.Sync.ISyncEngine;
 using CoreSyncPair = Cotton.Sync.SyncPair;
+using CoreSyncPairMaterializationMode = Cotton.Sync.SyncPairMaterializationMode;
 using CoreSyncRunOptions = Cotton.Sync.SyncRunOptions;
 using CoreSyncRunResult = Cotton.Sync.SyncRunResult;
 using CoreSyncRunScope = Cotton.Sync.SyncRunScope;
@@ -83,7 +84,15 @@ namespace Cotton.Sync.App.Runners
                 SyncPairId = syncPair.Id.ToString("D"),
                 LocalRootPath = syncPair.LocalRootPath,
                 RemoteRootNodeId = syncPair.RemoteRootNodeId,
+                MaterializationMode = ToCoreMaterializationMode(syncPair.Mode),
             };
+        }
+
+        private static CoreSyncPairMaterializationMode ToCoreMaterializationMode(SyncPairMode mode)
+        {
+            return mode == SyncPairMode.WindowsVirtualFiles
+                ? CoreSyncPairMaterializationMode.WindowsVirtualFiles
+                : CoreSyncPairMaterializationMode.FullMirror;
         }
 
         private static string CreateActionRequiredMessage(CoreSyncRunResult result)
