@@ -57,6 +57,21 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public void TrayMenu_WiresShowAndQuitToWindowLifecycle()
+        {
+            string trayController = File.ReadAllText(GetDesktopShellFilePath("DesktopTrayController.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(trayController, Does.Contain("_showMenuItem = CreateMenuItem(\"Show\", ShowWindow)"));
+                Assert.That(trayController, Does.Contain("_quitMenuItem = CreateMenuItem(\"Quit\", Quit)"));
+                Assert.That(trayController, Does.Contain("trayIcon.Clicked += (_, _) => RunOnUiThread(ShowWindow)"));
+                Assert.That(trayController, Does.Contain("_window.ShowShell()"));
+                Assert.That(trayController, Does.Contain("_window.RequestQuit()"));
+            });
+        }
+
+        [Test]
         public void TrayMenu_DispatchesWindowActionsToAvaloniaUiThread()
         {
             string trayController = File.ReadAllText(GetDesktopShellFilePath("DesktopTrayController.cs"));
