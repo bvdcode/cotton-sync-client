@@ -72,7 +72,8 @@ namespace Cotton.Sync.Cli
                 + value.FilesCompleted.ToStringInvariant()
                 + "/"
                 + (value.FilesTotal?.ToStringInvariant() ?? "?")
-                + " files";
+                + " "
+                + FormatUnit(value.Stage);
             if (value.BytesTotal.HasValue && value.BytesTotal.Value > 0)
             {
                 line += ", "
@@ -103,8 +104,19 @@ namespace Cotton.Sync.Cli
                 SyncRunProgressStage.ScanningRemote => "scanning remote",
                 SyncRunProgressStage.ReconcilingDirectories => "reconciling folders",
                 SyncRunProgressStage.ReconcilingFiles => "reconciling files",
+                SyncRunProgressStage.CreatingPlaceholders => "creating placeholders",
                 SyncRunProgressStage.Completed => "completed",
                 _ => "syncing",
+            };
+        }
+
+        private static string FormatUnit(SyncRunProgressStage stage)
+        {
+            return stage switch
+            {
+                SyncRunProgressStage.ReconcilingDirectories => "folders",
+                SyncRunProgressStage.CreatingPlaceholders => "placeholders",
+                _ => "files",
             };
         }
 
