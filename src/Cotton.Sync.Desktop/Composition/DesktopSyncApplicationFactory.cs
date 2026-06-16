@@ -66,12 +66,15 @@ namespace Cotton.Sync.Desktop.Composition
             var remoteFileSynchronizer = new SdkRemoteFileSynchronizer(cottonClient);
             var remoteDirectorySynchronizer = new SdkRemoteDirectorySynchronizer(cottonClient.Nodes);
             var remoteChangeFeed = new RemoteChangeFeedReader(cottonClient.Sync, stateStore);
+            var remoteFilePlaceholderWriter = new DesktopCloudFilesPlaceholderWriter(
+                logger: _loggerFactory.CreateLogger<DesktopCloudFilesPlaceholderWriter>());
             var syncEngine = new HeadlessSyncEngine(
                 new LocalFileScanner(),
                 remoteTreeCrawler,
                 remoteFileSynchronizer,
                 stateStore,
                 remoteDirectories: remoteDirectorySynchronizer,
+                remoteFilePlaceholderWriter: remoteFilePlaceholderWriter,
                 logger: _loggerFactory.CreateLogger<HeadlessSyncEngine>());
             var activityPublisher = new InMemoryAppActivityPublisher();
             var sessionRevocationPublisher = new InMemorySessionRevocationPublisher();

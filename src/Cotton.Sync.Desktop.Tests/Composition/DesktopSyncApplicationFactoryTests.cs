@@ -10,6 +10,7 @@ using Cotton.Sync.App.LocalChanges;
 using Cotton.Sync.App.RemoteChanges;
 using Cotton.Sync.App.SyncApplication;
 using Cotton.Sync.Desktop.Composition;
+using Cotton.Sync.Desktop.Platform;
 
 namespace Cotton.Sync.Desktop.Tests.Composition
 {
@@ -65,6 +66,24 @@ namespace Cotton.Sync.Desktop.Tests.Composition
                 Assert.That(remoteChanges, Is.TypeOf<RealtimeRemoteChangeSyncCoordinator>());
                 Assert.That(periodicSync, Is.TypeOf<PeriodicSyncCoordinator>());
             });
+        }
+
+        [Test]
+        public async Task Create_WiresCloudFilesPlaceholderWriterIntoSyncEngine()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            var factory = new DesktopSyncApplicationFactory(paths);
+
+            await using DesktopSyncApplicationHost host = factory.Create(new Uri("https://cotton.example.test/"));
+
+            object supervisor = GetPrivateFieldValue(host.App, "_supervisor");
+            object runnerFactory = GetPrivateFieldValue(supervisor, "_runnerFactory");
+            object remoteChangeAwareWork = GetPrivateFieldValue(runnerFactory, "_work");
+            object syncEnginePairWork = GetPrivateFieldValue(remoteChangeAwareWork, "_inner");
+            object syncEngine = GetPrivateFieldValue(syncEnginePairWork, "_syncEngine");
+            object placeholderWriter = GetPrivateFieldValue(syncEngine, "_remoteFilePlaceholderWriter");
+
+            Assert.That(placeholderWriter, Is.TypeOf<DesktopCloudFilesPlaceholderWriter>());
         }
 
         [Test]

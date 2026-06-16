@@ -919,6 +919,36 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesReportsPlaceholderUnavailableAsActionRequired()
+        {
+            NodeFileManifestDto remote = RemoteFile("remote-only.txt", HashText("remote-content"), sizeBytes: 1024);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new FakeRemoteFilePlaceholderWriter
+            {
+                UnavailableReason = "Cloud Files sync root is not connected.",
+            };
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(),
+                RemoteTree(remote),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", "remote-only.txt");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(placeholderWriter.Requests, Has.Count.EqualTo(1));
+                Assert.That(entry, Is.Null);
+                Assert.That(result.RequiresUserAction, Is.True);
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.Skipped }));
+                Assert.That(result.ActionRequiredMessage, Is.EqualTo("Cloud Files sync root is not connected."));
+            });
+        }
+
+        [Test]
         public void RunOnceAsync_FailsBeforeDownloadWhenPlannedDownloadsExceedFreeSpace()
         {
             NodeFileManifestDto remote = RemoteFile("huge.bin", HashText("huge"), sizeBytes: long.MaxValue);
@@ -3401,11 +3431,18 @@ namespace Cotton.Sync.Tests
 
             public List<RemoteFilePlaceholderRequest> Requests { get; } = [];
 
+            public string? UnavailableReason { get; set; }
+
             public Task<RemoteFilePlaceholderResult> CreatePlaceholderAsync(
                 RemoteFilePlaceholderRequest request,
                 CancellationToken cancellationToken = default)
             {
                 Requests.Add(request);
+                if (!string.IsNullOrWhiteSpace(UnavailableReason))
+                {
+                    throw new RemoteFilePlaceholderUnavailableException(request.RelativePath, UnavailableReason);
+                }
+
                 return Task.FromResult(new RemoteFilePlaceholderResult(PlaceholderIdentity));
             }
         }
