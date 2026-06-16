@@ -54,6 +54,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(names, Does.Contain("Authentication state"));
                 Assert.That(names, Does.Contain("Token storage"));
                 Assert.That(names, Does.Contain("Desktop icon"));
+                Assert.That(names, Does.Contain("Update cache"));
                 Assert.That(names, Does.Contain("Desktop platform"));
                 Assert.That(names, Does.Contain("Tray lifecycle"));
                 Assert.That(names, Does.Contain("Notification adapter"));
@@ -131,6 +132,24 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             {
                 Assert.That(icon.Passed, Is.True);
                 Assert.That(icon.Details, Does.EndWith(Path.Combine("Assets", "icon-192.png")));
+            });
+        }
+
+        [Test]
+        public async Task RunSelfTestAsync_VerifiesUpdateCacheIsWritable()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            using DesktopShellController controller = CreateController(paths, new SqliteSyncPairSettingsStore(paths.AppDatabasePath));
+
+            DesktopSelfTestSnapshot result = await controller.RunSelfTestAsync();
+
+            DesktopSelfTestItemSnapshot updateCache = result.Items.Single(static item => item.Name == "Update cache");
+            Assert.Multiple(() =>
+            {
+                Assert.That(updateCache.Passed, Is.True);
+                Assert.That(updateCache.Details, Is.EqualTo(paths.UpdateCacheDirectory));
+                Assert.That(Directory.Exists(paths.UpdateCacheDirectory), Is.True);
+                Assert.That(Directory.EnumerateFiles(paths.UpdateCacheDirectory), Is.Empty);
             });
         }
 

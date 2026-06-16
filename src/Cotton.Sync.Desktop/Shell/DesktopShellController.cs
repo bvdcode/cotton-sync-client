@@ -706,6 +706,11 @@ namespace Cotton.Sync.Desktop.Shell
 
             await AddSelfTestCheckAsync(
                 items,
+                "Update cache",
+                () => CheckUpdateCacheAsync(_paths.UpdateCacheDirectory, cancellationToken)).ConfigureAwait(false);
+
+            await AddSelfTestCheckAsync(
+                items,
                 "Autostart adapter",
                 async () =>
                 {
@@ -951,6 +956,18 @@ namespace Cotton.Sync.Desktop.Shell
             }
 
             return Task.FromResult(iconPath);
+        }
+
+        private static async Task<string> CheckUpdateCacheAsync(
+            string updateCacheDirectory,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Directory.CreateDirectory(updateCacheDirectory);
+            string probePath = Path.Combine(updateCacheDirectory, ".write-test-" + Guid.NewGuid().ToString("N"));
+            await File.WriteAllTextAsync(probePath, "ok", cancellationToken).ConfigureAwait(false);
+            File.Delete(probePath);
+            return updateCacheDirectory;
         }
 
         private static async Task<string> CheckSyncChangeFeedAsync(
