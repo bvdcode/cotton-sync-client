@@ -167,6 +167,42 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
+        public void AcknowledgeDehydrate(WindowsCloudFilesAckDehydrateData dehydrate)
+        {
+            ArgumentNullException.ThrowIfNull(dehydrate);
+
+            PinnedBuffer fileIdentity = PinnedBuffer.Pin(dehydrate.FileIdentity);
+            try
+            {
+                var operationInfo = new CfOperationInfo
+                {
+                    StructSize = (uint)Marshal.SizeOf<CfOperationInfo>(),
+                    Type = CfOperationType.AckDehydrate,
+                    ConnectionKey = dehydrate.ConnectionKey.Value,
+                    TransferKey = dehydrate.TransferKey.Value,
+                    CorrelationVector = IntPtr.Zero,
+                    SyncStatus = IntPtr.Zero,
+                    RequestKey = dehydrate.RequestKey.Value,
+                };
+                var parameters = new CfOperationAckDehydrateParameters
+                {
+                    ParamSize = (uint)Marshal.SizeOf<CfOperationAckDehydrateParameters>(),
+                    Flags = CfOperationAckDehydrateFlags.None,
+                    CompletionStatus = dehydrate.CompletionStatus,
+                    FileIdentity = fileIdentity.Pointer,
+                    FileIdentityLength = fileIdentity.Length,
+                };
+
+                int result = CfExecuteAckDehydrate(ref operationInfo, ref parameters);
+                ThrowIfFailed(result, nameof(CfExecute));
+            }
+            finally
+            {
+                fileIdentity.Dispose();
+            }
+        }
+
+
         private static void ThrowIfFailed(int hresult, string operation)
         {
             if (hresult < Succeeded)
@@ -205,6 +241,11 @@ namespace Cotton.Sync.Desktop.Platform
         private static extern int CfExecute(
             ref CfOperationInfo OpInfo,
             ref CfOperationTransferDataParameters OpParams);
+
+        [DllImport("CldApi.dll", ExactSpelling = true, EntryPoint = "CfExecute")]
+        private static extern int CfExecuteAckDehydrate(
+            ref CfOperationInfo OpInfo,
+            ref CfOperationAckDehydrateParameters OpParams);
 
         [StructLayout(LayoutKind.Sequential)]
         private struct CfSyncRegistration
@@ -411,16 +452,25 @@ namespace Cotton.Sync.Desktop.Platform
         {
             FetchData = 0,
             CancelFetchData = 2,
+            NotifyDehydrate = 7,
+            NotifyDehydrateCompletion = 8,
             None = 0xffffffff,
         }
 
         private enum CfOperationType : uint
         {
             TransferData = 0,
+            AckDehydrate = 5,
         }
 
         [Flags]
         private enum CfOperationTransferDataFlags : uint
+        {
+            None = 0x00000000,
+        }
+
+        [Flags]
+        private enum CfOperationAckDehydrateFlags : uint
         {
             None = 0x00000000,
         }
@@ -528,6 +578,32 @@ namespace Cotton.Sync.Desktop.Platform
             public long Length;
         }
 
+        [StructLayout(LayoutKind.Explicit)]
+        private struct CfCallbackDehydrateParameters
+        {
+            [FieldOffset(0)]
+            public uint ParamSize;
+
+            [FieldOffset(8)]
+            public uint Flags;
+
+            [FieldOffset(12)]
+            public int Reason;
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        private struct CfCallbackDehydrateCompletionParameters
+        {
+            [FieldOffset(0)]
+            public uint ParamSize;
+
+            [FieldOffset(8)]
+            public uint Flags;
+
+            [FieldOffset(12)]
+            public int Reason;
+        }
+
         [StructLayout(LayoutKind.Sequential)]
         private struct CfOperationInfo
         {
@@ -568,12 +644,33 @@ namespace Cotton.Sync.Desktop.Platform
             public long Length;
         }
 
+        [StructLayout(LayoutKind.Explicit)]
+        private struct CfOperationAckDehydrateParameters
+        {
+            [FieldOffset(0)]
+            public uint ParamSize;
+
+            [FieldOffset(8)]
+            public CfOperationAckDehydrateFlags Flags;
+
+            [FieldOffset(12)]
+            public int CompletionStatus;
+
+            [FieldOffset(16)]
+            public IntPtr FileIdentity;
+
+            [FieldOffset(24)]
+            public uint FileIdentityLength;
+        }
+
         private sealed class NativeCallbackState : IDisposable
         {
             private readonly WindowsCloudFilesCallbackDispatcher _dispatcher;
             private readonly GCHandle _contextHandle;
             private readonly CfCallback _fetchDataCallback;
             private readonly CfCallback _cancelFetchDataCallback;
+            private readonly CfCallback _notifyDehydrateCallback;
+            private readonly CfCallback _notifyDehydrateCompletionCallback;
             private int _disposed;
 
             public NativeCallbackState(
@@ -583,9 +680,12 @@ namespace Cotton.Sync.Desktop.Platform
                 ArgumentNullException.ThrowIfNull(owner);
                 _dispatcher = new WindowsCloudFilesCallbackDispatcher(
                     handler,
-                    owner.TransferData);
+                    owner.TransferData,
+                    owner.AcknowledgeDehydrate);
                 _fetchDataCallback = HandleFetchData;
                 _cancelFetchDataCallback = HandleCancelFetchData;
+                _notifyDehydrateCallback = HandleNotifyDehydrate;
+                _notifyDehydrateCompletionCallback = HandleNotifyDehydrateCompletion;
                 _contextHandle = GCHandle.Alloc(this);
                 CallbackTable =
                 [
@@ -595,6 +695,12 @@ namespace Cotton.Sync.Desktop.Platform
                     new CfCallbackRegistration(
                         CfCallbackType.CancelFetchData,
                         Marshal.GetFunctionPointerForDelegate(_cancelFetchDataCallback)),
+                    new CfCallbackRegistration(
+                        CfCallbackType.NotifyDehydrate,
+                        Marshal.GetFunctionPointerForDelegate(_notifyDehydrateCallback)),
+                    new CfCallbackRegistration(
+                        CfCallbackType.NotifyDehydrateCompletion,
+                        Marshal.GetFunctionPointerForDelegate(_notifyDehydrateCompletionCallback)),
                     new CfCallbackRegistration(CfCallbackType.None, IntPtr.Zero),
                 ];
             }
@@ -676,6 +782,72 @@ namespace Cotton.Sync.Desktop.Platform
                 catch
                 {
                 }
+            }
+
+            private void HandleNotifyDehydrate(IntPtr callbackInfo, IntPtr callbackParameters)
+            {
+                if (_disposed != 0)
+                {
+                    return;
+                }
+
+                WindowsCloudFilesDehydrateRequest request;
+                try
+                {
+                    CfCallbackInfo info = Marshal.PtrToStructure<CfCallbackInfo>(callbackInfo);
+                    CfCallbackDehydrateParameters parameters =
+                        Marshal.PtrToStructure<CfCallbackDehydrateParameters>(callbackParameters);
+                    request = new WindowsCloudFilesDehydrateRequest(
+                        new WindowsCloudFilesConnectionKey(info.ConnectionKey),
+                        new WindowsCloudFilesTransferKey(info.TransferKey),
+                        new WindowsCloudFilesRequestKey(info.RequestKey),
+                        CopyBytes(info.FileIdentity, info.FileIdentityLength),
+                        Marshal.PtrToStringUni(info.NormalizedPath),
+                        ToDehydrateReason(parameters.Reason),
+                        (parameters.Flags & 0x00000001) != 0);
+                }
+                catch
+                {
+                    return;
+                }
+
+                _dispatcher.QueueDehydrate(request);
+            }
+
+            private void HandleNotifyDehydrateCompletion(IntPtr callbackInfo, IntPtr callbackParameters)
+            {
+                if (_disposed != 0)
+                {
+                    return;
+                }
+
+                try
+                {
+                    CfCallbackInfo info = Marshal.PtrToStructure<CfCallbackInfo>(callbackInfo);
+                    CfCallbackDehydrateCompletionParameters parameters =
+                        Marshal.PtrToStructure<CfCallbackDehydrateCompletionParameters>(callbackParameters);
+                    var notification = new WindowsCloudFilesDehydrateCompletionNotification(
+                        new WindowsCloudFilesConnectionKey(info.ConnectionKey),
+                        new WindowsCloudFilesTransferKey(info.TransferKey),
+                        new WindowsCloudFilesRequestKey(info.RequestKey),
+                        CopyBytes(info.FileIdentity, info.FileIdentityLength),
+                        Marshal.PtrToStringUni(info.NormalizedPath),
+                        ToDehydrateReason(parameters.Reason),
+                        (parameters.Flags & 0x00000001) != 0,
+                        (parameters.Flags & 0x00000002) != 0);
+
+                    _dispatcher.NotifyDehydrateCompleted(notification);
+                }
+                catch
+                {
+                }
+            }
+
+            private static WindowsCloudFilesDehydrateReason ToDehydrateReason(int reason)
+            {
+                return Enum.IsDefined(typeof(WindowsCloudFilesDehydrateReason), reason)
+                    ? (WindowsCloudFilesDehydrateReason)reason
+                    : WindowsCloudFilesDehydrateReason.Never;
             }
 
             private static byte[] CopyBytes(IntPtr source, uint length)

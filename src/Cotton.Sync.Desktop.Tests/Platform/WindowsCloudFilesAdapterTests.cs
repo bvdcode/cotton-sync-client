@@ -299,6 +299,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<WindowsCloudFilesTransferData> Transfers { get; } = [];
 
+            public List<WindowsCloudFilesAckDehydrateData> Dehydrates { get; } = [];
+
             public Exception? RegisterException { get; set; }
 
             public void RegisterSyncRoot(WindowsCloudFilesNativeSyncRootRegistration registration)
@@ -333,6 +335,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 Transfers.Add(transfer);
             }
+
+            public void AcknowledgeDehydrate(WindowsCloudFilesAckDehydrateData dehydrate)
+            {
+                Dehydrates.Add(dehydrate);
+            }
         }
 
         private sealed class RecordingCallbackHandler : IWindowsCloudFilesCallbackHandler
@@ -345,6 +352,17 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
 
             public void CancelFetchData(WindowsCloudFilesCancelFetchDataRequest request)
+            {
+            }
+
+            public Task HandleDehydrateAsync(
+                WindowsCloudFilesDehydrateRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public void NotifyDehydrateCompleted(WindowsCloudFilesDehydrateCompletionNotification notification)
             {
             }
         }

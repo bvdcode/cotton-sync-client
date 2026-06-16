@@ -78,6 +78,61 @@ namespace Cotton.Sync.Desktop.Platform
             ArgumentNullException.ThrowIfNull(request);
         }
 
+        public Task HandleDehydrateAsync(
+            WindowsCloudFilesDehydrateRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            cancellationToken.ThrowIfCancellationRequested();
+            WindowsCloudFilesPlaceholderIdentity? identity = null;
+            try
+            {
+                identity = WindowsCloudFilesPlaceholderIdentity.Parse(request.FileIdentity);
+                _nativeApi.AcknowledgeDehydrate(WindowsCloudFilesAckDehydrateData.Success(request));
+                _diagnostics.Record(
+                    "dehydrate",
+                    "allowed",
+                    identity.SyncPairId.ToString(),
+                    null,
+                    identity.RelativePath,
+                    "Reason: " + request.Reason + ".");
+            }
+            catch (Exception exception)
+            {
+                _diagnostics.Record(
+                    "dehydrate",
+                    "failed",
+                    identity?.SyncPairId.ToString(),
+                    null,
+                    identity?.RelativePath ?? request.NormalizedPath,
+                    exception.Message);
+                _nativeApi.AcknowledgeDehydrate(WindowsCloudFilesAckDehydrateData.Failure(request));
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public void NotifyDehydrateCompleted(WindowsCloudFilesDehydrateCompletionNotification notification)
+        {
+            ArgumentNullException.ThrowIfNull(notification);
+            WindowsCloudFilesPlaceholderIdentity? identity = null;
+            try
+            {
+                identity = WindowsCloudFilesPlaceholderIdentity.Parse(notification.FileIdentity);
+            }
+            catch
+            {
+            }
+
+            _diagnostics.Record(
+                "dehydrate",
+                "completed",
+                identity?.SyncPairId.ToString(),
+                null,
+                identity?.RelativePath ?? notification.NormalizedPath,
+                "Reason: " + notification.Reason + "; was hydrated: " + notification.WasHydrated + ".");
+        }
+
         private async Task ValidateDownloadedContentAsync(
             WindowsCloudFilesPlaceholderIdentity identity,
             FileStream stream,

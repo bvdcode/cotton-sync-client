@@ -166,6 +166,95 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             });
         }
 
+        [Test]
+        public async Task HandleDehydrateAsync_AcknowledgesWithoutRemoteDownloadOrTransfer()
+        {
+            byte[] content = Encoding.UTF8.GetBytes("remote");
+            var provider = new FakeContentProvider(content);
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory, diagnostics);
+            WindowsCloudFilesDehydrateRequest request = CreateDehydrateRequest(content);
+
+            await coordinator.HandleDehydrateAsync(request);
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(provider.DownloadedIdentities, Is.Empty);
+                Assert.That(nativeApi.Transfers, Is.Empty);
+                Assert.That(nativeApi.Dehydrates, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.Dehydrates[0].RequestKey, Is.EqualTo(request.RequestKey));
+                Assert.That(nativeApi.Dehydrates[0].FileIdentity, Is.EqualTo(request.FileIdentity));
+                Assert.That(nativeApi.Dehydrates[0].CompletionStatus, Is.EqualTo(WindowsCloudFilesAckDehydrateData.StatusSuccess));
+                Assert.That(diagnostic.Operation, Is.EqualTo("dehydrate"));
+                Assert.That(diagnostic.Status, Is.EqualTo("allowed"));
+                Assert.That(diagnostic.RelativePath, Is.EqualTo("remote-only.txt"));
+            });
+        }
+
+        [Test]
+        public async Task HandleDehydrateAsync_ReportsFailureWhenIdentityIsInvalid()
+        {
+            var provider = new FakeContentProvider(Encoding.UTF8.GetBytes("remote"));
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory, diagnostics);
+            var request = new WindowsCloudFilesDehydrateRequest(
+                new WindowsCloudFilesConnectionKey(1),
+                new WindowsCloudFilesTransferKey(2),
+                new WindowsCloudFilesRequestKey(5),
+                Encoding.UTF8.GetBytes("not-json"),
+                @"\Device\HarddiskVolume1\Cotton\remote-only.txt",
+                WindowsCloudFilesDehydrateReason.UserManual,
+                IsBackground: false);
+
+            await coordinator.HandleDehydrateAsync(request);
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(provider.DownloadedIdentities, Is.Empty);
+                Assert.That(nativeApi.Transfers, Is.Empty);
+                Assert.That(nativeApi.Dehydrates, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.Dehydrates[0].CompletionStatus, Is.EqualTo(WindowsCloudFilesAckDehydrateData.StatusUnsuccessful));
+                Assert.That(diagnostic.Operation, Is.EqualTo("dehydrate"));
+                Assert.That(diagnostic.Status, Is.EqualTo("failed"));
+                Assert.That(diagnostic.RelativePath, Is.EqualTo(request.NormalizedPath));
+            });
+        }
+
+        [Test]
+        public void NotifyDehydrateCompleted_RecordsCompletionDiagnostic()
+        {
+            byte[] content = Encoding.UTF8.GetBytes("remote");
+            var provider = new FakeContentProvider(content);
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory, diagnostics);
+            WindowsCloudFilesDehydrateRequest request = CreateDehydrateRequest(content);
+
+            coordinator.NotifyDehydrateCompleted(new WindowsCloudFilesDehydrateCompletionNotification(
+                request.ConnectionKey,
+                request.TransferKey,
+                request.RequestKey,
+                request.FileIdentity,
+                request.NormalizedPath,
+                WindowsCloudFilesDehydrateReason.UserManual,
+                IsBackground: false,
+                WasHydrated: true));
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.Dehydrates, Is.Empty);
+                Assert.That(diagnostic.Operation, Is.EqualTo("dehydrate"));
+                Assert.That(diagnostic.Status, Is.EqualTo("completed"));
+                Assert.That(diagnostic.RelativePath, Is.EqualTo("remote-only.txt"));
+                Assert.That(diagnostic.Details, Does.Contain("UserManual"));
+            });
+        }
+
         private static WindowsCloudFilesFetchDataRequest CreateFetchRequest(
             byte[] content,
             long offset,
@@ -190,6 +279,24 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 length,
                 @"\Device\HarddiskVolume1\Cotton\remote-only.txt",
                 10);
+        }
+
+        private static WindowsCloudFilesDehydrateRequest CreateDehydrateRequest(byte[] content)
+        {
+            RemoteFilePlaceholderRequest placeholder = CreatePlaceholderRequest(content);
+            string normalizedPath = SyncPath.Normalize(placeholder.RelativePath);
+            byte[] identity = WindowsCloudFilesPlaceholderIdentity
+                .Create(placeholder, normalizedPath)
+                .ToBytes();
+
+            return new WindowsCloudFilesDehydrateRequest(
+                new WindowsCloudFilesConnectionKey(1),
+                new WindowsCloudFilesTransferKey(2),
+                new WindowsCloudFilesRequestKey(4),
+                identity,
+                @"\Device\HarddiskVolume1\Cotton\remote-only.txt",
+                WindowsCloudFilesDehydrateReason.UserManual,
+                IsBackground: false);
         }
 
         private static RemoteFilePlaceholderRequest CreatePlaceholderRequest(byte[] content)
@@ -298,6 +405,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             public List<WindowsCloudFilesTransferData> Transfers { get; } = [];
 
+            public List<WindowsCloudFilesAckDehydrateData> Dehydrates { get; } = [];
+
             public void RegisterSyncRoot(WindowsCloudFilesNativeSyncRootRegistration registration)
             {
             }
@@ -321,6 +430,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public void TransferData(WindowsCloudFilesTransferData transfer)
             {
                 Transfers.Add(transfer with { Buffer = transfer.Buffer.ToArray() });
+            }
+
+            public void AcknowledgeDehydrate(WindowsCloudFilesAckDehydrateData dehydrate)
+            {
+                Dehydrates.Add(dehydrate with { FileIdentity = dehydrate.FileIdentity.ToArray() });
             }
         }
     }

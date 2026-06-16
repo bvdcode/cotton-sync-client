@@ -14,5 +14,7 @@ namespace Cotton.Sync.Desktop.Platform
         void DisconnectSyncRoot(WindowsCloudFilesConnectionKey connectionKey);
 
         void TransferData(WindowsCloudFilesTransferData transfer);
+
+        void AcknowledgeDehydrate(WindowsCloudFilesAckDehydrateData dehydrate);
     }
 }
