@@ -1251,16 +1251,31 @@ namespace Cotton.Sync
                 return;
             }
 
-            RemoteFilePlaceholderResult placeholder = await _remoteFilePlaceholderWriter
-                .CreatePlaceholderAsync(
-                    new RemoteFilePlaceholderRequest(
-                        syncPair.SyncPairId,
-                        syncPair.LocalRootPath,
-                        syncPair.RemoteRootNodeId,
-                        SyncPath.Normalize(relativePath),
-                        remoteFile),
-                    cancellationToken)
-                .ConfigureAwait(false);
+            RemoteFilePlaceholderResult placeholder;
+            try
+            {
+                placeholder = await _remoteFilePlaceholderWriter
+                    .CreatePlaceholderAsync(
+                        new RemoteFilePlaceholderRequest(
+                            syncPair.SyncPairId,
+                            syncPair.LocalRootPath,
+                            syncPair.RemoteRootNodeId,
+                            SyncPath.Normalize(relativePath),
+                            remoteFile),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (RemoteFilePlaceholderUnavailableException exception)
+            {
+                Report(
+                    result,
+                    options,
+                    SyncActivityKind.Skipped,
+                    relativePath,
+                    exception.Reason,
+                    requiresUserAction: true);
+                return;
+            }
 
             await _stateStore
                 .UpsertAsync(BuildPlaceholderBaseline(syncPair, relativePath, remoteFile, placeholder), cancellationToken)
