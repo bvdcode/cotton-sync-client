@@ -4387,6 +4387,48 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task SignInWithBrowserCommand_AppliesSessionAfterPendingApproval()
+        {
+            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
+            {
+                ServerProbeResult = new DesktopServerProbeResult(
+                    new Uri("https://app.cottoncloud.dev/"),
+                    true,
+                    "Cotton Cloud",
+                    "instance-hash"),
+                BrowserSignInCompletion = new TaskCompletionSource<AuthSession>(
+                    TaskCreationOptions.RunContinuationsAsynchronously),
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            viewModel.ServerUrl = "app.cottoncloud.dev";
+            await WaitForAsync(() => viewModel.IsSignInStepVisible);
+
+            viewModel.SignInWithBrowserCommand.Execute(null);
+            await WaitForAsync(() => viewModel.IsBrowserSignInPending);
+
+            controller.BrowserSignInCompletion.SetResult(new AuthSession(
+                Guid.NewGuid(),
+                "desktop",
+                "desktop@example.test",
+                false));
+            await WaitForAsync(() => viewModel.IsSignedIn);
+            await WaitForAsync(() => !viewModel.SignInWithBrowserCommand.IsRunning);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(controller.BrowserSignInServerUrl, Is.EqualTo("https://app.cottoncloud.dev/"));
+                Assert.That(viewModel.IsBrowserSignInPending, Is.False);
+                Assert.That(viewModel.IsBusy, Is.False);
+                Assert.That(viewModel.IsDashboardVisible, Is.True);
+                Assert.That(viewModel.HeaderTitleText, Is.EqualTo("desktop@example.test"));
+                Assert.That(viewModel.HeaderStatusText, Is.EqualTo("Connected"));
+                Assert.That(viewModel.BrowserSignInStatus, Is.Empty);
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Connected"));
+            });
+        }
+
+        [Test]
         public async Task SignInWithBrowserCommand_CanCancelPendingApproval()
         {
             var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
