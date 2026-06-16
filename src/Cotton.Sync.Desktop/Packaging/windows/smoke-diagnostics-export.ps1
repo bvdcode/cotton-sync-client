@@ -3,7 +3,9 @@ param(
     [string]$AppExecutable,
 
     [Parameter(Mandatory = $true)]
-    [string]$DataDirectory
+    [string]$DataDirectory,
+
+    [string]$ExpectedAppVersion = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -69,6 +71,13 @@ try {
     $diagnostics = $diagnosticsJson | ConvertFrom-Json
     if ($null -eq $diagnostics.dataPaths) {
         throw "Diagnostics dataPaths metadata was not found."
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedAppVersion)) {
+        $actualAppVersion = $diagnostics.appVersion
+        if ($actualAppVersion -ne $ExpectedAppVersion) {
+            throw "Diagnostics appVersion was '$actualAppVersion', expected '$ExpectedAppVersion'."
+        }
     }
 
     $expectedDataPaths = @{

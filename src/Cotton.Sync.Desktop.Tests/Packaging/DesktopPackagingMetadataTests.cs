@@ -278,6 +278,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             {
                 Assert.That(smokeScript, Does.Contain("[string]$AppExecutable"));
                 Assert.That(smokeScript, Does.Contain("[string]$DataDirectory"));
+                Assert.That(smokeScript, Does.Contain("[string]$ExpectedAppVersion = \"\""));
                 Assert.That(smokeScript, Does.Contain("-ArgumentList @(\"--export-diagnostics\", \"--data-dir\", $DataDirectory)"));
                 Assert.That(smokeScript, Does.Contain("-RedirectStandardOutput $stdoutPath"));
                 Assert.That(smokeScript, Does.Contain("-RedirectStandardError $stderrPath"));
@@ -286,6 +287,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(smokeScript, Does.Contain("System.IO.Compression.ZipFile"));
                 Assert.That(smokeScript, Does.Contain("diagnostics.json"));
                 Assert.That(smokeScript, Does.Contain("ConvertFrom-Json"));
+                Assert.That(smokeScript, Does.Contain("Diagnostics appVersion was"));
                 Assert.That(smokeScript, Does.Contain("dataPaths"));
                 Assert.That(smokeScript, Does.Contain("sync-app.db"));
                 Assert.That(smokeScript, Does.Contain("sync-state.db"));
@@ -612,12 +614,18 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("-AppExecutable $installedExe"));
                 Assert.That(workflow, Does.Contain("-ExpectedIcon \"src/Cotton.Sync.Desktop/Assets/app.ico\""));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-diagnostics-export.ps1"));
+                Assert.That(workflow, Does.Contain("-ExpectedAppVersion \"${{ steps.gitversion.outputs.SemVer }}\""));
                 Assert.That(workflow, Does.Contain("unins000.exe"));
                 Assert.That(workflow, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
                 Assert.That(workflow, Does.Contain("Autostart registry value was not installed correctly."));
                 Assert.That(workflow, Does.Contain("$expectedRunValue = \"`\"$installedExe`\" --start-minimized\""));
                 Assert.That(workflow, Does.Not.Contain("Set-ItemProperty -Path $runKey -Name \"Cotton Sync\""));
                 Assert.That(workflow, Does.Contain("Installed desktop executable remained after uninstall."));
+                Assert.That(workflow, Does.Contain("Install directory was not empty after uninstall."));
+                Assert.That(workflow, Does.Contain("Windows reinstall exited with code"));
+                Assert.That(workflow, Does.Contain("Reinstalled desktop executable was not found."));
+                Assert.That(workflow, Does.Contain("Windows reinstall cleanup exited with code"));
+                Assert.That(workflow, Does.Contain("Install directory was not empty after reinstall cleanup."));
                 Assert.That(workflow, Does.Contain("Start Menu shortcut remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Start Menu uninstall shortcut remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Autostart registry value remained after uninstall."));
@@ -651,6 +659,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("-PublishDirectory $installDir"));
                 Assert.That(workflow, Does.Contain("-ExpectedIcon \"src/Cotton.Sync.Desktop/Assets/app.ico\""));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-diagnostics-export.ps1"));
+                Assert.That(workflow, Does.Contain("-ExpectedAppVersion \"${{ steps.gitversion.outputs.SemVer }}\""));
                 Assert.That(workflow, Does.Contain("Windows uninstaller was not found after upgrade."));
                 Assert.That(workflow, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
                 Assert.That(workflow, Does.Contain("Upgraded autostart registry value was not installed correctly."));
