@@ -18,3 +18,7 @@ dotnet test src/Cotton.sln --configuration Release --no-build
 dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj /p:PublishProfile=win-x64
 dotnet publish src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:PublishTrimmed=false -p:PublishReadyToRun=false
 ```
+
+## Windows Virtual Files
+
+The first public Windows release is a normal full-mirror sync client. Windows virtual files/placeholders are tracked separately and must not be treated as release-ready until the virtual-files release gate is fully closed. See `docs/windows-virtual-files-release-notes.md`.
