@@ -3008,6 +3008,45 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesIgnoresRemoteMetadataPathsAtEngineBoundary()
+        {
+            NodeFileManifestDto remote = RemoteFile(".cotton-sync/remote-placeholder.txt", HashText("remote"), sizeBytes: 1024);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(),
+                RemoteTree(remote),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+            await stateStore.InitializeAsync();
+            await stateStore.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = ".cotton-sync/remote-placeholder.txt",
+                Kind = SyncEntryKind.File,
+                RemoteFileId = remote.Id,
+                RemoteNodeId = remote.NodeId,
+                RemoteContentHash = remote.ContentHash,
+                RemoteETag = remote.ETag,
+                PlaceholderIdentity = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E],
+                PlaceholderHydrationState = SyncPlaceholderHydrationState.RemoteOnly,
+            });
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            IReadOnlyList<SyncStateEntry> entries = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.Activities, Is.Empty);
+                Assert.That(entries, Is.Empty);
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(placeholderWriter.Requests, Is.Empty);
+                Assert.That(File.Exists(Path.Combine(_root, ".cotton-sync", "remote-placeholder.txt")), Is.False);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_DoesNotLeakStateAcrossSyncPairsSharingDatabaseAndRelativePath()
         {
             LocalFileSnapshot pairALocal = LocalFile("shared.txt", "pair-a-local");
