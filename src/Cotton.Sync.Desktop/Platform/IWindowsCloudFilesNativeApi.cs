@@ -18,5 +18,7 @@ namespace Cotton.Sync.Desktop.Platform
         void TransferData(WindowsCloudFilesTransferData transfer);
 
         void AcknowledgeDehydrate(WindowsCloudFilesAckDehydrateData dehydrate);
+
+        void DehydratePlaceholder(string filePath);
     }
 }

@@ -321,6 +321,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             XElement propertyGroup = profile.Root!.Elements("PropertyGroup").Single();
             string workflow = GetDesktopWorkflow();
             string installerScript = File.ReadAllText(GetDesktopFilePath("Packaging/windows/cotton-sync.iss"));
+            string nativeApiSource = File.ReadAllText(GetDesktopFilePath(Path.Combine("Platform", "WindowsCloudFilesNativeApi.cs")));
             Type nativeApiType = typeof(WindowsCloudFilesNativeApi);
 
             Assert.Multiple(() =>
@@ -345,6 +346,10 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 AssertCloudFilesImport(nativeApiType, "CfConnectSyncRoot");
                 AssertCloudFilesImport(nativeApiType, "CfDisconnectSyncRoot");
                 AssertCloudFilesImport(nativeApiType, "CfExecute");
+                AssertCloudFilesImport(nativeApiType, "CfOpenFileWithOplock");
+                AssertCloudFilesImport(nativeApiType, "CfDehydratePlaceholder");
+                AssertCloudFilesImport(nativeApiType, "CfCloseHandle");
+                Assert.That(nativeApiSource, Does.Contain("AutoDehydrationAllowed"));
             });
         }
 
