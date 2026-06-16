@@ -3,6 +3,7 @@
 
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Platform;
+using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
 using Cotton.Files;
 
@@ -52,7 +53,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 new WindowsVirtualFilesRootSafetyPolicy(
                     folder => folder == Environment.SpecialFolder.UserProfile ? @"C:\Users\Vadim" : string.Empty,
                     () => _tempDirectory),
-                () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
+                getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
 
             RemoteFilePlaceholderUnavailableException? exception =
                 Assert.ThrowsAsync<RemoteFilePlaceholderUnavailableException>(
@@ -66,9 +67,33 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
-        public void CreatePlaceholderAsync_FailsClosedUntilNativePlaceholderCreationIsConnected()
+        public async Task CreatePlaceholderAsync_CreatesPlaceholderThroughAdapter()
         {
+            var adapter = new FakeCloudFilesAdapter();
             var writer = new DesktopCloudFilesPlaceholderWriter(
+                cloudFilesAdapter: adapter,
+                getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
+
+            RemoteFilePlaceholderResult result = await writer.CreatePlaceholderAsync(CreateRequest(_tempDirectory));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(adapter.Requests, Has.Count.EqualTo(1));
+                Assert.That(adapter.Requests[0].RelativePath, Is.EqualTo("remote-only.txt"));
+                Assert.That(result.PlaceholderIdentity, Is.EqualTo(adapter.PlaceholderIdentity));
+                Assert.That(result.HydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+            });
+        }
+
+        [Test]
+        public void CreatePlaceholderAsync_ReportsAdapterFailureAsPlaceholderUnavailable()
+        {
+            var adapter = new FakeCloudFilesAdapter
+            {
+                Exception = new WindowsCloudFilesNativeException("CfCreatePlaceholders", unchecked((int)0x8007017C)),
+            };
+            var writer = new DesktopCloudFilesPlaceholderWriter(
+                cloudFilesAdapter: adapter,
                 getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
 
             RemoteFilePlaceholderUnavailableException? exception =
@@ -77,8 +102,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             Assert.Multiple(() =>
             {
+                Assert.That(adapter.Requests, Has.Count.EqualTo(1));
                 Assert.That(exception?.RelativePath, Is.EqualTo("remote-only.txt"));
-                Assert.That(exception?.Reason, Does.Contain("not connected yet"));
+                Assert.That(exception?.Reason, Does.Contain("CfCreatePlaceholders"));
             });
         }
 
@@ -105,6 +131,26 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     UpdatedAt = DateTime.UtcNow,
                     Metadata = new Dictionary<string, string> { ["relativePath"] = "remote-only.txt" },
                 });
+        }
+
+        private sealed class FakeCloudFilesAdapter : IWindowsCloudFilesAdapter
+        {
+            public byte[] PlaceholderIdentity { get; } = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E];
+
+            public List<RemoteFilePlaceholderRequest> Requests { get; } = [];
+
+            public Exception? Exception { get; set; }
+
+            public RemoteFilePlaceholderResult CreateFilePlaceholder(RemoteFilePlaceholderRequest request)
+            {
+                Requests.Add(request);
+                if (Exception is not null)
+                {
+                    throw Exception;
+                }
+
+                return new RemoteFilePlaceholderResult(PlaceholderIdentity);
+            }
         }
     }
 }
