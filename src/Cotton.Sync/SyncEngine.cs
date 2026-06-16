@@ -921,6 +921,13 @@ namespace Cotton.Sync
                 && remote is not null
                 && IsRemoteOnlyPlaceholderBaseline(syncPair, state))
             {
+                if (remoteChanged)
+                {
+                    await MaterializeRemoteOnlyFileAsync(syncPair, options, result, relativePath, remote.File, cancellationToken)
+                        .ConfigureAwait(false);
+                    return;
+                }
+
                 Report(
                     result,
                     options,
