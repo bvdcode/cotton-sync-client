@@ -138,8 +138,20 @@ namespace Cotton.Sync.Desktop.ViewModels
         public SyncPairMode Mode
         {
             get => _mode;
-            set => SetProperty(ref _mode, value);
+            set
+            {
+                if (SetProperty(ref _mode, value))
+                {
+                    OnPropertyChanged(nameof(ModeLabel));
+                }
+            }
         }
+
+        public string ModeLabel => Mode switch
+        {
+            SyncPairMode.WindowsVirtualFiles => "Windows virtual files",
+            _ => "Full mirror",
+        };
 
         public DateTime? LastSyncedAtUtc
         {

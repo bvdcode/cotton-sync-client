@@ -180,7 +180,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(CountOccurrences(foldersSection, "Classes=\"inlineChange\""), Is.Zero);
                 Assert.That(CountOccurrences(foldersSection, "ToolTip.Tip=\"Open local folder\""), Is.EqualTo(1));
                 Assert.That(foldersSection, Does.Not.Contain("ToolTip.Tip=\"Open selected local folder\""));
-                Assert.That(foldersSection, Does.Not.Contain("ModeLabel"));
+                Assert.That(foldersSection, Does.Contain("ModeLabel"));
                 Assert.That(foldersSection, Does.Not.Contain("SelectedSyncPair.ModeLabel"));
                 Assert.That(foldersSection, Does.Contain("materialIcons:MaterialIcon"));
                 Assert.That(foldersSection, Does.Contain("Kind=\"ContentSaveOutline\""));
