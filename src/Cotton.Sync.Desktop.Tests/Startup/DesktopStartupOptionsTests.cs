@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
+using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Startup;
 
 namespace Cotton.Sync.Desktop.Tests.Startup
@@ -365,6 +366,43 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(options.LocalRoot, Is.EqualTo("C:\\Temp\\cotton-desktop-a"));
                 Assert.That(options.SecondLocalRoot, Is.EqualTo("C:\\Temp\\cotton-desktop-b"));
                 Assert.That(options.RemotePath, Is.EqualTo("/CodexSyncQa/Desktop"));
+                Assert.That(options.SyncMode, Is.EqualTo(SyncPairMode.FullMirror));
+                Assert.That(options.SyncModeError, Is.Null);
+            });
+        }
+
+        [Test]
+        public void Parse_LoadsLiveSyncSmokeWindowsVirtualFilesMode()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--live-sync-smoke",
+                    "--sync-mode",
+                    "windows-virtual-files",
+                ]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(options.RunLiveSyncSmoke, Is.True);
+                Assert.That(options.SyncMode, Is.EqualTo(SyncPairMode.WindowsVirtualFiles));
+                Assert.That(options.SyncModeError, Is.Null);
+            });
+        }
+
+        [Test]
+        public void Parse_ReportsInvalidLiveSyncSmokeMode()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--live-sync-smoke",
+                    "--sync-mode",
+                    "placeholder",
+                ]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(options.SyncMode, Is.EqualTo(SyncPairMode.FullMirror));
+                Assert.That(options.SyncModeError, Does.Contain("Unsupported sync mode"));
             });
         }
 
