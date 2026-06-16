@@ -5,6 +5,7 @@ using System.IO.Compression;
 using System.Text.Json;
 using Cotton.Sync.Desktop.Composition;
 using Cotton.Sync.Desktop.Diagnostics;
+using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Shell;
 
 namespace Cotton.Sync.Desktop.Tests.Diagnostics
@@ -144,7 +145,40 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
             });
         }
 
-        private static DesktopDiagnosticsBundle CreateBundle(DesktopAppPaths paths)
+        [Test]
+        public async Task ExportAsync_SerializesCloudFilesDiagnosticEvents()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            var exporter = new DesktopDiagnosticsExporter();
+            var cloudFilesEvent = new WindowsCloudFilesDiagnosticEvent(
+                DateTimeOffset.Parse("2026-06-16T10:00:00Z", System.Globalization.CultureInfo.InvariantCulture),
+                "hydrate",
+                "failed",
+                "11111111-1111-1111-1111-111111111111",
+                @"S:\CottonSync",
+                "remote-only.txt",
+                "Downloaded cloud-file content hash does not match the placeholder identity.",
+                unchecked((int)0x8007017C));
+
+            string archivePath = await exporter.ExportAsync(paths, CreateBundle(paths, [cloudFilesEvent]));
+
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
+            using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
+            JsonElement item = document.RootElement.GetProperty("cloudFilesEvents")[0];
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(item.GetProperty("operation").GetString(), Is.EqualTo("hydrate"));
+                Assert.That(item.GetProperty("status").GetString(), Is.EqualTo("failed"));
+                Assert.That(item.GetProperty("relativePath").GetString(), Is.EqualTo("remote-only.txt"));
+                Assert.That(item.GetProperty("hResult").GetInt32(), Is.EqualTo(unchecked((int)0x8007017C)));
+            });
+        }
+
+        private static DesktopDiagnosticsBundle CreateBundle(
+            DesktopAppPaths paths,
+            IReadOnlyList<WindowsCloudFilesDiagnosticEvent>? cloudFilesEvents = null)
         {
             return new DesktopDiagnosticsBundle(
                 DateTimeOffset.Parse("2026-06-03T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture),
@@ -166,7 +200,8 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                 ],
                 [
                     new DesktopSelfTestItemSnapshot("Server identity", true, "Cotton Cloud"),
-                ]);
+                ],
+                cloudFilesEvents ?? []);
         }
 
         private static string ReadEntry(ZipArchive archive, string entryName)

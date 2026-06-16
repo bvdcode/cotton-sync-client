@@ -123,17 +123,23 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 RegisterException = new WindowsCloudFilesNativeException("CfRegisterSyncRoot", unchecked((int)0x8007017C)),
             };
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi, diagnostics);
             RemoteFilePlaceholderRequest request = CreateRequest(Path.Combine(_tempDirectory, "root"), "remote-only.txt");
 
             WindowsCloudFilesNativeException? exception =
                 Assert.Throws<WindowsCloudFilesNativeException>(() => adapter.CreateFilePlaceholder(request));
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
 
             Assert.Multiple(() =>
             {
                 Assert.That(exception?.Operation, Is.EqualTo("CfRegisterSyncRoot"));
                 Assert.That(nativeApi.Registrations, Has.Count.EqualTo(1));
                 Assert.That(nativeApi.Placeholders, Is.Empty);
+                Assert.That(diagnostic.Operation, Is.EqualTo("register-sync-root"));
+                Assert.That(diagnostic.Status, Is.EqualTo("failed"));
+                Assert.That(diagnostic.SyncPairId, Is.EqualTo("11111111-1111-1111-1111-111111111111"));
+                Assert.That(diagnostic.HResult, Is.EqualTo(unchecked((int)0x8007017C)));
             });
         }
 

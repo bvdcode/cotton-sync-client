@@ -18,13 +18,16 @@ namespace Cotton.Sync.Desktop.Platform
 
         private readonly WindowsVirtualFilesRootSafetyPolicy _rootSafety;
         private readonly IWindowsCloudFilesNativeApi _nativeApi;
+        private readonly IWindowsCloudFilesDiagnostics _diagnostics;
 
         public WindowsCloudFilesAdapter(
             WindowsVirtualFilesRootSafetyPolicy? rootSafety = null,
-            IWindowsCloudFilesNativeApi? nativeApi = null)
+            IWindowsCloudFilesNativeApi? nativeApi = null,
+            IWindowsCloudFilesDiagnostics? diagnostics = null)
         {
             _rootSafety = rootSafety ?? new WindowsVirtualFilesRootSafetyPolicy();
             _nativeApi = nativeApi ?? new WindowsCloudFilesNativeApi();
+            _diagnostics = diagnostics ?? WindowsCloudFilesDiagnostics.Shared;
         }
 
         public WindowsCloudFilesSyncRootRegistration CreateRegistration(SyncPairSettings syncPair)
@@ -63,20 +66,37 @@ namespace Cotton.Sync.Desktop.Platform
             byte[] syncRootIdentity = CreateSyncRootIdentity(syncPairId, request.RemoteRootNodeId);
             byte[] fileIdentity = CreateFileIdentity(request, normalizedPath);
 
-            _nativeApi.RegisterSyncRoot(new WindowsCloudFilesNativeSyncRootRegistration(
-                safety.FullPath,
-                ProviderName,
-                ResolveProviderVersion(),
-                ProviderGuid,
-                syncRootIdentity));
+            try
+            {
+                _nativeApi.RegisterSyncRoot(new WindowsCloudFilesNativeSyncRootRegistration(
+                    safety.FullPath,
+                    ProviderName,
+                    ResolveProviderVersion(),
+                    ProviderGuid,
+                    syncRootIdentity));
+            }
+            catch (Exception exception)
+            {
+                RecordFailure("register-sync-root", request.SyncPairId, safety.FullPath, null, exception);
+                throw;
+            }
+
             Directory.CreateDirectory(placeholderPath.BaseDirectoryPath);
-            _nativeApi.CreatePlaceholder(new WindowsCloudFilesNativePlaceholder(
-                placeholderPath.BaseDirectoryPath,
-                placeholderPath.RelativeFileName,
-                fileIdentity,
-                request.RemoteFile.SizeBytes,
-                request.RemoteFile.CreatedAt,
-                request.RemoteFile.UpdatedAt));
+            try
+            {
+                _nativeApi.CreatePlaceholder(new WindowsCloudFilesNativePlaceholder(
+                    placeholderPath.BaseDirectoryPath,
+                    placeholderPath.RelativeFileName,
+                    fileIdentity,
+                    request.RemoteFile.SizeBytes,
+                    request.RemoteFile.CreatedAt,
+                    request.RemoteFile.UpdatedAt));
+            }
+            catch (Exception exception)
+            {
+                RecordFailure("create-placeholder", request.SyncPairId, safety.FullPath, normalizedPath, exception);
+                throw;
+            }
 
             return new RemoteFilePlaceholderResult(fileIdentity, SyncPlaceholderHydrationState.RemoteOnly);
         }
@@ -87,10 +107,18 @@ namespace Cotton.Sync.Desktop.Platform
         {
             ArgumentNullException.ThrowIfNull(syncPair);
             ArgumentNullException.ThrowIfNull(callbackHandler);
-            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
-            return _nativeApi.ConnectSyncRoot(new WindowsCloudFilesConnectionRequest(
-                registration.LocalRootPath,
-                callbackHandler));
+            try
+            {
+                WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
+                return _nativeApi.ConnectSyncRoot(new WindowsCloudFilesConnectionRequest(
+                    registration.LocalRootPath,
+                    callbackHandler));
+            }
+            catch (Exception exception)
+            {
+                RecordFailure("connect-sync-root", syncPair.Id.ToString(), syncPair.LocalRootPath, null, exception);
+                throw;
+            }
         }
 
         public void TransferData(WindowsCloudFilesTransferData transfer)
@@ -122,6 +150,23 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             return new PlaceholderPath(baseDirectoryPath, relativeFileName);
+        }
+
+        private void RecordFailure(
+            string operation,
+            string? syncPairId,
+            string? localRootPath,
+            string? relativePath,
+            Exception exception)
+        {
+            _diagnostics.Record(
+                operation,
+                "failed",
+                syncPairId,
+                localRootPath,
+                relativePath,
+                exception.Message,
+                exception is WindowsCloudFilesNativeException nativeException ? nativeException.HResult : null);
         }
 
         private static bool IsSamePathOrChild(string candidatePath, string rootPath)

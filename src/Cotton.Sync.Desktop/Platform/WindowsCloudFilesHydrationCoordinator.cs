@@ -11,15 +11,18 @@ namespace Cotton.Sync.Desktop.Platform
 
         private readonly IWindowsCloudFilesRemoteContentProvider _contentProvider;
         private readonly IWindowsCloudFilesNativeApi _nativeApi;
+        private readonly IWindowsCloudFilesDiagnostics _diagnostics;
         private readonly string _tempDirectory;
 
         public WindowsCloudFilesHydrationCoordinator(
             IWindowsCloudFilesRemoteContentProvider contentProvider,
             IWindowsCloudFilesNativeApi nativeApi,
-            string? tempDirectory = null)
+            string? tempDirectory = null,
+            IWindowsCloudFilesDiagnostics? diagnostics = null)
         {
             _contentProvider = contentProvider ?? throw new ArgumentNullException(nameof(contentProvider));
             _nativeApi = nativeApi ?? throw new ArgumentNullException(nameof(nativeApi));
+            _diagnostics = diagnostics ?? WindowsCloudFilesDiagnostics.Shared;
             _tempDirectory = string.IsNullOrWhiteSpace(tempDirectory)
                 ? Path.Combine(Path.GetTempPath(), "CottonSyncCloudFiles")
                 : tempDirectory;
@@ -30,11 +33,12 @@ namespace Cotton.Sync.Desktop.Platform
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(request);
-            WindowsCloudFilesPlaceholderIdentity identity = WindowsCloudFilesPlaceholderIdentity.Parse(request.FileIdentity);
+            WindowsCloudFilesPlaceholderIdentity? identity = null;
             string tempPath = CreateTempPath();
 
             try
             {
+                identity = WindowsCloudFilesPlaceholderIdentity.Parse(request.FileIdentity);
                 Directory.CreateDirectory(Path.GetDirectoryName(tempPath)!);
                 await using var stream = new FileStream(
                     tempPath,
@@ -52,8 +56,15 @@ namespace Cotton.Sync.Desktop.Platform
             {
                 throw;
             }
-            catch
+            catch (Exception exception)
             {
+                _diagnostics.Record(
+                    "hydrate",
+                    "failed",
+                    identity?.SyncPairId.ToString(),
+                    null,
+                    identity?.RelativePath ?? request.NormalizedPath,
+                    exception.Message);
                 _nativeApi.TransferData(WindowsCloudFilesTransferData.Failure(request));
             }
             finally

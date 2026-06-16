@@ -856,7 +856,8 @@ namespace Cotton.Sync.Desktop.Shell
                 _host is null ? "Signed out" : preferences.RememberedUsername ?? "Signed in",
                 CreateDataPathSnapshot(),
                 await BuildSyncPairSnapshotsAsync(syncPairs, cancellationToken).ConfigureAwait(false),
-                selfTest.Items);
+                selfTest.Items,
+                WindowsCloudFilesDiagnostics.Shared.Snapshot());
             return await _diagnosticsExporter.ExportAsync(_paths, bundle, cancellationToken).ConfigureAwait(false);
         }
 
