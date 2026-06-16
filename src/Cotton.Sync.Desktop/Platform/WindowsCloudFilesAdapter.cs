@@ -20,6 +20,8 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly IWindowsCloudFilesNativeApi _nativeApi;
         private readonly IWindowsCloudFilesDiagnostics _diagnostics;
         private readonly Func<string, bool> _isReparsePoint;
+        private readonly object _registrationGate = new();
+        private readonly HashSet<string> _registeredRootPaths = new(StringComparer.OrdinalIgnoreCase);
 
         public WindowsCloudFilesAdapter(
             WindowsVirtualFilesRootSafetyPolicy? rootSafety = null,
@@ -70,20 +72,7 @@ namespace Cotton.Sync.Desktop.Platform
             byte[] syncRootIdentity = CreateSyncRootIdentity(syncPairId, request.RemoteRootNodeId);
             byte[] fileIdentity = CreateFileIdentity(request, normalizedPath);
 
-            try
-            {
-                _nativeApi.RegisterSyncRoot(new WindowsCloudFilesNativeSyncRootRegistration(
-                    safety.FullPath,
-                    ProviderName,
-                    ResolveProviderVersion(),
-                    ProviderGuid,
-                    syncRootIdentity));
-            }
-            catch (Exception exception)
-            {
-                RecordFailure("register-sync-root", request.SyncPairId, safety.FullPath, null, exception);
-                throw;
-            }
+            EnsureSyncRootRegistered(request.SyncPairId, safety.FullPath, syncRootIdentity);
 
             Directory.CreateDirectory(placeholderPath.BaseDirectoryPath);
             try
@@ -119,6 +108,10 @@ namespace Cotton.Sync.Desktop.Platform
                     registration.LocalRootPath,
                     null,
                     "Windows Cloud Files sync root was unregistered.");
+                lock (_registrationGate)
+                {
+                    _registeredRootPaths.Remove(registration.LocalRootPath);
+                }
             }
             catch (Exception exception)
             {
@@ -154,6 +147,36 @@ namespace Cotton.Sync.Desktop.Platform
                 if ((Directory.Exists(current) || File.Exists(current)) && _isReparsePoint(current))
                 {
                     throw new InvalidOperationException("Virtual-files placeholder path cannot traverse a reparse point.");
+                }
+            }
+        }
+
+        private void EnsureSyncRootRegistered(
+            string syncPairId,
+            string localRootPath,
+            byte[] syncRootIdentity)
+        {
+            lock (_registrationGate)
+            {
+                if (_registeredRootPaths.Contains(localRootPath))
+                {
+                    return;
+                }
+
+                try
+                {
+                    _nativeApi.RegisterSyncRoot(new WindowsCloudFilesNativeSyncRootRegistration(
+                        localRootPath,
+                        ProviderName,
+                        ResolveProviderVersion(),
+                        ProviderGuid,
+                        syncRootIdentity));
+                    _registeredRootPaths.Add(localRootPath);
+                }
+                catch (Exception exception)
+                {
+                    RecordFailure("register-sync-root", syncPairId, localRootPath, null, exception);
+                    throw;
                 }
             }
         }

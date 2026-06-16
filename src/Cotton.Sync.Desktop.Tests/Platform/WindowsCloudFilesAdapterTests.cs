@@ -64,6 +64,43 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void CreateFilePlaceholder_RegistersSyncRootOncePerAdapterForSameRoot()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            string root = Path.Combine(_tempDirectory, "root");
+
+            adapter.CreateFilePlaceholder(CreateRequest(root, "Projects/first.txt"));
+            adapter.CreateFilePlaceholder(CreateRequest(root, "Projects/second.txt"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.Registrations, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.Placeholders.Select(static placeholder => placeholder.RelativeFileName), Is.EqualTo(new[] { "first.txt", "second.txt" }));
+            });
+        }
+
+        [Test]
+        public void UnregisterSyncRoot_ClearsRegistrationCacheForFuturePlaceholderCreation()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            string root = Path.Combine(_tempDirectory, "root");
+            SyncPairSettings syncPair = CreateSyncPair(root);
+
+            adapter.CreateFilePlaceholder(CreateRequest(root, "Projects/first.txt"));
+            adapter.UnregisterSyncRoot(syncPair);
+            adapter.CreateFilePlaceholder(CreateRequest(root, "Projects/second.txt"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.UnregisteredRoots, Is.EqualTo(new[] { Path.GetFullPath(root) }));
+                Assert.That(nativeApi.Registrations, Has.Count.EqualTo(2));
+                Assert.That(nativeApi.Placeholders, Has.Count.EqualTo(2));
+            });
+        }
+
+        [Test]
         public void CreateFilePlaceholder_RejectsDotSegmentsBeforeNativeCalls()
         {
             var nativeApi = new FakeCloudFilesNativeApi();

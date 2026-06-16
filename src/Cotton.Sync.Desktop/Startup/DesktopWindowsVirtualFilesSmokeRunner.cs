@@ -6,6 +6,7 @@ using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Composition;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.VirtualFiles;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -16,6 +17,8 @@ namespace Cotton.Sync.Desktop.Startup
         private const string DefaultSmokeRoot = @"S:\CottonSyncVfsQa\root";
         private const string AllowedSmokeRoot = @"S:\CottonSyncVfsQa";
         private const string RelativePlaceholderPath = "remote-only-smoke.txt";
+        private const string LargeTreeDirectoryName = "large-tree";
+        private const int LargeTreePlaceholderCount = 10_000;
         private const string SmokeContentText = "Cotton Sync Windows virtual files smoke content\n";
 
         public static async Task<int> RunAsync(
@@ -54,7 +57,8 @@ namespace Cotton.Sync.Desktop.Startup
             string phase = (startupOptions.WindowsVirtualFilesSmokePhase ?? string.Empty).Trim().ToLowerInvariant();
             bool leaveRegistered = string.Equals(phase, "leave-registered", StringComparison.Ordinal);
             bool reconnectExisting = string.Equals(phase, "reconnect-existing", StringComparison.Ordinal);
-            if (!string.IsNullOrEmpty(phase) && !leaveRegistered && !reconnectExisting)
+            bool largeTree = string.Equals(phase, "large-tree", StringComparison.Ordinal);
+            if (!string.IsNullOrEmpty(phase) && !leaveRegistered && !reconnectExisting && !largeTree)
             {
                 await output.WriteLineAsync(FormatCheck(false, "Unsupported Windows virtual-files smoke phase: " + phase))
                     .ConfigureAwait(false);
@@ -67,10 +71,22 @@ namespace Cotton.Sync.Desktop.Startup
                 : null;
             IWindowsCloudFilesAdapter cloudFiles = cloudFilesAdapter
                 ?? new WindowsCloudFilesAdapter(nativeApi: nativeApi, diagnostics: diagnostics);
+            SyncPairSettings syncPair = CreateSyncPair(rootPath);
+            if (largeTree)
+            {
+                return await RunLargeTreeAsync(
+                    startupOptions,
+                    output,
+                    cloudFiles,
+                    syncPair,
+                    diagnostics,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
             string expectedText = Encoding.UTF8.GetString(expectedContent);
             string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
-            SyncPairSettings syncPair = CreateSyncPair(rootPath);
             RemoteFilePlaceholderRequest placeholderRequest = CreatePlaceholderRequest(
                 syncPair,
                 RelativePlaceholderPath,
@@ -272,6 +288,144 @@ namespace Cotton.Sync.Desktop.Startup
                 {
                     failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
                 }
+            }
+
+            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
+            {
+                await output.WriteLineAsync(
+                    "Diagnostic: "
+                    + item.Operation
+                    + " "
+                    + item.Status
+                    + " "
+                    + CleanSingleLine(item.Details))
+                    .ConfigureAwait(false);
+            }
+
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> RunLargeTreeAsync(
+            DesktopStartupOptions startupOptions,
+            TextWriter output,
+            IWindowsCloudFilesAdapter cloudFiles,
+            SyncPairSettings syncPair,
+            WindowsCloudFilesDiagnostics diagnostics,
+            CancellationToken cancellationToken)
+        {
+            string rootPath = syncPair.LocalRootPath;
+            string largeTreePath = Path.Combine(rootPath, LargeTreeDirectoryName);
+            byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
+            string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
+            WindowsCloudFilesConnection? connection = null;
+            int failures = 0;
+
+            try
+            {
+                TryUnregisterExistingRoot(cloudFiles, syncPair, output);
+                PrepareRoot(rootPath);
+                Directory.CreateDirectory(largeTreePath);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Isolated QA root prepared for large-tree Explorer smoke.")
+                    + " root="
+                    + rootPath)
+                    .ConfigureAwait(false);
+
+                var createTimer = Stopwatch.StartNew();
+                for (int index = 0; index < LargeTreePlaceholderCount; index++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    string relativePath = LargeTreeDirectoryName
+                        + "/file-"
+                        + index.ToString("D5", System.Globalization.CultureInfo.InvariantCulture)
+                        + ".txt";
+                    cloudFiles.CreateFilePlaceholder(CreatePlaceholderRequest(
+                        syncPair,
+                        relativePath,
+                        expectedContent.LongLength,
+                        expectedHash));
+
+                    if ((index + 1) % 1_000 == 0)
+                    {
+                        await output.WriteLineAsync(
+                            "Progress: created "
+                            + (index + 1).ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                            + " / "
+                            + LargeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                            + " placeholders.")
+                            .ConfigureAwait(false);
+                    }
+                }
+
+                createTimer.Stop();
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Large remote-only placeholder tree was created.")
+                    + " files="
+                    + LargeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                    + ", elapsedMs="
+                    + createTimer.ElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+
+                connection = cloudFiles.ConnectSyncRoot(syncPair, new NoopCloudFilesCallbackHandler());
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Cloud Files sync root connected for large-tree Explorer smoke.")
+                    + " root="
+                    + connection.LocalRootPath)
+                    .ConfigureAwait(false);
+
+                var enumerationTimer = Stopwatch.StartNew();
+                int enumeratedFiles = Directory.EnumerateFiles(largeTreePath, "*.txt", SearchOption.TopDirectoryOnly).Count();
+                enumerationTimer.Stop();
+                if (enumeratedFiles == LargeTreePlaceholderCount)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Large placeholder directory enumeration completed.")
+                        + " files="
+                        + enumeratedFiles.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                        + ", elapsedMs="
+                        + enumerationTimer.ElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Large placeholder directory enumeration returned an unexpected count.")
+                        + " expected="
+                        + LargeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                        + ", actual="
+                        + enumeratedFiles.ToString("N0", System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+
+                if (startupOptions.WindowsVirtualFilesSmokeHoldAfterPlaceholder > TimeSpan.Zero)
+                {
+                    await output.WriteLineAsync(
+                        "Holding large-tree root for "
+                        + startupOptions.WindowsVirtualFilesSmokeHoldAfterPlaceholder.TotalSeconds.ToString(
+                            "0.###",
+                            System.Globalization.CultureInfo.InvariantCulture)
+                        + " seconds; inspect "
+                        + largeTreePath
+                        + " in Explorer before cleanup starts.")
+                        .ConfigureAwait(false);
+                    await Task
+                        .Delay(startupOptions.WindowsVirtualFilesSmokeHoldAfterPlaceholder, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                failures++;
+                await output.WriteLineAsync(
+                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                connection?.Dispose();
+                failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
             }
 
             foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
