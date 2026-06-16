@@ -10,7 +10,12 @@ namespace Cotton.Sync.App.SyncPairs
     /// </summary>
     public partial class SyncPairSettingsValidator
     {
-        private static readonly SyncPairMode[] SupportedModes = [SyncPairMode.FullMirror];
+        private readonly SyncPairModeCapabilitySnapshot _modeCapabilities;
+
+        public SyncPairSettingsValidator(SyncPairModeCapabilitySnapshot? modeCapabilities = null)
+        {
+            _modeCapabilities = modeCapabilities ?? SyncPairModeCapabilitySnapshot.FullMirrorOnly;
+        }
 
         /// <summary>
         /// Validates a set of sync-pair settings.
@@ -28,7 +33,7 @@ namespace Cotton.Sync.App.SyncPairs
             return new SyncPairValidationResult(errors);
         }
 
-        private static void ValidateSingle(SyncPairSettings syncPair, ICollection<SyncPairValidationError> errors)
+        private void ValidateSingle(SyncPairSettings syncPair, ICollection<SyncPairValidationError> errors)
         {
             ArgumentNullException.ThrowIfNull(syncPair);
             if (syncPair.Id == Guid.Empty)
@@ -56,9 +61,14 @@ namespace Cotton.Sync.App.SyncPairs
                 Add(errors, SyncPairValidationIssue.EmptyRemoteDisplayPath, syncPair.Id, null, "Remote display path is required.");
             }
 
-            if (!SupportedModes.Contains(syncPair.Mode))
+            if (!_modeCapabilities.IsSupported(syncPair.Mode))
             {
-                Add(errors, SyncPairValidationIssue.UnsupportedMode, syncPair.Id, null, "The selected sync mode is not implemented yet.");
+                Add(
+                    errors,
+                    SyncPairValidationIssue.UnsupportedMode,
+                    syncPair.Id,
+                    null,
+                    _modeCapabilities.GetUnsupportedMessage(syncPair.Mode));
             }
         }
 

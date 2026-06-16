@@ -19,8 +19,8 @@ namespace Cotton.Sync.App.SyncPairs
         FullMirror = 1,
 
         /// <summary>
-        /// Reserves a future virtual-files mode backed by platform-specific placeholder APIs.
+        /// Uses platform-specific placeholder APIs to show remote files without eagerly downloading content.
         /// </summary>
-        VirtualFilesPlaceholder = 2,
+        WindowsVirtualFiles = 2,
     }
 }

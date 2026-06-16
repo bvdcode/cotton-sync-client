@@ -489,7 +489,7 @@ namespace Cotton.Sync.App.Tests.SyncApplication
                 periodicSync: periodicSync);
             await service.StartSyncAsync();
             SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
-            syncPair.Mode = SyncPairMode.VirtualFilesPlaceholder;
+            syncPair.Mode = SyncPairMode.WindowsVirtualFiles;
 
             SyncPairSaveResult result = await service.SaveSyncPairAsync(syncPair);
 

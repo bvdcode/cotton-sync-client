@@ -47,10 +47,10 @@ namespace Cotton.Sync.App.Tests.SyncPairs
         }
 
         [Test]
-        public void Validate_RejectsVirtualFilesPlaceholderMode()
+        public void Validate_RejectsWindowsVirtualFilesModeWhenUnsupported()
         {
             SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
-            syncPair.Mode = SyncPairMode.VirtualFilesPlaceholder;
+            syncPair.Mode = SyncPairMode.WindowsVirtualFiles;
 
             SyncPairValidationResult result = _validator.Validate([syncPair]);
 
@@ -58,6 +58,24 @@ namespace Cotton.Sync.App.Tests.SyncPairs
             {
                 Assert.That(result.IsValid, Is.False);
                 Assert.That(result.Errors.Single().Issue, Is.EqualTo(SyncPairValidationIssue.UnsupportedMode));
+                Assert.That(result.Errors.Single().Message, Does.Contain("Windows virtual files"));
+            });
+        }
+
+        [Test]
+        public void Validate_AcceptsWindowsVirtualFilesModeWhenSupported()
+        {
+            var validator = new SyncPairSettingsValidator(
+                new SyncPairModeCapabilitySnapshot(true, "Windows Cloud Files API is available."));
+            SyncPairSettings syncPair = CreatePair(@"S:\CottonSyncVfsQa\root");
+            syncPair.Mode = SyncPairMode.WindowsVirtualFiles;
+
+            SyncPairValidationResult result = validator.Validate([syncPair]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.IsValid, Is.True);
+                Assert.That(result.Errors, Is.Empty);
             });
         }
 
