@@ -147,6 +147,25 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             Assert.That(nativeApi.Transfers, Is.Empty);
         }
 
+        [Test]
+        public void HandleFetchDataAsync_DeletesTempFileWhenCanceled()
+        {
+            var provider = new PartialCanceledContentProvider(Encoding.UTF8.GetBytes("partial"));
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
+            byte[] content = Encoding.UTF8.GetBytes("cancel");
+            WindowsCloudFilesFetchDataRequest request = CreateFetchRequest(content, offset: 0, length: content.Length);
+
+            Assert.ThrowsAsync<OperationCanceledException>(() => coordinator.HandleFetchDataAsync(request));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(provider.DownloadedIdentities, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.Transfers, Is.Empty);
+                Assert.That(Directory.GetFiles(_tempDirectory), Is.Empty);
+            });
+        }
+
         private static WindowsCloudFilesFetchDataRequest CreateFetchRequest(
             byte[] content,
             long offset,
@@ -238,6 +257,28 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 DownloadedIdentities.Add(identity);
                 byte[] content = _contents.Dequeue();
                 await destination.WriteAsync(content, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        private sealed class PartialCanceledContentProvider : IWindowsCloudFilesRemoteContentProvider
+        {
+            private readonly byte[] _content;
+
+            public PartialCanceledContentProvider(byte[] content)
+            {
+                _content = content;
+            }
+
+            public List<WindowsCloudFilesPlaceholderIdentity> DownloadedIdentities { get; } = [];
+
+            public async Task DownloadAsync(
+                WindowsCloudFilesPlaceholderIdentity identity,
+                Stream destination,
+                CancellationToken cancellationToken = default)
+            {
+                DownloadedIdentities.Add(identity);
+                await destination.WriteAsync(_content, cancellationToken).ConfigureAwait(false);
+                throw new OperationCanceledException(cancellationToken);
             }
         }
 
