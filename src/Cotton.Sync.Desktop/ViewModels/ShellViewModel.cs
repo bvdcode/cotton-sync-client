@@ -42,6 +42,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private readonly DesktopFeatureFlags _featureFlags;
         private readonly ILocalFolderPicker _folderPicker;
         private readonly IDesktopNotificationService _notificationService;
+        private readonly bool _checkForUpdatesOnStartup;
         private readonly bool _notifyOnSessionRestore;
         private readonly IDesktopThemeService _themeService;
         private readonly IDesktopUiDispatcher _uiDispatcher;
@@ -83,6 +84,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private string _updateStatusText = "Not checked";
         private string _updateDetailsText = "Check GitHub release for updates.";
         private string _downloadedUpdateInstallerPath = string.Empty;
+        private Task? _startupUpdateTask;
         private string _globalStatus = "Loading";
         private bool _hasCurrentRunProgress;
         private bool _hasCurrentTransfer;
@@ -134,6 +136,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private double _currentTransferProgressValue;
         private CancellationTokenSource? _serverProbeCancellation;
         private CancellationTokenSource? _browserSignInCancellation;
+        private CancellationTokenSource? _startupUpdateCancellation;
         private ConflictRowViewModel? _selectedConflict;
         private RemoteFolderRowViewModel? _selectedRemoteFolder;
         private SyncPairRowViewModel? _selectedSyncPair;
@@ -167,12 +170,14 @@ namespace Cotton.Sync.Desktop.ViewModels
             IDesktopThemeService themeService,
             IDesktopUiDispatcher? uiDispatcher = null,
             DesktopFeatureFlags? featureFlags = null,
+            bool checkForUpdatesOnStartup = true,
             bool notifyOnSessionRestore = false)
         {
             _controller = controller ?? throw new ArgumentNullException(nameof(controller));
             _featureFlags = featureFlags ?? DesktopFeatureFlags.Default;
             _folderPicker = folderPicker ?? throw new ArgumentNullException(nameof(folderPicker));
             _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
+            _checkForUpdatesOnStartup = checkForUpdatesOnStartup;
             _notifyOnSessionRestore = notifyOnSessionRestore;
             _themeService = themeService ?? throw new ArgumentNullException(nameof(themeService));
             _uiDispatcher = uiDispatcher ?? new AvaloniaDesktopUiDispatcher();
@@ -385,6 +390,8 @@ namespace Cotton.Sync.Desktop.ViewModels
         public AsyncRelayCommand DownloadUpdateCommand { get; }
 
         public AsyncRelayCommand InstallUpdateCommand { get; }
+
+        internal Task? StartupUpdateTask => _startupUpdateTask;
 
         public string AccountName
         {
@@ -1560,6 +1567,9 @@ namespace Cotton.Sync.Desktop.ViewModels
             _browserSignInCancellation?.Cancel();
             _browserSignInCancellation?.Dispose();
             _browserSignInCancellation = null;
+            _startupUpdateCancellation?.Cancel();
+            _startupUpdateCancellation?.Dispose();
+            _startupUpdateCancellation = null;
         }
 
         public async Task InitializeAsync()
@@ -1618,6 +1628,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
                 RefreshDiagnosticsItems();
                 RaiseCommandStates();
+                BeginStartupUpdateCheck();
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -2672,6 +2683,41 @@ namespace Cotton.Sync.Desktop.ViewModels
                 () => _controller.DownloadUpdateAsync()).ConfigureAwait(true);
         }
 
+        private void BeginStartupUpdateCheck()
+        {
+            if (!_checkForUpdatesOnStartup)
+            {
+                return;
+            }
+
+            _startupUpdateCancellation?.Cancel();
+            _startupUpdateCancellation?.Dispose();
+            _startupUpdateCancellation = new CancellationTokenSource();
+            _startupUpdateTask = RunStartupUpdateCheckAsync(_startupUpdateCancellation.Token);
+        }
+
+        private async Task RunStartupUpdateCheckAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                await Task.Yield();
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                await RunUpdateActionAsync(
+                        "Checking for updates",
+                        () => _controller.DownloadUpdateAsync(cancellationToken),
+                        updateGlobalStatusOnFailure: false,
+                        notifyWhenInstallerReady: true)
+                    .ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
         private async Task InstallUpdateAsync()
         {
             string installerPath = _downloadedUpdateInstallerPath;
@@ -2697,7 +2743,9 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private async Task RunUpdateActionAsync(
             string busyStatus,
-            Func<Task<DesktopUpdateStatusSnapshot>> updateActionAsync)
+            Func<Task<DesktopUpdateStatusSnapshot>> updateActionAsync,
+            bool updateGlobalStatusOnFailure = true,
+            bool notifyWhenInstallerReady = false)
         {
             IsUpdateBusy = true;
             UpdateStatusText = busyStatus;
@@ -2706,13 +2754,21 @@ namespace Cotton.Sync.Desktop.ViewModels
                 DesktopUpdateStatusSnapshot result = await updateActionAsync().ConfigureAwait(true);
                 ApplyUpdateStatus(result);
                 AddActivity("Update", result.ReleaseUrl?.AbsoluteUri ?? string.Empty, result.Details);
+                if (notifyWhenInstallerReady && result.IsInstallerReady)
+                {
+                    ShowNativeNotification("Update ready", "Cotton Sync will install this update on next app start.");
+                }
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 string message = ResolveUpdateFailureMessage(exception);
                 UpdateStatusText = "Update failed";
                 UpdateDetailsText = message;
-                GlobalStatus = "Update failed";
+                if (updateGlobalStatusOnFailure)
+                {
+                    GlobalStatus = "Update failed";
+                }
+
                 AddActivity("Warning", "Update", message);
             }
             finally
