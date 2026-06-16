@@ -38,11 +38,17 @@ namespace Cotton.Sync.Desktop.Platform
         {
             ArgumentNullException.ThrowIfNull(request);
             WindowsCloudFilesPlaceholderIdentity? identity = null;
-            string tempPath = CreateTempPath();
+            string? tempPath = null;
 
             try
             {
                 identity = WindowsCloudFilesPlaceholderIdentity.Parse(request.FileIdentity);
+                if (await TryHandleVerifiedRangeFetchAsync(request, identity, cancellationToken).ConfigureAwait(false))
+                {
+                    return;
+                }
+
+                tempPath = CreateTempPath();
                 Directory.CreateDirectory(Path.GetDirectoryName(tempPath)!);
                 await using var stream = new FileStream(
                     tempPath,
@@ -77,7 +83,10 @@ namespace Cotton.Sync.Desktop.Platform
             }
             finally
             {
-                TryDeleteTempFile(tempPath);
+                if (tempPath is not null)
+                {
+                    TryDeleteTempFile(tempPath);
+                }
             }
         }
 
@@ -165,6 +174,61 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
+        private async Task<bool> TryHandleVerifiedRangeFetchAsync(
+            WindowsCloudFilesFetchDataRequest request,
+            WindowsCloudFilesPlaceholderIdentity identity,
+            CancellationToken cancellationToken)
+        {
+            if (_contentProvider is not IWindowsCloudFilesVerifiedRangeContentProvider rangeProvider)
+            {
+                return false;
+            }
+
+            long fileSize = ResolveExpectedFileSize(request, identity);
+            long start = Math.Max(0, request.RequiredOffset);
+            long end = ResolveRequestedEnd(request, fileSize);
+            if (start > fileSize || end < start)
+            {
+                throw new InvalidOperationException("Cloud-file hydration requested an invalid data range.");
+            }
+
+            long length = end - start;
+            if (length == 0 || RequestedRangeCoversFullFile(request, fileSize))
+            {
+                return false;
+            }
+
+            string tempPath = CreateTempPath();
+            Directory.CreateDirectory(Path.GetDirectoryName(tempPath)!);
+            try
+            {
+                await using var stream = new FileStream(
+                    tempPath,
+                    FileMode.CreateNew,
+                    FileAccess.ReadWrite,
+                    FileShare.None,
+                    TransferBufferSize,
+                    FileOptions.Asynchronous | FileOptions.SequentialScan | FileOptions.DeleteOnClose);
+
+                IProgress<SyncTransferProgress>? transferProgress = _transferProgressFactory(identity.SyncPairId);
+                await rangeProvider
+                    .DownloadVerifiedRangeAsync(identity, stream, start, length, transferProgress, cancellationToken)
+                    .ConfigureAwait(false);
+                if (stream.Length != length)
+                {
+                    throw new InvalidOperationException("Downloaded cloud-file range size does not match the requested range.");
+                }
+
+                await TransferStreamRangeAsync(request, stream, sourceOffset: 0, destinationOffset: start, length, cancellationToken)
+                    .ConfigureAwait(false);
+                return true;
+            }
+            finally
+            {
+                TryDeleteTempFile(tempPath);
+            }
+        }
+
         private async Task TransferRequestedRangeAsync(
             WindowsCloudFilesFetchDataRequest request,
             FileStream stream,
@@ -177,7 +241,6 @@ namespace Cotton.Sync.Desktop.Platform
                 throw new InvalidOperationException("Cloud-file hydration requested an invalid data range.");
             }
 
-            stream.Position = start;
             long remaining = end - start;
             if (remaining == 0)
             {
@@ -185,8 +248,22 @@ namespace Cotton.Sync.Desktop.Platform
                 return;
             }
 
+            await TransferStreamRangeAsync(request, stream, start, start, remaining, cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task TransferStreamRangeAsync(
+            WindowsCloudFilesFetchDataRequest request,
+            Stream stream,
+            long sourceOffset,
+            long destinationOffset,
+            long length,
+            CancellationToken cancellationToken)
+        {
+            stream.Position = sourceOffset;
+            long remaining = length;
+
             byte[] readBuffer = new byte[Math.Min(TransferBufferSize, Math.Max(1, remaining))];
-            long offset = start;
+            long offset = destinationOffset;
 
             while (remaining > 0)
             {
@@ -240,14 +317,32 @@ namespace Cotton.Sync.Desktop.Platform
             return start == 0 && end >= fileSize;
         }
 
+        private static long ResolveExpectedFileSize(
+            WindowsCloudFilesFetchDataRequest request,
+            WindowsCloudFilesPlaceholderIdentity identity)
+        {
+            if (identity.SizeBytes >= 0)
+            {
+                return identity.SizeBytes;
+            }
+
+            return request.FileSizeBytes;
+        }
+
         private static long ResolveRequestedEnd(WindowsCloudFilesFetchDataRequest request, long fileSize)
         {
+            long start = Math.Max(0, request.RequiredOffset);
             if (request.RequiredLength < 0)
             {
                 return fileSize;
             }
 
-            return Math.Min(fileSize, request.RequiredOffset + request.RequiredLength);
+            if (start >= fileSize || request.RequiredLength >= fileSize - start)
+            {
+                return fileSize;
+            }
+
+            return start + request.RequiredLength;
         }
 
         private string CreateTempPath()

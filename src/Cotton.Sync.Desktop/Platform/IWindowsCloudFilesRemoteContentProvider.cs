@@ -13,4 +13,18 @@ namespace Cotton.Sync.Desktop.Platform
             IProgress<SyncTransferProgress>? transferProgress = null,
             CancellationToken cancellationToken = default);
     }
+
+    /// <summary>
+    /// Downloads byte ranges whose integrity is already guaranteed by the remote provider.
+    /// </summary>
+    internal interface IWindowsCloudFilesVerifiedRangeContentProvider
+    {
+        Task DownloadVerifiedRangeAsync(
+            WindowsCloudFilesPlaceholderIdentity identity,
+            Stream destination,
+            long offset,
+            long length,
+            IProgress<SyncTransferProgress>? transferProgress = null,
+            CancellationToken cancellationToken = default);
+    }
 }
