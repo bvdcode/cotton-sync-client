@@ -150,6 +150,21 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public void FromStatus_PreservesWindowsVirtualFilesPlaceholderDeleteOrRenameAction()
+        {
+            const string expected =
+                "Windows virtual-files placeholder was deleted or moved locally. Restore the placeholder or delete/rename it from Cotton web before syncing.";
+            var status = new DesktopSyncStatusSnapshot(
+            [
+                new DesktopSyncPairStatusSnapshot(Guid.NewGuid(), "Error", expected),
+            ]);
+
+            string message = DesktopActionRequiredMessageResolver.FromStatus(status);
+
+            Assert.That(message, Is.EqualTo(expected));
+        }
+
+        [Test]
         public void FromStatus_NormalizesEmbeddedUploadBadRequestProblemDetails()
         {
             var status = new DesktopSyncStatusSnapshot(
