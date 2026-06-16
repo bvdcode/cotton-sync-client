@@ -4857,6 +4857,84 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
+        [Test]
+        public async Task CheckForUpdatesCommand_ShowsRetryableNetworkFailure()
+        {
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            {
+                UpdateCheckException = new HttpRequestException("firewall denied first request"),
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            await ExecuteAsync(viewModel.CheckForUpdatesCommand);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Update failed"));
+                Assert.That(viewModel.UpdateDetailsText, Is.EqualTo("Cannot reach update server. Check network or firewall and retry."));
+                Assert.That(viewModel.CanCheckForUpdates, Is.True);
+                Assert.That(viewModel.CanSyncNow, Is.True);
+            });
+        }
+
+        [Test]
+        public async Task CheckForUpdatesCommand_ShowsPublishingRaceForNotFound()
+        {
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            {
+                UpdateCheckException = new HttpRequestException(
+                    "not found",
+                    null,
+                    HttpStatusCode.NotFound),
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            await ExecuteAsync(viewModel.CheckForUpdatesCommand);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Update failed"));
+                Assert.That(
+                    viewModel.UpdateDetailsText,
+                    Is.EqualTo("Update metadata or installer was not found. Retry after the release finishes publishing."));
+                Assert.That(viewModel.CanCheckForUpdates, Is.True);
+            });
+        }
+
+        [Test]
+        public async Task DownloadUpdateCommand_ShowsRetryableHashMismatchAndKeepsDownloadAvailable()
+        {
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            {
+                UpdateCheckSnapshot = new DesktopUpdateStatusSnapshot(
+                    "0.0.1",
+                    "0.0.2",
+                    true,
+                    false,
+                    "Update 0.0.2 is available.",
+                    null,
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/sync-client-latest")),
+                UpdateDownloadException = new InvalidDataException("Downloaded update SHA-256 does not match release manifest."),
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            await ExecuteAsync(viewModel.CheckForUpdatesCommand);
+
+            await ExecuteAsync(viewModel.DownloadUpdateCommand);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Update failed"));
+                Assert.That(
+                    viewModel.UpdateDetailsText,
+                    Is.EqualTo("Downloaded update failed integrity verification. Delete the cached update and retry download."));
+                Assert.That(viewModel.IsUpdateAvailable, Is.True);
+                Assert.That(viewModel.CanDownloadUpdate, Is.True);
+            });
+        }
+
         private static async Task ExecuteAsync(AsyncRelayCommand command, object? parameter = null)
         {
             Assert.That(command.CanExecute(parameter), Is.True);
@@ -5067,6 +5145,10 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 null);
 
             public DesktopUpdateStatusSnapshot? UpdateDownloadSnapshot { get; set; }
+
+            public Exception? UpdateCheckException { get; set; }
+
+            public Exception? UpdateDownloadException { get; set; }
 
             public int CheckForUpdateCalls { get; private set; }
 
@@ -5437,6 +5519,11 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 CheckForUpdateCalls++;
+                if (UpdateCheckException is not null)
+                {
+                    throw UpdateCheckException;
+                }
+
                 return Task.FromResult(UpdateCheckSnapshot);
             }
 
@@ -5444,6 +5531,11 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 DownloadUpdateCalls++;
+                if (UpdateDownloadException is not null)
+                {
+                    throw UpdateDownloadException;
+                }
+
                 return Task.FromResult(UpdateDownloadSnapshot ?? UpdateCheckSnapshot);
             }
 

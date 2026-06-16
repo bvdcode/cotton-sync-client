@@ -5,6 +5,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Globalization;
+using System.Net;
 using System.Net.Sockets;
 using Cotton.Sync.App.Auth;
 using Cotton.Sync.App.Preferences;
@@ -2627,6 +2628,14 @@ namespace Cotton.Sync.Desktop.ViewModels
                 ApplyUpdateStatus(result);
                 AddActivity("Update", result.ReleaseUrl?.AbsoluteUri ?? string.Empty, result.Details);
             }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                string message = ResolveUpdateFailureMessage(exception);
+                UpdateStatusText = "Update failed";
+                UpdateDetailsText = message;
+                GlobalStatus = "Update failed";
+                AddActivity("Warning", "Update", message);
+            }
             finally
             {
                 IsUpdateBusy = false;
@@ -2642,6 +2651,48 @@ namespace Cotton.Sync.Desktop.ViewModels
                 ? "Update ready"
                 : status.IsUpdateAvailable ? "Update available" : "Up to date";
             UpdateDetailsText = status.Details;
+        }
+
+        private static string ResolveUpdateFailureMessage(Exception exception)
+        {
+            if (exception is HttpRequestException httpException)
+            {
+                if (httpException.StatusCode == HttpStatusCode.NotFound)
+                {
+                    return "Update metadata or installer was not found. Retry after the release finishes publishing.";
+                }
+
+                if (httpException.StatusCode == HttpStatusCode.TooManyRequests)
+                {
+                    return "GitHub is rate limiting update checks. Wait a moment and retry.";
+                }
+
+                if (httpException.StatusCode.HasValue && (int)httpException.StatusCode.Value >= 500)
+                {
+                    return "GitHub release server is unavailable. Retry later.";
+                }
+
+                return "Cannot reach update server. Check network or firewall and retry.";
+            }
+
+            if (exception is TaskCanceledException or TimeoutException)
+            {
+                return "Update check timed out. Check network or firewall and retry.";
+            }
+
+            if (exception is InvalidDataException
+                && exception.Message.Contains("SHA-256", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Downloaded update failed integrity verification. Delete the cached update and retry download.";
+            }
+
+            if (exception is InvalidDataException
+                && exception.Message.Contains("manifest", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Release manifest is invalid. Retry after the release finishes publishing.";
+            }
+
+            return DesktopActionRequiredMessageResolver.FromException(exception);
         }
 
         private string ResolveCurrentSyncPairActionRequiredMessage()
