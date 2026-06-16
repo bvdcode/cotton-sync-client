@@ -179,6 +179,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 throw new NotSupportedException();
             }
 
+            public void UnregisterSyncRoot(SyncPairSettings syncPair)
+            {
+                throw new NotSupportedException();
+            }
+
             public WindowsCloudFilesConnection ConnectSyncRoot(
                 SyncPairSettings syncPair,
                 IWindowsCloudFilesCallbackHandler callbackHandler)

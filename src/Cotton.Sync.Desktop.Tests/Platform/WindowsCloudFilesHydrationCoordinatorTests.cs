@@ -411,6 +411,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
             }
 
+            public void UnregisterSyncRoot(string localRootPath)
+            {
+                throw new NotSupportedException();
+            }
+
             public void CreatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder)
             {
             }

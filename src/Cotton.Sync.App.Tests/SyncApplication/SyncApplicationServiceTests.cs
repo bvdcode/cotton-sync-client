@@ -977,6 +977,62 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         }
 
         [Test]
+        public async Task DeleteSyncPairAsync_RunsDeletionHandlerAfterStoppingSyncCore()
+        {
+            var calls = new List<string>();
+            var store = new InMemorySyncPairSettingsStore();
+            var supervisor = new FakeSyncSupervisor(calls);
+            var localChanges = new FakeLocalChangeSyncCoordinator(calls);
+            var remoteChanges = new FakeRemoteChangeSyncCoordinator(calls);
+            var periodicSync = new FakePeriodicSyncCoordinator(calls);
+            var lifecycle = new FakeSyncCoreLifecycleComponent("cloud-files", calls);
+            var deletionHandler = new FakeSyncPairDeletionHandler(calls);
+            SyncApplicationService service = CreateService(
+                store,
+                supervisor: supervisor,
+                localChanges: localChanges,
+                remoteChanges: remoteChanges,
+                periodicSync: periodicSync,
+                syncCoreLifecycleComponents: [lifecycle],
+                syncPairDeletionHandler: deletionHandler);
+            SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
+            await service.SaveSyncPairAsync(syncPair);
+            await service.StartSyncAsync();
+
+            await service.DeleteSyncPairAsync(syncPair.Id);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(deletionHandler.DeletedPairs.Select(static pair => pair.Id), Is.EqualTo(new[] { syncPair.Id }));
+                Assert.That(calls.LastIndexOf("cloud-files:stop"), Is.LessThan(calls.IndexOf("deletion-handler:before-delete")));
+                Assert.That(calls.IndexOf("deletion-handler:before-delete"), Is.LessThan(calls.LastIndexOf("cloud-files:start")));
+            });
+        }
+
+        [Test]
+        public async Task DeleteSyncPairAsync_DoesNotDeleteSettingsWhenDeletionHandlerFails()
+        {
+            var store = new InMemorySyncPairSettingsStore();
+            var deletionHandler = new FakeSyncPairDeletionHandler([])
+            {
+                Exception = new InvalidOperationException("Cloud Files unregister failed."),
+            };
+            SyncApplicationService service = CreateService(store, syncPairDeletionHandler: deletionHandler);
+            SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
+            await service.SaveSyncPairAsync(syncPair);
+
+            InvalidOperationException? exception =
+                Assert.ThrowsAsync<InvalidOperationException>(() => service.DeleteSyncPairAsync(syncPair.Id));
+            SyncPairSettings? stillConfigured = await store.GetAsync(syncPair.Id);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception?.Message, Is.EqualTo("Cloud Files unregister failed."));
+                Assert.That(stillConfigured, Is.Not.Null);
+            });
+        }
+
+        [Test]
         public async Task DeleteSyncPairAsync_DeletesPersistedSyncState()
         {
             var store = new InMemorySyncPairSettingsStore();
@@ -1017,7 +1073,8 @@ namespace Cotton.Sync.App.Tests.SyncApplication
             IRemoteChangeSyncCoordinator? remoteChanges = null,
             IPeriodicSyncCoordinator? periodicSync = null,
             IEnumerable<ISyncCoreLifecycleComponent>? syncCoreLifecycleComponents = null,
-            ISyncStateStore? syncStateStore = null)
+            ISyncStateStore? syncStateStore = null,
+            ISyncPairDeletionHandler? syncPairDeletionHandler = null)
         {
             return new SyncApplicationService(
                 store,
@@ -1031,7 +1088,8 @@ namespace Cotton.Sync.App.Tests.SyncApplication
                 remoteChanges,
                 periodicSync,
                 syncCoreLifecycleComponents,
-                syncStateStore);
+                syncStateStore,
+                syncPairDeletionHandler: syncPairDeletionHandler);
         }
 
         private static SyncPairSettings CreatePair(string localRootPath)
@@ -1533,6 +1591,32 @@ namespace Cotton.Sync.App.Tests.SyncApplication
             {
                 StopCallCount++;
                 _calls.Add(_name + ":stop");
+                return Task.CompletedTask;
+            }
+        }
+
+        private sealed class FakeSyncPairDeletionHandler : ISyncPairDeletionHandler
+        {
+            private readonly ICollection<string> _calls;
+
+            public FakeSyncPairDeletionHandler(ICollection<string> calls)
+            {
+                _calls = calls;
+            }
+
+            public List<SyncPairSettings> DeletedPairs { get; } = [];
+
+            public Exception? Exception { get; set; }
+
+            public Task BeforeDeleteAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
+            {
+                _calls.Add("deletion-handler:before-delete");
+                DeletedPairs.Add(syncPair);
+                if (Exception is not null)
+                {
+                    throw Exception;
+                }
+
                 return Task.CompletedTask;
             }
         }

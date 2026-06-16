@@ -171,6 +171,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(foldersSection, Does.Contain("RemoveSelectedSyncPairCommand"));
                 Assert.That(foldersSection, Does.Not.Contain("CancelSelectedSyncPairEditorCommand"));
                 Assert.That(foldersSection, Does.Contain("IsRemoveSyncPairConfirmationVisible"));
+                Assert.That(foldersSection, Does.Contain("RemoveSyncPairConfirmationMessage"));
                 Assert.That(foldersSection, Does.Contain("CancelRemoveSyncPairCommand"));
                 Assert.That(foldersSection, Does.Contain("ConfirmRemoveSelectedSyncPairCommand"));
                 Assert.That(foldersSection, Does.Contain("ToolTip.Tip=\"Rename or manage sync folder\""));

@@ -168,6 +168,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 return new RemoteFilePlaceholderResult(PlaceholderIdentity);
             }
 
+            public void UnregisterSyncRoot(SyncPairSettings syncPair)
+            {
+                throw new NotSupportedException();
+            }
+
             public WindowsCloudFilesConnection ConnectSyncRoot(
                 SyncPairSettings syncPair,
                 IWindowsCloudFilesCallbackHandler callbackHandler)

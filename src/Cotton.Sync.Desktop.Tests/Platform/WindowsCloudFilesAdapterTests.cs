@@ -211,6 +211,70 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void UnregisterSyncRoot_UsesSafeRegisteredRootThroughNativeBoundary()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi, diagnostics);
+            string root = Path.Combine(_tempDirectory, "root");
+            SyncPairSettings syncPair = CreateSyncPair(root);
+
+            adapter.UnregisterSyncRoot(syncPair);
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.UnregisteredRoots, Is.EqualTo(new[] { Path.GetFullPath(root) }));
+                Assert.That(diagnostic.Operation, Is.EqualTo("unregister-sync-root"));
+                Assert.That(diagnostic.Status, Is.EqualTo("completed"));
+                Assert.That(diagnostic.SyncPairId, Is.EqualTo(syncPair.Id.ToString()));
+                Assert.That(diagnostic.LocalRootPath, Is.EqualTo(Path.GetFullPath(root)));
+            });
+        }
+
+        [Test]
+        public void UnregisterSyncRoot_RejectsUnsafeRootBeforeNativeBoundary()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+
+            InvalidOperationException? exception =
+                Assert.Throws<InvalidOperationException>(() => adapter.UnregisterSyncRoot(CreateSyncPair(@"C:\")));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception?.Message, Does.Contain("drive"));
+                Assert.That(nativeApi.UnregisteredRoots, Is.Empty);
+            });
+        }
+
+        [Test]
+        public void UnregisterSyncRoot_PropagatesNativeCloudFilesFailures()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi
+            {
+                UnregisterException = new WindowsCloudFilesNativeException("CfUnregisterSyncRoot", unchecked((int)0x8007017C)),
+            };
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi, diagnostics);
+            SyncPairSettings syncPair = CreateSyncPair(Path.Combine(_tempDirectory, "root"));
+
+            WindowsCloudFilesNativeException? exception =
+                Assert.Throws<WindowsCloudFilesNativeException>(() => adapter.UnregisterSyncRoot(syncPair));
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception?.Operation, Is.EqualTo("CfUnregisterSyncRoot"));
+                Assert.That(nativeApi.UnregisteredRoots, Has.Count.EqualTo(1));
+                Assert.That(diagnostic.Operation, Is.EqualTo("unregister-sync-root"));
+                Assert.That(diagnostic.Status, Is.EqualTo("failed"));
+                Assert.That(diagnostic.SyncPairId, Is.EqualTo(syncPair.Id.ToString()));
+                Assert.That(diagnostic.HResult, Is.EqualTo(unchecked((int)0x8007017C)));
+            });
+        }
+
+        [Test]
         public void TransferData_ForwardsToNativeBoundary()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
@@ -295,6 +359,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<WindowsCloudFilesConnectionRequest> ConnectionRequests { get; } = [];
 
+            public List<string> UnregisteredRoots { get; } = [];
+
             public List<WindowsCloudFilesConnectionKey> DisconnectedKeys { get; } = [];
 
             public List<WindowsCloudFilesTransferData> Transfers { get; } = [];
@@ -303,12 +369,23 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public Exception? RegisterException { get; set; }
 
+            public Exception? UnregisterException { get; set; }
+
             public void RegisterSyncRoot(WindowsCloudFilesNativeSyncRootRegistration registration)
             {
                 Registrations.Add(registration);
                 if (RegisterException is not null)
                 {
                     throw RegisterException;
+                }
+            }
+
+            public void UnregisterSyncRoot(string localRootPath)
+            {
+                UnregisteredRoots.Add(localRootPath);
+                if (UnregisterException is not null)
+                {
+                    throw UnregisterException;
                 }
             }
 
