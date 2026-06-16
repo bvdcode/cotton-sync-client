@@ -48,6 +48,21 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             });
         }
 
+        [Test]
+        public void Validate_AcceptsCanonicalSDriveQaRoot()
+        {
+            WindowsVirtualFilesRootSafetyPolicy policy = CreatePolicy();
+
+            WindowsVirtualFilesRootSafetyResult result = policy.Validate(@"S:\CottonSyncVfsQa\root");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.IsSafe, Is.True);
+                Assert.That(result.Issue, Is.EqualTo(WindowsVirtualFilesRootSafetyIssue.None));
+                Assert.That(result.FullPath, Is.EqualTo(@"S:\CottonSyncVfsQa\root"));
+            });
+        }
+
         [TestCase("", (int)WindowsVirtualFilesRootSafetyIssue.EmptyPath)]
         [TestCase("CottonSyncVfsQa", (int)WindowsVirtualFilesRootSafetyIssue.RelativePath)]
         [TestCase(@"C:\", (int)WindowsVirtualFilesRootSafetyIssue.DriveRoot)]
