@@ -57,6 +57,25 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void StartAsync_StopsBeforeConnectingRootsWhenCanceled()
+        {
+            SyncPairSettings syncPair = CreatePair("Virtual", @"S:\CottonVirtual", SyncPairMode.WindowsVirtualFiles);
+            var adapter = new FakeCloudFilesAdapter();
+            var coordinator = new WindowsCloudFilesSyncRootConnectionCoordinator(
+                new FakeSyncPairSettingsStore([syncPair]),
+                adapter,
+                new RecordingCallbackHandler());
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+
+            Assert.That(
+                async () => await coordinator.StartAsync(cancellation.Token),
+                Throws.InstanceOf<OperationCanceledException>());
+
+            Assert.That(adapter.ConnectedPairs, Is.Empty);
+        }
+
+        [Test]
         public void StartAsync_RollsBackConnectedRootsWhenLaterConnectFails()
         {
             SyncPairSettings first = CreatePair("First", @"S:\CottonFirst", SyncPairMode.WindowsVirtualFiles);
