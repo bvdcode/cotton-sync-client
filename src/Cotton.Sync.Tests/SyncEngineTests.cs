@@ -1205,6 +1205,62 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesPopulatesLargeRemoteTreeIncrementally()
+        {
+            const int fileCount = 1_000;
+            NodeFileManifestDto[] remoteFiles = Enumerable
+                .Range(0, fileCount)
+                .Select(index => RemoteFile(
+                    "LargeTree/file-" + index.ToString("D4", CultureInfo.InvariantCulture) + ".txt",
+                    HashText("remote-content-" + index.ToString(CultureInfo.InvariantCulture)),
+                    sizeBytes: 1024 + index))
+                .ToArray();
+            RemoteTreeSnapshot remoteTree = RemoteTree(remoteFiles);
+            remoteTree.Directories.Add(RemoteDirectory("LargeTree"));
+            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            var runProgress = new RecordingProgress<SyncRunProgress>();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(),
+                remoteTree,
+                remoteFileSynchronizer,
+                out SqliteSyncStateStore stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions
+                {
+                    RunProgress = runProgress,
+                    MaximumStoredResultActivities = fileCount + 2,
+                });
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            List<SyncRunProgress> placeholderProgress = runProgress.Values
+                .Where(progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders)
+                .ToList();
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
+                Assert.That(remoteFileSynchronizer.Uploads, Is.Empty);
+                Assert.That(placeholderWriter.Requests, Has.Count.EqualTo(fileCount));
+                Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Does.Contain("LargeTree/file-0000.txt"));
+                Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Does.Contain("LargeTree/file-0999.txt"));
+                Assert.That(result.Activities.Count(activity => activity.Kind == SyncActivityKind.PlaceholderCreated), Is.EqualTo(fileCount));
+                Assert.That(result.Activities.Count(activity => activity.Kind == SyncActivityKind.Downloaded), Is.EqualTo(1));
+                Assert.That(placeholderProgress, Has.Count.GreaterThanOrEqualTo(5));
+                Assert.That(placeholderProgress.Any(progress => progress.FilesCompleted > 0 && progress.FilesCompleted < fileCount), Is.True);
+                Assert.That(placeholderProgress.Last().FilesTotal, Is.EqualTo(fileCount));
+                Assert.That(state.Count(entry => entry.Kind == SyncEntryKind.File), Is.EqualTo(fileCount));
+                Assert.That(state.Where(entry => entry.Kind == SyncEntryKind.File), Has.All.Matches<SyncStateEntry>(
+                    entry => entry.PlaceholderHydrationState == SyncPlaceholderHydrationState.RemoteOnly
+                        && entry.PlaceholderIdentity is { Length: > 0 }
+                        && entry.LocalContentHash is null
+                        && entry.LocalSizeBytes is null));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesDoesNotFallBackToDownloadWhenPlaceholderWriterIsMissing()
         {
             NodeFileManifestDto remote = RemoteFile("remote-only.txt", HashText("remote-content"), sizeBytes: 1024);
