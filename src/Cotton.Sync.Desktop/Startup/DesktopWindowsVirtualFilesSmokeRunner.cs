@@ -58,7 +58,12 @@ namespace Cotton.Sync.Desktop.Startup
             bool leaveRegistered = string.Equals(phase, "leave-registered", StringComparison.Ordinal);
             bool reconnectExisting = string.Equals(phase, "reconnect-existing", StringComparison.Ordinal);
             bool largeTree = string.Equals(phase, "large-tree", StringComparison.Ordinal);
-            if (!string.IsNullOrEmpty(phase) && !leaveRegistered && !reconnectExisting && !largeTree)
+            bool remoteUpdateAfterDehydrate = string.Equals(phase, "remote-update-after-dehydrate", StringComparison.Ordinal);
+            if (!string.IsNullOrEmpty(phase)
+                && !leaveRegistered
+                && !reconnectExisting
+                && !largeTree
+                && !remoteUpdateAfterDehydrate)
             {
                 await output.WriteLineAsync(FormatCheck(false, "Unsupported Windows virtual-files smoke phase: " + phase))
                     .ConfigureAwait(false);
@@ -235,41 +240,122 @@ namespace Cotton.Sync.Desktop.Startup
                                 .ConfigureAwait(false);
                         }
 
-                        connection.Dispose();
-                        connection = null;
-                        int downloadsBeforeReconnect = contentProvider.DownloadCount;
-                        await output.WriteLineAsync("Disconnected Cloud Files sync root before reconnect smoke.").ConfigureAwait(false);
-
-                        connection = cloudFiles.ConnectSyncRoot(syncPair, callbackHandler);
-                        await output.WriteLineAsync(
-                            FormatCheck(true, "Cloud Files sync root reconnected after provider restart simulation.")
-                            + " root=" + connection.LocalRootPath)
-                            .ConfigureAwait(false);
-
-                        string rehydratedText = await reader(placeholderPath, cancellationToken).ConfigureAwait(false);
-                        string rehydratedHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(rehydratedText)));
-                        if (string.Equals(rehydratedText, expectedText, StringComparison.Ordinal)
-                            && string.Equals(rehydratedHash, expectedHash, StringComparison.OrdinalIgnoreCase)
-                            && contentProvider.DownloadCount == downloadsBeforeReconnect + 1)
+                        if (remoteUpdateAfterDehydrate)
                         {
-                            await output.WriteLineAsync(
-                                FormatCheck(true, "Reconnected Cloud Files callbacks hydrated the placeholder without duplicate registration.")
-                                + " sha256=" + rehydratedHash
-                                + ", downloads=" + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                                .ConfigureAwait(false);
+                            byte[] updatedContent = Encoding.UTF8.GetBytes(
+                                "Cotton Sync Windows virtual files updated smoke content\n");
+                            string updatedText = Encoding.UTF8.GetString(updatedContent);
+                            string updatedHash = Convert.ToHexStringLower(SHA256.HashData(updatedContent));
+                            int downloadsBeforeUpdate = contentProvider.DownloadCount;
+                            cloudFiles.CreateFilePlaceholder(CreatePlaceholderRequest(
+                                syncPair,
+                                RelativePlaceholderPath,
+                                updatedContent.LongLength,
+                                updatedHash));
+                            contentProvider.SetContent(updatedContent);
+
+                            var updatedInfo = new FileInfo(placeholderPath);
+                            FileAttributes updatedAttributes = updatedInfo.Attributes;
+                            if (updatedInfo.Length == updatedContent.LongLength
+                                && HasRecallOnDataAccess(updatedAttributes)
+                                && contentProvider.DownloadCount == downloadsBeforeUpdate)
+                            {
+                                await output.WriteLineAsync(
+                                    FormatCheck(true, "Remote update after dehydration refreshed placeholder metadata without downloading content.")
+                                    + " sizeBytes="
+                                    + updatedInfo.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                                    + ", attributes="
+                                    + FormatAttributes(updatedAttributes)
+                                    + ", downloads="
+                                    + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                                    .ConfigureAwait(false);
+                            }
+                            else
+                            {
+                                failures++;
+                                await output.WriteLineAsync(
+                                    FormatCheck(false, "Remote update after dehydration did not refresh placeholder metadata correctly.")
+                                    + " expectedSizeBytes="
+                                    + updatedContent.LongLength.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                                    + ", actualSizeBytes="
+                                    + updatedInfo.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                                    + ", attributes="
+                                    + FormatAttributes(updatedAttributes)
+                                    + ", downloadsBeforeUpdate="
+                                    + downloadsBeforeUpdate.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                                    + ", downloadsAfterUpdate="
+                                    + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                                    .ConfigureAwait(false);
+                            }
+
+                            string updatedHydratedText = await reader(placeholderPath, cancellationToken).ConfigureAwait(false);
+                            string updatedHydratedHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(updatedHydratedText)));
+                            if (string.Equals(updatedHydratedText, updatedText, StringComparison.Ordinal)
+                                && string.Equals(updatedHydratedHash, updatedHash, StringComparison.OrdinalIgnoreCase)
+                                && contentProvider.DownloadCount == downloadsBeforeUpdate + 1)
+                            {
+                                await output.WriteLineAsync(
+                                    FormatCheck(true, "Opening the updated dehydrated placeholder hydrated the latest remote content.")
+                                    + " sha256="
+                                    + updatedHydratedHash
+                                    + ", downloads="
+                                    + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                                    .ConfigureAwait(false);
+                            }
+                            else
+                            {
+                                failures++;
+                                await output.WriteLineAsync(
+                                    FormatCheck(false, "Opening the updated dehydrated placeholder did not hydrate the latest remote content.")
+                                    + " expectedSha256="
+                                    + updatedHash
+                                    + ", actualSha256="
+                                    + updatedHydratedHash
+                                    + ", downloadsBeforeUpdate="
+                                    + downloadsBeforeUpdate.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                                    + ", downloadsAfterHydration="
+                                    + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                                    .ConfigureAwait(false);
+                            }
                         }
                         else
                         {
-                            failures++;
+                            connection.Dispose();
+                            connection = null;
+                            int downloadsBeforeReconnect = contentProvider.DownloadCount;
+                            await output.WriteLineAsync("Disconnected Cloud Files sync root before reconnect smoke.").ConfigureAwait(false);
+
+                            connection = cloudFiles.ConnectSyncRoot(syncPair, callbackHandler);
                             await output.WriteLineAsync(
-                                FormatCheck(false, "Reconnected Cloud Files callbacks did not hydrate the placeholder correctly.")
-                                + " expectedSha256=" + expectedHash
-                                + ", actualSha256=" + rehydratedHash
-                                + ", downloadsBeforeReconnect="
-                                + downloadsBeforeReconnect.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                                + ", downloadsAfterReconnect="
-                                + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                                FormatCheck(true, "Cloud Files sync root reconnected after provider restart simulation.")
+                                + " root=" + connection.LocalRootPath)
                                 .ConfigureAwait(false);
+
+                            string rehydratedText = await reader(placeholderPath, cancellationToken).ConfigureAwait(false);
+                            string rehydratedHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(rehydratedText)));
+                            if (string.Equals(rehydratedText, expectedText, StringComparison.Ordinal)
+                                && string.Equals(rehydratedHash, expectedHash, StringComparison.OrdinalIgnoreCase)
+                                && contentProvider.DownloadCount == downloadsBeforeReconnect + 1)
+                            {
+                                await output.WriteLineAsync(
+                                    FormatCheck(true, "Reconnected Cloud Files callbacks hydrated the placeholder without duplicate registration.")
+                                    + " sha256=" + rehydratedHash
+                                    + ", downloads=" + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                                    .ConfigureAwait(false);
+                            }
+                            else
+                            {
+                                failures++;
+                                await output.WriteLineAsync(
+                                    FormatCheck(false, "Reconnected Cloud Files callbacks did not hydrate the placeholder correctly.")
+                                    + " expectedSha256=" + expectedHash
+                                    + ", actualSha256=" + rehydratedHash
+                                    + ", downloadsBeforeReconnect="
+                                    + downloadsBeforeReconnect.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                                    + ", downloadsAfterReconnect="
+                                    + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                                    .ConfigureAwait(false);
+                            }
                         }
                     }
                 }
@@ -667,7 +753,7 @@ namespace Cotton.Sync.Desktop.Startup
 
         private sealed class StaticSmokeContentProvider : IWindowsCloudFilesRemoteContentProvider
         {
-            private readonly byte[] _content;
+            private byte[] _content;
 
             public StaticSmokeContentProvider(byte[] content)
             {
@@ -675,6 +761,12 @@ namespace Cotton.Sync.Desktop.Startup
             }
 
             public int DownloadCount { get; private set; }
+
+            public void SetContent(byte[] content)
+            {
+                ArgumentNullException.ThrowIfNull(content);
+                _content = content;
+            }
 
             public async Task DownloadAsync(
                 WindowsCloudFilesPlaceholderIdentity identity,
@@ -685,18 +777,19 @@ namespace Cotton.Sync.Desktop.Startup
                 ArgumentNullException.ThrowIfNull(identity);
                 ArgumentNullException.ThrowIfNull(destination);
                 DownloadCount++;
+                byte[] content = _content;
                 transferProgress?.Report(new SyncTransferProgress(
                     SyncTransferDirection.Download,
                     identity.RelativePath,
                     0,
-                    _content.LongLength,
+                    content.LongLength,
                     isCompleted: false));
-                await destination.WriteAsync(_content, cancellationToken).ConfigureAwait(false);
+                await destination.WriteAsync(content, cancellationToken).ConfigureAwait(false);
                 transferProgress?.Report(new SyncTransferProgress(
                     SyncTransferDirection.Download,
                     identity.RelativePath,
-                    _content.LongLength,
-                    _content.LongLength,
+                    content.LongLength,
+                    content.LongLength,
                     isCompleted: true));
                 destination.Position = 0;
             }

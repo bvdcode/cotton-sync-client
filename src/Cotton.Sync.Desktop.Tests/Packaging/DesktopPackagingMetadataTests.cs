@@ -348,6 +348,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 AssertCloudFilesImport(nativeApiType, "CfExecute");
                 AssertCloudFilesImport(nativeApiType, "CfOpenFileWithOplock");
                 AssertCloudFilesImport(nativeApiType, "CfDehydratePlaceholder");
+                AssertCloudFilesImport(nativeApiType, "CfUpdatePlaceholder");
                 AssertCloudFilesImport(nativeApiType, "CfCloseHandle");
                 Assert.That(nativeApiSource, Does.Contain("AutoDehydrationAllowed"));
             });

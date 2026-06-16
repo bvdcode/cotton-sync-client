@@ -1429,6 +1429,44 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesRefreshesDehydratedPlaceholderWhenRemoteChanges()
+        {
+            Guid remoteFileId = Guid.NewGuid();
+            NodeFileManifestDto baselineRemote = RemoteFile("remote-updated.txt", HashText("old-content"), remoteFileId, sizeBytes: 1024);
+            NodeFileManifestDto changedRemote = RemoteFile("remote-updated.txt", HashText("new-content"), remoteFileId, sizeBytes: 2048);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(),
+                RemoteTree(changedRemote),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+            await InsertPlaceholderBaselineAsync(
+                stateStore,
+                "remote-updated.txt",
+                baselineRemote,
+                SyncPlaceholderHydrationState.Dehydrated);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", "remote-updated.txt");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(placeholderWriter.Requests, Has.Count.EqualTo(1));
+                Assert.That(placeholderWriter.Requests[0].RelativePath, Is.EqualTo("remote-updated.txt"));
+                Assert.That(placeholderWriter.Requests[0].RemoteFile.ContentHash, Is.EqualTo(changedRemote.ContentHash));
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.PlaceholderCreated }));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.RemoteContentHash, Is.EqualTo(changedRemote.ContentHash));
+                Assert.That(entry.RemoteSizeBytes, Is.EqualTo(changedRemote.SizeBytes));
+                Assert.That(entry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Dehydrated));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesRemovesLocalPlaceholderWhenRemoteIsDeleted()
         {
             const string relativePath = "remote-deleted-placeholder.txt";
@@ -3512,7 +3550,8 @@ namespace Cotton.Sync.Tests
         private async Task InsertPlaceholderBaselineAsync(
             SqliteSyncStateStore stateStore,
             string relativePath,
-            NodeFileManifestDto remoteFile)
+            NodeFileManifestDto remoteFile,
+            SyncPlaceholderHydrationState hydrationState = SyncPlaceholderHydrationState.RemoteOnly)
         {
             await stateStore.InitializeAsync();
             await stateStore.UpsertAsync(new SyncStateEntry
@@ -3526,7 +3565,7 @@ namespace Cotton.Sync.Tests
                 RemoteContentHash = remoteFile.ContentHash,
                 RemoteETag = remoteFile.ETag,
                 PlaceholderIdentity = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E],
-                PlaceholderHydrationState = SyncPlaceholderHydrationState.RemoteOnly,
+                PlaceholderHydrationState = hydrationState,
                 SyncedAtUtc = new DateTime(2026, 6, 2, 13, 1, 0, DateTimeKind.Utc),
             });
         }
