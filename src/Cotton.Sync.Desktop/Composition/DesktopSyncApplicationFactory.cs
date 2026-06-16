@@ -66,7 +66,18 @@ namespace Cotton.Sync.Desktop.Composition
             var remoteFileSynchronizer = new SdkRemoteFileSynchronizer(cottonClient);
             var remoteDirectorySynchronizer = new SdkRemoteDirectorySynchronizer(cottonClient.Nodes);
             var remoteChangeFeed = new RemoteChangeFeedReader(cottonClient.Sync, stateStore);
+            var cloudFilesNativeApi = new WindowsCloudFilesNativeApi();
+            var cloudFilesAdapter = new WindowsCloudFilesAdapter(nativeApi: cloudFilesNativeApi);
+            var cloudFilesHydration = new WindowsCloudFilesHydrationCoordinator(
+                new RemoteFileSynchronizerCloudFilesContentProvider(remoteFileSynchronizer),
+                cloudFilesNativeApi);
+            var cloudFilesConnections = new WindowsCloudFilesSyncRootConnectionCoordinator(
+                syncPairStore,
+                cloudFilesAdapter,
+                cloudFilesHydration,
+                _loggerFactory.CreateLogger<WindowsCloudFilesSyncRootConnectionCoordinator>());
             var remoteFilePlaceholderWriter = new DesktopCloudFilesPlaceholderWriter(
+                cloudFilesAdapter: cloudFilesAdapter,
                 logger: _loggerFactory.CreateLogger<DesktopCloudFilesPlaceholderWriter>());
             var syncEngine = new HeadlessSyncEngine(
                 new LocalFileScanner(),
@@ -128,6 +139,7 @@ namespace Cotton.Sync.Desktop.Composition
                 localChanges,
                 remoteChanges,
                 periodicSync,
+                syncCoreLifecycleComponents: [cloudFilesConnections],
                 stateStore,
                 new SyncPairSettingsValidator(DesktopCloudFilesCapabilities.CreateSyncPairModeCapabilities()),
                 logger: _loggerFactory.CreateLogger<SyncApplicationService>());

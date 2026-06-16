@@ -145,6 +145,61 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         }
 
         [Test]
+        public async Task StartSyncAsync_StartsLifecycleComponentsBeforeSyncRunners()
+        {
+            List<string> calls = [];
+            var lifecycle = new FakeSyncCoreLifecycleComponent("cloud-files", calls);
+            var supervisor = new FakeSyncSupervisor(calls);
+            var localChanges = new FakeLocalChangeSyncCoordinator(calls);
+            var remoteChanges = new FakeRemoteChangeSyncCoordinator(calls);
+            var periodicSync = new FakePeriodicSyncCoordinator(calls);
+            SyncApplicationService service = CreateService(
+                new InMemorySyncPairSettingsStore(),
+                supervisor: supervisor,
+                localChanges: localChanges,
+                remoteChanges: remoteChanges,
+                periodicSync: periodicSync,
+                syncCoreLifecycleComponents: [lifecycle]);
+
+            await service.StartSyncAsync();
+
+            Assert.That(calls, Is.EqualTo(new[]
+            {
+                "cloud-files:start",
+                "supervisor:start",
+                "local:start",
+                "remote:start",
+                "periodic:start",
+            }));
+        }
+
+        [Test]
+        public void StartSyncAsync_RollsBackLifecycleComponentsWhenStartupFails()
+        {
+            List<string> calls = [];
+            var startupError = new InvalidOperationException("Cloud Files connect failed.");
+            var lifecycle = new FakeSyncCoreLifecycleComponent("cloud-files", calls)
+            {
+                StartException = startupError,
+            };
+            var supervisor = new FakeSyncSupervisor(calls);
+            SyncApplicationService service = CreateService(
+                new InMemorySyncPairSettingsStore(),
+                supervisor: supervisor,
+                syncCoreLifecycleComponents: [lifecycle]);
+
+            InvalidOperationException error = Assert.ThrowsAsync<InvalidOperationException>(
+                () => service.StartSyncAsync())!;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(error, Is.SameAs(startupError));
+                Assert.That(supervisor.StartCallCount, Is.Zero);
+                Assert.That(calls, Is.EqualTo(new[] { "cloud-files:start" }));
+            });
+        }
+
+        [Test]
         public void StartSyncAsync_RollsBackStartedComponentsWhenRemoteStartupFails()
         {
             List<string> calls = [];
@@ -253,6 +308,38 @@ namespace Cotton.Sync.App.Tests.SyncApplication
                 Assert.That(periodicSync.StopCallCount, Is.EqualTo(1));
                 Assert.That(supervisor.StopCallCount, Is.EqualTo(1));
             });
+        }
+
+        [Test]
+        public async Task StopSyncAsync_StopsLifecycleComponentsAfterSyncRunners()
+        {
+            List<string> calls = [];
+            var lifecycle = new FakeSyncCoreLifecycleComponent("cloud-files", calls);
+            var supervisor = new FakeSyncSupervisor(calls);
+            var localChanges = new FakeLocalChangeSyncCoordinator(calls);
+            var remoteChanges = new FakeRemoteChangeSyncCoordinator(calls);
+            var periodicSync = new FakePeriodicSyncCoordinator(calls);
+            SyncApplicationService service = CreateService(
+                new InMemorySyncPairSettingsStore(),
+                supervisor: supervisor,
+                localChanges: localChanges,
+                remoteChanges: remoteChanges,
+                periodicSync: periodicSync,
+                syncCoreLifecycleComponents: [lifecycle]);
+
+            await service.StartSyncAsync();
+            calls.Clear();
+
+            await service.StopSyncAsync();
+
+            Assert.That(calls, Is.EqualTo(new[]
+            {
+                "remote:stop",
+                "periodic:stop",
+                "local:stop",
+                "supervisor:stop",
+                "cloud-files:stop",
+            }));
         }
 
         [Test]
@@ -929,6 +1016,7 @@ namespace Cotton.Sync.App.Tests.SyncApplication
             ILocalChangeSyncCoordinator? localChanges = null,
             IRemoteChangeSyncCoordinator? remoteChanges = null,
             IPeriodicSyncCoordinator? periodicSync = null,
+            IEnumerable<ISyncCoreLifecycleComponent>? syncCoreLifecycleComponents = null,
             ISyncStateStore? syncStateStore = null)
         {
             return new SyncApplicationService(
@@ -942,6 +1030,7 @@ namespace Cotton.Sync.App.Tests.SyncApplication
                 localChanges,
                 remoteChanges,
                 periodicSync,
+                syncCoreLifecycleComponents,
                 syncStateStore);
         }
 
@@ -1407,6 +1496,43 @@ namespace Cotton.Sync.App.Tests.SyncApplication
             {
                 StopCallCount++;
                 _calls?.Add("periodic:stop");
+                return Task.CompletedTask;
+            }
+        }
+
+        private class FakeSyncCoreLifecycleComponent : ISyncCoreLifecycleComponent
+        {
+            private readonly ICollection<string> _calls;
+            private readonly string _name;
+
+            public FakeSyncCoreLifecycleComponent(string name, ICollection<string> calls)
+            {
+                _name = name;
+                _calls = calls;
+            }
+
+            public Exception? StartException { get; init; }
+
+            public int StartCallCount { get; private set; }
+
+            public int StopCallCount { get; private set; }
+
+            public Task StartAsync(CancellationToken cancellationToken = default)
+            {
+                StartCallCount++;
+                _calls.Add(_name + ":start");
+                if (StartException is not null)
+                {
+                    throw StartException;
+                }
+
+                return Task.CompletedTask;
+            }
+
+            public Task StopAsync(CancellationToken cancellationToken = default)
+            {
+                StopCallCount++;
+                _calls.Add(_name + ":stop");
                 return Task.CompletedTask;
             }
         }

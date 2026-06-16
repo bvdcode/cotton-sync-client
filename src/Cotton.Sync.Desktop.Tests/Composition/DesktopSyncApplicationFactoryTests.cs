@@ -87,6 +87,21 @@ namespace Cotton.Sync.Desktop.Tests.Composition
         }
 
         [Test]
+        public async Task Create_WiresCloudFilesConnectionCoordinatorIntoSyncCoreLifecycle()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            var factory = new DesktopSyncApplicationFactory(paths);
+
+            await using DesktopSyncApplicationHost host = factory.Create(new Uri("https://cotton.example.test/"));
+
+            object lifecycleComponents = GetPrivateFieldValue(host.App, "_syncCoreLifecycleComponents");
+
+            Assert.That(
+                lifecycleComponents,
+                Has.One.TypeOf<WindowsCloudFilesSyncRootConnectionCoordinator>());
+        }
+
+        [Test]
         public void DesktopHttpClientFactory_KeepsDnsOrderForDualStackFallback()
         {
             IPAddress[] addresses =
