@@ -80,6 +80,30 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void CreateFilePlaceholder_RejectsReparsePointAncestorsBeforeNativeCalls()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            string root = Path.Combine(_tempDirectory, "root");
+            string reparseDirectory = Path.GetFullPath(Path.Combine(root, "Projects"));
+            Directory.CreateDirectory(reparseDirectory);
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                isReparsePoint: path => string.Equals(Path.GetFullPath(path), reparseDirectory, StringComparison.OrdinalIgnoreCase));
+            RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/remote-only.txt");
+
+            InvalidOperationException? exception =
+                Assert.Throws<InvalidOperationException>(() => adapter.CreateFilePlaceholder(request));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception?.Message, Does.Contain("reparse point"));
+                Assert.That(nativeApi.Registrations, Is.Empty);
+                Assert.That(nativeApi.Placeholders, Is.Empty);
+            });
+        }
+
+        [Test]
         public void CreateFilePlaceholder_RejectsOversizedIdentityBeforeNativeCalls()
         {
             var nativeApi = new FakeCloudFilesNativeApi();

@@ -19,15 +19,18 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly WindowsVirtualFilesRootSafetyPolicy _rootSafety;
         private readonly IWindowsCloudFilesNativeApi _nativeApi;
         private readonly IWindowsCloudFilesDiagnostics _diagnostics;
+        private readonly Func<string, bool> _isReparsePoint;
 
         public WindowsCloudFilesAdapter(
             WindowsVirtualFilesRootSafetyPolicy? rootSafety = null,
             IWindowsCloudFilesNativeApi? nativeApi = null,
-            IWindowsCloudFilesDiagnostics? diagnostics = null)
+            IWindowsCloudFilesDiagnostics? diagnostics = null,
+            Func<string, bool>? isReparsePoint = null)
         {
             _rootSafety = rootSafety ?? new WindowsVirtualFilesRootSafetyPolicy();
             _nativeApi = nativeApi ?? new WindowsCloudFilesNativeApi();
             _diagnostics = diagnostics ?? WindowsCloudFilesDiagnostics.Shared;
+            _isReparsePoint = isReparsePoint ?? IsReparsePoint;
         }
 
         public WindowsCloudFilesSyncRootRegistration CreateRegistration(SyncPairSettings syncPair)
@@ -63,6 +66,7 @@ namespace Cotton.Sync.Desktop.Platform
             Guid syncPairId = ParseSyncPairId(request.SyncPairId);
             string normalizedPath = SyncPath.Normalize(request.RelativePath);
             PlaceholderPath placeholderPath = ResolvePlaceholderPath(safety.FullPath, normalizedPath);
+            EnsureNoReparsePointDescendant(safety.FullPath, placeholderPath.BaseDirectoryPath);
             byte[] syncRootIdentity = CreateSyncRootIdentity(syncPairId, request.RemoteRootNodeId);
             byte[] fileIdentity = CreateFileIdentity(request, normalizedPath);
 
@@ -99,6 +103,37 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             return new RemoteFilePlaceholderResult(fileIdentity, SyncPlaceholderHydrationState.RemoteOnly);
+        }
+
+        private void EnsureNoReparsePointDescendant(string syncRootPath, string targetDirectoryPath)
+        {
+            string root = Path.GetFullPath(syncRootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string target = Path.GetFullPath(targetDirectoryPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (string.Equals(root, target, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            string relative = Path.GetRelativePath(root, target);
+            if (relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative))
+            {
+                throw new InvalidOperationException("Virtual-files placeholder path escaped the sync root.");
+            }
+
+            string current = root;
+            foreach (string segment in relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+            {
+                if (string.IsNullOrWhiteSpace(segment) || segment is "." or "..")
+                {
+                    continue;
+                }
+
+                current = Path.Combine(current, segment);
+                if ((Directory.Exists(current) || File.Exists(current)) && _isReparsePoint(current))
+                {
+                    throw new InvalidOperationException("Virtual-files placeholder path cannot traverse a reparse point.");
+                }
+            }
         }
 
         public WindowsCloudFilesConnection ConnectSyncRoot(
@@ -186,6 +221,11 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             return parsed;
+        }
+
+        private static bool IsReparsePoint(string path)
+        {
+            return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
         }
 
         private static byte[] CreateSyncRootIdentity(Guid syncPairId, Guid remoteRootNodeId)
