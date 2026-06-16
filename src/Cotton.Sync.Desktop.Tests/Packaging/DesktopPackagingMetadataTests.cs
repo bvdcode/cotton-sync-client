@@ -833,18 +833,29 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         }
 
         [Test]
-        public void ReleaseVersioning_StartsStandaloneClientAtZeroZeroOne()
+        public void ReleaseVersioning_UsesGitVersionMainlinePatchBump()
         {
             string gitVersion = File.ReadAllText(GetRepositoryFilePath("GitVersion.yml"));
             string versionScript = File.ReadAllText(GetRepositoryFilePath(Path.Combine(".github", "scripts", "determine-version.ps1")));
+            string workflow = GetDesktopWorkflow();
+            string toolManifest = File.ReadAllText(GetRepositoryFilePath("dotnet-tools.json"));
 
             Assert.Multiple(() =>
             {
-                Assert.That(gitVersion, Does.Contain("next-version: 0.0.1"));
-                Assert.That(versionScript, Does.Contain("$nextVersion = \"0.0.1\""));
-                Assert.That(versionScript, Does.Contain("$version = $nextVersion"));
+                Assert.That(gitVersion, Does.Contain("next-version: 0.0.0"));
+                Assert.That(gitVersion, Does.Contain("strategies:"));
+                Assert.That(gitVersion, Does.Contain("- Mainline"));
+                Assert.That(gitVersion, Does.Contain("increment: Patch"));
+                Assert.That(versionScript, Does.Contain("dotnet tool restore"));
+                Assert.That(versionScript, Does.Contain("dotnet gitversion /output json"));
+                Assert.That(versionScript, Does.Contain("$gitVersion.MajorMinorPatch"));
+                Assert.That(versionScript, Does.Contain("GitVersionSemVer"));
+                Assert.That(workflow, Does.Contain("- \"dotnet-tools.json\""));
+                Assert.That(workflow, Does.Contain("- \".github/scripts/determine-version.ps1\""));
+                Assert.That(toolManifest, Does.Contain("\"gitversion.tool\""));
                 Assert.That(versionScript, Does.Not.Contain("GITHUB_RUN_NUMBER"));
                 Assert.That(versionScript, Does.Not.Contain("version-run-number-offset"));
+                Assert.That(versionScript, Does.Not.Contain("$version = $nextVersion"));
                 Assert.That(versionScript, Does.Not.Contain("0.5.0"));
             });
         }

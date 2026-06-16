@@ -1,1 +1,13 @@
-next-version: 0.0.1
+next-version: 0.0.0
+strategies:
+  - ConfiguredNextVersion
+  - Mainline
+branches:
+  main:
+    regex: ^main$
+    increment: Patch
+    label: ''
+  develop:
+    regex: ^develop$
+    increment: Minor
+    label: alpha
