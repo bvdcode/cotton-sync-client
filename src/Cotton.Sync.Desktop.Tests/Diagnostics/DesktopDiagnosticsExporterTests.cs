@@ -73,7 +73,11 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             File.WriteAllText(
                 paths.LogFilePath,
-                """Authorization: Bearer access-token {"password":"secret","refreshToken":"refresh-token"}""");
+                """
+                Authorization: Bearer access-token
+                {"password":"secret","refreshToken":"refresh-token","totpCode":"123456","twoFactorCode":"654321"}
+                https://app.cottoncloud.dev/callback?access_token=query-access&refresh_token=query-refresh
+                """);
             var exporter = new DesktopDiagnosticsExporter();
 
             string archivePath = await exporter.ExportAsync(paths, CreateBundle(paths));
@@ -85,9 +89,17 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                 Assert.That(logContent, Does.Contain("Bearer [redacted]"));
                 Assert.That(logContent, Does.Contain("""password":"[redacted]"""));
                 Assert.That(logContent, Does.Contain("""refreshToken":"[redacted]"""));
+                Assert.That(logContent, Does.Contain("""totpCode":"[redacted]"""));
+                Assert.That(logContent, Does.Contain("""twoFactorCode":"[redacted]"""));
+                Assert.That(logContent, Does.Contain("access_token=[redacted]&"));
+                Assert.That(logContent, Does.Contain("refresh_token=[redacted]"));
                 Assert.That(logContent, Does.Not.Contain("access-token"));
                 Assert.That(logContent, Does.Not.Contain("refresh-token"));
+                Assert.That(logContent, Does.Not.Contain("query-access"));
+                Assert.That(logContent, Does.Not.Contain("query-refresh"));
                 Assert.That(logContent, Does.Not.Contain("secret"));
+                Assert.That(logContent, Does.Not.Contain("123456"));
+                Assert.That(logContent, Does.Not.Contain("654321"));
             });
         }
 
