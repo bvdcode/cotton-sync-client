@@ -1511,6 +1511,7 @@ namespace Cotton.Sync
                 LocalContentHash = localContentHash,
                 LocalLastWriteUtc = localLastWriteUtc?.ToUniversalTime(),
                 LocalSizeBytes = localSizeBytes,
+                RemoteSizeBytes = remoteFile?.SizeBytes,
                 RemoteFileId = remoteFile?.Id,
                 RemoteNodeId = remoteFile?.NodeId,
                 RemoteContentHash = remoteFile?.ContentHash,
