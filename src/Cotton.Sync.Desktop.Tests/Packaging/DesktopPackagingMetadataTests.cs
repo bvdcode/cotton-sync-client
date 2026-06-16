@@ -770,9 +770,10 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             Assert.Multiple(() =>
             {
                 Assert.That(gitVersion, Does.Contain("next-version: 0.0.1"));
-                Assert.That(gitVersion, Does.Contain("version-run-number-offset: 4"));
                 Assert.That(versionScript, Does.Contain("$nextVersion = \"0.0.1\""));
-                Assert.That(versionScript, Does.Contain("version-run-number-offset"));
+                Assert.That(versionScript, Does.Contain("$version = $nextVersion"));
+                Assert.That(versionScript, Does.Not.Contain("GITHUB_RUN_NUMBER"));
+                Assert.That(versionScript, Does.Not.Contain("version-run-number-offset"));
                 Assert.That(versionScript, Does.Not.Contain("0.5.0"));
             });
         }
