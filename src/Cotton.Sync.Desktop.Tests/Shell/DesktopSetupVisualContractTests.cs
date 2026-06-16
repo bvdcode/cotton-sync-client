@@ -206,6 +206,37 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public void DashboardFolders_TruncatesLongVirtualFilesLabelsAndPaths()
+        {
+            string mainWindowXaml = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml"));
+            string foldersSection = GetSlice(
+                mainWindowXaml,
+                "<TextBlock Text=\"Folders\"",
+                "<TextBlock Text=\"Activity\"");
+            string modeAndLocalPathRow = GetSlice(
+                foldersSection,
+                "<Grid Grid.Row=\"3\"",
+                "</Grid>");
+            string remotePathRow = GetSlice(
+                foldersSection,
+                "<TextBlock Grid.Row=\"4\"",
+                "<Button Grid.Column=\"1\"");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(modeAndLocalPathRow, Does.Contain("ColumnDefinitions=\"Auto,*\""));
+                Assert.That(modeAndLocalPathRow, Does.Contain("Text=\"{Binding ModeLabel}\""));
+                Assert.That(modeAndLocalPathRow, Does.Contain("ToolTip.Tip=\"{Binding ModeLabel}\""));
+                Assert.That(modeAndLocalPathRow, Does.Contain("Text=\"{Binding LocalPath}\""));
+                Assert.That(modeAndLocalPathRow, Does.Contain("ToolTip.Tip=\"{Binding LocalPath}\""));
+                Assert.That(CountOccurrences(modeAndLocalPathRow, "TextTrimming=\"CharacterEllipsis\""), Is.EqualTo(2));
+                Assert.That(remotePathRow, Does.Contain("Text=\"{Binding RemotePath}\""));
+                Assert.That(remotePathRow, Does.Contain("ToolTip.Tip=\"{Binding RemotePath}\""));
+                Assert.That(remotePathRow, Does.Contain("TextTrimming=\"CharacterEllipsis\""));
+            });
+        }
+
+        [Test]
         public void DashboardFolders_LeavesRoomForExpandedInlineControls()
         {
             string mainWindowXaml = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml"));
