@@ -49,6 +49,7 @@ namespace Cotton.Sync.Cli.Tests
                 Assert.That(output.ToString(), Does.Contain("auth-browser"));
                 Assert.That(output.ToString(), Does.Contain("sync-once"));
                 Assert.That(output.ToString(), Does.Contain("sync-soak"));
+                Assert.That(output.ToString(), Does.Contain("sync-crud-smoke"));
                 Assert.That(error.ToString(), Is.Empty);
             });
         }
@@ -365,6 +366,90 @@ namespace Cotton.Sync.Cli.Tests
                 Assert.That(output.ToString(), Is.Empty);
                 Assert.That(error.ToString(), Does.Contain("--iterations"));
                 Assert.That(error.ToString(), Does.Contain("--duration-seconds"));
+            });
+        }
+
+        [Test]
+        public async Task RunAsync_ReturnsErrorForMissingSyncCrudSmokeSecondClientArguments()
+        {
+            string localRoot = Path.Combine(_tempDirectory, "crud-local-a");
+            using var output = new StringWriter();
+            using var error = new StringWriter();
+
+            int exitCode = await SyncCliCommandRunner.RunAsync(
+                [
+                    "sync-crud-smoke",
+                    "--server",
+                    "https://cloud.example.test/",
+                    "--username",
+                    "testuser",
+                    "--password",
+                    "testpassword",
+                    "--local-root",
+                    localRoot,
+                    "--remote-root",
+                    Guid.NewGuid().ToString("D"),
+                    "--sync-pair",
+                    Guid.NewGuid().ToString("D"),
+                    "--database",
+                    Path.Combine(_tempDirectory, "sync-state-a.db"),
+                ],
+                output,
+                error);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(2));
+                Assert.That(output.ToString(), Is.Empty);
+                Assert.That(error.ToString(), Does.Contain("--second-local-root"));
+                Assert.That(error.ToString(), Does.Contain("--second-sync-pair"));
+                Assert.That(error.ToString(), Does.Contain("--second-database"));
+            });
+        }
+
+        [Test]
+        public async Task RunAsync_ReturnsErrorForNonEmptySyncCrudSmokeLocalRoot()
+        {
+            string firstLocalRoot = Path.Combine(_tempDirectory, "crud-local-a");
+            string secondLocalRoot = Path.Combine(_tempDirectory, "crud-local-b");
+            Directory.CreateDirectory(firstLocalRoot);
+            Directory.CreateDirectory(secondLocalRoot);
+            await File.WriteAllTextAsync(Path.Combine(firstLocalRoot, "existing.txt"), "do not touch");
+            using var output = new StringWriter();
+            using var error = new StringWriter();
+
+            int exitCode = await SyncCliCommandRunner.RunAsync(
+                [
+                    "sync-crud-smoke",
+                    "--server",
+                    "https://cloud.example.test/",
+                    "--username",
+                    "testuser",
+                    "--password",
+                    "testpassword",
+                    "--local-root",
+                    firstLocalRoot,
+                    "--remote-root",
+                    Guid.NewGuid().ToString("D"),
+                    "--sync-pair",
+                    Guid.NewGuid().ToString("D"),
+                    "--database",
+                    Path.Combine(_tempDirectory, "sync-state-a.db"),
+                    "--second-local-root",
+                    secondLocalRoot,
+                    "--second-sync-pair",
+                    Guid.NewGuid().ToString("D"),
+                    "--second-database",
+                    Path.Combine(_tempDirectory, "sync-state-b.db"),
+                ],
+                output,
+                error);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(2));
+                Assert.That(output.ToString(), Is.Empty);
+                Assert.That(error.ToString(), Does.Contain("--local-root must be empty or missing"));
             });
         }
 

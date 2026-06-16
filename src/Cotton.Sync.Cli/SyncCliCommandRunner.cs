@@ -18,6 +18,7 @@ namespace Cotton.Sync.Cli
         private const string StateSummaryCommand = "state-summary";
         private const string SyncOnceCommand = "sync-once";
         private const string SyncSoakCommand = "sync-soak";
+        private const string SyncCrudSmokeCommand = "sync-crud-smoke";
         private const int SyncOnceMaxTransientAttempts = 3;
         private static readonly TimeSpan SyncOnceInitialRetryDelay = TimeSpan.FromSeconds(1);
         private static readonly TimeSpan SyncOnceMaxRetryDelay = TimeSpan.FromSeconds(15);
@@ -80,6 +81,13 @@ namespace Cotton.Sync.Cli
             if (string.Equals(command, SyncSoakCommand, StringComparison.OrdinalIgnoreCase))
             {
                 return await SyncCliSoakCommandRunner
+                    .RunAsync(args.Skip(1).ToArray(), output, error, httpClient, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (string.Equals(command, SyncCrudSmokeCommand, StringComparison.OrdinalIgnoreCase))
+            {
+                return await SyncCliCrudSmokeCommandRunner
                     .RunAsync(args.Skip(1).ToArray(), output, error, httpClient, cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -580,6 +588,14 @@ namespace Cotton.Sync.Cli
                        --second-database <path>]
                       Repeats full-mirror sync passes for one-client or two-client
                       release soak validation.
+                  sync-crud-smoke --server <url-or-host>
+                      (--username <name> (--password <password> | --password-env <name>) | --browser-login)
+                      --local-root <path> (--remote-root <node-id> | --remote-path <path>)
+                      --sync-pair <id> --database <path>
+                      --second-local-root <path> --second-sync-pair <id>
+                      --second-database <path> [--two-factor-code <code>]
+                      Runs a two-client create, download, rename, delete, and final
+                      convergence smoke against one full-mirror remote root.
                 """);
         }
     }
