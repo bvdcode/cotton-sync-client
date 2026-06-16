@@ -38,6 +38,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
             string root = Path.Combine(_tempDirectory, "root");
             RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/remote-only.txt");
+            string target = Path.GetFullPath(Path.Combine(root, "Projects", "remote-only.txt"));
 
             RemoteFilePlaceholderResult result = adapter.CreateFilePlaceholder(request);
             WindowsCloudFilesPlaceholderIdentity fileIdentity =
@@ -52,6 +53,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(nativeApi.Registrations[0].SyncRootIdentity, Is.Not.Empty);
                 Assert.That(nativeApi.Placeholders[0].BaseDirectoryPath, Is.EqualTo(Path.Combine(Path.GetFullPath(root), "Projects")));
                 Assert.That(nativeApi.Placeholders[0].RelativeFileName, Is.EqualTo("remote-only.txt"));
+                Assert.That(nativeApi.PinStates, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.PinStates[0].FilePath, Is.EqualTo(target));
+                Assert.That(nativeApi.PinStates[0].PinState, Is.EqualTo(WindowsCloudFilesPinState.Unpinned));
                 Assert.That(nativeApi.Placeholders[0].FileSizeBytes, Is.EqualTo(12));
                 Assert.That(nativeApi.Placeholders[0].FileIdentity, Is.EqualTo(result.PlaceholderIdentity));
                 Assert.That(fileIdentity.RelativePath, Is.EqualTo("Projects/remote-only.txt"));
@@ -77,6 +81,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 Assert.That(nativeApi.Registrations, Has.Count.EqualTo(1));
                 Assert.That(nativeApi.Placeholders.Select(static placeholder => placeholder.RelativeFileName), Is.EqualTo(new[] { "first.txt", "second.txt" }));
+                Assert.That(nativeApi.PinStates.Select(static pin => pin.PinState), Is.EqualTo(new[] { WindowsCloudFilesPinState.Unpinned, WindowsCloudFilesPinState.Unpinned }));
             });
         }
 
@@ -101,6 +106,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(nativeApi.Registrations, Has.Count.EqualTo(1));
                 Assert.That(nativeApi.Placeholders, Is.Empty);
                 Assert.That(nativeApi.UpdatedPlaceholders, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.PinStates, Is.Empty);
                 Assert.That(nativeApi.UpdatedPlaceholders[0].BaseDirectoryPath, Is.EqualTo(Path.Combine(Path.GetFullPath(root), "Projects")));
                 Assert.That(nativeApi.UpdatedPlaceholders[0].RelativeFileName, Is.EqualTo("remote-only.txt"));
                 Assert.That(nativeApi.UpdatedPlaceholders[0].FileIdentity, Is.EqualTo(result.PlaceholderIdentity));
@@ -423,6 +429,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<WindowsCloudFilesNativePlaceholder> UpdatedPlaceholders { get; } = [];
 
+            public List<PinStateCall> PinStates { get; } = [];
+
             public List<WindowsCloudFilesConnectionRequest> ConnectionRequests { get; } = [];
 
             public List<string> UnregisteredRoots { get; } = [];
@@ -465,6 +473,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 UpdatedPlaceholders.Add(placeholder);
             }
 
+            public void SetPinState(string filePath, WindowsCloudFilesPinState pinState)
+            {
+                PinStates.Add(new PinStateCall(filePath, pinState));
+            }
+
             public WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request)
             {
                 ConnectionRequests.Add(request);
@@ -493,6 +506,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 throw new NotSupportedException();
             }
+
+            public sealed record PinStateCall(string FilePath, WindowsCloudFilesPinState PinState);
         }
 
         private sealed class RecordingCallbackHandler : IWindowsCloudFilesCallbackHandler

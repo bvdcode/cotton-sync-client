@@ -13,6 +13,8 @@ namespace Cotton.Sync.Desktop.Platform
 
         void UpdatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder);
 
+        void SetPinState(string filePath, WindowsCloudFilesPinState pinState);
+
         WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request);
 
         void DisconnectSyncRoot(WindowsCloudFilesConnectionKey connectionKey);

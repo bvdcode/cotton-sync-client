@@ -739,6 +739,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
             }
 
+            public void SetPinState(string filePath, WindowsCloudFilesPinState pinState)
+            {
+            }
+
             public WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request)
             {
                 return new WindowsCloudFilesConnection(

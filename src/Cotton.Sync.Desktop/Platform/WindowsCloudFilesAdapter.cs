@@ -86,6 +86,7 @@ namespace Cotton.Sync.Desktop.Platform
                 placeholderPath.BaseDirectoryPath,
                 placeholderPath.RelativeFileName);
             bool updateExistingPlaceholder = File.Exists(fullPlaceholderPath) && _isReparsePoint(fullPlaceholderPath);
+            string operation = updateExistingPlaceholder ? "update-placeholder" : "create-placeholder";
             try
             {
                 if (updateExistingPlaceholder)
@@ -95,12 +96,14 @@ namespace Cotton.Sync.Desktop.Platform
                 else
                 {
                     _nativeApi.CreatePlaceholder(nativePlaceholder);
+                    operation = "set-pin-state";
+                    _nativeApi.SetPinState(fullPlaceholderPath, WindowsCloudFilesPinState.Unpinned);
                 }
             }
             catch (Exception exception)
             {
                 RecordFailure(
-                    updateExistingPlaceholder ? "update-placeholder" : "create-placeholder",
+                    operation,
                     request.SyncPairId,
                     safety.FullPath,
                     normalizedPath,
