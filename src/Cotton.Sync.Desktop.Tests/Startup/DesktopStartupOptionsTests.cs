@@ -128,6 +128,19 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void Parse_LoadsWindowsVirtualFilesSmokePhase()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--windows-virtual-files-smoke",
+                    "--vfs-smoke-phase",
+                    "reconnect-existing",
+                ]);
+
+            Assert.That(options.WindowsVirtualFilesSmokePhase, Is.EqualTo("reconnect-existing"));
+        }
+
+        [Test]
         public void Parse_LoadsVersionFlag()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(["--version"]);
