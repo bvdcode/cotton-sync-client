@@ -78,12 +78,33 @@ namespace Cotton.Sync.Desktop.Tests.Composition
 
             object supervisor = GetPrivateFieldValue(host.App, "_supervisor");
             object runnerFactory = GetPrivateFieldValue(supervisor, "_runnerFactory");
-            object remoteChangeAwareWork = GetPrivateFieldValue(runnerFactory, "_work");
+            object dehydrationWork = GetPrivateFieldValue(runnerFactory, "_work");
+            object remoteChangeAwareWork = GetPrivateFieldValue(dehydrationWork, "_inner");
             object syncEnginePairWork = GetPrivateFieldValue(remoteChangeAwareWork, "_inner");
             object syncEngine = GetPrivateFieldValue(syncEnginePairWork, "_syncEngine");
             object placeholderWriter = GetPrivateFieldValue(syncEngine, "_remoteFilePlaceholderWriter");
 
             Assert.That(placeholderWriter, Is.TypeOf<DesktopCloudFilesPlaceholderWriter>());
+        }
+
+        [Test]
+        public async Task Create_WiresWindowsVirtualFilesDehydrationBeforeRemoteChangeAcknowledgement()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            var factory = new DesktopSyncApplicationFactory(paths);
+
+            await using DesktopSyncApplicationHost host = factory.Create(new Uri("https://cotton.example.test/"));
+
+            object supervisor = GetPrivateFieldValue(host.App, "_supervisor");
+            object runnerFactory = GetPrivateFieldValue(supervisor, "_runnerFactory");
+            object pairWork = GetPrivateFieldValue(runnerFactory, "_work");
+            object inner = GetPrivateFieldValue(pairWork, "_inner");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(pairWork, Is.TypeOf<WindowsVirtualFilesDehydrationPairWork>());
+                Assert.That(inner.GetType().Name, Is.EqualTo("RemoteChangeAwareSyncPairWork"));
+            });
         }
 
         [Test]

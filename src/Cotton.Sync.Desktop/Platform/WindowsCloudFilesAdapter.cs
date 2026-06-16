@@ -165,6 +165,41 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
+        public void DehydratePlaceholder(SyncPairSettings syncPair, string relativePath)
+        {
+            ArgumentNullException.ThrowIfNull(syncPair);
+            ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
+            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
+            string normalizedPath = SyncPath.Normalize(relativePath);
+            PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
+            EnsureNoReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
+            string fullPlaceholderPath = Path.Combine(
+                placeholderPath.BaseDirectoryPath,
+                placeholderPath.RelativeFileName);
+            try
+            {
+                _nativeApi.DehydratePlaceholder(fullPlaceholderPath);
+            }
+            catch (Exception exception)
+            {
+                RecordFailure(
+                    "dehydrate-placeholder",
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    normalizedPath,
+                    exception);
+                throw;
+            }
+
+            _diagnostics.Record(
+                "dehydrate-placeholder",
+                "completed",
+                syncPair.Id.ToString(),
+                registration.LocalRootPath,
+                normalizedPath,
+                "Windows Cloud Files placeholder was dehydrated.");
+        }
+
         private void EnsureNoReparsePointDescendant(string syncRootPath, string targetDirectoryPath)
         {
             string root = Path.GetFullPath(syncRootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);

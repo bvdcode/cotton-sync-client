@@ -26,6 +26,14 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public void WatchedNotifyFilters_IncludeAttributesForCloudFilesPinState()
+        {
+            Assert.That(
+                FileSystemLocalSyncRootWatcher.WatchedNotifyFilters.HasFlag(NotifyFilters.Attributes),
+                Is.True);
+        }
+
+        [Test]
         public async Task StartAsync_RejectsMissingRoot()
         {
             string missingRoot = Path.Combine(_root, "missing");

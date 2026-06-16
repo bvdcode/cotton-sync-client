@@ -395,6 +395,30 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void DehydratePlaceholder_UsesSafeRootAndRelativePathThroughNativeBoundary()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi, diagnostics: diagnostics);
+            string root = Path.Combine(_tempDirectory, "root");
+            SyncPairSettings syncPair = CreateSyncPair(root);
+
+            adapter.DehydratePlaceholder(syncPair, "Projects/remote-only.txt");
+
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    nativeApi.DehydratedPaths,
+                    Is.EqualTo(new[] { Path.GetFullPath(Path.Combine(root, "Projects", "remote-only.txt")) }));
+                Assert.That(diagnostic.Operation, Is.EqualTo("dehydrate-placeholder"));
+                Assert.That(diagnostic.Status, Is.EqualTo("completed"));
+                Assert.That(diagnostic.SyncPairId, Is.EqualTo(syncPair.Id.ToString()));
+                Assert.That(diagnostic.RelativePath, Is.EqualTo("Projects/remote-only.txt"));
+            });
+        }
+
+        [Test]
         public void TransferData_ForwardsToNativeBoundary()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
@@ -493,6 +517,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<WindowsCloudFilesAckDehydrateData> Dehydrates { get; } = [];
 
+            public List<string> DehydratedPaths { get; } = [];
+
             public Exception? RegisterException { get; set; }
 
             public Exception? UnregisterException { get; set; }
@@ -563,7 +589,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public void DehydratePlaceholder(string filePath)
             {
-                throw new NotSupportedException();
+                DehydratedPaths.Add(filePath);
             }
 
             public sealed record PinStateCall(string FilePath, WindowsCloudFilesPinState PinState);
