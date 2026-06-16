@@ -8,5 +8,11 @@ namespace Cotton.Sync.Desktop.Platform
         void RegisterSyncRoot(WindowsCloudFilesNativeSyncRootRegistration registration);
 
         void CreatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder);
+
+        WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request);
+
+        void DisconnectSyncRoot(WindowsCloudFilesConnectionKey connectionKey);
+
+        void TransferData(WindowsCloudFilesTransferData transfer);
     }
 }

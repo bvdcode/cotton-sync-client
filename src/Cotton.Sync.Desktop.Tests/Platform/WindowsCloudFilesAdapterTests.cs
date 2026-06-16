@@ -2,6 +2,7 @@
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
 using Cotton.Files;
+using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
@@ -39,7 +40,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/remote-only.txt");
 
             RemoteFilePlaceholderResult result = adapter.CreateFilePlaceholder(request);
-            string fileIdentity = Encoding.UTF8.GetString(nativeApi.Placeholders[0].FileIdentity);
+            WindowsCloudFilesPlaceholderIdentity fileIdentity =
+                WindowsCloudFilesPlaceholderIdentity.Parse(nativeApi.Placeholders[0].FileIdentity);
 
             Assert.Multiple(() =>
             {
@@ -52,10 +54,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(nativeApi.Placeholders[0].RelativeFileName, Is.EqualTo("remote-only.txt"));
                 Assert.That(nativeApi.Placeholders[0].FileSizeBytes, Is.EqualTo(12));
                 Assert.That(nativeApi.Placeholders[0].FileIdentity, Is.EqualTo(result.PlaceholderIdentity));
-                Assert.That(fileIdentity, Does.Contain("\"relativePath\":\"Projects/remote-only.txt\""));
-                Assert.That(fileIdentity, Does.Contain("\"nodeFileId\":\"33333333-3333-3333-3333-333333333333\""));
-                Assert.That(fileIdentity, Does.Contain("\"contentHash\":\"hash\""));
-                Assert.That(fileIdentity, Does.Contain("\"eTag\":\"etag\""));
+                Assert.That(fileIdentity.RelativePath, Is.EqualTo("Projects/remote-only.txt"));
+                Assert.That(fileIdentity.NodeFileId, Is.EqualTo(Guid.Parse("33333333-3333-3333-3333-333333333333")));
+                Assert.That(fileIdentity.ContentHash, Is.EqualTo("hash"));
+                Assert.That(fileIdentity.ETag, Is.EqualTo("etag"));
                 Assert.That(result.HydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
                 Assert.That(Directory.Exists(Path.Combine(root, "Projects")), Is.True);
             });
@@ -135,11 +137,96 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             });
         }
 
+        [Test]
+        public void ConnectSyncRoot_ConnectsSafeRootThroughNativeBoundary()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            string root = Path.Combine(_tempDirectory, "root");
+            var handler = new RecordingCallbackHandler();
+
+            using WindowsCloudFilesConnection connection = adapter.ConnectSyncRoot(CreateSyncPair(root), handler);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(connection.LocalRootPath, Is.EqualTo(Path.GetFullPath(root)));
+                Assert.That(connection.ConnectionKey.Value, Is.EqualTo(42));
+                Assert.That(nativeApi.ConnectionRequests, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.ConnectionRequests[0].LocalRootPath, Is.EqualTo(Path.GetFullPath(root)));
+                Assert.That(nativeApi.ConnectionRequests[0].CallbackHandler, Is.SameAs(handler));
+                Assert.That(nativeApi.DisconnectedKeys, Is.Empty);
+            });
+
+            connection.Dispose();
+            connection.Dispose();
+
+            Assert.That(nativeApi.DisconnectedKeys, Is.EqualTo(new[] { new WindowsCloudFilesConnectionKey(42) }));
+        }
+
+        [Test]
+        public void ConnectSyncRoot_RejectsUnsafeRootBeforeNativeBoundary()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            var handler = new RecordingCallbackHandler();
+
+            InvalidOperationException? exception =
+                Assert.Throws<InvalidOperationException>(() => adapter.ConnectSyncRoot(CreateSyncPair(@"C:\"), handler));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception?.Message, Does.Contain("drive"));
+                Assert.That(nativeApi.ConnectionRequests, Is.Empty);
+            });
+        }
+
+        [Test]
+        public void TransferData_ForwardsToNativeBoundary()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            var request = new WindowsCloudFilesFetchDataRequest(
+                new WindowsCloudFilesConnectionKey(1),
+                new WindowsCloudFilesTransferKey(2),
+                new WindowsCloudFilesRequestKey(3),
+                [],
+                5,
+                0,
+                5,
+                0,
+                5,
+                null,
+                0);
+            WindowsCloudFilesTransferData transfer = WindowsCloudFilesTransferData.Success(
+                request,
+                Encoding.UTF8.GetBytes("hello"),
+                0,
+                5);
+
+            adapter.TransferData(transfer);
+
+            Assert.That(nativeApi.Transfers, Is.EqualTo(new[] { transfer }));
+        }
+
         private WindowsVirtualFilesRootSafetyPolicy CreatePolicy()
         {
             return new WindowsVirtualFilesRootSafetyPolicy(
                 _ => string.Empty,
                 () => _tempDirectory);
+        }
+
+        private static SyncPairSettings CreateSyncPair(string root)
+        {
+            return new SyncPairSettings
+            {
+                Id = Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                DisplayName = "Windows virtual files",
+                LocalRootPath = root,
+                RemoteDisplayPath = "/",
+                RemoteRootNodeId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                Mode = SyncPairMode.WindowsVirtualFiles,
+                IsEnabled = true,
+            };
         }
 
         private static RemoteFilePlaceholderRequest CreateRequest(
@@ -176,6 +263,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<WindowsCloudFilesNativePlaceholder> Placeholders { get; } = [];
 
+            public List<WindowsCloudFilesConnectionRequest> ConnectionRequests { get; } = [];
+
+            public List<WindowsCloudFilesConnectionKey> DisconnectedKeys { get; } = [];
+
+            public List<WindowsCloudFilesTransferData> Transfers { get; } = [];
+
             public Exception? RegisterException { get; set; }
 
             public void RegisterSyncRoot(WindowsCloudFilesNativeSyncRootRegistration registration)
@@ -190,6 +283,39 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public void CreatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder)
             {
                 Placeholders.Add(placeholder);
+            }
+
+            public WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request)
+            {
+                ConnectionRequests.Add(request);
+                return new WindowsCloudFilesConnection(
+                    request.LocalRootPath,
+                    new WindowsCloudFilesConnectionKey(42),
+                    DisconnectSyncRoot);
+            }
+
+            public void DisconnectSyncRoot(WindowsCloudFilesConnectionKey connectionKey)
+            {
+                DisconnectedKeys.Add(connectionKey);
+            }
+
+            public void TransferData(WindowsCloudFilesTransferData transfer)
+            {
+                Transfers.Add(transfer);
+            }
+        }
+
+        private sealed class RecordingCallbackHandler : IWindowsCloudFilesCallbackHandler
+        {
+            public Task HandleFetchDataAsync(
+                WindowsCloudFilesFetchDataRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public void CancelFetchData(WindowsCloudFilesCancelFetchDataRequest request)
+            {
             }
         }
     }
