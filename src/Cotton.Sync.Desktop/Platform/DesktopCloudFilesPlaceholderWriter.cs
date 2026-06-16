@@ -10,19 +10,19 @@ namespace Cotton.Sync.Desktop.Platform
 {
     internal sealed class DesktopCloudFilesPlaceholderWriter : IRemoteFilePlaceholderWriter
     {
-        private const string NativePlaceholderCreationPendingMessage =
-            "Windows Cloud Files placeholder creation is not connected yet. Keep this sync pair in full-mirror mode until native placeholder creation is implemented.";
-
         private readonly Func<SyncPairModeCapabilitySnapshot> _getCapabilities;
         private readonly WindowsVirtualFilesRootSafetyPolicy _rootSafety;
+        private readonly IWindowsCloudFilesAdapter _cloudFilesAdapter;
         private readonly ILogger<DesktopCloudFilesPlaceholderWriter> _logger;
 
         public DesktopCloudFilesPlaceholderWriter(
             WindowsVirtualFilesRootSafetyPolicy? rootSafety = null,
+            IWindowsCloudFilesAdapter? cloudFilesAdapter = null,
             Func<SyncPairModeCapabilitySnapshot>? getCapabilities = null,
             ILogger<DesktopCloudFilesPlaceholderWriter>? logger = null)
         {
             _rootSafety = rootSafety ?? new WindowsVirtualFilesRootSafetyPolicy();
+            _cloudFilesAdapter = cloudFilesAdapter ?? new WindowsCloudFilesAdapter(_rootSafety);
             _getCapabilities = getCapabilities ?? DesktopCloudFilesCapabilities.CreateSyncPairModeCapabilities;
             _logger = logger ?? NullLogger<DesktopCloudFilesPlaceholderWriter>.Instance;
         }
@@ -48,12 +48,27 @@ namespace Cotton.Sync.Desktop.Platform
                 throw new RemoteFilePlaceholderUnavailableException(request.RelativePath, safety.Details);
             }
 
-            _logger.LogWarning(
-                "Windows virtual-files placeholder creation is not implemented for {RelativePath}.",
-                request.RelativePath);
-            throw new RemoteFilePlaceholderUnavailableException(
-                request.RelativePath,
-                NativePlaceholderCreationPendingMessage);
+            try
+            {
+                return Task.FromResult(_cloudFilesAdapter.CreateFilePlaceholder(request));
+            }
+            catch (Exception exception) when (IsRecoverablePlaceholderFailure(exception))
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Windows Cloud Files placeholder creation failed for {RelativePath}.",
+                    request.RelativePath);
+                throw new RemoteFilePlaceholderUnavailableException(request.RelativePath, exception.Message);
+            }
+        }
+
+        private static bool IsRecoverablePlaceholderFailure(Exception exception)
+        {
+            return exception is WindowsCloudFilesNativeException
+                or InvalidOperationException
+                or ArgumentException
+                or IOException
+                or UnauthorizedAccessException;
         }
     }
 }
