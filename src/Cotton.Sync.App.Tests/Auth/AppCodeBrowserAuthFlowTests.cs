@@ -2,6 +2,7 @@
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
 using System.Net.Http;
+using System.Net.Sockets;
 using Cotton.Auth;
 using Cotton.Sdk.Auth;
 using Cotton.Sync.App.Auth;
@@ -197,6 +198,44 @@ namespace Cotton.Sync.App.Tests.Auth
                 Assert.That(authClient.StartCallCount, Is.EqualTo(3));
                 Assert.That(platformCommands.OpenWebCallCount, Is.Zero);
                 Assert.That(delays, Is.EqualTo(new[] { TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2) }));
+            });
+        }
+
+        [Test]
+        public void SignInAsync_ExplainsSocketAccessDeniedStartFailure()
+        {
+            var authClient = new FakeCottonAuthClient();
+            authClient.StartExceptions.Enqueue(new HttpRequestException(
+                "socket denied 1",
+                new SocketException(10013)));
+            authClient.StartExceptions.Enqueue(new HttpRequestException(
+                "socket denied 2",
+                new SocketException(10013)));
+            authClient.StartExceptions.Enqueue(new HttpRequestException(
+                "socket denied 3",
+                new SocketException(10013)));
+            var platformCommands = new FakePlatformCommandService();
+            var flow = new AppCodeBrowserAuthFlow(
+                authClient,
+                platformCommands,
+                (_, _) => Task.CompletedTask);
+
+            AppCodeBrowserSignInException? exception = Assert.ThrowsAsync<AppCodeBrowserSignInException>(
+                async () => await flow.SignInAsync(new AppCodeBrowserSignInRequest
+                {
+                    ApplicationName = "Cotton Sync Desktop",
+                }));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(exception!.Status, Is.EqualTo(AppCodePollStatus.Unknown));
+                Assert.That(exception.Error, Is.EqualTo("network_access_denied"));
+                Assert.That(exception.Message, Does.Contain("blocked by Windows or firewall network permissions"));
+                Assert.That(exception.Message, Does.Contain("Allow Cotton Sync network access"));
+                Assert.That(exception.InnerException, Is.TypeOf<HttpRequestException>());
+                Assert.That(authClient.StartCallCount, Is.EqualTo(3));
+                Assert.That(platformCommands.OpenWebCallCount, Is.Zero);
             });
         }
 

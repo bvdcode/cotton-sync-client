@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
+using System.Net.Sockets;
 using Cotton.Auth;
 using Cotton.Sdk.Auth;
 using Cotton.Sync.App.Platform;
@@ -104,10 +105,7 @@ namespace Cotton.Sync.App.Auth
                 {
                     if (attempt == StartSessionMaxAttempts)
                     {
-                        throw new AppCodeBrowserSignInException(
-                            AppCodePollStatus.Unknown,
-                            "Browser sign-in could not contact the server. Check network or firewall access and retry.",
-                            "network_unavailable");
+                        throw CreateStartSessionNetworkFailure(exception);
                     }
 
                     TimeSpan delay = TimeSpan.FromSeconds(attempt);
@@ -170,6 +168,39 @@ namespace Cotton.Sync.App.Auth
             }
 
             return exception is HttpRequestException or IOException or TimeoutException or TaskCanceledException;
+        }
+
+        private static AppCodeBrowserSignInException CreateStartSessionNetworkFailure(Exception exception)
+        {
+            if (ContainsSocketAccessDenied(exception))
+            {
+                return new AppCodeBrowserSignInException(
+                    AppCodePollStatus.Unknown,
+                    "Browser sign-in was blocked by Windows or firewall network permissions. Allow Cotton Sync network access and retry.",
+                    "network_access_denied",
+                    exception);
+            }
+
+            return new AppCodeBrowserSignInException(
+                AppCodePollStatus.Unknown,
+                "Browser sign-in could not contact the server. Check network or firewall access and retry.",
+                "network_unavailable",
+                exception);
+        }
+
+        private static bool ContainsSocketAccessDenied(Exception exception)
+        {
+            for (Exception? current = exception; current is not null; current = current.InnerException)
+            {
+                if (current is SocketException socketException
+                    && (socketException.SocketErrorCode == SocketError.AccessDenied
+                        || socketException.NativeErrorCode == 10013))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static AppCodeStartRequestDto ToStartRequest(AppCodeBrowserSignInRequest request)
