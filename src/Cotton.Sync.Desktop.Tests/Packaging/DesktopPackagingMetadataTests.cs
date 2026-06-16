@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Cotton.Sync.Desktop.Platform;
@@ -309,6 +311,37 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(checksumScript, Does.Contain("Get-FileHash -Algorithm SHA256"));
                 Assert.That(checksumScript, Does.Contain("Checksum mismatch"));
                 Assert.That(checksumScript, Does.Contain("No publish checksums were verified."));
+            });
+        }
+
+        [Test]
+        public void WindowsVirtualFilesPackaging_UsesOsCloudFilesApiInNonTrimmedWindowsPublish()
+        {
+            XDocument profile = XDocument.Load(GetPublishProfilePath("win-x64"));
+            XElement propertyGroup = profile.Root!.Elements("PropertyGroup").Single();
+            string workflow = GetDesktopWorkflow();
+            string installerScript = File.ReadAllText(GetDesktopFilePath("Packaging/windows/cotton-sync.iss"));
+            Type nativeApiType = typeof(WindowsCloudFilesNativeApi);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApiType.Assembly.GetName().Name, Is.EqualTo("Cotton.Sync.Desktop"));
+                Assert.That(GetProperty(propertyGroup, "RuntimeIdentifier"), Is.EqualTo("win-x64"));
+                Assert.That(GetProperty(propertyGroup, "SelfContained"), Is.EqualTo("true"));
+                Assert.That(GetProperty(propertyGroup, "UseAppHost"), Is.EqualTo("true"));
+                Assert.That(GetProperty(propertyGroup, "PublishSingleFile"), Is.EqualTo("false"));
+                Assert.That(GetProperty(propertyGroup, "PublishTrimmed"), Is.EqualTo("false"));
+                Assert.That(GetProperty(propertyGroup, "PublishReadyToRun"), Is.EqualTo("false"));
+                Assert.That(
+                    workflow,
+                    Does.Contain("dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj /p:PublishProfile=win-x64"));
+                Assert.That(installerScript, Does.Contain("Source: \"{#SourceDir}\\*\""));
+                Assert.That(installerScript, Does.Contain("recursesubdirs createallsubdirs"));
+                AssertCloudFilesImport(nativeApiType, "CfRegisterSyncRoot");
+                AssertCloudFilesImport(nativeApiType, "CfCreatePlaceholders");
+                AssertCloudFilesImport(nativeApiType, "CfConnectSyncRoot");
+                AssertCloudFilesImport(nativeApiType, "CfDisconnectSyncRoot");
+                AssertCloudFilesImport(nativeApiType, "CfExecute");
             });
         }
 
@@ -869,6 +902,16 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         private static string NormalizeProfilePath(string? value)
         {
             return (value ?? string.Empty).Replace('\\', '/');
+        }
+
+        private static void AssertCloudFilesImport(Type nativeApiType, string entryPoint)
+        {
+            MethodInfo? method = nativeApiType.GetMethod(entryPoint, BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.That(method, Is.Not.Null, entryPoint + " must stay in the desktop Cloud Files native bridge.");
+            DllImportAttribute? dllImport = method!.GetCustomAttribute<DllImportAttribute>();
+            Assert.That(dllImport, Is.Not.Null, entryPoint + " must use the Windows Cloud Files API.");
+            Assert.That(dllImport!.Value, Is.EqualTo("CldApi.dll"));
+            Assert.That(dllImport.ExactSpelling, Is.True);
         }
 
         private static string GetDesktopProjectPath()
