@@ -949,6 +949,66 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesReportsMissingRemoteOnlyPlaceholderAsActionRequired()
+        {
+            NodeFileManifestDto remote = RemoteFile("placeholder-deleted.txt", HashText("remote-content"), sizeBytes: 1024);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(),
+                RemoteTree(remote),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore);
+            await InsertPlaceholderBaselineAsync(stateStore, "placeholder-deleted.txt", remote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", "placeholder-deleted.txt");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(result.RequiresUserAction, Is.True);
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.Skipped }));
+                Assert.That(result.ActionRequiredMessage, Does.Contain("deleted or moved locally"));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+                Assert.That(entry.RemoteFileId, Is.EqualTo(remote.Id));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesDoesNotUploadRenamedRemoteOnlyPlaceholder()
+        {
+            NodeFileManifestDto remote = RemoteFile("placeholder-renamed.txt", HashText("remote-content"), sizeBytes: 1024);
+            LocalFileSnapshot renamedLocal = LocalFile("aaa-renamed-placeholder.txt", "remote-content");
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(renamedLocal),
+                RemoteTree(remote),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore);
+            await InsertPlaceholderBaselineAsync(stateStore, "placeholder-renamed.txt", remote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            SyncStateEntry? oldEntry = await stateStore.GetAsync("pair-a", "placeholder-renamed.txt");
+            SyncStateEntry? newEntry = await stateStore.GetAsync("pair-a", "aaa-renamed-placeholder.txt");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(result.RequiresUserAction, Is.True);
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[]
+                {
+                    SyncActivityKind.Skipped,
+                    SyncActivityKind.Skipped,
+                }));
+                Assert.That(result.ActionRequiredMessage, Does.Contain("deleted or moved locally"));
+                Assert.That(oldEntry, Is.Not.Null);
+                Assert.That(newEntry, Is.Null);
+            });
+        }
+
+        [Test]
         public void RunOnceAsync_FailsBeforeDownloadWhenPlannedDownloadsExceedFreeSpace()
         {
             NodeFileManifestDto remote = RemoteFile("huge.bin", HashText("huge"), sizeBytes: long.MaxValue);
@@ -2872,6 +2932,28 @@ namespace Cotton.Sync.Tests
                 RemoteFileId = remoteFile.Id,
                 RemoteContentHash = remoteFile.ContentHash,
                 RemoteETag = remoteFile.ETag,
+                SyncedAtUtc = new DateTime(2026, 6, 2, 13, 1, 0, DateTimeKind.Utc),
+            });
+        }
+
+        private async Task InsertPlaceholderBaselineAsync(
+            SqliteSyncStateStore stateStore,
+            string relativePath,
+            NodeFileManifestDto remoteFile)
+        {
+            await stateStore.InitializeAsync();
+            await stateStore.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = relativePath,
+                Kind = SyncEntryKind.File,
+                RemoteNodeId = remoteFile.NodeId,
+                RemoteFileId = remoteFile.Id,
+                RemoteSizeBytes = remoteFile.SizeBytes,
+                RemoteContentHash = remoteFile.ContentHash,
+                RemoteETag = remoteFile.ETag,
+                PlaceholderIdentity = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E],
+                PlaceholderHydrationState = SyncPlaceholderHydrationState.RemoteOnly,
                 SyncedAtUtc = new DateTime(2026, 6, 2, 13, 1, 0, DateTimeKind.Utc),
             });
         }
