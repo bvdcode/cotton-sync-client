@@ -300,6 +300,31 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         }
 
         [Test]
+        public void WindowsVfsReleaseEvidenceScript_CapturesCleanWindowsState()
+        {
+            string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/capture-vfs-release-evidence.ps1"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(script, Does.Contain("[string]$OutputDirectory = \"\""));
+                Assert.That(script, Does.Contain("[string]$LocalRoot = (Join-Path $env:USERPROFILE \"Desktop\")"));
+                Assert.That(script, Does.Contain("[string]$DataDirectory = (Join-Path $env:APPDATA \"Cotton\")"));
+                Assert.That(script, Does.Contain("[string]$InstallDirectory = (Join-Path $env:LOCALAPPDATA \"Programs\\Cotton Sync\")"));
+                Assert.That(script, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
+                Assert.That(script, Does.Contain("HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\SyncRootManager"));
+                Assert.That(script, Does.Contain("Cotton.Sync.Desktop.exe"));
+                Assert.That(script, Does.Contain("Get-FileHash -LiteralPath $appExecutable -Algorithm SHA256"));
+                Assert.That(script, Does.Contain("Capture-RootEntries"));
+                Assert.That(script, Does.Contain("Capture-LogTails"));
+                Assert.That(script, Does.Contain("Redact-Text"));
+                Assert.That(script, Does.Contain("CaptureScreenshot"));
+                Assert.That(script, Does.Contain("RunSelfTest"));
+                Assert.That(script, Does.Contain("RunDiagnosticsExport"));
+                Assert.That(script, Does.Contain("Cotton VFS release evidence captured:"));
+            });
+        }
+
+        [Test]
         public void WindowsChecksumVerificationScript_VerifiesPublishedManifest()
         {
             string checksumScript = File.ReadAllText(GetDesktopFilePath("Packaging/windows/verify-checksums.ps1"));
