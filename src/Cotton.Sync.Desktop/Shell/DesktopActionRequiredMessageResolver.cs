@@ -293,6 +293,7 @@ namespace Cotton.Sync.Desktop.Shell
                 : message.Contains("CfConnectSyncRoot", StringComparison.OrdinalIgnoreCase)
                     ? CloudFilesSyncRootConnectionFailedMessage
                     : message.Contains("CfCreatePlaceholders", StringComparison.OrdinalIgnoreCase)
+                        || message.Contains("CfSetPinState", StringComparison.OrdinalIgnoreCase)
                         ? VirtualFileUserFacingCopy.CloudFilesPlaceholderFailedMessage
                         : null;
         }
@@ -304,6 +305,7 @@ namespace Cotton.Sync.Desktop.Shell
                 : string.Equals(operation, "CfConnectSyncRoot", StringComparison.Ordinal)
                     ? CloudFilesSyncRootConnectionFailedMessage
                     : string.Equals(operation, "CfCreatePlaceholders", StringComparison.Ordinal)
+                        || string.Equals(operation, "CfSetPinState", StringComparison.Ordinal)
                         ? VirtualFileUserFacingCopy.CloudFilesPlaceholderFailedMessage
                         : null;
         }

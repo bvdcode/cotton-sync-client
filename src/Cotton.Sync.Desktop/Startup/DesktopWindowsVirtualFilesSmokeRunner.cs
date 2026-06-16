@@ -1863,6 +1863,11 @@ namespace Cotton.Sync.Desktop.Startup
                 throw new NotSupportedException();
             }
 
+            public void SetPinState(string filePath, WindowsCloudFilesPinState pinState)
+            {
+                throw new NotSupportedException();
+            }
+
             public WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request)
             {
                 throw new NotSupportedException();

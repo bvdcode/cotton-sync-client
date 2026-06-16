@@ -141,6 +141,32 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
+        public void SetPinState(string filePath, WindowsCloudFilesPinState pinState)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+            using SafeFileHandle handle = CreateFile(
+                filePath,
+                FileDesiredAccess.ReadData,
+                FileShareMode.Read | FileShareMode.Write | FileShareMode.Delete,
+                IntPtr.Zero,
+                FileCreationDisposition.OpenExisting,
+                FileFlagsAndAttributes.OpenReparsePoint,
+                IntPtr.Zero);
+            if (handle.IsInvalid)
+            {
+                throw new WindowsCloudFilesNativeException(
+                    nameof(CreateFile),
+                    HResultFromWin32(Marshal.GetLastWin32Error()));
+            }
+
+            int result = CfSetPinState(
+                handle.DangerousGetHandle(),
+                (CfPinState)pinState,
+                CfSetPinFlags.None,
+                IntPtr.Zero);
+            ThrowIfFailed(result, nameof(CfSetPinState));
+        }
+
         public WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request)
         {
             ArgumentNullException.ThrowIfNull(request);
@@ -333,6 +359,13 @@ namespace Cotton.Sync.Desktop.Platform
 
         [DllImport("CldApi.dll", ExactSpelling = true)]
         private static extern int CfDisconnectSyncRoot(long ConnectionKey);
+
+        [DllImport("CldApi.dll", ExactSpelling = true)]
+        private static extern int CfSetPinState(
+            IntPtr FileHandle,
+            CfPinState PinState,
+            CfSetPinFlags PinFlags,
+            IntPtr Overlapped);
 
         [DllImport("CldApi.dll", ExactSpelling = true)]
         private static extern int CfExecute(
@@ -593,6 +626,7 @@ namespace Cotton.Sync.Desktop.Platform
         [Flags]
         private enum FileDesiredAccess : uint
         {
+            ReadData = 0x00000001,
             WriteData = 0x00000002,
         }
 
@@ -627,6 +661,21 @@ namespace Cotton.Sync.Desktop.Platform
             MarkInSync = 0x00000002,
             Dehydrate = 0x00000004,
             AllowPartial = 0x00000400,
+        }
+
+        private enum CfPinState : int
+        {
+            Unspecified = 0,
+            Pinned = 1,
+            Unpinned = 2,
+            Excluded = 3,
+            Inherit = 4,
+        }
+
+        [Flags]
+        private enum CfSetPinFlags : uint
+        {
+            None = 0x00000000,
         }
 
         private enum CfCallbackType : uint
