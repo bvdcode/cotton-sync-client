@@ -69,5 +69,66 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(Path.GetDirectoryName(bundlePath), Is.EqualTo(Path.Combine(_tempDirectory, "diagnostics")));
             });
         }
+
+        [Test]
+        public async Task RunLiveSyncSmokeAsync_RequiresExplicitDataDirectory()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--live-sync-smoke",
+                    "--server",
+                    "app.cottoncloud.dev",
+                    "--local-root",
+                    Path.Combine(_tempDirectory, "client-a"),
+                    "--second-local-root",
+                    Path.Combine(_tempDirectory, "client-b"),
+                    "--remote-path",
+                    "/CodexSyncQa/DesktopSmoke",
+                ]);
+            using var output = new StringWriter();
+
+            int exitCode = await DesktopCommandLineRunner.RunLiveSyncSmokeAsync(options, output);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(2));
+                Assert.That(output.ToString(), Does.Contain("--data-dir"));
+                Assert.That(output.ToString(), Does.Contain("real user profile"));
+            });
+        }
+
+        [Test]
+        public async Task RunLiveSyncSmokeAsync_RejectsNonEmptyLocalRoots()
+        {
+            string dataDirectory = Path.Combine(_tempDirectory, "smoke-state");
+            string firstLocalRoot = Path.Combine(_tempDirectory, "client-a");
+            string secondLocalRoot = Path.Combine(_tempDirectory, "client-b");
+            Directory.CreateDirectory(firstLocalRoot);
+            Directory.CreateDirectory(secondLocalRoot);
+            await File.WriteAllTextAsync(Path.Combine(firstLocalRoot, "existing.txt"), "do not touch");
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--live-sync-smoke",
+                    "--server",
+                    "app.cottoncloud.dev",
+                    "--data-dir",
+                    dataDirectory,
+                    "--local-root",
+                    firstLocalRoot,
+                    "--second-local-root",
+                    secondLocalRoot,
+                    "--remote-path",
+                    "/CodexSyncQa/DesktopSmoke",
+                ]);
+            using var output = new StringWriter();
+
+            int exitCode = await DesktopCommandLineRunner.RunLiveSyncSmokeAsync(options, output);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(2));
+                Assert.That(output.ToString(), Does.Contain("--local-root must be empty or missing"));
+            });
+        }
     }
 }

@@ -12,8 +12,12 @@ namespace Cotton.Sync.Desktop.Startup
             bool startMinimizedToTray,
             bool runSelfTest,
             bool exportDiagnostics,
+            bool runLiveSyncSmoke,
             bool printVersion,
-            DesktopVisualSmokeScenario? visualSmokeScenario)
+            DesktopVisualSmokeScenario? visualSmokeScenario,
+            string? localRoot,
+            string? secondLocalRoot,
+            string? remotePath)
         {
             ServerUrl = serverUrl;
             Username = username;
@@ -21,11 +25,27 @@ namespace Cotton.Sync.Desktop.Startup
             StartMinimizedToTray = startMinimizedToTray;
             RunSelfTest = runSelfTest;
             ExportDiagnostics = exportDiagnostics;
+            RunLiveSyncSmoke = runLiveSyncSmoke;
             PrintVersion = printVersion;
             VisualSmokeScenario = visualSmokeScenario;
+            LocalRoot = localRoot;
+            SecondLocalRoot = secondLocalRoot;
+            RemotePath = remotePath;
         }
 
-        public static DesktopStartupOptions Empty { get; } = new(null, null, null, false, false, false, false, null);
+        public static DesktopStartupOptions Empty { get; } = new(
+            null,
+            null,
+            null,
+            false,
+            false,
+            false,
+            false,
+            false,
+            null,
+            null,
+            null,
+            null);
 
         public Uri? ServerUrl { get; }
 
@@ -39,9 +59,17 @@ namespace Cotton.Sync.Desktop.Startup
 
         public bool ExportDiagnostics { get; }
 
+        public bool RunLiveSyncSmoke { get; }
+
         public bool PrintVersion { get; }
 
         public DesktopVisualSmokeScenario? VisualSmokeScenario { get; }
+
+        public string? LocalRoot { get; }
+
+        public string? SecondLocalRoot { get; }
+
+        public string? RemotePath { get; }
 
         public static DesktopStartupOptions Parse(IReadOnlyList<string> args)
         {
@@ -50,6 +78,9 @@ namespace Cotton.Sync.Desktop.Startup
             string? username = ReadOption(args, "--username") ?? ReadOption(args, "--user");
             string? dataDirectory = ReadOption(args, "--data-dir") ?? ReadOption(args, "--data-directory");
             string? visualSmokeScenario = ReadOption(args, "--visual-smoke") ?? ReadOption(args, "--screenshot-state");
+            string? localRoot = ReadOption(args, "--local-root");
+            string? secondLocalRoot = ReadOption(args, "--second-local-root");
+            string? remotePath = ReadOption(args, "--remote-path");
             bool startMinimizedToTray = HasFlag(args, "--start-minimized")
                 || HasFlag(args, "--minimized")
                 || HasFlag(args, "--tray");
@@ -57,6 +88,8 @@ namespace Cotton.Sync.Desktop.Startup
                 || HasFlag(args, "--smoke-test");
             bool exportDiagnostics = HasFlag(args, "--export-diagnostics")
                 || HasFlag(args, "--diagnostics");
+            bool runLiveSyncSmoke = HasFlag(args, "--live-sync-smoke")
+                || HasFlag(args, "--desktop-live-sync-smoke");
             bool printVersion = HasFlag(args, "--version")
                 || HasFlag(args, "-v")
                 || HasFlag(args, "version");
@@ -67,8 +100,12 @@ namespace Cotton.Sync.Desktop.Startup
                 startMinimizedToTray,
                 runSelfTest,
                 exportDiagnostics,
+                runLiveSyncSmoke,
                 printVersion,
-                ParseVisualSmokeScenario(visualSmokeScenario));
+                ParseVisualSmokeScenario(visualSmokeScenario),
+                NormalizeOptional(localRoot),
+                NormalizeOptional(secondLocalRoot),
+                NormalizeOptional(remotePath));
         }
 
         private static bool HasFlag(IReadOnlyList<string> args, string name)

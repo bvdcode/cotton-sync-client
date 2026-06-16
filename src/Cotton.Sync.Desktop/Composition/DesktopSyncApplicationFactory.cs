@@ -29,13 +29,18 @@ namespace Cotton.Sync.Desktop.Composition
     {
         private static readonly TimeSpan HttpRequestTimeout = TimeSpan.FromSeconds(30);
 
+        private readonly IPlatformCommandService? _browserAuthPlatformCommands;
         private readonly ILoggerFactory _loggerFactory;
         private readonly DesktopAppPaths _paths;
 
-        public DesktopSyncApplicationFactory(DesktopAppPaths paths, ILoggerFactory? loggerFactory = null)
+        public DesktopSyncApplicationFactory(
+            DesktopAppPaths paths,
+            ILoggerFactory? loggerFactory = null,
+            IPlatformCommandService? browserAuthPlatformCommands = null)
         {
             _paths = paths ?? throw new ArgumentNullException(nameof(paths));
             _loggerFactory = loggerFactory ?? new DesktopTraceLoggerFactory();
+            _browserAuthPlatformCommands = browserAuthPlatformCommands;
         }
 
         public DesktopSyncApplicationHost Create(Uri serverUrl)
@@ -88,7 +93,9 @@ namespace Cotton.Sync.Desktop.Composition
             var platformCommands = new ProcessPlatformCommandService(
                 _loggerFactory.CreateLogger<ProcessPlatformCommandService>());
             var authFlow = new PasswordAuthFlow(cottonClient.Auth);
-            var appCodeBrowserAuthFlow = new AppCodeBrowserAuthFlow(cottonClient.Auth, platformCommands);
+            var appCodeBrowserAuthFlow = new AppCodeBrowserAuthFlow(
+                cottonClient.Auth,
+                _browserAuthPlatformCommands ?? platformCommands);
             var sessionRevocationHandler = new SessionRevocationHandler(
                 authFlow,
                 localChanges,

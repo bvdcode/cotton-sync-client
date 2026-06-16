@@ -290,6 +290,43 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void Parse_LoadsLiveSyncSmokeOptions()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--live-sync-smoke",
+                    "--server",
+                    "app.cottoncloud.dev",
+                    "--data-dir",
+                    " C:\\Temp\\cotton-desktop-smoke ",
+                    "--local-root",
+                    " C:\\Temp\\cotton-desktop-a ",
+                    "--second-local-root",
+                    " C:\\Temp\\cotton-desktop-b ",
+                    "--remote-path",
+                    " /CodexSyncQa/Desktop ",
+                ]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(options.RunLiveSyncSmoke, Is.True);
+                Assert.That(options.ServerUrl, Is.EqualTo(new Uri("https://app.cottoncloud.dev/")));
+                Assert.That(options.DataDirectory, Is.EqualTo("C:\\Temp\\cotton-desktop-smoke"));
+                Assert.That(options.LocalRoot, Is.EqualTo("C:\\Temp\\cotton-desktop-a"));
+                Assert.That(options.SecondLocalRoot, Is.EqualTo("C:\\Temp\\cotton-desktop-b"));
+                Assert.That(options.RemotePath, Is.EqualTo("/CodexSyncQa/Desktop"));
+            });
+        }
+
+        [Test]
+        public void Parse_LoadsDesktopLiveSyncSmokeAlias()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(["--desktop-live-sync-smoke"]);
+
+            Assert.That(options.RunLiveSyncSmoke, Is.True);
+        }
+
+        [Test]
         public void Parse_DoesNotTreatNextFlagAsOptionValue()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(
