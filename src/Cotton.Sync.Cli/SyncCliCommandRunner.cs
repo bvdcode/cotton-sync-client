@@ -463,7 +463,7 @@ namespace Cotton.Sync.Cli
             await error.WriteLineAsync("sync-once failed.").ConfigureAwait(false);
             await error.WriteLineAsync("Server: " + options.ServerUri).ConfigureAwait(false);
             await error.WriteLineAsync("Local root: " + options.LocalRoot).ConfigureAwait(false);
-            await error.WriteLineAsync("Remote root: " + options.RemoteRootNodeId).ConfigureAwait(false);
+            await error.WriteLineAsync("Remote root: " + FormatRemoteRoot(options)).ConfigureAwait(false);
             await error.WriteLineAsync("Sync pair: " + options.SyncPairId).ConfigureAwait(false);
             await error.WriteLineAsync("Database: " + options.DatabasePath).ConfigureAwait(false);
             await error.WriteLineAsync("Error: " + FormatSyncOnceFailure(exception)).ConfigureAwait(false);
@@ -493,6 +493,11 @@ namespace Cotton.Sync.Cli
             }
 
             return CleanSingleLine(exception.Message);
+        }
+
+        private static string FormatRemoteRoot(SyncCliConnectionOptions options)
+        {
+            return options.RemoteRootNodeId?.ToString("D") ?? options.RemoteRootPath ?? "<not resolved>";
         }
 
         private static bool IsTransientStatusCode(HttpStatusCode? statusCode)
@@ -550,21 +555,25 @@ namespace Cotton.Sync.Cli
                       Initializes and summarizes a sync-state SQLite database for one sync pair.
                   sync-once --server <url-or-host> --username <name>
                       (--password <password> | --password-env <name>) --local-root <path>
-                      --remote-root <node-id> --sync-pair <id> --database <path>
+                      (--remote-root <node-id> | --remote-path <path>)
+                      --sync-pair <id> --database <path>
                       [--two-factor-code <code>]
                   sync-once --server <url-or-host> --browser-login --local-root <path>
-                      --remote-root <node-id> --sync-pair <id> --database <path>
+                      (--remote-root <node-id> | --remote-path <path>)
+                      --sync-pair <id> --database <path>
                       Signs in and runs one full-mirror sync pass for one pair.
                   sync-soak --server <url-or-host> --username <name>
                       (--password <password> | --password-env <name>) --local-root <path>
-                      --remote-root <node-id> --sync-pair <id> --database <path>
+                      (--remote-root <node-id> | --remote-path <path>)
+                      --sync-pair <id> --database <path>
                       (--iterations <count> | --duration-seconds <seconds>)
                       [--interval-seconds <seconds>] [--probe-file <relative-path>]
                       [--second-local-root <path> --second-sync-pair <id>
                        --second-database <path>]
                       [--two-factor-code <code>]
                   sync-soak --server <url-or-host> --browser-login --local-root <path>
-                      --remote-root <node-id> --sync-pair <id> --database <path>
+                      (--remote-root <node-id> | --remote-path <path>)
+                      --sync-pair <id> --database <path>
                       (--iterations <count> | --duration-seconds <seconds>)
                       [--interval-seconds <seconds>] [--probe-file <relative-path>]
                       [--second-local-root <path> --second-sync-pair <id>

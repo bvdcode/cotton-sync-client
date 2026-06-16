@@ -568,6 +568,45 @@ namespace Cotton.Sync.Cli.Tests
         }
 
         [Test]
+        public async Task RunAsync_ReturnsErrorWhenSyncOnceRemoteRootAndRemotePathAreBothProvided()
+        {
+            using var output = new StringWriter();
+            using var error = new StringWriter();
+
+            int exitCode = await SyncCliCommandRunner.RunAsync(
+                [
+                    "sync-once",
+                    "--server",
+                    "https://cloud.example.test/",
+                    "--username",
+                    "testuser",
+                    "--password",
+                    "testpassword",
+                    "--local-root",
+                    _tempDirectory,
+                    "--remote-root",
+                    Guid.NewGuid().ToString("D"),
+                    "--remote-path",
+                    "/Desktop",
+                    "--sync-pair",
+                    "pair",
+                    "--database",
+                    Path.Combine(_tempDirectory, "sync-state.db"),
+                ],
+                output,
+                error);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(2));
+                Assert.That(output.ToString(), Is.Empty);
+                Assert.That(error.ToString(), Does.Contain("--remote-root"));
+                Assert.That(error.ToString(), Does.Contain("--remote-path"));
+                Assert.That(error.ToString(), Does.Contain("cannot be used together"));
+            });
+        }
+
+        [Test]
         public async Task RunAsync_AcceptsBareSyncOnceServerHostBeforeRemoteRootValidation()
         {
             using var output = new StringWriter();
@@ -997,6 +1036,70 @@ namespace Cotton.Sync.Cli.Tests
                 Assert.That(handler.Requests.Select(static request => request.PathAndQuery), Is.EqualTo(new[]
                 {
                     "/api/v1/auth/login",
+                    "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111",
+                    "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111/children?page=1&pageSize=100&depth=0",
+                    "/api/v1/settings",
+                    "/api/v1/chunks/" + contentHash + "/exists",
+                    "/api/v1/chunks/raw?hash=" + contentHash,
+                    "/api/v1/files/from-chunks",
+                    "/api/v1/auth/logout?refreshToken=refresh-token",
+                }));
+            });
+        }
+
+        [Test]
+        public async Task SyncOnce_WithRemotePathResolvesRootAndUploadsLocalFile()
+        {
+            string localRoot = Path.Combine(_tempDirectory, "local-remote-path");
+            Directory.CreateDirectory(localRoot);
+            const string relativePath = "remote-path.txt";
+            byte[] content = Encoding.UTF8.GetBytes("hello from remote path sync cli");
+            string localFilePath = Path.Combine(localRoot, relativePath);
+            File.WriteAllBytes(localFilePath, content);
+            string contentHash = Convert.ToHexStringLower(SHA256.HashData(content));
+            string databasePath = Path.Combine(_tempDirectory, "sync-state-remote-path.db");
+            string syncPairId = Guid.NewGuid().ToString("D");
+            Guid remoteRootId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+            var handler = new SyncOnceUploadServerHandler(remoteRootId, relativePath, contentHash, content);
+            using var httpClient = new HttpClient(handler);
+            using var output = new StringWriter();
+            using var error = new StringWriter();
+
+            int exitCode = await SyncCliCommandRunner.RunAsync(
+                [
+                    "sync-once",
+                    "--server",
+                    "cotton.test",
+                    "--username",
+                    "testuser",
+                    "--password",
+                    "testpassword",
+                    "--local-root",
+                    localRoot,
+                    "--remote-path",
+                    "/",
+                    "--sync-pair",
+                    syncPairId,
+                    "--database",
+                    databasePath,
+                ],
+                output,
+                error,
+                httpClient);
+
+            var store = new SqliteSyncStateStore(databasePath);
+            SyncStateEntry? entry = await store.GetAsync(syncPairId, relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(0));
+                Assert.That(error.ToString(), Is.Empty);
+                Assert.That(output.ToString(), Does.Contain("Uploaded remote-path.txt"));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.RemoteFileId, Is.EqualTo(handler.CreatedFileId));
+                Assert.That(handler.Requests.Select(static request => request.PathAndQuery), Is.EqualTo(new[]
+                {
+                    "/api/v1/auth/login",
+                    "/api/v1/layouts/resolver",
                     "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111",
                     "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111/children?page=1&pageSize=100&depth=0",
                     "/api/v1/settings",

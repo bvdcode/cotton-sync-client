@@ -20,17 +20,19 @@ namespace Cotton.Sync.Cli
             string? password = ReadPassword(args);
             string? localRoot = ReadOption(args, "--local-root");
             string? remoteRoot = ReadOption(args, "--remote-root");
+            string? remotePath = ReadOption(args, "--remote-path");
             string? syncPairId = ReadOption(args, "--sync-pair");
             string? databasePath = ReadOption(args, "--database");
             string? twoFactorCode = ReadOption(args, "--two-factor-code");
             if (string.IsNullOrWhiteSpace(server)
                 || string.IsNullOrWhiteSpace(localRoot)
-                || string.IsNullOrWhiteSpace(remoteRoot)
+                || (string.IsNullOrWhiteSpace(remoteRoot) && string.IsNullOrWhiteSpace(remotePath))
                 || string.IsNullOrWhiteSpace(syncPairId)
                 || string.IsNullOrWhiteSpace(databasePath))
             {
                 error.WriteLine(
-                    command + " requires --server, --local-root, --remote-root, --sync-pair, and --database.");
+                    command
+                    + " requires --server, --local-root, --remote-root or --remote-path, --sync-pair, and --database.");
                 return null;
             }
 
@@ -60,7 +62,15 @@ namespace Cotton.Sync.Cli
 
             if (!Guid.TryParse(remoteRoot, out Guid remoteRootNodeId))
             {
-                error.WriteLine("--remote-root must be a node id GUID.");
+                if (!string.IsNullOrWhiteSpace(remoteRoot))
+                {
+                    error.WriteLine("--remote-root must be a node id GUID.");
+                    return null;
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(remotePath))
+            {
+                error.WriteLine("--remote-root and --remote-path cannot be used together.");
                 return null;
             }
 
@@ -69,7 +79,8 @@ namespace Cotton.Sync.Cli
                 useBrowserLogin ? null : username!.Trim(),
                 useBrowserLogin ? null : password!,
                 localRoot,
-                remoteRootNodeId,
+                string.IsNullOrWhiteSpace(remoteRoot) ? null : remoteRootNodeId,
+                NormalizeOptional(remotePath),
                 syncPairId.Trim(),
                 databasePath,
                 string.IsNullOrWhiteSpace(twoFactorCode) ? null : twoFactorCode.Trim(),

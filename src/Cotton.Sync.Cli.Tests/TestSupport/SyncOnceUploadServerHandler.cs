@@ -157,6 +157,20 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
 
             Assert.That(request.AuthorizationParameter, Is.EqualTo(_refreshed ? "refreshed-access-token" : "access-token"));
 
+            if (request.Method == HttpMethod.Get
+                && (request.PathAndQuery == "/api/v1/layouts/resolver" || request.PathAndQuery == "/api/v1/layouts/resolver/"))
+            {
+                return Json(HttpStatusCode.OK, new NodeDto
+                {
+                    Id = _remoteRootId,
+                    LayoutId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+                    ParentId = null,
+                    Name = "root",
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                });
+            }
+
             if (request.Method == HttpMethod.Get && request.PathAndQuery == "/api/v1/layouts/nodes/" + _remoteRootId.ToString("D"))
             {
                 return Json(HttpStatusCode.OK, new NodeDto

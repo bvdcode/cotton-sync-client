@@ -98,6 +98,8 @@ namespace Cotton.Sync.Cli
             CottonCloudClient client,
             CancellationToken cancellationToken)
         {
+            Guid remoteRootNodeId = await ResolveRemoteRootNodeIdAsync(options, client, cancellationToken)
+                .ConfigureAwait(false);
             var stateStore = new SqliteSyncStateStore(options.DatabasePath);
             var engine = new SyncEngine(
                 new LocalFileScanner(),
@@ -109,9 +111,26 @@ namespace Cotton.Sync.Cli
             {
                 SyncPairId = options.SyncPairId,
                 LocalRootPath = options.LocalRoot,
-                RemoteRootNodeId = options.RemoteRootNodeId,
+                RemoteRootNodeId = remoteRootNodeId,
             };
             return new SyncCliRuntime(syncPair, stateStore, engine, client);
+        }
+
+        private static async Task<Guid> ResolveRemoteRootNodeIdAsync(
+            SyncCliConnectionOptions options,
+            CottonCloudClient client,
+            CancellationToken cancellationToken)
+        {
+            if (options.RemoteRootNodeId.HasValue)
+            {
+                return options.RemoteRootNodeId.Value;
+            }
+
+            var resolver = new RemoteRootResolver(client.Nodes);
+            var remoteRoot = await resolver
+                .EnsureAsync(options.RemoteRootPath, cancellationToken)
+                .ConfigureAwait(false);
+            return remoteRoot.Id;
         }
 
         public static async Task<SyncCliPassResult> RunSinglePassAsync(
