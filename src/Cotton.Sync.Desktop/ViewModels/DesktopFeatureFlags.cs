@@ -13,11 +13,16 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             ArgumentNullException.ThrowIfNull(readEnvironmentVariable);
             string? value = readEnvironmentVariable(ShowFutureSyncModesVariable);
-            return new DesktopFeatureFlags(IsEnabled(value));
+            return new DesktopFeatureFlags(IsEnabledByDefault(value));
         }
 
-        private static bool IsEnabled(string? value)
+        private static bool IsEnabledByDefault(string? value)
         {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return true;
+            }
+
             return string.Equals(value, "1", StringComparison.Ordinal)
                 || string.Equals(value, "true", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase);

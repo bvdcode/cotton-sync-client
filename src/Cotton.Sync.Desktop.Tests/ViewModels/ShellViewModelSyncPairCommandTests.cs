@@ -4010,6 +4010,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(controller.AddedSyncPairRequest, Is.Not.Null);
                 Assert.That(controller.AddedSyncPairRequest!.LocalFolderPath, Is.EqualTo("/home/user/Cotton"));
                 Assert.That(controller.AddedSyncPairRequest.RemoteFolderPath, Is.EqualTo("/Documents"));
+                Assert.That(controller.AddedSyncPairRequest.Mode, Is.EqualTo(SyncPairMode.FullMirror));
                 Assert.That(viewModel.SyncPairs, Has.Count.EqualTo(1));
                 Assert.That(viewModel.SyncPairs.Single().RemotePath, Is.EqualTo("/Documents"));
                 Assert.That(viewModel.IsAddSyncPairWizardVisible, Is.False);
@@ -4040,12 +4041,43 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(controller.AddedSyncPairRequest, Is.Not.Null);
                 Assert.That(controller.AddedSyncPairRequest!.LocalFolderPath, Is.EqualTo(@"C:\Users\QA\Desktop"));
                 Assert.That(controller.AddedSyncPairRequest.RemoteFolderPath, Is.EqualTo("/Desktop"));
+                Assert.That(controller.AddedSyncPairRequest.Mode, Is.EqualTo(SyncPairMode.FullMirror));
                 Assert.That(viewModel.SyncPairs, Has.Count.EqualTo(1));
                 Assert.That(viewModel.SyncPairs.Single().LocalPath, Is.EqualTo(@"C:\Users\QA\Desktop"));
                 Assert.That(viewModel.SyncPairs.Single().RemotePath, Is.EqualTo("/Desktop"));
                 Assert.That(viewModel.IsAddSyncPairWizardVisible, Is.False);
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Sync requested"));
                 Assert.That(viewModel.HasActionRequired, Is.False);
+            });
+        }
+
+        [Test]
+        public async Task AddSyncPairFlow_CanCreateWindowsVirtualFilesPairWhenSupported()
+        {
+            var localFolderPicker = new FakeLocalFolderPicker(@"C:\Users\QA\Desktop");
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(
+                platformCapabilities: CreatePlatformCapabilities(windowsVirtualFilesSupported: true)));
+            controller.RemoteFoldersByPath["/"] = new DesktopRemoteFolderListSnapshot("/", []);
+            using ShellViewModel viewModel = CreateViewModel(controller, localFolderPicker: localFolderPicker);
+            await viewModel.InitializeAsync();
+
+            await ExecuteAsync(viewModel.ShowAddSyncPairCommand);
+            await ExecuteAsync(viewModel.BrowseLocalFolderCommand);
+            viewModel.RemoteFolderPath = "/Desktop";
+            viewModel.IsWindowsVirtualFilesSyncModeSelected = true;
+            await ExecuteAsync(viewModel.UseRemoteFolderCommand);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(controller.AddedSyncPairRequest, Is.Not.Null);
+                Assert.That(controller.AddedSyncPairRequest!.LocalFolderPath, Is.EqualTo(@"C:\Users\QA\Desktop"));
+                Assert.That(controller.AddedSyncPairRequest.RemoteFolderPath, Is.EqualTo("/Desktop"));
+                Assert.That(controller.AddedSyncPairRequest.Mode, Is.EqualTo(SyncPairMode.WindowsVirtualFiles));
+                Assert.That(viewModel.SyncPairs, Has.Count.EqualTo(1));
+                Assert.That(viewModel.SyncPairs.Single().Mode, Is.EqualTo(SyncPairMode.WindowsVirtualFiles));
+                Assert.That(viewModel.SelectedSyncMode, Is.EqualTo(SyncPairMode.FullMirror));
+                Assert.That(viewModel.IsAddSyncPairWizardVisible, Is.False);
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Sync requested"));
             });
         }
 
@@ -4955,9 +4987,11 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
-        public async Task FutureSyncModesVisibility_UsesFeatureFlagAndCloudFilesCapability()
+        public async Task FutureSyncModesVisibility_UsesDefaultOnFeatureFlagAndCloudFilesCapability()
         {
-            using ShellViewModel hiddenViewModel = CreateViewModel(
+            using ShellViewModel defaultViewModel = CreateViewModel(
+                new FakeDesktopShellController(CreateSignedInSnapshot(platformCapabilities: CreatePlatformCapabilities(windowsVirtualFilesSupported: true))));
+            using ShellViewModel explicitlyHiddenViewModel = CreateViewModel(
                 new FakeDesktopShellController(CreateSignedInSnapshot(platformCapabilities: CreatePlatformCapabilities(windowsVirtualFilesSupported: true))),
                 new DesktopFeatureFlags(false));
             using ShellViewModel visibleViewModel = CreateViewModel(
@@ -4967,13 +5001,15 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 new FakeDesktopShellController(CreateSignedInSnapshot(platformCapabilities: CreatePlatformCapabilities(windowsVirtualFilesSupported: false))),
                 new DesktopFeatureFlags(true));
 
-            await hiddenViewModel.InitializeAsync();
+            await defaultViewModel.InitializeAsync();
+            await explicitlyHiddenViewModel.InitializeAsync();
             await visibleViewModel.InitializeAsync();
             await unsupportedViewModel.InitializeAsync();
 
             Assert.Multiple(() =>
             {
-                Assert.That(hiddenViewModel.IsFutureSyncModesVisible, Is.False);
+                Assert.That(defaultViewModel.IsFutureSyncModesVisible, Is.True);
+                Assert.That(explicitlyHiddenViewModel.IsFutureSyncModesVisible, Is.False);
                 Assert.That(visibleViewModel.IsFutureSyncModesVisible, Is.True);
                 Assert.That(unsupportedViewModel.IsFutureSyncModesVisible, Is.False);
                 Assert.That(visibleViewModel.SelectedSyncModeLabel, Is.EqualTo("Full mirror"));
@@ -5717,7 +5753,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     RemoteRootNodeId = Guid.NewGuid(),
                     RemoteDisplayPath = request.RemoteFolderPath,
                     IsEnabled = true,
-                    Mode = SyncPairMode.FullMirror,
+                    Mode = request.Mode,
                     CreatedAtUtc = DateTime.UtcNow,
                     UpdatedAtUtc = DateTime.UtcNow,
                 });

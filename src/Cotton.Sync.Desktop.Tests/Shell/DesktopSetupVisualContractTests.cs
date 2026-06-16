@@ -909,7 +909,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             {
                 Assert.That(addFolderWizard, Does.Contain("Text=\"Stores every file on this device.\""));
                 Assert.That(addFolderWizard, Does.Contain("Text=\"Saves disk space; downloads on open.\""));
-                Assert.That(addFolderWizard, Does.Contain("Text=\"Not implemented\""));
+                Assert.That(addFolderWizard, Does.Contain("Text=\"Available\""));
+                Assert.That(addFolderWizard, Does.Not.Contain("Text=\"Not implemented\""));
             });
         }
 

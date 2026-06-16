@@ -76,20 +76,25 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             DesktopSelfTestItemSnapshot item = result.Items.Single(static selfTestItem => selfTestItem.Name == "Windows virtual files");
             if (OperatingSystem.IsWindows() && OperatingSystem.IsWindowsVersionAtLeast(10, 0, 16299))
             {
-                Assert.Multiple(() =>
+                if (item.Details.Contains("shell helper", StringComparison.Ordinal)
+                    || item.Details.Contains("StorageProvider", StringComparison.Ordinal))
                 {
-                    Assert.That(item.Passed, Is.False);
-                    Assert.That(item.Skipped, Is.True);
-                    Assert.That(
-                        item.Details,
-                        Does.Contain("Cloud Files API")
-                            .Or.Contain("Free up space"));
-                    Assert.That(
-                        item.Details,
-                        Does.Contain("shell helper")
-                            .Or.Contain("StorageProvider")
-                            .Or.Contain("Free up space"));
-                });
+                    Assert.Multiple(() =>
+                    {
+                        Assert.That(item.Passed, Is.False);
+                        Assert.That(item.Skipped, Is.True);
+                        Assert.That(item.Details, Does.Contain("Cloud Files API"));
+                    });
+                }
+                else
+                {
+                    Assert.Multiple(() =>
+                    {
+                        Assert.That(item.Passed, Is.True);
+                        Assert.That(item.Skipped, Is.False);
+                        Assert.That(item.Details, Does.Contain("Cloud Files API"));
+                    });
+                }
             }
             else
             {
