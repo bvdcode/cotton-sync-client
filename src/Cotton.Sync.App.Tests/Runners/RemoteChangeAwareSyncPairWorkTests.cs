@@ -38,6 +38,32 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task RunOnceAsync_PreservesRequestedSyncSurface()
+        {
+            var syncPair = CreateSyncPair();
+            var inner = new FakeSyncPairWork();
+            var remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 12,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes: Array.Empty<SyncChangeDto>()));
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+            SyncRunRequest request = SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]);
+
+            await work.RunOnceAsync(syncPair, request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.LastRequest, Is.SameAs(request));
+                Assert.That(inner.LastRequest?.IsFull, Is.False);
+                Assert.That(inner.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { "Docs/report.txt" }));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_DrainsRemotePagesBeforeSingleInnerWorkPass()
         {
             var syncPair = CreateSyncPair();
@@ -189,11 +215,22 @@ namespace Cotton.Sync.App.Tests.Runners
         {
             public int RunCallCount { get; private set; }
 
+            public SyncRunRequest? LastRequest { get; private set; }
+
             public bool ThrowOnRun { get; set; }
 
             public Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
             {
+                return RunOnceAsync(syncPair, SyncRunRequest.Full, cancellationToken);
+            }
+
+            public Task RunOnceAsync(
+                SyncPairSettings syncPair,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
                 RunCallCount++;
+                LastRequest = request;
                 if (ThrowOnRun)
                 {
                     throw new InvalidOperationException("Inner work failed.");

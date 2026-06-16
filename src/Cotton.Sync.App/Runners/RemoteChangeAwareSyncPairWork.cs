@@ -26,11 +26,21 @@ namespace Cotton.Sync.App.Runners
         /// <inheritdoc />
         public async Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
         {
+            await RunOnceAsync(syncPair, SyncRunRequest.Full, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task RunOnceAsync(
+            SyncPairSettings syncPair,
+            SyncRunRequest request,
+            CancellationToken cancellationToken = default)
+        {
             ArgumentNullException.ThrowIfNull(syncPair);
+            ArgumentNullException.ThrowIfNull(request);
             RemoteChangeFeedBatch remoteBatch = await ReadRemoteChangesAsync(syncPair, cancellationToken)
                 .ConfigureAwait(false);
 
-            await _inner.RunOnceAsync(syncPair, cancellationToken).ConfigureAwait(false);
+            await _inner.RunOnceAsync(syncPair, request, cancellationToken).ConfigureAwait(false);
 
             if (remoteBatch.CursorExpired)
             {
