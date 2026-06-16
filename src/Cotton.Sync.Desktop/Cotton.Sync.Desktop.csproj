@@ -1,0 +1,102 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>Cotton.Sync.Desktop</AssemblyName>
+    <Title>Cotton Sync</Title>
+    <Authors>Vadim Belov</Authors>
+    <Company>bvdcode</Company>
+    <Product>Cotton Sync</Product>
+    <Description>Cross-platform desktop synchronization client for Cotton Cloud.</Description>
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    <InformationalVersion>0.1.0-dev</InformationalVersion>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <UseAppHost>true</UseAppHost>
+    <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
+    <ApplicationIcon>Assets/app.ico</ApplicationIcon>
+    <Win32Icon>Assets/app.ico</Win32Icon>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.4" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.0.4" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.4" />
+    <PackageReference Include="Cotton" Version="0.4.31" />
+    <PackageReference Include="Cotton.Sdk" Version="0.4.31" />
+    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets/app.ico" />
+    <AvaloniaResource Include="Assets/icon-192.png" />
+    <AvaloniaResource Include="Assets/favicon.ico" />
+    <AvaloniaResource Include="Assets/tray-*.png" />
+    <Content Include="Assets/icon-192.png"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'linux-x64'">
+    <Content Include="Packaging/linux/cotton-sync.desktop"
+             Link="cotton-sync.desktop"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Cotton.Sync/Cotton.Sync.csproj" />
+    <ProjectReference Include="../Cotton.Sync.App/Cotton.Sync.App.csproj" />
+  </ItemGroup>
+
+  <Target Name="GeneratePublishChecksums"
+          AfterTargets="Publish"
+          Condition="'$(PublishDir)' != '' and '$(GeneratePublishChecksums)' != 'false'">
+    <PropertyGroup>
+      <CottonPublishDir>$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(PublishDir)'))))</CottonPublishDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <CottonPublishedFile Include="$(CottonPublishDir)**/*"
+                           Exclude="$(CottonPublishDir)checksums.sha256" />
+    </ItemGroup>
+    <AssignTargetPath Files="@(CottonPublishedFile)"
+                      RootFolder="$(CottonPublishDir)">
+      <Output TaskParameter="AssignedFiles"
+              ItemName="CottonPublishedFileWithTargetPath" />
+    </AssignTargetPath>
+    <ItemGroup>
+      <CottonPublishedFileWithManifest Include="@(CottonPublishedFileWithTargetPath)">
+        <ManifestPath>%(TargetPath)</ManifestPath>
+      </CottonPublishedFileWithManifest>
+    </ItemGroup>
+    <GetFileHash Files="@(CottonPublishedFileWithManifest)"
+                 Algorithm="SHA256">
+      <Output TaskParameter="Items"
+              ItemName="CottonPublishedFileHash" />
+    </GetFileHash>
+    <WriteLinesToFile File="$(PublishDir)checksums.sha256"
+                      Lines="@(CottonPublishedFileHash->'%(FileHash)  %(ManifestPath)')"
+                      Overwrite="true" />
+  </Target>
+
+  <Target Name="CleanDesktopPublishDirectory"
+          BeforeTargets="PrepareForPublish"
+          Condition="'$(PublishDir)' != '' and Exists('$(PublishDir)')">
+    <RemoveDir Directories="$(PublishDir)" />
+  </Target>
+
+  <Target Name="ValidateDesktopLooseAssets"
+          AfterTargets="Build">
+    <Error Condition="!Exists('$(OutDir)Assets/icon-192.png')"
+           Text="Cotton Sync desktop icon must be copied to Assets/icon-192.png for Linux desktop entries and packaged app metadata." />
+  </Target>
+
+</Project>

@@ -1,0 +1,51 @@
+*.swp
+*.*~
+~*.&
+~$*
+project.lock.json
+.DS_Store
+*.pyc
+nupkg/
+*.lscache
+
+# Visual Studio Code
+.vscode
+
+# User-specific files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build results
+.vs/
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+build/
+bld/
+[Bb]in/
+[Oo]bj/
+# MSBuild on Linux can create a literal obj\Debug directory for ESProj references.
+[Oo]bj\\*/
+[Oo]ut/
+msbuild.log
+msbuild.err
+msbuild.wrn
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+[Tt]est[Rr]esults/
+*.trx
+performance/results/
+BenchmarkDotNet.Artifacts/
+*.key
+data
+notes/
+sixlabors.lic
+AGENTS.md
+# Local visual-QA scratch (capture scripts + screenshots)
+.qa/

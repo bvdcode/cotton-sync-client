@@ -1,0 +1,3643 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
+
+using System.Globalization;
+using System.Net;
+using System.Security.Cryptography;
+using System.Text;
+using Cotton.Files;
+using Cotton.Nodes;
+using Cotton.Sync.Local;
+using Cotton.Sync.Remote;
+using Cotton.Sync.State;
+using Microsoft.Extensions.Logging;
+
+namespace Cotton.Sync.Tests
+{
+    public class SyncEngineTests
+    {
+        private readonly Guid _remoteRootNodeId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        private string _root = string.Empty;
+        private string _databasePath = string.Empty;
+
+        public enum MatrixFileState
+        {
+            Missing,
+            Baseline,
+            Changed,
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WritesStructuredStartAndCompletionLogs()
+        {
+            var logger = new RecordingLogger<SyncEngine>();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(),
+                EmptyRemoteTree(),
+                new FakeRemoteFileSynchronizer(),
+                out _,
+                logger: logger);
+
+            await engine.RunOnceAsync(Pair());
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(logger.Entries.Select(entry => entry.Level), Is.EqualTo(new[] { LogLevel.Information, LogLevel.Information }));
+                Assert.That(logger.Entries[0].Message, Does.Contain("Starting sync pass for pair pair-a"));
+                Assert.That(logger.Entries[1].Message, Does.Contain("Completed sync pass for pair pair-a with 0 activities"));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_LoadsBaselineThroughStreamingStateApi()
+        {
+            var stateStore = new StreamingOnlyStateStore(new SqliteSyncStateStore(_databasePath));
+            SyncEngine engine = new(
+                new FakeLocalFileScanner(),
+                new FakeRemoteTreeCrawler(EmptyRemoteTree()),
+                new FakeRemoteFileSynchronizer(),
+                stateStore);
+
+            await engine.RunOnceAsync(Pair());
+
+            Assert.That(stateStore.LoadPairEntriesCallCount, Is.EqualTo(1));
+        }
+
+        [SetUp]
+        public void SetUp()
+        {
+            _root = Path.Combine(Path.GetTempPath(), "cotton-sync-engine", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(_root);
+            _databasePath = Path.Combine(_root, ".cotton-sync", "state.sqlite");
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            if (Directory.Exists(_root))
+            {
+                Directory.Delete(_root, recursive: true);
+            }
+        }
+
+        [Test]
+        public async Task RunOnceAsync_UploadsLocalOnlyFileAndStoresBaseline()
+        {
+            LocalFileSnapshot local = LocalFile("Docs/local.txt", "local-content");
+            var scanner = new FakeLocalFileScanner(local);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var progress = new List<SyncActivity>();
+            SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), remoteFiles, out SqliteSyncStateStore stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(),
+                new SyncRunOptions { ActivityProgress = new Progress<SyncActivity>(progress.Add) });
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", "docs/LOCAL.txt");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Uploads, Has.Count.EqualTo(1));
+                Assert.That(remoteFiles.Uploads[0].RelativePath, Is.EqualTo("Docs/local.txt"));
+                Assert.That(remoteFiles.Uploads[0].ExistingRemoteFile, Is.Null);
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+                Assert.That(progress.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteFileId, Is.EqualTo(remoteFiles.Uploads[0].ReturnedFile.Id));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_UploadsLocalOnlyMetadataSnapshotWithoutPreHashing()
+        {
+            const string uploadedHash = "uploaded-content-hash";
+            var local = new LocalFileSnapshot
+            {
+                RelativePath = "Docs/large.bin",
+                FullPath = Path.Combine(_root, "Docs", "large.bin"),
+                ContentHash = string.Empty,
+                SizeBytes = 1024,
+                LastWriteUtc = new DateTime(2026, 6, 6, 8, 0, 0, DateTimeKind.Utc),
+            };
+            var scanner = new MetadataOnlyLocalFileScanner(local);
+            var remoteFiles = new FakeRemoteFileSynchronizer
+            {
+                EmptyLocalHashUploadContentHash = uploadedHash,
+            };
+            SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), remoteFiles, out SqliteSyncStateStore stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", "docs/large.bin");
+            Assert.Multiple(() =>
+            {
+                Assert.That(scanner.ContentHashCalls, Is.Zero);
+                Assert.That(remoteFiles.UploadInputContentHashes, Is.EqualTo(new[] { string.Empty }));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(uploadedHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(uploadedHash));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_UsesMetadataLookupScannerWhenAvailable()
+        {
+            const string uploadedHash = "lookup-uploaded-content-hash";
+            var local = new LocalFileSnapshot
+            {
+                RelativePath = "Docs/direct-lookup.bin",
+                FullPath = Path.Combine(_root, "Docs", "direct-lookup.bin"),
+                ContentHash = string.Empty,
+                SizeBytes = 2048,
+                LastWriteUtc = new DateTime(2026, 6, 6, 9, 0, 0, DateTimeKind.Utc),
+            };
+            var scanner = new LookupOnlyLocalFileScanner(local);
+            var remoteFiles = new FakeRemoteFileSynchronizer
+            {
+                EmptyLocalHashUploadContentHash = uploadedHash,
+            };
+            SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), remoteFiles, out SqliteSyncStateStore stateStore);
+
+            await engine.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", "docs/direct-lookup.bin");
+            Assert.Multiple(() =>
+            {
+                Assert.That(scanner.LookupScanCalls, Is.EqualTo(1));
+                Assert.That(scanner.MetadataTreeScanCalls, Is.Zero);
+                Assert.That(scanner.TreeScanCalls, Is.Zero);
+                Assert.That(remoteFiles.UploadInputContentHashes, Is.EqualTo(new[] { string.Empty }));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(uploadedHash));
+                Assert.That(entry.LocalSizeBytes, Is.EqualTo(local.SizeBytes));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_UsesRemoteLookupCrawlerWhenAvailable()
+        {
+            var scanner = new FakeLocalFileScanner();
+            var crawler = new LookupOnlyRemoteTreeCrawler(EmptyRemoteTree());
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine engine = new(scanner, crawler, new FakeRemoteFileSynchronizer(), stateStore);
+
+            await engine.RunOnceAsync(Pair());
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(crawler.LookupCrawlCalls, Is.EqualTo(1));
+                Assert.That(crawler.ProgressCrawlCalls, Is.Zero);
+                Assert.That(crawler.SnapshotCrawlCalls, Is.Zero);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithLocalChangedPathUsesScopedScanners()
+        {
+            WriteFile("changed.txt", "local");
+            var scanner = new LocalFileScanner();
+            var crawler = new PathOnlyRemoteTreeCrawler(EmptyRemoteTree());
+            var remoteFiles = new FakeRemoteFileSynchronizer
+            {
+                EmptyLocalHashUploadContentHash = "uploaded-content-hash",
+            };
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            var engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(),
+                new SyncRunOptions { Scope = SyncRunScope.ForLocalChangedPaths(["changed.txt"]) });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.Activities.Select(activity => activity.RelativePath), Is.EqualTo(new[] { "changed.txt" }));
+                Assert.That(remoteFiles.Uploads, Has.Count.EqualTo(1));
+                Assert.That(crawler.PathCrawlCalls, Is.EqualTo(1));
+                Assert.That(crawler.FullCrawlCalls, Is.Zero);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithNestedLocalChangedFileDoesNotScanSiblingFiles()
+        {
+            WriteFile("Project/changed.txt", "local");
+            WriteFile("Project/sibling.txt", "sibling");
+            var scanner = new LocalFileScanner();
+            var crawler = new PathOnlyRemoteTreeCrawler(EmptyRemoteTree());
+            var remoteFiles = new FakeRemoteFileSynchronizer
+            {
+                EmptyLocalHashUploadContentHash = "uploaded-content-hash",
+            };
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            var engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(),
+                new SyncRunOptions { Scope = SyncRunScope.ForLocalChangedPaths(["Project/changed.txt"]) });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.Activities.Select(activity => activity.RelativePath), Is.EqualTo(new[] { "Project/changed.txt" }));
+                Assert.That(remoteFiles.Uploads.Select(upload => upload.RelativePath), Is.EqualTo(new[] { "Project/changed.txt" }));
+                Assert.That(crawler.FullCrawlCalls, Is.Zero);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithScopedLocalDeletedPathDeletesRemoteWithoutFullCrawl()
+        {
+            string relativePath = "Project/deleted.txt";
+            NodeFileManifestDto remote = RemoteFile(relativePath, HashText("old"));
+            var scanner = new LocalFileScanner();
+            var crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(remote));
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            await InsertBaselineAsync(stateStore, relativePath, remote.ContentHash, remote);
+            var engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(),
+                new SyncRunOptions { Scope = SyncRunScope.ForLocalChangedPaths([relativePath]) });
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(crawler.PathCrawlCalls, Is.EqualTo(1));
+                Assert.That(crawler.FullCrawlCalls, Is.Zero);
+                Assert.That(remoteFiles.Deletes, Is.EqualTo(new[] { (remote.Id, false, remote.ETag) }));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.DeletedRemote }));
+                Assert.That(result.Activities.Select(activity => activity.RelativePath), Is.EqualTo(new[] { relativePath }));
+                Assert.That(entry, Is.Null);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithScopedLocalRenamePathsUploadsNewAndDeletesOldWithoutFullCrawl()
+        {
+            string oldPath = "Project/old-name.txt";
+            string newPath = "Project/new-name.txt";
+            NodeFileManifestDto oldRemote = RemoteFile(oldPath, HashText("old"));
+            WriteFile(newPath, "new");
+            string newContentHash = HashText("new");
+            var scanner = new LocalFileScanner();
+            var crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(oldRemote));
+            var remoteFiles = new FakeRemoteFileSynchronizer
+            {
+                EmptyLocalHashUploadContentHash = newContentHash,
+            };
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            await InsertBaselineAsync(stateStore, oldPath, oldRemote.ContentHash, oldRemote);
+            var engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(),
+                new SyncRunOptions { Scope = SyncRunScope.ForLocalChangedPaths([oldPath, newPath]) });
+
+            SyncStateEntry? oldEntry = await stateStore.GetAsync("pair-a", oldPath);
+            SyncStateEntry? newEntry = await stateStore.GetAsync("pair-a", newPath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(crawler.PathCrawlCalls, Is.EqualTo(1));
+                Assert.That(crawler.FullCrawlCalls, Is.Zero);
+                Assert.That(remoteFiles.Uploads.Select(upload => upload.RelativePath), Is.EqualTo(new[] { newPath }));
+                Assert.That(remoteFiles.Deletes, Is.EqualTo(new[] { (oldRemote.Id, false, oldRemote.ETag) }));
+                Assert.That(result.Activities.Select(activity => activity.RelativePath), Is.EquivalentTo(new[] { oldPath, newPath }));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EquivalentTo(new[] { SyncActivityKind.DeletedRemote, SyncActivityKind.Uploaded }));
+                Assert.That(oldEntry, Is.Null);
+                Assert.That(newEntry, Is.Not.Null);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_MovesRemoteFileWhenLocalPathChangesWithoutContentChange()
+        {
+            string oldPath = "Project/old-name.txt";
+            string newPath = "Project/new-name.txt";
+            string content = "same-content";
+            WriteFile(newPath, content);
+            LocalFileSnapshot local = LocalFile(newPath, content);
+            NodeFileManifestDto oldRemote = RemoteFile(oldPath, local.ContentHash, sizeBytes: local.SizeBytes);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(local),
+                RemoteTree(oldRemote),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, oldPath, local.ContentHash, oldRemote, local.SizeBytes);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            SyncStateEntry? oldEntry = await stateStore.GetAsync("pair-a", oldPath);
+            SyncStateEntry? newEntry = await stateStore.GetAsync("pair-a", newPath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Moves.Select(move => move.RelativePath), Is.EqualTo(new[] { newPath }));
+                Assert.That(remoteFiles.Moves[0].ExistingRemoteFile.Id, Is.EqualTo(oldRemote.Id));
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Moved }));
+                Assert.That(result.Activities.Select(activity => activity.RelativePath), Is.EqualTo(new[] { newPath }));
+                Assert.That(oldEntry, Is.Null);
+                Assert.That(newEntry, Is.Not.Null);
+                Assert.That(newEntry!.RemoteFileId, Is.EqualTo(oldRemote.Id));
+                Assert.That(newEntry.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(newEntry.LocalSizeBytes, Is.EqualTo(local.SizeBytes));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_LocalMovesDoNotTripRemoteMassDeleteGuard()
+        {
+            LocalFileSnapshot firstLocal = LocalFile("moved-a.txt", "content-a");
+            LocalFileSnapshot secondLocal = LocalFile("moved-b.txt", "content-b");
+            NodeFileManifestDto firstRemote = RemoteFile("a.txt", firstLocal.ContentHash, sizeBytes: firstLocal.SizeBytes);
+            NodeFileManifestDto secondRemote = RemoteFile("b.txt", secondLocal.ContentHash, sizeBytes: secondLocal.SizeBytes);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(firstLocal, secondLocal),
+                RemoteTree(firstRemote, secondRemote),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, "a.txt", firstLocal.ContentHash, firstRemote, firstLocal.SizeBytes);
+            await InsertBaselineAsync(stateStore, "b.txt", secondLocal.ContentHash, secondRemote, secondLocal.SizeBytes);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(), new SyncRunOptions { MaximumRemoteDeletesPerRun = 1 });
+
+            SyncStateEntry? firstOldEntry = await stateStore.GetAsync("pair-a", "a.txt");
+            SyncStateEntry? secondOldEntry = await stateStore.GetAsync("pair-a", "b.txt");
+            SyncStateEntry? firstNewEntry = await stateStore.GetAsync("pair-a", "moved-a.txt");
+            SyncStateEntry? secondNewEntry = await stateStore.GetAsync("pair-a", "moved-b.txt");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Moves.Select(move => move.RelativePath), Is.EquivalentTo(new[] { "moved-a.txt", "moved-b.txt" }));
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.All.EqualTo(SyncActivityKind.Moved));
+                Assert.That(firstOldEntry, Is.Null);
+                Assert.That(secondOldEntry, Is.Null);
+                Assert.That(firstNewEntry, Is.Not.Null);
+                Assert.That(secondNewEntry, Is.Not.Null);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_MovePreconditionFailureFallsBackToConflictAndUploadWithoutDeletingRemote()
+        {
+            string oldPath = "Project/old-name.txt";
+            string newPath = "Project/new-name.txt";
+            string localContent = "same-content";
+            WriteFile(newPath, localContent);
+            LocalFileSnapshot local = LocalFile(newPath, localContent);
+            Guid remoteId = Guid.NewGuid();
+            NodeFileManifestDto oldRemote = RemoteFile(oldPath, local.ContentHash, remoteId, local.SizeBytes);
+            byte[] latestRemoteContent = Encoding.UTF8.GetBytes("remote-changed");
+            NodeFileManifestDto latestRemote = RemoteFile(oldPath, Hash(latestRemoteContent), remoteId, latestRemoteContent.Length);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.PreconditionFailedMoveIds.Add(remoteId);
+            remoteFiles.Downloads[remoteId] = latestRemoteContent;
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(local),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore,
+                RemoteTree(oldRemote),
+                RemoteTree(latestRemote));
+            await InsertBaselineAsync(stateStore, oldPath, local.ContentHash, oldRemote, local.SizeBytes);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            SyncStateEntry? oldEntry = await stateStore.GetAsync("pair-a", oldPath);
+            SyncStateEntry? newEntry = await stateStore.GetAsync("pair-a", newPath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(remoteFiles.Uploads.Select(upload => upload.RelativePath), Is.EqualTo(new[] { newPath }));
+                Assert.That(File.ReadAllText(Path.Combine(_root, oldPath.Replace('/', Path.DirectorySeparatorChar))), Is.EqualTo("remote-changed"));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EquivalentTo(new[] { SyncActivityKind.Conflict, SyncActivityKind.Uploaded }));
+                Assert.That(oldEntry, Is.Not.Null);
+                Assert.That(newEntry, Is.Not.Null);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_HashesMetadataSnapshotWhenBaselineNeedsComparison()
+        {
+            const string baselineHash = "precomputed-content-hash";
+            var local = new LocalFileSnapshot
+            {
+                RelativePath = "Docs/existing.bin",
+                FullPath = Path.Combine(_root, "Docs", "existing.bin"),
+                ContentHash = string.Empty,
+                SizeBytes = 1024,
+                LastWriteUtc = new DateTime(2026, 6, 6, 8, 0, 0, DateTimeKind.Utc),
+            };
+            var scanner = new MetadataOnlyLocalFileScanner(local);
+            NodeFileManifestDto remote = RemoteFile("Docs/existing.bin", baselineHash, sizeBytes: local.SizeBytes);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(scanner, RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, "Docs/existing.bin", baselineHash, remote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(scanner.ContentHashCalls, Is.EqualTo(1));
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(result.Activities, Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_ReusesBaselineHashWhenMetadataIsUnchanged()
+        {
+            const string baselineHash = "existing-content-hash";
+            var baselineSyncedAtUtc = new DateTime(2026, 6, 6, 8, 1, 0, DateTimeKind.Utc);
+            var local = new LocalFileSnapshot
+            {
+                RelativePath = "Docs/existing.bin",
+                FullPath = Path.Combine(_root, "Docs", "existing.bin"),
+                ContentHash = string.Empty,
+                SizeBytes = 1024,
+                LastWriteUtc = new DateTime(2026, 6, 6, 8, 0, 0, DateTimeKind.Utc),
+            };
+            var scanner = new MetadataOnlyLocalFileScanner(local);
+            NodeFileManifestDto remote = RemoteFile("Docs/existing.bin", baselineHash, sizeBytes: local.SizeBytes);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(scanner, RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
+            await stateStore.InitializeAsync();
+            await stateStore.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = local.RelativePath,
+                Kind = SyncEntryKind.File,
+                LocalContentHash = baselineHash,
+                LocalLastWriteUtc = local.LastWriteUtc,
+                LocalSizeBytes = local.SizeBytes,
+                RemoteNodeId = remote.NodeId,
+                RemoteFileId = remote.Id,
+                RemoteContentHash = remote.ContentHash,
+                RemoteETag = remote.ETag,
+                SyncedAtUtc = baselineSyncedAtUtc,
+            });
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", local.RelativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(scanner.ContentHashCalls, Is.Zero);
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(result.Activities, Is.Empty);
+                Assert.That(local.ContentHash, Is.EqualTo(baselineHash));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalSizeBytes, Is.EqualTo(local.SizeBytes));
+                Assert.That(entry.SyncedAtUtc, Is.EqualTo(baselineSyncedAtUtc));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_ReportsAggregateRunProgressFileCounts()
+        {
+            var scanner = new FakeLocalFileScanner(
+                LocalFile("Docs/a.txt", "a"),
+                LocalFile("Docs/b.txt", "b"));
+            var progress = new RecordingProgress<SyncRunProgress>();
+            SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), new FakeRemoteFileSynchronizer(), out _);
+
+            await engine.RunOnceAsync(
+                Pair(),
+                new SyncRunOptions { RunProgress = progress });
+
+            IReadOnlyList<SyncRunProgress> fileProgress = progress.Values
+                .Where(item => item.Stage == SyncRunProgressStage.ReconcilingFiles)
+                .ToList();
+            Assert.Multiple(() =>
+            {
+                Assert.That(progress.Values[0].Stage, Is.EqualTo(SyncRunProgressStage.ScanningLocal));
+                Assert.That(progress.Values.Any(item => item.Stage == SyncRunProgressStage.ScanningRemote), Is.True);
+                Assert.That(progress.Values.Any(item => item.Stage == SyncRunProgressStage.ReconcilingDirectories), Is.True);
+                Assert.That(fileProgress.Select(item => item.FilesTotal).Distinct(), Is.EqualTo(new int?[] { 2 }));
+                Assert.That(fileProgress.Select(item => item.FilesCompleted).Distinct(), Is.EqualTo(new[] { 0, 1, 2 }));
+                Assert.That(fileProgress.Where(item => !string.IsNullOrWhiteSpace(item.CurrentPath)).Select(item => item.CurrentPath).Distinct(), Is.EqualTo(new[] { "Docs/a.txt", "Docs/b.txt" }));
+                Assert.That(progress.Values[^1].Stage, Is.EqualTo(SyncRunProgressStage.Completed));
+                Assert.That(progress.Values[^1].FilesCompleted, Is.EqualTo(2));
+                Assert.That(progress.Values[^1].FilesTotal, Is.EqualTo(2));
+                Assert.That(progress.Values[^1].IsCompleted, Is.True);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_ReportsLocalScanFileDiscoveryProgress()
+        {
+            var scanner = new MetadataOnlyLocalFileScanner(
+                LocalFile("Docs/a.txt", "a"),
+                LocalFile("Docs/b.txt", "b"))
+            {
+                ReportMetadataScanProgress = true,
+            };
+            var progress = new RecordingProgress<SyncRunProgress>();
+            SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), new FakeRemoteFileSynchronizer(), out _);
+
+            await engine.RunOnceAsync(
+                Pair(),
+                new SyncRunOptions { RunProgress = progress });
+
+            int remoteScanIndex = progress.Values
+                .Select((item, index) => (item, index))
+                .First(item => item.item.Stage == SyncRunProgressStage.ScanningRemote)
+                .index;
+            IReadOnlyList<SyncRunProgress> localScanProgress = progress.Values
+                .Take(remoteScanIndex)
+                .Where(item => item.Stage == SyncRunProgressStage.ScanningLocal)
+                .ToList();
+            Assert.Multiple(() =>
+            {
+                Assert.That(localScanProgress.Select(item => item.FilesCompleted), Does.Contain(1));
+                Assert.That(localScanProgress.Select(item => item.FilesCompleted), Does.Contain(2));
+                Assert.That(localScanProgress.Where(item => !string.IsNullOrWhiteSpace(item.CurrentPath)).Select(item => item.CurrentPath), Is.EqualTo(new[] { "Docs/a.txt", "Docs/b.txt" }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_ReportsRemoteScanFileDiscoveryProgress()
+        {
+            var progress = new RecordingProgress<SyncRunProgress>();
+            var remoteCrawler = new FakeRemoteTreeProgressCrawler(
+                EmptyRemoteTree(),
+                "Cloud/a.txt",
+                "Cloud/b.txt");
+            SyncEngine engine = new(
+                new FakeLocalFileScanner(),
+                remoteCrawler,
+                new FakeRemoteFileSynchronizer(),
+                new SqliteSyncStateStore(_databasePath));
+
+            await engine.RunOnceAsync(
+                Pair(),
+                new SyncRunOptions { RunProgress = progress });
+
+            IReadOnlyList<SyncRunProgress> remoteScanProgress = progress.Values
+                .Where(item => item.Stage == SyncRunProgressStage.ScanningRemote)
+                .ToList();
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteScanProgress.Select(item => item.FilesCompleted), Does.Contain(1));
+                Assert.That(remoteScanProgress.Select(item => item.FilesCompleted), Does.Contain(2));
+                Assert.That(remoteScanProgress.Where(item => !string.IsNullOrWhiteSpace(item.CurrentPath)).Select(item => item.CurrentPath), Is.EqualTo(new[] { "Cloud/a.txt", "Cloud/b.txt" }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_ReportsDirectoryReconcileProgressWithFolderCounts()
+        {
+            var scanner = new FakeLocalFileScanner
+            {
+                Directories =
+                {
+                    LocalDirectory("Projects"),
+                    LocalDirectory("Projects/Archive"),
+                },
+            };
+            var progress = new RecordingProgress<SyncRunProgress>();
+            SyncEngine engine = CreateEngine(
+                scanner,
+                EmptyRemoteTree(),
+                new FakeRemoteFileSynchronizer(),
+                out _,
+                new FakeRemoteDirectorySynchronizer());
+
+            await engine.RunOnceAsync(
+                Pair(),
+                new SyncRunOptions { RunProgress = progress });
+
+            IReadOnlyList<SyncRunProgress> directoryProgress = progress.Values
+                .Where(item => item.Stage == SyncRunProgressStage.ReconcilingDirectories)
+                .ToList();
+            Assert.Multiple(() =>
+            {
+                Assert.That(directoryProgress.Select(item => item.FilesTotal).Distinct(), Is.EqualTo(new int?[] { 2 }));
+                Assert.That(directoryProgress.Select(item => item.FilesCompleted).Distinct(), Is.EqualTo(new[] { 0, 1, 2 }));
+                Assert.That(
+                    directoryProgress.Where(item => !string.IsNullOrWhiteSpace(item.CurrentPath)).Select(item => item.CurrentPath).Distinct(),
+                    Is.EqualTo(new[] { "Projects", "Projects/Archive" }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_ThrottlesLargeFileReconcileProgress()
+        {
+            const int fileCount = 250;
+            var locals = new List<LocalFileSnapshot>();
+            var remotes = new List<NodeFileManifestDto>();
+            for (int index = 0; index < fileCount; index++)
+            {
+                string path = "Docs/file-" + index.ToString("000", CultureInfo.InvariantCulture) + ".txt";
+                string content = "content-" + index.ToString(CultureInfo.InvariantCulture);
+                LocalFileSnapshot local = LocalFile(path, content);
+                NodeFileManifestDto remote = RemoteFile(path, local.ContentHash, sizeBytes: local.SizeBytes);
+                locals.Add(local);
+                remotes.Add(remote);
+            }
+
+            var progress = new RecordingProgress<SyncRunProgress>();
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(locals.ToArray()), RemoteTree(remotes.ToArray()), new FakeRemoteFileSynchronizer(), out SqliteSyncStateStore stateStore);
+            for (int index = 0; index < fileCount; index++)
+            {
+                await InsertBaselineAsync(stateStore, locals[index].RelativePath, locals[index].ContentHash, remotes[index]);
+            }
+
+            await engine.RunOnceAsync(
+                Pair(),
+                new SyncRunOptions { RunProgress = progress });
+
+            IReadOnlyList<SyncRunProgress> fileProgress = progress.Values
+                .Where(item => item.Stage == SyncRunProgressStage.ReconcilingFiles)
+                .ToList();
+            int[] completedCounts = fileProgress
+                .Select(static item => item.FilesCompleted)
+                .Distinct()
+                .ToArray();
+            Assert.Multiple(() =>
+            {
+                Assert.That(fileProgress, Has.Count.LessThan(fileCount));
+                Assert.That(completedCounts[0], Is.EqualTo(0));
+                Assert.That(completedCounts, Does.Contain(25));
+                Assert.That(completedCounts[^1], Is.EqualTo(fileCount));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_ThrottlesLargeDirectoryReconcileProgress()
+        {
+            const int directoryCount = 250;
+            var scanner = new FakeLocalFileScanner();
+            for (int index = 0; index < directoryCount; index++)
+            {
+                scanner.Directories.Add(LocalDirectory("Folder-" + index.ToString("000", CultureInfo.InvariantCulture)));
+            }
+
+            var progress = new RecordingProgress<SyncRunProgress>();
+            SyncEngine engine = CreateEngine(
+                scanner,
+                EmptyRemoteTree(),
+                new FakeRemoteFileSynchronizer(),
+                out _,
+                new FakeRemoteDirectorySynchronizer());
+
+            await engine.RunOnceAsync(
+                Pair(),
+                new SyncRunOptions { RunProgress = progress });
+
+            IReadOnlyList<SyncRunProgress> directoryProgress = progress.Values
+                .Where(item => item.Stage == SyncRunProgressStage.ReconcilingDirectories)
+                .ToList();
+            int[] completedCounts = directoryProgress
+                .Select(static item => item.FilesCompleted)
+                .Distinct()
+                .ToArray();
+            Assert.Multiple(() =>
+            {
+                Assert.That(directoryProgress, Has.Count.LessThan(directoryCount));
+                Assert.That(completedCounts[0], Is.EqualTo(0));
+                Assert.That(completedCounts, Does.Contain(25));
+                Assert.That(completedCounts[^1], Is.EqualTo(directoryCount));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_ReportsRunTransferAndActivityProgressForUpload()
+        {
+            LocalFileSnapshot local = LocalFile("Docs/local.txt", "local-content");
+            var eventLog = new List<string>();
+            var runProgress = new RecordingProgress<SyncRunProgress>(
+                item => eventLog.Add($"run:{item.Stage}:{item.FilesCompleted}:{item.CurrentPath}:{item.IsCompleted}"));
+            var transferProgress = new RecordingProgress<SyncTransferProgress>(
+                item => eventLog.Add($"transfer:{item.Direction}:{item.RelativePath}:{item.TransferredBytes}:{item.TotalBytes}:{item.IsCompleted}"));
+            var activityProgress = new RecordingProgress<SyncActivity>(
+                item => eventLog.Add($"activity:{item.Kind}:{item.RelativePath}"));
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(local), EmptyRemoteTree(), new FakeRemoteFileSynchronizer(), out _);
+
+            await engine.RunOnceAsync(
+                Pair(),
+                new SyncRunOptions
+                {
+                    ActivityProgress = activityProgress,
+                    TransferProgress = transferProgress,
+                    RunProgress = runProgress,
+                });
+
+            int fileStartedIndex = eventLog.FindIndex(item => item.StartsWith("run:ReconcilingFiles:0:Docs/local.txt:", StringComparison.Ordinal));
+            int transferStartedIndex = eventLog.FindIndex(item => item == $"transfer:Upload:Docs/local.txt:0:{local.SizeBytes}:False");
+            int transferCompletedIndex = eventLog.FindIndex(item => item == $"transfer:Upload:Docs/local.txt:{local.SizeBytes}:{local.SizeBytes}:True");
+            int activityIndex = eventLog.FindIndex(item => item == "activity:Uploaded:Docs/local.txt");
+            int runCompletedIndex = eventLog.FindIndex(item => item == "run:Completed:1::True");
+            SyncRunProgress? fileStartProgress = runProgress.Values.FirstOrDefault(item =>
+                item.Stage == SyncRunProgressStage.ReconcilingFiles && item.FilesCompleted == 0);
+            SyncRunProgress? completedProgress = runProgress.Values.FirstOrDefault(item => item.Stage == SyncRunProgressStage.Completed);
+            Assert.Multiple(() =>
+            {
+                Assert.That(runProgress.Values.Select(item => item.Stage), Does.Contain(SyncRunProgressStage.Completed));
+                Assert.That(fileStartProgress, Is.Not.Null);
+                Assert.That(fileStartProgress!.BytesCompleted, Is.Zero);
+                Assert.That(fileStartProgress.BytesTotal, Is.EqualTo(local.SizeBytes));
+                Assert.That(completedProgress, Is.Not.Null);
+                Assert.That(completedProgress!.BytesCompleted, Is.EqualTo(local.SizeBytes));
+                Assert.That(completedProgress.BytesTotal, Is.EqualTo(local.SizeBytes));
+                Assert.That(transferProgress.Values.Select(item => item.IsCompleted), Is.EqualTo(new[] { false, true }));
+                Assert.That(activityProgress.Values.Select(item => item.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+                Assert.That(fileStartedIndex, Is.GreaterThanOrEqualTo(0));
+                Assert.That(transferStartedIndex, Is.GreaterThan(fileStartedIndex));
+                Assert.That(transferCompletedIndex, Is.GreaterThan(transferStartedIndex));
+                Assert.That(activityIndex, Is.GreaterThan(transferCompletedIndex));
+                Assert.That(runCompletedIndex, Is.GreaterThan(activityIndex));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_KeepsPlannedByteProgressStableWhenLazyHashCreatesConflict()
+        {
+            const string relativePath = "Docs/conflict.txt";
+            byte[] remoteContent = Encoding.UTF8.GetBytes("remote-content");
+            var local = new LocalFileSnapshot
+            {
+                RelativePath = relativePath,
+                FullPath = Path.Combine(_root, "Docs", "conflict.txt"),
+                ContentHash = string.Empty,
+                SizeBytes = 1024,
+                LastWriteUtc = new DateTime(2026, 6, 2, 13, 0, 0, DateTimeKind.Utc),
+            };
+            NodeFileManifestDto remote = RemoteFile(relativePath, Hash(remoteContent), sizeBytes: remoteContent.Length);
+            var scanner = new MetadataOnlyLocalFileScanner(local);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.Downloads[remote.Id] = remoteContent;
+            var runProgress = new RecordingProgress<SyncRunProgress>();
+            SyncEngine engine = CreateEngine(scanner, RemoteTree(remote), remoteFiles, out _);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(),
+                new SyncRunOptions { RunProgress = runProgress });
+
+            IReadOnlyList<SyncRunProgress> fileProgress = runProgress.Values
+                .Where(item => item.Stage is SyncRunProgressStage.ReconcilingFiles or SyncRunProgressStage.Completed)
+                .ToList();
+            Assert.Multiple(() =>
+            {
+                Assert.That(scanner.ContentHashCalls, Is.EqualTo(1));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Conflict }));
+                Assert.That(fileProgress, Is.Not.Empty);
+                Assert.That(fileProgress.Any(item => item.BytesTotal.HasValue), Is.True);
+                Assert.That(
+                    fileProgress.Where(item => item.BytesTotal.HasValue).All(item => item.BytesCompleted <= item.BytesTotal),
+                    Is.True);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_ReportsLocalHashProgressWhenCheckingBaselineFile()
+        {
+            const string relativePath = "Docs/changed.txt";
+            LocalFileSnapshot local = LocalFile(relativePath, "local-new");
+            local.ContentHash = string.Empty;
+            local.LastWriteUtc = new DateTime(2026, 6, 2, 14, 0, 0, DateTimeKind.Utc);
+            NodeFileManifestDto remote = RemoteFile(relativePath, HashText("old"));
+            var scanner = new MetadataOnlyLocalFileScanner(local);
+            var transferProgress = new RecordingProgress<SyncTransferProgress>();
+            SyncEngine engine = CreateEngine(scanner, RemoteTree(remote), new FakeRemoteFileSynchronizer(), out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, relativePath, HashText("old"), remote);
+
+            await engine.RunOnceAsync(
+                Pair(),
+                new SyncRunOptions { TransferProgress = transferProgress });
+
+            IReadOnlyList<SyncTransferProgress> hashProgress = transferProgress.Values
+                .Where(static item => item.Direction == SyncTransferDirection.Hash)
+                .ToList();
+            Assert.Multiple(() =>
+            {
+                Assert.That(scanner.ContentHashCalls, Is.EqualTo(1));
+                Assert.That(hashProgress, Has.Count.EqualTo(2));
+                Assert.That(hashProgress[0].TransferredBytes, Is.Zero);
+                Assert.That(hashProgress[0].TotalBytes, Is.EqualTo(local.SizeBytes));
+                Assert.That(hashProgress[^1].TransferredBytes, Is.EqualTo(local.SizeBytes));
+                Assert.That(hashProgress[^1].IsCompleted, Is.True);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_DownloadsRemoteOnlyFileAndStoresBaseline()
+        {
+            byte[] content = Encoding.UTF8.GetBytes("remote-content");
+            NodeFileManifestDto remote = RemoteFile("remote.txt", Hash(content), sizeBytes: content.Length);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.Downloads[remote.Id] = content;
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", "remote.txt");
+            Assert.Multiple(() =>
+            {
+                Assert.That(File.ReadAllText(Path.Combine(_root, "remote.txt")), Is.EqualTo("remote-content"));
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.Downloaded }));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(remote.ContentHash));
+                Assert.That(entry.RemoteFileId, Is.EqualTo(remote.Id));
+            });
+        }
+
+        [Test]
+        public void RunOnceAsync_FailsBeforeDownloadWhenPlannedDownloadsExceedFreeSpace()
+        {
+            NodeFileManifestDto remote = RemoteFile("huge.bin", HashText("huge"), sizeBytes: long.MaxValue);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), RemoteTree(remote), remoteFiles, out _);
+
+            LocalInsufficientDiskSpaceException? exception = Assert.ThrowsAsync<LocalInsufficientDiskSpaceException>(
+                () => engine.RunOnceAsync(Pair()));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception?.Message, Does.Contain("Not enough disk space"));
+                Assert.That(exception?.Message, Does.Contain("huge.bin"));
+                Assert.That(exception?.RelativePath, Is.EqualTo("huge.bin"));
+                Assert.That(exception?.RequiredBytes, Is.EqualTo(long.MaxValue));
+                Assert.That(File.Exists(Path.Combine(_root, "huge.bin")), Is.False);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_CreatesRemoteFolderForLocalOnlyEmptyDirectoryAndStoresBaseline()
+        {
+            Directory.CreateDirectory(Path.Combine(_root, "Projects", "Archive"));
+            var scanner = new FakeLocalFileScanner
+            {
+                Directories =
+                {
+                    LocalDirectory("Projects"),
+                    LocalDirectory("Projects/Archive"),
+                },
+            };
+            var remoteDirectories = new FakeRemoteDirectorySynchronizer();
+            SyncEngine engine = CreateEngine(
+                scanner,
+                EmptyRemoteTree(),
+                new FakeRemoteFileSynchronizer(),
+                out SqliteSyncStateStore stateStore,
+                remoteDirectories);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteDirectories.Creates, Has.Count.EqualTo(2));
+                Assert.That(remoteDirectories.Creates[0].ParentNodeId, Is.EqualTo(_remoteRootNodeId));
+                Assert.That(remoteDirectories.Creates[0].Name, Is.EqualTo("Projects"));
+                Assert.That(remoteDirectories.Creates[1].ParentNodeId, Is.EqualTo(remoteDirectories.Creates[0].ReturnedNode.Id));
+                Assert.That(remoteDirectories.Creates[1].Name, Is.EqualTo("Archive"));
+                Assert.That(state.Select(entry => entry.Kind), Is.EqualTo(new[] { SyncEntryKind.Directory, SyncEntryKind.Directory }));
+                Assert.That(state.Select(entry => entry.RelativePath), Is.EqualTo(new[] { "Projects", "Projects/Archive" }));
+                Assert.That(state.Select(entry => entry.RemoteNodeId), Is.EqualTo(remoteDirectories.Creates.Select(call => call.ReturnedNode.Id)));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded, SyncActivityKind.Uploaded }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_CreatesLocalFolderForRemoteOnlyEmptyDirectoryAndStoresBaseline()
+        {
+            RemoteDirectorySnapshot remoteDirectory = RemoteDirectory("Projects");
+            RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
+            remoteTree.Directories.Add(remoteDirectory);
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(),
+                remoteTree,
+                new FakeRemoteFileSynchronizer(),
+                out SqliteSyncStateStore stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(Directory.Exists(Path.Combine(_root, "Projects")), Is.True);
+                Assert.That(state, Has.Count.EqualTo(1));
+                Assert.That(state[0].Kind, Is.EqualTo(SyncEntryKind.Directory));
+                Assert.That(state[0].RelativePath, Is.EqualTo("Projects"));
+                Assert.That(state[0].RemoteNodeId, Is.EqualTo(remoteDirectory.Node.Id));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Downloaded }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_DeletesRemoteEmptyDirectoryWhenBaselineKnowsLocalDelete()
+        {
+            RemoteDirectorySnapshot remoteDirectory = RemoteDirectory("Projects");
+            RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
+            remoteTree.Directories.Add(remoteDirectory);
+            var remoteDirectories = new FakeRemoteDirectorySynchronizer();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(),
+                remoteTree,
+                new FakeRemoteFileSynchronizer(),
+                out SqliteSyncStateStore stateStore,
+                remoteDirectories);
+            await InsertDirectoryBaselineAsync(stateStore, "Projects", remoteDirectory.Node);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteDirectories.Deletes, Is.EqualTo(new[] { (remoteDirectory.Node.Id, false) }));
+                Assert.That(state, Is.Empty);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.DeletedRemote }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_DeletesLocalEmptyDirectoryWhenBaselineKnowsRemoteDelete()
+        {
+            Directory.CreateDirectory(Path.Combine(_root, "Projects"));
+            RemoteDirectorySnapshot remoteDirectory = RemoteDirectory("Projects");
+            var scanner = new FakeLocalFileScanner
+            {
+                Directories =
+                {
+                    LocalDirectory("Projects"),
+                },
+            };
+            SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), new FakeRemoteFileSynchronizer(), out SqliteSyncStateStore stateStore);
+            await InsertDirectoryBaselineAsync(stateStore, "Projects", remoteDirectory.Node);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(Directory.Exists(Path.Combine(_root, "Projects")), Is.False);
+                Assert.That(state, Is.Empty);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.DeletedLocal }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_SkipsLocalDirectoryDeleteWhenFolderIsNotEmpty()
+        {
+            WriteFile("Projects/keep.txt", "keep");
+            RemoteDirectorySnapshot remoteDirectory = RemoteDirectory("Projects");
+            LocalFileSnapshot localFile = LocalFile("Projects/keep.txt", "keep");
+            var scanner = new FakeLocalFileScanner(localFile)
+            {
+                Directories =
+                {
+                    LocalDirectory("Projects"),
+                },
+            };
+            SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), new FakeRemoteFileSynchronizer(), out SqliteSyncStateStore stateStore);
+            await InsertDirectoryBaselineAsync(stateStore, "Projects", remoteDirectory.Node);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            SyncStateEntry? state = await stateStore.GetAsync("pair-a", "Projects");
+            Assert.Multiple(() =>
+            {
+                Assert.That(Directory.Exists(Path.Combine(_root, "Projects")), Is.True);
+                Assert.That(File.Exists(Path.Combine(_root, "Projects", "keep.txt")), Is.True);
+                Assert.That(state, Is.Not.Null);
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Skipped, SyncActivityKind.Uploaded }));
+                Assert.That(result.Activities[0].RequiresUserAction, Is.False);
+                Assert.That(result.Activities[0].Details, Does.Contain("not empty"));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_BlocksRemoteDirectoryDeletesOverRunLimit()
+        {
+            RemoteDirectorySnapshot first = RemoteDirectory("One");
+            RemoteDirectorySnapshot second = RemoteDirectory("Two");
+            RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
+            remoteTree.Directories.Add(first);
+            remoteTree.Directories.Add(second);
+            var remoteDirectories = new FakeRemoteDirectorySynchronizer();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(),
+                remoteTree,
+                new FakeRemoteFileSynchronizer(),
+                out SqliteSyncStateStore stateStore,
+                remoteDirectories);
+            await InsertDirectoryBaselineAsync(stateStore, "One", first.Node);
+            await InsertDirectoryBaselineAsync(stateStore, "Two", second.Node);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(), new SyncRunOptions { MaximumRemoteDeletesPerRun = 1 });
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteDirectories.Deletes, Is.Empty);
+                Assert.That(state.Select(entry => entry.RelativePath), Is.EqualTo(new[] { "One", "Two" }));
+                Assert.That(result.RequiresUserAction, Is.True);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Skipped, SyncActivityKind.Skipped }));
+                Assert.That(result.Activities.Select(activity => activity.RequiresUserAction), Is.All.True);
+                Assert.That(result.Activities[0].Details, Does.Contain("2 pending deletes exceed limit 1"));
+                Assert.That(result.Activities[1].Details, Does.Contain("2 pending deletes exceed limit 1"));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_DoesNotCascadeRemoteDirectoryDeletesInsideOneRun()
+        {
+            RemoteDirectorySnapshot parent = RemoteDirectory("Projects");
+            RemoteDirectorySnapshot child = RemoteDirectory("Projects/Archive", parent.Node.Id);
+            RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
+            remoteTree.Directories.Add(parent);
+            remoteTree.Directories.Add(child);
+            var remoteDirectories = new FakeRemoteDirectorySynchronizer();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(),
+                remoteTree,
+                new FakeRemoteFileSynchronizer(),
+                out SqliteSyncStateStore stateStore,
+                remoteDirectories);
+            await InsertDirectoryBaselineAsync(stateStore, "Projects", parent.Node);
+            await InsertDirectoryBaselineAsync(stateStore, "Projects/Archive", child.Node);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(), new SyncRunOptions { MaximumRemoteDeletesPerRun = 1 });
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteDirectories.Deletes, Is.EqualTo(new[] { (child.Node.Id, false) }));
+                Assert.That(state.Select(entry => entry.RelativePath), Is.EqualTo(new[] { "Projects" }));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.DeletedRemote, SyncActivityKind.Skipped }));
+                Assert.That(result.Activities[1].Details, Does.Contain("not empty"));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_DoesNotCascadeLocalDirectoryDeletesInsideOneRun()
+        {
+            Directory.CreateDirectory(Path.Combine(_root, "Projects", "Archive"));
+            RemoteDirectorySnapshot parent = RemoteDirectory("Projects");
+            RemoteDirectorySnapshot child = RemoteDirectory("Projects/Archive", parent.Node.Id);
+            var scanner = new FakeLocalFileScanner
+            {
+                Directories =
+                {
+                    LocalDirectory("Projects"),
+                    LocalDirectory("Projects/Archive"),
+                },
+            };
+            SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), new FakeRemoteFileSynchronizer(), out SqliteSyncStateStore stateStore);
+            await InsertDirectoryBaselineAsync(stateStore, "Projects", parent.Node);
+            await InsertDirectoryBaselineAsync(stateStore, "Projects/Archive", child.Node);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(), new SyncRunOptions { MaximumLocalDeletesPerRun = 1 });
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(Directory.Exists(Path.Combine(_root, "Projects")), Is.True);
+                Assert.That(Directory.Exists(Path.Combine(_root, "Projects", "Archive")), Is.False);
+                Assert.That(state.Select(entry => entry.RelativePath), Is.EqualTo(new[] { "Projects" }));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.DeletedLocal, SyncActivityKind.Skipped }));
+                Assert.That(result.Activities[1].Details, Does.Contain("not empty"));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_PreservesLocalFolderWhenRemoteFileInsideIsDeleted()
+        {
+            const string directoryPath = "Projects";
+            const string filePath = "Projects/deleted-remotely.txt";
+            WriteFile(filePath, "baseline-content");
+            LocalFileSnapshot local = LocalFile(filePath, "baseline-content");
+            RemoteDirectorySnapshot remoteDirectory = RemoteDirectory(directoryPath);
+            RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
+            remoteTree.Directories.Add(remoteDirectory);
+            var scanner = new FakeLocalFileScanner(local)
+            {
+                Directories =
+                {
+                    LocalDirectory(directoryPath),
+                },
+            };
+            SyncEngine engine = CreateEngine(scanner, remoteTree, new FakeRemoteFileSynchronizer(), out SqliteSyncStateStore stateStore);
+            await InsertDirectoryBaselineAsync(stateStore, directoryPath, remoteDirectory.Node);
+            await InsertBaselineAsync(
+                stateStore,
+                filePath,
+                local.ContentHash,
+                RemoteFile(filePath, local.ContentHash));
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(Directory.Exists(Path.Combine(_root, directoryPath)), Is.True);
+                Assert.That(File.Exists(Path.Combine(_root, "Projects", "deleted-remotely.txt")), Is.False);
+                Assert.That(state.Select(entry => entry.RelativePath), Is.EqualTo(new[] { directoryPath }));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.DeletedLocal }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_PropagatesLocalEmptyDirectoryRenameAsCreateAndDelete()
+        {
+            const string oldPath = "Projects";
+            const string newPath = "ProjectsRenamed";
+            RemoteDirectorySnapshot oldRemoteDirectory = RemoteDirectory(oldPath);
+            RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
+            remoteTree.Directories.Add(oldRemoteDirectory);
+            var scanner = new FakeLocalFileScanner
+            {
+                Directories =
+                {
+                    LocalDirectory(newPath),
+                },
+            };
+            var remoteDirectories = new FakeRemoteDirectorySynchronizer();
+            SyncEngine engine = CreateEngine(
+                scanner,
+                remoteTree,
+                new FakeRemoteFileSynchronizer(),
+                out SqliteSyncStateStore stateStore,
+                remoteDirectories);
+            await InsertDirectoryBaselineAsync(stateStore, oldPath, oldRemoteDirectory.Node);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteDirectories.Creates.Select(call => call.Name), Is.EqualTo(new[] { newPath }));
+                Assert.That(remoteDirectories.Deletes, Is.EqualTo(new[] { (oldRemoteDirectory.Node.Id, false) }));
+                Assert.That(state.Select(entry => entry.RelativePath), Is.EqualTo(new[] { newPath }));
+                Assert.That(state[0].RemoteNodeId, Is.EqualTo(remoteDirectories.Creates[0].ReturnedNode.Id));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded, SyncActivityKind.DeletedRemote }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_PropagatesRemoteEmptyDirectoryRenameAsCreateAndDelete()
+        {
+            const string oldPath = "Projects";
+            const string newPath = "ProjectsRenamed";
+            Directory.CreateDirectory(Path.Combine(_root, oldPath));
+            RemoteDirectorySnapshot oldRemoteDirectory = RemoteDirectory(oldPath);
+            RemoteDirectorySnapshot newRemoteDirectory = RemoteDirectory(newPath);
+            RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
+            remoteTree.Directories.Add(newRemoteDirectory);
+            var scanner = new FakeLocalFileScanner
+            {
+                Directories =
+                {
+                    LocalDirectory(oldPath),
+                },
+            };
+            SyncEngine engine = CreateEngine(scanner, remoteTree, new FakeRemoteFileSynchronizer(), out SqliteSyncStateStore stateStore);
+            await InsertDirectoryBaselineAsync(stateStore, oldPath, oldRemoteDirectory.Node);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(Directory.Exists(Path.Combine(_root, oldPath)), Is.False);
+                Assert.That(Directory.Exists(Path.Combine(_root, newPath)), Is.True);
+                Assert.That(state.Select(entry => entry.RelativePath), Is.EqualTo(new[] { newPath }));
+                Assert.That(state[0].RemoteNodeId, Is.EqualTo(newRemoteDirectory.Node.Id));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Downloaded, SyncActivityKind.DeletedLocal }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_PropagatesLocalEmptyDirectoryMoveAsCreateAndDelete()
+        {
+            const string parentPath = "Archive";
+            const string oldPath = "Projects";
+            const string newPath = "Archive/Projects";
+            RemoteDirectorySnapshot remoteParent = RemoteDirectory(parentPath);
+            RemoteDirectorySnapshot oldRemoteDirectory = RemoteDirectory(oldPath);
+            RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
+            remoteTree.Directories.Add(remoteParent);
+            remoteTree.Directories.Add(oldRemoteDirectory);
+            var scanner = new FakeLocalFileScanner
+            {
+                Directories =
+                {
+                    LocalDirectory(parentPath),
+                    LocalDirectory(newPath),
+                },
+            };
+            var remoteDirectories = new FakeRemoteDirectorySynchronizer();
+            SyncEngine engine = CreateEngine(
+                scanner,
+                remoteTree,
+                new FakeRemoteFileSynchronizer(),
+                out SqliteSyncStateStore stateStore,
+                remoteDirectories);
+            await InsertDirectoryBaselineAsync(stateStore, parentPath, remoteParent.Node);
+            await InsertDirectoryBaselineAsync(stateStore, oldPath, oldRemoteDirectory.Node);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteDirectories.Creates, Has.Count.EqualTo(1));
+                Assert.That(remoteDirectories.Creates[0].ParentNodeId, Is.EqualTo(remoteParent.Node.Id));
+                Assert.That(remoteDirectories.Creates[0].Name, Is.EqualTo("Projects"));
+                Assert.That(remoteDirectories.Deletes, Is.EqualTo(new[] { (oldRemoteDirectory.Node.Id, false) }));
+                Assert.That(state.Select(entry => entry.RelativePath), Is.EqualTo(new[] { parentPath, newPath }));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded, SyncActivityKind.DeletedRemote }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_PropagatesRemoteEmptyDirectoryMoveAsCreateAndDelete()
+        {
+            const string parentPath = "Archive";
+            const string oldPath = "Projects";
+            const string newPath = "Archive/Projects";
+            Directory.CreateDirectory(Path.Combine(_root, parentPath));
+            Directory.CreateDirectory(Path.Combine(_root, oldPath));
+            RemoteDirectorySnapshot remoteParent = RemoteDirectory(parentPath);
+            RemoteDirectorySnapshot oldRemoteDirectory = RemoteDirectory(oldPath);
+            RemoteDirectorySnapshot movedRemoteDirectory = RemoteDirectory(newPath, remoteParent.Node.Id);
+            RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
+            remoteTree.Directories.Add(remoteParent);
+            remoteTree.Directories.Add(movedRemoteDirectory);
+            var scanner = new FakeLocalFileScanner
+            {
+                Directories =
+                {
+                    LocalDirectory(parentPath),
+                    LocalDirectory(oldPath),
+                },
+            };
+            SyncEngine engine = CreateEngine(scanner, remoteTree, new FakeRemoteFileSynchronizer(), out SqliteSyncStateStore stateStore);
+            await InsertDirectoryBaselineAsync(stateStore, parentPath, remoteParent.Node);
+            await InsertDirectoryBaselineAsync(stateStore, oldPath, oldRemoteDirectory.Node);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(Directory.Exists(Path.Combine(_root, oldPath)), Is.False);
+                Assert.That(Directory.Exists(Path.Combine(_root, newPath.Replace('/', Path.DirectorySeparatorChar))), Is.True);
+                Assert.That(state.Select(entry => entry.RelativePath), Is.EqualTo(new[] { parentPath, newPath }));
+                Assert.That(state.Single(entry => entry.RelativePath == newPath).RemoteNodeId, Is.EqualTo(movedRemoteDirectory.Node.Id));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Downloaded, SyncActivityKind.DeletedLocal }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_PreservesBothDirectoryRenamesWhenLocalAndRemoteRenameDiverge()
+        {
+            const string oldPath = "Projects";
+            const string localRenamePath = "Projects Local";
+            const string remoteRenamePath = "Projects Remote";
+            Directory.CreateDirectory(Path.Combine(_root, localRenamePath));
+            RemoteDirectorySnapshot baselineRemoteDirectory = RemoteDirectory(oldPath);
+            RemoteDirectorySnapshot remoteRenamedDirectory = RemoteDirectory(remoteRenamePath);
+            RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
+            remoteTree.Directories.Add(remoteRenamedDirectory);
+            var scanner = new FakeLocalFileScanner
+            {
+                Directories =
+                {
+                    LocalDirectory(localRenamePath),
+                },
+            };
+            var remoteDirectories = new FakeRemoteDirectorySynchronizer();
+            SyncEngine engine = CreateEngine(
+                scanner,
+                remoteTree,
+                new FakeRemoteFileSynchronizer(),
+                out SqliteSyncStateStore stateStore,
+                remoteDirectories);
+            await InsertDirectoryBaselineAsync(stateStore, oldPath, baselineRemoteDirectory.Node);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            SyncStateEntry? oldEntry = await stateStore.GetAsync("pair-a", oldPath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(Directory.Exists(Path.Combine(_root, oldPath)), Is.False);
+                Assert.That(Directory.Exists(Path.Combine(_root, localRenamePath)), Is.True);
+                Assert.That(Directory.Exists(Path.Combine(_root, remoteRenamePath)), Is.True);
+                Assert.That(remoteDirectories.Deletes, Is.Empty);
+                Assert.That(remoteDirectories.Creates.Select(call => call.Name), Is.EqualTo(new[] { localRenamePath }));
+                Assert.That(oldEntry, Is.Null);
+                Assert.That(state.Select(entry => entry.RelativePath), Is.EqualTo(new[] { localRenamePath, remoteRenamePath }));
+                Assert.That(state.Single(entry => entry.RelativePath == localRenamePath).RemoteNodeId, Is.EqualTo(remoteDirectories.Creates[0].ReturnedNode.Id));
+                Assert.That(state.Single(entry => entry.RelativePath == remoteRenamePath).RemoteNodeId, Is.EqualTo(remoteRenamedDirectory.Node.Id));
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded, SyncActivityKind.Downloaded }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_UploadsUnicodeNamedLocalFileAndStoresBaseline()
+        {
+            const string relativePath = "Документы/設計-notes.txt";
+            LocalFileSnapshot local = LocalFile(relativePath, "unicode-local-content");
+            var scanner = new FakeLocalFileScanner(local);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), remoteFiles, out SqliteSyncStateStore stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Uploads, Has.Count.EqualTo(1));
+                Assert.That(remoteFiles.Uploads[0].RelativePath, Is.EqualTo(relativePath));
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.RelativePath, Is.EqualTo(relativePath));
+                Assert.That(entry.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(local.ContentHash));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_UploadsMixedUnicodeNamedLocalFileWithNormalizedBaseline()
+        {
+            const string localRelativePath = "Mixed/Cafe\u0301-\u05d3\u05d5\u05d7-\ud83d\udcc4.txt";
+            const string normalizedRelativePath = "Mixed/Caf\u00e9-\u05d3\u05d5\u05d7-\ud83d\udcc4.txt";
+            LocalFileSnapshot local = LocalFile(localRelativePath, "mixed-unicode-local-content");
+            var scanner = new FakeLocalFileScanner(local);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), remoteFiles, out SqliteSyncStateStore stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", normalizedRelativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Uploads, Has.Count.EqualTo(1));
+                Assert.That(remoteFiles.Uploads[0].RelativePath, Is.EqualTo(normalizedRelativePath));
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.RelativePath, Is.EqualTo(normalizedRelativePath));
+                Assert.That(entry.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(local.ContentHash));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_DownloadsUnicodeNamedRemoteFileAndStoresBaseline()
+        {
+            const string relativePath = "Документы/設計-remote.txt";
+            byte[] content = Encoding.UTF8.GetBytes("unicode-remote-content");
+            NodeFileManifestDto remote = RemoteFile(relativePath, Hash(content), sizeBytes: content.Length);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.Downloads[remote.Id] = content;
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(File.ReadAllText(Path.Combine(_root, "Документы", "設計-remote.txt")), Is.EqualTo("unicode-remote-content"));
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.Downloaded }));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.RelativePath, Is.EqualTo(relativePath));
+                Assert.That(entry.LocalContentHash, Is.EqualTo(remote.ContentHash));
+                Assert.That(entry.RemoteFileId, Is.EqualTo(remote.Id));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_UploadsLocalChangeWhenRemoteBaselineIsUnchanged()
+        {
+            LocalFileSnapshot local = LocalFile("changed.txt", "local-new");
+            NodeFileManifestDto remote = RemoteFile("changed.txt", HashText("old"));
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(local), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, "changed.txt", HashText("old"), remote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", "changed.txt");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Uploads, Has.Count.EqualTo(1));
+                Assert.That(remoteFiles.Uploads[0].ExistingRemoteFile!.Id, Is.EqualTo(remote.Id));
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(local.ContentHash));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_DoesNotUpdateBaselineWhenRemoteUploadFails()
+        {
+            string relativePath = "upload-fails.txt";
+            LocalFileSnapshot local = LocalFile(relativePath, "local-new");
+            NodeFileManifestDto remote = RemoteFile(relativePath, HashText("old"));
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.UploadFailureIds.Add(remote.Id);
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(local), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, relativePath, HashText("old"), remote);
+
+            InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(
+                async () => await engine.RunOnceAsync(Pair()));
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(HashText("old")));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(remote.ContentHash));
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_RecoversAfterRemoteUploadBeforeBaselineUpdate()
+        {
+            string relativePath = "uploaded-before-baseline.txt";
+            LocalFileSnapshot local = LocalFile(relativePath, "local-new");
+            var scanner = new FakeLocalFileScanner(local);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var durableStore = new SqliteSyncStateStore(_databasePath);
+            var failingStore = new FailingUpsertStateStore(durableStore);
+            SyncEngine firstRun = new(scanner, new FakeRemoteTreeCrawler(EmptyRemoteTree()), remoteFiles, failingStore);
+
+            InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(
+                async () => await firstRun.RunOnceAsync(Pair()));
+
+            NodeFileManifestDto uploaded = remoteFiles.Uploads.Single().ReturnedFile;
+            SyncEngine secondRun = new(scanner, new FakeRemoteTreeCrawler(RemoteTree(uploaded)), remoteFiles, new SqliteSyncStateStore(_databasePath));
+            SyncRunResult result = await secondRun.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await durableStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(remoteFiles.Uploads, Has.Count.EqualTo(1));
+                Assert.That(result.Activities, Is.Empty);
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(uploaded.ContentHash));
+                Assert.That(entry.RemoteFileId, Is.EqualTo(uploaded.Id));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_ReusesSharedStateAcrossSequentialClientSurfaces()
+        {
+            const string relativePath = "sequential-surface.txt";
+            LocalFileSnapshot local = LocalFile(relativePath, "desktop-local");
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var desktopStateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine desktopRun = new(
+                new FakeLocalFileScanner(local),
+                new FakeRemoteTreeCrawler(EmptyRemoteTree()),
+                remoteFiles,
+                desktopStateStore);
+
+            SyncRunResult firstResult = await desktopRun.RunOnceAsync(Pair());
+
+            NodeFileManifestDto uploaded = remoteFiles.Uploads.Single().ReturnedFile;
+            var cliStateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine cliRun = new(
+                new FakeLocalFileScanner(local),
+                new FakeRemoteTreeCrawler(RemoteTree(uploaded)),
+                remoteFiles,
+                cliStateStore);
+            SyncRunResult secondResult = await cliRun.RunOnceAsync(Pair());
+
+            byte[] remoteUpdateContent = Encoding.UTF8.GetBytes("remote-after-cli");
+            NodeFileManifestDto remoteUpdate = RemoteFile(
+                relativePath,
+                Hash(remoteUpdateContent),
+                uploaded.Id,
+                remoteUpdateContent.Length);
+            remoteFiles.Downloads[uploaded.Id] = remoteUpdateContent;
+            var restartedDesktopStateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine restartedDesktopRun = new(
+                new FakeLocalFileScanner(local),
+                new FakeRemoteTreeCrawler(RemoteTree(remoteUpdate)),
+                remoteFiles,
+                restartedDesktopStateStore);
+            SyncRunResult thirdResult = await restartedDesktopRun.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await restartedDesktopStateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(firstResult.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+                Assert.That(secondResult.Activities, Is.Empty);
+                Assert.That(thirdResult.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Downloaded }));
+                Assert.That(File.ReadAllText(Path.Combine(_root, relativePath)), Is.EqualTo("remote-after-cli"));
+                Assert.That(remoteFiles.Uploads, Has.Count.EqualTo(1));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(remoteUpdate.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(remoteUpdate.ContentHash));
+                Assert.That(entry.RemoteFileId, Is.EqualTo(uploaded.Id));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_CliInterruptedUploadCanBeRecoveredByDesktopSurface()
+        {
+            const string relativePath = "cli-interrupted-upload.txt";
+            LocalFileSnapshot local = LocalFile(relativePath, "cli-local-before-crash");
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var durableStore = new SqliteSyncStateStore(_databasePath);
+            var cliCrashStore = new FailingUpsertStateStore(durableStore);
+            SyncEngine cliRun = new(
+                new FakeLocalFileScanner(local),
+                new FakeRemoteTreeCrawler(EmptyRemoteTree()),
+                remoteFiles,
+                cliCrashStore);
+
+            InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(
+                async () => await cliRun.RunOnceAsync(Pair()));
+
+            NodeFileManifestDto uploaded = remoteFiles.Uploads.Single().ReturnedFile;
+            SyncEngine desktopRecoveryRun = new(
+                new FakeLocalFileScanner(local),
+                new FakeRemoteTreeCrawler(RemoteTree(uploaded)),
+                remoteFiles,
+                new SqliteSyncStateStore(_databasePath));
+            SyncRunResult result = await desktopRecoveryRun.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await durableStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(result.Activities, Is.Empty);
+                Assert.That(remoteFiles.Uploads, Has.Count.EqualTo(1));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(uploaded.ContentHash));
+                Assert.That(entry.RemoteFileId, Is.EqualTo(uploaded.Id));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_DesktopInterruptedDownloadCanBeRecoveredByCliSurface()
+        {
+            const string relativePath = "desktop-interrupted-download.txt";
+            byte[] remoteContent = Encoding.UTF8.GetBytes("remote content before desktop crash");
+            NodeFileManifestDto remote = RemoteFile(relativePath, Hash(remoteContent), sizeBytes: remoteContent.Length);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.Downloads[remote.Id] = remoteContent;
+            var durableStore = new SqliteSyncStateStore(_databasePath);
+            var desktopCrashStore = new FailingUpsertStateStore(durableStore);
+            SyncEngine desktopRun = new(
+                new FakeLocalFileScanner(),
+                new FakeRemoteTreeCrawler(RemoteTree(remote)),
+                remoteFiles,
+                desktopCrashStore);
+
+            InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(
+                async () => await desktopRun.RunOnceAsync(Pair()));
+
+            LocalFileSnapshot downloadedLocal = new()
+            {
+                RelativePath = relativePath,
+                FullPath = Path.Combine(_root, relativePath),
+                ContentHash = remote.ContentHash,
+                SizeBytes = remoteContent.Length,
+                LastWriteUtc = File.GetLastWriteTimeUtc(Path.Combine(_root, relativePath)),
+            };
+            SyncEngine cliRecoveryRun = new(
+                new FakeLocalFileScanner(downloadedLocal),
+                new FakeRemoteTreeCrawler(RemoteTree(remote)),
+                remoteFiles,
+                new SqliteSyncStateStore(_databasePath));
+            SyncRunResult result = await cliRecoveryRun.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await durableStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(File.ReadAllBytes(Path.Combine(_root, relativePath)), Is.EqualTo(remoteContent));
+                Assert.That(result.Activities, Is.Empty);
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(remote.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(remote.ContentHash));
+                Assert.That(entry.RemoteFileId, Is.EqualTo(remote.Id));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_RecoversAfterTransientUploadFailureWithoutStaleBaseline()
+        {
+            string relativePath = "network-drop-upload.txt";
+            LocalFileSnapshot local = LocalFile(relativePath, "local");
+            var scanner = new FakeLocalFileScanner(local);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.UploadFailureRelativePaths.Add(relativePath);
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine firstRun = new(scanner, new FakeRemoteTreeCrawler(EmptyRemoteTree()), remoteFiles, stateStore);
+
+            Assert.ThrowsAsync<HttpRequestException>(
+                async () => await firstRun.RunOnceAsync(Pair()));
+
+            SyncStateEntry? failedEntry = await stateStore.GetAsync("pair-a", relativePath);
+            remoteFiles.UploadFailureRelativePaths.Clear();
+            SyncEngine secondRun = new(scanner, new FakeRemoteTreeCrawler(EmptyRemoteTree()), remoteFiles, stateStore);
+            SyncRunResult result = await secondRun.RunOnceAsync(Pair());
+
+            SyncStateEntry? recoveredEntry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(failedEntry, Is.Null);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+                Assert.That(remoteFiles.Uploads, Has.Count.EqualTo(1));
+                Assert.That(recoveredEntry, Is.Not.Null);
+                Assert.That(recoveredEntry!.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(recoveredEntry.RemoteContentHash, Is.EqualTo(local.ContentHash));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_SkipsChangedLocalFileDuringUploadAndContinuesPass()
+        {
+            LocalFileSnapshot volatileLocal = LocalFile("hot/volatile.txt", "first local content");
+            LocalFileSnapshot stableLocal = LocalFile("hot/stable.txt", "stable local content");
+            var scanner = new FakeLocalFileScanner(volatileLocal, stableLocal);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.LocalUnavailableUploadRelativePaths.Add(volatileLocal.RelativePath);
+            SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), remoteFiles, out SqliteSyncStateStore stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            SyncStateEntry? volatileEntry = await stateStore.GetAsync("pair-a", volatileLocal.RelativePath);
+            SyncStateEntry? stableEntry = await stateStore.GetAsync("pair-a", stableLocal.RelativePath);
+            SyncActivity volatileActivity = result.Activities.Single(activity => activity.RelativePath == volatileLocal.RelativePath);
+            SyncActivity stableActivity = result.Activities.Single(activity => activity.RelativePath == stableLocal.RelativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.Activities, Has.Count.EqualTo(2));
+                Assert.That(volatileActivity.Kind, Is.EqualTo(SyncActivityKind.Skipped));
+                Assert.That(volatileActivity.RequiresUserAction, Is.False);
+                Assert.That(volatileActivity.Details, Does.Contain("changed during upload"));
+                Assert.That(result.DeferredLocalPaths, Is.EqualTo(new[] { volatileLocal.RelativePath }));
+                Assert.That(stableActivity.Kind, Is.EqualTo(SyncActivityKind.Uploaded));
+                Assert.That(remoteFiles.Uploads.Select(static upload => upload.RelativePath), Is.EqualTo(new[] { stableLocal.RelativePath }));
+                Assert.That(volatileEntry, Is.Null);
+                Assert.That(stableEntry, Is.Not.Null);
+                Assert.That(stableEntry!.LocalContentHash, Is.EqualTo(stableLocal.ContentHash));
+                Assert.That(stableEntry.RemoteContentHash, Is.EqualTo(stableLocal.ContentHash));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_DefersFreshLocalUploadUntilQuietWindow()
+        {
+            LocalFileSnapshot freshLocal = LocalFile("hot/fresh.txt", "fresh local content");
+            freshLocal.LastWriteUtc = DateTime.UtcNow;
+            var scanner = new FakeLocalFileScanner(freshLocal);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), remoteFiles, out SqliteSyncStateStore stateStore);
+            var options = new SyncRunOptions { MinimumLocalUploadAge = TimeSpan.FromMinutes(5) };
+
+            SyncRunResult firstResult = await engine.RunOnceAsync(Pair(), options);
+            SyncStateEntry? deferredEntry = await stateStore.GetAsync("pair-a", freshLocal.RelativePath);
+            freshLocal.LastWriteUtc = DateTime.UtcNow.AddMinutes(-10);
+            SyncRunResult secondResult = await engine.RunOnceAsync(Pair(), options);
+
+            SyncStateEntry? uploadedEntry = await stateStore.GetAsync("pair-a", freshLocal.RelativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(firstResult.Activities.Select(static activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Skipped }));
+                Assert.That(firstResult.DeferredLocalPaths, Is.EqualTo(new[] { freshLocal.RelativePath }));
+                Assert.That(firstResult.Activities.Single().Details, Does.Contain("quiet window"));
+                Assert.That(deferredEntry, Is.Null);
+                Assert.That(secondResult.Activities.Select(static activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+                Assert.That(secondResult.HasDeferredLocalPaths, Is.False);
+                Assert.That(remoteFiles.Uploads.Select(static upload => upload.RelativePath), Is.EqualTo(new[] { freshLocal.RelativePath }));
+                Assert.That(uploadedEntry, Is.Not.Null);
+                Assert.That(uploadedEntry!.LocalContentHash, Is.EqualTo(freshLocal.ContentHash));
+                Assert.That(uploadedEntry.RemoteContentHash, Is.EqualTo(freshLocal.ContentHash));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_UploadsAccumulatedLocalChangesAfterTransientUploadFailure()
+        {
+            LocalFileSnapshot first = LocalFile("offline/first.txt", "first offline local content");
+            LocalFileSnapshot second = LocalFile("offline/second.txt", "second offline local content");
+            var scanner = new FakeLocalFileScanner(first, second);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.UploadFailureRelativePaths.Add(first.RelativePath);
+            remoteFiles.UploadFailureRelativePaths.Add(second.RelativePath);
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine firstRun = new(scanner, new FakeRemoteTreeCrawler(EmptyRemoteTree()), remoteFiles, stateStore);
+
+            Assert.ThrowsAsync<HttpRequestException>(
+                async () => await firstRun.RunOnceAsync(Pair()));
+
+            remoteFiles.UploadFailureRelativePaths.Clear();
+            SyncEngine secondRun = new(scanner, new FakeRemoteTreeCrawler(EmptyRemoteTree()), remoteFiles, stateStore);
+            SyncRunResult result = await secondRun.RunOnceAsync(Pair());
+            SyncStateEntry? firstEntry = await stateStore.GetAsync("pair-a", first.RelativePath);
+            SyncStateEntry? secondEntry = await stateStore.GetAsync("pair-a", second.RelativePath);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.Activities.Select(static activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded, SyncActivityKind.Uploaded }));
+                Assert.That(remoteFiles.Uploads.Select(static upload => upload.RelativePath), Is.EqualTo(new[] { first.RelativePath, second.RelativePath }));
+                Assert.That(firstEntry, Is.Not.Null);
+                Assert.That(firstEntry!.LocalContentHash, Is.EqualTo(first.ContentHash));
+                Assert.That(firstEntry.RemoteContentHash, Is.EqualTo(first.ContentHash));
+                Assert.That(secondEntry, Is.Not.Null);
+                Assert.That(secondEntry!.LocalContentHash, Is.EqualTo(second.ContentHash));
+                Assert.That(secondEntry.RemoteContentHash, Is.EqualTo(second.ContentHash));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_DownloadsRemoteChangeWhenLocalBaselineIsUnchanged()
+        {
+            string relativePath = "changed-down.txt";
+            WriteFile(relativePath, "old");
+            LocalFileSnapshot local = LocalFile(relativePath, "old");
+            byte[] remoteContent = Encoding.UTF8.GetBytes("remote-new");
+            NodeFileManifestDto remote = RemoteFile(relativePath, Hash(remoteContent), sizeBytes: remoteContent.Length);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.Downloads[remote.Id] = remoteContent;
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(local), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, relativePath, local.ContentHash, RemoteFile(relativePath, local.ContentHash, remote.Id));
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(File.ReadAllText(Path.Combine(_root, relativePath)), Is.EqualTo("remote-new"));
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.Downloaded }));
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(remote.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(remote.ContentHash));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_DoesNotUpdateBaselineWhenRemoteDownloadFails()
+        {
+            string relativePath = "download-fails.txt";
+            WriteFile(relativePath, "old");
+            LocalFileSnapshot local = LocalFile(relativePath, "old");
+            NodeFileManifestDto remote = RemoteFile(
+                relativePath,
+                HashText("remote-new"),
+                sizeBytes: Encoding.UTF8.GetByteCount("remote-new"));
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.DownloadFailureIds.Add(remote.Id);
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(local), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, relativePath, local.ContentHash, RemoteFile(relativePath, local.ContentHash, remote.Id));
+
+            InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(
+                async () => await engine.RunOnceAsync(Pair()));
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            string temporaryDirectory = Path.Combine(_root, ".cotton-sync", "tmp");
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(File.ReadAllText(Path.Combine(_root, relativePath)), Is.EqualTo("old"));
+                Assert.That(
+                    Directory.Exists(temporaryDirectory)
+                        ? Directory.GetFiles(temporaryDirectory, "*", SearchOption.AllDirectories)
+                        : [],
+                    Is.Empty);
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(local.ContentHash));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_RecoversAfterTransientDownloadFailureWithoutStalePartial()
+        {
+            string relativePath = "network-drop-download.txt";
+            byte[] remoteContent = Encoding.UTF8.GetBytes("remote");
+            NodeFileManifestDto remote = RemoteFile(relativePath, Hash(remoteContent), sizeBytes: remoteContent.Length);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.DownloadFailureIds.Add(remote.Id);
+            remoteFiles.Downloads[remote.Id] = remoteContent;
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine firstRun = new(
+                new FakeLocalFileScanner(),
+                new FakeRemoteTreeCrawler(RemoteTree(remote)),
+                remoteFiles,
+                stateStore);
+
+            Assert.ThrowsAsync<InvalidOperationException>(
+                async () => await firstRun.RunOnceAsync(Pair()));
+
+            string localPath = Path.Combine(_root, relativePath);
+            SyncStateEntry? failedEntry = await stateStore.GetAsync("pair-a", relativePath);
+            remoteFiles.DownloadFailureIds.Clear();
+            SyncEngine secondRun = new(
+                new FakeLocalFileScanner(),
+                new FakeRemoteTreeCrawler(RemoteTree(remote)),
+                remoteFiles,
+                stateStore);
+            SyncRunResult result = await secondRun.RunOnceAsync(Pair());
+
+            SyncStateEntry? recoveredEntry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(failedEntry, Is.Null);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Downloaded }));
+                Assert.That(File.ReadAllText(localPath), Is.EqualTo("remote"));
+                Assert.That(recoveredEntry, Is.Not.Null);
+                Assert.That(recoveredEntry!.RemoteFileId, Is.EqualTo(remote.Id));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_DownloadsAccumulatedRemoteChangesAfterTransientDownloadFailure()
+        {
+            byte[] firstContent = Encoding.UTF8.GetBytes("first remote content");
+            byte[] secondContent = Encoding.UTF8.GetBytes("second remote content");
+            NodeFileManifestDto first = RemoteFile("offline/remote-first.txt", Hash(firstContent), sizeBytes: firstContent.Length);
+            NodeFileManifestDto second = RemoteFile("offline/remote-second.txt", Hash(secondContent), sizeBytes: secondContent.Length);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.DownloadFailureIds.Add(first.Id);
+            remoteFiles.DownloadFailureIds.Add(second.Id);
+            remoteFiles.Downloads[first.Id] = firstContent;
+            remoteFiles.Downloads[second.Id] = secondContent;
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine firstRun = new(
+                new FakeLocalFileScanner(),
+                new FakeRemoteTreeCrawler(RemoteTree(first, second)),
+                remoteFiles,
+                stateStore);
+
+            Assert.ThrowsAsync<InvalidOperationException>(
+                async () => await firstRun.RunOnceAsync(Pair()));
+
+            remoteFiles.DownloadFailureIds.Clear();
+            SyncEngine secondRun = new(
+                new FakeLocalFileScanner(),
+                new FakeRemoteTreeCrawler(RemoteTree(first, second)),
+                remoteFiles,
+                stateStore);
+            SyncRunResult result = await secondRun.RunOnceAsync(Pair());
+            SyncStateEntry? firstEntry = await stateStore.GetAsync("pair-a", first.Metadata["relativePath"]);
+            SyncStateEntry? secondEntry = await stateStore.GetAsync("pair-a", second.Metadata["relativePath"]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.Activities.Select(static activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Downloaded, SyncActivityKind.Downloaded }));
+                Assert.That(File.ReadAllText(Path.Combine(_root, "offline", "remote-first.txt")), Is.EqualTo("first remote content"));
+                Assert.That(File.ReadAllText(Path.Combine(_root, "offline", "remote-second.txt")), Is.EqualTo("second remote content"));
+                Assert.That(firstEntry, Is.Not.Null);
+                Assert.That(firstEntry!.RemoteContentHash, Is.EqualTo(first.ContentHash));
+                Assert.That(secondEntry, Is.Not.Null);
+                Assert.That(secondEntry!.RemoteContentHash, Is.EqualTo(second.ContentHash));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_RejectsDownloadedContentThatDoesNotMatchManifest()
+        {
+            string relativePath = "download-corrupt.txt";
+            byte[] expectedContent = Encoding.UTF8.GetBytes("complete remote file");
+            byte[] partialContent = Encoding.UTF8.GetBytes("partial");
+            NodeFileManifestDto remote = RemoteFile(
+                relativePath,
+                Hash(expectedContent),
+                sizeBytes: expectedContent.Length);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.Downloads[remote.Id] = partialContent;
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
+
+            InvalidDataException? exception = Assert.ThrowsAsync<InvalidDataException>(
+                async () => await engine.RunOnceAsync(Pair()));
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            string temporaryDirectory = Path.Combine(_root, ".cotton-sync", "tmp");
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(File.Exists(Path.Combine(_root, relativePath)), Is.False);
+                Assert.That(entry, Is.Null);
+                Assert.That(
+                    Directory.Exists(temporaryDirectory)
+                        ? Directory.GetFiles(temporaryDirectory, "*", SearchOption.AllDirectories)
+                        : [],
+                    Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_RecoversAfterRemoteDownloadBeforeBaselineUpdate()
+        {
+            string relativePath = "downloaded-before-baseline.txt";
+            byte[] remoteContent = Encoding.UTF8.GetBytes("remote-new");
+            NodeFileManifestDto remote = RemoteFile(relativePath, Hash(remoteContent), sizeBytes: remoteContent.Length);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.Downloads[remote.Id] = remoteContent;
+            var durableStore = new SqliteSyncStateStore(_databasePath);
+            var failingStore = new FailingUpsertStateStore(durableStore);
+            SyncEngine firstRun = new(
+                new FakeLocalFileScanner(),
+                new FakeRemoteTreeCrawler(RemoteTree(remote)),
+                remoteFiles,
+                failingStore);
+
+            InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(
+                async () => await firstRun.RunOnceAsync(Pair()));
+
+            IReadOnlyList<SyncStateEntry> entriesAfterCrash = await durableStore.LoadPairAsync("pair-a");
+            LocalFileSnapshot downloadedLocal = LocalFile(relativePath, "remote-new");
+            SyncEngine secondRun = new(
+                new FakeLocalFileScanner(downloadedLocal),
+                new FakeRemoteTreeCrawler(RemoteTree(remote)),
+                remoteFiles,
+                durableStore);
+
+            SyncRunResult result = await secondRun.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await durableStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(File.ReadAllText(Path.Combine(_root, relativePath)), Is.EqualTo("remote-new"));
+                Assert.That(entriesAfterCrash, Is.Empty);
+                Assert.That(result.Activities, Is.Empty);
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(remote.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(remote.ContentHash));
+                Assert.That(entry.RemoteFileId, Is.EqualTo(remote.Id));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_DeletesRemoteOnlyWhenBaselineKnowsLocalDelete()
+        {
+            NodeFileManifestDto remote = RemoteFile("delete-remote.txt", HashText("old"));
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, "delete-remote.txt", remote.ContentHash, remote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", "delete-remote.txt");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Deletes, Is.EqualTo(new[] { (remote.Id, false, remote.ETag) }));
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.DeletedRemote }));
+                Assert.That(entry, Is.Null);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_CanBypassRemoteTrashWhenExplicitlyConfigured()
+        {
+            NodeFileManifestDto remote = RemoteFile("delete-remote-permanent.txt", HashText("old"));
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, "delete-remote-permanent.txt", remote.ContentHash, remote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(), new SyncRunOptions { DeleteRemotePermanently = true });
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", "delete-remote-permanent.txt");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Deletes, Is.EqualTo(new[] { (remote.Id, true, remote.ETag) }));
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.DeletedRemote }));
+                Assert.That(entry, Is.Null);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_DoesNotDeleteBaselineWhenRemoteDeleteFails()
+        {
+            string relativePath = "delete-remote-fails.txt";
+            NodeFileManifestDto remote = RemoteFile(relativePath, HashText("old"));
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.DeleteFailureIds.Add(remote.Id);
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, relativePath, remote.ContentHash, remote);
+
+            InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(
+                async () => await engine.RunOnceAsync(Pair()));
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(remoteFiles.Deletes, Is.EqualTo(new[] { (remote.Id, false, remote.ETag) }));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.RemoteFileId, Is.EqualTo(remote.Id));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(remote.ContentHash));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_RecoversAfterRemoteDeleteBeforeBaselineDelete()
+        {
+            string relativePath = "remote-deleted-before-baseline.txt";
+            NodeFileManifestDto remote = RemoteFile(relativePath, HashText("old"));
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var durableStore = new SqliteSyncStateStore(_databasePath);
+            await InsertBaselineAsync(durableStore, relativePath, remote.ContentHash, remote);
+            var failingStore = new FailingDeleteStateStore(durableStore);
+            SyncEngine firstRun = new(
+                new FakeLocalFileScanner(),
+                new FakeRemoteTreeCrawler(RemoteTree(remote)),
+                remoteFiles,
+                failingStore);
+
+            InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(
+                async () => await firstRun.RunOnceAsync(Pair()));
+
+            SyncStateEntry? staleEntry = await durableStore.GetAsync("pair-a", relativePath);
+            SyncEngine secondRun = new(
+                new FakeLocalFileScanner(),
+                new FakeRemoteTreeCrawler(EmptyRemoteTree()),
+                remoteFiles,
+                durableStore);
+            SyncRunResult result = await secondRun.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await durableStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(staleEntry, Is.Not.Null);
+                Assert.That(remoteFiles.Deletes, Is.EqualTo(new[] { (remote.Id, false, remote.ETag) }));
+                Assert.That(result.Activities, Is.Empty);
+                Assert.That(entry, Is.Null);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_RecoversAfterLocalDeleteBeforeBaselineDelete()
+        {
+            string relativePath = "local-deleted-before-baseline.txt";
+            WriteFile(relativePath, "old");
+            LocalFileSnapshot local = LocalFile(relativePath, "old");
+            NodeFileManifestDto remote = RemoteFile(relativePath, local.ContentHash);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var durableStore = new SqliteSyncStateStore(_databasePath);
+            await InsertBaselineAsync(durableStore, relativePath, local.ContentHash, remote);
+            var failingStore = new FailingDeleteStateStore(durableStore);
+            SyncEngine firstRun = new(
+                new FakeLocalFileScanner(local),
+                new FakeRemoteTreeCrawler(EmptyRemoteTree()),
+                remoteFiles,
+                failingStore);
+
+            InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(
+                async () => await firstRun.RunOnceAsync(Pair()));
+
+            SyncStateEntry? staleEntry = await durableStore.GetAsync("pair-a", relativePath);
+            SyncEngine secondRun = new(
+                new FakeLocalFileScanner(),
+                new FakeRemoteTreeCrawler(EmptyRemoteTree()),
+                remoteFiles,
+                durableStore);
+            SyncRunResult result = await secondRun.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await durableStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(File.Exists(Path.Combine(_root, relativePath)), Is.False);
+                Assert.That(staleEntry, Is.Not.Null);
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(result.Activities, Is.Empty);
+                Assert.That(entry, Is.Null);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_BlocksRemoteDeletesOverRunLimit()
+        {
+            NodeFileManifestDto firstRemote = RemoteFile("a.txt", HashText("old-a"));
+            NodeFileManifestDto secondRemote = RemoteFile("b.txt", HashText("old-b"));
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(),
+                RemoteTree(firstRemote, secondRemote),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, "a.txt", firstRemote.ContentHash, firstRemote);
+            await InsertBaselineAsync(stateStore, "b.txt", secondRemote.ContentHash, secondRemote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(), new SyncRunOptions { MaximumRemoteDeletesPerRun = 1 });
+
+            SyncStateEntry? firstEntry = await stateStore.GetAsync("pair-a", "a.txt");
+            SyncStateEntry? secondEntry = await stateStore.GetAsync("pair-a", "b.txt");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(result.RequiresUserAction, Is.True);
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[]
+                {
+                    SyncActivityKind.Skipped,
+                    SyncActivityKind.Skipped,
+                }));
+                Assert.That(result.Activities.Select(activity => activity.RequiresUserAction), Is.All.True);
+                Assert.That(result.Activities[0].Details, Does.Contain("2 pending deletes exceed limit 1"));
+                Assert.That(result.Activities[1].Details, Does.Contain("2 pending deletes exceed limit 1"));
+                Assert.That(firstEntry, Is.Not.Null);
+                Assert.That(secondEntry, Is.Not.Null);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_DownloadsRemoteFileInsteadOfDeletingWhenBaselineIsMissing()
+        {
+            byte[] content = Encoding.UTF8.GetBytes("no-baseline-remote");
+            NodeFileManifestDto remote = RemoteFile("safe-download.txt", Hash(content), sizeBytes: content.Length);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.Downloads[remote.Id] = content;
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), RemoteTree(remote), remoteFiles, out _);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(File.ReadAllText(Path.Combine(_root, "safe-download.txt")), Is.EqualTo("no-baseline-remote"));
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.Downloaded }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_DeletesLocalWhenBaselineKnowsRemoteDelete()
+        {
+            string relativePath = "delete-local.txt";
+            WriteFile(relativePath, "old");
+            LocalFileSnapshot local = LocalFile(relativePath, "old");
+            NodeFileManifestDto baselineRemote = RemoteFile(relativePath, local.ContentHash);
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(local), EmptyRemoteTree(), new FakeRemoteFileSynchronizer(), out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, relativePath, local.ContentHash, baselineRemote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(File.Exists(Path.Combine(_root, relativePath)), Is.False);
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.DeletedLocal }));
+                Assert.That(entry, Is.Null);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_BlocksLocalDeletesOverRunLimit()
+        {
+            WriteFile("a.txt", "old-a");
+            WriteFile("b.txt", "old-b");
+            LocalFileSnapshot firstLocal = LocalFile("a.txt", "old-a");
+            LocalFileSnapshot secondLocal = LocalFile("b.txt", "old-b");
+            NodeFileManifestDto firstRemote = RemoteFile("a.txt", firstLocal.ContentHash);
+            NodeFileManifestDto secondRemote = RemoteFile("b.txt", secondLocal.ContentHash);
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(firstLocal, secondLocal),
+                EmptyRemoteTree(),
+                new FakeRemoteFileSynchronizer(),
+                out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, "a.txt", firstLocal.ContentHash, firstRemote);
+            await InsertBaselineAsync(stateStore, "b.txt", secondLocal.ContentHash, secondRemote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(), new SyncRunOptions { MaximumLocalDeletesPerRun = 1 });
+
+            SyncStateEntry? firstEntry = await stateStore.GetAsync("pair-a", "a.txt");
+            SyncStateEntry? secondEntry = await stateStore.GetAsync("pair-a", "b.txt");
+            Assert.Multiple(() =>
+            {
+                Assert.That(File.Exists(Path.Combine(_root, "a.txt")), Is.True);
+                Assert.That(File.Exists(Path.Combine(_root, "b.txt")), Is.True);
+                Assert.That(result.RequiresUserAction, Is.True);
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[]
+                {
+                    SyncActivityKind.Skipped,
+                    SyncActivityKind.Skipped,
+                }));
+                Assert.That(result.Activities.Select(activity => activity.RequiresUserAction), Is.All.True);
+                Assert.That(result.Activities[0].Details, Does.Contain("2 pending deletes exceed limit 1"));
+                Assert.That(result.Activities[1].Details, Does.Contain("2 pending deletes exceed limit 1"));
+                Assert.That(firstEntry, Is.Not.Null);
+                Assert.That(secondEntry, Is.Not.Null);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_PreservesBothVersionsWhenLocalAndRemoteChanged()
+        {
+            string relativePath = "conflict.txt";
+            WriteFile(relativePath, "local-new");
+            LocalFileSnapshot local = LocalFile(relativePath, "local-new");
+            byte[] remoteContent = Encoding.UTF8.GetBytes("remote-new");
+            NodeFileManifestDto remote = RemoteFile(relativePath, Hash(remoteContent), sizeBytes: remoteContent.Length);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.Downloads[remote.Id] = remoteContent;
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(local), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, relativePath, HashText("old"), RemoteFile(relativePath, HashText("old"), remote.Id));
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            string[] conflictFiles = Directory.GetFiles(_root, "*Cotton conflict*", SearchOption.AllDirectories);
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(File.ReadAllText(Path.Combine(_root, relativePath)), Is.EqualTo("local-new"));
+                Assert.That(conflictFiles, Has.Length.EqualTo(1));
+                Assert.That(File.ReadAllText(conflictFiles[0]), Is.EqualTo("remote-new"));
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.Conflict }));
+                Assert.That(result.Activities[0].Details, Does.Contain("Cotton conflict"));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(remote.ContentHash));
+                Assert.That(entry.LocalContentHash, Is.Not.EqualTo(entry.RemoteContentHash));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_PreservesBothVersionsWhenNearSimultaneousLocalAndRemoteEditsDiverge()
+        {
+            string relativePath = "near-simultaneous-conflict.txt";
+            Guid remoteId = Guid.NewGuid();
+            string baselineContent = "baseline";
+            DateTime baselineUtc = new(2026, 6, 2, 13, 0, 0, DateTimeKind.Utc);
+            DateTime localEditUtc = baselineUtc.AddSeconds(1);
+            DateTime remoteEditUtc = baselineUtc.AddSeconds(3);
+            WriteFile(relativePath, "local-within-window");
+            LocalFileSnapshot local = LocalFile(relativePath, "local-within-window");
+            local.LastWriteUtc = localEditUtc;
+            byte[] remoteContent = Encoding.UTF8.GetBytes("remote-within-window");
+            NodeFileManifestDto baselineRemote = RemoteFile(relativePath, HashText(baselineContent), remoteId, baselineContent.Length);
+            NodeFileManifestDto remote = RemoteFile(relativePath, Hash(remoteContent), remoteId, remoteContent.Length);
+            remote.UpdatedAt = remoteEditUtc;
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.Downloads[remote.Id] = remoteContent;
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(local), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, relativePath, HashText(baselineContent), baselineRemote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            string[] conflictFiles = Directory.GetFiles(_root, "*Cotton conflict*", SearchOption.AllDirectories);
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That((remoteEditUtc - localEditUtc).TotalSeconds, Is.EqualTo(2));
+                Assert.That(File.ReadAllText(Path.Combine(_root, relativePath)), Is.EqualTo("local-within-window"));
+                Assert.That(conflictFiles, Has.Length.EqualTo(1));
+                Assert.That(File.ReadAllText(conflictFiles[0]), Is.EqualTo("remote-within-window"));
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.Conflict }));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalLastWriteUtc, Is.EqualTo(localEditUtc));
+                Assert.That(entry.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(remote.ContentHash));
+                Assert.That(entry.LocalContentHash, Is.Not.EqualTo(entry.RemoteContentHash));
+            });
+        }
+
+        [TestCase(MatrixFileState.Missing, MatrixFileState.Missing, 0)]
+        [TestCase(MatrixFileState.Missing, MatrixFileState.Baseline, (int)SyncActivityKind.DeletedRemote)]
+        [TestCase(MatrixFileState.Missing, MatrixFileState.Changed, (int)SyncActivityKind.Conflict)]
+        [TestCase(MatrixFileState.Baseline, MatrixFileState.Missing, (int)SyncActivityKind.DeletedLocal)]
+        [TestCase(MatrixFileState.Baseline, MatrixFileState.Baseline, 0)]
+        [TestCase(MatrixFileState.Baseline, MatrixFileState.Changed, (int)SyncActivityKind.Downloaded)]
+        [TestCase(MatrixFileState.Changed, MatrixFileState.Missing, (int)SyncActivityKind.Conflict)]
+        [TestCase(MatrixFileState.Changed, MatrixFileState.Baseline, (int)SyncActivityKind.Uploaded)]
+        [TestCase(MatrixFileState.Changed, MatrixFileState.Changed, (int)SyncActivityKind.Conflict)]
+        public async Task RunOnceAsync_ReconcilesBaselineMatrix(
+            MatrixFileState localState,
+            MatrixFileState remoteState,
+            int expectedActivityKind)
+        {
+            string relativePath = $"matrix/{localState}-{remoteState}.txt";
+            string baselineContent = "base";
+            string localContent = localState == MatrixFileState.Changed ? "local-changed" : baselineContent;
+            string remoteContent = remoteState == MatrixFileState.Changed ? "remote-changed" : baselineContent;
+            Guid remoteId = Guid.NewGuid();
+            NodeFileManifestDto baselineRemote = RemoteFile(relativePath, HashText(baselineContent), remoteId);
+            LocalFileSnapshot? local = CreateMatrixLocal(relativePath, localState, localContent);
+            NodeFileManifestDto? remote = remoteState == MatrixFileState.Missing
+                ? null
+                : RemoteFile(relativePath, HashText(remoteContent), remoteId, Encoding.UTF8.GetByteCount(remoteContent));
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            if (remote is not null && remoteState == MatrixFileState.Changed)
+            {
+                remoteFiles.Downloads[remote.Id] = Encoding.UTF8.GetBytes(remoteContent);
+            }
+
+            LocalFileSnapshot[] localFiles = local is null ? [] : [local];
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(localFiles),
+                remote is null ? EmptyRemoteTree() : RemoteTree(remote),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, relativePath, HashText(baselineContent), baselineRemote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            IReadOnlyList<SyncActivityKind> expectedKinds = expectedActivityKind == 0
+                ? []
+                : [(SyncActivityKind)expectedActivityKind];
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(expectedKinds));
+                AssertMatrixSideEffects(relativePath, localState, remoteState, remoteFiles);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_PreservesBothVersionsWhenStaleUploadLosesRemoteRace()
+        {
+            string relativePath = "stale-upload.txt";
+            WriteFile(relativePath, "local-new");
+            LocalFileSnapshot local = LocalFile(relativePath, "local-new");
+            Guid remoteId = Guid.NewGuid();
+            NodeFileManifestDto baselineRemote = RemoteFile(relativePath, HashText("old"), remoteId);
+            NodeFileManifestDto initialRemote = RemoteFile(relativePath, HashText("old"), remoteId);
+            byte[] latestRemoteContent = Encoding.UTF8.GetBytes("remote-new");
+            NodeFileManifestDto latestRemote = RemoteFile(relativePath, Hash(latestRemoteContent), remoteId, latestRemoteContent.Length);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.PreconditionFailedUploadIds.Add(remoteId);
+            remoteFiles.Downloads[remoteId] = latestRemoteContent;
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(local),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore,
+                RemoteTree(initialRemote),
+                RemoteTree(latestRemote));
+            await InsertBaselineAsync(stateStore, relativePath, baselineRemote.ContentHash, baselineRemote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            string[] conflictFiles = Directory.GetFiles(_root, "*Cotton conflict*", SearchOption.AllDirectories);
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(File.ReadAllText(Path.Combine(_root, relativePath)), Is.EqualTo("local-new"));
+                Assert.That(conflictFiles, Has.Length.EqualTo(1));
+                Assert.That(File.ReadAllText(conflictFiles[0]), Is.EqualTo("remote-new"));
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.Conflict }));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(latestRemote.ContentHash));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_FailsBeforeRaceConflictDownloadWhenRemoteVersionExceedsFreeSpace()
+        {
+            string relativePath = "stale-huge-upload.txt";
+            WriteFile(relativePath, "local-new");
+            LocalFileSnapshot local = LocalFile(relativePath, "local-new");
+            Guid remoteId = Guid.NewGuid();
+            NodeFileManifestDto baselineRemote = RemoteFile(relativePath, HashText("old"), remoteId);
+            NodeFileManifestDto initialRemote = RemoteFile(relativePath, HashText("old"), remoteId);
+            NodeFileManifestDto latestRemote = RemoteFile(relativePath, HashText("remote-huge"), remoteId, long.MaxValue);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.PreconditionFailedUploadIds.Add(remoteId);
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(local),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore,
+                RemoteTree(initialRemote),
+                RemoteTree(latestRemote));
+            await InsertBaselineAsync(stateStore, relativePath, baselineRemote.ContentHash, baselineRemote);
+
+            LocalInsufficientDiskSpaceException? exception = Assert.ThrowsAsync<LocalInsufficientDiskSpaceException>(
+                () => engine.RunOnceAsync(Pair()));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception?.Message, Does.Contain("Not enough disk space"));
+                Assert.That(exception?.RelativePath, Does.Contain("stale-huge-upload"));
+                Assert.That(exception?.RequiredBytes, Is.EqualTo(long.MaxValue));
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(Directory.GetFiles(_root, "*Cotton conflict*", SearchOption.AllDirectories), Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_RestoresRemoteVersionWhenStaleDeleteLosesRemoteRace()
+        {
+            string relativePath = "stale-delete.txt";
+            Guid remoteId = Guid.NewGuid();
+            NodeFileManifestDto baselineRemote = RemoteFile(relativePath, HashText("old"), remoteId);
+            NodeFileManifestDto initialRemote = RemoteFile(relativePath, HashText("old"), remoteId);
+            byte[] latestRemoteContent = Encoding.UTF8.GetBytes("remote-new");
+            NodeFileManifestDto latestRemote = RemoteFile(relativePath, Hash(latestRemoteContent), remoteId, latestRemoteContent.Length);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.PreconditionFailedDeleteIds.Add(remoteId);
+            remoteFiles.Downloads[remoteId] = latestRemoteContent;
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore,
+                RemoteTree(initialRemote),
+                RemoteTree(latestRemote));
+            await InsertBaselineAsync(stateStore, relativePath, baselineRemote.ContentHash, baselineRemote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(File.ReadAllText(Path.Combine(_root, relativePath)), Is.EqualTo("remote-new"));
+                Assert.That(remoteFiles.Deletes, Is.EqualTo(new[] { (remoteId, false, initialRemote.ETag) }));
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.Conflict }));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(latestRemote.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(latestRemote.ContentHash));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_DoesNotDuplicateConflictCopiesWhenUnresolvedConflictIsUnchanged()
+        {
+            string relativePath = "conflict-stable.txt";
+            WriteFile(relativePath, "local-new");
+            LocalFileSnapshot local = LocalFile(relativePath, "local-new");
+            NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote-new"));
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(local), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, relativePath, local.ContentHash, remote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            string[] conflictFiles = Directory.GetFiles(_root, "*Cotton conflict*", SearchOption.AllDirectories);
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.Activities, Is.Empty);
+                Assert.That(conflictFiles, Is.Empty);
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(File.ReadAllText(Path.Combine(_root, relativePath)), Is.EqualTo("local-new"));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_PreservesUnresolvedConflictWhenRemoteChangesAgain()
+        {
+            string relativePath = "conflict-remote-again.txt";
+            WriteFile(relativePath, "local-new");
+            LocalFileSnapshot local = LocalFile(relativePath, "local-new");
+            byte[] remoteContent = Encoding.UTF8.GetBytes("remote-newer");
+            NodeFileManifestDto remote = RemoteFile(relativePath, Hash(remoteContent), sizeBytes: remoteContent.Length);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.Downloads[remote.Id] = remoteContent;
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(local), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, relativePath, local.ContentHash, RemoteFile(relativePath, HashText("remote-old"), remote.Id));
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            string[] conflictFiles = Directory.GetFiles(_root, "*Cotton conflict*", SearchOption.AllDirectories);
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(File.ReadAllText(Path.Combine(_root, relativePath)), Is.EqualTo("local-new"));
+                Assert.That(conflictFiles, Has.Length.EqualTo(1));
+                Assert.That(File.ReadAllText(conflictFiles[0]), Is.EqualTo("remote-newer"));
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.Conflict }));
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(remote.ContentHash));
+            });
+        }
+
+        [Test]
+        public void RunOnceAsync_HonorsCancellationBeforeScanning()
+        {
+            var scanner = new FakeLocalFileScanner(LocalFile("cancel.txt", "cancel"));
+            SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), new FakeRemoteFileSynchronizer(), out _);
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+
+            Assert.ThrowsAsync<OperationCanceledException>(() => engine.RunOnceAsync(Pair(), cancellationToken: cancellation.Token));
+            Assert.That(scanner.ScanCalls, Is.Zero);
+        }
+
+        [Test]
+        public void RunOnceAsync_RejectsLocalCaseInsensitivePathCollision()
+        {
+            var scanner = new FakeLocalFileScanner(
+                LocalFile("Case.txt", "first"),
+                LocalFile("case.txt", "second"));
+            SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), new FakeRemoteFileSynchronizer(), out _);
+
+            SyncPathCollisionException? exception = Assert.ThrowsAsync<SyncPathCollisionException>(() => engine.RunOnceAsync(Pair()));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(exception!.FirstPath, Is.EqualTo("Case.txt"));
+                Assert.That(exception.SecondPath, Is.EqualTo("case.txt"));
+                Assert.That(exception.Message, Does.Contain("Case-insensitive path collision"));
+                Assert.That(exception.Message, Does.Contain("Case.txt"));
+                Assert.That(exception.Message, Does.Contain("case.txt"));
+            });
+        }
+
+        [Test]
+        public void RunOnceAsync_RejectsLocalFileDirectoryCaseInsensitivePathCollision()
+        {
+            var scanner = new FakeLocalFileScanner(LocalFile("Project", "file"));
+            scanner.Directories.Add(LocalDirectory("project"));
+            SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), new FakeRemoteFileSynchronizer(), out _);
+
+            SyncPathCollisionException? exception = Assert.ThrowsAsync<SyncPathCollisionException>(() => engine.RunOnceAsync(Pair()));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(exception!.FirstPath, Is.EqualTo("project"));
+                Assert.That(exception.SecondPath, Is.EqualTo("Project"));
+                Assert.That(exception.Message, Does.Contain("Case-insensitive path collision"));
+            });
+        }
+
+        [Test]
+        public void RunOnceAsync_RejectsRemoteCaseInsensitivePathCollision()
+        {
+            RemoteTreeSnapshot remoteTree = RemoteTree(
+                RemoteFile("Remote.txt", HashText("first")),
+                RemoteFile("remote.txt", HashText("second")));
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), remoteTree, new FakeRemoteFileSynchronizer(), out _);
+
+            SyncPathCollisionException? exception = Assert.ThrowsAsync<SyncPathCollisionException>(() => engine.RunOnceAsync(Pair()));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(exception!.FirstPath, Is.EqualTo("Remote.txt"));
+                Assert.That(exception.SecondPath, Is.EqualTo("remote.txt"));
+                Assert.That(exception.Message, Does.Contain("Case-insensitive path collision"));
+                Assert.That(exception.Message, Does.Contain("Remote.txt"));
+                Assert.That(exception.Message, Does.Contain("remote.txt"));
+            });
+        }
+
+        [Test]
+        public void RunOnceAsync_RejectsRemoteFileDirectoryCaseInsensitivePathCollision()
+        {
+            RemoteTreeSnapshot remoteTree = RemoteTree(RemoteFile("Remote", HashText("file")));
+            remoteTree.Directories.Add(RemoteDirectory("remote"));
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), remoteTree, new FakeRemoteFileSynchronizer(), out _);
+
+            SyncPathCollisionException? exception = Assert.ThrowsAsync<SyncPathCollisionException>(() => engine.RunOnceAsync(Pair()));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(exception!.FirstPath, Is.EqualTo("remote"));
+                Assert.That(exception.SecondPath, Is.EqualTo("Remote"));
+                Assert.That(exception.Message, Does.Contain("Case-insensitive path collision"));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_IgnoresRemoteMetadataPathsAtEngineBoundary()
+        {
+            NodeFileManifestDto remote = RemoteFile(".cotton-sync/remote-file.txt", HashText("remote"));
+            SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), RemoteTree(remote), new FakeRemoteFileSynchronizer(), out SqliteSyncStateStore stateStore);
+            await stateStore.InitializeAsync();
+            await stateStore.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = ".cotton-sync/remote-file.txt",
+                Kind = SyncEntryKind.File,
+                RemoteFileId = remote.Id,
+                RemoteNodeId = remote.NodeId,
+                RemoteContentHash = remote.ContentHash,
+                RemoteETag = remote.ETag,
+            });
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            IReadOnlyList<SyncStateEntry> entries = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.Activities, Is.Empty);
+                Assert.That(entries, Is.Empty);
+                Assert.That(File.Exists(Path.Combine(_root, ".cotton-sync", "remote-file.txt")), Is.False);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_DoesNotLeakStateAcrossSyncPairsSharingDatabaseAndRelativePath()
+        {
+            LocalFileSnapshot pairALocal = LocalFile("shared.txt", "pair-a-local");
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            await stateStore.InitializeAsync();
+            var pairBRemoteFileId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+            await stateStore.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-b",
+                RelativePath = "shared.txt",
+                Kind = SyncEntryKind.File,
+                LocalContentHash = "pair-b-local-hash",
+                RemoteContentHash = "pair-b-remote-hash",
+                RemoteFileId = pairBRemoteFileId,
+                RemoteNodeId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+                RemoteETag = "pair-b-etag",
+                SyncedAtUtc = new DateTime(2026, 6, 2, 13, 1, 0, DateTimeKind.Utc),
+            });
+            SyncEngine engine = new(
+                new FakeLocalFileScanner(pairALocal),
+                new FakeRemoteTreeCrawler(EmptyRemoteTree()),
+                remoteFiles,
+                stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            SyncStateEntry? pairAEntry = await stateStore.GetAsync("pair-a", "shared.txt");
+            SyncStateEntry? pairBEntry = await stateStore.GetAsync("pair-b", "shared.txt");
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+                Assert.That(remoteFiles.Uploads, Has.Count.EqualTo(1));
+                Assert.That(remoteFiles.Uploads[0].RelativePath, Is.EqualTo("shared.txt"));
+                Assert.That(pairAEntry, Is.Not.Null);
+                Assert.That(pairAEntry!.LocalContentHash, Is.EqualTo(pairALocal.ContentHash));
+                Assert.That(pairBEntry, Is.Not.Null);
+                Assert.That(pairBEntry!.LocalContentHash, Is.EqualTo("pair-b-local-hash"));
+                Assert.That(pairBEntry.RemoteContentHash, Is.EqualTo("pair-b-remote-hash"));
+                Assert.That(pairBEntry.RemoteFileId, Is.EqualTo(pairBRemoteFileId));
+            });
+        }
+
+        private SyncEngine CreateEngine(
+            ILocalFileScanner scanner,
+            RemoteTreeSnapshot remoteTree,
+            FakeRemoteFileSynchronizer remoteFiles,
+            out SqliteSyncStateStore stateStore,
+            ILogger<SyncEngine>? logger = null)
+        {
+            return CreateEngineWithLogger(scanner, remoteFiles, out stateStore, logger, remoteTree);
+        }
+
+        private SyncEngine CreateEngine(
+            ILocalFileScanner scanner,
+            FakeRemoteFileSynchronizer remoteFiles,
+            out SqliteSyncStateStore stateStore,
+            params RemoteTreeSnapshot[] remoteTrees)
+        {
+            return CreateEngineWithLogger(scanner, remoteFiles, out stateStore, null, remoteTrees);
+        }
+
+        private SyncEngine CreateEngineWithLogger(
+            ILocalFileScanner scanner,
+            FakeRemoteFileSynchronizer remoteFiles,
+            out SqliteSyncStateStore stateStore,
+            ILogger<SyncEngine>? logger,
+            params RemoteTreeSnapshot[] remoteTrees)
+        {
+            stateStore = new SqliteSyncStateStore(_databasePath);
+            return new SyncEngine(scanner, new FakeRemoteTreeCrawler(remoteTrees), remoteFiles, stateStore, logger: logger);
+        }
+
+        private SyncEngine CreateEngine(
+            ILocalFileScanner scanner,
+            RemoteTreeSnapshot remoteTree,
+            FakeRemoteFileSynchronizer remoteFiles,
+            out SqliteSyncStateStore stateStore,
+            FakeRemoteDirectorySynchronizer remoteDirectories,
+            ILogger<SyncEngine>? logger = null)
+        {
+            stateStore = new SqliteSyncStateStore(_databasePath);
+            return new SyncEngine(
+                scanner,
+                new FakeRemoteTreeCrawler(remoteTree),
+                remoteFiles,
+                stateStore,
+                remoteDirectories: remoteDirectories,
+                logger: logger);
+        }
+
+        private SyncPair Pair()
+        {
+            return new SyncPair
+            {
+                SyncPairId = "pair-a",
+                LocalRootPath = _root,
+                RemoteRootNodeId = _remoteRootNodeId,
+            };
+        }
+
+        private async Task InsertBaselineAsync(
+            SqliteSyncStateStore stateStore,
+            string relativePath,
+            string localContentHash,
+            NodeFileManifestDto remoteFile,
+            long? localSizeBytes = null)
+        {
+            await stateStore.InitializeAsync();
+            await stateStore.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = relativePath,
+                Kind = SyncEntryKind.File,
+                LocalContentHash = localContentHash,
+                LocalLastWriteUtc = new DateTime(2026, 6, 2, 13, 0, 0, DateTimeKind.Utc),
+                LocalSizeBytes = localSizeBytes,
+                RemoteNodeId = remoteFile.NodeId,
+                RemoteFileId = remoteFile.Id,
+                RemoteContentHash = remoteFile.ContentHash,
+                RemoteETag = remoteFile.ETag,
+                SyncedAtUtc = new DateTime(2026, 6, 2, 13, 1, 0, DateTimeKind.Utc),
+            });
+        }
+
+        private async Task InsertDirectoryBaselineAsync(
+            SqliteSyncStateStore stateStore,
+            string relativePath,
+            NodeDto remoteNode)
+        {
+            await stateStore.InitializeAsync();
+            await stateStore.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = relativePath,
+                Kind = SyncEntryKind.Directory,
+                RemoteNodeId = remoteNode.Id,
+                SyncedAtUtc = new DateTime(2026, 6, 2, 13, 1, 0, DateTimeKind.Utc),
+            });
+        }
+
+        private LocalFileSnapshot LocalFile(string relativePath, string content)
+        {
+            return new LocalFileSnapshot
+            {
+                RelativePath = relativePath.Replace('\\', '/'),
+                FullPath = Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar)),
+                ContentHash = HashText(content),
+                SizeBytes = Encoding.UTF8.GetByteCount(content),
+                LastWriteUtc = new DateTime(2026, 6, 2, 13, 0, 0, DateTimeKind.Utc),
+            };
+        }
+
+        private LocalDirectorySnapshot LocalDirectory(string relativePath)
+        {
+            return new LocalDirectorySnapshot
+            {
+                RelativePath = relativePath.Replace('\\', '/'),
+                FullPath = Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar)),
+            };
+        }
+
+        private void WriteFile(string relativePath, string content)
+        {
+            string fullPath = Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            File.WriteAllText(fullPath, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            File.SetLastWriteTimeUtc(fullPath, new DateTime(2026, 6, 2, 13, 0, 0, DateTimeKind.Utc));
+        }
+
+        private LocalFileSnapshot? CreateMatrixLocal(string relativePath, MatrixFileState state, string content)
+        {
+            if (state == MatrixFileState.Missing)
+            {
+                return null;
+            }
+
+            WriteFile(relativePath, content);
+            return LocalFile(relativePath, content);
+        }
+
+        private void AssertMatrixSideEffects(
+            string relativePath,
+            MatrixFileState localState,
+            MatrixFileState remoteState,
+            FakeRemoteFileSynchronizer remoteFiles)
+        {
+            string fullPath = Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            if (localState == MatrixFileState.Missing && remoteState == MatrixFileState.Baseline)
+            {
+                Assert.That(remoteFiles.Deletes, Has.Count.EqualTo(1));
+            }
+            else if (localState == MatrixFileState.Baseline && remoteState == MatrixFileState.Missing)
+            {
+                Assert.That(File.Exists(fullPath), Is.False);
+            }
+            else if (localState == MatrixFileState.Baseline && remoteState == MatrixFileState.Changed)
+            {
+                Assert.That(File.ReadAllText(fullPath), Is.EqualTo("remote-changed"));
+            }
+            else if (localState == MatrixFileState.Changed && remoteState is MatrixFileState.Missing or MatrixFileState.Baseline)
+            {
+                Assert.That(remoteFiles.Uploads, Has.Count.EqualTo(1));
+            }
+            else if (localState == MatrixFileState.Changed && remoteState == MatrixFileState.Changed)
+            {
+                string[] conflictFiles = Directory.GetFiles(_root, "*Cotton conflict*", SearchOption.AllDirectories);
+                Assert.That(File.ReadAllText(fullPath), Is.EqualTo("local-changed"));
+                Assert.That(conflictFiles, Has.Length.EqualTo(1));
+                Assert.That(File.ReadAllText(conflictFiles[0]), Is.EqualTo("remote-changed"));
+            }
+            else if (localState == MatrixFileState.Missing && remoteState == MatrixFileState.Changed)
+            {
+                Assert.That(File.ReadAllText(fullPath), Is.EqualTo("remote-changed"));
+            }
+        }
+
+        private RemoteTreeSnapshot EmptyRemoteTree()
+        {
+            return new RemoteTreeSnapshot
+            {
+                RootNode = new NodeDto
+                {
+                    Id = _remoteRootNodeId,
+                    Name = "root",
+                },
+            };
+        }
+
+        private RemoteTreeSnapshot RemoteTree(params NodeFileManifestDto[] files)
+        {
+            RemoteTreeSnapshot tree = EmptyRemoteTree();
+            foreach (NodeFileManifestDto file in files)
+            {
+                tree.Files.Add(new RemoteFileSnapshot
+                {
+                    RelativePath = file.Metadata["relativePath"],
+                    File = file,
+                });
+            }
+
+            return tree;
+        }
+
+        private RemoteDirectorySnapshot RemoteDirectory(string relativePath, Guid? parentNodeId = null)
+        {
+            return new RemoteDirectorySnapshot
+            {
+                RelativePath = relativePath.Replace('\\', '/'),
+                Node = new NodeDto
+                {
+                    Id = Guid.NewGuid(),
+                    ParentId = parentNodeId ?? _remoteRootNodeId,
+                    Name = relativePath.Split('/')[^1],
+                },
+            };
+        }
+
+        private NodeFileManifestDto RemoteFile(string relativePath, string contentHash, Guid? id = null, long sizeBytes = 1)
+        {
+            return new NodeFileManifestDto
+            {
+                Id = id ?? Guid.NewGuid(),
+                CreatedAt = new DateTime(2026, 6, 2, 12, 0, 0, DateTimeKind.Utc),
+                UpdatedAt = new DateTime(2026, 6, 2, 12, 30, 0, DateTimeKind.Utc),
+                NodeId = _remoteRootNodeId,
+                FileManifestId = Guid.NewGuid(),
+                OriginalNodeFileId = id ?? Guid.NewGuid(),
+                OwnerId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                Name = relativePath.Split('/')[^1],
+                ContentType = "text/plain",
+                SizeBytes = sizeBytes,
+                ContentHash = contentHash,
+                ETag = "sha256-" + contentHash,
+                Metadata = new Dictionary<string, string> { ["relativePath"] = relativePath.Replace('\\', '/') },
+            };
+        }
+
+        private static string HashText(string text)
+        {
+            return Hash(Encoding.UTF8.GetBytes(text));
+        }
+
+        private static string Hash(byte[] bytes)
+        {
+            return Convert.ToHexStringLower(SHA256.HashData(bytes));
+        }
+
+        private class FakeLocalFileScanner : ILocalFileScanner, ILocalTreeScanner
+        {
+            public FakeLocalFileScanner(params LocalFileSnapshot[] files)
+            {
+                Files = files.ToList();
+            }
+
+            public List<LocalDirectorySnapshot> Directories { get; } = [];
+
+            public List<LocalFileSnapshot> Files { get; }
+
+            public int ScanCalls { get; private set; }
+
+            public Task<IReadOnlyList<LocalFileSnapshot>> ScanAsync(string rootPath, CancellationToken cancellationToken = default)
+            {
+                ScanCalls++;
+                return Task.FromResult<IReadOnlyList<LocalFileSnapshot>>(Files);
+            }
+
+            public Task<LocalTreeSnapshot> ScanTreeAsync(string rootPath, CancellationToken cancellationToken = default)
+            {
+                ScanCalls++;
+                return Task.FromResult(new LocalTreeSnapshot
+                {
+                    Directories = Directories,
+                    Files = Files,
+                });
+            }
+        }
+
+        private class MetadataOnlyLocalFileScanner :
+            ILocalFileScanner,
+            ILocalTreeScanner,
+            ILocalFileMetadataTreeScanner,
+            ILocalFileMetadataTreeProgressScanner,
+            ILocalFileContentHashProgressHasher
+        {
+            public MetadataOnlyLocalFileScanner(params LocalFileSnapshot[] files)
+            {
+                Files = files.ToList();
+            }
+
+            public List<LocalFileSnapshot> Files { get; }
+
+            public int ContentHashCalls { get; private set; }
+
+            public bool ReportMetadataScanProgress { get; init; }
+
+            public Task<IReadOnlyList<LocalFileSnapshot>> ScanAsync(string rootPath, CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult<IReadOnlyList<LocalFileSnapshot>>(Files);
+            }
+
+            public Task<LocalTreeSnapshot> ScanTreeAsync(string rootPath, CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(new LocalTreeSnapshot
+                {
+                    Files = Files,
+                });
+            }
+
+            public Task<LocalTreeSnapshot> ScanTreeMetadataAsync(string rootPath, CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(new LocalTreeSnapshot
+                {
+                    Files = Files,
+                });
+            }
+
+            public Task<LocalTreeSnapshot> ScanTreeMetadataAsync(
+                string rootPath,
+                IProgress<LocalTreeScanProgress>? progress,
+                CancellationToken cancellationToken = default)
+            {
+                if (ReportMetadataScanProgress)
+                {
+                    progress?.Report(new LocalTreeScanProgress(0, 0, currentPath: null));
+                    for (int index = 0; index < Files.Count; index++)
+                    {
+                        progress?.Report(new LocalTreeScanProgress(index + 1, 0, Files[index].RelativePath));
+                    }
+
+                    progress?.Report(new LocalTreeScanProgress(Files.Count, 0, currentPath: null));
+                }
+
+                return ScanTreeMetadataAsync(rootPath, cancellationToken);
+            }
+
+            public Task<string> ComputeContentHashAsync(LocalFileSnapshot localFile, CancellationToken cancellationToken = default)
+            {
+                return ComputeContentHashAsync(localFile, progress: null, cancellationToken);
+            }
+
+            public Task<string> ComputeContentHashAsync(
+                LocalFileSnapshot localFile,
+                IProgress<SyncTransferProgress>? progress,
+                CancellationToken cancellationToken = default)
+            {
+                ContentHashCalls++;
+                progress?.Report(new SyncTransferProgress(
+                    SyncTransferDirection.Hash,
+                    localFile.RelativePath,
+                    transferredBytes: 0,
+                    totalBytes: localFile.SizeBytes));
+                progress?.Report(new SyncTransferProgress(
+                    SyncTransferDirection.Hash,
+                    localFile.RelativePath,
+                    localFile.SizeBytes,
+                    localFile.SizeBytes,
+                    isCompleted: true));
+                return Task.FromResult("precomputed-content-hash");
+            }
+        }
+
+        private class LookupOnlyLocalFileScanner :
+            ILocalFileScanner,
+            ILocalTreeScanner,
+            ILocalFileMetadataTreeLookupScanner,
+            ILocalFileContentHasher
+        {
+            public LookupOnlyLocalFileScanner(params LocalFileSnapshot[] files)
+            {
+                Files = files.ToList();
+            }
+
+            public List<LocalFileSnapshot> Files { get; }
+
+            public int LookupScanCalls { get; private set; }
+
+            public int MetadataTreeScanCalls { get; private set; }
+
+            public int TreeScanCalls { get; private set; }
+
+            public Task<IReadOnlyList<LocalFileSnapshot>> ScanAsync(string rootPath, CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult<IReadOnlyList<LocalFileSnapshot>>(Files);
+            }
+
+            public Task<LocalTreeSnapshot> ScanTreeAsync(string rootPath, CancellationToken cancellationToken = default)
+            {
+                TreeScanCalls++;
+                return Task.FromResult(new LocalTreeSnapshot
+                {
+                    Files = Files,
+                });
+            }
+
+            public Task<LocalTreeSnapshot> ScanTreeMetadataAsync(string rootPath, CancellationToken cancellationToken = default)
+            {
+                MetadataTreeScanCalls++;
+                return Task.FromResult(new LocalTreeSnapshot
+                {
+                    Files = Files,
+                });
+            }
+
+            public Task<LocalTreeLookupSnapshot> ScanTreeMetadataLookupsAsync(
+                string rootPath,
+                IProgress<LocalTreeScanProgress>? progress,
+                CancellationToken cancellationToken = default)
+            {
+                LookupScanCalls++;
+                var snapshot = new LocalTreeLookupSnapshot();
+                foreach (LocalFileSnapshot file in Files)
+                {
+                    snapshot.FilesByPath.Add(SyncPath.ToKey(file.RelativePath), file);
+                }
+
+                return Task.FromResult(snapshot);
+            }
+
+            public Task<string> ComputeContentHashAsync(LocalFileSnapshot localFile, CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult("precomputed-content-hash");
+            }
+        }
+
+        private class FakeRemoteTreeCrawler : IRemoteTreeCrawler
+        {
+            private readonly Queue<RemoteTreeSnapshot> _snapshots;
+            private RemoteTreeSnapshot _lastSnapshot;
+
+            public FakeRemoteTreeCrawler(params RemoteTreeSnapshot[] snapshots)
+            {
+                if (snapshots.Length == 0)
+                {
+                    throw new ArgumentException("At least one remote snapshot is required.", nameof(snapshots));
+                }
+
+                _snapshots = new Queue<RemoteTreeSnapshot>(snapshots);
+                _lastSnapshot = snapshots[0];
+            }
+
+            public Task<RemoteTreeSnapshot> CrawlAsync(Guid rootNodeId, CancellationToken cancellationToken = default)
+            {
+                if (_snapshots.Count > 0)
+                {
+                    _lastSnapshot = _snapshots.Dequeue();
+                }
+
+                return Task.FromResult(_lastSnapshot);
+            }
+        }
+
+        private class FakeRemoteTreeProgressCrawler : IRemoteTreeProgressCrawler
+        {
+            private readonly RemoteTreeSnapshot _snapshot;
+            private readonly IReadOnlyList<string> _progressPaths;
+
+            public FakeRemoteTreeProgressCrawler(RemoteTreeSnapshot snapshot, params string[] progressPaths)
+            {
+                _snapshot = snapshot;
+                _progressPaths = progressPaths.Length == 0
+                    ? snapshot.Files.Select(file => file.RelativePath).ToList()
+                    : progressPaths.ToList();
+            }
+
+            public Task<RemoteTreeSnapshot> CrawlAsync(Guid rootNodeId, CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(_snapshot);
+            }
+
+            public Task<RemoteTreeSnapshot> CrawlAsync(
+                Guid rootNodeId,
+                IProgress<RemoteTreeScanProgress>? progress,
+                CancellationToken cancellationToken = default)
+            {
+                progress?.Report(new RemoteTreeScanProgress(0, _snapshot.Directories.Count, currentPath: null));
+                for (int index = 0; index < _progressPaths.Count; index++)
+                {
+                    progress?.Report(new RemoteTreeScanProgress(index + 1, _snapshot.Directories.Count, _progressPaths[index]));
+                }
+
+                progress?.Report(new RemoteTreeScanProgress(_progressPaths.Count, _snapshot.Directories.Count, currentPath: null));
+                return Task.FromResult(_snapshot);
+            }
+        }
+
+        private class LookupOnlyRemoteTreeCrawler : IRemoteTreeLookupCrawler
+        {
+            private readonly RemoteTreeSnapshot _snapshot;
+
+            public LookupOnlyRemoteTreeCrawler(RemoteTreeSnapshot snapshot)
+            {
+                _snapshot = snapshot;
+            }
+
+            public int LookupCrawlCalls { get; private set; }
+
+            public int ProgressCrawlCalls { get; private set; }
+
+            public int SnapshotCrawlCalls { get; private set; }
+
+            public Task<RemoteTreeSnapshot> CrawlAsync(Guid rootNodeId, CancellationToken cancellationToken = default)
+            {
+                SnapshotCrawlCalls++;
+                return Task.FromResult(_snapshot);
+            }
+
+            public Task<RemoteTreeSnapshot> CrawlAsync(
+                Guid rootNodeId,
+                IProgress<RemoteTreeScanProgress>? progress,
+                CancellationToken cancellationToken = default)
+            {
+                ProgressCrawlCalls++;
+                return Task.FromResult(_snapshot);
+            }
+
+            public Task<RemoteTreeLookupSnapshot> CrawlLookupsAsync(
+                Guid rootNodeId,
+                IProgress<RemoteTreeScanProgress>? progress,
+                CancellationToken cancellationToken = default)
+            {
+                LookupCrawlCalls++;
+                var snapshot = new RemoteTreeLookupSnapshot
+                {
+                    RootNode = _snapshot.RootNode,
+                };
+                foreach (RemoteDirectorySnapshot directory in _snapshot.Directories)
+                {
+                    snapshot.DirectoriesByPath.Add(SyncPath.ToKey(directory.RelativePath), directory);
+                }
+
+                foreach (RemoteFileSnapshot file in _snapshot.Files)
+                {
+                    snapshot.FilesByPath.Add(SyncPath.ToKey(file.RelativePath), file);
+                }
+
+                return Task.FromResult(snapshot);
+            }
+        }
+
+        private class PathOnlyRemoteTreeCrawler : IRemoteTreeCrawler, IRemotePathLookupCrawler
+        {
+            private readonly RemoteTreeSnapshot _snapshot;
+
+            public PathOnlyRemoteTreeCrawler(RemoteTreeSnapshot snapshot)
+            {
+                _snapshot = snapshot;
+            }
+
+            public int FullCrawlCalls { get; private set; }
+
+            public int PathCrawlCalls { get; private set; }
+
+            public Task<RemoteTreeSnapshot> CrawlAsync(Guid rootNodeId, CancellationToken cancellationToken = default)
+            {
+                FullCrawlCalls++;
+                return Task.FromResult(_snapshot);
+            }
+
+            public Task<RemoteTreeLookupSnapshot> CrawlPathLookupsAsync(
+                Guid rootNodeId,
+                IReadOnlyCollection<string> relativePaths,
+                IProgress<RemoteTreeScanProgress>? progress,
+                CancellationToken cancellationToken = default)
+            {
+                PathCrawlCalls++;
+                var snapshot = new RemoteTreeLookupSnapshot
+                {
+                    RootNode = _snapshot.RootNode,
+                };
+                foreach (RemoteDirectorySnapshot directory in _snapshot.Directories)
+                {
+                    if (relativePaths.Contains(directory.RelativePath, StringComparer.OrdinalIgnoreCase))
+                    {
+                        snapshot.DirectoriesByPath[SyncPath.ToKey(directory.RelativePath)] = directory;
+                    }
+                }
+
+                foreach (RemoteFileSnapshot file in _snapshot.Files)
+                {
+                    if (relativePaths.Contains(file.RelativePath, StringComparer.OrdinalIgnoreCase))
+                    {
+                        snapshot.FilesByPath[SyncPath.ToKey(file.RelativePath)] = file;
+                    }
+                }
+
+                return Task.FromResult(snapshot);
+            }
+        }
+
+        private class RecordingLogger<T> : ILogger<T>
+        {
+            public List<(LogLevel Level, string Message)> Entries { get; } = [];
+
+            public IDisposable? BeginScope<TState>(TState state)
+                where TState : notnull
+            {
+                return null;
+            }
+
+            public bool IsEnabled(LogLevel logLevel)
+            {
+                return true;
+            }
+
+            public void Log<TState>(
+                LogLevel logLevel,
+                EventId eventId,
+                TState state,
+                Exception? exception,
+                Func<TState, Exception?, string> formatter)
+            {
+                Entries.Add((logLevel, formatter(state, exception)));
+            }
+        }
+
+        private class RecordingProgress<T> : IProgress<T>
+        {
+            private readonly Action<T>? _onReport;
+
+            public RecordingProgress(Action<T>? onReport = null)
+            {
+                _onReport = onReport;
+            }
+
+            public List<T> Values { get; } = [];
+
+            public void Report(T value)
+            {
+                Values.Add(value);
+                _onReport?.Invoke(value);
+            }
+        }
+
+        private class FakeRemoteFileSynchronizer : IRemoteFileSynchronizer
+        {
+            public List<UploadCall> Uploads { get; } = [];
+
+            public List<MoveCall> Moves { get; } = [];
+
+            public List<string> UploadInputContentHashes { get; } = [];
+
+            public List<(Guid NodeFileId, bool SkipTrash, string? ExpectedETag)> Deletes { get; } = [];
+
+            public Dictionary<Guid, byte[]> Downloads { get; } = [];
+
+            public HashSet<Guid> UploadFailureIds { get; } = [];
+
+            public HashSet<string> UploadFailureRelativePaths { get; } = [];
+
+            public HashSet<Guid> DownloadFailureIds { get; } = [];
+
+            public HashSet<Guid> DeleteFailureIds { get; } = [];
+
+            public HashSet<Guid> PreconditionFailedUploadIds { get; } = [];
+
+            public HashSet<Guid> PreconditionFailedDeleteIds { get; } = [];
+
+            public HashSet<Guid> PreconditionFailedMoveIds { get; } = [];
+
+            public HashSet<string> LocalUnavailableUploadRelativePaths { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+            public string? EmptyLocalHashUploadContentHash { get; set; }
+
+            public Task<NodeFileManifestDto> UploadFileAsync(
+                Guid rootNodeId,
+                string relativePath,
+                LocalFileSnapshot localFile,
+                NodeFileManifestDto? existingRemoteFile = null,
+                CancellationToken cancellationToken = default)
+            {
+                if (existingRemoteFile is not null && PreconditionFailedUploadIds.Contains(existingRemoteFile.Id))
+                {
+                    throw new HttpRequestException(
+                        "Remote file changed before upload.",
+                        inner: null,
+                        HttpStatusCode.PreconditionFailed);
+                }
+
+                if (existingRemoteFile is not null && UploadFailureIds.Contains(existingRemoteFile.Id))
+                {
+                    throw new InvalidOperationException("Remote upload failed.");
+                }
+
+                if (UploadFailureRelativePaths.Contains(relativePath, StringComparer.OrdinalIgnoreCase))
+                {
+                    throw new HttpRequestException(
+                        "Remote upload failed.",
+                        inner: null,
+                        HttpStatusCode.ServiceUnavailable);
+                }
+
+                if (LocalUnavailableUploadRelativePaths.Contains(relativePath))
+                {
+                    throw new LocalFileUnavailableException(
+                        relativePath,
+                        localFile.FullPath,
+                        "the file changed during upload.");
+                }
+
+                UploadInputContentHashes.Add(localFile.ContentHash);
+                string uploadedContentHash = string.IsNullOrWhiteSpace(localFile.ContentHash)
+                    ? EmptyLocalHashUploadContentHash ?? localFile.ContentHash
+                    : localFile.ContentHash;
+                var returned = new NodeFileManifestDto
+                {
+                    Id = existingRemoteFile?.Id ?? Guid.NewGuid(),
+                    NodeId = existingRemoteFile?.NodeId ?? rootNodeId,
+                    FileManifestId = Guid.NewGuid(),
+                    OriginalNodeFileId = existingRemoteFile?.OriginalNodeFileId == Guid.Empty
+                        ? Guid.NewGuid()
+                        : existingRemoteFile?.OriginalNodeFileId ?? Guid.NewGuid(),
+                    OwnerId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                    Name = relativePath.Split('/')[^1],
+                    ContentType = "application/octet-stream",
+                    SizeBytes = localFile.SizeBytes,
+                    ContentHash = uploadedContentHash,
+                    ETag = "sha256-" + uploadedContentHash,
+                    CreatedAt = new DateTime(2026, 6, 2, 14, 0, 0, DateTimeKind.Utc),
+                    UpdatedAt = new DateTime(2026, 6, 2, 14, 0, 0, DateTimeKind.Utc),
+                    Metadata = new Dictionary<string, string> { ["relativePath"] = relativePath.Replace('\\', '/') },
+                };
+                Uploads.Add(new UploadCall(rootNodeId, relativePath, localFile, existingRemoteFile, returned));
+                return Task.FromResult(returned);
+            }
+
+            public Task<NodeFileManifestDto> MoveFileAsync(
+                Guid rootNodeId,
+                string relativePath,
+                NodeFileManifestDto existingRemoteFile,
+                CancellationToken cancellationToken = default)
+            {
+                if (PreconditionFailedMoveIds.Contains(existingRemoteFile.Id))
+                {
+                    throw new HttpRequestException(
+                        "Remote file changed before move.",
+                        inner: null,
+                        HttpStatusCode.PreconditionFailed);
+                }
+
+                string normalizedPath = relativePath.Replace('\\', '/');
+                NodeFileManifestDto moved = new()
+                {
+                    Id = existingRemoteFile.Id,
+                    NodeId = rootNodeId,
+                    FileManifestId = existingRemoteFile.FileManifestId,
+                    OriginalNodeFileId = existingRemoteFile.OriginalNodeFileId,
+                    OwnerId = existingRemoteFile.OwnerId,
+                    Name = normalizedPath.Split('/')[^1],
+                    ContentType = existingRemoteFile.ContentType,
+                    SizeBytes = existingRemoteFile.SizeBytes,
+                    ContentHash = existingRemoteFile.ContentHash,
+                    ETag = existingRemoteFile.ETag,
+                    CreatedAt = existingRemoteFile.CreatedAt,
+                    UpdatedAt = new DateTime(2026, 6, 2, 14, 0, 0, DateTimeKind.Utc),
+                    Metadata = new Dictionary<string, string> { ["relativePath"] = normalizedPath },
+                };
+                Moves.Add(new MoveCall(rootNodeId, normalizedPath, existingRemoteFile, moved));
+                return Task.FromResult(moved);
+            }
+
+            public Task DownloadFileAsync(Guid nodeFileId, Stream destination, CancellationToken cancellationToken = default)
+            {
+                if (DownloadFailureIds.Contains(nodeFileId))
+                {
+                    throw new InvalidOperationException("Remote download failed.");
+                }
+
+                byte[] bytes = Downloads[nodeFileId];
+                return destination.WriteAsync(bytes, cancellationToken).AsTask();
+            }
+
+            public Task DeleteFileAsync(
+                Guid nodeFileId,
+                bool skipTrash = false,
+                string? expectedETag = null,
+                CancellationToken cancellationToken = default)
+            {
+                Deletes.Add((nodeFileId, skipTrash, expectedETag));
+                if (DeleteFailureIds.Contains(nodeFileId))
+                {
+                    throw new InvalidOperationException("Remote delete failed.");
+                }
+
+                if (PreconditionFailedDeleteIds.Contains(nodeFileId))
+                {
+                    throw new HttpRequestException(
+                        "Remote file changed before delete.",
+                        inner: null,
+                        HttpStatusCode.PreconditionFailed);
+                }
+
+                return Task.CompletedTask;
+            }
+        }
+
+        private class FakeRemoteDirectorySynchronizer : IRemoteDirectorySynchronizer
+        {
+            public List<CreateDirectoryCall> Creates { get; } = [];
+
+            public List<(Guid NodeId, bool SkipTrash)> Deletes { get; } = [];
+
+            public Task<NodeDto> CreateDirectoryAsync(
+                Guid parentNodeId,
+                string name,
+                CancellationToken cancellationToken = default)
+            {
+                NodeDto node = new()
+                {
+                    Id = Guid.NewGuid(),
+                    ParentId = parentNodeId,
+                    Name = name,
+                };
+                Creates.Add(new CreateDirectoryCall(parentNodeId, name, node));
+                return Task.FromResult(node);
+            }
+
+            public Task DeleteDirectoryAsync(Guid nodeId, bool skipTrash = false, CancellationToken cancellationToken = default)
+            {
+                Deletes.Add((nodeId, skipTrash));
+                return Task.CompletedTask;
+            }
+        }
+
+        private record CreateDirectoryCall(Guid ParentNodeId, string Name, NodeDto ReturnedNode);
+
+        private record UploadCall(
+            Guid RootNodeId,
+            string RelativePath,
+            LocalFileSnapshot LocalFile,
+            NodeFileManifestDto? ExistingRemoteFile,
+            NodeFileManifestDto ReturnedFile);
+
+        private record MoveCall(
+            Guid RootNodeId,
+            string RelativePath,
+            NodeFileManifestDto ExistingRemoteFile,
+            NodeFileManifestDto ReturnedFile);
+
+        private abstract class DelegatingStateStore : ISyncStateStore
+        {
+            private readonly ISyncStateStore _inner;
+
+            protected DelegatingStateStore(ISyncStateStore inner)
+            {
+                _inner = inner;
+            }
+
+            public virtual Task InitializeAsync(CancellationToken cancellationToken = default)
+            {
+                return _inner.InitializeAsync(cancellationToken);
+            }
+
+            public virtual Task<IReadOnlyList<SyncStateEntry>> LoadPairAsync(string syncPairId, CancellationToken cancellationToken = default)
+            {
+                return _inner.LoadPairAsync(syncPairId, cancellationToken);
+            }
+
+            public virtual IAsyncEnumerable<SyncStateEntry> LoadPairEntriesAsync(
+                string syncPairId,
+                CancellationToken cancellationToken = default)
+            {
+                return _inner.LoadPairEntriesAsync(syncPairId, cancellationToken);
+            }
+
+            public virtual Task<DateTime?> GetPairLastSyncedAtUtcAsync(string syncPairId, CancellationToken cancellationToken = default)
+            {
+                return _inner.GetPairLastSyncedAtUtcAsync(syncPairId, cancellationToken);
+            }
+
+            public virtual Task<SyncChangeCursor> GetChangeCursorAsync(string syncPairId, CancellationToken cancellationToken = default)
+            {
+                return _inner.GetChangeCursorAsync(syncPairId, cancellationToken);
+            }
+
+            public virtual Task<SyncStateEntry?> GetAsync(string syncPairId, string relativePath, CancellationToken cancellationToken = default)
+            {
+                return _inner.GetAsync(syncPairId, relativePath, cancellationToken);
+            }
+
+            public virtual Task UpsertAsync(SyncStateEntry entry, CancellationToken cancellationToken = default)
+            {
+                return _inner.UpsertAsync(entry, cancellationToken);
+            }
+
+            public virtual Task SaveChangeCursorAsync(SyncChangeCursor cursor, CancellationToken cancellationToken = default)
+            {
+                return _inner.SaveChangeCursorAsync(cursor, cancellationToken);
+            }
+
+            public virtual Task DeleteAsync(string syncPairId, string relativePath, CancellationToken cancellationToken = default)
+            {
+                return _inner.DeleteAsync(syncPairId, relativePath, cancellationToken);
+            }
+
+            public virtual Task DeletePairAsync(string syncPairId, CancellationToken cancellationToken = default)
+            {
+                return _inner.DeletePairAsync(syncPairId, cancellationToken);
+            }
+
+            public virtual Task ReplacePairAsync(string syncPairId, IReadOnlyCollection<SyncStateEntry> entries, CancellationToken cancellationToken = default)
+            {
+                return _inner.ReplacePairAsync(syncPairId, entries, cancellationToken);
+            }
+        }
+
+        private class FailingUpsertStateStore : DelegatingStateStore
+        {
+            public FailingUpsertStateStore(ISyncStateStore inner)
+                : base(inner)
+            {
+            }
+
+            public override Task UpsertAsync(SyncStateEntry entry, CancellationToken cancellationToken = default)
+            {
+                throw new InvalidOperationException("State write failed.");
+            }
+        }
+
+        private class FailingDeleteStateStore : DelegatingStateStore
+        {
+            public FailingDeleteStateStore(ISyncStateStore inner)
+                : base(inner)
+            {
+            }
+
+            public override Task DeleteAsync(string syncPairId, string relativePath, CancellationToken cancellationToken = default)
+            {
+                throw new InvalidOperationException("State delete failed.");
+            }
+        }
+
+        private class StreamingOnlyStateStore : DelegatingStateStore
+        {
+            public StreamingOnlyStateStore(ISyncStateStore inner)
+                : base(inner)
+            {
+            }
+
+            public int LoadPairEntriesCallCount { get; private set; }
+
+            public override Task<IReadOnlyList<SyncStateEntry>> LoadPairAsync(
+                string syncPairId,
+                CancellationToken cancellationToken = default)
+            {
+                throw new InvalidOperationException("SyncEngine should use streamed state loading.");
+            }
+
+            public override IAsyncEnumerable<SyncStateEntry> LoadPairEntriesAsync(
+                string syncPairId,
+                CancellationToken cancellationToken = default)
+            {
+                LoadPairEntriesCallCount++;
+                return base.LoadPairEntriesAsync(syncPairId, cancellationToken);
+            }
+        }
+    }
+}

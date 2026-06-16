@@ -1,0 +1,159 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="Cotton.Sync.Desktop.App"
+             RequestedThemeVariant="Dark">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="CottonAppBackgroundBrush" Color="#F7F7F9" />
+          <SolidColorBrush x:Key="CottonSurfaceBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="CottonSurfaceMutedBrush" Color="#EEF2F3" />
+          <SolidColorBrush x:Key="CottonPrimarySoftBrush" Color="#EAF4C8" />
+          <SolidColorBrush x:Key="CottonBorderBrush" Color="#14000000" />
+          <SolidColorBrush x:Key="CottonTextPrimaryBrush" Color="#323232" />
+          <SolidColorBrush x:Key="CottonTextSecondaryBrush" Color="#646464" />
+          <SolidColorBrush x:Key="CottonPrimaryBrush" Color="#96BE02" />
+          <SolidColorBrush x:Key="CottonSecondaryBrush" Color="#1BCEA7" />
+          <SolidColorBrush x:Key="CottonSuccessBrush" Color="#1BCEA7" />
+          <SolidColorBrush x:Key="CottonWarningBrush" Color="#D97706" />
+          <SolidColorBrush x:Key="CottonErrorBrush" Color="#D32F2F" />
+          <SolidColorBrush x:Key="CottonErrorSoftBrush" Color="#FDECEC" />
+          <SolidColorBrush x:Key="CottonOverlayBrush" Color="#66000000" />
+          <SolidColorBrush x:Key="CottonPrimaryTextBrush" Color="#202300" />
+          <SolidColorBrush x:Key="CottonPrimaryHoverBrush" Color="#A5CF08" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="CottonAppBackgroundBrush" Color="#1F2022" />
+          <SolidColorBrush x:Key="CottonSurfaceBrush" Color="#151A21" />
+          <SolidColorBrush x:Key="CottonSurfaceMutedBrush" Color="#242B32" />
+          <SolidColorBrush x:Key="CottonPrimarySoftBrush" Color="#344115" />
+          <SolidColorBrush x:Key="CottonBorderBrush" Color="#10FFFFFF" />
+          <SolidColorBrush x:Key="CottonTextPrimaryBrush" Color="#EEEEEE" />
+          <SolidColorBrush x:Key="CottonTextSecondaryBrush" Color="#A3A3A3" />
+          <SolidColorBrush x:Key="CottonPrimaryBrush" Color="#96BE02" />
+          <SolidColorBrush x:Key="CottonSecondaryBrush" Color="#1BCEA7" />
+          <SolidColorBrush x:Key="CottonSuccessBrush" Color="#1BCEA7" />
+          <SolidColorBrush x:Key="CottonWarningBrush" Color="#FBBF24" />
+          <SolidColorBrush x:Key="CottonErrorBrush" Color="#EF5350" />
+          <SolidColorBrush x:Key="CottonErrorSoftBrush" Color="#3A2224" />
+          <SolidColorBrush x:Key="CottonOverlayBrush" Color="#99000000" />
+          <SolidColorBrush x:Key="CottonPrimaryTextBrush" Color="#202300" />
+          <SolidColorBrush x:Key="CottonPrimaryHoverBrush" Color="#A5CF08" />
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+
+  <Application.Styles>
+    <FluentTheme>
+      <FluentTheme.Palettes>
+        <ColorPaletteResources x:Key="Light"
+                               Accent="#96BE02" />
+        <ColorPaletteResources x:Key="Dark"
+                               Accent="#96BE02" />
+      </FluentTheme.Palettes>
+    </FluentTheme>
+    <materialIcons:MaterialIconStyles />
+    <Style Selector="TextBlock.secondary">
+      <Setter Property="Foreground" Value="{DynamicResource CottonTextSecondaryBrush}" />
+    </Style>
+    <Style Selector="TextBlock.selfTestResult.passed">
+      <Setter Property="Foreground" Value="{DynamicResource CottonSuccessBrush}" />
+    </Style>
+    <Style Selector="TextBlock.selfTestResult.failed">
+      <Setter Property="Foreground" Value="{DynamicResource CottonErrorBrush}" />
+    </Style>
+    <Style Selector="Border.statusCard">
+      <Setter Property="Background" Value="{DynamicResource CottonPrimarySoftBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CottonPrimarySoftBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Border.statusCard.actionRequired">
+      <Setter Property="Background" Value="{DynamicResource CottonErrorSoftBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CottonErrorBrush}" />
+    </Style>
+    <Style Selector="Border.statusDot">
+      <Setter Property="Background" Value="{DynamicResource CottonSuccessBrush}" />
+    </Style>
+    <Style Selector="Border.statusDot.actionRequired">
+      <Setter Property="Background" Value="{DynamicResource CottonErrorBrush}" />
+    </Style>
+    <Style Selector="Border.syncPairStatusIndicator">
+      <Setter Property="Background" Value="{DynamicResource CottonTextSecondaryBrush}" />
+    </Style>
+    <Style Selector="Border.syncPairStatusIndicator.active">
+      <Setter Property="Background" Value="{DynamicResource CottonPrimaryBrush}" />
+    </Style>
+    <Style Selector="Border.syncPairStatusIndicator.paused">
+      <Setter Property="Background" Value="{DynamicResource CottonWarningBrush}" />
+    </Style>
+    <Style Selector="Border.syncPairStatusIndicator.attention">
+      <Setter Property="Background" Value="{DynamicResource CottonErrorBrush}" />
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="{DynamicResource CottonPrimaryBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CottonPrimaryBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource CottonPrimaryTextBrush}" />
+      <Setter Property="MinHeight" Value="34" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.primary:pointerover">
+      <Setter Property="Background" Value="{DynamicResource CottonPrimaryHoverBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CottonPrimaryHoverBrush}" />
+    </Style>
+    <Style Selector="Button.compact">
+      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="Padding" Value="10,4" />
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="Button.inlineChange">
+      <Setter Property="MinHeight" Value="24" />
+      <Setter Property="Padding" Value="8,2" />
+      <Setter Property="FontSize" Value="11" />
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="Background" Value="{DynamicResource CottonSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CottonBorderBrush}" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.icon">
+      <Setter Property="Width" Value="32" />
+      <Setter Property="Height" Value="32" />
+      <Setter Property="MinWidth" Value="32" />
+      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.flatIcon">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.flatIcon:pointerover">
+      <Setter Property="Background" Value="{DynamicResource CottonSurfaceMutedBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CottonBorderBrush}" />
+    </Style>
+    <Style Selector="Button.flatIcon:pressed">
+      <Setter Property="Background" Value="{DynamicResource CottonSurfaceMutedBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CottonBorderBrush}" />
+    </Style>
+    <Style Selector="Button.emptyIcon">
+      <Setter Property="Width" Value="48" />
+      <Setter Property="Height" Value="48" />
+      <Setter Property="MinWidth" Value="48" />
+      <Setter Property="MinHeight" Value="48" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="FontSize" Value="24" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TabControl.settingsTabs TabItem">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Padding" Value="8,4" />
+    </Style>
+  </Application.Styles>
+</Application>

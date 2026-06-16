@@ -1,0 +1,890 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
+
+using System.Security.Cryptography;
+using System.Text;
+using Cotton.Auth;
+using Cotton.Files;
+using Cotton.Nodes;
+using Cotton.Settings;
+using Cotton.Sdk;
+using Cotton.Sdk.Auth;
+using Cotton.Sdk.Chunks;
+using Cotton.Sdk.Files;
+using Cotton.Sdk.Nodes;
+using Cotton.Sdk.Realtime;
+using Cotton.Sdk.Settings;
+using Cotton.Sdk.Sync;
+using Cotton.Sync.Local;
+using Cotton.Sync.Remote;
+
+namespace Cotton.Sync.Tests.Remote
+{
+    public class SdkRemoteFileSynchronizerTests
+    {
+        private readonly Guid _rootNodeId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        private string _root = string.Empty;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _root = Path.Combine(Path.GetTempPath(), "cotton-sdk-remote-sync", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(_root);
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            if (Directory.Exists(_root))
+            {
+                Directory.Delete(_root, recursive: true);
+            }
+        }
+
+        [Test]
+        public async Task UploadFileAsync_CreatesFoldersUploadsMissingChunksAndCreatesFile()
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes("abcdefghij");
+            LocalFileSnapshot local = WriteLocalFile("Docs/Reports/file.txt", bytes);
+            var client = new FakeCottonCloudClient(chunkSizeBytes: 4);
+            string firstChunkHash = Hash(Encoding.UTF8.GetBytes("abcd"));
+            client.ChunksClient.ExistingHashes.Add(firstChunkHash);
+            var synchronizer = new SdkRemoteFileSynchronizer(client);
+
+            NodeFileManifestDto created = await synchronizer.UploadFileAsync(_rootNodeId, local.RelativePath, local);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(client.SettingsClient.Calls, Is.EqualTo(1));
+                Assert.That(client.NodesClient.CreatedNodes.Select(x => x.Name), Is.EqualTo(new[] { "Docs", "Reports" }));
+                Assert.That(client.ChunksClient.ExistsChecks, Has.Count.EqualTo(3));
+                Assert.That(client.ChunksClient.UploadedChunks.Select(x => x.Hash), Is.EqualTo(client.ChunksClient.ExistsChecks.Skip(1)));
+                Assert.That(client.FilesClient.CreateRequests, Has.Count.EqualTo(1));
+                Assert.That(client.FilesClient.UpdateRequests, Is.Empty);
+                Assert.That(client.FilesClient.CreateRequests[0].NodeId, Is.EqualTo(client.NodesClient.CreatedNodes[^1].Id));
+                Assert.That(client.FilesClient.CreateRequests[0].Name, Is.EqualTo("file.txt"));
+                Assert.That(client.FilesClient.CreateRequests[0].ContentType, Is.EqualTo("text/plain"));
+                Assert.That(client.FilesClient.CreateRequests[0].Hash, Is.EqualTo(local.ContentHash));
+                Assert.That(client.FilesClient.CreateRequests[0].Validate, Is.False);
+                Assert.That(created.ContentHash, Is.EqualTo(local.ContentHash));
+            });
+        }
+
+        [Test]
+        public async Task UploadFileAsync_ComputesContentHashFromChunkStreamWhenSnapshotHasNoHash()
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes("abcdefghij");
+            LocalFileSnapshot local = WriteLocalFile("Docs/file.txt", bytes);
+            local.ContentHash = string.Empty;
+            var client = new FakeCottonCloudClient(chunkSizeBytes: 4);
+            var synchronizer = new SdkRemoteFileSynchronizer(client);
+
+            NodeFileManifestDto created = await synchronizer.UploadFileAsync(_rootNodeId, local.RelativePath, local);
+
+            string expectedHash = Hash(bytes);
+            Assert.Multiple(() =>
+            {
+                Assert.That(client.FilesClient.CreateRequests, Has.Count.EqualTo(1));
+                Assert.That(client.FilesClient.CreateRequests[0].Hash, Is.EqualTo(expectedHash));
+                Assert.That(created.ContentHash, Is.EqualTo(expectedHash));
+            });
+        }
+
+        [Test]
+        public async Task UploadFileAsync_ReusesExistingFolderAndUpdatesExistingFile()
+        {
+            Guid docsId = Guid.NewGuid();
+            byte[] bytes = Encoding.UTF8.GetBytes("updated");
+            LocalFileSnapshot local = WriteLocalFile("Docs/file.bin", bytes);
+            var client = new FakeCottonCloudClient(chunkSizeBytes: 1024);
+            client.NodesClient.Children[_rootNodeId] = [Node(docsId, _rootNodeId, "Docs")];
+            NodeFileManifestDto existing = RemoteFile("file.bin", HashText("old"));
+            var synchronizer = new SdkRemoteFileSynchronizer(client);
+
+            NodeFileManifestDto updated = await synchronizer.UploadFileAsync(_rootNodeId, local.RelativePath, local, existing);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(client.NodesClient.CreatedNodes, Is.Empty);
+                Assert.That(client.FilesClient.CreateRequests, Is.Empty);
+                Assert.That(client.FilesClient.UpdateRequests, Has.Count.EqualTo(1));
+                Assert.That(client.FilesClient.UpdateRequests[0].NodeFileId, Is.EqualTo(existing.Id));
+                Assert.That(client.FilesClient.UpdateRequests[0].Request.NodeId, Is.EqualTo(docsId));
+                Assert.That(client.FilesClient.UpdateRequests[0].Request.OriginalNodeFileId, Is.EqualTo(existing.OriginalNodeFileId));
+                Assert.That(client.FilesClient.UpdateRequests[0].ExpectedETag, Is.EqualTo(existing.ETag));
+                Assert.That(updated.Id, Is.EqualTo(existing.Id));
+                Assert.That(updated.ContentHash, Is.EqualTo(local.ContentHash));
+            });
+        }
+
+        [Test]
+        public async Task MoveFileAsync_MovesToExistingParentAndRenamesWithFreshETags()
+        {
+            Guid docsId = Guid.NewGuid();
+            Guid reportsId = Guid.NewGuid();
+            var client = new FakeCottonCloudClient(chunkSizeBytes: 1024);
+            client.NodesClient.Children[_rootNodeId] = [Node(docsId, _rootNodeId, "Docs")];
+            client.NodesClient.Children[docsId] = [Node(reportsId, docsId, "Reports")];
+            NodeFileManifestDto existing = RemoteFile("old.txt", HashText("same"));
+            existing.NodeId = _rootNodeId;
+            existing.ETag = "sha256-original";
+            client.FilesClient.Files[existing.Id] = existing;
+            var synchronizer = new SdkRemoteFileSynchronizer(client);
+
+            NodeFileManifestDto moved = await synchronizer.MoveFileAsync(_rootNodeId, "Docs/Reports/new.txt", existing);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(client.NodesClient.CreatedNodes, Is.Empty);
+                Assert.That(client.FilesClient.MoveRequests, Is.EqualTo(new[] { (existing.Id, reportsId, "sha256-original") }));
+                Assert.That(client.FilesClient.RenameRequests, Is.EqualTo(new[] { (existing.Id, "new.txt", "sha256-moved-1") }));
+                Assert.That(moved.Id, Is.EqualTo(existing.Id));
+                Assert.That(moved.NodeId, Is.EqualTo(reportsId));
+                Assert.That(moved.Name, Is.EqualTo("new.txt"));
+                Assert.That(moved.ETag, Is.EqualTo("sha256-renamed-1"));
+            });
+        }
+
+        [Test]
+        public async Task UploadFileAsync_UploadsEmptyFileAsEmptyChunk()
+        {
+            LocalFileSnapshot local = WriteLocalFile("empty.bin", []);
+            var client = new FakeCottonCloudClient(chunkSizeBytes: 8);
+            var synchronizer = new SdkRemoteFileSynchronizer(client);
+
+            await synchronizer.UploadFileAsync(_rootNodeId, local.RelativePath, local);
+
+            string emptyHash = Hash([]);
+            Assert.Multiple(() =>
+            {
+                Assert.That(client.ChunksClient.ExistsChecks, Is.EqualTo(new[] { emptyHash }));
+                Assert.That(client.ChunksClient.UploadedChunks, Has.Count.EqualTo(1));
+                Assert.That(client.ChunksClient.UploadedChunks[0].Bytes, Is.Empty);
+                Assert.That(client.FilesClient.CreateRequests[0].ChunkHashes, Is.EqualTo(new[] { emptyHash }));
+            });
+        }
+
+        [Test]
+        public async Task UploadFileAsync_ReportsChunkProgress()
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes("abcdefghij");
+            LocalFileSnapshot local = WriteLocalFile("Docs/file.txt", bytes);
+            var client = new FakeCottonCloudClient(chunkSizeBytes: 4);
+            var synchronizer = new SdkRemoteFileSynchronizer(
+                client,
+                new SdkRemoteFileSynchronizerOptions { MaxConcurrentChunkUploads = 1 });
+            var progress = new RecordingProgress<SyncTransferProgress>();
+
+            await synchronizer.UploadFileAsync(
+                _rootNodeId,
+                local.RelativePath,
+                local,
+                existingRemoteFile: null,
+                transferProgress: progress);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(progress.Values.Select(value => value.TransferredBytes), Is.EqualTo(new long[] { 0, 4, 8, 10, 10 }));
+                Assert.That(progress.Values.Select(value => value.TotalBytes), Is.All.EqualTo(10));
+                Assert.That(progress.Values.Select(value => value.Direction), Is.All.EqualTo(SyncTransferDirection.Upload));
+                Assert.That(progress.Values.Select(value => value.RelativePath), Is.All.EqualTo("Docs/file.txt"));
+                Assert.That(progress.Values[^1].IsCompleted, Is.True);
+            });
+        }
+
+        [Test]
+        public async Task UploadFileAsync_ReportsChunkProgressBeforeWholeBatchCompletes()
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes("abcdefghijkl");
+            LocalFileSnapshot local = WriteLocalFile("Docs/file.txt", bytes);
+            var client = new FakeCottonCloudClient(chunkSizeBytes: 4);
+            string firstChunkHash = Hash(Encoding.UTF8.GetBytes("abcd"));
+            client.ChunksClient.BlockUpload(firstChunkHash);
+            var synchronizer = new SdkRemoteFileSynchronizer(
+                client,
+                new SdkRemoteFileSynchronizerOptions { MaxConcurrentChunkUploads = 2 });
+            var progress = new SignalingProgress<SyncTransferProgress>(
+                value => value.TransferredBytes > 0);
+
+            Task upload = synchronizer.UploadFileAsync(
+                _rootNodeId,
+                local.RelativePath,
+                local,
+                existingRemoteFile: null,
+                transferProgress: progress);
+            SyncTransferProgress firstProgress = await progress.WaitForMatchAsync().ConfigureAwait(false);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(firstProgress.TransferredBytes, Is.EqualTo(4));
+                Assert.That(firstProgress.TotalBytes, Is.EqualTo(12));
+                Assert.That(upload.IsCompleted, Is.False);
+            });
+
+            client.ChunksClient.ReleaseUpload(firstChunkHash);
+            await upload.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+        }
+
+        [Test]
+        public async Task UploadFileAsync_UsesBoundedChunkUploadConcurrency()
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes("abcdefghijklmnop");
+            LocalFileSnapshot local = WriteLocalFile("Docs/file.txt", bytes);
+            var client = new FakeCottonCloudClient(chunkSizeBytes: 4);
+            client.ChunksClient.OperationDelay = TimeSpan.FromMilliseconds(25);
+            var synchronizer = new SdkRemoteFileSynchronizer(
+                client,
+                new SdkRemoteFileSynchronizerOptions { MaxConcurrentChunkUploads = 2 });
+            string[] expectedChunkHashes =
+            [
+                Hash(Encoding.UTF8.GetBytes("abcd")),
+                Hash(Encoding.UTF8.GetBytes("efgh")),
+                Hash(Encoding.UTF8.GetBytes("ijkl")),
+                Hash(Encoding.UTF8.GetBytes("mnop")),
+            ];
+
+            await synchronizer.UploadFileAsync(_rootNodeId, local.RelativePath, local);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(client.ChunksClient.UploadedChunks, Has.Count.EqualTo(4));
+                Assert.That(client.ChunksClient.MaxConcurrentOperations, Is.GreaterThan(1));
+                Assert.That(client.ChunksClient.MaxConcurrentOperations, Is.LessThanOrEqualTo(2));
+                Assert.That(client.FilesClient.CreateRequests.Single().ChunkHashes, Is.EqualTo(expectedChunkHashes));
+                Assert.That(client.ChunksClient.ExistsChecks, Is.EquivalentTo(expectedChunkHashes));
+            });
+        }
+
+        [Test]
+        public async Task UploadFileAsync_DeduplicatesChunkNetworkWorkWithinOneFile()
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes("abcdabcdabcd");
+            LocalFileSnapshot local = WriteLocalFile("Docs/repeated.bin", bytes);
+            var client = new FakeCottonCloudClient(chunkSizeBytes: 4);
+            var synchronizer = new SdkRemoteFileSynchronizer(
+                client,
+                new SdkRemoteFileSynchronizerOptions { MaxConcurrentChunkUploads = 3 });
+            string repeatedChunkHash = Hash(Encoding.UTF8.GetBytes("abcd"));
+
+            await synchronizer.UploadFileAsync(_rootNodeId, local.RelativePath, local);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(client.ChunksClient.ExistsChecks, Is.EqualTo(new[] { repeatedChunkHash }));
+                Assert.That(client.ChunksClient.UploadedChunks.Select(chunk => chunk.Hash), Is.EqualTo(new[] { repeatedChunkHash }));
+                Assert.That(
+                    client.FilesClient.CreateRequests.Single().ChunkHashes,
+                    Is.EqualTo(new[] { repeatedChunkHash, repeatedChunkHash, repeatedChunkHash }));
+            });
+        }
+
+        [Test]
+        public async Task UploadFileAsync_AllowsConcurrentWriterWhileReadingLocalFile()
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes("abcdefgh");
+            LocalFileSnapshot local = WriteLocalFile("Docs/concurrent.txt", bytes);
+            local.ContentHash = string.Empty;
+            var client = new FakeCottonCloudClient(chunkSizeBytes: 4);
+            string firstChunkHash = Hash(Encoding.UTF8.GetBytes("abcd"));
+            client.ChunksClient.BlockUpload(firstChunkHash);
+            var synchronizer = new SdkRemoteFileSynchronizer(
+                client,
+                new SdkRemoteFileSynchronizerOptions { MaxConcurrentChunkUploads = 1 });
+
+            Task<NodeFileManifestDto> upload = synchronizer.UploadFileAsync(_rootNodeId, local.RelativePath, local);
+            await client.ChunksClient.WaitForUploadAttemptAsync(firstChunkHash).ConfigureAwait(false);
+
+            Assert.DoesNotThrow(() =>
+            {
+                using FileStream writer = new(
+                    local.FullPath,
+                    FileMode.Open,
+                    FileAccess.Write,
+                    FileShare.ReadWrite | FileShare.Delete);
+                writer.SetLength(0);
+                byte[] replacement = Encoding.UTF8.GetBytes("WXYZabcd");
+                writer.Write(replacement, 0, replacement.Length);
+            });
+
+            client.ChunksClient.ReleaseUpload(firstChunkHash);
+            await upload.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+        }
+
+        [Test]
+        public void Constructor_RejectsInvalidChunkUploadConcurrency()
+        {
+            var client = new FakeCottonCloudClient(chunkSizeBytes: 4);
+
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => new SdkRemoteFileSynchronizer(
+                    client,
+                    new SdkRemoteFileSynchronizerOptions { MaxConcurrentChunkUploads = 0 }));
+        }
+
+        [Test]
+        public async Task DownloadFileAsync_And_DeleteFileAsync_DelegateToSdkFileClient()
+        {
+            Guid fileId = Guid.NewGuid();
+            var client = new FakeCottonCloudClient(chunkSizeBytes: 8);
+            client.FilesClient.Downloads[fileId] = Encoding.UTF8.GetBytes("downloaded");
+            var synchronizer = new SdkRemoteFileSynchronizer(client);
+            await using var destination = new MemoryStream();
+
+            await synchronizer.DownloadFileAsync(fileId, destination);
+            await synchronizer.DeleteFileAsync(fileId, skipTrash: true, expectedETag: "sha256-current");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(Encoding.UTF8.GetString(destination.ToArray()), Is.EqualTo("downloaded"));
+                Assert.That(client.FilesClient.Deletes, Is.EqualTo(new[] { (fileId, true, "sha256-current") }));
+            });
+        }
+
+        [Test]
+        public async Task DownloadFileAsync_ReportsSdkDownloadProgress()
+        {
+            Guid fileId = Guid.NewGuid();
+            var client = new FakeCottonCloudClient(chunkSizeBytes: 8);
+            client.FilesClient.Downloads[fileId] = Encoding.UTF8.GetBytes("downloaded");
+            var synchronizer = new SdkRemoteFileSynchronizer(client);
+            await using var destination = new MemoryStream();
+            var progress = new RecordingProgress<SyncTransferProgress>();
+
+            await synchronizer.DownloadFileAsync(
+                fileId,
+                "Docs/file.txt",
+                totalBytes: 10,
+                destination,
+                progress);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(progress.Values.Select(value => value.TransferredBytes), Is.EqualTo(new long[] { 0, 10, 10 }));
+                Assert.That(progress.Values.Select(value => value.TotalBytes), Is.All.EqualTo(10));
+                Assert.That(progress.Values.Select(value => value.Direction), Is.All.EqualTo(SyncTransferDirection.Download));
+                Assert.That(progress.Values.Select(value => value.RelativePath), Is.All.EqualTo("Docs/file.txt"));
+                Assert.That(progress.Values[^1].IsCompleted, Is.True);
+            });
+        }
+
+        private LocalFileSnapshot WriteLocalFile(string relativePath, byte[] bytes)
+        {
+            string fullPath = Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            File.WriteAllBytes(fullPath, bytes);
+            File.SetLastWriteTimeUtc(fullPath, new DateTime(2026, 6, 2, 13, 0, 0, DateTimeKind.Utc));
+            return new LocalFileSnapshot
+            {
+                RelativePath = relativePath,
+                FullPath = fullPath,
+                ContentHash = Hash(bytes),
+                SizeBytes = bytes.Length,
+                LastWriteUtc = new DateTime(2026, 6, 2, 13, 0, 0, DateTimeKind.Utc),
+            };
+        }
+
+        private NodeFileManifestDto RemoteFile(string name, string contentHash)
+        {
+            return new NodeFileManifestDto
+            {
+                Id = Guid.NewGuid(),
+                NodeId = _rootNodeId,
+                FileManifestId = Guid.NewGuid(),
+                OriginalNodeFileId = Guid.NewGuid(),
+                OwnerId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                Name = name,
+                ContentType = "application/octet-stream",
+                ContentHash = contentHash,
+                ETag = "sha256-" + contentHash,
+            };
+        }
+
+        private static NodeDto Node(Guid id, Guid parentId, string name)
+        {
+            return new NodeDto
+            {
+                Id = id,
+                ParentId = parentId,
+                LayoutId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+                Name = name,
+            };
+        }
+
+        private static string HashText(string text)
+        {
+            return Hash(Encoding.UTF8.GetBytes(text));
+        }
+
+        private static string Hash(byte[] bytes)
+        {
+            return Convert.ToHexStringLower(SHA256.HashData(bytes));
+        }
+
+        private class RecordingProgress<T> : IProgress<T>
+        {
+            public List<T> Values { get; } = [];
+
+            public void Report(T value)
+            {
+                Values.Add(value);
+            }
+        }
+
+        private class SignalingProgress<T> : IProgress<T>
+        {
+            private readonly Func<T, bool> _matches;
+            private readonly TaskCompletionSource<T> _match = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            public SignalingProgress(Func<T, bool> matches)
+            {
+                _matches = matches;
+            }
+
+            public void Report(T value)
+            {
+                if (_matches(value))
+                {
+                    _match.TrySetResult(value);
+                }
+            }
+
+            public async Task<T> WaitForMatchAsync()
+            {
+                return await _match.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            }
+        }
+
+        private class FakeCottonCloudClient : ICottonCloudClient
+        {
+            public FakeCottonCloudClient(int chunkSizeBytes)
+            {
+                SettingsClient = new FakeSettingsClient(chunkSizeBytes);
+            }
+
+            public ICottonAuthClient Auth => throw new NotSupportedException();
+
+            public FakeSettingsClient SettingsClient { get; }
+
+            public FakeChunkClient ChunksClient { get; } = new();
+
+            public FakeFileClient FilesClient { get; } = new();
+
+            public FakeNodeClient NodesClient { get; } = new();
+
+            public ICottonSettingsClient Settings => SettingsClient;
+
+            public ICottonChunkClient Chunks => ChunksClient;
+
+            public ICottonFileClient Files => FilesClient;
+
+            public ICottonNodeClient Nodes => NodesClient;
+
+            public ICottonSyncClient Sync => throw new NotSupportedException();
+
+            public ICottonRealtimeClient Realtime => throw new NotSupportedException();
+
+            public ValueTask DisposeAsync()
+            {
+                return ValueTask.CompletedTask;
+            }
+        }
+
+        private class FakeSettingsClient : ICottonSettingsClient
+        {
+            private readonly int _chunkSizeBytes;
+
+            public FakeSettingsClient(int chunkSizeBytes)
+            {
+                _chunkSizeBytes = chunkSizeBytes;
+            }
+
+            public int Calls { get; private set; }
+
+            public Task<ClientSettingsDto> GetAsync(CancellationToken cancellationToken = default)
+            {
+                Calls++;
+                return Task.FromResult(new ClientSettingsDto
+                {
+                    MaxChunkSizeBytes = _chunkSizeBytes,
+                    SupportedHashAlgorithm = "SHA-256",
+                });
+            }
+        }
+
+        private class FakeChunkClient : ICottonChunkClient
+        {
+            private readonly object _gate = new();
+            private readonly Dictionary<string, TaskCompletionSource> _blockedUploads = new(StringComparer.OrdinalIgnoreCase);
+            private readonly Dictionary<string, TaskCompletionSource> _blockedUploadAttempts = new(StringComparer.OrdinalIgnoreCase);
+            private int _activeOperations;
+
+            public HashSet<string> ExistingHashes { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+            public List<string> ExistsChecks { get; } = [];
+
+            public List<(string Hash, byte[] Bytes)> UploadedChunks { get; } = [];
+
+            public TimeSpan OperationDelay { get; set; }
+
+            public int MaxConcurrentOperations { get; private set; }
+
+            public void BlockUpload(string hash)
+            {
+                lock (_gate)
+                {
+                    _blockedUploads[hash] = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _blockedUploadAttempts[hash] = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                }
+            }
+
+            public async Task WaitForUploadAttemptAsync(string hash)
+            {
+                TaskCompletionSource? attempt;
+                lock (_gate)
+                {
+                    _blockedUploadAttempts.TryGetValue(hash, out attempt);
+                }
+
+                if (attempt is null)
+                {
+                    throw new InvalidOperationException("No blocked upload was registered for " + hash + ".");
+                }
+
+                await attempt.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            }
+
+            public void ReleaseUpload(string hash)
+            {
+                TaskCompletionSource? block;
+                lock (_gate)
+                {
+                    if (!_blockedUploads.TryGetValue(hash, out block))
+                    {
+                        return;
+                    }
+
+                    _blockedUploads.Remove(hash);
+                }
+
+                block.SetResult();
+            }
+
+            public async Task<bool> ExistsAsync(string hash, CancellationToken cancellationToken = default)
+            {
+                await TrackOperationAsync(cancellationToken).ConfigureAwait(false);
+                lock (_gate)
+                {
+                    ExistsChecks.Add(hash);
+                    return ExistingHashes.Contains(hash);
+                }
+            }
+
+            public async Task UploadRawAsync(
+                string hash,
+                Stream content,
+                string contentType = "application/octet-stream",
+                CancellationToken cancellationToken = default)
+            {
+                BeginOperation();
+                try
+                {
+                    await WaitForUploadReleaseAsync(hash, cancellationToken).ConfigureAwait(false);
+                    await DelayOperationAsync(cancellationToken).ConfigureAwait(false);
+                    await using var copy = new MemoryStream();
+                    await content.CopyToAsync(copy, cancellationToken);
+                    lock (_gate)
+                    {
+                        UploadedChunks.Add((hash, copy.ToArray()));
+                        ExistingHashes.Add(hash);
+                    }
+                }
+                finally
+                {
+                    EndOperation();
+                }
+            }
+
+            private async Task TrackOperationAsync(CancellationToken cancellationToken)
+            {
+                BeginOperation();
+                try
+                {
+                    await DelayOperationAsync(cancellationToken).ConfigureAwait(false);
+                }
+                finally
+                {
+                    EndOperation();
+                }
+            }
+
+            private async Task WaitForUploadReleaseAsync(string hash, CancellationToken cancellationToken)
+            {
+                TaskCompletionSource? block;
+                TaskCompletionSource? attempt;
+                lock (_gate)
+                {
+                    _blockedUploads.TryGetValue(hash, out block);
+                    _blockedUploadAttempts.TryGetValue(hash, out attempt);
+                }
+
+                if (block is not null)
+                {
+                    attempt?.TrySetResult();
+                    await block.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            private void BeginOperation()
+            {
+                int activeOperations = Interlocked.Increment(ref _activeOperations);
+                lock (_gate)
+                {
+                    MaxConcurrentOperations = Math.Max(MaxConcurrentOperations, activeOperations);
+                }
+            }
+
+            private async Task DelayOperationAsync(CancellationToken cancellationToken)
+            {
+                if (OperationDelay > TimeSpan.Zero)
+                {
+                    await Task.Delay(OperationDelay, cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            private void EndOperation()
+            {
+                Interlocked.Decrement(ref _activeOperations);
+            }
+        }
+
+        private class FakeFileClient : ICottonFileClient
+        {
+            public Dictionary<Guid, NodeFileManifestDto> Files { get; } = [];
+
+            public List<CreateFileFromChunksRequestDto> CreateRequests { get; } = [];
+
+            public List<(Guid NodeFileId, CreateFileFromChunksRequestDto Request, string? ExpectedETag)> UpdateRequests { get; } = [];
+
+            public List<(Guid NodeFileId, Guid ParentId, string? ExpectedETag)> MoveRequests { get; } = [];
+
+            public List<(Guid NodeFileId, string Name, string? ExpectedETag)> RenameRequests { get; } = [];
+
+            public List<(Guid NodeFileId, bool SkipTrash, string? ExpectedETag)> Deletes { get; } = [];
+
+            public Dictionary<Guid, byte[]> Downloads { get; } = [];
+
+            public Task<NodeFileManifestDto> CreateFromChunksAsync(
+                CreateFileFromChunksRequestDto request,
+                CancellationToken cancellationToken = default)
+            {
+                CreateRequests.Add(request);
+                NodeFileManifestDto created = FileFromRequest(Guid.NewGuid(), request);
+                Files[created.Id] = created;
+                return Task.FromResult(created);
+            }
+
+            public Task<NodeFileManifestDto> UpdateContentAsync(
+                Guid nodeFileId,
+                CreateFileFromChunksRequestDto request,
+                string? expectedETag = null,
+                CancellationToken cancellationToken = default)
+            {
+                UpdateRequests.Add((nodeFileId, request, expectedETag));
+                NodeFileManifestDto updated = FileFromRequest(nodeFileId, request);
+                Files[nodeFileId] = updated;
+                return Task.FromResult(updated);
+            }
+
+            public Task<NodeFileManifestDto> MoveAsync(
+                Guid nodeFileId,
+                Guid parentId,
+                string? expectedETag = null,
+                CancellationToken cancellationToken = default)
+            {
+                MoveRequests.Add((nodeFileId, parentId, expectedETag));
+                NodeFileManifestDto moved = CloneFile(Files[nodeFileId]);
+                moved.NodeId = parentId;
+                moved.ETag = "sha256-moved-" + MoveRequests.Count;
+                Files[nodeFileId] = moved;
+                return Task.FromResult(moved);
+            }
+
+            public Task<NodeFileManifestDto> RenameAsync(
+                Guid nodeFileId,
+                string name,
+                string? expectedETag = null,
+                CancellationToken cancellationToken = default)
+            {
+                RenameRequests.Add((nodeFileId, name, expectedETag));
+                NodeFileManifestDto renamed = CloneFile(Files[nodeFileId]);
+                renamed.Name = name;
+                renamed.ETag = "sha256-renamed-" + RenameRequests.Count;
+                Files[nodeFileId] = renamed;
+                return Task.FromResult(renamed);
+            }
+
+            public Task<NodeFileManifestDto> UpdateMetadataAsync(
+                Guid nodeFileId,
+                IReadOnlyDictionary<string, string> metadata,
+                CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task DeleteAsync(
+                Guid nodeFileId,
+                bool skipTrash = false,
+                string? expectedETag = null,
+                CancellationToken cancellationToken = default)
+            {
+                Deletes.Add((nodeFileId, skipTrash, expectedETag));
+                return Task.CompletedTask;
+            }
+
+            public Task<RestoreOutcomeDto> RestoreAsync(
+                Guid nodeFileId,
+                RestoreItemRequestDto? request = null,
+                CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task<List<FileVersionDto>> GetVersionsAsync(Guid nodeFileId, CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public async Task DownloadContentAsync(
+                Guid nodeFileId,
+                Stream destination,
+                bool download = false,
+                IProgress<long>? progress = null,
+                CancellationToken cancellationToken = default)
+            {
+                byte[] bytes = Downloads[nodeFileId];
+                await destination.WriteAsync(bytes, cancellationToken);
+                progress?.Report(bytes.Length);
+            }
+
+            private static NodeFileManifestDto FileFromRequest(Guid id, CreateFileFromChunksRequestDto request)
+            {
+                return new NodeFileManifestDto
+                {
+                    Id = id,
+                    NodeId = request.NodeId,
+                    FileManifestId = Guid.NewGuid(),
+                    OriginalNodeFileId = request.OriginalNodeFileId ?? id,
+                    OwnerId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                    Name = request.Name,
+                    ContentType = request.ContentType,
+                    ContentHash = request.Hash,
+                    ETag = "sha256-" + request.Hash,
+                };
+            }
+
+            private static NodeFileManifestDto CloneFile(NodeFileManifestDto source)
+            {
+                return new NodeFileManifestDto
+                {
+                    Id = source.Id,
+                    NodeId = source.NodeId,
+                    FileManifestId = source.FileManifestId,
+                    OriginalNodeFileId = source.OriginalNodeFileId,
+                    OwnerId = source.OwnerId,
+                    Name = source.Name,
+                    ContentType = source.ContentType,
+                    SizeBytes = source.SizeBytes,
+                    ContentHash = source.ContentHash,
+                    ETag = source.ETag,
+                    CreatedAt = source.CreatedAt,
+                    UpdatedAt = source.UpdatedAt,
+                    Metadata = source.Metadata is null
+                        ? []
+                        : new Dictionary<string, string>(source.Metadata, StringComparer.Ordinal),
+                };
+            }
+        }
+
+        private class FakeNodeClient : ICottonNodeClient
+        {
+            public Dictionary<Guid, List<NodeDto>> Children { get; } = [];
+
+            public List<NodeDto> CreatedNodes { get; } = [];
+
+            public Task<NodeDto> ResolveAsync(string? path = null, CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task<NodeDto> GetAsync(Guid nodeId, CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task<NodeContentDto> GetChildrenAsync(
+                Guid nodeId,
+                int page = 1,
+                int pageSize = 100,
+                int depth = 0,
+                CancellationToken cancellationToken = default)
+            {
+                List<NodeDto> allChildren = Children.TryGetValue(nodeId, out List<NodeDto>? children) ? children : [];
+                List<NodeDto> nodes = allChildren.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+                return Task.FromResult(new NodeContentDto
+                {
+                    TotalCount = allChildren.Count,
+                    Nodes = nodes,
+                });
+            }
+
+            public Task<NodeDto> CreateAsync(Guid parentId, string name, CancellationToken cancellationToken = default)
+            {
+                NodeDto node = Node(Guid.NewGuid(), parentId, name);
+                if (!Children.TryGetValue(parentId, out List<NodeDto>? children))
+                {
+                    children = [];
+                    Children[parentId] = children;
+                }
+
+                children.Add(node);
+                CreatedNodes.Add(node);
+                return Task.FromResult(node);
+            }
+
+            public Task<NodeDto> MoveAsync(Guid nodeId, Guid parentId, CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task<NodeDto> RenameAsync(Guid nodeId, string name, CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task<NodeDto> UpdateMetadataAsync(Guid nodeId, IReadOnlyDictionary<string, string> metadata, CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task DeleteAsync(Guid nodeId, bool skipTrash = false, CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task<NodeDto> RestoreAsync(RestoreItemRequestDto? request = null, CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task<RestoreOutcomeDto> RestoreAsync(Guid nodeId, RestoreItemRequestDto? request = null, CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task<List<NodeDto>> GetAncestorsAsync(Guid nodeId, CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+        }
+    }
+}
