@@ -59,6 +59,80 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task HandleFetchDataAsync_UsesVerifiedRangeProviderForPartialRequest()
+        {
+            byte[] content = Encoding.UTF8.GetBytes("0123456789abcdef");
+            var provider = new VerifiedRangeContentProvider(content);
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
+            WindowsCloudFilesFetchDataRequest request = CreateFetchRequest(content, offset: 4, length: 6);
+
+            await coordinator.HandleFetchDataAsync(request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(provider.DownloadedIdentities, Is.Empty);
+                Assert.That(provider.RangeDownloads, Has.Count.EqualTo(1));
+                Assert.That(provider.RangeDownloads[0].Identity.NodeFileId, Is.EqualTo(Guid.Parse("33333333-3333-3333-3333-333333333333")));
+                Assert.That(provider.RangeDownloads[0].Offset, Is.EqualTo(4));
+                Assert.That(provider.RangeDownloads[0].Length, Is.EqualTo(6));
+                Assert.That(nativeApi.Transfers, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.Transfers[0].CompletionStatus, Is.EqualTo(WindowsCloudFilesTransferData.StatusSuccess));
+                Assert.That(nativeApi.Transfers[0].Offset, Is.EqualTo(4));
+                Assert.That(nativeApi.Transfers[0].Length, Is.EqualTo(6));
+                Assert.That(Encoding.UTF8.GetString(nativeApi.Transfers[0].Buffer), Is.EqualTo("456789"));
+                Assert.That(Directory.GetFiles(_tempDirectory), Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task HandleFetchDataAsync_UsesFullDownloadForFullRequestWhenRangeProviderExists()
+        {
+            byte[] content = Encoding.UTF8.GetBytes("0123456789abcdef");
+            var provider = new VerifiedRangeContentProvider(content);
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
+            WindowsCloudFilesFetchDataRequest request = CreateFetchRequest(content, offset: 0, length: content.Length);
+
+            await coordinator.HandleFetchDataAsync(request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(provider.DownloadedIdentities, Has.Count.EqualTo(1));
+                Assert.That(provider.RangeDownloads, Is.Empty);
+                Assert.That(nativeApi.Transfers, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.Transfers[0].CompletionStatus, Is.EqualTo(WindowsCloudFilesTransferData.StatusSuccess));
+                Assert.That(Encoding.UTF8.GetString(nativeApi.Transfers[0].Buffer), Is.EqualTo("0123456789abcdef"));
+                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { request.NormalizedPath }));
+            });
+        }
+
+        [Test]
+        public async Task HandleFetchDataAsync_ReportsFailureWhenVerifiedRangeSizeDoesNotMatch()
+        {
+            byte[] content = Encoding.UTF8.GetBytes("0123456789abcdef");
+            var provider = new VerifiedRangeContentProvider(content, rangeBytesToWrite: 3);
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory, diagnostics);
+            WindowsCloudFilesFetchDataRequest request = CreateFetchRequest(content, offset: 4, length: 6);
+
+            await coordinator.HandleFetchDataAsync(request);
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(provider.DownloadedIdentities, Is.Empty);
+                Assert.That(provider.RangeDownloads, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.Transfers, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.Transfers[0].CompletionStatus, Is.EqualTo(WindowsCloudFilesTransferData.StatusUnsuccessful));
+                Assert.That(diagnostic.Operation, Is.EqualTo("hydrate"));
+                Assert.That(diagnostic.Status, Is.EqualTo("failed"));
+                Assert.That(diagnostic.Details, Does.Contain("range size"));
+            });
+        }
+
+        [Test]
         public async Task HandleFetchDataAsync_MarksFullHydrationInSync()
         {
             byte[] content = Encoding.UTF8.GetBytes("0123456789abcdef");
@@ -496,6 +570,49 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 DownloadedIdentities.Add(identity);
                 await destination.WriteAsync(_content, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        private sealed class VerifiedRangeContentProvider :
+            IWindowsCloudFilesRemoteContentProvider,
+            IWindowsCloudFilesVerifiedRangeContentProvider
+        {
+            private readonly byte[] _content;
+            private readonly int? _rangeBytesToWrite;
+
+            public VerifiedRangeContentProvider(byte[] content, int? rangeBytesToWrite = null)
+            {
+                _content = content;
+                _rangeBytesToWrite = rangeBytesToWrite;
+            }
+
+            public List<WindowsCloudFilesPlaceholderIdentity> DownloadedIdentities { get; } = [];
+
+            public List<(WindowsCloudFilesPlaceholderIdentity Identity, long Offset, long Length)> RangeDownloads { get; } = [];
+
+            public async Task DownloadAsync(
+                WindowsCloudFilesPlaceholderIdentity identity,
+                Stream destination,
+                IProgress<SyncTransferProgress>? transferProgress = null,
+                CancellationToken cancellationToken = default)
+            {
+                DownloadedIdentities.Add(identity);
+                await destination.WriteAsync(_content, cancellationToken).ConfigureAwait(false);
+            }
+
+            public async Task DownloadVerifiedRangeAsync(
+                WindowsCloudFilesPlaceholderIdentity identity,
+                Stream destination,
+                long offset,
+                long length,
+                IProgress<SyncTransferProgress>? transferProgress = null,
+                CancellationToken cancellationToken = default)
+            {
+                RangeDownloads.Add((identity, offset, length));
+                int bytesToWrite = _rangeBytesToWrite ?? checked((int)length);
+                await destination
+                    .WriteAsync(_content.AsMemory(checked((int)offset), bytesToWrite), cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
 
