@@ -3,6 +3,7 @@
 
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.App.State;
+using Microsoft.Data.Sqlite;
 
 namespace Cotton.Sync.App.Tests.SyncPairs
 {
@@ -108,6 +109,38 @@ namespace Cotton.Sync.App.Tests.SyncPairs
         }
 
         [Test]
+        public async Task InitializeAsync_MigratesLegacyReservedModeTwoToFullMirror()
+        {
+            string databasePath = DatabasePath();
+            Guid syncPairId = Guid.NewGuid();
+            await CreateLegacyDatabaseBeforeVirtualFilesMigrationAsync(databasePath, syncPairId);
+            var store = new SqliteSyncPairSettingsStore(databasePath);
+
+            await store.InitializeAsync();
+            SyncPairSettings? actual = await store.GetAsync(syncPairId);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(actual, Is.Not.Null);
+                Assert.That(actual!.Mode, Is.EqualTo(SyncPairMode.FullMirror));
+            });
+        }
+
+        [Test]
+        public async Task UpsertAsync_PreservesExplicitWindowsVirtualFilesModeAfterMigration()
+        {
+            SqliteSyncPairSettingsStore store = CreateStore();
+            await store.InitializeAsync();
+            SyncPairSettings syncPair = CreatePair("Virtual", @"S:\CottonVirtual", "/Virtual");
+            syncPair.Mode = SyncPairMode.WindowsVirtualFiles;
+
+            await store.UpsertAsync(syncPair);
+            SyncPairSettings? actual = await store.GetAsync(syncPair.Id);
+
+            Assert.That(actual?.Mode, Is.EqualTo(SyncPairMode.WindowsVirtualFiles));
+        }
+
+        [Test]
         public async Task UpsertAsync_RejectsUnknownMode()
         {
             SqliteSyncPairSettingsStore store = CreateStore();
@@ -172,6 +205,93 @@ namespace Cotton.Sync.App.Tests.SyncPairs
         private string DatabasePath()
         {
             return Path.Combine(_tempDirectory, "settings.sqlite");
+        }
+
+        private static async Task CreateLegacyDatabaseBeforeVirtualFilesMigrationAsync(
+            string databasePath,
+            Guid syncPairId)
+        {
+            string? directory = Path.GetDirectoryName(databasePath);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            await using var connection = new SqliteConnection("Data Source=" + databasePath + ";Pooling=False");
+            await connection.OpenAsync();
+            await ExecuteAsync(
+                connection,
+                """
+                CREATE TABLE "__EFMigrationsHistory" (
+                    "MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY,
+                    "ProductVersion" TEXT NOT NULL
+                );
+
+                CREATE TABLE "app_preferences" (
+                    "id" INTEGER NOT NULL CONSTRAINT "PK_app_preferences" PRIMARY KEY AUTOINCREMENT,
+                    "remembered_server_url" TEXT NOT NULL,
+                    "remembered_username" TEXT NOT NULL,
+                    "start_with_operating_system" INTEGER NOT NULL,
+                    "start_minimized_to_tray" INTEGER NOT NULL,
+                    "enable_notifications" INTEGER NOT NULL,
+                    "theme_mode" INTEGER NOT NULL,
+                    "is_sync_paused" INTEGER NOT NULL,
+                    "created_at_utc" TEXT NOT NULL,
+                    "updated_at_utc" TEXT NOT NULL
+                );
+
+                CREATE TABLE "sync_pair_settings" (
+                    "id" TEXT NOT NULL CONSTRAINT "PK_sync_pair_settings" PRIMARY KEY,
+                    "display_name" TEXT NOT NULL,
+                    "local_root_path" TEXT NOT NULL,
+                    "remote_root_node_id" TEXT NOT NULL,
+                    "remote_display_path" TEXT NOT NULL,
+                    "is_enabled" INTEGER NOT NULL,
+                    "mode" INTEGER NOT NULL,
+                    "created_at_utc" TEXT NOT NULL,
+                    "updated_at_utc" TEXT NOT NULL
+                );
+
+                INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES
+                    ('20260603192255_InitialSyncAppState', '10.0.8'),
+                    ('20260603211332_AddAppThemePreference', '10.0.8'),
+                    ('20260607084529_AddSyncPausedPreference', '10.0.8');
+                """);
+
+            await using SqliteCommand insert = connection.CreateCommand();
+            insert.CommandText =
+                """
+                INSERT INTO "sync_pair_settings" (
+                    "id",
+                    "display_name",
+                    "local_root_path",
+                    "remote_root_node_id",
+                    "remote_display_path",
+                    "is_enabled",
+                    "mode",
+                    "created_at_utc",
+                    "updated_at_utc")
+                VALUES (
+                    $id,
+                    'Legacy reserved mode',
+                    '/home/user/Legacy',
+                    $remoteRootNodeId,
+                    '/Legacy',
+                    1,
+                    2,
+                    '2026-06-03T10:00:00.0000000Z',
+                    '2026-06-03T10:00:00.0000000Z');
+                """;
+            insert.Parameters.AddWithValue("$id", syncPairId.ToString().ToUpperInvariant());
+            insert.Parameters.AddWithValue("$remoteRootNodeId", Guid.NewGuid().ToString().ToUpperInvariant());
+            await insert.ExecuteNonQueryAsync();
+        }
+
+        private static async Task ExecuteAsync(SqliteConnection connection, string commandText)
+        {
+            await using SqliteCommand command = connection.CreateCommand();
+            command.CommandText = commandText;
+            await command.ExecuteNonQueryAsync();
         }
 
         private static SyncPairSettings CreatePair(string displayName, string localRootPath, string remoteDisplayPath)
