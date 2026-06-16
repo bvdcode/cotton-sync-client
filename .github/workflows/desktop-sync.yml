@@ -920,3 +920,37 @@ jobs:
           makeLatest: true
           prerelease: ${{ steps.release_metadata.outputs.prerelease }}
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  github-release-upgrade-windows:
+    name: Desktop GitHub Release Upgrade Smoke
+    runs-on: windows-latest
+    needs:
+      - linux
+      - release
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+    steps:
+      - name: check repository
+        uses: actions/checkout@v5
+        with:
+          lfs: "true"
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          $compiler = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $compiler)) {
+            throw "Inno Setup compiler was not found at $compiler"
+          }
+
+          "INNO_SETUP_COMPILER=$compiler" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Smoke GitHub release Windows installer upgrade
+        shell: pwsh
+        run: |
+          & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-github-release-upgrade.ps1" `
+            -ExpectedAppVersion "${{ needs.linux.outputs.Version }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

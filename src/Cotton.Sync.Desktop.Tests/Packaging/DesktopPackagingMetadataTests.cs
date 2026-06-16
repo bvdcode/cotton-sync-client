@@ -656,6 +656,27 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         }
 
         [Test]
+        public void WindowsGithubReleaseUpgradeSmokeScript_UsesPublishedReleaseInstaller()
+        {
+            string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/smoke-github-release-upgrade.ps1"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(script, Does.Contain("[string]$ExpectedAppVersion"));
+                Assert.That(script, Does.Contain("[string]$ReleaseTag = \"sync-client-latest\""));
+                Assert.That(script, Does.Contain("gh release download $ReleaseTag"));
+                Assert.That(script, Does.Contain("--pattern CottonSync-Windows.zip"));
+                Assert.That(script, Does.Contain("--pattern CottonSync-Windows-Setup.exe"));
+                Assert.That(script, Does.Contain("$oldAppVersion = $ExpectedAppVersion + \"-ci-github-upgrade\""));
+                Assert.That(script, Does.Contain("/DAppVersion=$oldAppVersion"));
+                Assert.That(script, Does.Contain("-FilePath $releaseInstaller"));
+                Assert.That(script, Does.Contain("& $installedExe --version"));
+                Assert.That(script, Does.Contain("-ExpectedAppVersion $ExpectedAppVersion"));
+                Assert.That(script, Does.Contain("Verified GitHub release Windows installer upgrade"));
+            });
+        }
+
+        [Test]
         public void CiWorkflow_SmokesWindowsInstallerUpgrade()
         {
             string workflow = GetDesktopWorkflow();
@@ -692,6 +713,22 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Upgraded Start Menu shortcut remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Upgraded Start Menu uninstall shortcut remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Upgraded autostart registry value remained after uninstall."));
+            });
+        }
+
+        [Test]
+        public void CiWorkflow_SmokesPublishedGithubReleaseUpgrade()
+        {
+            string workflow = GetDesktopWorkflow();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(workflow, Does.Contain("Desktop GitHub Release Upgrade Smoke"));
+                Assert.That(workflow, Does.Contain("- release"));
+                Assert.That(workflow, Does.Contain("Smoke GitHub release Windows installer upgrade"));
+                Assert.That(workflow, Does.Contain("Packaging/windows/smoke-github-release-upgrade.ps1"));
+                Assert.That(workflow, Does.Contain("-ExpectedAppVersion \"${{ needs.linux.outputs.Version }}\""));
+                Assert.That(workflow, Does.Contain("GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}"));
             });
         }
 
