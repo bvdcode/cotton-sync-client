@@ -898,6 +898,47 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesCreatesLocalFolderForNestedRemoteOnlyPlaceholder()
+        {
+            RemoteDirectorySnapshot remoteDirectory = RemoteDirectory("Projects");
+            NodeFileManifestDto remote = RemoteFile("Projects/remote-only.txt", HashText("remote-content"), sizeBytes: long.MaxValue);
+            RemoteTreeSnapshot remoteTree = RemoteTree(remote);
+            remoteTree.Directories.Add(remoteDirectory);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(),
+                remoteTree,
+                remoteFiles,
+                out SqliteSyncStateStore stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            SyncStateEntry directoryEntry = state.Single(entry => entry.Kind == SyncEntryKind.Directory);
+            SyncStateEntry fileEntry = state.Single(entry => entry.Kind == SyncEntryKind.File);
+            Assert.Multiple(() =>
+            {
+                Assert.That(Directory.Exists(Path.Combine(_root, "Projects")), Is.True);
+                Assert.That(File.Exists(Path.Combine(_root, "Projects", "remote-only.txt")), Is.False);
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(placeholderWriter.Requests, Has.Count.EqualTo(1));
+                Assert.That(placeholderWriter.Requests[0].RelativePath, Is.EqualTo("Projects/remote-only.txt"));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[]
+                {
+                    SyncActivityKind.Downloaded,
+                    SyncActivityKind.PlaceholderCreated,
+                }));
+                Assert.That(directoryEntry.RelativePath, Is.EqualTo("Projects"));
+                Assert.That(directoryEntry.RemoteNodeId, Is.EqualTo(remoteDirectory.Node.Id));
+                Assert.That(fileEntry.RelativePath, Is.EqualTo("Projects/remote-only.txt"));
+                Assert.That(fileEntry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+                Assert.That(fileEntry.RemoteFileId, Is.EqualTo(remote.Id));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesDoesNotFallBackToDownloadWhenPlaceholderWriterIsMissing()
         {
             NodeFileManifestDto remote = RemoteFile("remote-only.txt", HashText("remote-content"), sizeBytes: 1024);
