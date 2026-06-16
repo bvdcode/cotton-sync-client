@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using Cotton.Sdk;
+using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Local;
 
 namespace Cotton.Sync.Desktop.Shell
@@ -50,6 +51,15 @@ namespace Cotton.Sync.Desktop.Shell
         private const string LocalStateDatabaseCorruptMessage =
             "Local Cotton Sync state appears to be corrupt. Export diagnostics, then reset the local app data or choose a fresh data directory and sign in again.";
 
+        private const string CloudFilesSyncRootRegistrationFailedMessage =
+            "Windows virtual files could not register this sync folder with File Explorer. Restart Cotton Sync, then export diagnostics if it repeats.";
+
+        private const string CloudFilesSyncRootConnectionFailedMessage =
+            "Windows virtual files could not connect this sync folder to File Explorer. Restart Cotton Sync, then export diagnostics if it repeats.";
+
+        private const string CloudFilesPlaceholderFailedMessage =
+            "Windows virtual files could not create a placeholder. Check diagnostics and retry sync.";
+
         public static string FromStatus(DesktopSyncStatusSnapshot status)
         {
             ArgumentNullException.ThrowIfNull(status);
@@ -92,6 +102,12 @@ namespace Cotton.Sync.Desktop.Shell
             {
                 return NormalizeApiException(apiException)
                     ?? "Cotton API request failed. Check diagnostics and retry.";
+            }
+
+            if (exception is WindowsCloudFilesNativeException cloudFilesException)
+            {
+                return NormalizeCloudFilesNativeOperation(cloudFilesException.Operation)
+                    ?? "Windows virtual files hit a Windows Cloud Files error. Restart Cotton Sync, then export diagnostics if it repeats.";
             }
 
             if (exception is LocalFilePermissionDeniedException permissionDeniedException)
@@ -203,6 +219,12 @@ namespace Cotton.Sync.Desktop.Shell
                 return LocalStateDatabaseCorruptMessage;
             }
 
+            string? cloudFilesMessage = NormalizeCloudFilesNativeMessage(message);
+            if (cloudFilesMessage is not null)
+            {
+                return cloudFilesMessage;
+            }
+
             string? apiFailureMessage = NormalizeEmbeddedApiFailureMessage(message);
             if (apiFailureMessage is not null)
             {
@@ -259,6 +281,33 @@ namespace Cotton.Sync.Desktop.Shell
             }
 
             return normalized;
+        }
+
+        private static string? NormalizeCloudFilesNativeMessage(string message)
+        {
+            if (!message.Contains("failed with HRESULT", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return message.Contains("CfRegisterSyncRoot", StringComparison.OrdinalIgnoreCase)
+                ? CloudFilesSyncRootRegistrationFailedMessage
+                : message.Contains("CfConnectSyncRoot", StringComparison.OrdinalIgnoreCase)
+                    ? CloudFilesSyncRootConnectionFailedMessage
+                    : message.Contains("CfCreatePlaceholders", StringComparison.OrdinalIgnoreCase)
+                        ? CloudFilesPlaceholderFailedMessage
+                        : null;
+        }
+
+        private static string? NormalizeCloudFilesNativeOperation(string operation)
+        {
+            return string.Equals(operation, "CfRegisterSyncRoot", StringComparison.Ordinal)
+                ? CloudFilesSyncRootRegistrationFailedMessage
+                : string.Equals(operation, "CfConnectSyncRoot", StringComparison.Ordinal)
+                    ? CloudFilesSyncRootConnectionFailedMessage
+                    : string.Equals(operation, "CfCreatePlaceholders", StringComparison.Ordinal)
+                        ? CloudFilesPlaceholderFailedMessage
+                        : null;
         }
 
         private static string? ExtractResponseMessage(string? responseBody)

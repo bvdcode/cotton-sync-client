@@ -3,6 +3,7 @@
 
 using System.Net;
 using Cotton.Sdk;
+using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Shell;
 using Cotton.Sync.Local;
 
@@ -162,6 +163,24 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             string message = DesktopActionRequiredMessageResolver.FromStatus(status);
 
             Assert.That(message, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void FromStatus_ExplainsCloudFilesSyncRootRegistrationFailure()
+        {
+            var status = new DesktopSyncStatusSnapshot(
+            [
+                new DesktopSyncPairStatusSnapshot(
+                    Guid.NewGuid(),
+                    "Error",
+                    "CfRegisterSyncRoot failed with HRESULT 0x8007017C."),
+            ]);
+
+            string message = DesktopActionRequiredMessageResolver.FromStatus(status);
+
+            Assert.That(
+                message,
+                Is.EqualTo("Windows virtual files could not register this sync folder with File Explorer. Restart Cotton Sync, then export diagnostics if it repeats."));
         }
 
         [Test]
@@ -403,6 +422,18 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             Assert.That(
                 message,
                 Is.EqualTo("Local Cotton Sync state appears to be corrupt. Export diagnostics, then reset the local app data or choose a fresh data directory and sign in again."));
+        }
+
+        [Test]
+        public void FromException_ExplainsCloudFilesSyncRootConnectionFailure()
+        {
+            var exception = new WindowsCloudFilesNativeException("CfConnectSyncRoot", unchecked((int)0x8007017C));
+
+            string message = DesktopActionRequiredMessageResolver.FromException(exception);
+
+            Assert.That(
+                message,
+                Is.EqualTo("Windows virtual files could not connect this sync folder to File Explorer. Restart Cotton Sync, then export diagnostics if it repeats."));
         }
 
         [Test]
