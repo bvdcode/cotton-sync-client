@@ -78,6 +78,9 @@ namespace Cotton.Sync.Desktop.ViewModels
         private string _appDatabasePath = string.Empty;
         private string _syncStateDatabasePath = string.Empty;
         private string _tokenStorePath = string.Empty;
+        private string _updateStatusText = "Not checked";
+        private string _updateDetailsText = "Check GitHub release for updates.";
+        private string _downloadedUpdateInstallerPath = string.Empty;
         private string _globalStatus = "Loading";
         private bool _hasCurrentRunProgress;
         private bool _hasCurrentTransfer;
@@ -110,6 +113,9 @@ namespace Cotton.Sync.Desktop.ViewModels
         private bool _isSettingsVisible;
         private bool _isActivityVisible;
         private bool _isSyncPausePending;
+        private bool _isUpdateAvailable;
+        private bool _isUpdateBusy;
+        private bool _isUpdateReady;
         private bool _isLoadingSnapshot = true;
         private bool _isStartWithOperatingSystemSupported = true;
         private bool _isTrayLifecycleSupported;
@@ -254,6 +260,18 @@ namespace Cotton.Sync.Desktop.ViewModels
             ToggleActivityCommand = new AsyncRelayCommand(ToggleActivityAsync, () => IsSignedIn, HandleCommandError);
             SelfTestCommand = new AsyncRelayCommand(SelfTestAsync, () => !IsBusy, HandleCommandError);
             ExportDiagnosticsCommand = new AsyncRelayCommand(ExportDiagnosticsAsync, () => !IsBusy, HandleCommandError);
+            CheckForUpdatesCommand = new AsyncRelayCommand(
+                CheckForUpdatesAsync,
+                () => CanCheckForUpdates,
+                HandleCommandError);
+            DownloadUpdateCommand = new AsyncRelayCommand(
+                DownloadUpdateAsync,
+                () => CanDownloadUpdate,
+                HandleCommandError);
+            InstallUpdateCommand = new AsyncRelayCommand(
+                InstallUpdateAsync,
+                () => CanInstallUpdate,
+                HandleCommandError);
             OpenDataFolderCommand = new AsyncRelayCommand(
                 OpenDataFolderAsync,
                 () => HasDataDirectory && !IsBusy,
@@ -357,6 +375,12 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public AsyncRelayCommand ExportDiagnosticsCommand { get; }
 
+        public AsyncRelayCommand CheckForUpdatesCommand { get; }
+
+        public AsyncRelayCommand DownloadUpdateCommand { get; }
+
+        public AsyncRelayCommand InstallUpdateCommand { get; }
+
         public string AccountName
         {
             get => _accountName;
@@ -370,6 +394,70 @@ namespace Cotton.Sync.Desktop.ViewModels
         }
 
         public string AppVersion => DesktopAppVersion.Current;
+
+        public string UpdateStatusText
+        {
+            get => _updateStatusText;
+            private set => SetProperty(ref _updateStatusText, value);
+        }
+
+        public string UpdateDetailsText
+        {
+            get => _updateDetailsText;
+            private set
+            {
+                if (SetProperty(ref _updateDetailsText, value))
+                {
+                    OnPropertyChanged(nameof(HasUpdateDetails));
+                }
+            }
+        }
+
+        public bool HasUpdateDetails => !string.IsNullOrWhiteSpace(UpdateDetailsText);
+
+        public bool IsUpdateAvailable
+        {
+            get => _isUpdateAvailable;
+            private set
+            {
+                if (SetProperty(ref _isUpdateAvailable, value))
+                {
+                    RaiseUpdateCommandStates();
+                }
+            }
+        }
+
+        public bool IsUpdateBusy
+        {
+            get => _isUpdateBusy;
+            private set
+            {
+                if (SetProperty(ref _isUpdateBusy, value))
+                {
+                    RaiseUpdateCommandStates();
+                }
+            }
+        }
+
+        public bool IsUpdateReady
+        {
+            get => _isUpdateReady;
+            private set
+            {
+                if (SetProperty(ref _isUpdateReady, value))
+                {
+                    RaiseUpdateCommandStates();
+                }
+            }
+        }
+
+        public bool CanCheckForUpdates => !IsUpdateBusy;
+
+        public bool CanDownloadUpdate => IsUpdateAvailable && !IsUpdateReady && !IsUpdateBusy;
+
+        public bool IsUpdateDownloadVisible => IsUpdateAvailable && !IsUpdateReady;
+
+        public bool CanInstallUpdate => IsUpdateReady && !IsUpdateBusy;
 
         public string DeviceName
         {
@@ -2490,6 +2578,72 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
         }
 
+        private async Task CheckForUpdatesAsync()
+        {
+            await RunUpdateActionAsync(
+                "Checking for updates",
+                () => _controller.CheckForUpdateAsync()).ConfigureAwait(true);
+        }
+
+        private async Task DownloadUpdateAsync()
+        {
+            await RunUpdateActionAsync(
+                "Downloading update",
+                () => _controller.DownloadUpdateAsync()).ConfigureAwait(true);
+        }
+
+        private async Task InstallUpdateAsync()
+        {
+            string installerPath = _downloadedUpdateInstallerPath;
+            if (string.IsNullOrWhiteSpace(installerPath))
+            {
+                throw new InvalidOperationException("No downloaded Cotton Sync update is ready to install.");
+            }
+
+            IsUpdateBusy = true;
+            try
+            {
+                await _controller.InstallDownloadedUpdateAsync(installerPath).ConfigureAwait(true);
+                UpdateStatusText = "Installing update";
+                UpdateDetailsText = "Cotton Sync will restart after the update is installed.";
+                GlobalStatus = "Installing update";
+                AddActivity("Update", installerPath, "Silent update installer started");
+            }
+            finally
+            {
+                IsUpdateBusy = false;
+            }
+        }
+
+        private async Task RunUpdateActionAsync(
+            string busyStatus,
+            Func<Task<DesktopUpdateStatusSnapshot>> updateActionAsync)
+        {
+            IsUpdateBusy = true;
+            UpdateStatusText = busyStatus;
+            try
+            {
+                DesktopUpdateStatusSnapshot result = await updateActionAsync().ConfigureAwait(true);
+                ApplyUpdateStatus(result);
+                AddActivity("Update", result.ReleaseUrl?.AbsoluteUri ?? string.Empty, result.Details);
+            }
+            finally
+            {
+                IsUpdateBusy = false;
+            }
+        }
+
+        private void ApplyUpdateStatus(DesktopUpdateStatusSnapshot status)
+        {
+            _downloadedUpdateInstallerPath = status.InstallerPath ?? string.Empty;
+            IsUpdateAvailable = status.IsUpdateAvailable;
+            IsUpdateReady = status.IsInstallerReady;
+            UpdateStatusText = status.IsInstallerReady
+                ? "Update ready"
+                : status.IsUpdateAvailable ? "Update available" : "Up to date";
+            UpdateDetailsText = status.Details;
+        }
+
         private string ResolveCurrentSyncPairActionRequiredMessage()
         {
             if (SyncPairs.Count == 0)
@@ -3924,9 +4078,21 @@ namespace Cotton.Sync.Desktop.ViewModels
             CloseSettingsCommand.RaiseCanExecuteChanged();
             SelfTestCommand.RaiseCanExecuteChanged();
             ExportDiagnosticsCommand.RaiseCanExecuteChanged();
+            RaiseUpdateCommandStates();
             OpenDataFolderCommand.RaiseCanExecuteChanged();
             OpenDiagnosticsBundleFolderCommand.RaiseCanExecuteChanged();
             RaiseTrayOpenFolderProperties();
+        }
+
+        private void RaiseUpdateCommandStates()
+        {
+            CheckForUpdatesCommand.RaiseCanExecuteChanged();
+            DownloadUpdateCommand.RaiseCanExecuteChanged();
+            InstallUpdateCommand.RaiseCanExecuteChanged();
+            OnPropertyChanged(nameof(CanCheckForUpdates));
+            OnPropertyChanged(nameof(CanDownloadUpdate));
+            OnPropertyChanged(nameof(IsUpdateDownloadVisible));
+            OnPropertyChanged(nameof(CanInstallUpdate));
         }
 
         private void RaiseSyncStateProperties()

@@ -72,6 +72,12 @@ namespace Cotton.Sync.Desktop.Shell
 
         Task<DesktopSelfTestSnapshot> RunSelfTestAsync(CancellationToken cancellationToken = default);
 
+        Task<DesktopUpdateStatusSnapshot> CheckForUpdateAsync(CancellationToken cancellationToken = default);
+
+        Task<DesktopUpdateStatusSnapshot> DownloadUpdateAsync(CancellationToken cancellationToken = default);
+
+        Task InstallDownloadedUpdateAsync(string installerPath, CancellationToken cancellationToken = default);
+
         Task<string> ExportDiagnosticsAsync(CancellationToken cancellationToken = default);
     }
 }

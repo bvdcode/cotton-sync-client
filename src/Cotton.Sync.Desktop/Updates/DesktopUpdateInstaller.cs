@@ -5,7 +5,7 @@ using System.Diagnostics;
 
 namespace Cotton.Sync.Desktop.Updates
 {
-    internal sealed class DesktopUpdateInstaller
+    internal sealed class DesktopUpdateInstaller : IDesktopUpdateInstaller
     {
         public void StartSilentInstall(
             string installerPath,

@@ -14,6 +14,7 @@ using Cotton.Sync.Desktop.Composition;
 using Cotton.Sync.Desktop.Diagnostics;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Shell;
+using Cotton.Sync.Desktop.Updates;
 using Cotton.Sync.State;
 
 namespace Cotton.Sync.Desktop.Tests.Shell
@@ -606,14 +607,74 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             });
         }
 
+        [Test]
+        public async Task CheckForUpdateAsync_ReturnsAvailableUpdateDetails()
+        {
+            var updateService = new FakeUpdateService(CreateUpdateCheckResult(isUpdateAvailable: true));
+            using DesktopShellController controller = CreateController(updateService: updateService);
+
+            DesktopUpdateStatusSnapshot result = await controller.CheckForUpdateAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(updateService.CheckCalls, Is.EqualTo(1));
+                Assert.That(result.IsUpdateAvailable, Is.True);
+                Assert.That(result.IsInstallerReady, Is.False);
+                Assert.That(result.CurrentVersion, Is.EqualTo("0.0.1"));
+                Assert.That(result.LatestVersion, Is.EqualTo("0.0.2"));
+                Assert.That(result.Details, Is.EqualTo("Update 0.0.2 is available."));
+            });
+        }
+
+        [Test]
+        public async Task DownloadUpdateAsync_ReturnsReadyInstallerPath()
+        {
+            string installerPath = Path.Combine(_tempDirectory, "CottonSync-Windows-Setup.exe");
+            var updateService = new FakeUpdateService(
+                CreateUpdateCheckResult(isUpdateAvailable: true),
+                CreateUpdateDownloadResult(installerPath));
+            using DesktopShellController controller = CreateController(updateService: updateService);
+
+            DesktopUpdateStatusSnapshot result = await controller.DownloadUpdateAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(updateService.CheckCalls, Is.EqualTo(1));
+                Assert.That(updateService.DownloadCalls, Is.EqualTo(1));
+                Assert.That(result.IsInstallerReady, Is.True);
+                Assert.That(result.InstallerPath, Is.EqualTo(installerPath));
+                Assert.That(result.Details, Is.EqualTo("Update 0.0.2 is ready. Restart Cotton Sync to install it."));
+            });
+        }
+
+        [Test]
+        public async Task InstallDownloadedUpdateAsync_StartsSilentInstallerWithRelaunch()
+        {
+            var updateInstaller = new FakeUpdateInstaller();
+            using DesktopShellController controller = CreateController(updateInstaller: updateInstaller);
+            string installerPath = Path.Combine(_tempDirectory, "CottonSync-Windows-Setup.exe");
+
+            await controller.InstallDownloadedUpdateAsync(installerPath);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(updateInstaller.InstallerPath, Is.EqualTo(installerPath));
+                Assert.That(updateInstaller.LaunchAfterUpdate, Is.True);
+            });
+        }
+
         private DesktopShellController CreateController(
-            Func<DesktopTokenStorageCapabilitySnapshot>? tokenStorageCapabilities = null)
+            Func<DesktopTokenStorageCapabilitySnapshot>? tokenStorageCapabilities = null,
+            IDesktopUpdateService? updateService = null,
+            IDesktopUpdateInstaller? updateInstaller = null)
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             return CreateController(
                 paths,
                 new SqliteSyncPairSettingsStore(paths.AppDatabasePath),
-                tokenStorageCapabilities);
+                tokenStorageCapabilities,
+                updateService: updateService,
+                updateInstaller: updateInstaller);
         }
 
         private static DesktopShellController CreateController(
@@ -621,7 +682,9 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             SqliteSyncPairSettingsStore syncPairStore,
             Func<DesktopTokenStorageCapabilitySnapshot>? tokenStorageCapabilities = null,
             IAutostartService? autostartService = null,
-            TimeSpan? serverProbeTimeout = null)
+            TimeSpan? serverProbeTimeout = null,
+            IDesktopUpdateService? updateService = null,
+            IDesktopUpdateInstaller? updateInstaller = null)
         {
             var loggerFactory = new DesktopTraceLoggerFactory();
             return new DesktopShellController(
@@ -632,7 +695,51 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 new FakePlatformCommandService(),
                 autostartService ?? new FakeAutostartService(),
                 tokenStorageCapabilities: tokenStorageCapabilities,
-                serverProbeTimeout: serverProbeTimeout);
+                serverProbeTimeout: serverProbeTimeout,
+                updateService: updateService,
+                updateInstaller: updateInstaller);
+        }
+
+        private static DesktopUpdateCheckResult CreateUpdateCheckResult(bool isUpdateAvailable)
+        {
+            DesktopSemanticVersion latestVersion = DesktopSemanticVersion.Parse(isUpdateAvailable ? "0.0.2" : "0.0.1");
+            DesktopReleaseManifest manifest = CreateReleaseManifest(latestVersion.ToString());
+            return new DesktopUpdateCheckResult(
+                manifest,
+                DesktopSemanticVersion.Parse("0.0.1"),
+                latestVersion,
+                isUpdateAvailable,
+                manifest.Assets[0]);
+        }
+
+        private static DesktopUpdateDownloadResult CreateUpdateDownloadResult(string installerPath)
+        {
+            DesktopReleaseManifest manifest = CreateReleaseManifest("0.0.2");
+            return new DesktopUpdateDownloadResult(
+                manifest,
+                manifest.Assets[0],
+                installerPath,
+                manifest.Assets[0].Sha256,
+                manifest.Assets[0].SizeBytes);
+        }
+
+        private static DesktopReleaseManifest CreateReleaseManifest(string version)
+        {
+            return new DesktopReleaseManifest(
+                1,
+                "Cotton Sync",
+                version,
+                "sync-client-latest",
+                "0123456789abcdef",
+                "main",
+                new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/sync-client-latest"),
+                [
+                    new DesktopReleaseAsset(
+                        "CottonSync-Windows-Setup.exe",
+                        new string('a', 64),
+                        1024,
+                        new Uri("https://github.com/bvdcode/cotton-sync-client/releases/download/sync-client-latest/CottonSync-Windows-Setup.exe")),
+                ]);
         }
 
         private SyncPairSettings CreateSyncPair(bool isEnabled)
@@ -759,6 +866,55 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             public Task OpenWebAsync(Uri url, CancellationToken cancellationToken = default)
             {
                 return Task.CompletedTask;
+            }
+        }
+
+        private sealed class FakeUpdateService : IDesktopUpdateService
+        {
+            private readonly DesktopUpdateCheckResult _checkResult;
+            private readonly DesktopUpdateDownloadResult? _downloadResult;
+
+            public FakeUpdateService(
+                DesktopUpdateCheckResult checkResult,
+                DesktopUpdateDownloadResult? downloadResult = null)
+            {
+                _checkResult = checkResult;
+                _downloadResult = downloadResult;
+            }
+
+            public int CheckCalls { get; private set; }
+
+            public int DownloadCalls { get; private set; }
+
+            public Task<DesktopUpdateCheckResult> CheckAsync(CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                CheckCalls++;
+                return Task.FromResult(_checkResult);
+            }
+
+            public Task<DesktopUpdateDownloadResult> DownloadInstallerAsync(
+                DesktopUpdateCheckResult checkResult,
+                CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                DownloadCalls++;
+                return Task.FromResult(_downloadResult ?? throw new InvalidOperationException("No fake download result."));
+            }
+        }
+
+        private sealed class FakeUpdateInstaller : IDesktopUpdateInstaller
+        {
+            public string? InstallerPath { get; private set; }
+
+            public bool? LaunchAfterUpdate { get; private set; }
+
+            public void StartSilentInstall(
+                string installerPath,
+                bool launchAfterUpdate)
+            {
+                InstallerPath = installerPath;
+                LaunchAfterUpdate = launchAfterUpdate;
             }
         }
     }

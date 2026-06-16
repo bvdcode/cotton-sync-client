@@ -20,6 +20,7 @@ using Cotton.Sync.Desktop.Composition;
 using Cotton.Sync.Desktop.Diagnostics;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Startup;
+using Cotton.Sync.Desktop.Updates;
 using Cotton.Sync.State;
 using Microsoft.Extensions.Logging;
 using AppRunProgress = Cotton.Sync.App.Progress.AppRunProgress;
@@ -49,6 +50,9 @@ namespace Cotton.Sync.Desktop.Shell
         private readonly TimeSpan _serverProbeTimeout;
         private readonly SqliteSyncPairSettingsStore _syncPairStore;
         private readonly TimeSpan _tokenStorageVerificationTimeout;
+        private readonly IDesktopUpdateService _updateService;
+        private readonly IDisposable? _updateServiceLifetime;
+        private readonly IDesktopUpdateInstaller _updateInstaller;
         private IDisposable? _activitySubscription;
         private DesktopSyncApplicationHost? _host;
         private IDisposable? _runProgressSubscription;
@@ -69,7 +73,9 @@ namespace Cotton.Sync.Desktop.Shell
             TimeSpan? savedSessionRestoreTimeout = null,
             TimeSpan? savedSessionRestoreRetryBaseDelay = null,
             TimeSpan? serverProbeTimeout = null,
-            TimeSpan? tokenStorageVerificationTimeout = null)
+            TimeSpan? tokenStorageVerificationTimeout = null,
+            IDesktopUpdateService? updateService = null,
+            IDesktopUpdateInstaller? updateInstaller = null)
         {
             _paths = paths ?? throw new ArgumentNullException(nameof(paths));
             _factory = factory ?? throw new ArgumentNullException(nameof(factory));
@@ -91,6 +97,14 @@ namespace Cotton.Sync.Desktop.Shell
                 ?? (tokenStorageCapabilities is null
                     ? DesktopTokenStorageCapabilities.CreateVerifiedSnapshotAsync
                     : cancellationToken => Task.FromResult(tokenStorageCapabilities()));
+            _updateService = updateService
+                ?? new DesktopUpdateService(
+                    DesktopHttpClientFactory.Create(TimeSpan.FromSeconds(30)),
+                    DesktopAppVersion.Current,
+                    _paths.UpdateCacheDirectory,
+                    disposeHttpClient: true);
+            _updateServiceLifetime = updateService is null ? _updateService as IDisposable : null;
+            _updateInstaller = updateInstaller ?? new DesktopUpdateInstaller();
         }
 
         public event EventHandler<DesktopSyncStatusSnapshot>? StatusChanged;
@@ -839,6 +853,35 @@ namespace Cotton.Sync.Desktop.Shell
             return await _diagnosticsExporter.ExportAsync(_paths, bundle, cancellationToken).ConfigureAwait(false);
         }
 
+        public async Task<DesktopUpdateStatusSnapshot> CheckForUpdateAsync(CancellationToken cancellationToken = default)
+        {
+            DesktopUpdateCheckResult check = await _updateService.CheckAsync(cancellationToken).ConfigureAwait(false);
+            return ToUpdateStatus(check, installerPath: null);
+        }
+
+        public async Task<DesktopUpdateStatusSnapshot> DownloadUpdateAsync(CancellationToken cancellationToken = default)
+        {
+            DesktopUpdateCheckResult check = await _updateService.CheckAsync(cancellationToken).ConfigureAwait(false);
+            if (!check.IsUpdateAvailable || check.InstallerAsset is null)
+            {
+                return ToUpdateStatus(check, installerPath: null);
+            }
+
+            DesktopUpdateDownloadResult download = await _updateService
+                .DownloadInstallerAsync(check, cancellationToken)
+                .ConfigureAwait(false);
+            return ToUpdateStatus(check, download.FilePath);
+        }
+
+        public Task InstallDownloadedUpdateAsync(
+            string installerPath,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _updateInstaller.StartSilentInstall(installerPath, launchAfterUpdate: true);
+            return Task.CompletedTask;
+        }
+
         public void Dispose()
         {
             DesktopSyncApplicationHost? host = DetachHost();
@@ -846,6 +889,8 @@ namespace Cotton.Sync.Desktop.Shell
             {
                 StopAndDisposeHostAsync(host).GetAwaiter().GetResult();
             }
+
+            _updateServiceLifetime?.Dispose();
         }
 
         public async ValueTask DisposeAsync()
@@ -855,6 +900,8 @@ namespace Cotton.Sync.Desktop.Shell
             {
                 await StopAndDisposeHostAsync(host).ConfigureAwait(false);
             }
+
+            _updateServiceLifetime?.Dispose();
         }
 
         public static DesktopShellController CreateDefault(DesktopStartupOptions? startupOptions = null)
@@ -905,6 +952,41 @@ namespace Cotton.Sync.Desktop.Shell
                 _paths.AppDatabasePath,
                 _paths.SyncStateDatabasePath,
                 _paths.TokenStorePath);
+        }
+
+        private static DesktopUpdateStatusSnapshot ToUpdateStatus(
+            DesktopUpdateCheckResult check,
+            string? installerPath)
+        {
+            string current = check.CurrentVersion.ToString();
+            string latest = check.LatestVersion.ToString();
+            bool installerReady = !string.IsNullOrWhiteSpace(installerPath);
+            string details;
+            if (!check.IsUpdateAvailable)
+            {
+                details = "Cotton Sync is up to date.";
+            }
+            else if (installerReady)
+            {
+                details = "Update " + latest + " is ready. Restart Cotton Sync to install it.";
+            }
+            else if (check.InstallerAsset is null)
+            {
+                details = "Update " + latest + " is available, but no Windows installer asset was found.";
+            }
+            else
+            {
+                details = "Update " + latest + " is available.";
+            }
+
+            return new DesktopUpdateStatusSnapshot(
+                current,
+                latest,
+                check.IsUpdateAvailable,
+                installerReady,
+                details,
+                installerPath,
+                check.Manifest.ReleaseUrl);
         }
 
         private async Task<string> CheckAuthenticationStateAsync(CancellationToken cancellationToken)

@@ -8,7 +8,7 @@ using System.Text;
 
 namespace Cotton.Sync.Desktop.Updates
 {
-    internal sealed class DesktopUpdateService
+    internal sealed class DesktopUpdateService : IDesktopUpdateService, IDisposable
     {
         public static readonly Uri DefaultManifestUri = new(
             "https://github.com/bvdcode/cotton-sync-client/releases/download/sync-client-latest/release-manifest.json");
@@ -22,6 +22,7 @@ namespace Cotton.Sync.Desktop.Updates
         private readonly DesktopUpdatePlatform _platform;
         private readonly int _maxAttempts;
         private readonly TimeSpan _retryBaseDelay;
+        private readonly bool _disposeHttpClient;
 
         public DesktopUpdateService(
             HttpClient httpClient,
@@ -30,7 +31,8 @@ namespace Cotton.Sync.Desktop.Updates
             Uri? manifestUri = null,
             DesktopUpdatePlatform? platform = null,
             int maxAttempts = 3,
-            TimeSpan? retryBaseDelay = null)
+            TimeSpan? retryBaseDelay = null,
+            bool disposeHttpClient = false)
         {
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
             _currentVersion = string.IsNullOrWhiteSpace(currentVersion)
@@ -50,6 +52,15 @@ namespace Cotton.Sync.Desktop.Updates
             _maxAttempts = maxAttempts;
             _retryBaseDelay = retryBaseDelay ?? TimeSpan.FromSeconds(1);
             ArgumentOutOfRangeException.ThrowIfLessThan(_retryBaseDelay, TimeSpan.Zero);
+            _disposeHttpClient = disposeHttpClient;
+        }
+
+        public void Dispose()
+        {
+            if (_disposeHttpClient)
+            {
+                _httpClient.Dispose();
+            }
         }
 
         public async Task<DesktopUpdateCheckResult> CheckAsync(CancellationToken cancellationToken = default)

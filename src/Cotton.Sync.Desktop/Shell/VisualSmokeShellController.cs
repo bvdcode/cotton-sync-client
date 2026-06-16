@@ -296,6 +296,31 @@ namespace Cotton.Sync.Desktop.Shell
             return Task.FromResult(new DesktopSelfTestSnapshot(items));
         }
 
+        public Task<DesktopUpdateStatusSnapshot> CheckForUpdateAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(new DesktopUpdateStatusSnapshot(
+                DesktopAppVersion.Current,
+                DesktopAppVersion.Current,
+                false,
+                false,
+                "Cotton Sync is up to date.",
+                null,
+                null));
+        }
+
+        public Task<DesktopUpdateStatusSnapshot> DownloadUpdateAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return CheckForUpdateAsync(cancellationToken);
+        }
+
+        public Task InstallDownloadedUpdateAsync(string installerPath, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
+
         public Task<string> ExportDiagnosticsAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();

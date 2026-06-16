@@ -1334,6 +1334,45 @@
                                FontSize="12"
                                TextTrimming="CharacterEllipsis" />
                   </StackPanel>
+
+                  <Border Height="1"
+                          Background="{DynamicResource CottonBorderBrush}" />
+
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Updates"
+                               FontWeight="SemiBold" />
+                    <Grid ColumnDefinitions="*,Auto"
+                          ColumnSpacing="8">
+                      <StackPanel Spacing="2">
+                        <TextBlock Text="{Binding UpdateStatusText}"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding UpdateDetailsText}"
+                                   Classes="secondary"
+                                   FontSize="12"
+                                   TextWrapping="Wrap"
+                                   IsVisible="{Binding HasUpdateDetails}" />
+                      </StackPanel>
+                      <StackPanel Grid.Column="1"
+                                  Spacing="6">
+                        <Button Content="Check"
+                                Classes="compact"
+                                ToolTip.Tip="Check for updates"
+                                Command="{Binding CheckForUpdatesCommand}" />
+                        <Button Content="Download"
+                                Classes="compact"
+                                ToolTip.Tip="Download the available update"
+                                Command="{Binding DownloadUpdateCommand}"
+                                IsVisible="{Binding IsUpdateDownloadVisible}" />
+                        <Button Content="Update"
+                                Classes="compact"
+                                ToolTip.Tip="Update and restart Cotton Sync"
+                                Command="{Binding InstallUpdateCommand}"
+                                IsVisible="{Binding IsUpdateReady}" />
+                      </StackPanel>
+                    </Grid>
+                  </StackPanel>
                 </StackPanel>
               </TabItem>
 

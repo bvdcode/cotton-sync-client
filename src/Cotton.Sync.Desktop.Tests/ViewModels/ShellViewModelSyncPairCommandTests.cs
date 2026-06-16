@@ -4751,6 +4751,112 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Assert.That(viewModel.AppVersion, Is.EqualTo(expected));
         }
 
+        [Test]
+        public async Task CheckForUpdatesCommand_ShowsAvailableUpdateWithoutBlockingSyncCommands()
+        {
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            {
+                UpdateCheckSnapshot = new DesktopUpdateStatusSnapshot(
+                    "0.0.1",
+                    "0.0.2",
+                    true,
+                    false,
+                    "Update 0.0.2 is available.",
+                    null,
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/sync-client-latest")),
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            await ExecuteAsync(viewModel.CheckForUpdatesCommand);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(controller.CheckForUpdateCalls, Is.EqualTo(1));
+                Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Update available"));
+                Assert.That(viewModel.UpdateDetailsText, Is.EqualTo("Update 0.0.2 is available."));
+                Assert.That(viewModel.IsUpdateAvailable, Is.True);
+                Assert.That(viewModel.IsUpdateReady, Is.False);
+                Assert.That(viewModel.CanSyncNow, Is.True);
+            });
+        }
+
+        [Test]
+        public async Task DownloadUpdateCommand_MarksUpdateReadyForRestart()
+        {
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            {
+                UpdateCheckSnapshot = new DesktopUpdateStatusSnapshot(
+                    "0.0.1",
+                    "0.0.2",
+                    true,
+                    false,
+                    "Update 0.0.2 is available.",
+                    null,
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/sync-client-latest")),
+                UpdateDownloadSnapshot = new DesktopUpdateStatusSnapshot(
+                    "0.0.1",
+                    "0.0.2",
+                    true,
+                    true,
+                    "Update 0.0.2 is ready. Restart Cotton Sync to install it.",
+                    @"C:\Users\qa\AppData\Roaming\Cotton\Sync\updates\0.0.2\CottonSync-Windows-Setup.exe",
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/sync-client-latest")),
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            await ExecuteAsync(viewModel.CheckForUpdatesCommand);
+
+            await ExecuteAsync(viewModel.DownloadUpdateCommand);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(controller.DownloadUpdateCalls, Is.EqualTo(1));
+                Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Update ready"));
+                Assert.That(viewModel.IsUpdateReady, Is.True);
+                Assert.That(viewModel.CanInstallUpdate, Is.True);
+                Assert.That(viewModel.IsUpdateDownloadVisible, Is.False);
+            });
+        }
+
+        [Test]
+        public async Task InstallUpdateCommand_StartsDownloadedInstaller()
+        {
+            string installerPath = @"C:\Users\qa\AppData\Roaming\Cotton\Sync\updates\0.0.2\CottonSync-Windows-Setup.exe";
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            {
+                UpdateCheckSnapshot = new DesktopUpdateStatusSnapshot(
+                    "0.0.1",
+                    "0.0.2",
+                    true,
+                    false,
+                    "Update 0.0.2 is available.",
+                    null,
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/sync-client-latest")),
+                UpdateDownloadSnapshot = new DesktopUpdateStatusSnapshot(
+                    "0.0.1",
+                    "0.0.2",
+                    true,
+                    true,
+                    "Update 0.0.2 is ready. Restart Cotton Sync to install it.",
+                    installerPath,
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/sync-client-latest")),
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            await ExecuteAsync(viewModel.CheckForUpdatesCommand);
+            await ExecuteAsync(viewModel.DownloadUpdateCommand);
+
+            await ExecuteAsync(viewModel.InstallUpdateCommand);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(controller.InstalledUpdatePath, Is.EqualTo(installerPath));
+                Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Installing update"));
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Installing update"));
+            });
+        }
+
         private static async Task ExecuteAsync(AsyncRelayCommand command, object? parameter = null)
         {
             Assert.That(command.CanExecute(parameter), Is.True);
@@ -4950,6 +5056,23 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             public int SignOutCalls { get; private set; }
 
             public DesktopSelfTestSnapshot SelfTestSnapshot { get; set; } = new([]);
+
+            public DesktopUpdateStatusSnapshot UpdateCheckSnapshot { get; set; } = new(
+                DesktopAppVersion.Current,
+                DesktopAppVersion.Current,
+                false,
+                false,
+                "Cotton Sync is up to date.",
+                null,
+                null);
+
+            public DesktopUpdateStatusSnapshot? UpdateDownloadSnapshot { get; set; }
+
+            public int CheckForUpdateCalls { get; private set; }
+
+            public int DownloadUpdateCalls { get; private set; }
+
+            public string? InstalledUpdatePath { get; private set; }
 
             public DesktopServerProbeResult? ServerProbeResult { get; set; }
 
@@ -5308,6 +5431,27 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 return Task.FromResult(SelfTestSnapshot);
+            }
+
+            public Task<DesktopUpdateStatusSnapshot> CheckForUpdateAsync(CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                CheckForUpdateCalls++;
+                return Task.FromResult(UpdateCheckSnapshot);
+            }
+
+            public Task<DesktopUpdateStatusSnapshot> DownloadUpdateAsync(CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                DownloadUpdateCalls++;
+                return Task.FromResult(UpdateDownloadSnapshot ?? UpdateCheckSnapshot);
+            }
+
+            public Task InstallDownloadedUpdateAsync(string installerPath, CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                InstalledUpdatePath = installerPath;
+                return Task.CompletedTask;
             }
 
             public Task<string> ExportDiagnosticsAsync(CancellationToken cancellationToken = default)
