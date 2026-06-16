@@ -34,6 +34,7 @@ namespace Cotton.Sync.Desktop
         private readonly DesktopWindowLifecyclePolicy _lifecyclePolicy;
         private readonly DesktopVisualSmokeScenario? _visualSmokeScenario;
         private bool _hasOpened;
+        private bool _hasInitializedShell;
         private WindowProfile? _windowProfile;
 
         /// <summary>
@@ -68,8 +69,7 @@ namespace Cotton.Sync.Desktop
             {
                 _hasOpened = true;
                 CenterOnCurrentScreen();
-                await viewModel.InitializeAsync().ConfigureAwait(true);
-                await viewModel.ApplyVisualSmokeScenarioAsync(_visualSmokeScenario).ConfigureAwait(true);
+                await InitializeShellOnceAsync(viewModel).ConfigureAwait(true);
                 if (_lifecyclePolicy.ShouldHideAfterStartup())
                 {
                     Hide();
@@ -132,6 +132,19 @@ namespace Cotton.Sync.Desktop
             {
                 ScrollSelectedSyncPairIntoView(syncPairViewModel);
             }
+        }
+
+        private async Task InitializeShellOnceAsync(ShellViewModel viewModel)
+        {
+            // Avalonia may raise Opened again after Hide()/Show(); tray activation must not reload the shell snapshot.
+            if (_hasInitializedShell)
+            {
+                return;
+            }
+
+            _hasInitializedShell = true;
+            await viewModel.InitializeAsync().ConfigureAwait(true);
+            await viewModel.ApplyVisualSmokeScenarioAsync(_visualSmokeScenario).ConfigureAwait(true);
         }
 
         private void ScrollSelectedSyncPairIntoView(ShellViewModel viewModel)

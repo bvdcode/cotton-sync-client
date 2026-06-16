@@ -265,6 +265,30 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public void MainWindow_InitializesShellOnlyOnceAcrossTrayShow()
+        {
+            string mainWindowCode = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml.cs"));
+            string openedHandler = GetSlice(
+                mainWindowCode,
+                "Opened += async",
+                "Closing += OnClosing;");
+            string oneShotInitializer = GetSlice(
+                mainWindowCode,
+                "private async Task InitializeShellOnceAsync",
+                "private void ScrollSelectedSyncPairIntoView");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(openedHandler, Does.Contain("await InitializeShellOnceAsync(viewModel).ConfigureAwait(true);"));
+                Assert.That(openedHandler, Does.Not.Contain("viewModel.InitializeAsync()"));
+                Assert.That(oneShotInitializer, Does.Contain("if (_hasInitializedShell)"));
+                Assert.That(oneShotInitializer, Does.Contain("_hasInitializedShell = true;"));
+                Assert.That(oneShotInitializer, Does.Contain("await viewModel.InitializeAsync().ConfigureAwait(true);"));
+                Assert.That(oneShotInitializer, Does.Contain("ApplyVisualSmokeScenarioAsync"));
+            });
+        }
+
+        [Test]
         public void SettingsDiagnostics_ScrollsWholeTabWithoutNestedSelfTestScrolling()
         {
             string mainWindowXaml = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml"));
