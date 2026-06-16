@@ -17,6 +17,7 @@ using Cotton.Sync.App.SyncApplication;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Auth;
 using Cotton.Sync.Desktop.Diagnostics;
+using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Local;
 using Cotton.Sync.Remote;
 using Cotton.Sync.State;
@@ -125,6 +126,7 @@ namespace Cotton.Sync.Desktop.Composition
                 remoteChanges,
                 periodicSync,
                 stateStore,
+                new SyncPairSettingsValidator(DesktopCloudFilesCapabilities.CreateSyncPairModeCapabilities()),
                 logger: _loggerFactory.CreateLogger<SyncApplicationService>());
             var remoteRootResolver = new RemoteRootResolver(cottonClient.Nodes);
 

@@ -747,6 +747,13 @@ namespace Cotton.Sync.Desktop.Shell
                 true,
                 platformCapabilities.TrayLifecycleDetails));
 
+            SyncPairModeCapabilitySnapshot modeCapabilities = DesktopCloudFilesCapabilities.CreateSyncPairModeCapabilities();
+            items.Add(new DesktopSelfTestItemSnapshot(
+                "Windows virtual files",
+                modeCapabilities.IsWindowsVirtualFilesSupported,
+                modeCapabilities.WindowsVirtualFilesDetails,
+                Skipped: !modeCapabilities.IsWindowsVirtualFilesSupported));
+
             DesktopNotificationCapabilitySnapshot notificationCapabilities =
                 DesktopNotificationServiceFactory.CreateCapabilitySnapshot();
             items.Add(new DesktopSelfTestItemSnapshot(

@@ -58,11 +58,40 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(names, Does.Contain("Update cache"));
                 Assert.That(names, Does.Contain("Desktop platform"));
                 Assert.That(names, Does.Contain("Tray lifecycle"));
+                Assert.That(names, Does.Contain("Windows virtual files"));
                 Assert.That(names, Does.Contain("Notification adapter"));
                 Assert.That(names, Does.Contain("File watcher"));
                 Assert.That(names, Does.Contain("Server identity"));
                 Assert.That(names, Does.Contain("Desktop sync change feed"));
             });
+        }
+
+        [Test]
+        public async Task RunSelfTestAsync_ReportsWindowsVirtualFilesCapability()
+        {
+            using DesktopShellController controller = CreateController();
+
+            DesktopSelfTestSnapshot result = await controller.RunSelfTestAsync();
+
+            DesktopSelfTestItemSnapshot item = result.Items.Single(static selfTestItem => selfTestItem.Name == "Windows virtual files");
+            if (OperatingSystem.IsWindows() && OperatingSystem.IsWindowsVersionAtLeast(10, 0, 16299))
+            {
+                Assert.Multiple(() =>
+                {
+                    Assert.That(item.Passed, Is.True);
+                    Assert.That(item.Skipped, Is.False);
+                    Assert.That(item.Details, Does.Contain("Cloud Files API"));
+                });
+            }
+            else
+            {
+                Assert.Multiple(() =>
+                {
+                    Assert.That(item.Passed, Is.False);
+                    Assert.That(item.Skipped, Is.True);
+                    Assert.That(item.Details, Does.Contain("Windows"));
+                });
+            }
         }
 
         [Test]
