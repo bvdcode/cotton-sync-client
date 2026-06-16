@@ -1219,6 +1219,7 @@ namespace Cotton.Sync.Tests
             remoteTree.Directories.Add(RemoteDirectory("LargeTree"));
             var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
             var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            var cooperativeYieldRequestCounts = new List<int>();
             var runProgress = new RecordingProgress<SyncRunProgress>();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(),
@@ -1233,6 +1234,11 @@ namespace Cotton.Sync.Tests
                 {
                     RunProgress = runProgress,
                     MaximumStoredResultActivities = fileCount + 2,
+                    CooperativeYieldAsync = _ =>
+                    {
+                        cooperativeYieldRequestCounts.Add(placeholderWriter.Requests.Count);
+                        return ValueTask.CompletedTask;
+                    },
                 });
 
             IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
@@ -1251,6 +1257,9 @@ namespace Cotton.Sync.Tests
                 Assert.That(placeholderProgress, Has.Count.GreaterThanOrEqualTo(5));
                 Assert.That(placeholderProgress.Any(progress => progress.FilesCompleted > 0 && progress.FilesCompleted < fileCount), Is.True);
                 Assert.That(placeholderProgress.Last().FilesTotal, Is.EqualTo(fileCount));
+                Assert.That(cooperativeYieldRequestCounts, Has.Count.GreaterThanOrEqualTo(5));
+                Assert.That(cooperativeYieldRequestCounts[0], Is.EqualTo(25));
+                Assert.That(cooperativeYieldRequestCounts, Has.All.LessThan(fileCount));
                 Assert.That(state.Count(entry => entry.Kind == SyncEntryKind.File), Is.EqualTo(fileCount));
                 Assert.That(state.Where(entry => entry.Kind == SyncEntryKind.File), Has.All.Matches<SyncStateEntry>(
                     entry => entry.PlaceholderHydrationState == SyncPlaceholderHydrationState.RemoteOnly
