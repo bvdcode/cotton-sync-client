@@ -1350,6 +1350,54 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesMovesRemoteOnlyPlaceholderWhenRemotePathChanges()
+        {
+            const string oldPath = "Docs/old-name.txt";
+            const string newPath = "Docs/new-name.txt";
+            Guid remoteFileId = Guid.NewGuid();
+            NodeFileManifestDto baselineRemote = RemoteFile(oldPath, HashText("remote-content"), remoteFileId, sizeBytes: 1024);
+            NodeFileManifestDto movedRemote = RemoteFile(newPath, baselineRemote.ContentHash, remoteFileId, sizeBytes: 1024);
+            WriteFile(oldPath, string.Empty);
+            LocalFileSnapshot oldLocalPlaceholder = LocalFile(oldPath, string.Empty);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(oldLocalPlaceholder),
+                RemoteTree(movedRemote),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+            await InsertPlaceholderBaselineAsync(stateStore, oldPath, baselineRemote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            SyncStateEntry? oldEntry = await stateStore.GetAsync("pair-a", oldPath);
+            SyncStateEntry? newEntry = await stateStore.GetAsync("pair-a", newPath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(placeholderWriter.Requests, Has.Count.EqualTo(1));
+                Assert.That(placeholderWriter.Requests[0].RelativePath, Is.EqualTo(newPath));
+                Assert.That(placeholderWriter.Requests[0].RemoteFile.Id, Is.EqualTo(remoteFileId));
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EquivalentTo(new[]
+                {
+                    SyncActivityKind.DeletedLocal,
+                    SyncActivityKind.PlaceholderCreated,
+                }));
+                Assert.That(File.Exists(Path.Combine(_root, oldPath.Replace('/', Path.DirectorySeparatorChar))), Is.False);
+                Assert.That(File.Exists(Path.Combine(_root, newPath.Replace('/', Path.DirectorySeparatorChar))), Is.False);
+                Assert.That(oldEntry, Is.Null);
+                Assert.That(newEntry, Is.Not.Null);
+                Assert.That(newEntry!.RemoteFileId, Is.EqualTo(remoteFileId));
+                Assert.That(newEntry.RemoteContentHash, Is.EqualTo(baselineRemote.ContentHash));
+                Assert.That(newEntry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesDoesNotUploadRenamedRemoteOnlyPlaceholder()
         {
             NodeFileManifestDto remote = RemoteFile("placeholder-renamed.txt", HashText("remote-content"), sizeBytes: 1024);
