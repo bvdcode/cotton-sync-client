@@ -103,6 +103,36 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task HandleFetchDataAsync_AllowsRetryAfterFailedHydration()
+        {
+            byte[] expectedContent = Encoding.UTF8.GetBytes("expected");
+            var provider = new SequencedContentProvider(
+                Encoding.UTF8.GetBytes("mismatch"),
+                expectedContent);
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory, diagnostics);
+            WindowsCloudFilesFetchDataRequest failedAttempt =
+                CreateFetchRequest(expectedContent, offset: 0, length: expectedContent.Length, requestKey: 3);
+            WindowsCloudFilesFetchDataRequest retryAttempt =
+                CreateFetchRequest(expectedContent, offset: 0, length: expectedContent.Length, requestKey: 4);
+
+            await coordinator.HandleFetchDataAsync(failedAttempt);
+            await coordinator.HandleFetchDataAsync(retryAttempt);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(provider.DownloadedIdentities, Has.Count.EqualTo(2));
+                Assert.That(nativeApi.Transfers, Has.Count.EqualTo(2));
+                Assert.That(nativeApi.Transfers[0].CompletionStatus, Is.EqualTo(WindowsCloudFilesTransferData.StatusUnsuccessful));
+                Assert.That(nativeApi.Transfers[1].CompletionStatus, Is.EqualTo(WindowsCloudFilesTransferData.StatusSuccess));
+                Assert.That(nativeApi.Transfers[1].RequestKey, Is.EqualTo(retryAttempt.RequestKey));
+                Assert.That(Encoding.UTF8.GetString(nativeApi.Transfers[1].Buffer), Is.EqualTo("expected"));
+                Assert.That(diagnostics.Snapshot(), Has.Count.EqualTo(1));
+            });
+        }
+
+        [Test]
         public void HandleFetchDataAsync_PropagatesCancellationWithoutFailureTransfer()
         {
             var provider = new CanceledContentProvider();
@@ -117,7 +147,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             Assert.That(nativeApi.Transfers, Is.Empty);
         }
 
-        private static WindowsCloudFilesFetchDataRequest CreateFetchRequest(byte[] content, long offset, long length)
+        private static WindowsCloudFilesFetchDataRequest CreateFetchRequest(
+            byte[] content,
+            long offset,
+            long length,
+            long requestKey = 3)
         {
             RemoteFilePlaceholderRequest placeholder = CreatePlaceholderRequest(content);
             string normalizedPath = SyncPath.Normalize(placeholder.RelativePath);
@@ -128,7 +162,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             return new WindowsCloudFilesFetchDataRequest(
                 new WindowsCloudFilesConnectionKey(1),
                 new WindowsCloudFilesTransferKey(2),
-                new WindowsCloudFilesRequestKey(3),
+                new WindowsCloudFilesRequestKey(requestKey),
                 identity,
                 content.Length,
                 offset,
@@ -182,6 +216,28 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 DownloadedIdentities.Add(identity);
                 await destination.WriteAsync(_content, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        private sealed class SequencedContentProvider : IWindowsCloudFilesRemoteContentProvider
+        {
+            private readonly Queue<byte[]> _contents;
+
+            public SequencedContentProvider(params byte[][] contents)
+            {
+                _contents = new Queue<byte[]>(contents);
+            }
+
+            public List<WindowsCloudFilesPlaceholderIdentity> DownloadedIdentities { get; } = [];
+
+            public async Task DownloadAsync(
+                WindowsCloudFilesPlaceholderIdentity identity,
+                Stream destination,
+                CancellationToken cancellationToken = default)
+            {
+                DownloadedIdentities.Add(identity);
+                byte[] content = _contents.Dequeue();
+                await destination.WriteAsync(content, cancellationToken).ConfigureAwait(false);
             }
         }
 
