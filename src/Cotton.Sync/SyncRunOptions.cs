@@ -57,5 +57,12 @@ namespace Cotton.Sync
         /// Gets or sets the optional aggregate sync-pass progress reporter used by UI clients.
         /// </summary>
         public IProgress<SyncRunProgress>? RunProgress { get; set; }
+
+        /// <summary>
+        /// Gets or sets the optional cooperative scheduler yield used after large reconciliation batches.
+        /// UI and tray clients can leave this unset; the sync engine will yield to the .NET scheduler.
+        /// Tests can inject a deterministic callback to verify batch boundaries without timing sleeps.
+        /// </summary>
+        public Func<CancellationToken, ValueTask>? CooperativeYieldAsync { get; set; }
     }
 }

@@ -246,6 +246,8 @@ namespace Cotton.Sync
                         ref lastFileRunProgressReportedAtUtc,
                         bytesCompleted: completedTransferBytes,
                         bytesTotal: plannedTransferBytesTotal);
+                    await YieldAfterLargeBatchAsync(options, filesCompleted, pathKeys.Count, cancellationToken)
+                        .ConfigureAwait(false);
                     continue;
                 }
 
@@ -263,6 +265,8 @@ namespace Cotton.Sync
                     ref lastFileRunProgressReportedAtUtc,
                     bytesCompleted: completedTransferBytes,
                     bytesTotal: plannedTransferBytesTotal);
+                await YieldAfterLargeBatchAsync(options, filesCompleted, pathKeys.Count, cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             ReportRunProgress(
@@ -2428,6 +2432,7 @@ namespace Cotton.Sync
                 ActivityProgress = options.ActivityProgress,
                 TransferProgress = options.TransferProgress,
                 RunProgress = options.RunProgress,
+                CooperativeYieldAsync = options.CooperativeYieldAsync,
             };
         }
 
@@ -2877,6 +2882,32 @@ namespace Cotton.Sync
             return itemsTotal <= RunProgressDetailedItemLimit
                 ? RunProgressDetailedItemInterval
                 : RunProgressSparseItemInterval;
+        }
+
+        private static async ValueTask YieldAfterLargeBatchAsync(
+            SyncRunOptions options,
+            int itemsCompleted,
+            int itemsTotal,
+            CancellationToken cancellationToken)
+        {
+            int itemInterval = GetRunProgressReportItemInterval(itemsTotal);
+            if (itemsTotal <= itemInterval
+                || itemsCompleted <= 0
+                || itemsCompleted >= itemsTotal
+                || itemsCompleted % itemInterval != 0)
+            {
+                return;
+            }
+
+            if (options.CooperativeYieldAsync is { } cooperativeYieldAsync)
+            {
+                await cooperativeYieldAsync(cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            await Task.Yield();
+            cancellationToken.ThrowIfCancellationRequested();
         }
     }
 }
