@@ -63,6 +63,7 @@ namespace Cotton.Sync.Desktop.Startup
             bool largeTree = string.Equals(phase, "large-tree", StringComparison.Ordinal);
             bool largeHydration = string.Equals(phase, "large-hydration-progress", StringComparison.Ordinal);
             bool removePairCleanup = string.Equals(phase, "remove-pair-cleanup", StringComparison.Ordinal);
+            bool trayQuitDisconnect = string.Equals(phase, "tray-quit-disconnect", StringComparison.Ordinal);
             bool remoteUpdateAfterDehydrate = string.Equals(phase, "remote-update-after-dehydrate", StringComparison.Ordinal);
             if (!string.IsNullOrEmpty(phase)
                 && !leaveRegistered
@@ -70,6 +71,7 @@ namespace Cotton.Sync.Desktop.Startup
                 && !largeTree
                 && !largeHydration
                 && !removePairCleanup
+                && !trayQuitDisconnect
                 && !remoteUpdateAfterDehydrate)
             {
                 await output.WriteLineAsync(FormatCheck(false, "Unsupported Windows virtual-files smoke phase: " + phase))
@@ -99,6 +101,19 @@ namespace Cotton.Sync.Desktop.Startup
             if (removePairCleanup)
             {
                 return await RunRemovePairCleanupAsync(
+                    output,
+                    cloudFiles,
+                    nativeApi,
+                    syncPair,
+                    diagnostics,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (trayQuitDisconnect)
+            {
+                return await RunTrayQuitDisconnectAsync(
+                    paths,
                     output,
                     cloudFiles,
                     nativeApi,
@@ -406,6 +421,169 @@ namespace Cotton.Sync.Desktop.Startup
                 {
                     failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
                 }
+            }
+
+            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
+            {
+                await output.WriteLineAsync(
+                    "Diagnostic: "
+                    + item.Operation
+                    + " "
+                    + item.Status
+                    + " "
+                    + CleanSingleLine(item.Details))
+                    .ConfigureAwait(false);
+            }
+
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> RunTrayQuitDisconnectAsync(
+            DesktopAppPaths paths,
+            TextWriter output,
+            IWindowsCloudFilesAdapter cloudFiles,
+            IWindowsCloudFilesNativeApi? nativeApi,
+            SyncPairSettings syncPair,
+            WindowsCloudFilesDiagnostics diagnostics,
+            CancellationToken cancellationToken)
+        {
+            if (nativeApi is null)
+            {
+                await output.WriteLineAsync(FormatCheck(false, "Tray quit disconnect smoke requires the native Windows Cloud Files API."))
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                return 2;
+            }
+
+            string rootPath = syncPair.LocalRootPath;
+            string placeholderPath = Path.Combine(rootPath, RelativePlaceholderPath);
+            byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
+            string expectedText = Encoding.UTF8.GetString(expectedContent);
+            string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
+            var contentProvider = new StaticSmokeContentProvider(expectedContent);
+            var callbackHandler = new WindowsCloudFilesHydrationCoordinator(
+                contentProvider,
+                nativeApi,
+                Path.Combine(paths.DataDirectory, "vfs-smoke-temp"),
+                diagnostics);
+            var syncPairs = new SingleSyncPairSettingsStore(syncPair);
+            var connectionCoordinator = new WindowsCloudFilesSyncRootConnectionCoordinator(
+                syncPairs,
+                cloudFiles,
+                callbackHandler);
+            int failures = 0;
+
+            try
+            {
+                TryUnregisterExistingRoot(cloudFiles, syncPair, output);
+                PrepareRoot(rootPath);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Isolated QA root prepared for tray quit disconnect smoke.")
+                    + " root="
+                    + rootPath)
+                    .ConfigureAwait(false);
+
+                cloudFiles.CreateFilePlaceholder(CreatePlaceholderRequest(
+                    syncPair,
+                    RelativePlaceholderPath,
+                    expectedContent.LongLength,
+                    expectedHash));
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Remote-only placeholder exists before tray quit simulation.")
+                    + " path="
+                    + placeholderPath
+                    + ", attributes="
+                    + FormatAttributes(File.GetAttributes(placeholderPath)))
+                    .ConfigureAwait(false);
+
+                await connectionCoordinator.StartAsync(cancellationToken).ConfigureAwait(false);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Cloud Files callbacks connected through the sync-core lifecycle component."))
+                    .ConfigureAwait(false);
+
+                await connectionCoordinator.StopAsync(cancellationToken).ConfigureAwait(false);
+                FileAttributes stoppedAttributes = File.GetAttributes(placeholderPath);
+                if (File.Exists(placeholderPath) && HasRecallOnDataAccess(stoppedAttributes))
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Tray quit lifecycle stop disconnected callbacks without corrupting the placeholder.")
+                        + " attributes="
+                        + FormatAttributes(stoppedAttributes)
+                        + ", downloads="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Placeholder was missing or lost online-only state after tray quit lifecycle stop.")
+                        + " exists="
+                        + File.Exists(placeholderPath).ToString()
+                        + ", attributes="
+                        + (File.Exists(placeholderPath) ? FormatAttributes(stoppedAttributes) : "missing"))
+                        .ConfigureAwait(false);
+                }
+
+                int downloadsBeforeReconnect = contentProvider.DownloadCount;
+                await connectionCoordinator.StartAsync(cancellationToken).ConfigureAwait(false);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Cloud Files callbacks reconnected after tray quit simulation."))
+                    .ConfigureAwait(false);
+
+                string hydratedText = await File.ReadAllTextAsync(placeholderPath, cancellationToken).ConfigureAwait(false);
+                string hydratedHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(hydratedText)));
+                if (string.Equals(hydratedText, expectedText, StringComparison.Ordinal)
+                    && string.Equals(hydratedHash, expectedHash, StringComparison.OrdinalIgnoreCase)
+                    && contentProvider.DownloadCount == downloadsBeforeReconnect + 1)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Reconnected callbacks hydrated exact remote content after tray quit simulation.")
+                        + " sha256="
+                        + hydratedHash
+                        + ", downloads="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Reconnected callbacks did not hydrate exact content after tray quit simulation.")
+                        + " expectedSha256="
+                        + expectedHash
+                        + ", actualSha256="
+                        + hydratedHash
+                        + ", downloadsBeforeReconnect="
+                        + downloadsBeforeReconnect.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", downloadsAfterReconnect="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                failures++;
+                await output.WriteLineAsync(
+                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                try
+                {
+                    await connectionCoordinator.StopAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Final lifecycle disconnect failed: " + CleanSingleLine(exception.Message)))
+                        .ConfigureAwait(false);
+                }
+
+                failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
             }
 
             foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
@@ -1445,6 +1623,56 @@ namespace Cotton.Sync.Desktop.Startup
 
             public void NotifyDehydrateCompleted(WindowsCloudFilesDehydrateCompletionNotification notification)
             {
+            }
+        }
+
+        private sealed class SingleSyncPairSettingsStore : ISyncPairSettingsStore
+        {
+            private SyncPairSettings? _syncPair;
+
+            public SingleSyncPairSettingsStore(SyncPairSettings syncPair)
+            {
+                _syncPair = syncPair ?? throw new ArgumentNullException(nameof(syncPair));
+            }
+
+            public Task InitializeAsync(CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.CompletedTask;
+            }
+
+            public Task<IReadOnlyList<SyncPairSettings>> ListAsync(CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                IReadOnlyList<SyncPairSettings> result = _syncPair is null ? [] : [_syncPair];
+                return Task.FromResult(result);
+            }
+
+            public Task<SyncPairSettings?> GetAsync(Guid syncPairId, CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                SyncPairSettings? result = _syncPair is not null && _syncPair.Id == syncPairId
+                    ? _syncPair
+                    : null;
+                return Task.FromResult(result);
+            }
+
+            public Task UpsertAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _syncPair = syncPair ?? throw new ArgumentNullException(nameof(syncPair));
+                return Task.CompletedTask;
+            }
+
+            public Task DeleteAsync(Guid syncPairId, CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (_syncPair is not null && _syncPair.Id == syncPairId)
+                {
+                    _syncPair = null;
+                }
+
+                return Task.CompletedTask;
             }
         }
     }
