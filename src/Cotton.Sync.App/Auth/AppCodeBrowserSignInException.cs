@@ -13,8 +13,12 @@ namespace Cotton.Sync.App.Auth
         /// <summary>
         /// Initializes a new instance of the <see cref="AppCodeBrowserSignInException" /> class.
         /// </summary>
-        public AppCodeBrowserSignInException(AppCodePollStatus status, string message, string? error)
-            : base(message)
+        public AppCodeBrowserSignInException(
+            AppCodePollStatus status,
+            string message,
+            string? error,
+            Exception? innerException = null)
+            : base(message, innerException)
         {
             Status = status;
             Error = error;
