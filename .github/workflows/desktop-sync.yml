@@ -20,6 +20,12 @@ on:
       - main
       - develop
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Publish or update the GitHub Release from this run."
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   linux:
@@ -764,7 +770,7 @@ jobs:
       - windows
       - cli-windows
       - release-checksums
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
     permissions:
       contents: write
     steps:
@@ -930,7 +936,7 @@ jobs:
     needs:
       - linux
       - release
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
     permissions:
       contents: read
     steps:
