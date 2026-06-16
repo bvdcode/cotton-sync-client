@@ -29,6 +29,7 @@ namespace Cotton.Sync.App.SyncApplication
         private readonly IAppPreferencesStore _preferences;
         private readonly ISyncPairPrerequisiteValidator _prerequisites;
         private readonly IRemoteChangeSyncCoordinator _remoteChanges;
+        private readonly IReadOnlyList<ISyncCoreLifecycleComponent> _syncCoreLifecycleComponents;
         private readonly ISyncStateStore? _syncStateStore;
         private readonly ISyncSupervisor _supervisor;
         private readonly ISyncPairSettingsStore _syncPairs;
@@ -51,6 +52,7 @@ namespace Cotton.Sync.App.SyncApplication
             ILocalChangeSyncCoordinator? localChanges = null,
             IRemoteChangeSyncCoordinator? remoteChanges = null,
             IPeriodicSyncCoordinator? periodicSync = null,
+            IEnumerable<ISyncCoreLifecycleComponent>? syncCoreLifecycleComponents = null,
             ISyncStateStore? syncStateStore = null,
             SyncPairSettingsValidator? validator = null,
             ILogger<SyncApplicationService>? logger = null)
@@ -65,6 +67,7 @@ namespace Cotton.Sync.App.SyncApplication
             _localChanges = localChanges ?? NullLocalChangeSyncCoordinator.Instance;
             _remoteChanges = remoteChanges ?? NullRemoteChangeSyncCoordinator.Instance;
             _periodicSync = periodicSync ?? NullPeriodicSyncCoordinator.Instance;
+            _syncCoreLifecycleComponents = (syncCoreLifecycleComponents ?? []).ToList();
             _syncStateStore = syncStateStore;
             _validator = validator ?? new SyncPairSettingsValidator();
             _logger = logger ?? NullLogger<SyncApplicationService>.Instance;
@@ -95,11 +98,8 @@ namespace Cotton.Sync.App.SyncApplication
         /// <inheritdoc />
         public async Task SignOutAsync(CancellationToken cancellationToken = default)
         {
-            await _remoteChanges.StopAsync(cancellationToken).ConfigureAwait(false);
-            await _periodicSync.StopAsync(cancellationToken).ConfigureAwait(false);
-            await _localChanges.StopAsync(cancellationToken).ConfigureAwait(false);
+            await StopSyncCoreAsync(cancellationToken).ConfigureAwait(false);
             await _authFlow.SignOutAsync(cancellationToken).ConfigureAwait(false);
-            await _supervisor.StopAsync(cancellationToken).ConfigureAwait(false);
             _isSyncGloballyPaused = false;
             await SaveSyncPausedPreferenceAsync(isPaused: false, cancellationToken).ConfigureAwait(false);
         }
@@ -348,6 +348,14 @@ namespace Cotton.Sync.App.SyncApplication
             try
             {
                 _isSyncGloballyPaused = await LoadSyncPausedPreferenceAsync(cancellationToken).ConfigureAwait(false);
+                foreach (ISyncCoreLifecycleComponent component in _syncCoreLifecycleComponents)
+                {
+                    await component.StartAsync(cancellationToken).ConfigureAwait(false);
+                    startedComponents.Add(new StartedSyncComponent(
+                        component.GetType().Name,
+                        token => component.StopAsync(token)));
+                }
+
                 await _supervisor.StartAsync(_isSyncGloballyPaused, cancellationToken).ConfigureAwait(false);
                 startedComponents.Add(new StartedSyncComponent(
                     "sync supervisor",
@@ -404,6 +412,11 @@ namespace Cotton.Sync.App.SyncApplication
             await _periodicSync.StopAsync(cancellationToken).ConfigureAwait(false);
             await _localChanges.StopAsync(cancellationToken).ConfigureAwait(false);
             await _supervisor.StopAsync(cancellationToken).ConfigureAwait(false);
+            foreach (ISyncCoreLifecycleComponent component in _syncCoreLifecycleComponents.Reverse())
+            {
+                await component.StopAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             _isSyncCoreStarted = false;
         }
 
