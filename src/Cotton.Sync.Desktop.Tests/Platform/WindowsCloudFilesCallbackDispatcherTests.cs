@@ -68,6 +68,46 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task CancelFetchData_DrainsRepeatedRequestsWithoutPendingTasks()
+        {
+            var handler = new BlockingCallbackHandler();
+            using var dispatcher = new WindowsCloudFilesCallbackDispatcher(
+                handler,
+                _ => { },
+                new WindowsCloudFilesCallbackDispatcherOptions(MaxConcurrentFetches: 4, QueueCapacity: 32));
+            WindowsCloudFilesFetchDataRequest[] requests = Enumerable
+                .Range(100, 20)
+                .Select(key => CreateRequest(key))
+                .ToArray();
+
+            foreach (WindowsCloudFilesFetchDataRequest request in requests)
+            {
+                Assert.That(dispatcher.QueueFetchData(request), Is.True);
+            }
+
+            await handler.WaitForStartedCountAsync(4);
+
+            foreach (WindowsCloudFilesFetchDataRequest request in requests)
+            {
+                dispatcher.CancelFetchData(
+                    new WindowsCloudFilesCancelFetchDataRequest(
+                        request.ConnectionKey,
+                        request.TransferKey,
+                        request.RequestKey,
+                        request.RequiredOffset,
+                        request.RequiredLength));
+            }
+
+            await WaitUntilAsync(() => dispatcher.PendingFetchCount == 0);
+            Assert.Multiple(() =>
+            {
+                Assert.That(handler.CancelRequests, Has.Count.EqualTo(requests.Length));
+                Assert.That(handler.CanceledRequestKeys, Has.Count.EqualTo(4));
+                Assert.That(handler.CanceledRequestKeys, Is.EquivalentTo(handler.StartedRequestKeys));
+            });
+        }
+
+        [Test]
         public async Task QueueFetchData_ReturnsWithoutWaitingForSlowHandler()
         {
             var handler = new BlockingCallbackHandler();
@@ -141,8 +181,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         private sealed class BlockingCallbackHandler : IWindowsCloudFilesCallbackHandler
         {
             private readonly object _gate = new();
-            private readonly TaskCompletionSource _startedChanged =
-                new(TaskCreationOptions.RunContinuationsAsynchronously);
+            private readonly SemaphoreSlim _started = new(0);
 
             public List<long> StartedRequestKeys { get; } = [];
 
@@ -157,7 +196,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 lock (_gate)
                 {
                     StartedRequestKeys.Add(request.RequestKey.Value);
-                    _startedChanged.TrySetResult();
+                    _started.Release();
                 }
 
                 try
@@ -177,7 +216,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public void CancelFetchData(WindowsCloudFilesCancelFetchDataRequest request)
             {
-                CancelRequests.Add(request);
+                lock (_gate)
+                {
+                    CancelRequests.Add(request);
+                }
             }
 
             public async Task WaitForStartedCountAsync(int count)
@@ -192,7 +234,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                         }
                     }
 
-                    await _startedChanged.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                    await _started.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
                 }
             }
         }
