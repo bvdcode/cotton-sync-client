@@ -19,6 +19,9 @@ namespace Cotton.Sync.Desktop.Startup
         private const string RelativePlaceholderPath = "remote-only-smoke.txt";
         private const string LargeTreeDirectoryName = "large-tree";
         private const int LargeTreePlaceholderCount = 10_000;
+        private const string LargeHydrationRelativePath = "large-hydration-smoke.bin";
+        private const int LargeHydrationSizeBytes = 32 * 1024 * 1024;
+        private const int LargeHydrationChunkBytes = 1024 * 1024;
         private const string SmokeContentText = "Cotton Sync Windows virtual files smoke content\n";
 
         public static async Task<int> RunAsync(
@@ -58,11 +61,13 @@ namespace Cotton.Sync.Desktop.Startup
             bool leaveRegistered = string.Equals(phase, "leave-registered", StringComparison.Ordinal);
             bool reconnectExisting = string.Equals(phase, "reconnect-existing", StringComparison.Ordinal);
             bool largeTree = string.Equals(phase, "large-tree", StringComparison.Ordinal);
+            bool largeHydration = string.Equals(phase, "large-hydration-progress", StringComparison.Ordinal);
             bool remoteUpdateAfterDehydrate = string.Equals(phase, "remote-update-after-dehydrate", StringComparison.Ordinal);
             if (!string.IsNullOrEmpty(phase)
                 && !leaveRegistered
                 && !reconnectExisting
                 && !largeTree
+                && !largeHydration
                 && !remoteUpdateAfterDehydrate)
             {
                 await output.WriteLineAsync(FormatCheck(false, "Unsupported Windows virtual-files smoke phase: " + phase))
@@ -83,6 +88,19 @@ namespace Cotton.Sync.Desktop.Startup
                     startupOptions,
                     output,
                     cloudFiles,
+                    syncPair,
+                    diagnostics,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (largeHydration)
+            {
+                return await RunLargeHydrationAsync(
+                    paths,
+                    output,
+                    cloudFiles,
+                    nativeApi,
                     syncPair,
                     diagnostics,
                     cancellationToken)
@@ -390,6 +408,256 @@ namespace Cotton.Sync.Desktop.Startup
 
             await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
             return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> RunLargeHydrationAsync(
+            DesktopAppPaths paths,
+            TextWriter output,
+            IWindowsCloudFilesAdapter cloudFiles,
+            IWindowsCloudFilesNativeApi? nativeApi,
+            SyncPairSettings syncPair,
+            WindowsCloudFilesDiagnostics diagnostics,
+            CancellationToken cancellationToken)
+        {
+            if (nativeApi is null)
+            {
+                await output.WriteLineAsync(FormatCheck(false, "Large hydration smoke requires the native Windows Cloud Files API."))
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                return 2;
+            }
+
+            string rootPath = syncPair.LocalRootPath;
+            string placeholderPath = Path.Combine(rootPath, LargeHydrationRelativePath);
+            byte[] content = CreateLargeHydrationContent();
+            string contentHash = Convert.ToHexStringLower(SHA256.HashData(content));
+            var contentProvider = new ChunkedSmokeContentProvider(
+                content,
+                LargeHydrationChunkBytes,
+                TimeSpan.FromMilliseconds(8));
+            var progress = new RecordingTransferProgress();
+            var coordinator = new WindowsCloudFilesHydrationCoordinator(
+                contentProvider,
+                nativeApi,
+                Path.Combine(paths.DataDirectory, "vfs-smoke-temp"),
+                diagnostics,
+                _ => progress);
+            var callbackHandler = new RecordingCallbackHandler(coordinator);
+            WindowsCloudFilesConnection? connection = null;
+            int failures = 0;
+
+            try
+            {
+                TryUnregisterExistingRoot(cloudFiles, syncPair, output);
+                PrepareRoot(rootPath);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Isolated QA root prepared for large-file hydration smoke.")
+                    + " root="
+                    + rootPath)
+                    .ConfigureAwait(false);
+
+                cloudFiles.CreateFilePlaceholder(CreatePlaceholderRequest(
+                    syncPair,
+                    LargeHydrationRelativePath,
+                    content.LongLength,
+                    contentHash));
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Large remote-only placeholder exists before hydration.")
+                    + " path="
+                    + placeholderPath
+                    + ", sizeBytes="
+                    + content.LongLength.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", attributes="
+                    + FormatAttributes(File.GetAttributes(placeholderPath)))
+                    .ConfigureAwait(false);
+
+                connection = cloudFiles.ConnectSyncRoot(syncPair, callbackHandler);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Cloud Files sync root connected for large-file hydration smoke.")
+                    + " root="
+                    + connection.LocalRootPath)
+                    .ConfigureAwait(false);
+
+                var hydrateTimer = Stopwatch.StartNew();
+                byte[] hydrated = await File.ReadAllBytesAsync(placeholderPath, cancellationToken).ConfigureAwait(false);
+                hydrateTimer.Stop();
+                string hydratedHash = Convert.ToHexStringLower(SHA256.HashData(hydrated));
+                IReadOnlyList<SyncTransferProgress> hydrationProgress = progress.Snapshot();
+                if (string.Equals(hydratedHash, contentHash, StringComparison.OrdinalIgnoreCase)
+                    && hydrationProgress.Count >= 4
+                    && HasIntermediateProgress(hydrationProgress)
+                    && IsMonotonicProgress(hydrationProgress)
+                    && contentProvider.DownloadCount == 1)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Large placeholder hydration reported useful progress and hydrated exact content.")
+                        + " sizeBytes="
+                        + hydrated.LongLength.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", sha256="
+                        + hydratedHash
+                        + ", progressSamples="
+                        + hydrationProgress.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", elapsedMs="
+                        + hydrateTimer.ElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", downloads="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Large placeholder hydration progress or content verification failed.")
+                        + " expectedSha256="
+                        + contentHash
+                        + ", actualSha256="
+                        + hydratedHash
+                        + ", progressSamples="
+                        + hydrationProgress.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", downloads="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+
+                bool cancellationProbePassed = await RunLargeHydrationCancellationProbeAsync(
+                    paths,
+                    output,
+                    syncPair,
+                    content,
+                    contentHash,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+                if (cancellationProbePassed)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Large placeholder hydration remained cancellable through the Cloud Files callback dispatcher."))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Large placeholder hydration cancellation probe failed."))
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                failures++;
+                await output.WriteLineAsync(
+                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                connection?.Dispose();
+                failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
+            }
+
+            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
+            {
+                await output.WriteLineAsync(
+                    "Diagnostic: "
+                    + item.Operation
+                    + " "
+                    + item.Status
+                    + " "
+                    + CleanSingleLine(item.Details))
+                    .ConfigureAwait(false);
+            }
+
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<bool> RunLargeHydrationCancellationProbeAsync(
+            DesktopAppPaths paths,
+            TextWriter output,
+            SyncPairSettings syncPair,
+            byte[] content,
+            string contentHash,
+            CancellationToken cancellationToken)
+        {
+            var nativeApi = new RecordingCloudFilesNativeApi();
+            var provider = new ChunkedSmokeContentProvider(
+                content,
+                LargeHydrationChunkBytes,
+                TimeSpan.FromMilliseconds(50));
+            var progress = new RecordingTransferProgress();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var coordinator = new WindowsCloudFilesHydrationCoordinator(
+                provider,
+                nativeApi,
+                Path.Combine(paths.DataDirectory, "vfs-smoke-cancel-temp"),
+                diagnostics,
+                _ => progress);
+            using var dispatcher = new WindowsCloudFilesCallbackDispatcher(
+                coordinator,
+                nativeApi.TransferData,
+                new WindowsCloudFilesCallbackDispatcherOptions(MaxConcurrentFetches: 1, QueueCapacity: 4));
+            RemoteFilePlaceholderRequest placeholderRequest = CreatePlaceholderRequest(
+                syncPair,
+                LargeHydrationRelativePath,
+                content.LongLength,
+                contentHash);
+            byte[] identity = WindowsCloudFilesPlaceholderIdentity
+                .Create(placeholderRequest, Cotton.Sync.State.SyncPath.Normalize(LargeHydrationRelativePath))
+                .ToBytes();
+            var request = new WindowsCloudFilesFetchDataRequest(
+                new WindowsCloudFilesConnectionKey(9001),
+                new WindowsCloudFilesTransferKey(9002),
+                new WindowsCloudFilesRequestKey(9003),
+                identity,
+                content.LongLength,
+                0,
+                content.LongLength,
+                0,
+                content.LongLength,
+                LargeHydrationRelativePath,
+                0);
+
+            if (!dispatcher.QueueFetchData(request))
+            {
+                await output.WriteLineAsync(FormatCheck(false, "Large hydration cancellation probe could not queue fetch data."))
+                    .ConfigureAwait(false);
+                return false;
+            }
+
+            bool progressStarted = await progress.WaitForSampleCountAsync(2, TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            dispatcher.CancelFetchData(new WindowsCloudFilesCancelFetchDataRequest(
+                request.ConnectionKey,
+                request.TransferKey,
+                request.RequestKey,
+                0,
+                content.LongLength));
+
+            var drainTimer = Stopwatch.StartNew();
+            while (dispatcher.PendingFetchCount > 0 && drainTimer.Elapsed < TimeSpan.FromSeconds(5))
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(25), cancellationToken).ConfigureAwait(false);
+            }
+
+            IReadOnlyList<SyncTransferProgress> samples = progress.Snapshot();
+            bool successTransfers = nativeApi.Transfers.Any(static transfer =>
+                transfer.CompletionStatus == WindowsCloudFilesTransferData.StatusSuccess);
+            bool passed = progressStarted
+                && dispatcher.PendingFetchCount == 0
+                && provider.CancellationCount > 0
+                && !successTransfers;
+            await output.WriteLineAsync(
+                FormatCheck(passed, "Large hydration cancellation probe drained pending fetch without success transfer.")
+                + " progressStarted="
+                + progressStarted.ToString()
+                + ", progressSamples="
+                + samples.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", providerCancellations="
+                + provider.CancellationCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", pendingFetches="
+                + dispatcher.PendingFetchCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", transfers="
+                + nativeApi.Transfers.Count.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .ConfigureAwait(false);
+            return passed;
         }
 
         private static async Task<int> RunLargeTreeAsync(
@@ -748,6 +1016,256 @@ namespace Cotton.Sync.Desktop.Startup
             {
                 names.Add(name);
                 remaining &= ~flag;
+            }
+        }
+
+        private static byte[] CreateLargeHydrationContent()
+        {
+            byte[] content = new byte[LargeHydrationSizeBytes];
+            for (int index = 0; index < content.Length; index++)
+            {
+                content[index] = (byte)((index * 31 + index / 8191) & 0xff);
+            }
+
+            return content;
+        }
+
+        private static bool HasIntermediateProgress(IReadOnlyList<SyncTransferProgress> progress)
+        {
+            return progress.Any(static item =>
+                !item.IsCompleted
+                && item.TotalBytes.HasValue
+                && item.TransferredBytes > 0
+                && item.TransferredBytes < item.TotalBytes.Value);
+        }
+
+        private static bool IsMonotonicProgress(IReadOnlyList<SyncTransferProgress> progress)
+        {
+            long previous = -1;
+            foreach (SyncTransferProgress item in progress.Where(static value => value.Direction == SyncTransferDirection.Download))
+            {
+                if (item.TransferredBytes < previous)
+                {
+                    return false;
+                }
+
+                previous = item.TransferredBytes;
+            }
+
+            return true;
+        }
+
+        private sealed class RecordingTransferProgress : IProgress<SyncTransferProgress>
+        {
+            private readonly object _gate = new();
+            private readonly List<SyncTransferProgress> _values = [];
+
+            public void Report(SyncTransferProgress value)
+            {
+                lock (_gate)
+                {
+                    _values.Add(value);
+                }
+            }
+
+            public IReadOnlyList<SyncTransferProgress> Snapshot()
+            {
+                lock (_gate)
+                {
+                    return _values.ToArray();
+                }
+            }
+
+            public void Clear()
+            {
+                lock (_gate)
+                {
+                    _values.Clear();
+                }
+            }
+
+            public async Task<bool> WaitForSampleCountAsync(int count, TimeSpan timeout)
+            {
+                var timer = Stopwatch.StartNew();
+                while (timer.Elapsed < timeout)
+                {
+                    lock (_gate)
+                    {
+                        if (_values.Count >= count)
+                        {
+                            return true;
+                        }
+                    }
+
+                    await Task.Delay(TimeSpan.FromMilliseconds(25)).ConfigureAwait(false);
+                }
+
+                return false;
+            }
+        }
+
+        private sealed class ChunkedSmokeContentProvider : IWindowsCloudFilesRemoteContentProvider
+        {
+            private readonly byte[] _content;
+            private readonly int _chunkSize;
+            private TimeSpan _chunkDelay;
+
+            public ChunkedSmokeContentProvider(byte[] content, int chunkSize, TimeSpan chunkDelay)
+            {
+                ArgumentNullException.ThrowIfNull(content);
+                ArgumentOutOfRangeException.ThrowIfNegativeOrZero(chunkSize);
+                _content = content;
+                _chunkSize = chunkSize;
+                _chunkDelay = chunkDelay;
+            }
+
+            public int DownloadCount { get; private set; }
+
+            public int CancellationCount { get; private set; }
+
+            public void ResetCancellation()
+            {
+                CancellationCount = 0;
+            }
+
+            public void SetChunkDelay(TimeSpan chunkDelay)
+            {
+                _chunkDelay = chunkDelay;
+            }
+
+            public async Task DownloadAsync(
+                WindowsCloudFilesPlaceholderIdentity identity,
+                Stream destination,
+                IProgress<SyncTransferProgress>? transferProgress = null,
+                CancellationToken cancellationToken = default)
+            {
+                ArgumentNullException.ThrowIfNull(identity);
+                ArgumentNullException.ThrowIfNull(destination);
+                DownloadCount++;
+                long transferred = 0;
+                transferProgress?.Report(new SyncTransferProgress(
+                    SyncTransferDirection.Download,
+                    identity.RelativePath,
+                    0,
+                    _content.LongLength,
+                    isCompleted: false));
+
+                try
+                {
+                    while (transferred < _content.LongLength)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        int length = (int)Math.Min(_chunkSize, _content.LongLength - transferred);
+                        await destination
+                            .WriteAsync(_content.AsMemory((int)transferred, length), cancellationToken)
+                            .ConfigureAwait(false);
+                        transferred += length;
+                        transferProgress?.Report(new SyncTransferProgress(
+                            SyncTransferDirection.Download,
+                            identity.RelativePath,
+                            transferred,
+                            _content.LongLength,
+                            isCompleted: transferred == _content.LongLength));
+                        if (_chunkDelay > TimeSpan.Zero && transferred < _content.LongLength)
+                        {
+                            await Task.Delay(_chunkDelay, cancellationToken).ConfigureAwait(false);
+                        }
+                    }
+
+                    destination.Position = 0;
+                }
+                catch (OperationCanceledException)
+                {
+                    CancellationCount++;
+                    throw;
+                }
+            }
+        }
+
+        private sealed class RecordingCallbackHandler : IWindowsCloudFilesCallbackHandler
+        {
+            private readonly IWindowsCloudFilesCallbackHandler _inner;
+
+            public RecordingCallbackHandler(IWindowsCloudFilesCallbackHandler inner)
+            {
+                _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+            }
+
+            public int CancelFetchDataCount { get; private set; }
+
+            public Task HandleFetchDataAsync(
+                WindowsCloudFilesFetchDataRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return _inner.HandleFetchDataAsync(request, cancellationToken);
+            }
+
+            public void CancelFetchData(WindowsCloudFilesCancelFetchDataRequest request)
+            {
+                CancelFetchDataCount++;
+                _inner.CancelFetchData(request);
+            }
+
+            public Task HandleDehydrateAsync(
+                WindowsCloudFilesDehydrateRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return _inner.HandleDehydrateAsync(request, cancellationToken);
+            }
+
+            public void NotifyDehydrateCompleted(WindowsCloudFilesDehydrateCompletionNotification notification)
+            {
+                _inner.NotifyDehydrateCompleted(notification);
+            }
+        }
+
+        private sealed class RecordingCloudFilesNativeApi : IWindowsCloudFilesNativeApi
+        {
+            public List<WindowsCloudFilesTransferData> Transfers { get; } = [];
+
+            public void RegisterSyncRoot(WindowsCloudFilesNativeSyncRootRegistration registration)
+            {
+                throw new NotSupportedException();
+            }
+
+            public void UnregisterSyncRoot(string localRootPath)
+            {
+                throw new NotSupportedException();
+            }
+
+            public void CreatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder)
+            {
+                throw new NotSupportedException();
+            }
+
+            public void UpdatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder)
+            {
+                throw new NotSupportedException();
+            }
+
+            public WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request)
+            {
+                throw new NotSupportedException();
+            }
+
+            public void DisconnectSyncRoot(WindowsCloudFilesConnectionKey connectionKey)
+            {
+                throw new NotSupportedException();
+            }
+
+            public void TransferData(WindowsCloudFilesTransferData transfer)
+            {
+                Transfers.Add(transfer);
+            }
+
+            public void AcknowledgeDehydrate(WindowsCloudFilesAckDehydrateData dehydrate)
+            {
+                throw new NotSupportedException();
+            }
+
+            public void DehydratePlaceholder(string filePath)
+            {
+                throw new NotSupportedException();
             }
         }
 
