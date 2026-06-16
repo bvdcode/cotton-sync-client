@@ -91,11 +91,13 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 options,
                 output,
                 adapter);
+            IReadOnlyList<SyncPairSettings> remainingPairs = await store.ListAsync();
 
             Assert.Multiple(() =>
             {
                 Assert.That(exitCode, Is.EqualTo(0));
                 Assert.That(adapter.UnregisteredPairs.Select(static pair => pair.Id), Is.EqualTo(new[] { virtualFiles.Id }));
+                Assert.That(remainingPairs.Select(static pair => pair.Id), Is.EquivalentTo(new[] { fullMirror.Id, virtualFiles.Id }));
                 Assert.That(output.ToString(), Does.Contain("Roots cleaned: 1"));
                 Assert.That(output.ToString(), Does.Contain("Result: passed"));
             });
