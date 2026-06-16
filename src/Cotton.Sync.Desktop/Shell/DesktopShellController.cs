@@ -974,7 +974,8 @@ namespace Cotton.Sync.Desktop.Shell
             }
             else if (installerReady)
             {
-                details = "Update " + latest + " is ready. Restart Cotton Sync to install it.";
+                details = "Update " + latest
+                    + " is ready. Click Update to install it now, or it will install automatically on next app start.";
             }
             else if (check.InstallerAsset is null)
             {

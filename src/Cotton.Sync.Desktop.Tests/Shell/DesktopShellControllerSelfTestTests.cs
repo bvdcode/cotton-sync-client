@@ -648,7 +648,10 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(updateService.DownloadCalls, Is.EqualTo(1));
                 Assert.That(result.IsInstallerReady, Is.True);
                 Assert.That(result.InstallerPath, Is.EqualTo(installerPath));
-                Assert.That(result.Details, Is.EqualTo("Update 0.0.2 is ready. Restart Cotton Sync to install it."));
+                Assert.That(
+                    result.Details,
+                    Is.EqualTo(
+                        "Update 0.0.2 is ready. Click Update to install it now, or it will install automatically on next app start."));
                 Assert.That(pending?.Version, Is.EqualTo("0.0.2"));
                 Assert.That(pending?.InstallerPath, Is.EqualTo(installerPath));
             });

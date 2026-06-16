@@ -4782,7 +4782,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
-        public async Task DownloadUpdateCommand_MarksUpdateReadyForRestart()
+        public async Task DownloadUpdateCommand_MarksUpdateReadyForInstallNowOrNextStartup()
         {
             var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
             {
@@ -4799,7 +4799,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     "0.0.2",
                     true,
                     true,
-                    "Update 0.0.2 is ready. Restart Cotton Sync to install it.",
+                    "Update 0.0.2 is ready. Click Update to install it now, or it will install automatically on next app start.",
                     @"C:\Users\qa\AppData\Roaming\Cotton\Sync\updates\0.0.2\CottonSync-Windows-Setup.exe",
                     new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/sync-client-latest")),
             };
@@ -4838,7 +4838,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     "0.0.2",
                     true,
                     true,
-                    "Update 0.0.2 is ready. Restart Cotton Sync to install it.",
+                    "Update 0.0.2 is ready. Click Update to install it now, or it will install automatically on next app start.",
                     installerPath,
                     new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/sync-client-latest")),
             };
