@@ -13,6 +13,7 @@ using CoreSyncActivity = Cotton.Sync.SyncActivity;
 using CoreSyncActivityKind = Cotton.Sync.SyncActivityKind;
 using CoreSyncEngine = Cotton.Sync.ISyncEngine;
 using CoreSyncPair = Cotton.Sync.SyncPair;
+using CoreSyncPairMaterializationMode = Cotton.Sync.SyncPairMaterializationMode;
 using CoreSyncRunProgress = Cotton.Sync.SyncRunProgress;
 using CoreSyncRunProgressStage = Cotton.Sync.SyncRunProgressStage;
 using CoreSyncRunOptions = Cotton.Sync.SyncRunOptions;
@@ -50,7 +51,21 @@ namespace Cotton.Sync.App.Tests.Runners
                 Assert.That(engine.LastPair!.SyncPairId, Is.EqualTo(syncPair.Id.ToString("D")));
                 Assert.That(engine.LastPair.LocalRootPath, Is.EqualTo(syncPair.LocalRootPath));
                 Assert.That(engine.LastPair.RemoteRootNodeId, Is.EqualTo(syncPair.RemoteRootNodeId));
+                Assert.That(engine.LastPair.MaterializationMode, Is.EqualTo(CoreSyncPairMaterializationMode.FullMirror));
             });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_MapsWindowsVirtualFilesModeToCoreMaterializationMode()
+        {
+            var engine = new FakeSyncEngine();
+            var work = new SyncEnginePairWork(engine);
+            SyncPairSettings syncPair = CreateSyncPair(Guid.NewGuid());
+            syncPair.Mode = SyncPairMode.WindowsVirtualFiles;
+
+            await work.RunOnceAsync(syncPair);
+
+            Assert.That(engine.LastPair?.MaterializationMode, Is.EqualTo(CoreSyncPairMaterializationMode.WindowsVirtualFiles));
         }
 
         [Test]
@@ -132,6 +147,36 @@ namespace Cotton.Sync.App.Tests.Runners
                 Assert.That(activity.ItemPath, Is.EqualTo("Documents/new-name.txt"));
                 Assert.That(activity.Message, Does.Contain("Moved Documents/new-name.txt"));
                 Assert.That(activity.Message, Does.Contain("Moved from Documents/old-name.txt."));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_PublishesCorePlaceholderActivities()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var engine = new FakeSyncEngine
+            {
+                ActivityToReport = new CoreSyncActivity
+                {
+                    Kind = CoreSyncActivityKind.PlaceholderCreated,
+                    RelativePath = "Documents/cloud-only.txt",
+                },
+            };
+            var publisher = new InMemoryAppActivityPublisher();
+            var observer = new RecordingObserver<AppSyncActivity>();
+            using IDisposable subscription = publisher.Subscribe(observer);
+            var work = new SyncEnginePairWork(engine, publisher);
+            SyncPairSettings syncPair = CreateSyncPair(syncPairId);
+
+            await work.RunOnceAsync(syncPair);
+
+            AppSyncActivity activity = observer.Values.Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(activity.SyncPairId, Is.EqualTo(syncPairId));
+                Assert.That(activity.Type, Is.EqualTo(SyncActivityKind.PlaceholderCreated));
+                Assert.That(activity.ItemPath, Is.EqualTo("Documents/cloud-only.txt"));
+                Assert.That(activity.Message, Does.Contain("Created placeholder Documents/cloud-only.txt"));
             });
         }
 
