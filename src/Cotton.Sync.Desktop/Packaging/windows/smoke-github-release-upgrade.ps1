@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ExpectedAppVersion,
 
-    [string]$ReleaseTag = "sync-client-latest",
+    [string]$ReleaseTag = "",
 
     [string]$Repository = $env:GITHUB_REPOSITORY,
 
@@ -15,6 +15,10 @@ $ErrorActionPreference = "Stop"
 
 if ([string]::IsNullOrWhiteSpace($Repository)) {
     throw "Repository is required."
+}
+
+if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
+    $ReleaseTag = "v$ExpectedAppVersion"
 }
 
 if ([string]::IsNullOrWhiteSpace($InnoSetupCompiler) -or -not (Test-Path $InnoSetupCompiler)) {

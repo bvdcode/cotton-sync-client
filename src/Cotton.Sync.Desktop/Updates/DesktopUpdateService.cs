@@ -11,7 +11,7 @@ namespace Cotton.Sync.Desktop.Updates
     internal sealed class DesktopUpdateService : IDesktopUpdateService, IDisposable
     {
         public static readonly Uri DefaultManifestUri = new(
-            "https://github.com/bvdcode/cotton-sync-client/releases/download/sync-client-latest/release-manifest.json");
+            "https://github.com/bvdcode/cotton-sync-client/releases/latest/download/release-manifest.json");
 
         private const string WindowsInstallerAssetName = "CottonSync-Windows-Setup.exe";
 

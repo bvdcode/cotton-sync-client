@@ -4912,7 +4912,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     false,
                     "Update 0.0.2 is available.",
                     null,
-                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/sync-client-latest")),
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/v0.0.2")),
             };
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
@@ -4942,7 +4942,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     false,
                     "Update 0.0.2 is available.",
                     null,
-                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/sync-client-latest")),
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/v0.0.2")),
                 UpdateDownloadSnapshot = new DesktopUpdateStatusSnapshot(
                     "0.0.1",
                     "0.0.2",
@@ -4950,7 +4950,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     true,
                     "Update 0.0.2 is ready. Click Update to install it now, or it will install automatically on next app start.",
                     @"C:\Users\qa\AppData\Roaming\Cotton\Sync\updates\0.0.2\CottonSync-Windows-Setup.exe",
-                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/sync-client-latest")),
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/v0.0.2")),
             };
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
@@ -4981,7 +4981,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     false,
                     "Update 0.0.2 is available.",
                     null,
-                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/sync-client-latest")),
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/v0.0.2")),
                 UpdateDownloadSnapshot = new DesktopUpdateStatusSnapshot(
                     "0.0.1",
                     "0.0.2",
@@ -4989,7 +4989,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     true,
                     "Update 0.0.2 is ready. Click Update to install it now, or it will install automatically on next app start.",
                     installerPath,
-                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/sync-client-latest")),
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/v0.0.2")),
             };
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
@@ -5064,7 +5064,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     false,
                     "Update 0.0.2 is available.",
                     null,
-                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/sync-client-latest")),
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/v0.0.2")),
                 UpdateDownloadException = new InvalidDataException("Downloaded update SHA-256 does not match release manifest."),
             };
             using ShellViewModel viewModel = CreateViewModel(controller);
