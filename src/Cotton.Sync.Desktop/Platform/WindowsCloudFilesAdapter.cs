@@ -14,7 +14,6 @@ namespace Cotton.Sync.Desktop.Platform
         public const string ProviderId = "Cotton.Sync.Desktop";
         public const string ProviderName = "Cotton Sync";
 
-        private const int MaximumFileIdentityLength = 4096;
         private static readonly Guid ProviderGuid = Guid.Parse("6453b9dc-e042-4a73-a675-c5b2aa6c9607");
 
         private readonly WindowsVirtualFilesRootSafetyPolicy _rootSafety;
@@ -82,6 +81,23 @@ namespace Cotton.Sync.Desktop.Platform
             return new RemoteFilePlaceholderResult(fileIdentity, SyncPlaceholderHydrationState.RemoteOnly);
         }
 
+        public WindowsCloudFilesConnection ConnectSyncRoot(
+            SyncPairSettings syncPair,
+            IWindowsCloudFilesCallbackHandler callbackHandler)
+        {
+            ArgumentNullException.ThrowIfNull(syncPair);
+            ArgumentNullException.ThrowIfNull(callbackHandler);
+            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
+            return _nativeApi.ConnectSyncRoot(new WindowsCloudFilesConnectionRequest(
+                registration.LocalRootPath,
+                callbackHandler));
+        }
+
+        public void TransferData(WindowsCloudFilesTransferData transfer)
+        {
+            _nativeApi.TransferData(transfer);
+        }
+
         private static PlaceholderPath ResolvePlaceholderPath(string syncRootPath, string normalizedRelativePath)
         {
             string[] segments = normalizedRelativePath.Split('/');
@@ -140,29 +156,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         private static byte[] CreateFileIdentity(RemoteFilePlaceholderRequest request, string normalizedPath)
         {
-            byte[] identity = JsonSerializer.SerializeToUtf8Bytes(new
-            {
-                schema = 1,
-                product = ProviderId,
-                syncPairId = request.SyncPairId,
-                remoteRootNodeId = request.RemoteRootNodeId,
-                relativePath = normalizedPath,
-                nodeFileId = request.RemoteFile.Id,
-                nodeId = request.RemoteFile.NodeId,
-                fileManifestId = request.RemoteFile.FileManifestId,
-                originalNodeFileId = request.RemoteFile.OriginalNodeFileId,
-                sizeBytes = request.RemoteFile.SizeBytes,
-                contentHash = request.RemoteFile.ContentHash,
-                eTag = request.RemoteFile.ETag,
-                updatedAt = request.RemoteFile.UpdatedAt,
-            });
-            if (identity.Length > MaximumFileIdentityLength)
-            {
-                throw new InvalidOperationException(
-                    "Virtual-files placeholder identity exceeds the Windows Cloud Files 4 KB limit.");
-            }
-
-            return identity;
+            return WindowsCloudFilesPlaceholderIdentity.Create(request, normalizedPath).ToBytes();
         }
 
         private static string ResolveProviderVersion()

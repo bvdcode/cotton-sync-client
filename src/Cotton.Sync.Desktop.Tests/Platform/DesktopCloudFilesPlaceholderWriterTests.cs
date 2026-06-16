@@ -151,6 +151,18 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
                 return new RemoteFilePlaceholderResult(PlaceholderIdentity);
             }
+
+            public WindowsCloudFilesConnection ConnectSyncRoot(
+                SyncPairSettings syncPair,
+                IWindowsCloudFilesCallbackHandler callbackHandler)
+            {
+                throw new NotSupportedException();
+            }
+
+            public void TransferData(WindowsCloudFilesTransferData transfer)
+            {
+                throw new NotSupportedException();
+            }
         }
     }
 }
