@@ -212,6 +212,17 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public void CancelFetchData(WindowsCloudFilesCancelFetchDataRequest request)
             {
             }
+
+            public Task HandleDehydrateAsync(
+                WindowsCloudFilesDehydrateRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public void NotifyDehydrateCompleted(WindowsCloudFilesDehydrateCompletionNotification notification)
+            {
+            }
         }
     }
 }

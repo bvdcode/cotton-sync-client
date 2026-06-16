@@ -10,5 +10,11 @@ namespace Cotton.Sync.Desktop.Platform
             CancellationToken cancellationToken = default);
 
         void CancelFetchData(WindowsCloudFilesCancelFetchDataRequest request);
+
+        Task HandleDehydrateAsync(
+            WindowsCloudFilesDehydrateRequest request,
+            CancellationToken cancellationToken = default);
+
+        void NotifyDehydrateCompleted(WindowsCloudFilesDehydrateCompletionNotification notification);
     }
 }
