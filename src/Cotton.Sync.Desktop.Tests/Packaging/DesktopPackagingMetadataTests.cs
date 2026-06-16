@@ -318,8 +318,12 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         public void WindowsVirtualFilesPackaging_UsesOsCloudFilesApiInNonTrimmedWindowsPublish()
         {
             XDocument profile = XDocument.Load(GetPublishProfilePath("win-x64"));
+            XDocument desktopProject = XDocument.Load(GetDesktopProjectPath());
+            XDocument windowsShellProject = XDocument.Load(GetWindowsShellProjectPath());
             XElement propertyGroup = profile.Root!.Elements("PropertyGroup").Single();
+            XElement windowsShellPropertyGroup = windowsShellProject.Root!.Elements("PropertyGroup").Single();
             string workflow = GetDesktopWorkflow();
+            string solution = File.ReadAllText(GetRepositoryFilePath(Path.Combine("src", "Cotton.sln")));
             string installerScript = File.ReadAllText(GetDesktopFilePath("Packaging/windows/cotton-sync.iss"));
             string nativeApiSource = File.ReadAllText(GetDesktopFilePath(Path.Combine("Platform", "WindowsCloudFilesNativeApi.cs")));
             Type nativeApiType = typeof(WindowsCloudFilesNativeApi);
@@ -336,6 +340,25 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(
                     workflow,
                     Does.Contain("dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj /p:PublishProfile=win-x64"));
+                Assert.That(workflow, Does.Contain("src/Cotton.Sync.WindowsShell/**"));
+                Assert.That(solution, Does.Contain(@"Cotton.Sync.WindowsShell\Cotton.Sync.WindowsShell.csproj"));
+                Assert.That(
+                    GetProperty(windowsShellPropertyGroup, "TargetFramework"),
+                    Is.EqualTo("net10.0-windows10.0.19041.0"));
+                Assert.That(GetProperty(windowsShellPropertyGroup, "SelfContained"), Is.EqualTo("true"));
+                Assert.That(GetProperty(windowsShellPropertyGroup, "PublishSingleFile"), Is.EqualTo("true"));
+                Assert.That(GetProperty(windowsShellPropertyGroup, "PublishTrimmed"), Is.EqualTo("false"));
+                Assert.That(
+                    desktopProject.Root!.Elements("Target").Any(static target =>
+                        string.Equals(target.Attribute("Name")?.Value, "PublishWindowsShellHelper", StringComparison.Ordinal)
+                        && target.ToString().Contains("Cotton.Sync.WindowsShell.csproj", StringComparison.Ordinal)
+                        && target.ToString().Contains("WindowsShell", StringComparison.Ordinal)),
+                    Is.True);
+                Assert.That(
+                    desktopProject.Root!.Elements("Target").Single(static target =>
+                            string.Equals(target.Attribute("Name")?.Value, "GeneratePublishChecksums", StringComparison.Ordinal))
+                        .Attribute("DependsOnTargets")?.Value,
+                    Does.Contain("PublishWindowsShellHelper"));
                 Assert.That(installerScript, Does.Contain("Source: \"{#SourceDir}\\*\""));
                 Assert.That(installerScript, Does.Contain("recursesubdirs createallsubdirs"));
                 Assert.That(installerScript, Does.Contain("[UninstallRun]"));
@@ -927,6 +950,14 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         private static string GetDesktopProjectPath()
         {
             return GetDesktopFilePath("Cotton.Sync.Desktop.csproj");
+        }
+
+        private static string GetWindowsShellProjectPath()
+        {
+            return GetRepositoryFilePath(Path.Combine(
+                "src",
+                "Cotton.Sync.WindowsShell",
+                "Cotton.Sync.WindowsShell.csproj"));
         }
 
         private static string GetPublishProfilePath(string runtimeIdentifier)

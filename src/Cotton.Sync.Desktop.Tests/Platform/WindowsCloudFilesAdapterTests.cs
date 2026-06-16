@@ -68,6 +68,33 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void CreateFilePlaceholder_RegistersStorageProviderSyncRootBeforeNativeSyncRoot()
+        {
+            var operations = new List<string>();
+            var nativeApi = new FakeCloudFilesNativeApi { OperationLog = operations };
+            var storageProvider = new FakeStorageProviderSyncRootRegistrar(operations);
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                storageProviderRegistrar: storageProvider);
+            string root = Path.Combine(_tempDirectory, "root");
+
+            adapter.CreateFilePlaceholder(CreateRequest(root, "remote-only.txt"));
+
+            WindowsStorageProviderSyncRootRegistration registration = storageProvider.Registrations.Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    operations,
+                    Is.EqualTo(new[] { "storage-provider-register", "native-register" }));
+                Assert.That(registration.SyncPairId, Is.EqualTo(Guid.Parse("11111111-1111-1111-1111-111111111111")));
+                Assert.That(registration.LocalRootPath, Is.EqualTo(Path.GetFullPath(root)));
+                Assert.That(registration.ProviderVersion, Is.Not.Empty);
+                Assert.That(registration.IconResource, Does.EndWith("Cotton.Sync.Desktop.exe"));
+            });
+        }
+
+        [Test]
         public void CreateFilePlaceholder_RegistersSyncRootOncePerAdapterForSameRoot()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
@@ -218,7 +245,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 RegisterException = new WindowsCloudFilesNativeException("CfRegisterSyncRoot", unchecked((int)0x8007017C)),
             };
             var diagnostics = new WindowsCloudFilesDiagnostics();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi, diagnostics);
+            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi, diagnostics: diagnostics);
             RemoteFilePlaceholderRequest request = CreateRequest(Path.Combine(_tempDirectory, "root"), "remote-only.txt");
 
             WindowsCloudFilesNativeException? exception =
@@ -285,7 +312,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             var nativeApi = new FakeCloudFilesNativeApi();
             var diagnostics = new WindowsCloudFilesDiagnostics();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi, diagnostics);
+            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi, diagnostics: diagnostics);
             string root = Path.Combine(_tempDirectory, "root");
             SyncPairSettings syncPair = CreateSyncPair(root);
 
@@ -299,6 +326,29 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(diagnostic.Status, Is.EqualTo("completed"));
                 Assert.That(diagnostic.SyncPairId, Is.EqualTo(syncPair.Id.ToString()));
                 Assert.That(diagnostic.LocalRootPath, Is.EqualTo(Path.GetFullPath(root)));
+            });
+        }
+
+        [Test]
+        public void UnregisterSyncRoot_UnregistersStorageProviderSyncRoot()
+        {
+            var operations = new List<string>();
+            var nativeApi = new FakeCloudFilesNativeApi { OperationLog = operations };
+            var storageProvider = new FakeStorageProviderSyncRootRegistrar(operations);
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                storageProviderRegistrar: storageProvider);
+            SyncPairSettings syncPair = CreateSyncPair(Path.Combine(_tempDirectory, "root"));
+
+            adapter.UnregisterSyncRoot(syncPair);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    operations,
+                    Is.EqualTo(new[] { "native-unregister", "storage-provider-unregister" }));
+                Assert.That(storageProvider.UnregisteredSyncPairIds, Is.EqualTo(new[] { syncPair.Id }));
             });
         }
 
@@ -326,7 +376,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 UnregisterException = new WindowsCloudFilesNativeException("CfUnregisterSyncRoot", unchecked((int)0x8007017C)),
             };
             var diagnostics = new WindowsCloudFilesDiagnostics();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi, diagnostics);
+            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi, diagnostics: diagnostics);
             SyncPairSettings syncPair = CreateSyncPair(Path.Combine(_tempDirectory, "root"));
 
             WindowsCloudFilesNativeException? exception =
@@ -423,6 +473,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
         private sealed class FakeCloudFilesNativeApi : IWindowsCloudFilesNativeApi
         {
+            public List<string>? OperationLog { get; init; }
+
             public List<WindowsCloudFilesNativeSyncRootRegistration> Registrations { get; } = [];
 
             public List<WindowsCloudFilesNativePlaceholder> Placeholders { get; } = [];
@@ -447,6 +499,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public void RegisterSyncRoot(WindowsCloudFilesNativeSyncRootRegistration registration)
             {
+                OperationLog?.Add("native-register");
                 Registrations.Add(registration);
                 if (RegisterException is not null)
                 {
@@ -456,6 +509,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public void UnregisterSyncRoot(string localRootPath)
             {
+                OperationLog?.Add("native-unregister");
                 UnregisteredRoots.Add(localRootPath);
                 if (UnregisterException is not null)
                 {
@@ -476,6 +530,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public void SetPinState(string filePath, WindowsCloudFilesPinState pinState)
             {
                 PinStates.Add(new PinStateCall(filePath, pinState));
+            }
+
+            public void SetInSyncState(string filePath)
+            {
+                throw new NotSupportedException();
             }
 
             public WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request)
@@ -508,6 +567,37 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
 
             public sealed record PinStateCall(string FilePath, WindowsCloudFilesPinState PinState);
+        }
+
+        private sealed class FakeStorageProviderSyncRootRegistrar : IWindowsStorageProviderSyncRootRegistrar
+        {
+            private readonly List<string> _operationLog;
+
+            public FakeStorageProviderSyncRootRegistrar(List<string> operationLog)
+            {
+                _operationLog = operationLog;
+            }
+
+            public List<WindowsStorageProviderSyncRootRegistration> Registrations { get; } = [];
+
+            public List<Guid> UnregisteredSyncPairIds { get; } = [];
+
+            public bool IsSupported()
+            {
+                return true;
+            }
+
+            public void Register(WindowsStorageProviderSyncRootRegistration registration)
+            {
+                _operationLog.Add("storage-provider-register");
+                Registrations.Add(registration);
+            }
+
+            public void Unregister(Guid syncPairId)
+            {
+                _operationLog.Add("storage-provider-unregister");
+                UnregisteredSyncPairIds.Add(syncPairId);
+            }
         }
 
         private sealed class RecordingCallbackHandler : IWindowsCloudFilesCallbackHandler
