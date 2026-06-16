@@ -86,6 +86,22 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void CreatePlaceholderAsync_StopsBeforeAdapterWhenCanceled()
+        {
+            var adapter = new FakeCloudFilesAdapter();
+            var writer = new DesktopCloudFilesPlaceholderWriter(
+                cloudFilesAdapter: adapter,
+                getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+
+            Assert.ThrowsAsync<OperationCanceledException>(
+                () => writer.CreatePlaceholderAsync(CreateRequest(_tempDirectory), cancellation.Token));
+
+            Assert.That(adapter.Requests, Is.Empty);
+        }
+
+        [Test]
         public void CreatePlaceholderAsync_ReportsAdapterFailureAsPlaceholderUnavailable()
         {
             var adapter = new FakeCloudFilesAdapter
