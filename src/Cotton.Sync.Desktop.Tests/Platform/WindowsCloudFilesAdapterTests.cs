@@ -81,6 +81,33 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void CreateFilePlaceholder_UpdatesExistingCloudFilesPlaceholder()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            string root = Path.Combine(_tempDirectory, "root");
+            string target = Path.GetFullPath(Path.Combine(root, "Projects", "remote-only.txt"));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllText(target, string.Empty);
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                isReparsePoint: path => string.Equals(Path.GetFullPath(path), target, StringComparison.OrdinalIgnoreCase));
+            RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/remote-only.txt");
+
+            RemoteFilePlaceholderResult result = adapter.CreateFilePlaceholder(request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.Registrations, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.Placeholders, Is.Empty);
+                Assert.That(nativeApi.UpdatedPlaceholders, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.UpdatedPlaceholders[0].BaseDirectoryPath, Is.EqualTo(Path.Combine(Path.GetFullPath(root), "Projects")));
+                Assert.That(nativeApi.UpdatedPlaceholders[0].RelativeFileName, Is.EqualTo("remote-only.txt"));
+                Assert.That(nativeApi.UpdatedPlaceholders[0].FileIdentity, Is.EqualTo(result.PlaceholderIdentity));
+            });
+        }
+
+        [Test]
         public void UnregisterSyncRoot_ClearsRegistrationCacheForFuturePlaceholderCreation()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
@@ -394,6 +421,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<WindowsCloudFilesNativePlaceholder> Placeholders { get; } = [];
 
+            public List<WindowsCloudFilesNativePlaceholder> UpdatedPlaceholders { get; } = [];
+
             public List<WindowsCloudFilesConnectionRequest> ConnectionRequests { get; } = [];
 
             public List<string> UnregisteredRoots { get; } = [];
@@ -429,6 +458,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public void CreatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder)
             {
                 Placeholders.Add(placeholder);
+            }
+
+            public void UpdatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder)
+            {
+                UpdatedPlaceholders.Add(placeholder);
             }
 
             public WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request)

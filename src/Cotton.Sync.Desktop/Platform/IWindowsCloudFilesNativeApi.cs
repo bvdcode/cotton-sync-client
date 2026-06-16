@@ -11,6 +11,8 @@ namespace Cotton.Sync.Desktop.Platform
 
         void CreatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder);
 
+        void UpdatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder);
+
         WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request);
 
         void DisconnectSyncRoot(WindowsCloudFilesConnectionKey connectionKey);

@@ -735,6 +735,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
             }
 
+            public void UpdatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder)
+            {
+            }
+
             public WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request)
             {
                 return new WindowsCloudFilesConnection(

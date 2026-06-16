@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
+using Microsoft.Win32.SafeHandles;
 using System.Runtime.InteropServices;
 
 namespace Cotton.Sync.Desktop.Platform
@@ -88,6 +89,51 @@ namespace Cotton.Sync.Desktop.Platform
                 }
 
                 ThrowIfFailed(placeholders[0].Result, nameof(CfCreatePlaceholders));
+            }
+            finally
+            {
+                fileIdentity.Dispose();
+            }
+        }
+
+        public void UpdatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder)
+        {
+            ArgumentNullException.ThrowIfNull(placeholder);
+            string filePath = Path.Combine(placeholder.BaseDirectoryPath, placeholder.RelativeFileName);
+
+            PinnedBuffer fileIdentity = PinnedBuffer.Pin(placeholder.FileIdentity);
+            try
+            {
+                using SafeFileHandle handle = CreateFile(
+                    filePath,
+                    FileDesiredAccess.WriteData,
+                    FileShareMode.Read | FileShareMode.Write | FileShareMode.Delete,
+                    IntPtr.Zero,
+                    FileCreationDisposition.OpenExisting,
+                    FileFlagsAndAttributes.OpenReparsePoint,
+                    IntPtr.Zero);
+                if (handle.IsInvalid)
+                {
+                    throw new WindowsCloudFilesNativeException(
+                        nameof(CreateFile),
+                        HResultFromWin32(Marshal.GetLastWin32Error()));
+                }
+
+                CfFsMetadata metadata = CfFsMetadata.CreateFile(
+                    placeholder.FileSizeBytes,
+                    placeholder.CreatedAtUtc,
+                    placeholder.UpdatedAtUtc);
+                int result = CfUpdatePlaceholder(
+                    handle.DangerousGetHandle(),
+                    ref metadata,
+                    fileIdentity.Pointer,
+                    fileIdentity.Length,
+                    IntPtr.Zero,
+                    0,
+                    CfUpdateFlags.MarkInSync | CfUpdateFlags.AllowPartial,
+                    IntPtr.Zero,
+                    IntPtr.Zero);
+                ThrowIfFailed(result, nameof(CfUpdatePlaceholder));
             }
             finally
             {
@@ -242,6 +288,23 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
+        private static int HResultFromWin32(int error)
+        {
+            return error <= 0
+                ? error
+                : unchecked((int)(0x80070000u | (uint)error));
+        }
+
+        [DllImport("kernel32.dll", EntryPoint = "CreateFileW", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
+        private static extern SafeFileHandle CreateFile(
+            string lpFileName,
+            FileDesiredAccess dwDesiredAccess,
+            FileShareMode dwShareMode,
+            IntPtr lpSecurityAttributes,
+            FileCreationDisposition dwCreationDisposition,
+            FileFlagsAndAttributes dwFlagsAndAttributes,
+            IntPtr hTemplateFile);
+
         [DllImport("CldApi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
         private static extern int CfRegisterSyncRoot(
             string SyncRootPath,
@@ -293,6 +356,18 @@ namespace Cotton.Sync.Desktop.Platform
             long StartingOffset,
             long Length,
             CfDehydrateFlags DehydrateFlags,
+            IntPtr Overlapped);
+
+        [DllImport("CldApi.dll", ExactSpelling = true)]
+        private static extern int CfUpdatePlaceholder(
+            IntPtr FileHandle,
+            ref CfFsMetadata FsMetadata,
+            IntPtr FileIdentity,
+            uint FileIdentityLength,
+            IntPtr DehydrateRangeArray,
+            uint DehydrateRangeCount,
+            CfUpdateFlags UpdateFlags,
+            IntPtr UpdateUsn,
             IntPtr Overlapped);
 
         [DllImport("CldApi.dll", ExactSpelling = true)]
@@ -510,13 +585,48 @@ namespace Cotton.Sync.Desktop.Platform
         [Flags]
         private enum CfOpenFileFlags : uint
         {
+            None = 0x00000000,
             Exclusive = 0x00000001,
+            WriteAccess = 0x00000002,
+        }
+
+        [Flags]
+        private enum FileDesiredAccess : uint
+        {
+            WriteData = 0x00000002,
+        }
+
+        [Flags]
+        private enum FileShareMode : uint
+        {
+            Read = 0x00000001,
+            Write = 0x00000002,
+            Delete = 0x00000004,
+        }
+
+        private enum FileCreationDisposition : uint
+        {
+            OpenExisting = 3,
+        }
+
+        [Flags]
+        private enum FileFlagsAndAttributes : uint
+        {
+            OpenReparsePoint = 0x00200000,
         }
 
         [Flags]
         private enum CfDehydrateFlags : uint
         {
             None = 0x00000000,
+        }
+
+        [Flags]
+        private enum CfUpdateFlags : uint
+        {
+            MarkInSync = 0x00000002,
+            Dehydrate = 0x00000004,
+            AllowPartial = 0x00000400,
         }
 
         private enum CfCallbackType : uint

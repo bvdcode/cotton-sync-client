@@ -75,19 +75,36 @@ namespace Cotton.Sync.Desktop.Platform
             EnsureSyncRootRegistered(request.SyncPairId, safety.FullPath, syncRootIdentity);
 
             Directory.CreateDirectory(placeholderPath.BaseDirectoryPath);
+            var nativePlaceholder = new WindowsCloudFilesNativePlaceholder(
+                placeholderPath.BaseDirectoryPath,
+                placeholderPath.RelativeFileName,
+                fileIdentity,
+                request.RemoteFile.SizeBytes,
+                request.RemoteFile.CreatedAt,
+                request.RemoteFile.UpdatedAt);
+            string fullPlaceholderPath = Path.Combine(
+                placeholderPath.BaseDirectoryPath,
+                placeholderPath.RelativeFileName);
+            bool updateExistingPlaceholder = File.Exists(fullPlaceholderPath) && _isReparsePoint(fullPlaceholderPath);
             try
             {
-                _nativeApi.CreatePlaceholder(new WindowsCloudFilesNativePlaceholder(
-                    placeholderPath.BaseDirectoryPath,
-                    placeholderPath.RelativeFileName,
-                    fileIdentity,
-                    request.RemoteFile.SizeBytes,
-                    request.RemoteFile.CreatedAt,
-                    request.RemoteFile.UpdatedAt));
+                if (updateExistingPlaceholder)
+                {
+                    _nativeApi.UpdatePlaceholder(nativePlaceholder);
+                }
+                else
+                {
+                    _nativeApi.CreatePlaceholder(nativePlaceholder);
+                }
             }
             catch (Exception exception)
             {
-                RecordFailure("create-placeholder", request.SyncPairId, safety.FullPath, normalizedPath, exception);
+                RecordFailure(
+                    updateExistingPlaceholder ? "update-placeholder" : "create-placeholder",
+                    request.SyncPairId,
+                    safety.FullPath,
+                    normalizedPath,
+                    exception);
                 throw;
             }
 
