@@ -959,6 +959,56 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesTreatsNearSimultaneousHydratedEditsAsConflict()
+        {
+            const string relativePath = "Docs/hydrated-near-simultaneous.txt";
+            byte[] remoteContent = Encoding.UTF8.GetBytes("remote-edit");
+            string oldHash = HashText("old-content");
+            WriteFile(relativePath, "local-edit");
+            LocalFileSnapshot local = LocalFile(relativePath, "local-edit");
+            local.LastWriteUtc = new DateTime(2026, 6, 2, 13, 0, 3, DateTimeKind.Utc);
+            Guid remoteFileId = Guid.NewGuid();
+            NodeFileManifestDto baselineRemote = RemoteFile(relativePath, oldHash, remoteFileId, sizeBytes: Encoding.UTF8.GetByteCount("old-content"));
+            NodeFileManifestDto changedRemote = RemoteFile(relativePath, Hash(remoteContent), remoteFileId, sizeBytes: remoteContent.Length);
+            changedRemote.UpdatedAt = new DateTime(2026, 6, 2, 13, 0, 4, DateTimeKind.Utc);
+            var scanner = new FakeLocalFileScanner(local);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.Downloads[changedRemote.Id] = remoteContent;
+            SyncEngine engine = CreateEngine(scanner, RemoteTree(changedRemote), remoteFiles, out SqliteSyncStateStore stateStore);
+            await stateStore.InitializeAsync();
+            await stateStore.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = relativePath,
+                Kind = SyncEntryKind.File,
+                LocalContentHash = oldHash,
+                LocalLastWriteUtc = new DateTime(2026, 6, 2, 13, 0, 0, DateTimeKind.Utc),
+                LocalSizeBytes = Encoding.UTF8.GetByteCount("old-content"),
+                RemoteNodeId = baselineRemote.NodeId,
+                RemoteFileId = baselineRemote.Id,
+                RemoteSizeBytes = baselineRemote.SizeBytes,
+                RemoteContentHash = baselineRemote.ContentHash,
+                RemoteETag = baselineRemote.ETag,
+                PlaceholderIdentity = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E],
+                PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated,
+                SyncedAtUtc = new DateTime(2026, 6, 2, 13, 0, 1, DateTimeKind.Utc),
+            });
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            string[] conflictFiles = Directory.GetFiles(_root, "*Cotton conflict*", SearchOption.AllDirectories);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(remoteFiles.DownloadCalls, Is.EqualTo(new[] { changedRemote.Id }));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Conflict }));
+                Assert.That(File.ReadAllText(Path.Combine(_root, "Docs", "hydrated-near-simultaneous.txt")), Is.EqualTo("local-edit"));
+                Assert.That(conflictFiles, Has.Length.EqualTo(1));
+                Assert.That(File.ReadAllText(conflictFiles[0]), Is.EqualTo("remote-edit"));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_DownloadsRemoteOnlyFileAndStoresBaseline()
         {
             byte[] content = Encoding.UTF8.GetBytes("remote-content");
