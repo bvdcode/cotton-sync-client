@@ -5099,6 +5099,42 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task InitializeAsync_AutoDownloadsUpdateOnStartupWithoutBlockingSyncCommands()
+        {
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            {
+                UpdateDownloadSnapshot = new DesktopUpdateStatusSnapshot(
+                    "0.0.1",
+                    "0.0.2",
+                    true,
+                    true,
+                    "Update 0.0.2 is ready. Click Update to install it now, or it will install automatically on next app start.",
+                    @"C:\Users\qa\AppData\Roaming\Cotton\Sync\updates\0.0.2\CottonSync-Windows-Setup.exe",
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/v0.0.2")),
+            };
+            var notificationService = new CollectingDesktopNotificationService();
+            using ShellViewModel viewModel = CreateViewModel(
+                controller,
+                notificationService: notificationService,
+                checkForUpdatesOnStartup: true);
+
+            await viewModel.InitializeAsync();
+            await viewModel.StartupUpdateTask!;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(controller.DownloadUpdateCalls, Is.EqualTo(1));
+                Assert.That(controller.CheckForUpdateCalls, Is.EqualTo(0));
+                Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Update ready"));
+                Assert.That(viewModel.IsUpdateReady, Is.True);
+                Assert.That(viewModel.CanInstallUpdate, Is.True);
+                Assert.That(viewModel.CanSyncNow, Is.True);
+                Assert.That(notificationService.Notifications, Has.Count.EqualTo(1));
+                Assert.That(notificationService.Notifications[0].Title, Is.EqualTo("Update ready"));
+            });
+        }
+
+        [Test]
         public async Task InstallUpdateCommand_StartsDownloadedInstaller()
         {
             string installerPath = @"C:\Users\qa\AppData\Roaming\Cotton\Sync\updates\0.0.2\CottonSync-Windows-Setup.exe";
@@ -5154,6 +5190,29 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.UpdateDetailsText, Is.EqualTo("Cannot reach update server. Check network or firewall and retry."));
                 Assert.That(viewModel.CanCheckForUpdates, Is.True);
                 Assert.That(viewModel.CanSyncNow, Is.True);
+            });
+        }
+
+        [Test]
+        public async Task InitializeAsync_WhenStartupUpdateFailsShowsRetryableStatusWithoutOverridingSyncStatus()
+        {
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            {
+                UpdateDownloadException = new HttpRequestException("firewall denied first request"),
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller, checkForUpdatesOnStartup: true);
+
+            await viewModel.InitializeAsync();
+            await viewModel.StartupUpdateTask!;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(controller.DownloadUpdateCalls, Is.EqualTo(1));
+                Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Update failed"));
+                Assert.That(viewModel.UpdateDetailsText, Is.EqualTo("Cannot reach update server. Check network or firewall and retry."));
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Connected"));
+                Assert.That(viewModel.CanSyncNow, Is.True);
+                Assert.That(viewModel.CanCheckForUpdates, Is.True);
             });
         }
 
@@ -5883,6 +5942,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             FakeLocalFolderPicker? localFolderPicker = null,
             IDesktopNotificationService? notificationService = null,
             IDesktopUiDispatcher? uiDispatcher = null,
+            bool checkForUpdatesOnStartup = false,
             bool notifyOnSessionRestore = false)
         {
             return new ShellViewModel(
@@ -5892,6 +5952,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 new FakeDesktopThemeService(),
                 uiDispatcher ?? new InlineDesktopUiDispatcher(),
                 featureFlags,
+                checkForUpdatesOnStartup,
                 notifyOnSessionRestore);
         }
 
