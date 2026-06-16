@@ -120,8 +120,10 @@ namespace Cotton.Sync.Desktop.ViewModels
         private bool _isLoadingSnapshot = true;
         private bool _isStartWithOperatingSystemSupported = true;
         private bool _isTrayLifecycleSupported;
+        private bool _isWindowsVirtualFilesSupported;
         private int _selectedSettingsTabIndex;
         private string _trayLifecycleDetails = "Tray lifecycle is not supported on this platform yet.";
+        private string _windowsVirtualFilesDetails = "Windows virtual files are not available on this platform.";
         private string _serverUrl = string.Empty;
         private string _serverProbeStatus = string.Empty;
         private bool _startWithOperatingSystem;
@@ -1181,7 +1183,25 @@ namespace Cotton.Sync.Desktop.ViewModels
             ? "Change the cloud folder for this sync folder"
             : "Start syncing with the current cloud folder";
 
-        public bool IsFutureSyncModesVisible => _featureFlags.ShowFutureSyncModes;
+        public bool IsFutureSyncModesVisible => _featureFlags.ShowFutureSyncModes && IsWindowsVirtualFilesSupported;
+
+        public bool IsWindowsVirtualFilesSupported
+        {
+            get => _isWindowsVirtualFilesSupported;
+            private set
+            {
+                if (SetProperty(ref _isWindowsVirtualFilesSupported, value))
+                {
+                    OnPropertyChanged(nameof(IsFutureSyncModesVisible));
+                }
+            }
+        }
+
+        public string WindowsVirtualFilesDetails
+        {
+            get => _windowsVirtualFilesDetails;
+            private set => SetProperty(ref _windowsVirtualFilesDetails, value);
+        }
 
         public string SelectedSyncModeLabel => "Full mirror";
 
@@ -1500,6 +1520,8 @@ namespace Cotton.Sync.Desktop.ViewModels
                 IsStartWithOperatingSystemSupported = snapshot.PlatformCapabilities.IsAutostartSupported;
                 IsTrayLifecycleSupported = snapshot.PlatformCapabilities.IsTrayLifecycleSupported;
                 TrayLifecycleDetails = snapshot.PlatformCapabilities.TrayLifecycleDetails;
+                IsWindowsVirtualFilesSupported = snapshot.PlatformCapabilities.IsWindowsVirtualFilesSupported;
+                WindowsVirtualFilesDetails = snapshot.PlatformCapabilities.WindowsVirtualFilesDetails;
                 StartWithOperatingSystem = snapshot.StartWithOperatingSystem;
                 EnableNotifications = snapshot.EnableNotifications;
                 ThemeModeIndex = (int)snapshot.ThemeMode;

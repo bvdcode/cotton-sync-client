@@ -4869,19 +4869,27 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
-        public void FutureSyncModesVisibility_UsesFeatureFlag()
+        public async Task FutureSyncModesVisibility_UsesFeatureFlagAndCloudFilesCapability()
         {
             using ShellViewModel hiddenViewModel = CreateViewModel(
-                new FakeDesktopShellController(CreateSignedInSnapshot()),
+                new FakeDesktopShellController(CreateSignedInSnapshot(platformCapabilities: CreatePlatformCapabilities(windowsVirtualFilesSupported: true))),
                 new DesktopFeatureFlags(false));
             using ShellViewModel visibleViewModel = CreateViewModel(
-                new FakeDesktopShellController(CreateSignedInSnapshot()),
+                new FakeDesktopShellController(CreateSignedInSnapshot(platformCapabilities: CreatePlatformCapabilities(windowsVirtualFilesSupported: true))),
                 new DesktopFeatureFlags(true));
+            using ShellViewModel unsupportedViewModel = CreateViewModel(
+                new FakeDesktopShellController(CreateSignedInSnapshot(platformCapabilities: CreatePlatformCapabilities(windowsVirtualFilesSupported: false))),
+                new DesktopFeatureFlags(true));
+
+            await hiddenViewModel.InitializeAsync();
+            await visibleViewModel.InitializeAsync();
+            await unsupportedViewModel.InitializeAsync();
 
             Assert.Multiple(() =>
             {
                 Assert.That(hiddenViewModel.IsFutureSyncModesVisible, Is.False);
                 Assert.That(visibleViewModel.IsFutureSyncModesVisible, Is.True);
+                Assert.That(unsupportedViewModel.IsFutureSyncModesVisible, Is.False);
                 Assert.That(visibleViewModel.SelectedSyncModeLabel, Is.EqualTo("Full mirror"));
             });
         }
@@ -5121,24 +5129,40 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 enableNotifications,
                 AppThemeMode.System,
                 CreateTestDataPathSnapshot(),
-                new DesktopPlatformCapabilitySnapshot(
-                    "Linux",
-                    "test",
-                    "test",
-                    true,
-                    false,
-                    "Tray lifecycle is not supported in this test."),
+                CreatePlatformCapabilities(),
                 false,
                 []);
         }
 
-        private static DesktopShellSnapshot CreateSignedInSnapshot(params DesktopSyncPairSnapshot[] syncPairs)
+        private static DesktopShellSnapshot CreateSignedInSnapshot(
+            params DesktopSyncPairSnapshot[] syncPairs)
         {
             return CreateSignedInSnapshotWithNotifications(enableNotifications: true, syncPairs);
         }
 
+        private static DesktopShellSnapshot CreateSignedInSnapshot(
+            DesktopPlatformCapabilitySnapshot platformCapabilities,
+            params DesktopSyncPairSnapshot[] syncPairs)
+        {
+            return CreateSignedInSnapshotWithNotificationsAndCapabilities(
+                enableNotifications: true,
+                platformCapabilities,
+                syncPairs);
+        }
+
         private static DesktopShellSnapshot CreateSignedInSnapshotWithNotifications(
             bool enableNotifications,
+            params DesktopSyncPairSnapshot[] syncPairs)
+        {
+            return CreateSignedInSnapshotWithNotificationsAndCapabilities(
+                enableNotifications,
+                CreatePlatformCapabilities(),
+                syncPairs);
+        }
+
+        private static DesktopShellSnapshot CreateSignedInSnapshotWithNotificationsAndCapabilities(
+            bool enableNotifications,
+            DesktopPlatformCapabilitySnapshot platformCapabilities,
             params DesktopSyncPairSnapshot[] syncPairs)
         {
             return new DesktopShellSnapshot(
@@ -5149,15 +5173,27 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 enableNotifications,
                 AppThemeMode.System,
                 CreateTestDataPathSnapshot(),
-                new DesktopPlatformCapabilitySnapshot(
-                    "Linux",
-                    "test",
-                    "test",
-                    true,
-                    false,
-                    "Tray lifecycle is not supported in this test."),
+                platformCapabilities,
                 true,
                 syncPairs);
+        }
+
+        private static DesktopPlatformCapabilitySnapshot CreatePlatformCapabilities(
+            bool windowsVirtualFilesSupported = false)
+        {
+            return new DesktopPlatformCapabilitySnapshot(
+                windowsVirtualFilesSupported ? "Windows" : "Linux",
+                "test",
+                "test",
+                true,
+                windowsVirtualFilesSupported,
+                windowsVirtualFilesSupported
+                    ? "Supported on Windows through the native tray lifecycle."
+                    : "Tray lifecycle is not supported in this test.",
+                windowsVirtualFilesSupported,
+                windowsVirtualFilesSupported
+                    ? "Windows Cloud Files API is available."
+                    : "Windows virtual files require the Windows Cloud Files API.");
         }
 
         private static DesktopDataPathSnapshot CreateTestDataPathSnapshot()
