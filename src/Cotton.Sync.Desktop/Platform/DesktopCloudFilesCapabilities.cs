@@ -50,8 +50,8 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             return new SyncPairModeCapabilitySnapshot(
-                false,
-                "Windows virtual files are installed, but Explorer Free up space dehydration handling is not implemented yet.");
+                true,
+                "Windows Cloud Files API, StorageProvider sync-root registration, and Explorer dehydration handling are available.");
         }
     }
 }

@@ -20,10 +20,17 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
         [TestCase(null)]
         [TestCase("")]
+        public void FromEnvironment_EnablesFutureSyncModesByDefault(string? value)
+        {
+            DesktopFeatureFlags flags = DesktopFeatureFlags.FromEnvironment(_ => value);
+
+            Assert.That(flags.ShowFutureSyncModes, Is.True);
+        }
+
         [TestCase("0")]
         [TestCase("false")]
         [TestCase("no")]
-        public void FromEnvironment_DisablesFutureSyncModesForOtherValues(string? value)
+        public void FromEnvironment_DisablesFutureSyncModesForExplicitFalseValues(string? value)
         {
             DesktopFeatureFlags flags = DesktopFeatureFlags.FromEnvironment(_ => value);
 

@@ -1188,14 +1188,12 @@
                                FontWeight="SemiBold" />
                     <Grid ColumnDefinitions="*,*"
                           ColumnSpacing="8">
-                      <Border Padding="9"
-                              CornerRadius="6"
-                              Background="{DynamicResource CottonPrimarySoftBrush}"
-                              BorderBrush="{DynamicResource CottonPrimaryBrush}"
-                              BorderThickness="1">
+                      <RadioButton GroupName="AddSyncPairMode"
+                                   IsChecked="{Binding IsFullMirrorSyncModeSelected}"
+                                   Classes="sync-mode-card">
                         <Grid RowDefinitions="Auto,Auto,Auto"
                               RowSpacing="2">
-                          <TextBlock Text="{Binding SelectedSyncModeLabel}"
+                          <TextBlock Text="Full mirror"
                                      FontSize="12"
                                      FontWeight="SemiBold"
                                      TextTrimming="CharacterEllipsis" />
@@ -1209,14 +1207,11 @@
                                      FontSize="11"
                                      TextWrapping="Wrap" />
                         </Grid>
-                      </Border>
-                      <Border Grid.Column="1"
-                              Padding="9"
-                              CornerRadius="6"
-                              Background="{DynamicResource CottonSurfaceMutedBrush}"
-                              BorderBrush="{DynamicResource CottonBorderBrush}"
-                              BorderThickness="1"
-                              Opacity="0.62">
+                      </RadioButton>
+                      <RadioButton Grid.Column="1"
+                                   GroupName="AddSyncPairMode"
+                                   IsChecked="{Binding IsWindowsVirtualFilesSyncModeSelected}"
+                                   Classes="sync-mode-card">
                         <Grid RowDefinitions="Auto,Auto,Auto"
                               RowSpacing="2">
                           <TextBlock Text="Virtual files"
@@ -1224,7 +1219,7 @@
                                      FontWeight="SemiBold"
                                      TextTrimming="CharacterEllipsis" />
                           <TextBlock Grid.Row="1"
-                                     Text="Not implemented"
+                                     Text="Available"
                                      Classes="secondary"
                                      FontSize="11" />
                           <TextBlock Grid.Row="2"
@@ -1233,7 +1228,7 @@
                                      FontSize="11"
                                      TextWrapping="Wrap" />
                         </Grid>
-                      </Border>
+                      </RadioButton>
                     </Grid>
                   </StackPanel>
 

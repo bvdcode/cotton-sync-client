@@ -183,7 +183,7 @@ namespace Cotton.Sync.Desktop.Shell
                 RemoteRootNodeId = Guid.NewGuid(),
                 RemoteDisplayPath = request.RemoteFolderPath,
                 IsEnabled = true,
-                Mode = SyncPairMode.FullMirror,
+                Mode = request.Mode,
                 CreatedAtUtc = DateTime.UtcNow,
                 UpdatedAtUtc = DateTime.UtcNow,
             });

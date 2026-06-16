@@ -122,6 +122,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private bool _isStartWithOperatingSystemSupported = true;
         private bool _isTrayLifecycleSupported;
         private bool _isWindowsVirtualFilesSupported;
+        private SyncPairMode _selectedSyncMode = SyncPairMode.FullMirror;
         private int _selectedSettingsTabIndex;
         private string _trayLifecycleDetails = "Tray lifecycle is not supported on this platform yet.";
         private string _windowsVirtualFilesDetails = "Windows virtual files are not available on this platform.";
@@ -1193,6 +1194,11 @@ namespace Cotton.Sync.Desktop.ViewModels
             {
                 if (SetProperty(ref _isWindowsVirtualFilesSupported, value))
                 {
+                    if (!value && SelectedSyncMode == SyncPairMode.WindowsVirtualFiles)
+                    {
+                        SelectedSyncMode = SyncPairMode.FullMirror;
+                    }
+
                     OnPropertyChanged(nameof(IsFutureSyncModesVisible));
                 }
             }
@@ -1204,7 +1210,50 @@ namespace Cotton.Sync.Desktop.ViewModels
             private set => SetProperty(ref _windowsVirtualFilesDetails, value);
         }
 
-        public string SelectedSyncModeLabel => "Full mirror";
+        public SyncPairMode SelectedSyncMode
+        {
+            get => _selectedSyncMode;
+            set
+            {
+                SyncPairMode next = value == SyncPairMode.WindowsVirtualFiles && !IsWindowsVirtualFilesSupported
+                    ? SyncPairMode.FullMirror
+                    : value;
+                if (SetProperty(ref _selectedSyncMode, next))
+                {
+                    OnPropertyChanged(nameof(IsFullMirrorSyncModeSelected));
+                    OnPropertyChanged(nameof(IsWindowsVirtualFilesSyncModeSelected));
+                    OnPropertyChanged(nameof(SelectedSyncModeLabel));
+                }
+            }
+        }
+
+        public bool IsFullMirrorSyncModeSelected
+        {
+            get => SelectedSyncMode == SyncPairMode.FullMirror;
+            set
+            {
+                if (value)
+                {
+                    SelectedSyncMode = SyncPairMode.FullMirror;
+                }
+            }
+        }
+
+        public bool IsWindowsVirtualFilesSyncModeSelected
+        {
+            get => SelectedSyncMode == SyncPairMode.WindowsVirtualFiles;
+            set
+            {
+                if (value)
+                {
+                    SelectedSyncMode = SyncPairMode.WindowsVirtualFiles;
+                }
+            }
+        }
+
+        public string SelectedSyncModeLabel => SelectedSyncMode == SyncPairMode.WindowsVirtualFiles
+            ? VirtualFileUserFacingCopy.WindowsVirtualFilesModeLabel
+            : "Full mirror";
 
         public string RemoteFolderSelectionLabel => string.IsNullOrWhiteSpace(RemoteFolderPath)
             ? "Cloud folder: /"
@@ -1966,12 +2015,13 @@ namespace Cotton.Sync.Desktop.ViewModels
             try
             {
                 SyncPairSettings syncPair = await _controller.AddSyncPairAsync(
-                    new DesktopSyncPairRequest(LocalFolderPath, RemoteFolderPath)).ConfigureAwait(true);
+                    new DesktopSyncPairRequest(LocalFolderPath, RemoteFolderPath, SelectedSyncMode)).ConfigureAwait(true);
                 SyncPairRowViewModel row = ToRow(syncPair);
                 SyncPairs.Add(row);
                 SelectedSyncPair = row;
                 LocalFolderPath = string.Empty;
                 RemoteFolderPath = string.Empty;
+                SelectedSyncMode = SyncPairMode.FullMirror;
                 IsAddSyncPairWizardVisible = false;
                 IsEditingSelectedSyncPairRemoteFolder = false;
                 ActionRequiredMessage = string.Empty;
@@ -2027,6 +2077,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private Task CancelAddSyncPairAsync()
         {
             LocalFolderPath = string.Empty;
+            SelectedSyncMode = SyncPairMode.FullMirror;
             IsEditingSelectedSyncPairRemoteFolder = false;
             NewRemoteFolderName = string.Empty;
             IsCreateRemoteFolderVisible = false;
@@ -2823,6 +2874,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private async Task ShowAddSyncPairAsync()
         {
             IsEditingSelectedSyncPairRemoteFolder = false;
+            SelectedSyncMode = SyncPairMode.FullMirror;
             IsAddSyncPairWizardVisible = true;
             NewRemoteFolderName = string.Empty;
             IsCreateRemoteFolderVisible = false;

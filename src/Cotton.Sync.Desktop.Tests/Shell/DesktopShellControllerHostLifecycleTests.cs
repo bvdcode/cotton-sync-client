@@ -515,6 +515,34 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public async Task AddSyncPairAsync_SavesRequestedWindowsVirtualFilesMode()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            Uri serverUrl = new("https://cotton.example.test/");
+            FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
+            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            using DesktopShellController controller = CreateController(paths, factory);
+            string localPath = Path.Combine(_tempDirectory, "Desktop");
+            Directory.CreateDirectory(localPath);
+
+            await controller.SignInAsync(new DesktopSignInRequest(
+                serverUrl.AbsoluteUri,
+                "desktop@example.test",
+                "password",
+                null));
+            SyncPairSettings syncPair = await controller.AddSyncPairAsync(
+                new DesktopSyncPairRequest(localPath, "/Desktop", SyncPairMode.WindowsVirtualFiles));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(syncPair.Mode, Is.EqualTo(SyncPairMode.WindowsVirtualFiles));
+                Assert.That(host.App.SavedSyncPair, Is.Not.Null);
+                Assert.That(host.App.SavedSyncPair!.Mode, Is.EqualTo(SyncPairMode.WindowsVirtualFiles));
+                Assert.That(host.App.SyncNowCalls, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
         public async Task SetSyncPairEnabledAsync_UsesActiveHostAppWithoutManualRestart()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
