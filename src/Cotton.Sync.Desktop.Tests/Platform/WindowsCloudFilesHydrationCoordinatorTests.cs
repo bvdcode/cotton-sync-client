@@ -2,7 +2,10 @@
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
 using Cotton.Files;
+using Cotton.Sync.App.Progress;
 using Cotton.Sync.Desktop.Platform;
+using Cotton.Sync.Local;
+using Cotton.Sync.Remote;
 using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
 using System.Security.Cryptography;
@@ -51,6 +54,91 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(nativeApi.Transfers[0].Offset, Is.EqualTo(4));
                 Assert.That(nativeApi.Transfers[0].Length, Is.EqualTo(6));
                 Assert.That(Encoding.UTF8.GetString(nativeApi.Transfers[0].Buffer), Is.EqualTo("456789"));
+            });
+        }
+
+        [Test]
+        public async Task HandleFetchDataAsync_ReportsHydrationDownloadProgress()
+        {
+            byte[] content = Encoding.UTF8.GetBytes("0123456789abcdef");
+            var provider = new ProgressContentProvider(content);
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var progress = new RecordingProgress<SyncTransferProgress>();
+            Guid expectedSyncPairId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+            var coordinator = new WindowsCloudFilesHydrationCoordinator(
+                provider,
+                nativeApi,
+                _tempDirectory,
+                transferProgressFactory: syncPairId =>
+                {
+                    Assert.That(syncPairId, Is.EqualTo(expectedSyncPairId));
+                    return progress;
+                });
+            WindowsCloudFilesFetchDataRequest request = CreateFetchRequest(content, offset: 4, length: 6);
+
+            await coordinator.HandleFetchDataAsync(request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(progress.Values, Has.Count.EqualTo(3));
+                Assert.That(progress.Values.Select(item => item.Direction), Is.All.EqualTo(SyncTransferDirection.Download));
+                Assert.That(progress.Values.Select(item => item.RelativePath), Is.All.EqualTo("remote-only.txt"));
+                Assert.That(progress.Values.Select(item => item.TotalBytes), Is.All.EqualTo(content.Length));
+                Assert.That(progress.Values.Select(item => item.TransferredBytes), Is.EqualTo(new long[] { 0, 4, content.Length }));
+                Assert.That(progress.Values.Last().IsCompleted, Is.True);
+                Assert.That(nativeApi.Transfers, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.Transfers[0].CompletionStatus, Is.EqualTo(WindowsCloudFilesTransferData.StatusSuccess));
+            });
+        }
+
+        [Test]
+        public async Task RemoteContentProvider_UsesProgressAwareDownloadWhenAvailable()
+        {
+            var remoteFiles = new ProgressRemoteFileSynchronizer();
+            var provider = new RemoteFileSynchronizerCloudFilesContentProvider(remoteFiles);
+            var progress = new RecordingProgress<SyncTransferProgress>();
+            byte[] content = Encoding.UTF8.GetBytes("remote");
+            WindowsCloudFilesPlaceholderIdentity identity = WindowsCloudFilesPlaceholderIdentity
+                .Create(CreatePlaceholderRequest(content), "remote-only.txt");
+            await using var destination = new MemoryStream();
+
+            await provider.DownloadAsync(identity, destination, progress);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.ProgressAwareDownloads, Is.EqualTo(1));
+                Assert.That(remoteFiles.PlainDownloads, Is.Zero);
+                Assert.That(remoteFiles.LastNodeFileId, Is.EqualTo(identity.NodeFileId));
+                Assert.That(remoteFiles.LastRelativePath, Is.EqualTo("remote-only.txt"));
+                Assert.That(remoteFiles.LastTotalBytes, Is.EqualTo(content.Length));
+                Assert.That(remoteFiles.LastTransferProgress, Is.SameAs(progress));
+            });
+        }
+
+        [Test]
+        public void AppTransferProgressReporter_PublishesHydrationProgressToDesktopPipeline()
+        {
+            var publisher = new InMemoryAppTransferProgressPublisher();
+            var observer = new RecordingObserver<AppTransferProgress>();
+            using IDisposable subscription = publisher.Subscribe(observer);
+            Guid syncPairId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+            var reporter = new WindowsCloudFilesAppTransferProgressReporter(syncPairId, publisher);
+
+            reporter.Report(new SyncTransferProgress(
+                SyncTransferDirection.Download,
+                "remote-only.txt",
+                transferredBytes: 4,
+                totalBytes: 16));
+
+            AppTransferProgress appProgress = observer.Values.Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(appProgress.SyncPairId, Is.EqualTo(syncPairId));
+                Assert.That(appProgress.Direction, Is.EqualTo(SyncTransferDirection.Download));
+                Assert.That(appProgress.RelativePath, Is.EqualTo("remote-only.txt"));
+                Assert.That(appProgress.TransferredBytes, Is.EqualTo(4));
+                Assert.That(appProgress.TotalBytes, Is.EqualTo(16));
+                Assert.That(appProgress.IsCompleted, Is.False);
             });
         }
 
@@ -338,10 +426,47 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public async Task DownloadAsync(
                 WindowsCloudFilesPlaceholderIdentity identity,
                 Stream destination,
+                IProgress<SyncTransferProgress>? transferProgress = null,
                 CancellationToken cancellationToken = default)
             {
                 DownloadedIdentities.Add(identity);
                 await destination.WriteAsync(_content, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        private sealed class ProgressContentProvider : IWindowsCloudFilesRemoteContentProvider
+        {
+            private readonly byte[] _content;
+
+            public ProgressContentProvider(byte[] content)
+            {
+                _content = content;
+            }
+
+            public async Task DownloadAsync(
+                WindowsCloudFilesPlaceholderIdentity identity,
+                Stream destination,
+                IProgress<SyncTransferProgress>? transferProgress = null,
+                CancellationToken cancellationToken = default)
+            {
+                transferProgress?.Report(new SyncTransferProgress(
+                    SyncTransferDirection.Download,
+                    identity.RelativePath,
+                    transferredBytes: 0,
+                    totalBytes: identity.SizeBytes));
+                await destination.WriteAsync(_content.AsMemory(0, 4), cancellationToken).ConfigureAwait(false);
+                transferProgress?.Report(new SyncTransferProgress(
+                    SyncTransferDirection.Download,
+                    identity.RelativePath,
+                    transferredBytes: 4,
+                    totalBytes: identity.SizeBytes));
+                await destination.WriteAsync(_content.AsMemory(4), cancellationToken).ConfigureAwait(false);
+                transferProgress?.Report(new SyncTransferProgress(
+                    SyncTransferDirection.Download,
+                    identity.RelativePath,
+                    transferredBytes: _content.Length,
+                    totalBytes: identity.SizeBytes,
+                    isCompleted: true));
             }
         }
 
@@ -359,6 +484,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public async Task DownloadAsync(
                 WindowsCloudFilesPlaceholderIdentity identity,
                 Stream destination,
+                IProgress<SyncTransferProgress>? transferProgress = null,
                 CancellationToken cancellationToken = default)
             {
                 DownloadedIdentities.Add(identity);
@@ -381,6 +507,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public async Task DownloadAsync(
                 WindowsCloudFilesPlaceholderIdentity identity,
                 Stream destination,
+                IProgress<SyncTransferProgress>? transferProgress = null,
                 CancellationToken cancellationToken = default)
             {
                 DownloadedIdentities.Add(identity);
@@ -394,10 +521,116 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public Task DownloadAsync(
                 WindowsCloudFilesPlaceholderIdentity identity,
                 Stream destination,
+                IProgress<SyncTransferProgress>? transferProgress = null,
                 CancellationToken cancellationToken = default)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 throw new OperationCanceledException(cancellationToken);
+            }
+        }
+
+        private sealed class ProgressRemoteFileSynchronizer : IRemoteFileTransferProgressSynchronizer
+        {
+            public int PlainDownloads { get; private set; }
+
+            public int ProgressAwareDownloads { get; private set; }
+
+            public Guid LastNodeFileId { get; private set; }
+
+            public string LastRelativePath { get; private set; } = string.Empty;
+
+            public long? LastTotalBytes { get; private set; }
+
+            public IProgress<SyncTransferProgress>? LastTransferProgress { get; private set; }
+
+            public Task<NodeFileManifestDto> UploadFileAsync(
+                Guid rootNodeId,
+                string relativePath,
+                LocalFileSnapshot localFile,
+                NodeFileManifestDto? existingRemoteFile = null,
+                CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task<NodeFileManifestDto> UploadFileAsync(
+                Guid rootNodeId,
+                string relativePath,
+                LocalFileSnapshot localFile,
+                NodeFileManifestDto? existingRemoteFile,
+                IProgress<SyncTransferProgress>? transferProgress,
+                CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task DownloadFileAsync(Guid nodeFileId, Stream destination, CancellationToken cancellationToken = default)
+            {
+                PlainDownloads++;
+                return Task.CompletedTask;
+            }
+
+            public Task DownloadFileAsync(
+                Guid nodeFileId,
+                string relativePath,
+                long? totalBytes,
+                Stream destination,
+                IProgress<SyncTransferProgress>? transferProgress,
+                CancellationToken cancellationToken = default)
+            {
+                ProgressAwareDownloads++;
+                LastNodeFileId = nodeFileId;
+                LastRelativePath = relativePath;
+                LastTotalBytes = totalBytes;
+                LastTransferProgress = transferProgress;
+                return Task.CompletedTask;
+            }
+
+            public Task<NodeFileManifestDto> MoveFileAsync(
+                Guid rootNodeId,
+                string relativePath,
+                NodeFileManifestDto existingRemoteFile,
+                CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task DeleteFileAsync(
+                Guid nodeFileId,
+                bool skipTrash = false,
+                string? expectedETag = null,
+                CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+        }
+
+        private sealed class RecordingProgress<T> : IProgress<T>
+        {
+            public List<T> Values { get; } = [];
+
+            public void Report(T value)
+            {
+                Values.Add(value);
+            }
+        }
+
+        private sealed class RecordingObserver<T> : IObserver<T>
+        {
+            public List<T> Values { get; } = [];
+
+            public void OnCompleted()
+            {
+            }
+
+            public void OnError(Exception error)
+            {
+                throw error;
+            }
+
+            public void OnNext(T value)
+            {
+                Values.Add(value);
             }
         }
 

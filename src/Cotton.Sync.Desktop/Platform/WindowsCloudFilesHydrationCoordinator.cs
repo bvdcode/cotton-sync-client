@@ -2,6 +2,7 @@
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
 using System.Security.Cryptography;
+using Cotton.Sync;
 
 namespace Cotton.Sync.Desktop.Platform
 {
@@ -12,17 +13,20 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly IWindowsCloudFilesRemoteContentProvider _contentProvider;
         private readonly IWindowsCloudFilesNativeApi _nativeApi;
         private readonly IWindowsCloudFilesDiagnostics _diagnostics;
+        private readonly Func<Guid, IProgress<SyncTransferProgress>?> _transferProgressFactory;
         private readonly string _tempDirectory;
 
         public WindowsCloudFilesHydrationCoordinator(
             IWindowsCloudFilesRemoteContentProvider contentProvider,
             IWindowsCloudFilesNativeApi nativeApi,
             string? tempDirectory = null,
-            IWindowsCloudFilesDiagnostics? diagnostics = null)
+            IWindowsCloudFilesDiagnostics? diagnostics = null,
+            Func<Guid, IProgress<SyncTransferProgress>?>? transferProgressFactory = null)
         {
             _contentProvider = contentProvider ?? throw new ArgumentNullException(nameof(contentProvider));
             _nativeApi = nativeApi ?? throw new ArgumentNullException(nameof(nativeApi));
             _diagnostics = diagnostics ?? WindowsCloudFilesDiagnostics.Shared;
+            _transferProgressFactory = transferProgressFactory ?? (_ => null);
             _tempDirectory = string.IsNullOrWhiteSpace(tempDirectory)
                 ? Path.Combine(Path.GetTempPath(), "CottonSyncCloudFiles")
                 : tempDirectory;
@@ -48,7 +52,10 @@ namespace Cotton.Sync.Desktop.Platform
                     TransferBufferSize,
                     FileOptions.Asynchronous | FileOptions.SequentialScan | FileOptions.DeleteOnClose);
 
-                await _contentProvider.DownloadAsync(identity, stream, cancellationToken).ConfigureAwait(false);
+                IProgress<SyncTransferProgress>? transferProgress = _transferProgressFactory(identity.SyncPairId);
+                await _contentProvider
+                    .DownloadAsync(identity, stream, transferProgress, cancellationToken)
+                    .ConfigureAwait(false);
                 await ValidateDownloadedContentAsync(identity, stream, cancellationToken).ConfigureAwait(false);
                 await TransferRequestedRangeAsync(request, stream, cancellationToken).ConfigureAwait(false);
             }
