@@ -3932,6 +3932,38 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task AddSyncPairFlow_CreatesDesktopPairAndRequestsInitialSync()
+        {
+            var localFolderPicker = new FakeLocalFolderPicker(@"C:\Users\QA\Desktop");
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            controller.RemoteFoldersByPath["/"] = new DesktopRemoteFolderListSnapshot("/", []);
+            using ShellViewModel viewModel = CreateViewModel(controller, localFolderPicker: localFolderPicker);
+            await viewModel.InitializeAsync();
+
+            await ExecuteAsync(viewModel.ShowAddSyncPairCommand);
+            await ExecuteAsync(viewModel.BrowseLocalFolderCommand);
+            await ExecuteAsync(viewModel.ShowCreateRemoteFolderCommand);
+            viewModel.NewRemoteFolderName = "Desktop";
+            await ExecuteAsync(viewModel.CreateRemoteFolderCommand);
+            await ExecuteAsync(viewModel.UseRemoteFolderCommand);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(localFolderPicker.PickFolderCalls, Is.EqualTo(1));
+                Assert.That(controller.CreatedRemoteFolders, Is.EqualTo(new[] { ("/", "Desktop") }));
+                Assert.That(controller.AddedSyncPairRequest, Is.Not.Null);
+                Assert.That(controller.AddedSyncPairRequest!.LocalFolderPath, Is.EqualTo(@"C:\Users\QA\Desktop"));
+                Assert.That(controller.AddedSyncPairRequest.RemoteFolderPath, Is.EqualTo("/Desktop"));
+                Assert.That(viewModel.SyncPairs, Has.Count.EqualTo(1));
+                Assert.That(viewModel.SyncPairs.Single().LocalPath, Is.EqualTo(@"C:\Users\QA\Desktop"));
+                Assert.That(viewModel.SyncPairs.Single().RemotePath, Is.EqualTo("/Desktop"));
+                Assert.That(viewModel.IsAddSyncPairWizardVisible, Is.False);
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Sync requested"));
+                Assert.That(viewModel.HasActionRequired, Is.False);
+            });
+        }
+
+        [Test]
         public async Task ChangeSelectedSyncPairRemoteFolderCommand_OpensCloudPickerForSelectedPair()
         {
             Guid syncPairId = Guid.NewGuid();
