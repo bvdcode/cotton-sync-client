@@ -3223,6 +3223,38 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task InitializeAsync_AddsCloudFilesCapabilityAndSyncRootDiagnostics()
+        {
+            var virtualFiles = CreatePair(
+                Guid.NewGuid(),
+                "Documents",
+                "Idle",
+                mode: SyncPairMode.WindowsVirtualFiles);
+            var fullMirror = CreatePair(Guid.NewGuid(), "Mirror", "Idle");
+            var snapshot = CreateSignedInSnapshot(virtualFiles, fullMirror) with
+            {
+                PlatformCapabilities = CreatePlatformCapabilities(windowsVirtualFilesSupported: true),
+            };
+            var controller = new FakeDesktopShellController(snapshot);
+            using ShellViewModel viewModel = CreateViewModel(controller);
+
+            await viewModel.InitializeAsync();
+
+            IReadOnlyDictionary<string, string> diagnostics = viewModel.DiagnosticsItems
+                .ToDictionary(static item => item.Label, static item => item.Value);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(diagnostics["Windows virtual files"], Is.EqualTo("Supported"));
+                Assert.That(diagnostics["Windows virtual files details"], Is.EqualTo("Windows Cloud Files API is available."));
+                Assert.That(diagnostics["Documents mode"], Is.EqualTo("Windows virtual files"));
+                Assert.That(diagnostics["Documents Cloud Files sync root"], Is.EqualTo("Enabled; connects on sync startup"));
+                Assert.That(diagnostics["Mirror mode"], Is.EqualTo("Full mirror"));
+                Assert.That(diagnostics["Mirror Cloud Files sync root"], Is.EqualTo("Not used"));
+            });
+        }
+
+        [Test]
         public async Task OpenDataFolderCommand_OpensDiagnosticsDataDirectory()
         {
             DesktopDataPathSnapshot dataPaths = CreateTestDataPathSnapshot();
@@ -5212,7 +5244,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             string status,
             DateTime? lastSyncedAtUtc = null,
             string? localPath = null,
-            string? remotePath = null)
+            string? remotePath = null,
+            SyncPairMode mode = SyncPairMode.FullMirror)
         {
             return new DesktopSyncPairSnapshot(
                 id,
@@ -5221,7 +5254,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 remotePath ?? "/" + displayName,
                 status,
                 Guid.NewGuid(),
-                lastSyncedAtUtc);
+                lastSyncedAtUtc,
+                Mode: mode);
         }
 
         private static FakeDesktopShellController CreateTwoFolderSyncingController(Guid documentsPairId, Guid videosPairId)

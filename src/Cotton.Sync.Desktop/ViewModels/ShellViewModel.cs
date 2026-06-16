@@ -5749,6 +5749,8 @@ namespace Cotton.Sync.Desktop.ViewModels
             AddDiagnosticItem("Server", string.IsNullOrWhiteSpace(ServerUrl) ? "Not configured" : ServerUrl);
             AddDiagnosticItem("Account", AccountName);
             AddDiagnosticItem("Theme", ThemeModeLabel);
+            AddDiagnosticItem("Windows virtual files", IsWindowsVirtualFilesSupported ? "Supported" : "Unavailable");
+            AddDiagnosticItem("Windows virtual files details", WindowsVirtualFilesDetails);
             AddDiagnosticItem("Data folder", string.IsNullOrWhiteSpace(DataDirectory) ? "Unknown" : DataDirectory);
             AddDiagnosticItem("Preferences database", string.IsNullOrWhiteSpace(AppDatabasePath) ? "Unknown" : AppDatabasePath);
             AddDiagnosticItem("Sync state database", string.IsNullOrWhiteSpace(SyncStateDatabasePath) ? "Unknown" : SyncStateDatabasePath);
@@ -5762,6 +5764,8 @@ namespace Cotton.Sync.Desktop.ViewModels
                 AddDiagnosticItem(
                     syncPair.DisplayName + " remote id",
                     syncPair.RemoteRootNodeId?.ToString() ?? "Unknown");
+                AddDiagnosticItem(syncPair.DisplayName + " mode", syncPair.ModeLabel);
+                AddDiagnosticItem(syncPair.DisplayName + " Cloud Files sync root", GetCloudFilesSyncRootDiagnostic(syncPair));
                 AddDiagnosticItem(syncPair.DisplayName + " status", syncPair.Status);
                 AddDiagnosticItem(syncPair.DisplayName + " last sync", FormatDiagnosticUtc(syncPair.LastSyncedAtUtc));
                 AddDiagnosticItem(
@@ -5771,6 +5775,18 @@ namespace Cotton.Sync.Desktop.ViewModels
                     syncPair.DisplayName + " last error",
                     string.IsNullOrWhiteSpace(syncPair.LastError) ? "None" : syncPair.LastError);
             }
+        }
+
+        private static string GetCloudFilesSyncRootDiagnostic(SyncPairRowViewModel syncPair)
+        {
+            if (syncPair.Mode != SyncPairMode.WindowsVirtualFiles)
+            {
+                return "Not used";
+            }
+
+            return syncPair.IsEnabled
+                ? "Enabled; connects on sync startup"
+                : "Disabled";
         }
 
         private void AddDiagnosticItem(string label, string value)
