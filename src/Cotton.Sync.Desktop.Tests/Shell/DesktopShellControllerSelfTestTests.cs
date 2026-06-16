@@ -78,9 +78,10 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             {
                 Assert.Multiple(() =>
                 {
-                    Assert.That(item.Passed, Is.True);
-                    Assert.That(item.Skipped, Is.False);
+                    Assert.That(item.Passed, Is.False);
+                    Assert.That(item.Skipped, Is.True);
                     Assert.That(item.Details, Does.Contain("Cloud Files API"));
+                    Assert.That(item.Details, Does.Contain("StorageProvider"));
                 });
             }
             else
