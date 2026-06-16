@@ -66,11 +66,17 @@ namespace Cotton.Sync.Desktop.Composition
             var remoteFileSynchronizer = new SdkRemoteFileSynchronizer(cottonClient);
             var remoteDirectorySynchronizer = new SdkRemoteDirectorySynchronizer(cottonClient.Nodes);
             var remoteChangeFeed = new RemoteChangeFeedReader(cottonClient.Sync, stateStore);
+            var activityPublisher = new InMemoryAppActivityPublisher();
+            var sessionRevocationPublisher = new InMemorySessionRevocationPublisher();
+            var transferProgressPublisher = new InMemoryAppTransferProgressPublisher();
+            var runProgressPublisher = new InMemoryAppRunProgressPublisher();
             var cloudFilesNativeApi = new WindowsCloudFilesNativeApi();
             var cloudFilesAdapter = new WindowsCloudFilesAdapter(nativeApi: cloudFilesNativeApi);
             var cloudFilesHydration = new WindowsCloudFilesHydrationCoordinator(
                 new RemoteFileSynchronizerCloudFilesContentProvider(remoteFileSynchronizer),
-                cloudFilesNativeApi);
+                cloudFilesNativeApi,
+                transferProgressFactory: syncPairId =>
+                    new WindowsCloudFilesAppTransferProgressReporter(syncPairId, transferProgressPublisher));
             var cloudFilesConnections = new WindowsCloudFilesSyncRootConnectionCoordinator(
                 syncPairStore,
                 cloudFilesAdapter,
@@ -90,10 +96,6 @@ namespace Cotton.Sync.Desktop.Composition
                 remoteDirectories: remoteDirectorySynchronizer,
                 remoteFilePlaceholderWriter: remoteFilePlaceholderWriter,
                 logger: _loggerFactory.CreateLogger<HeadlessSyncEngine>());
-            var activityPublisher = new InMemoryAppActivityPublisher();
-            var sessionRevocationPublisher = new InMemorySessionRevocationPublisher();
-            var transferProgressPublisher = new InMemoryAppTransferProgressPublisher();
-            var runProgressPublisher = new InMemoryAppRunProgressPublisher();
             ISyncPairWork pairWork = new RemoteChangeAwareSyncPairWork(
                 new SyncEnginePairWork(syncEngine, activityPublisher, transferProgressPublisher, runProgressPublisher),
                 remoteChangeFeed);
