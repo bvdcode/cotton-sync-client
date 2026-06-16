@@ -110,6 +110,37 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesUploadsLocalOnlyFileAndStoresBaseline()
+        {
+            LocalFileSnapshot local = LocalFile("Docs/local-created.txt", "local-created-content");
+            var scanner = new FakeLocalFileScanner(local);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            SyncEngine engine = CreateEngine(
+                scanner,
+                EmptyRemoteTree(),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", "Docs/local-created.txt");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Uploads, Has.Count.EqualTo(1));
+                Assert.That(remoteFiles.Uploads[0].RelativePath, Is.EqualTo("Docs/local-created.txt"));
+                Assert.That(remoteFiles.Uploads[0].ExistingRemoteFile, Is.Null);
+                Assert.That(placeholderWriter.Requests, Is.Empty);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteFileId, Is.EqualTo(remoteFiles.Uploads[0].ReturnedFile.Id));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_UploadsLocalOnlyMetadataSnapshotWithoutPreHashing()
         {
             const string uploadedHash = "uploaded-content-hash";
@@ -824,6 +855,53 @@ namespace Cotton.Sync.Tests
                 Assert.That(hashProgress[0].TotalBytes, Is.EqualTo(local.SizeBytes));
                 Assert.That(hashProgress[^1].TransferredBytes, Is.EqualTo(local.SizeBytes));
                 Assert.That(hashProgress[^1].IsCompleted, Is.True);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesUploadsEditedHydratedFile()
+        {
+            const string relativePath = "Docs/hydrated-edited.txt";
+            string oldHash = HashText("old-content");
+            LocalFileSnapshot local = LocalFile(relativePath, "local-new-content");
+            local.LastWriteUtc = new DateTime(2026, 6, 2, 14, 0, 0, DateTimeKind.Utc);
+            NodeFileManifestDto remote = RemoteFile(relativePath, oldHash, sizeBytes: Encoding.UTF8.GetByteCount("old-content"));
+            var scanner = new FakeLocalFileScanner(local);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(scanner, RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
+            await stateStore.InitializeAsync();
+            await stateStore.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = relativePath,
+                Kind = SyncEntryKind.File,
+                LocalContentHash = oldHash,
+                LocalLastWriteUtc = new DateTime(2026, 6, 2, 13, 0, 0, DateTimeKind.Utc),
+                LocalSizeBytes = Encoding.UTF8.GetByteCount("old-content"),
+                RemoteNodeId = remote.NodeId,
+                RemoteFileId = remote.Id,
+                RemoteSizeBytes = remote.SizeBytes,
+                RemoteContentHash = remote.ContentHash,
+                RemoteETag = remote.ETag,
+                PlaceholderIdentity = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E],
+                PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated,
+                SyncedAtUtc = new DateTime(2026, 6, 2, 13, 1, 0, DateTimeKind.Utc),
+            });
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Uploads, Has.Count.EqualTo(1));
+                Assert.That(remoteFiles.Uploads[0].RelativePath, Is.EqualTo(relativePath));
+                Assert.That(remoteFiles.Uploads[0].ExistingRemoteFile?.Id, Is.EqualTo(remote.Id));
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteFileId, Is.EqualTo(remote.Id));
             });
         }
 
