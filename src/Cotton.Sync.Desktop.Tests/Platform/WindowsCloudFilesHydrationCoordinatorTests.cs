@@ -59,6 +59,20 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task HandleFetchDataAsync_MarksFullHydrationInSync()
+        {
+            byte[] content = Encoding.UTF8.GetBytes("0123456789abcdef");
+            var provider = new FakeContentProvider(content);
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
+            WindowsCloudFilesFetchDataRequest request = CreateFetchRequest(content, offset: 0, length: content.Length);
+
+            await coordinator.HandleFetchDataAsync(request);
+
+            Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { request.NormalizedPath }));
+        }
+
+        [Test]
         public async Task HandleFetchDataAsync_ReportsHydrationDownloadProgress()
         {
             byte[] content = Encoding.UTF8.GetBytes("0123456789abcdef");
@@ -722,6 +736,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<WindowsCloudFilesAckDehydrateData> Dehydrates { get; } = [];
 
+            public List<string> InSyncPaths { get; } = [];
+
             public void RegisterSyncRoot(WindowsCloudFilesNativeSyncRootRegistration registration)
             {
             }
@@ -741,6 +757,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public void SetPinState(string filePath, WindowsCloudFilesPinState pinState)
             {
+            }
+
+            public void SetInSyncState(string filePath)
+            {
+                InSyncPaths.Add(filePath);
             }
 
             public WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request)

@@ -58,6 +58,7 @@ namespace Cotton.Sync.Desktop.Platform
                     .ConfigureAwait(false);
                 await ValidateDownloadedContentAsync(identity, stream, cancellationToken).ConfigureAwait(false);
                 await TransferRequestedRangeAsync(request, stream, cancellationToken).ConfigureAwait(false);
+                TryMarkInSync(request, identity, stream.Length);
             }
             catch (OperationCanceledException)
             {
@@ -203,6 +204,40 @@ namespace Cotton.Sync.Desktop.Platform
                 offset += read;
                 remaining -= read;
             }
+        }
+
+        private void TryMarkInSync(
+            WindowsCloudFilesFetchDataRequest request,
+            WindowsCloudFilesPlaceholderIdentity identity,
+            long fileSize)
+        {
+            if (string.IsNullOrWhiteSpace(request.NormalizedPath)
+                || !RequestedRangeCoversFullFile(request, fileSize))
+            {
+                return;
+            }
+
+            try
+            {
+                _nativeApi.SetInSyncState(request.NormalizedPath);
+            }
+            catch (Exception exception)
+            {
+                _diagnostics.Record(
+                    "hydrate-in-sync",
+                    "failed",
+                    identity.SyncPairId.ToString(),
+                    null,
+                    identity.RelativePath,
+                    exception.Message);
+            }
+        }
+
+        private static bool RequestedRangeCoversFullFile(WindowsCloudFilesFetchDataRequest request, long fileSize)
+        {
+            long start = Math.Max(0, request.RequiredOffset);
+            long end = ResolveRequestedEnd(request, fileSize);
+            return start == 0 && end >= fileSize;
         }
 
         private static long ResolveRequestedEnd(WindowsCloudFilesFetchDataRequest request, long fileSize)

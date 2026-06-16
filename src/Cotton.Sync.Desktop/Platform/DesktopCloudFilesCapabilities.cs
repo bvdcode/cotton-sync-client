@@ -23,9 +23,35 @@ namespace Cotton.Sync.Desktop.Platform
                     "Windows virtual files require Windows 10 version 1709 or newer.");
             }
 
+            WindowsStorageProviderSyncRootRegistrar? storageProviderRegistrar =
+                WindowsStorageProviderSyncRootRegistrar.TryCreateDefault();
+            if (storageProviderRegistrar is null)
+            {
+                return new SyncPairModeCapabilitySnapshot(
+                    false,
+                    "Windows Cloud Files API is available, but the Cotton Sync Windows shell helper is not installed.");
+            }
+
+            try
+            {
+                if (!storageProviderRegistrar.IsSupported())
+                {
+                    return new SyncPairModeCapabilitySnapshot(
+                        false,
+                        "Windows Cloud Files API is available, but Windows StorageProvider sync-root registration is not supported on this device.");
+                }
+            }
+            catch (Exception exception)
+            {
+                return new SyncPairModeCapabilitySnapshot(
+                    false,
+                    "Windows Cloud Files API is available, but Windows StorageProvider sync-root registration could not be verified: "
+                    + exception.Message);
+            }
+
             return new SyncPairModeCapabilitySnapshot(
                 false,
-                "Windows Cloud Files API is available, but Cotton Sync virtual files require StorageProvider/Desktop Bridge shell integration before this mode can be enabled.");
+                "Windows virtual files are installed, but Explorer Free up space dehydration handling is not implemented yet.");
         }
     }
 }

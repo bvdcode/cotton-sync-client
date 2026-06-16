@@ -57,8 +57,21 @@
     <ProjectReference Include="../Cotton.Sync.App/Cotton.Sync.App.csproj" />
   </ItemGroup>
 
+  <Target Name="PublishWindowsShellHelper"
+          AfterTargets="Publish"
+          Condition="'$(RuntimeIdentifier)' == 'win-x64' and '$(PublishWindowsShellHelper)' != 'false' and '$(PublishDir)' != ''">
+    <PropertyGroup>
+      <CottonWindowsShellHelperProject>$(MSBuildThisFileDirectory)..\Cotton.Sync.WindowsShell\Cotton.Sync.WindowsShell.csproj</CottonWindowsShellHelperProject>
+      <CottonWindowsShellHelperPublishDir>$([MSBuild]::EnsureTrailingSlash('$(PublishDir)WindowsShell'))</CottonWindowsShellHelperPublishDir>
+    </PropertyGroup>
+    <Exec Command="dotnet publish &quot;$(CottonWindowsShellHelperProject)&quot; -c $(Configuration) -r win-x64 --self-contained true -p:Version=&quot;$(Version)&quot; -p:InformationalVersion=&quot;$(InformationalVersion)&quot; -p:GeneratePublishChecksums=false -o &quot;$(CottonWindowsShellHelperPublishDir)&quot;" />
+    <Error Condition="!Exists('$(CottonWindowsShellHelperPublishDir)Cotton.Sync.WindowsShell.exe')"
+           Text="Windows shell helper publish did not produce Cotton.Sync.WindowsShell.exe." />
+  </Target>
+
   <Target Name="GeneratePublishChecksums"
           AfterTargets="Publish"
+          DependsOnTargets="PublishWindowsShellHelper"
           Condition="'$(PublishDir)' != '' and '$(GeneratePublishChecksums)' != 'false'">
     <PropertyGroup>
       <CottonPublishDir>$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(PublishDir)'))))</CottonPublishDir>

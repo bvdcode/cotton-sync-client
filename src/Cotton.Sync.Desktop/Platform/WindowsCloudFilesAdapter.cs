@@ -18,6 +18,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         private readonly WindowsVirtualFilesRootSafetyPolicy _rootSafety;
         private readonly IWindowsCloudFilesNativeApi _nativeApi;
+        private readonly IWindowsStorageProviderSyncRootRegistrar? _storageProviderRegistrar;
         private readonly IWindowsCloudFilesDiagnostics _diagnostics;
         private readonly Func<string, bool> _isReparsePoint;
         private readonly object _registrationGate = new();
@@ -26,11 +27,13 @@ namespace Cotton.Sync.Desktop.Platform
         public WindowsCloudFilesAdapter(
             WindowsVirtualFilesRootSafetyPolicy? rootSafety = null,
             IWindowsCloudFilesNativeApi? nativeApi = null,
+            IWindowsStorageProviderSyncRootRegistrar? storageProviderRegistrar = null,
             IWindowsCloudFilesDiagnostics? diagnostics = null,
             Func<string, bool>? isReparsePoint = null)
         {
             _rootSafety = rootSafety ?? new WindowsVirtualFilesRootSafetyPolicy();
             _nativeApi = nativeApi ?? new WindowsCloudFilesNativeApi();
+            _storageProviderRegistrar = storageProviderRegistrar ?? WindowsStorageProviderSyncRootRegistrar.TryCreateDefault();
             _diagnostics = diagnostics ?? WindowsCloudFilesDiagnostics.Shared;
             _isReparsePoint = isReparsePoint ?? IsReparsePoint;
         }
@@ -118,25 +121,47 @@ namespace Cotton.Sync.Desktop.Platform
         {
             ArgumentNullException.ThrowIfNull(syncPair);
             WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
+            Exception? failure = null;
             try
             {
                 _nativeApi.UnregisterSyncRoot(registration.LocalRootPath);
-                _diagnostics.Record(
-                    "unregister-sync-root",
-                    "completed",
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    null,
-                    "Windows Cloud Files sync root was unregistered.");
-                lock (_registrationGate)
-                {
-                    _registeredRootPaths.Remove(registration.LocalRootPath);
-                }
             }
             catch (Exception exception)
             {
+                failure = exception;
                 RecordFailure("unregister-sync-root", syncPair.Id.ToString(), registration.LocalRootPath, null, exception);
-                throw;
+            }
+
+            try
+            {
+                _storageProviderRegistrar?.Unregister(syncPair.Id);
+            }
+            catch (Exception exception)
+            {
+                failure ??= exception;
+                RecordFailure(
+                    "unregister-storage-provider-sync-root",
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    null,
+                    exception);
+            }
+
+            if (failure is not null)
+            {
+                throw failure;
+            }
+
+            _diagnostics.Record(
+                "unregister-sync-root",
+                "completed",
+                syncPair.Id.ToString(),
+                registration.LocalRootPath,
+                null,
+                "Windows Cloud Files sync root was unregistered.");
+            lock (_registrationGate)
+            {
+                _registeredRootPaths.Remove(registration.LocalRootPath);
             }
         }
 
@@ -185,6 +210,11 @@ namespace Cotton.Sync.Desktop.Platform
 
                 try
                 {
+                    _storageProviderRegistrar?.Register(new WindowsStorageProviderSyncRootRegistration(
+                        Guid.Parse(syncPairId),
+                        localRootPath,
+                        ResolveProviderVersion(),
+                        WindowsStorageProviderSyncRootRegistrar.ResolveDefaultIconResource()));
                     _nativeApi.RegisterSyncRoot(new WindowsCloudFilesNativeSyncRootRegistration(
                         localRootPath,
                         ProviderName,
@@ -210,6 +240,10 @@ namespace Cotton.Sync.Desktop.Platform
             try
             {
                 WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
+                EnsureSyncRootRegistered(
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    CreateSyncRootIdentity(syncPair.Id, syncPair.RemoteRootNodeId));
                 return _nativeApi.ConnectSyncRoot(new WindowsCloudFilesConnectionRequest(
                     registration.LocalRootPath,
                     callbackHandler));

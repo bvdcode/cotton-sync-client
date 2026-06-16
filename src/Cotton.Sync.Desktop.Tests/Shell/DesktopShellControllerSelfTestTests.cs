@@ -80,8 +80,15 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 {
                     Assert.That(item.Passed, Is.False);
                     Assert.That(item.Skipped, Is.True);
-                    Assert.That(item.Details, Does.Contain("Cloud Files API"));
-                    Assert.That(item.Details, Does.Contain("StorageProvider"));
+                    Assert.That(
+                        item.Details,
+                        Does.Contain("Cloud Files API")
+                            .Or.Contain("Free up space"));
+                    Assert.That(
+                        item.Details,
+                        Does.Contain("shell helper")
+                            .Or.Contain("StorageProvider")
+                            .Or.Contain("Free up space"));
                 });
             }
             else

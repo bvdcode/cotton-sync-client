@@ -145,7 +145,7 @@ namespace Cotton.Sync.Desktop.Platform
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
             using SafeFileHandle handle = CreateFile(
-                filePath,
+                ToWin32FilePath(filePath),
                 FileDesiredAccess.ReadData,
                 FileShareMode.Read | FileShareMode.Write | FileShareMode.Delete,
                 IntPtr.Zero,
@@ -165,6 +165,32 @@ namespace Cotton.Sync.Desktop.Platform
                 CfSetPinFlags.None,
                 IntPtr.Zero);
             ThrowIfFailed(result, nameof(CfSetPinState));
+        }
+
+        public void SetInSyncState(string filePath)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+            using SafeFileHandle handle = CreateFile(
+                ToWin32FilePath(filePath),
+                FileDesiredAccess.WriteAttributes,
+                FileShareMode.Read | FileShareMode.Write | FileShareMode.Delete,
+                IntPtr.Zero,
+                FileCreationDisposition.OpenExisting,
+                FileFlagsAndAttributes.OpenReparsePoint,
+                IntPtr.Zero);
+            if (handle.IsInvalid)
+            {
+                throw new WindowsCloudFilesNativeException(
+                    nameof(CreateFile),
+                    HResultFromWin32(Marshal.GetLastWin32Error()));
+            }
+
+            int result = CfSetInSyncState(
+                handle.DangerousGetHandle(),
+                CfInSyncState.InSync,
+                CfSetInSyncFlags.None,
+                IntPtr.Zero);
+            ThrowIfFailed(result, nameof(CfSetInSyncState));
         }
 
         public WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request)
@@ -321,6 +347,13 @@ namespace Cotton.Sync.Desktop.Platform
                 : unchecked((int)(0x80070000u | (uint)error));
         }
 
+        private static string ToWin32FilePath(string filePath)
+        {
+            return filePath.StartsWith(@"\Device\", StringComparison.OrdinalIgnoreCase)
+                ? @"\\?\GLOBALROOT" + filePath
+                : filePath;
+        }
+
         [DllImport("kernel32.dll", EntryPoint = "CreateFileW", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
         private static extern SafeFileHandle CreateFile(
             string lpFileName,
@@ -366,6 +399,13 @@ namespace Cotton.Sync.Desktop.Platform
             CfPinState PinState,
             CfSetPinFlags PinFlags,
             IntPtr Overlapped);
+
+        [DllImport("CldApi.dll", ExactSpelling = true)]
+        private static extern int CfSetInSyncState(
+            IntPtr FileHandle,
+            CfInSyncState InSyncState,
+            CfSetInSyncFlags InSyncFlags,
+            IntPtr InSyncUsn);
 
         [DllImport("CldApi.dll", ExactSpelling = true)]
         private static extern int CfExecute(
@@ -628,6 +668,7 @@ namespace Cotton.Sync.Desktop.Platform
         {
             ReadData = 0x00000001,
             WriteData = 0x00000002,
+            WriteAttributes = 0x00000100,
         }
 
         [Flags]
@@ -674,6 +715,18 @@ namespace Cotton.Sync.Desktop.Platform
 
         [Flags]
         private enum CfSetPinFlags : uint
+        {
+            None = 0x00000000,
+        }
+
+        private enum CfInSyncState : uint
+        {
+            NotInSync = 0,
+            InSync = 1,
+        }
+
+        [Flags]
+        private enum CfSetInSyncFlags : uint
         {
             None = 0x00000000,
         }

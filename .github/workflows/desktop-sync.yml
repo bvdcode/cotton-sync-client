@@ -10,6 +10,7 @@ on:
       - "src/Cotton.Sync.Cli/**"
       - "src/Cotton.Sync.Desktop/**"
       - "src/Cotton.Sync.Desktop.Tests/**"
+      - "src/Cotton.Sync.WindowsShell/**"
       - "src/Cotton.sln"
       - "GitVersion.yml"
       - "dotnet-tools.json"
