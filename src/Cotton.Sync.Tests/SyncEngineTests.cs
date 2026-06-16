@@ -1395,6 +1395,36 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesKeepsExistingCloudFilesPlaceholderDuringUnrelatedLocalCreate()
+        {
+            const string existingPath = "local-upload.txt";
+            NodeFileManifestDto existingRemote = RemoteFile(existingPath, HashText("remote-content"), sizeBytes: 79);
+            LocalFileSnapshot existingPlaceholder = CloudFilesPlaceholderLocal(existingPath, existingRemote.SizeBytes);
+            LocalFileSnapshot newLocal = LocalFile("remote-origin.txt", "Cotton Sync Desktop live smoke from client B");
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(existingPlaceholder, newLocal),
+                RemoteTree(existingRemote),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore);
+            await InsertPlaceholderBaselineAsync(stateStore, existingPath, existingRemote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            SyncStateEntry? placeholderEntry = await stateStore.GetAsync("pair-a", existingPath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(remoteFiles.Uploads.Select(upload => upload.LocalFile.RelativePath), Is.EqualTo(new[] { newLocal.RelativePath }));
+                Assert.That(placeholderEntry, Is.Not.Null);
+                Assert.That(placeholderEntry!.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+                Assert.That(placeholderEntry.RemoteContentHash, Is.EqualTo(existingRemote.ContentHash));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesRefreshesRemoteOnlyPlaceholderWhenRemoteChanges()
         {
             Guid remoteFileId = Guid.NewGuid();
@@ -1424,6 +1454,41 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry, Is.Not.Null);
                 Assert.That(entry!.RemoteContentHash, Is.EqualTo(changedRemote.ContentHash));
                 Assert.That(entry.RemoteSizeBytes, Is.EqualTo(changedRemote.SizeBytes));
+                Assert.That(entry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesRefreshesExistingCloudFilesPlaceholderWhenRemoteChanges()
+        {
+            const string relativePath = "remote-updated.txt";
+            Guid remoteFileId = Guid.NewGuid();
+            NodeFileManifestDto baselineRemote = RemoteFile(relativePath, HashText("old-content"), remoteFileId, sizeBytes: 1024);
+            NodeFileManifestDto changedRemote = RemoteFile(relativePath, HashText("new-content"), remoteFileId, sizeBytes: 2048);
+            LocalFileSnapshot localPlaceholder = CloudFilesPlaceholderLocal(relativePath, baselineRemote.SizeBytes);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(localPlaceholder),
+                RemoteTree(changedRemote),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+            await InsertPlaceholderBaselineAsync(stateStore, relativePath, baselineRemote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(placeholderWriter.Requests, Has.Count.EqualTo(1));
+                Assert.That(placeholderWriter.Requests[0].RelativePath, Is.EqualTo(relativePath));
+                Assert.That(placeholderWriter.Requests[0].RemoteFile.ContentHash, Is.EqualTo(changedRemote.ContentHash));
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.RemoteContentHash, Is.EqualTo(changedRemote.ContentHash));
                 Assert.That(entry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
             });
         }
@@ -3595,6 +3660,19 @@ namespace Cotton.Sync.Tests
                 ContentHash = HashText(content),
                 SizeBytes = Encoding.UTF8.GetByteCount(content),
                 LastWriteUtc = new DateTime(2026, 6, 2, 13, 0, 0, DateTimeKind.Utc),
+            };
+        }
+
+        private LocalFileSnapshot CloudFilesPlaceholderLocal(string relativePath, long sizeBytes)
+        {
+            return new LocalFileSnapshot
+            {
+                RelativePath = relativePath.Replace('\\', '/'),
+                FullPath = Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar)),
+                ContentHash = string.Empty,
+                SizeBytes = sizeBytes,
+                LastWriteUtc = new DateTime(2026, 6, 2, 13, 2, 0, DateTimeKind.Utc),
+                IsCloudFilesPlaceholder = true,
             };
         }
 

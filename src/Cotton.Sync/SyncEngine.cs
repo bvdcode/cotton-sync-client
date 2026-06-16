@@ -965,6 +965,26 @@ namespace Cotton.Sync
                 return;
             }
 
+            if (local is not null
+                && remote is not null
+                && IsLocalOnlineOnlyPlaceholderBaseline(syncPair, local, state))
+            {
+                if (remoteChanged)
+                {
+                    await MaterializeRemoteOnlyFileAsync(
+                            syncPair,
+                            options,
+                            result,
+                            relativePath,
+                            remote.File,
+                            cancellationToken,
+                            state.PlaceholderHydrationState)
+                        .ConfigureAwait(false);
+                }
+
+                return;
+            }
+
             if (local is not null && remote is not null && ContentMatches(local.ContentHash, remote.File.ContentHash))
             {
                 if (!BaselineMatchesCurrentFile(syncPair, relativePath, state, local, remote.File))
@@ -1127,6 +1147,11 @@ namespace Cotton.Sync
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (stateByPath.ContainsKey(local.Key) || remoteByPath.ContainsKey(local.Key))
+                {
+                    continue;
+                }
+
+                if (local.Value.IsCloudFilesPlaceholder)
                 {
                     continue;
                 }
@@ -1959,6 +1984,18 @@ namespace Cotton.Sync
                 return TryCalculateUntrackedTransferBytes(syncPair, local, remote, out transferBytes);
             }
 
+            if (local is not null && IsLocalOnlineOnlyPlaceholderBaseline(syncPair, local, state))
+            {
+                if (remote is not null && !RemoteMatchesBaseline(remote.File, state))
+                {
+                    transferBytes = remote.File.SizeBytes;
+                    return true;
+                }
+
+                transferBytes = 0;
+                return false;
+            }
+
             if (local is not null && remote is not null && ContentMatches(local.ContentHash, remote.File.ContentHash))
             {
                 transferBytes = 0;
@@ -2096,6 +2133,14 @@ namespace Cotton.Sync
             if (state is null)
             {
                 return TryCreateRemoteOnlyDownload(syncPair, local, remote, out downloadBytes, out replacedLocalBytes);
+            }
+
+            if (local is not null && IsLocalOnlineOnlyPlaceholderBaseline(syncPair, local, state))
+            {
+                bool placeholderRemoteChanged = remote is not null && !RemoteMatchesBaseline(remote.File, state);
+                downloadBytes = placeholderRemoteChanged ? remote!.File.SizeBytes : 0;
+                replacedLocalBytes = 0;
+                return placeholderRemoteChanged;
             }
 
             if (local is not null && remote is not null && ContentMatches(local.ContentHash, remote.File.ContentHash))
@@ -2420,6 +2465,15 @@ namespace Cotton.Sync
         {
             return syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
                 && IsOnlineOnlyPlaceholderState(state);
+        }
+
+        private static bool IsLocalOnlineOnlyPlaceholderBaseline(
+            SyncPair syncPair,
+            LocalFileSnapshot local,
+            SyncStateEntry state)
+        {
+            return local.IsCloudFilesPlaceholder
+                && IsOnlineOnlyPlaceholderBaseline(syncPair, state);
         }
 
         private static bool IsOnlineOnlyPlaceholderState(SyncStateEntry state)
@@ -2789,6 +2843,14 @@ namespace Cotton.Sync
         {
             if (!string.IsNullOrWhiteSpace(local.ContentHash))
             {
+                return;
+            }
+
+            if (local.IsCloudFilesPlaceholder && IsOnlineOnlyPlaceholderState(state))
+            {
+                local.ContentHash = !string.IsNullOrWhiteSpace(state.LocalContentHash)
+                    ? state.LocalContentHash
+                    : state.RemoteContentHash ?? string.Empty;
                 return;
             }
 

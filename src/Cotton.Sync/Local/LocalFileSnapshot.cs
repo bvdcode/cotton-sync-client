@@ -32,5 +32,10 @@ namespace Cotton.Sync.Local
         /// Gets or sets the local last-write timestamp in UTC.
         /// </summary>
         public DateTime LastWriteUtc { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether this file is a Windows Cloud Files placeholder.
+        /// </summary>
+        public bool IsCloudFilesPlaceholder { get; set; }
     }
 }

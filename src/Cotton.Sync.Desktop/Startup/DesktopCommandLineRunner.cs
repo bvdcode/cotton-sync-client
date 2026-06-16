@@ -348,7 +348,7 @@ namespace Cotton.Sync.Desktop.Startup
             TextWriter output)
         {
             var loggerFactory = new DesktopTraceLoggerFactory();
-            var platformCommands = new LiveSmokePlatformCommandService(output);
+            var platformCommands = new LiveSmokePlatformCommandService(output, startupOptions.LiveSyncSmokeApprovalHold);
             return new DesktopShellController(
                 paths,
                 new DesktopSyncApplicationFactory(paths, loggerFactory, platformCommands),
@@ -928,7 +928,7 @@ namespace Cotton.Sync.Desktop.Startup
 
         private readonly record struct AbsentSnapshot(bool Passed, string Details);
 
-        private sealed class LiveSmokePlatformCommandService(TextWriter output) : IPlatformCommandService
+        private sealed class LiveSmokePlatformCommandService(TextWriter output, TimeSpan approvalHold) : IPlatformCommandService
         {
             public Task OpenFolderAsync(string localPath, CancellationToken cancellationToken = default)
             {
@@ -941,6 +941,15 @@ namespace Cotton.Sync.Desktop.Startup
                 cancellationToken.ThrowIfCancellationRequested();
                 await output.WriteLineAsync("Approval URL: " + url.AbsoluteUri).ConfigureAwait(false);
                 await output.WriteLineAsync("Open this URL in your browser to approve sign-in.").ConfigureAwait(false);
+                if (approvalHold > TimeSpan.Zero)
+                {
+                    await output.WriteLineAsync(
+                        "Holding "
+                        + approvalHold.TotalSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
+                        + " seconds before polling so the approval page can load.").ConfigureAwait(false);
+                    await Task.Delay(approvalHold, cancellationToken).ConfigureAwait(false);
+                }
+
                 await output.WriteLineAsync("Waiting for browser approval...").ConfigureAwait(false);
             }
         }
