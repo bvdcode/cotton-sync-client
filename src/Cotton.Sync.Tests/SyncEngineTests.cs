@@ -1182,6 +1182,39 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesRemovesLocalPlaceholderWhenRemoteIsDeleted()
+        {
+            const string relativePath = "remote-deleted-placeholder.txt";
+            WriteFile(relativePath, string.Empty);
+            LocalFileSnapshot local = LocalFile(relativePath, string.Empty);
+            NodeFileManifestDto baselineRemote = RemoteFile(relativePath, HashText("remote-content"), sizeBytes: 1024);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(local),
+                EmptyRemoteTree(),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore);
+            await InsertPlaceholderBaselineAsync(stateStore, relativePath, baselineRemote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            string[] tombstones = Directory.GetFiles(
+                Path.Combine(_root, ".cotton-sync", "deleted"),
+                "*",
+                SearchOption.AllDirectories);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.DeletedLocal }));
+                Assert.That(File.Exists(Path.Combine(_root, relativePath)), Is.False);
+                Assert.That(tombstones.Select(Path.GetFileName), Does.Contain(relativePath));
+                Assert.That(entry, Is.Null);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesDoesNotUploadRenamedRemoteOnlyPlaceholder()
         {
             NodeFileManifestDto remote = RemoteFile("placeholder-renamed.txt", HashText("remote-content"), sizeBytes: 1024);
