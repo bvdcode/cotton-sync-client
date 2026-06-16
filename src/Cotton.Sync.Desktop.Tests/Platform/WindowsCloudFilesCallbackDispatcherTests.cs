@@ -68,6 +68,30 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task QueueFetchData_ReturnsWithoutWaitingForSlowHandler()
+        {
+            var handler = new BlockingCallbackHandler();
+            using var dispatcher = new WindowsCloudFilesCallbackDispatcher(
+                handler,
+                _ => { },
+                new WindowsCloudFilesCallbackDispatcherOptions(MaxConcurrentFetches: 1, QueueCapacity: 4));
+            WindowsCloudFilesFetchDataRequest first = CreateRequest(15);
+            WindowsCloudFilesFetchDataRequest second = CreateRequest(16);
+
+            Assert.That(dispatcher.QueueFetchData(first), Is.True);
+            await handler.WaitForStartedCountAsync(1);
+
+            Task<bool> enqueue = Task.Run(() => dispatcher.QueueFetchData(second));
+
+            Assert.That(await enqueue.WaitAsync(TimeSpan.FromSeconds(1)), Is.True);
+            Assert.Multiple(() =>
+            {
+                Assert.That(dispatcher.PendingFetchCount, Is.EqualTo(2));
+                Assert.That(handler.StartedRequestKeys, Is.EqualTo(new[] { 15L }));
+            });
+        }
+
+        [Test]
         public async Task QueueFetchData_TransfersFailureWhenHandlerThrows()
         {
             var handler = new ThrowingCallbackHandler(new InvalidOperationException("download failed"));
