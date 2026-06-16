@@ -377,6 +377,12 @@ jobs:
           if (-not (Test-Path $startMenuUninstallShortcut)) {
             throw "Installed Start Menu uninstall shortcut was not found."
           }
+          $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+          $runValue = (Get-ItemProperty -Path $runKey -Name "Cotton Sync" -ErrorAction SilentlyContinue)."Cotton Sync"
+          $expectedRunValue = "`"$installedExe`" --start-minimized"
+          if ($runValue -ne $expectedRunValue) {
+            throw "Autostart registry value was not installed correctly. Expected '$expectedRunValue', got '$runValue'."
+          }
 
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-shortcut-app-id.ps1" `
             -ShortcutPath $startMenuShortcut `
@@ -395,10 +401,6 @@ jobs:
           if (-not (Test-Path $uninstaller)) {
             throw "Windows uninstaller was not found."
           }
-
-          $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
-          New-Item -Path $runKey -Force | Out-Null
-          Set-ItemProperty -Path $runKey -Name "Cotton Sync" -Value "`"$installedExe`" --start-minimized"
 
           $uninstall = Start-Process `
             -FilePath $uninstaller `
@@ -486,6 +488,12 @@ jobs:
           if (-not (Test-Path $startMenuUninstallShortcut)) {
             throw "Upgraded Start Menu uninstall shortcut was not found."
           }
+          $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+          $runValue = (Get-ItemProperty -Path $runKey -Name "Cotton Sync" -ErrorAction SilentlyContinue)."Cotton Sync"
+          $expectedRunValue = "`"$installedExe`" --start-minimized"
+          if ($runValue -ne $expectedRunValue) {
+            throw "Upgraded autostart registry value was not installed correctly. Expected '$expectedRunValue', got '$runValue'."
+          }
 
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-shortcut-app-id.ps1" `
             -ShortcutPath $startMenuShortcut `
@@ -504,10 +512,6 @@ jobs:
           if (-not (Test-Path $uninstaller)) {
             throw "Windows uninstaller was not found after upgrade."
           }
-
-          $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
-          New-Item -Path $runKey -Force | Out-Null
-          Set-ItemProperty -Path $runKey -Name "Cotton Sync" -Value "`"$installedExe`" --start-minimized"
 
           $uninstall = Start-Process `
             -FilePath $uninstaller `

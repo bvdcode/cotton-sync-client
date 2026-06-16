@@ -614,7 +614,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-diagnostics-export.ps1"));
                 Assert.That(workflow, Does.Contain("unins000.exe"));
                 Assert.That(workflow, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
-                Assert.That(workflow, Does.Contain("Set-ItemProperty -Path $runKey -Name \"Cotton Sync\""));
+                Assert.That(workflow, Does.Contain("Autostart registry value was not installed correctly."));
+                Assert.That(workflow, Does.Contain("$expectedRunValue = \"`\"$installedExe`\" --start-minimized\""));
+                Assert.That(workflow, Does.Not.Contain("Set-ItemProperty -Path $runKey -Name \"Cotton Sync\""));
                 Assert.That(workflow, Does.Contain("Installed desktop executable remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Start Menu shortcut remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Start Menu uninstall shortcut remained after uninstall."));
@@ -651,7 +653,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-diagnostics-export.ps1"));
                 Assert.That(workflow, Does.Contain("Windows uninstaller was not found after upgrade."));
                 Assert.That(workflow, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
-                Assert.That(workflow, Does.Contain("Set-ItemProperty -Path $runKey -Name \"Cotton Sync\""));
+                Assert.That(workflow, Does.Contain("Upgraded autostart registry value was not installed correctly."));
+                Assert.That(workflow, Does.Contain("$expectedRunValue = \"`\"$installedExe`\" --start-minimized\""));
+                Assert.That(workflow, Does.Not.Contain("Set-ItemProperty -Path $runKey -Name \"Cotton Sync\""));
                 Assert.That(workflow, Does.Contain("Upgraded desktop executable remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Upgraded Start Menu shortcut remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Upgraded Start Menu uninstall shortcut remained after uninstall."));
