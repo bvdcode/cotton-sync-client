@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
+using Cotton.Sync.App.SyncPairs;
+
 namespace Cotton.Sync.Desktop.Startup
 {
     internal class DesktopStartupOptions
@@ -21,7 +23,9 @@ namespace Cotton.Sync.Desktop.Startup
             string? windowsVirtualFilesSmokePhase,
             string? localRoot,
             string? secondLocalRoot,
-            string? remotePath)
+            string? remotePath,
+            SyncPairMode syncMode,
+            string? syncModeError)
         {
             ServerUrl = serverUrl;
             Username = username;
@@ -39,6 +43,8 @@ namespace Cotton.Sync.Desktop.Startup
             LocalRoot = localRoot;
             SecondLocalRoot = secondLocalRoot;
             RemotePath = remotePath;
+            SyncMode = syncMode;
+            SyncModeError = syncModeError;
         }
 
         public static DesktopStartupOptions Empty { get; } = new(
@@ -57,6 +63,8 @@ namespace Cotton.Sync.Desktop.Startup
             null,
             null,
             null,
+            null,
+            SyncPairMode.FullMirror,
             null);
 
         public Uri? ServerUrl { get; }
@@ -91,6 +99,10 @@ namespace Cotton.Sync.Desktop.Startup
 
         public string? RemotePath { get; }
 
+        public SyncPairMode SyncMode { get; }
+
+        public string? SyncModeError { get; }
+
         public static DesktopStartupOptions Parse(IReadOnlyList<string> args)
         {
             ArgumentNullException.ThrowIfNull(args);
@@ -104,6 +116,8 @@ namespace Cotton.Sync.Desktop.Startup
             string? localRoot = ReadOption(args, "--local-root");
             string? secondLocalRoot = ReadOption(args, "--second-local-root");
             string? remotePath = ReadOption(args, "--remote-path");
+            string? syncMode = ReadOption(args, "--sync-mode") ?? ReadOption(args, "--materialization-mode");
+            (SyncPairMode parsedSyncMode, string? syncModeError) = ParseSyncMode(syncMode);
             bool startMinimizedToTray = HasFlag(args, "--start-minimized")
                 || HasFlag(args, "--minimized")
                 || HasFlag(args, "--tray");
@@ -136,7 +150,9 @@ namespace Cotton.Sync.Desktop.Startup
                 NormalizeOptional(windowsVirtualFilesSmokePhase),
                 NormalizeOptional(localRoot),
                 NormalizeOptional(secondLocalRoot),
-                NormalizeOptional(remotePath));
+                NormalizeOptional(remotePath),
+                parsedSyncMode,
+                syncModeError);
         }
 
         private static bool HasFlag(IReadOnlyList<string> args, string name)
@@ -189,6 +205,23 @@ namespace Cotton.Sync.Desktop.Startup
             return Enum.TryParse(enumName, ignoreCase: true, out DesktopVisualSmokeScenario scenario)
                 ? scenario
                 : null;
+        }
+
+        private static (SyncPairMode Mode, string? Error) ParseSyncMode(string? value)
+        {
+            string? normalized = NormalizeOptional(value);
+            if (normalized is null)
+            {
+                return (SyncPairMode.FullMirror, null);
+            }
+
+            return normalized.ToLowerInvariant() switch
+            {
+                "full-mirror" or "fullmirror" or "mirror" => (SyncPairMode.FullMirror, null),
+                "windows-virtual-files" or "windowsvirtualfiles" or "virtual-files" or "vfs" =>
+                    (SyncPairMode.WindowsVirtualFiles, null),
+                _ => (SyncPairMode.FullMirror, "Unsupported sync mode: " + normalized + ". Use full-mirror or windows-virtual-files."),
+            };
         }
 
         private static TimeSpan ParseNonNegativeSeconds(string? value)

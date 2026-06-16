@@ -230,6 +230,7 @@ namespace Cotton.Sync.Desktop.Startup
                 await output.WriteLineAsync("Remote root: " + startupOptions.RemotePath).ConfigureAwait(false);
                 await output.WriteLineAsync("Local root: " + startupOptions.LocalRoot).ConfigureAwait(false);
                 await output.WriteLineAsync("Second local root: " + startupOptions.SecondLocalRoot).ConfigureAwait(false);
+                await output.WriteLineAsync("Sync mode: " + startupOptions.SyncMode).ConfigureAwait(false);
                 await output.WriteLineAsync("Data root: " + paths.DataDirectory).ConfigureAwait(false);
 
                 await output.WriteLineAsync("Approving first desktop client...").ConfigureAwait(false);
@@ -244,10 +245,10 @@ namespace Cotton.Sync.Desktop.Startup
                 secondSignedIn = true;
 
                 firstPair = await firstController.AddSyncPairAsync(
-                    new DesktopSyncPairRequest(startupOptions.LocalRoot!, startupOptions.RemotePath!),
+                    new DesktopSyncPairRequest(startupOptions.LocalRoot!, startupOptions.RemotePath!, startupOptions.SyncMode),
                     cancellationToken).ConfigureAwait(false);
                 secondPair = await secondController.AddSyncPairAsync(
-                    new DesktopSyncPairRequest(startupOptions.SecondLocalRoot!, startupOptions.RemotePath!),
+                    new DesktopSyncPairRequest(startupOptions.SecondLocalRoot!, startupOptions.RemotePath!, startupOptions.SyncMode),
                     cancellationToken).ConfigureAwait(false);
 
                 failures += await VerifyIdleAsync(
@@ -362,6 +363,11 @@ namespace Cotton.Sync.Desktop.Startup
             DesktopAppPaths paths,
             DesktopStartupOptions startupOptions)
         {
+            if (startupOptions.SyncModeError is not null)
+            {
+                return startupOptions.SyncModeError;
+            }
+
             if (startupOptions.ServerUrl is null)
             {
                 return "--live-sync-smoke requires --server or --server-url.";
