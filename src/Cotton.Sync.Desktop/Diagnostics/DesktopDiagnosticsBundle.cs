@@ -2,6 +2,7 @@
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.Desktop.Shell;
+using Cotton.Sync.Desktop.Platform;
 
 namespace Cotton.Sync.Desktop.Diagnostics
 {
@@ -12,5 +13,6 @@ namespace Cotton.Sync.Desktop.Diagnostics
         string AccountName,
         DesktopDataPathSnapshot DataPaths,
         IReadOnlyList<DesktopSyncPairSnapshot> SyncPairs,
-        IReadOnlyList<DesktopSelfTestItemSnapshot> SelfTestItems);
+        IReadOnlyList<DesktopSelfTestItemSnapshot> SelfTestItems,
+        IReadOnlyList<WindowsCloudFilesDiagnosticEvent> CloudFilesEvents);
 }

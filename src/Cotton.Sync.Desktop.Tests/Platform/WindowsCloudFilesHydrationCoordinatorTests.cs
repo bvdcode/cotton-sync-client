@@ -60,10 +60,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             byte[] expectedContent = Encoding.UTF8.GetBytes("expected");
             var provider = new FakeContentProvider(Encoding.UTF8.GetBytes("mismatch"));
             var nativeApi = new FakeCloudFilesNativeApi();
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory, diagnostics);
             WindowsCloudFilesFetchDataRequest request = CreateFetchRequest(expectedContent, offset: 0, length: expectedContent.Length);
 
             await coordinator.HandleFetchDataAsync(request);
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
 
             Assert.Multiple(() =>
             {
@@ -72,6 +74,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(nativeApi.Transfers[0].CompletionStatus, Is.EqualTo(WindowsCloudFilesTransferData.StatusUnsuccessful));
                 Assert.That(nativeApi.Transfers[0].Offset, Is.EqualTo(0));
                 Assert.That(nativeApi.Transfers[0].Length, Is.EqualTo(expectedContent.Length));
+                Assert.That(diagnostic.Operation, Is.EqualTo("hydrate"));
+                Assert.That(diagnostic.Status, Is.EqualTo("failed"));
+                Assert.That(diagnostic.RelativePath, Is.EqualTo("remote-only.txt"));
+                Assert.That(diagnostic.Details, Does.Contain("hash"));
             });
         }
 
