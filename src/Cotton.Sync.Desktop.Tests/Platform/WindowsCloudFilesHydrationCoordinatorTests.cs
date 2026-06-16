@@ -756,6 +756,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 Dehydrates.Add(dehydrate with { FileIdentity = dehydrate.FileIdentity.ToArray() });
             }
+
+            public void DehydratePlaceholder(string filePath)
+            {
+                throw new NotSupportedException();
+            }
         }
     }
 }

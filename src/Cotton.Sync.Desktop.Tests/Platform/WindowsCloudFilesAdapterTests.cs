@@ -417,6 +417,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 Dehydrates.Add(dehydrate);
             }
+
+            public void DehydratePlaceholder(string filePath)
+            {
+                throw new NotSupportedException();
+            }
         }
 
         private sealed class RecordingCallbackHandler : IWindowsCloudFilesCallbackHandler

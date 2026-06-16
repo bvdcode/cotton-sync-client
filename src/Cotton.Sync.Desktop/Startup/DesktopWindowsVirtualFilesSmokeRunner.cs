@@ -150,6 +150,34 @@ namespace Cotton.Sync.Desktop.Startup
                     await output.WriteLineAsync(FormatCheck(false, "Opening the placeholder did not trigger a Cloud Files fetch callback."))
                         .ConfigureAwait(false);
                 }
+
+                if (nativeApi is not null)
+                {
+                    int downloadsBeforeDehydrate = contentProvider.DownloadCount;
+                    nativeApi.DehydratePlaceholder(placeholderPath);
+                    FileAttributes dehydratedAttributes = File.GetAttributes(placeholderPath);
+                    if (HasRecallOnDataAccess(dehydratedAttributes)
+                        && contentProvider.DownloadCount == downloadsBeforeDehydrate)
+                    {
+                        await output.WriteLineAsync(
+                            FormatCheck(true, "Dehydrating the hydrated placeholder freed local content without remote transfer.")
+                            + " attributes=" + FormatAttributes(dehydratedAttributes)
+                            + ", downloads=" + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                            .ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        failures++;
+                        await output.WriteLineAsync(
+                            FormatCheck(false, "Dehydrating the hydrated placeholder did not return it to online-only state.")
+                            + " attributes=" + FormatAttributes(dehydratedAttributes)
+                            + ", downloadsBefore="
+                            + downloadsBeforeDehydrate.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                            + ", downloadsAfter="
+                            + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                            .ConfigureAwait(false);
+                    }
+                }
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -378,6 +406,12 @@ namespace Cotton.Sync.Desktop.Startup
                 + " (raw=0x"
                 + ((int)attributes).ToString("X", System.Globalization.CultureInfo.InvariantCulture)
                 + ")";
+        }
+
+        private static bool HasRecallOnDataAccess(FileAttributes attributes)
+        {
+            const int RecallOnDataAccess = 0x00400000;
+            return (((int)attributes) & RecallOnDataAccess) == RecallOnDataAccess;
         }
 
         private static void AddKnownCloudFilesAttribute(

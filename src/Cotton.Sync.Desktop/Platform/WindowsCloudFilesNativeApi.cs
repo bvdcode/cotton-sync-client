@@ -209,6 +209,30 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
+        public void DehydratePlaceholder(string filePath)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+            int openResult = CfOpenFileWithOplock(
+                filePath,
+                CfOpenFileFlags.Exclusive,
+                out IntPtr protectedHandle);
+            ThrowIfFailed(openResult, nameof(CfOpenFileWithOplock));
+            try
+            {
+                int dehydrateResult = CfDehydratePlaceholder(
+                    protectedHandle,
+                    0,
+                    -1,
+                    CfDehydrateFlags.None,
+                    IntPtr.Zero);
+                ThrowIfFailed(dehydrateResult, nameof(CfDehydratePlaceholder));
+            }
+            finally
+            {
+                CfCloseHandle(protectedHandle);
+            }
+        }
+
 
         private static void ThrowIfFailed(int hresult, string operation)
         {
@@ -257,6 +281,23 @@ namespace Cotton.Sync.Desktop.Platform
             ref CfOperationInfo OpInfo,
             ref CfOperationAckDehydrateParameters OpParams);
 
+        [DllImport("CldApi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+        private static extern int CfOpenFileWithOplock(
+            string FilePath,
+            CfOpenFileFlags Flags,
+            out IntPtr ProtectedHandle);
+
+        [DllImport("CldApi.dll", ExactSpelling = true)]
+        private static extern int CfDehydratePlaceholder(
+            IntPtr FileHandle,
+            long StartingOffset,
+            long Length,
+            CfDehydrateFlags DehydrateFlags,
+            IntPtr Overlapped);
+
+        [DllImport("CldApi.dll", ExactSpelling = true)]
+        private static extern void CfCloseHandle(IntPtr FileHandle);
+
         [StructLayout(LayoutKind.Sequential)]
         private struct CfSyncRegistration
         {
@@ -299,7 +340,9 @@ namespace Cotton.Sync.Desktop.Platform
                 return new CfSyncPolicies
                 {
                     StructSize = (uint)Marshal.SizeOf<CfSyncPolicies>(),
-                    Hydration = new CfHydrationPolicy(CfHydrationPolicyPrimary.Full, modifier: 0),
+                    Hydration = new CfHydrationPolicy(
+                        CfHydrationPolicyPrimary.Full,
+                        (ushort)CfHydrationPolicyModifier.AutoDehydrationAllowed),
                     Population = new CfPopulationPolicy(CfPopulationPolicyPrimary.AlwaysFull, modifier: 0),
                     InSync = CfInSyncPolicy.TrackAll,
                     HardLink = CfHardLinkPolicy.None,
@@ -419,6 +462,12 @@ namespace Cotton.Sync.Desktop.Platform
             Full = 2,
         }
 
+        [Flags]
+        private enum CfHydrationPolicyModifier : ushort
+        {
+            AutoDehydrationAllowed = 0x0004,
+        }
+
         private enum CfPopulationPolicyPrimary : ushort
         {
             AlwaysFull = 3,
@@ -454,6 +503,18 @@ namespace Cotton.Sync.Desktop.Platform
 
         [Flags]
         private enum CfConnectFlags : uint
+        {
+            None = 0x00000000,
+        }
+
+        [Flags]
+        private enum CfOpenFileFlags : uint
+        {
+            Exclusive = 0x00000001,
+        }
+
+        [Flags]
+        private enum CfDehydrateFlags : uint
         {
             None = 0x00000000,
         }
