@@ -8,6 +8,7 @@ using Cotton.Sync.Local;
 using Cotton.Sync.Remote;
 using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -139,6 +140,44 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(appProgress.TransferredBytes, Is.EqualTo(4));
                 Assert.That(appProgress.TotalBytes, Is.EqualTo(16));
                 Assert.That(appProgress.IsCompleted, Is.False);
+            });
+        }
+
+        [Test]
+        public async Task QueueFetchData_StartsDeepTreeHydrationWithoutSyncTreeWork()
+        {
+            byte[] content = Encoding.UTF8.GetBytes("small");
+            var provider = new BlockingStartContentProvider(content);
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
+            using var dispatcher = new WindowsCloudFilesCallbackDispatcher(
+                coordinator,
+                nativeApi.TransferData,
+                new WindowsCloudFilesCallbackDispatcherOptions(MaxConcurrentFetches: 1, QueueCapacity: 4));
+            WindowsCloudFilesFetchDataRequest request = CreateFetchRequest(
+                content,
+                offset: 0,
+                length: content.Length,
+                requestKey: 100_000,
+                relativePath: "HugeTree/099/file-099999.txt");
+
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            bool accepted = dispatcher.QueueFetchData(request);
+            WindowsCloudFilesPlaceholderIdentity startedIdentity =
+                await provider.Started.Task.WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+            stopwatch.Stop();
+
+            provider.Release();
+            await WaitUntilAsync(() => nativeApi.Transfers.Count == 1).ConfigureAwait(false);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(accepted, Is.True);
+                Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(1)));
+                Assert.That(startedIdentity.RelativePath, Is.EqualTo("HugeTree/099/file-099999.txt"));
+                Assert.That(nativeApi.Transfers[0].RequestKey, Is.EqualTo(request.RequestKey));
+                Assert.That(nativeApi.Transfers[0].CompletionStatus, Is.EqualTo(WindowsCloudFilesTransferData.StatusSuccess));
+                Assert.That(Encoding.UTF8.GetString(nativeApi.Transfers[0].Buffer), Is.EqualTo("small"));
             });
         }
 
@@ -347,9 +386,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             byte[] content,
             long offset,
             long length,
-            long requestKey = 3)
+            long requestKey = 3,
+            string relativePath = "remote-only.txt")
         {
-            RemoteFilePlaceholderRequest placeholder = CreatePlaceholderRequest(content);
+            RemoteFilePlaceholderRequest placeholder = CreatePlaceholderRequest(content, relativePath);
             string normalizedPath = SyncPath.Normalize(placeholder.RelativePath);
             byte[] identity = WindowsCloudFilesPlaceholderIdentity
                 .Create(placeholder, normalizedPath)
@@ -365,7 +405,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 length,
                 offset,
                 length,
-                @"\Device\HarddiskVolume1\Cotton\remote-only.txt",
+                @"\Device\HarddiskVolume1\Cotton\" + normalizedPath.Replace('/', '\\'),
                 10);
         }
 
@@ -387,13 +427,15 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 IsBackground: false);
         }
 
-        private static RemoteFilePlaceholderRequest CreatePlaceholderRequest(byte[] content)
+        private static RemoteFilePlaceholderRequest CreatePlaceholderRequest(
+            byte[] content,
+            string relativePath = "remote-only.txt")
         {
             return new RemoteFilePlaceholderRequest(
                 "11111111-1111-1111-1111-111111111111",
                 @"S:\CottonSync",
                 Guid.Parse("22222222-2222-2222-2222-222222222222"),
-                "remote-only.txt",
+                relativePath,
                 new NodeFileManifestDto
                 {
                     Id = Guid.Parse("33333333-3333-3333-3333-333333333333"),
@@ -401,7 +443,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     FileManifestId = Guid.Parse("55555555-5555-5555-5555-555555555555"),
                     OriginalNodeFileId = Guid.Parse("66666666-6666-6666-6666-666666666666"),
                     OwnerId = Guid.Parse("77777777-7777-7777-7777-777777777777"),
-                    Name = "remote-only.txt",
+                    Name = Path.GetFileName(relativePath),
                     ContentType = "text/plain",
                     SizeBytes = content.Length,
                     ContentHash = Convert.ToHexStringLower(SHA256.HashData(content)),
@@ -410,6 +452,15 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     UpdatedAt = new DateTime(2026, 06, 16, 10, 05, 00, DateTimeKind.Utc),
                     Metadata = new Dictionary<string, string>(),
                 });
+        }
+
+        private static async Task WaitUntilAsync(Func<bool> condition)
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (!condition())
+            {
+                await Task.Delay(10, timeout.Token).ConfigureAwait(false);
+            }
         }
 
         private sealed class FakeContentProvider : IWindowsCloudFilesRemoteContentProvider
@@ -467,6 +518,37 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     transferredBytes: _content.Length,
                     totalBytes: identity.SizeBytes,
                     isCompleted: true));
+            }
+        }
+
+        private sealed class BlockingStartContentProvider : IWindowsCloudFilesRemoteContentProvider
+        {
+            private readonly byte[] _content;
+            private readonly TaskCompletionSource _release =
+                new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            public BlockingStartContentProvider(byte[] content)
+            {
+                _content = content;
+            }
+
+            public TaskCompletionSource<WindowsCloudFilesPlaceholderIdentity> Started { get; } =
+                new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            public void Release()
+            {
+                _release.TrySetResult();
+            }
+
+            public async Task DownloadAsync(
+                WindowsCloudFilesPlaceholderIdentity identity,
+                Stream destination,
+                IProgress<SyncTransferProgress>? transferProgress = null,
+                CancellationToken cancellationToken = default)
+            {
+                Started.TrySetResult(identity);
+                await _release.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                await destination.WriteAsync(_content, cancellationToken).ConfigureAwait(false);
             }
         }
 
