@@ -108,6 +108,54 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public async Task LoadAsync_RestoresSignedInSessionAfterControllerRelaunch()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            Uri serverUrl = new("https://cotton.example.test/");
+            var tokenStore = new FakeCottonTokenStore(hasStoredTokens: false);
+            FakeDesktopApplicationHost signedInHost = FakeDesktopApplicationHost.Create(serverUrl, tokenStore);
+            FakeDesktopApplicationHost restoredHost = FakeDesktopApplicationHost.Create(serverUrl, tokenStore);
+            signedInHost.App.PreferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            var factory = new QueueingDesktopSyncApplicationFactory(signedInHost.Host, restoredHost.Host);
+
+            await using (DesktopShellController signedInController = CreateController(paths, factory))
+            {
+                AuthSession session = await signedInController.SignInAsync(new DesktopSignInRequest(
+                    serverUrl.AbsoluteUri,
+                    " desktop@example.test ",
+                    "password",
+                    null));
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(session.Email, Is.EqualTo("desktop@example.test"));
+                    Assert.That(tokenStore.SaveAsyncCalls, Is.EqualTo(1));
+                    Assert.That(signedInHost.App.StartSyncCalls, Is.EqualTo(1));
+                });
+
+                await signedInController.DisposeAsync();
+            }
+
+            await using DesktopShellController restoredController = CreateController(paths, factory);
+
+            DesktopShellSnapshot snapshot = await restoredController.LoadAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(snapshot.ServerUrl, Is.EqualTo(serverUrl));
+                Assert.That(snapshot.IsSignedIn, Is.True);
+                Assert.That(snapshot.AccountName, Is.EqualTo("restored@example.test"));
+                Assert.That(snapshot.RememberedUsername, Is.EqualTo("desktop@example.test"));
+                Assert.That(snapshot.StartupErrorMessage, Is.Null);
+                Assert.That(factory.CreatedServerUrls, Is.EqualTo(new[] { serverUrl, serverUrl }));
+                Assert.That(signedInHost.App.StopSyncCalls, Is.EqualTo(1));
+                Assert.That(signedInHost.AsyncResource.DisposeAsyncCalls, Is.EqualTo(1));
+                Assert.That(restoredHost.App.RestoreSessionCalls, Is.EqualTo(1));
+                Assert.That(tokenStore.ClearAsyncCalls, Is.Zero);
+            });
+        }
+
+        [Test]
         public void HostDispose_DisposesAsyncResource()
         {
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(new Uri("https://cotton.example.test/"));
@@ -819,13 +867,13 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
         private class FakeDesktopApplicationHost
         {
-            private FakeDesktopApplicationHost(Uri serverUrl)
+            private FakeDesktopApplicationHost(Uri serverUrl, FakeCottonTokenStore? tokenStore)
             {
-                App = new FakeSyncApplicationService();
+                TokenStore = tokenStore ?? new FakeCottonTokenStore();
+                App = new FakeSyncApplicationService(TokenStore);
                 AsyncResource = new FakeAsyncResource();
                 StatusPublisher = new InMemoryAppStatusPublisher();
                 SessionRevocationPublisher = new InMemorySessionRevocationPublisher();
-                TokenStore = new FakeCottonTokenStore();
                 Host = new DesktopSyncApplicationHost(
                     App,
                     new FakeRemoteRootResolver(),
@@ -854,9 +902,9 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             public DesktopSyncApplicationHost Host { get; }
 
-            public static FakeDesktopApplicationHost Create(Uri serverUrl)
+            public static FakeDesktopApplicationHost Create(Uri serverUrl, FakeCottonTokenStore? tokenStore = null)
             {
-                return new FakeDesktopApplicationHost(serverUrl);
+                return new FakeDesktopApplicationHost(serverUrl, tokenStore);
             }
         }
 
@@ -880,6 +928,13 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
         private class FakeSyncApplicationService : ISyncApplicationService
         {
+            private readonly ICottonTokenStore _tokenStore;
+
+            public FakeSyncApplicationService(ICottonTokenStore tokenStore)
+            {
+                _tokenStore = tokenStore;
+            }
+
             public int RestoreSessionCalls { get; private set; }
 
             public int StopSyncCalls { get; private set; }
@@ -902,18 +957,23 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             public Queue<Exception> RestoreSessionExceptions { get; } = [];
 
-            public Task<AuthSession> SignInAsync(
+            public IAppPreferencesStore? PreferencesStore { get; set; }
+
+            public async Task<AuthSession> SignInAsync(
                 PasswordSignInRequest request,
                 CancellationToken cancellationToken = default)
             {
-                return Task.FromResult(CreateSession(request.Username));
+                await _tokenStore.SaveAsync(CreateTokenPair(request.Username), cancellationToken);
+                return CreateSession(request.Username);
             }
 
-            public Task<AuthSession> SignInWithBrowserAsync(
+            public async Task<AuthSession> SignInWithBrowserAsync(
                 AppCodeBrowserSignInRequest request,
                 CancellationToken cancellationToken = default)
             {
-                return Task.FromResult(CreateSession(request.DeviceName ?? "browser"));
+                string username = request.DeviceName ?? "browser";
+                await _tokenStore.SaveAsync(CreateTokenPair(username), cancellationToken);
+                return CreateSession(username);
             }
 
             public Task<AuthSession> RestoreSessionAsync(CancellationToken cancellationToken = default)
@@ -942,9 +1002,15 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 return Task.FromResult(new AppPreferences());
             }
 
-            public Task SavePreferencesAsync(AppPreferences preferences, CancellationToken cancellationToken = default)
+            public async Task SavePreferencesAsync(AppPreferences preferences, CancellationToken cancellationToken = default)
             {
-                return Task.CompletedTask;
+                if (PreferencesStore is null)
+                {
+                    return;
+                }
+
+                await PreferencesStore.InitializeAsync(cancellationToken);
+                await PreferencesStore.SaveAsync(preferences, cancellationToken);
             }
 
             public Task<IReadOnlyList<SyncPairSettings>> ListSyncPairsAsync(CancellationToken cancellationToken = default)
@@ -1033,28 +1099,55 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             private static AuthSession CreateSession(string username)
             {
-                return new AuthSession(Guid.NewGuid(), username, username + "@example.test", isTotpEnabled: false);
+                string normalized = username.Trim();
+                string email = normalized.Contains('@', StringComparison.Ordinal)
+                    ? normalized
+                    : normalized + "@example.test";
+                return new AuthSession(Guid.NewGuid(), normalized, email, isTotpEnabled: false);
+            }
+
+            private static TokenPairDto CreateTokenPair(string username)
+            {
+                string normalized = username.Trim();
+                return new TokenPairDto
+                {
+                    AccessToken = "access-token-" + normalized,
+                    RefreshToken = "refresh-token-" + normalized,
+                };
             }
         }
 
         private class FakeCottonTokenStore : ICottonTokenStore
         {
-            private TokenPairDto? _tokens = new()
+            private TokenPairDto? _tokens;
+
+            public FakeCottonTokenStore(bool hasStoredTokens = true)
             {
-                AccessToken = "access-token",
-                RefreshToken = "refresh-token",
-            };
+                _tokens = hasStoredTokens
+                    ? new TokenPairDto
+                    {
+                        AccessToken = "access-token",
+                        RefreshToken = "refresh-token",
+                    }
+                    : null;
+            }
+
+            public int SaveAsyncCalls { get; private set; }
+
+            public TokenPairDto? LastSavedTokens { get; private set; }
 
             public int ClearAsyncCalls { get; private set; }
 
             public Task<TokenPairDto?> GetAsync(CancellationToken cancellationToken = default)
             {
-                return Task.FromResult(_tokens);
+                return Task.FromResult(_tokens is null ? null : Clone(_tokens));
             }
 
             public Task SaveAsync(TokenPairDto tokens, CancellationToken cancellationToken = default)
             {
-                _tokens = tokens;
+                SaveAsyncCalls++;
+                _tokens = Clone(tokens);
+                LastSavedTokens = Clone(tokens);
                 return Task.CompletedTask;
             }
 
@@ -1063,6 +1156,15 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 ClearAsyncCalls++;
                 _tokens = null;
                 return Task.CompletedTask;
+            }
+
+            private static TokenPairDto Clone(TokenPairDto tokens)
+            {
+                return new TokenPairDto
+                {
+                    AccessToken = tokens.AccessToken,
+                    RefreshToken = tokens.RefreshToken,
+                };
             }
         }
 
