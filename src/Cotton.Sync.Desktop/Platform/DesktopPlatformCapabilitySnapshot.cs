@@ -9,5 +9,7 @@ namespace Cotton.Sync.Desktop.Platform
         string CurrentDesktop,
         bool IsAutostartSupported,
         bool IsTrayLifecycleSupported,
-        string TrayLifecycleDetails);
+        string TrayLifecycleDetails,
+        bool IsWindowsVirtualFilesSupported,
+        string WindowsVirtualFilesDetails);
 }

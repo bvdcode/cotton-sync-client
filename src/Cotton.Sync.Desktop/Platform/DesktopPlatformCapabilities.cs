@@ -3,6 +3,8 @@
 
 namespace Cotton.Sync.Desktop.Platform
 {
+    using Cotton.Sync.App.SyncPairs;
+
     internal static class DesktopPlatformCapabilities
     {
         public static bool IsAutostartSupported => OperatingSystem.IsWindows() || OperatingSystem.IsLinux();
@@ -11,13 +13,16 @@ namespace Cotton.Sync.Desktop.Platform
 
         public static DesktopPlatformCapabilitySnapshot CreateSnapshot()
         {
+            SyncPairModeCapabilitySnapshot syncPairModes = DesktopCloudFilesCapabilities.CreateSyncPairModeCapabilities();
             return new DesktopPlatformCapabilitySnapshot(
                 ResolveOperatingSystemName(),
                 NormalizeEnvironmentValue(Environment.GetEnvironmentVariable("XDG_SESSION_TYPE")),
                 NormalizeEnvironmentValue(Environment.GetEnvironmentVariable("XDG_CURRENT_DESKTOP")),
                 IsAutostartSupported,
                 IsTrayLifecycleSupported,
-                ResolveTrayLifecycleDetails());
+                ResolveTrayLifecycleDetails(),
+                syncPairModes.IsWindowsVirtualFilesSupported,
+                syncPairModes.WindowsVirtualFilesDetails);
         }
 
         private static string ResolveOperatingSystemName()
