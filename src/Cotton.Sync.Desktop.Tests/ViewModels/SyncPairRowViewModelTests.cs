@@ -2,6 +2,7 @@
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.Desktop.ViewModels;
+using Cotton.Sync.App.SyncPairs;
 
 namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
@@ -54,6 +55,18 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(row.DisplayStatus, Is.EqualTo("Error"));
                 Assert.That(row.IsStatusAttention, Is.True);
             });
+        }
+
+        [Test]
+        public void ModeLabel_DescribesMaterializationMode()
+        {
+            var row = new SyncPairRowViewModel();
+
+            Assert.That(row.ModeLabel, Is.EqualTo("Full mirror"));
+
+            row.Mode = SyncPairMode.WindowsVirtualFiles;
+
+            Assert.That(row.ModeLabel, Is.EqualTo("Windows virtual files"));
         }
     }
 }
