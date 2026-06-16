@@ -343,6 +343,88 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithScopedWindowsVirtualFilesRemoteOnlyPlaceholderChurnDoesNotRequireAction()
+        {
+            const string relativePath = "remote-only.txt";
+            NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote-content"), sizeBytes: 1024);
+            var scanner = new LocalFileScanner();
+            var crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(remote));
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            var engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore, remoteFilePlaceholderWriter: placeholderWriter);
+            await InsertPlaceholderBaselineAsync(stateStore, relativePath, remote);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { Scope = SyncRunScope.ForLocalChangedPaths([relativePath]) });
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.Activities, Is.Empty);
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(placeholderWriter.Requests, Is.Empty);
+                Assert.That(crawler.PathCrawlCalls, Is.EqualTo(1));
+                Assert.That(crawler.FullCrawlCalls, Is.Zero);
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithScopedWindowsVirtualFilesHydratedEditUploadsNormally()
+        {
+            const string relativePath = "hydrated-edited.txt";
+            string oldHash = HashText("old-content");
+            WriteFile(relativePath, "local-new-content");
+            NodeFileManifestDto remote = RemoteFile(relativePath, oldHash, sizeBytes: Encoding.UTF8.GetByteCount("old-content"));
+            var scanner = new LocalFileScanner();
+            var crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(remote));
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            var engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore);
+            await stateStore.InitializeAsync();
+            await stateStore.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = relativePath,
+                Kind = SyncEntryKind.File,
+                LocalContentHash = oldHash,
+                LocalLastWriteUtc = new DateTime(2026, 6, 2, 13, 0, 0, DateTimeKind.Utc),
+                LocalSizeBytes = Encoding.UTF8.GetByteCount("old-content"),
+                RemoteNodeId = remote.NodeId,
+                RemoteFileId = remote.Id,
+                RemoteSizeBytes = remote.SizeBytes,
+                RemoteContentHash = remote.ContentHash,
+                RemoteETag = remote.ETag,
+                PlaceholderIdentity = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E],
+                PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated,
+                SyncedAtUtc = new DateTime(2026, 6, 2, 13, 1, 0, DateTimeKind.Utc),
+            });
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { Scope = SyncRunScope.ForLocalChangedPaths([relativePath]) });
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+                Assert.That(remoteFiles.Uploads, Has.Count.EqualTo(1));
+                Assert.That(remoteFiles.Uploads[0].RelativePath, Is.EqualTo(relativePath));
+                Assert.That(remoteFiles.Uploads[0].ExistingRemoteFile?.Id, Is.EqualTo(remote.Id));
+                Assert.That(crawler.PathCrawlCalls, Is.EqualTo(1));
+                Assert.That(crawler.FullCrawlCalls, Is.Zero);
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(HashText("local-new-content")));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(HashText("local-new-content")));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_MovesRemoteFileWhenLocalPathChangesWithoutContentChange()
         {
             string oldPath = "Project/old-name.txt";

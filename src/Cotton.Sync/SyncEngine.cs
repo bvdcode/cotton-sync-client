@@ -928,6 +928,11 @@ namespace Cotton.Sync
                     return;
                 }
 
+                if (!options.Scope.IsFull)
+                {
+                    return;
+                }
+
                 Report(
                     result,
                     options,
