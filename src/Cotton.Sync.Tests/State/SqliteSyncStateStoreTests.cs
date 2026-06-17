@@ -81,6 +81,51 @@ namespace Cotton.Sync.Tests.State
         }
 
         [Test]
+        public async Task UpsertManyAsync_InsertsAndUpdatesEntriesInOneBatch()
+        {
+            var store = CreateStore();
+            await store.InitializeAsync();
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "existing.txt",
+                Kind = SyncEntryKind.File,
+                RemoteContentHash = "old-hash",
+                RemoteSizeBytes = 1,
+            });
+
+            await store.UpsertManyAsync(
+                [
+                    new SyncStateEntry
+                    {
+                        SyncPairId = "pair-a",
+                        RelativePath = "existing.txt",
+                        Kind = SyncEntryKind.File,
+                        RemoteContentHash = "new-hash",
+                        RemoteSizeBytes = 2,
+                    },
+                    new SyncStateEntry
+                    {
+                        SyncPairId = "pair-a",
+                        RelativePath = "new.txt",
+                        Kind = SyncEntryKind.File,
+                        RemoteContentHash = "new-file-hash",
+                        RemoteSizeBytes = 3,
+                    },
+                ]);
+
+            IReadOnlyList<SyncStateEntry> entries = await store.LoadPairAsync("pair-a");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(entries, Has.Count.EqualTo(2));
+                Assert.That(entries.Single(entry => entry.RelativePath == "existing.txt").RemoteContentHash, Is.EqualTo("new-hash"));
+                Assert.That(entries.Single(entry => entry.RelativePath == "existing.txt").RemoteSizeBytes, Is.EqualTo(2));
+                Assert.That(entries.Single(entry => entry.RelativePath == "new.txt").RemoteContentHash, Is.EqualTo("new-file-hash"));
+            });
+        }
+
+        [Test]
         public async Task GetChangeCursorAsync_ReturnsDefaultCursorForNewPair()
         {
             var store = CreateStore();
