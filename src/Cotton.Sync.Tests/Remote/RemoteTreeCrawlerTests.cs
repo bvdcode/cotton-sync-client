@@ -249,6 +249,54 @@ namespace Cotton.Sync.Tests.Remote
             });
         }
 
+        [Test]
+        public async Task CrawlStreamingAsync_WalksIndependentBranchesConcurrently()
+        {
+            Guid rootId = Guid.NewGuid();
+            Guid docsId = Guid.NewGuid();
+            Guid photosId = Guid.NewGuid();
+            Guid videosId = Guid.NewGuid();
+            var client = new FakeNodeClient
+            {
+                GetChildrenDelay = TimeSpan.FromMilliseconds(50),
+            };
+            client.Nodes[rootId] = Node(rootId, null, "root");
+            client.Nodes[docsId] = Node(docsId, rootId, "Docs");
+            client.Nodes[photosId] = Node(photosId, rootId, "Photos");
+            client.Nodes[videosId] = Node(videosId, rootId, "Videos");
+            client.Children[(rootId, 1)] = new NodeContentDto
+            {
+                TotalCount = 3,
+                Nodes = [client.Nodes[docsId], client.Nodes[photosId], client.Nodes[videosId]],
+            };
+            client.Children[(docsId, 1)] = new NodeContentDto
+            {
+                TotalCount = 1,
+                Files = [File(docsId, "report.txt")],
+            };
+            client.Children[(photosId, 1)] = new NodeContentDto
+            {
+                TotalCount = 1,
+                Files = [File(photosId, "photo.jpg")],
+            };
+            client.Children[(videosId, 1)] = new NodeContentDto
+            {
+                TotalCount = 1,
+                Files = [File(videosId, "clip.mp4")],
+            };
+            var crawler = new RemoteTreeCrawler(client, pageSize: 1, streamingConcurrency: 3);
+            var sink = new RecordingStreamSink();
+
+            await crawler.CrawlStreamingAsync(rootId, sink, progress: null);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(sink.Directories.Select(directory => directory.RelativePath), Is.EquivalentTo(new[] { "Docs", "Photos", "Videos" }));
+                Assert.That(sink.Files.Select(file => file.RelativePath), Is.EquivalentTo(new[] { "Docs/report.txt", "Photos/photo.jpg", "Videos/clip.mp4" }));
+                Assert.That(client.MaxConcurrentGetChildrenCalls, Is.GreaterThan(1));
+            });
+        }
+
         private static NodeDto Node(Guid id, Guid? parentId, string name)
         {
             return new NodeDto
@@ -280,11 +328,18 @@ namespace Cotton.Sync.Tests.Remote
 
         private class FakeNodeClient : ICottonNodeClient
         {
+            private readonly object _sync = new();
+            private int _activeGetChildrenCalls;
+
             public Dictionary<Guid, NodeDto> Nodes { get; } = [];
 
             public Dictionary<(Guid NodeId, int Page), NodeContentDto> Children { get; } = [];
 
             public List<(Guid NodeId, int Page)> GetChildrenCalls { get; } = [];
+
+            public TimeSpan GetChildrenDelay { get; set; }
+
+            public int MaxConcurrentGetChildrenCalls { get; private set; }
 
             public Task<NodeDto> ResolveAsync(string? path = null, CancellationToken cancellationToken = default)
             {
@@ -296,17 +351,34 @@ namespace Cotton.Sync.Tests.Remote
                 return Task.FromResult(Nodes[nodeId]);
             }
 
-            public Task<NodeContentDto> GetChildrenAsync(
+            public async Task<NodeContentDto> GetChildrenAsync(
                 Guid nodeId,
                 int page = 1,
                 int pageSize = 100,
                 int depth = 0,
                 CancellationToken cancellationToken = default)
             {
-                GetChildrenCalls.Add((nodeId, page));
-                return Task.FromResult(Children.TryGetValue((nodeId, page), out NodeContentDto? content)
-                    ? content
-                    : new NodeContentDto { TotalCount = 0 });
+                int active = Interlocked.Increment(ref _activeGetChildrenCalls);
+                try
+                {
+                    if (GetChildrenDelay > TimeSpan.Zero)
+                    {
+                        await Task.Delay(GetChildrenDelay, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    lock (_sync)
+                    {
+                        MaxConcurrentGetChildrenCalls = Math.Max(MaxConcurrentGetChildrenCalls, active);
+                        GetChildrenCalls.Add((nodeId, page));
+                        return Children.TryGetValue((nodeId, page), out NodeContentDto? content)
+                            ? content
+                            : new NodeContentDto { TotalCount = 0 };
+                    }
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _activeGetChildrenCalls);
+                }
             }
 
             public Task<NodeDto> CreateAsync(Guid parentId, string name, CancellationToken cancellationToken = default)
@@ -352,6 +424,35 @@ namespace Cotton.Sync.Tests.Remote
             public void Report(T value)
             {
                 Values.Add(value);
+            }
+        }
+
+        private sealed class RecordingStreamSink : IRemoteTreeStreamSink
+        {
+            private readonly object _sync = new();
+
+            public List<RemoteDirectorySnapshot> Directories { get; } = [];
+
+            public List<RemoteFileSnapshot> Files { get; } = [];
+
+            public ValueTask AddDirectoryAsync(RemoteDirectorySnapshot directory, CancellationToken cancellationToken = default)
+            {
+                lock (_sync)
+                {
+                    Directories.Add(directory);
+                }
+
+                return ValueTask.CompletedTask;
+            }
+
+            public ValueTask AddFileAsync(RemoteFileSnapshot file, CancellationToken cancellationToken = default)
+            {
+                lock (_sync)
+                {
+                    Files.Add(file);
+                }
+
+                return ValueTask.CompletedTask;
             }
         }
     }

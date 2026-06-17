@@ -6,6 +6,7 @@ using Cotton.Nodes;
 using Cotton.Sdk.Nodes;
 using Cotton.Sync;
 using Cotton.Sync.State;
+using System.Threading.Channels;
 
 namespace Cotton.Sync.Remote
 {
@@ -14,20 +15,27 @@ namespace Cotton.Sync.Remote
     /// </summary>
     public class RemoteTreeCrawler : IRemoteTreeLookupCrawler, IRemotePathLookupCrawler, IRemoteTreeStreamingCrawler
     {
-        private const int DefaultPageSize = 100;
+        private const int DefaultPageSize = 500;
+        private const int DefaultStreamingConcurrency = 8;
         private const int ProgressReportItemInterval = 100;
         private readonly ICottonNodeClient _nodes;
         private readonly int _pageSize;
+        private readonly int _streamingConcurrency;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="RemoteTreeCrawler" /> class.
         /// </summary>
-        public RemoteTreeCrawler(ICottonNodeClient nodes, int pageSize = DefaultPageSize)
+        public RemoteTreeCrawler(
+            ICottonNodeClient nodes,
+            int pageSize = DefaultPageSize,
+            int streamingConcurrency = DefaultStreamingConcurrency)
         {
             ArgumentNullException.ThrowIfNull(nodes);
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(pageSize);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(streamingConcurrency);
             _nodes = nodes;
             _pageSize = pageSize;
+            _streamingConcurrency = streamingConcurrency;
         }
 
         /// <inheritdoc />
@@ -248,78 +256,158 @@ namespace Cotton.Sync.Remote
             string rootRelativePath = "")
         {
             NodeDto root = await _nodes.GetAsync(rootNodeId, cancellationToken).ConfigureAwait(false);
-            var pending = new Stack<RemoteCrawlFrame>();
-            pending.Push(new RemoteCrawlFrame(root, rootRelativePath, Page: 1, Loaded: 0));
+            var pending = Channel.CreateUnbounded<RemoteCrawlFrame>(
+                new UnboundedChannelOptions
+                {
+                    SingleReader = false,
+                    SingleWriter = false,
+                });
+            int pendingFrames = 0;
             int directoriesScanned = 0;
             int filesScanned = 0;
             progress?.Report(new RemoteTreeScanProgress(filesScanned, directoriesScanned, currentPath: null));
 
-            while (pending.Count > 0)
+            async ValueTask EnqueueFrameAsync(RemoteCrawlFrame frame)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                RemoteCrawlFrame frame = pending.Pop();
-                NodeContentDto children = await _nodes.GetChildrenAsync(
-                    frame.Node.Id,
-                    frame.Page,
-                    _pageSize,
-                    depth: 0,
-                    cancellationToken).ConfigureAwait(false);
-                var childDirectories = new List<RemoteCrawlFrame>(children.Nodes.Count);
-                foreach (NodeDto childNode in children.Nodes)
+                Interlocked.Increment(ref pendingFrames);
+                try
                 {
-                    string relativePath = Combine(frame.ParentPath, childNode.Name);
-                    if (SyncPathIgnoreRules.ShouldIgnore(relativePath))
-                    {
-                        continue;
-                    }
-
-                    var directory = new RemoteDirectorySnapshot
-                    {
-                        RelativePath = relativePath,
-                        Node = childNode,
-                    };
-                    await sink.AddDirectoryAsync(directory, cancellationToken).ConfigureAwait(false);
-                    directoriesScanned++;
-                    ReportDirectoryScanProgress(progress, filesScanned, directoriesScanned, relativePath);
-                    childDirectories.Add(new RemoteCrawlFrame(childNode, relativePath, Page: 1, Loaded: 0));
+                    await pending.Writer.WriteAsync(frame, cancellationToken).ConfigureAwait(false);
                 }
-
-                foreach (NodeFileManifestDto file in children.Files)
+                catch
                 {
-                    string relativePath = Combine(frame.ParentPath, file.Name);
-                    if (SyncPathIgnoreRules.ShouldIgnore(relativePath))
-                    {
-                        continue;
-                    }
-
-                    await sink
-                        .AddFileAsync(
-                            new RemoteFileSnapshot
-                            {
-                                RelativePath = relativePath,
-                                File = file,
-                            },
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                    filesScanned++;
-                    ReportScanProgress(progress, filesScanned, directoriesScanned, relativePath);
-                }
-
-                int count = children.Nodes.Count + children.Files.Count;
-                int loaded = frame.Loaded + count;
-                if (count != 0 && loaded < children.TotalCount)
-                {
-                    pending.Push(frame with { Page = frame.Page + 1, Loaded = loaded });
-                }
-
-                for (int index = childDirectories.Count - 1; index >= 0; index--)
-                {
-                    pending.Push(childDirectories[index]);
+                    CompleteFrame();
+                    throw;
                 }
             }
 
-            progress?.Report(new RemoteTreeScanProgress(filesScanned, directoriesScanned, currentPath: null));
+            void CompleteFrame()
+            {
+                if (Interlocked.Decrement(ref pendingFrames) == 0)
+                {
+                    pending.Writer.TryComplete();
+                }
+            }
+
+            await EnqueueFrameAsync(new RemoteCrawlFrame(root, rootRelativePath, Page: 1, Loaded: 0)).ConfigureAwait(false);
+
+            Task[] workers = Enumerable
+                .Range(0, _streamingConcurrency)
+                .Select(_ => ConsumeStreamingFramesAsync(
+                    pending,
+                    sink,
+                    progress,
+                    () => Volatile.Read(ref filesScanned),
+                    () => Volatile.Read(ref directoriesScanned),
+                    value => Interlocked.Add(ref filesScanned, value),
+                    value => Interlocked.Add(ref directoriesScanned, value),
+                    EnqueueFrameAsync,
+                    CompleteFrame,
+                    cancellationToken))
+                .ToArray();
+
+            try
+            {
+                await Task.WhenAll(workers).ConfigureAwait(false);
+            }
+            finally
+            {
+                pending.Writer.TryComplete();
+            }
+
+            progress?.Report(new RemoteTreeScanProgress(
+                Volatile.Read(ref filesScanned),
+                Volatile.Read(ref directoriesScanned),
+                currentPath: null));
             return root;
+        }
+
+        private async Task ConsumeStreamingFramesAsync(
+            Channel<RemoteCrawlFrame> pending,
+            IRemoteTreeStreamSink sink,
+            IProgress<RemoteTreeScanProgress>? progress,
+            Func<int> getFilesScanned,
+            Func<int> getDirectoriesScanned,
+            Func<int, int> addFilesScanned,
+            Func<int, int> addDirectoriesScanned,
+            Func<RemoteCrawlFrame, ValueTask> enqueueFrameAsync,
+            Action completeFrame,
+            CancellationToken cancellationToken)
+        {
+            await foreach (RemoteCrawlFrame frame in pending.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+            {
+                try
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    NodeContentDto children = await _nodes.GetChildrenAsync(
+                        frame.Node.Id,
+                        frame.Page,
+                        _pageSize,
+                        depth: 0,
+                        cancellationToken).ConfigureAwait(false);
+                    var childDirectories = new List<RemoteCrawlFrame>(children.Nodes.Count);
+                    foreach (NodeDto childNode in children.Nodes)
+                    {
+                        string relativePath = Combine(frame.ParentPath, childNode.Name);
+                        if (SyncPathIgnoreRules.ShouldIgnore(relativePath))
+                        {
+                            continue;
+                        }
+
+                        var directory = new RemoteDirectorySnapshot
+                        {
+                            RelativePath = relativePath,
+                            Node = childNode,
+                        };
+                        await sink.AddDirectoryAsync(directory, cancellationToken).ConfigureAwait(false);
+                        int directoriesScanned = addDirectoriesScanned(1);
+                        ReportDirectoryScanProgress(progress, getFilesScanned(), directoriesScanned, relativePath);
+                        childDirectories.Add(new RemoteCrawlFrame(childNode, relativePath, Page: 1, Loaded: 0));
+                    }
+
+                    foreach (NodeFileManifestDto file in children.Files)
+                    {
+                        string relativePath = Combine(frame.ParentPath, file.Name);
+                        if (SyncPathIgnoreRules.ShouldIgnore(relativePath))
+                        {
+                            continue;
+                        }
+
+                        await sink
+                            .AddFileAsync(
+                                new RemoteFileSnapshot
+                                {
+                                    RelativePath = relativePath,
+                                    File = file,
+                                },
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                        int filesScanned = addFilesScanned(1);
+                        ReportScanProgress(progress, filesScanned, getDirectoriesScanned(), relativePath);
+                    }
+
+                    int count = children.Nodes.Count + children.Files.Count;
+                    int loaded = frame.Loaded + count;
+                    if (count != 0 && loaded < children.TotalCount)
+                    {
+                        await enqueueFrameAsync(frame with { Page = frame.Page + 1, Loaded = loaded }).ConfigureAwait(false);
+                    }
+
+                    for (int index = childDirectories.Count - 1; index >= 0; index--)
+                    {
+                        await enqueueFrameAsync(childDirectories[index]).ConfigureAwait(false);
+                    }
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    pending.Writer.TryComplete(exception);
+                    throw;
+                }
+                finally
+                {
+                    completeFrame();
+                }
+            }
         }
 
         private async Task<RemotePathResolution> ResolvePathAsync(
