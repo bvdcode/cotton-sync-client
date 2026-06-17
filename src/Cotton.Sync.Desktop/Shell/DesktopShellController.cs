@@ -535,8 +535,8 @@ namespace Cotton.Sync.Desktop.Shell
             preferences.RememberedUsername = rememberedUsername;
             await TryApplyPreferredAutostartAsync(preferences, cancellationToken).ConfigureAwait(false);
             await host.App.SavePreferencesAsync(preferences, cancellationToken).ConfigureAwait(false);
-            await host.App.StartSyncAsync(cancellationToken).ConfigureAwait(false);
             await ReplaceHostAsync(host, cancellationToken).ConfigureAwait(false);
+            StartSessionSyncInBackground(host, "sign-in");
         }
 
         public Task SyncAllAsync(CancellationToken cancellationToken = default)
@@ -1431,7 +1431,7 @@ namespace Cotton.Sync.Desktop.Shell
                         restoreCancellation.Token)
                     .ConfigureAwait(false);
                 await ReplaceHostAsync(host, cancellationToken).ConfigureAwait(false);
-                StartRestoredSessionSyncInBackground(host);
+                StartSessionSyncInBackground(host, "session restore");
                 return session;
             }
             catch (Cotton.Sdk.CottonApiException exception) when (IsAuthSessionRejected(exception))
@@ -1518,17 +1518,22 @@ namespace Cotton.Sync.Desktop.Shell
             return exception.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden;
         }
 
-        private void StartRestoredSessionSyncInBackground(DesktopSyncApplicationHost host)
+        private void StartSessionSyncInBackground(DesktopSyncApplicationHost host, string source)
         {
             _ = Task.Run(async () =>
             {
                 try
                 {
+                    if (!ReferenceEquals(_host, host))
+                    {
+                        return;
+                    }
+
                     await host.App.StartSyncAsync(CancellationToken.None).ConfigureAwait(false);
                 }
                 catch (Exception exception)
                 {
-                    Trace.TraceWarning("Failed to start desktop sync after session restore: {0}", exception);
+                    Trace.TraceWarning("Failed to start desktop sync after {0}: {1}", source, exception);
                     if (!ReferenceEquals(_host, host))
                     {
                         return;
