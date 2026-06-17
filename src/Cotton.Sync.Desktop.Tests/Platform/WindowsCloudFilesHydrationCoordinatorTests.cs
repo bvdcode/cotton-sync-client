@@ -181,6 +181,45 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task HandleFetchDataAsync_RecordsRequesterProcessInfoWhenAvailable()
+        {
+            byte[] content = Encoding.UTF8.GetBytes("hello world");
+            var provider = new FakeContentProvider(content);
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var coordinator = new WindowsCloudFilesHydrationCoordinator(
+                provider,
+                nativeApi,
+                _tempDirectory,
+                diagnostics);
+            WindowsCloudFilesFetchDataRequest request = CreateFetchRequest(
+                content,
+                offset: 0,
+                length: content.Length,
+                processInfo: new WindowsCloudFilesProcessInfo(
+                    1234,
+                    @"\Device\HarddiskVolume3\Windows\explorer.exe",
+                    null,
+                    null,
+                    @"C:\Windows\explorer.exe",
+                    1));
+
+            await coordinator.HandleFetchDataAsync(request);
+
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics
+                .Snapshot()
+                .Single(static item => item.Operation == "hydrate" && item.Status == "requested");
+            Assert.Multiple(() =>
+            {
+                Assert.That(diagnostic.RelativePath, Is.EqualTo("remote-only.txt"));
+                Assert.That(diagnostic.Details, Does.Contain("pid=1234"));
+                Assert.That(diagnostic.Details, Does.Contain("session=1"));
+                Assert.That(diagnostic.Details, Does.Contain(@"\Device\HarddiskVolume3\Windows\explorer.exe"));
+                Assert.That(diagnostic.Details, Does.Contain("requiredLength=11"));
+            });
+        }
+
+        [Test]
         public async Task RemoteContentProvider_UsesProgressAwareDownloadWhenAvailable()
         {
             var remoteFiles = new ProgressRemoteFileSynchronizer();
@@ -475,7 +514,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             long offset,
             long length,
             long requestKey = 3,
-            string relativePath = "remote-only.txt")
+            string relativePath = "remote-only.txt",
+            WindowsCloudFilesProcessInfo? processInfo = null)
         {
             RemoteFilePlaceholderRequest placeholder = CreatePlaceholderRequest(content, relativePath);
             string normalizedPath = SyncPath.Normalize(placeholder.RelativePath);
@@ -494,7 +534,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 offset,
                 length,
                 @"\Device\HarddiskVolume1\Cotton\" + normalizedPath.Replace('/', '\\'),
-                10);
+                10,
+                processInfo);
         }
 
         private static WindowsCloudFilesDehydrateRequest CreateDehydrateRequest(byte[] content)

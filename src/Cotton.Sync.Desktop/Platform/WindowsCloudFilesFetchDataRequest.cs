@@ -14,5 +14,6 @@ namespace Cotton.Sync.Desktop.Platform
         long OptionalOffset,
         long OptionalLength,
         string? NormalizedPath,
-        byte PriorityHint);
+        byte PriorityHint,
+        WindowsCloudFilesProcessInfo? ProcessInfo = null);
 }

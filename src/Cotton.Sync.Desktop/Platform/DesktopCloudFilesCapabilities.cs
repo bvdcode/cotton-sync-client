@@ -16,11 +16,11 @@ namespace Cotton.Sync.Desktop.Platform
                     "Windows virtual files require the Windows Cloud Files API.");
             }
 
-            if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 16299))
+            if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17134))
             {
                 return new SyncPairModeCapabilitySnapshot(
                     false,
-                    "Windows virtual files require Windows 10 version 1709 or newer.");
+                    "Windows virtual files require Windows 10 version 1803 or newer.");
             }
 
             WindowsStorageProviderSyncRootRegistrar? storageProviderRegistrar =

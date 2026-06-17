@@ -170,7 +170,8 @@ namespace Cotton.Sync.Desktop.Startup
                     nativeApi,
                     Path.Combine(paths.DataDirectory, "vfs-smoke-temp"),
                     diagnostics);
-            Func<string, CancellationToken, Task<string>> reader = readAllTextAsync ?? File.ReadAllTextAsync;
+            Func<string, CancellationToken, Task<string>> reader =
+                readAllTextAsync ?? ReadAllTextThroughExternalProcessAsync;
             WindowsCloudFilesConnection? connection = null;
             int failures = 0;
 
@@ -518,7 +519,8 @@ namespace Cotton.Sync.Desktop.Startup
                     + connection.LocalRootPath)
                     .ConfigureAwait(false);
 
-                string hydratedText = await File.ReadAllTextAsync(placeholderPath, cancellationToken).ConfigureAwait(false);
+                string hydratedText = await ReadAllTextThroughExternalProcessAsync(placeholderPath, cancellationToken)
+                    .ConfigureAwait(false);
                 string hydratedHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(hydratedText)));
                 if (string.Equals(hydratedText, expectedText, StringComparison.Ordinal)
                     && string.Equals(hydratedHash, expectedHash, StringComparison.OrdinalIgnoreCase)
@@ -616,7 +618,8 @@ namespace Cotton.Sync.Desktop.Startup
                         .ConfigureAwait(false);
                 }
 
-                string rehydratedText = await File.ReadAllTextAsync(placeholderPath, cancellationToken).ConfigureAwait(false);
+                string rehydratedText = await ReadAllTextThroughExternalProcessAsync(placeholderPath, cancellationToken)
+                    .ConfigureAwait(false);
                 string rehydratedHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(rehydratedText)));
                 if (string.Equals(rehydratedText, expectedText, StringComparison.Ordinal)
                     && string.Equals(rehydratedHash, expectedHash, StringComparison.OrdinalIgnoreCase)
@@ -789,7 +792,8 @@ namespace Cotton.Sync.Desktop.Startup
                     FormatCheck(true, "Cloud Files callbacks reconnected after tray quit simulation."))
                     .ConfigureAwait(false);
 
-                string hydratedText = await File.ReadAllTextAsync(placeholderPath, cancellationToken).ConfigureAwait(false);
+                string hydratedText = await ReadAllTextThroughExternalProcessAsync(placeholderPath, cancellationToken)
+                    .ConfigureAwait(false);
                 string hydratedHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(hydratedText)));
                 if (string.Equals(hydratedText, expectedText, StringComparison.Ordinal)
                     && string.Equals(hydratedHash, expectedHash, StringComparison.OrdinalIgnoreCase)
@@ -1024,11 +1028,11 @@ namespace Cotton.Sync.Desktop.Startup
                     .ConfigureAwait(false);
 
                 var hydrateTimer = Stopwatch.StartNew();
-                byte[] hydrated = await File.ReadAllBytesAsync(placeholderPath, cancellationToken).ConfigureAwait(false);
+                FileContentHash hydrated = await ReadFileHashThroughExternalProcessAsync(placeholderPath, cancellationToken)
+                    .ConfigureAwait(false);
                 hydrateTimer.Stop();
-                string hydratedHash = Convert.ToHexStringLower(SHA256.HashData(hydrated));
                 IReadOnlyList<SyncTransferProgress> hydrationProgress = progress.Snapshot();
-                if (string.Equals(hydratedHash, contentHash, StringComparison.OrdinalIgnoreCase)
+                if (string.Equals(hydrated.Sha256, contentHash, StringComparison.OrdinalIgnoreCase)
                     && hydrationProgress.Count >= 4
                     && HasIntermediateProgress(hydrationProgress)
                     && IsMonotonicProgress(hydrationProgress)
@@ -1037,9 +1041,9 @@ namespace Cotton.Sync.Desktop.Startup
                     await output.WriteLineAsync(
                         FormatCheck(true, "Large placeholder hydration reported useful progress and hydrated exact content.")
                         + " sizeBytes="
-                        + hydrated.LongLength.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + hydrated.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)
                         + ", sha256="
-                        + hydratedHash
+                        + hydrated.Sha256
                         + ", progressSamples="
                         + hydrationProgress.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
                         + ", elapsedMs="
@@ -1056,7 +1060,7 @@ namespace Cotton.Sync.Desktop.Startup
                         + " expectedSha256="
                         + contentHash
                         + ", actualSha256="
-                        + hydratedHash
+                        + hydrated.Sha256
                         + ", progressSamples="
                         + hydrationProgress.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
                         + ", downloads="
@@ -1575,6 +1579,116 @@ namespace Cotton.Sync.Desktop.Startup
             return content;
         }
 
+        private static async Task<string> ReadAllTextThroughExternalProcessAsync(
+            string filePath,
+            CancellationToken cancellationToken)
+        {
+            byte[] bytes = await ReadAllBytesThroughExternalProcessAsync(filePath, cancellationToken)
+                .ConfigureAwait(false);
+            return Encoding.UTF8.GetString(bytes);
+        }
+
+        private static async Task<byte[]> ReadAllBytesThroughExternalProcessAsync(
+            string filePath,
+            CancellationToken cancellationToken)
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                return await File.ReadAllBytesAsync(filePath, cancellationToken).ConfigureAwait(false);
+            }
+
+            string base64 = await RunPowerShellFileReadAsync(
+                "$ErrorActionPreference='Stop'; "
+                + "$bytes=[System.IO.File]::ReadAllBytes($env:COTTON_SYNC_EXTERNAL_READ_PATH); "
+                + "[Convert]::ToBase64String($bytes)",
+                filePath,
+                cancellationToken)
+                .ConfigureAwait(false);
+            return Convert.FromBase64String(base64.Trim());
+        }
+
+        private static async Task<FileContentHash> ReadFileHashThroughExternalProcessAsync(
+            string filePath,
+            CancellationToken cancellationToken)
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                await using FileStream stream = File.OpenRead(filePath);
+                byte[] hash = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
+                return new FileContentHash(stream.Length, Convert.ToHexStringLower(hash));
+            }
+
+            string output = await RunPowerShellFileReadAsync(
+                "$ErrorActionPreference='Stop'; "
+                + "$stream=[System.IO.File]::OpenRead($env:COTTON_SYNC_EXTERNAL_READ_PATH); "
+                + "try { "
+                + "$sha=[System.Security.Cryptography.SHA256]::Create(); "
+                + "$hash=$sha.ComputeHash($stream); "
+                + "$hex=([System.BitConverter]::ToString($hash)).Replace('-','').ToLowerInvariant(); "
+                + "'{0}|{1}' -f $stream.Length,$hex "
+                + "} finally { $stream.Dispose(); if ($sha) { $sha.Dispose(); } }",
+                filePath,
+                cancellationToken)
+                .ConfigureAwait(false);
+            string[] parts = output.Trim().Split('|', 2);
+            if (parts.Length != 2
+                || !long.TryParse(
+                    parts[0],
+                    System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out long length))
+            {
+                throw new InvalidOperationException("External file hash helper returned an invalid response.");
+            }
+
+            return new FileContentHash(length, parts[1]);
+        }
+
+        private static async Task<string> RunPowerShellFileReadAsync(
+            string script,
+            string filePath,
+            CancellationToken cancellationToken)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            startInfo.ArgumentList.Add("-NoProfile");
+            startInfo.ArgumentList.Add("-NonInteractive");
+            startInfo.ArgumentList.Add("-ExecutionPolicy");
+            startInfo.ArgumentList.Add("Bypass");
+            startInfo.ArgumentList.Add("-Command");
+            startInfo.ArgumentList.Add(script);
+            startInfo.Environment["COTTON_SYNC_EXTERNAL_READ_PATH"] = filePath;
+
+            using var process = new Process { StartInfo = startInfo };
+            if (!process.Start())
+            {
+                throw new InvalidOperationException("Failed to start the external file-read helper process.");
+            }
+
+            Task<string> stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            Task<string> stderr = process.StandardError.ReadToEndAsync(cancellationToken);
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            string output = await stdout.ConfigureAwait(false);
+            string error = await stderr.ConfigureAwait(false);
+            if (process.ExitCode != 0)
+            {
+                throw new IOException(
+                    "External file-read helper failed with exit code "
+                    + process.ExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ": "
+                    + CleanSingleLine(error));
+            }
+
+            return output;
+        }
+
         private static bool HasIntermediateProgress(IReadOnlyList<SyncTransferProgress> progress)
         {
             return progress.Any(static item =>
@@ -2016,6 +2130,8 @@ namespace Cotton.Sync.Desktop.Startup
                 destination.Position = 0;
             }
         }
+
+        private sealed record FileContentHash(long Length, string Sha256);
 
         private sealed class NoopCloudFilesCallbackHandler : IWindowsCloudFilesCallbackHandler
         {

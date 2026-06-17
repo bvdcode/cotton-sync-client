@@ -74,7 +74,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             DesktopSelfTestSnapshot result = await controller.RunSelfTestAsync();
 
             DesktopSelfTestItemSnapshot item = result.Items.Single(static selfTestItem => selfTestItem.Name == "Windows virtual files");
-            if (OperatingSystem.IsWindows() && OperatingSystem.IsWindowsVersionAtLeast(10, 0, 16299))
+            if (OperatingSystem.IsWindows() && OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17134))
             {
                 if (item.Details.Contains("shell helper", StringComparison.Ordinal)
                     || item.Details.Contains("StorageProvider", StringComparison.Ordinal))

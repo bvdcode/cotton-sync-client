@@ -43,6 +43,7 @@ namespace Cotton.Sync.Desktop.Platform
             try
             {
                 identity = WindowsCloudFilesPlaceholderIdentity.Parse(request.FileIdentity);
+                RecordHydrationRequestIfProcessInfoExists(request, identity);
                 if (await TryHandleVerifiedRangeFetchAsync(request, identity, cancellationToken).ConfigureAwait(false))
                 {
                     return;
@@ -88,6 +89,24 @@ namespace Cotton.Sync.Desktop.Platform
                     TryDeleteTempFile(tempPath);
                 }
             }
+        }
+
+        private void RecordHydrationRequestIfProcessInfoExists(
+            WindowsCloudFilesFetchDataRequest request,
+            WindowsCloudFilesPlaceholderIdentity identity)
+        {
+            if (request.ProcessInfo is null)
+            {
+                return;
+            }
+
+            _diagnostics.Record(
+                "hydrate",
+                "requested",
+                identity.SyncPairId.ToString(),
+                null,
+                identity.RelativePath,
+                FormatHydrationRequestDetails(request));
         }
 
         public void CancelFetchData(WindowsCloudFilesCancelFetchDataRequest request)
@@ -343,6 +362,42 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             return start + request.RequiredLength;
+        }
+
+        private static string FormatHydrationRequestDetails(WindowsCloudFilesFetchDataRequest request)
+        {
+            WindowsCloudFilesProcessInfo? process = request.ProcessInfo;
+            string requester = process is null
+                ? "unknown requester"
+                : "pid="
+                    + process.ProcessId
+                    + "; session="
+                    + process.SessionId
+                    + "; image="
+                    + NormalizeDiagnosticValue(process.ImagePath)
+                    + "; package="
+                    + NormalizeDiagnosticValue(process.PackageName)
+                    + "; app="
+                    + NormalizeDiagnosticValue(process.ApplicationId);
+            return "requiredOffset="
+                + request.RequiredOffset
+                + "; requiredLength="
+                + request.RequiredLength
+                + "; optionalOffset="
+                + request.OptionalOffset
+                + "; optionalLength="
+                + request.OptionalLength
+                + "; fileSize="
+                + request.FileSizeBytes
+                + "; priority="
+                + request.PriorityHint
+                + "; requester="
+                + requester;
+        }
+
+        private static string NormalizeDiagnosticValue(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? "unknown" : value;
         }
 
         private string CreateTempPath()
