@@ -1300,6 +1300,52 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesResumeLoadsStateThroughStreamingApi()
+        {
+            NodeFileManifestDto newRemote = RemoteFile(
+                "Desktop/new.txt",
+                HashText("new"),
+                sizeBytes: 12);
+            NodeFileManifestDto existingRemote = RemoteFile(
+                "Desktop/existing.txt",
+                HashText("existing"),
+                sizeBytes: 11);
+            List<RemoteFileSnapshot> remoteFiles =
+            [
+                new() { RelativePath = "Desktop/new.txt", File = newRemote },
+                new() { RelativePath = "Desktop/existing.txt", File = existingRemote },
+            ];
+            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(_remoteRootNodeId, remoteFiles);
+            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
+            var innerStateStore = new SqliteSyncStateStore(_databasePath);
+            await InsertPlaceholderBaselineAsync(innerStateStore, "Desktop/existing.txt", existingRemote);
+            var stateStore = new StreamingOnlyStateStore(innerStateStore);
+            var scanner = new FakeLocalFileScanner(CloudFilesPlaceholderLocal("Desktop/existing.txt", existingRemote.SizeBytes));
+            var engine = new SyncEngine(
+                scanner,
+                remoteCrawler,
+                remoteFileSynchronizer,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { InitialVirtualFilesPopulationQueueCapacity = 1 });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
+                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
+                Assert.That(stateStore.LoadPairEntriesCallCount, Is.EqualTo(1));
+                Assert.That(stateStore.GetAsyncCallCount, Is.Zero);
+                Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[] { "Desktop/new.txt" }));
+                Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.All.EqualTo(SyncActivityKind.PlaceholderCreated));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesStreamingRefreshesTrackedPlaceholderWhenRemoteChanged()
         {
             string relativePath = "Desktop/existing.txt";
@@ -4927,6 +4973,8 @@ namespace Cotton.Sync.Tests
 
             public int LoadPairEntriesCallCount { get; private set; }
 
+            public int GetAsyncCallCount { get; private set; }
+
             public override Task<IReadOnlyList<SyncStateEntry>> LoadPairAsync(
                 string syncPairId,
                 CancellationToken cancellationToken = default)
@@ -4940,6 +4988,15 @@ namespace Cotton.Sync.Tests
             {
                 LoadPairEntriesCallCount++;
                 return base.LoadPairEntriesAsync(syncPairId, cancellationToken);
+            }
+
+            public override Task<SyncStateEntry?> GetAsync(
+                string syncPairId,
+                string relativePath,
+                CancellationToken cancellationToken = default)
+            {
+                GetAsyncCallCount++;
+                return base.GetAsync(syncPairId, relativePath, cancellationToken);
             }
         }
     }

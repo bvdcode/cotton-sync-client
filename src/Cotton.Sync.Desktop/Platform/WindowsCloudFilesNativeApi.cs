@@ -31,7 +31,7 @@ namespace Cotton.Sync.Desktop.Platform
                 };
                 CfSyncPolicies policies = CfSyncPolicies.CreateDefault();
                 int result = CfRegisterSyncRoot(
-                    registration.LocalRootPath,
+                    WindowsNativePath.ToWin32FilePath(registration.LocalRootPath),
                     ref nativeRegistration,
                     ref policies,
                     CfRegisterFlags.Update | CfRegisterFlags.MarkInSyncOnRoot);
@@ -46,7 +46,7 @@ namespace Cotton.Sync.Desktop.Platform
         public void UnregisterSyncRoot(string localRootPath)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(localRootPath);
-            int result = CfUnregisterSyncRoot(localRootPath);
+            int result = CfUnregisterSyncRoot(WindowsNativePath.ToWin32FilePath(localRootPath));
             ThrowIfFailed(result, nameof(CfUnregisterSyncRoot));
         }
 
@@ -76,7 +76,7 @@ namespace Cotton.Sync.Desktop.Platform
                 };
 
                 int result = CfCreatePlaceholders(
-                    placeholder.BaseDirectoryPath,
+                    WindowsNativePath.ToWin32FilePath(placeholder.BaseDirectoryPath),
                     placeholders,
                     (uint)placeholders.Length,
                     CfCreateFlags.StopOnError,
@@ -105,7 +105,7 @@ namespace Cotton.Sync.Desktop.Platform
             try
             {
                 using SafeFileHandle handle = CreateFile(
-                    filePath,
+                    WindowsNativePath.ToWin32FilePath(filePath),
                     FileDesiredAccess.WriteData,
                     FileShareMode.Read | FileShareMode.Write | FileShareMode.Delete,
                     IntPtr.Zero,
@@ -145,7 +145,7 @@ namespace Cotton.Sync.Desktop.Platform
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
             using SafeFileHandle handle = CreateFile(
-                ToWin32FilePath(filePath),
+                WindowsNativePath.ToWin32FilePath(filePath),
                 FileDesiredAccess.ReadData,
                 FileShareMode.Read | FileShareMode.Write | FileShareMode.Delete,
                 IntPtr.Zero,
@@ -171,7 +171,7 @@ namespace Cotton.Sync.Desktop.Platform
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
             using SafeFileHandle handle = CreateFile(
-                ToWin32FilePath(filePath),
+                WindowsNativePath.ToWin32FilePath(filePath),
                 FileDesiredAccess.WriteAttributes,
                 FileShareMode.Read | FileShareMode.Write | FileShareMode.Delete,
                 IntPtr.Zero,
@@ -311,7 +311,7 @@ namespace Cotton.Sync.Desktop.Platform
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
             int openResult = CfOpenFileWithOplock(
-                filePath,
+                WindowsNativePath.ToWin32FilePath(filePath),
                 CfOpenFileFlags.Exclusive,
                 out IntPtr protectedHandle);
             ThrowIfFailed(openResult, nameof(CfOpenFileWithOplock));
@@ -346,14 +346,6 @@ namespace Cotton.Sync.Desktop.Platform
                 ? error
                 : unchecked((int)(0x80070000u | (uint)error));
         }
-
-        private static string ToWin32FilePath(string filePath)
-        {
-            return filePath.StartsWith(@"\Device\", StringComparison.OrdinalIgnoreCase)
-                ? @"\\?\GLOBALROOT" + filePath
-                : filePath;
-        }
-
         [DllImport("kernel32.dll", EntryPoint = "CreateFileW", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
         private static extern SafeFileHandle CreateFile(
             string lpFileName,

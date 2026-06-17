@@ -6,6 +6,7 @@ using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.Status;
 using Cotton.Sync.App.Supervision;
 using Cotton.Sync.App.SyncPairs;
+using Microsoft.Extensions.Logging;
 
 namespace Cotton.Sync.App.Tests.LocalChanges
 {
@@ -276,6 +277,46 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 Assert.That(observed, Is.False);
                 Assert.That(supervisor.SyncNowCallCount, Is.Zero);
                 Assert.That(coordinator.PendingRequestCount, Is.Zero);
+            });
+        }
+
+        [Test]
+        public async Task ProviderSuppressedChangeStorm_DoesNotWritePerFileDebugLogs()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true);
+            var watcherFactory = new FakeWatcherFactory();
+            var supervisor = new FakeSyncSupervisor();
+            var suppression = new LocalChangeSuppression();
+            var logger = new RecordingLogger<LocalChangeSyncCoordinator>();
+            var coordinator = new LocalChangeSyncCoordinator(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval,
+                logger,
+                suppression);
+            for (int index = 0; index < 250; index++)
+            {
+                suppression.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, $"Cloud/generated-{index}.txt");
+            }
+
+            await coordinator.StartAsync();
+            for (int index = 0; index < 250; index++)
+            {
+                watcherFactory.CreatedWatchers[syncPair.Id].Raise(
+                    FullPath(syncPair, $"Cloud/generated-{index}.txt"),
+                    LocalSyncRootChangeKind.Created);
+            }
+
+            bool observed = await supervisor.WaitForSyncAsync(DebounceInterval * 4);
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.False);
+                Assert.That(supervisor.SyncNowCallCount, Is.Zero);
+                Assert.That(coordinator.PendingRequestCount, Is.Zero);
+                Assert.That(logger.Entries, Is.Empty);
             });
         }
 
@@ -661,6 +702,32 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             public void ReleaseSyncNow()
             {
                 _releaseSyncNow.TrySetResult();
+            }
+        }
+
+        private class RecordingLogger<T> : ILogger<T>
+        {
+            public List<(LogLevel Level, string Message)> Entries { get; } = [];
+
+            public IDisposable? BeginScope<TState>(TState state)
+                where TState : notnull
+            {
+                return null;
+            }
+
+            public bool IsEnabled(LogLevel logLevel)
+            {
+                return true;
+            }
+
+            public void Log<TState>(
+                LogLevel logLevel,
+                EventId eventId,
+                TState state,
+                Exception? exception,
+                Func<TState, Exception?, string> formatter)
+            {
+                Entries.Add((logLevel, formatter(state, exception)));
             }
         }
     }
