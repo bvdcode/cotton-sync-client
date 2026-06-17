@@ -84,21 +84,25 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             await store.UpsertAsync(fullMirror);
             await store.UpsertAsync(virtualFiles);
             var adapter = new FakeCloudFilesAdapter();
+            var storageProvider = new FakeStorageProviderSyncRootRegistrar();
             using var output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunCloudFilesCleanupAsync(
                 DesktopAppPaths.CreateForDataDirectory(_tempDirectory),
                 options,
                 output,
-                adapter);
+                adapter,
+                storageProvider);
             IReadOnlyList<SyncPairSettings> remainingPairs = await store.ListAsync();
 
             Assert.Multiple(() =>
             {
                 Assert.That(exitCode, Is.EqualTo(0));
                 Assert.That(adapter.UnregisteredPairs.Select(static pair => pair.Id), Is.EqualTo(new[] { virtualFiles.Id }));
+                Assert.That(storageProvider.UnregisterAllCalls, Is.EqualTo(1));
                 Assert.That(remainingPairs.Select(static pair => pair.Id), Is.EquivalentTo(new[] { fullMirror.Id, virtualFiles.Id }));
                 Assert.That(output.ToString(), Does.Contain("Roots cleaned: 1"));
+                Assert.That(output.ToString(), Does.Contain("Orphaned storage-provider roots cleaned."));
                 Assert.That(output.ToString(), Does.Contain("Result: passed"));
             });
         }
@@ -115,18 +119,51 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             {
                 Exception = new InvalidOperationException("unregister failed"),
             };
+            var storageProvider = new FakeStorageProviderSyncRootRegistrar();
             using var output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunCloudFilesCleanupAsync(
                 DesktopAppPaths.CreateForDataDirectory(_tempDirectory),
                 options,
                 output,
-                adapter);
+                adapter,
+                storageProvider);
 
             Assert.Multiple(() =>
             {
                 Assert.That(exitCode, Is.EqualTo(1));
                 Assert.That(adapter.UnregisteredPairs.Select(static pair => pair.Id), Is.EqualTo(new[] { virtualFiles.Id }));
+                Assert.That(storageProvider.UnregisterAllCalls, Is.EqualTo(1));
+                Assert.That(output.ToString(), Does.Contain("Failures: 1"));
+                Assert.That(output.ToString(), Does.Contain("Result: failed"));
+            });
+        }
+
+        [Test]
+        public async Task RunCloudFilesCleanupAsync_ReturnsFailureWhenOrphanedStorageProviderCleanupFails()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(["--data-dir", _tempDirectory, "--cleanup-cloud-files"]);
+            var store = new SqliteSyncPairSettingsStore(DesktopAppPaths.CreateForDataDirectory(_tempDirectory).AppDatabasePath);
+            await store.InitializeAsync();
+            var adapter = new FakeCloudFilesAdapter();
+            var storageProvider = new FakeStorageProviderSyncRootRegistrar
+            {
+                Exception = new InvalidOperationException("orphan cleanup failed"),
+            };
+            using var output = new StringWriter();
+
+            int exitCode = await DesktopCommandLineRunner.RunCloudFilesCleanupAsync(
+                DesktopAppPaths.CreateForDataDirectory(_tempDirectory),
+                options,
+                output,
+                adapter,
+                storageProvider);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(1));
+                Assert.That(storageProvider.UnregisterAllCalls, Is.EqualTo(1));
+                Assert.That(output.ToString(), Does.Contain("Failed orphaned storage-provider cleanup"));
                 Assert.That(output.ToString(), Does.Contain("Failures: 1"));
                 Assert.That(output.ToString(), Does.Contain("Result: failed"));
             });
@@ -308,6 +345,37 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             public void TransferData(WindowsCloudFilesTransferData transfer)
             {
                 throw new NotSupportedException();
+            }
+        }
+
+        private sealed class FakeStorageProviderSyncRootRegistrar : IWindowsStorageProviderSyncRootRegistrar
+        {
+            public int UnregisterAllCalls { get; private set; }
+
+            public Exception? Exception { get; set; }
+
+            public bool IsSupported()
+            {
+                return true;
+            }
+
+            public void Register(WindowsStorageProviderSyncRootRegistration registration)
+            {
+                throw new NotSupportedException();
+            }
+
+            public void Unregister(Guid syncPairId)
+            {
+                throw new NotSupportedException();
+            }
+
+            public void UnregisterAllForCurrentUser()
+            {
+                UnregisterAllCalls++;
+                if (Exception is not null)
+                {
+                    throw Exception;
+                }
             }
         }
     }

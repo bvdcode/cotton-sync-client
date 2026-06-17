@@ -4,6 +4,7 @@
 using Windows.Security.Cryptography;
 using Windows.Storage;
 using Windows.Storage.Provider;
+using Microsoft.Win32;
 using System.Security.Principal;
 
 namespace Cotton.Sync.WindowsShell
@@ -12,6 +13,11 @@ namespace Cotton.Sync.WindowsShell
     {
         private const string ProviderId = "Cotton.Sync.Desktop";
         private const string ProviderAccount = "Default";
+        private const string ProviderDisplayName = "Cotton Cloud";
+        private const string ShellNamespaceRegistryPath =
+            @"Software\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace";
+        private const string ClassesClsidRegistryPath = @"Software\Classes\CLSID";
+        private const string WowClassesClsidRegistryPath = @"Software\Classes\WOW6432Node\CLSID";
 
         public static async Task<int> Main(string[] args)
         {
@@ -19,7 +25,7 @@ namespace Cotton.Sync.WindowsShell
             {
                 if (args.Length == 0)
                 {
-                    Console.Error.WriteLine("Usage: Cotton.Sync.WindowsShell register <account> <root> <version> <icon-resource> | unregister <account>");
+                    Console.Error.WriteLine("Usage: Cotton.Sync.WindowsShell register <account> <root> <version> <icon-resource> | unregister <account> | unregister-all | is-supported");
                     return 2;
                 }
 
@@ -27,6 +33,7 @@ namespace Cotton.Sync.WindowsShell
                 {
                     "register" when args.Length == 5 => await RegisterAsync(args[1], args[2], args[3], args[4]).ConfigureAwait(false),
                     "unregister" when args.Length == 2 => Unregister(args[1]),
+                    "unregister-all" when args.Length == 1 => UnregisterAll(),
                     "is-supported" => StorageProviderSyncRootManager.IsSupported() ? 0 : 1,
                     _ => 2,
                 };
@@ -57,7 +64,7 @@ namespace Cotton.Sync.WindowsShell
             {
                 Id = CreateSyncRootId(account),
                 Path = rootFolder,
-                DisplayNameResource = "Cotton Sync",
+                DisplayNameResource = ProviderDisplayName,
                 IconResource = iconResource,
                 HydrationPolicy = StorageProviderHydrationPolicy.Progressive,
                 HydrationPolicyModifier = StorageProviderHydrationPolicyModifier.AutoDehydrationAllowed,
@@ -80,6 +87,43 @@ namespace Cotton.Sync.WindowsShell
             return 0;
         }
 
+        private static int UnregisterAll()
+        {
+            string prefix = CreateSyncRootIdPrefix();
+            int unregistered = 0;
+            int failures = 0;
+            if (StorageProviderSyncRootManager.IsSupported())
+            {
+                foreach (StorageProviderSyncRootInfo syncRoot in StorageProviderSyncRootManager
+                    .GetCurrentSyncRoots()
+                    .Where(root => root.Id.StartsWith(prefix, StringComparison.Ordinal))
+                    .ToArray())
+                {
+                    try
+                    {
+                        StorageProviderSyncRootManager.Unregister(syncRoot.Id);
+                        unregistered++;
+                        Console.WriteLine("unregistered " + syncRoot.Id);
+                    }
+                    catch (Exception exception)
+                    {
+                        failures++;
+                        Console.Error.WriteLine("failed " + syncRoot.Id + ": " + exception.Message);
+                    }
+                }
+            }
+
+            int shellRootsRemoved = RemoveOrphanedShellNamespaceRoots(prefix);
+            Console.WriteLine(
+                "unregister-all storage-provider="
+                + unregistered.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + " shell-namespace="
+                + shellRootsRemoved.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + " failures="
+                + failures.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            return failures == 0 ? 0 : 1;
+        }
+
         private static int Unregister(string account)
         {
             string syncRootId = CreateSyncRootId(account);
@@ -97,12 +141,56 @@ namespace Cotton.Sync.WindowsShell
             return 0;
         }
 
+        private static int RemoveOrphanedShellNamespaceRoots(string syncRootIdPrefix)
+        {
+            using RegistryKey? namespaceKey = Registry.CurrentUser.OpenSubKey(ShellNamespaceRegistryPath, writable: true);
+            if (namespaceKey is null)
+            {
+                return 0;
+            }
+
+            int removed = 0;
+            foreach (string subKeyName in namespaceKey.GetSubKeyNames())
+            {
+                using RegistryKey? syncRootKey = namespaceKey.OpenSubKey(subKeyName);
+                if (syncRootKey?.GetValue(null) is not string syncRootId
+                    || !syncRootId.StartsWith(syncRootIdPrefix, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                namespaceKey.DeleteSubKeyTree(subKeyName, throwOnMissingSubKey: false);
+                DeleteClassIdSubKey(ClassesClsidRegistryPath, subKeyName);
+                DeleteClassIdSubKey(WowClassesClsidRegistryPath, subKeyName);
+                removed++;
+                Console.WriteLine("removed shell namespace " + subKeyName + " -> " + syncRootId);
+            }
+
+            return removed;
+        }
+
+        private static void DeleteClassIdSubKey(string registryPath, string classId)
+        {
+            using RegistryKey? parentKey = Registry.CurrentUser.OpenSubKey(registryPath, writable: true);
+            parentKey?.DeleteSubKeyTree(classId, throwOnMissingSubKey: false);
+        }
+
         private static string CreateSyncRootId(string account)
+        {
+            return CreateSyncRootIdPrefix() + NormalizeAccount(account);
+        }
+
+        private static string CreateSyncRootIdPrefix()
+        {
+            return ProviderId + "!" + WindowsIdentity.GetCurrent().User?.Value + "!";
+        }
+
+        private static string NormalizeAccount(string account)
         {
             string normalizedAccount = string.IsNullOrWhiteSpace(account)
                 ? ProviderAccount
                 : account.Trim();
-            return ProviderId + "!" + WindowsIdentity.GetCurrent().User?.Value + "!" + normalizedAccount;
+            return normalizedAccount;
         }
     }
 }

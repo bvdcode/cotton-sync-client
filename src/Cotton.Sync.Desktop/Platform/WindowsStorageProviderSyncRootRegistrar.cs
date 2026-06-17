@@ -55,6 +55,12 @@ namespace Cotton.Sync.Desktop.Platform
             ThrowIfFailed(result, "unregister");
         }
 
+        public void UnregisterAllForCurrentUser()
+        {
+            WindowsStorageProviderSyncRootCommandResult result = Run("unregister-all");
+            ThrowIfFailed(result, "unregister-all");
+        }
+
         internal static ProcessStartInfo CreateStartInfo(string helperPath, IReadOnlyList<string> arguments)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(helperPath);

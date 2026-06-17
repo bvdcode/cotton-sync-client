@@ -10,5 +10,7 @@ namespace Cotton.Sync.Desktop.Platform
         void Register(WindowsStorageProviderSyncRootRegistration registration);
 
         void Unregister(Guid syncPairId);
+
+        void UnregisterAllForCurrentUser();
     }
 }
