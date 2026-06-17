@@ -144,9 +144,15 @@ namespace Cotton.Sync.Desktop.ViewModels
                 if (SetProperty(ref _mode, value))
                 {
                     OnPropertyChanged(nameof(ModeLabel));
+                    OnPropertyChanged(nameof(IsWindowsVirtualFilesMode));
+                    OnPropertyChanged(nameof(IsFullMirrorMode));
                 }
             }
         }
+
+        public bool IsWindowsVirtualFilesMode => Mode == SyncPairMode.WindowsVirtualFiles;
+
+        public bool IsFullMirrorMode => Mode == SyncPairMode.FullMirror;
 
         public string ModeLabel => Mode switch
         {

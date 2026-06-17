@@ -62,11 +62,21 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             var row = new SyncPairRowViewModel();
 
-            Assert.That(row.ModeLabel, Is.EqualTo("Full mirror"));
+            Assert.Multiple(() =>
+            {
+                Assert.That(row.ModeLabel, Is.EqualTo("Full mirror"));
+                Assert.That(row.IsFullMirrorMode, Is.True);
+                Assert.That(row.IsWindowsVirtualFilesMode, Is.False);
+            });
 
             row.Mode = SyncPairMode.WindowsVirtualFiles;
 
-            Assert.That(row.ModeLabel, Is.EqualTo("Windows virtual files"));
+            Assert.Multiple(() =>
+            {
+                Assert.That(row.ModeLabel, Is.EqualTo("Windows virtual files"));
+                Assert.That(row.IsFullMirrorMode, Is.False);
+                Assert.That(row.IsWindowsVirtualFilesMode, Is.True);
+            });
         }
     }
 }

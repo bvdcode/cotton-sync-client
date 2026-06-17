@@ -678,15 +678,41 @@
                                          IsIndeterminate="{Binding IsCurrentProgressIndeterminate}"
                                          IsVisible="{Binding HasCurrentProgress}" />
                             <Grid Grid.Row="3"
-                                  ColumnDefinitions="Auto,*"
+                                  ColumnDefinitions="Auto,Auto,*"
                                   ColumnSpacing="8">
-                              <TextBlock Text="{Binding ModeLabel}"
+                              <Border Width="22"
+                                      Height="18"
+                                      CornerRadius="4"
+                                      BorderThickness="1"
+                                      BorderBrush="{DynamicResource CottonBorderBrush}"
+                                      Background="{DynamicResource CottonSurfaceBrush}"
+                                      ToolTip.Tip="{Binding ModeLabel}"
+                                      VerticalAlignment="Center">
+                                <Grid>
+                                  <materialIcons:MaterialIcon Kind="CloudOutline"
+                                                              Width="13"
+                                                              Height="13"
+                                                              HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"
+                                                              Foreground="{DynamicResource CottonTextPrimaryBrush}"
+                                                              IsVisible="{Binding IsWindowsVirtualFilesMode}" />
+                                  <materialIcons:MaterialIcon Kind="FolderOpenOutline"
+                                                              Width="13"
+                                                              Height="13"
+                                                              HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"
+                                                              Foreground="{DynamicResource CottonTextMutedBrush}"
+                                                              IsVisible="{Binding IsFullMirrorMode}" />
+                                </Grid>
+                              </Border>
+                              <TextBlock Grid.Column="1"
+                                         Text="{Binding ModeLabel}"
                                          ToolTip.Tip="{Binding ModeLabel}"
                                          FontSize="12"
                                          FontWeight="SemiBold"
                                          TextTrimming="CharacterEllipsis"
                                          Opacity="0.82" />
-                              <TextBlock Grid.Column="1"
+                              <TextBlock Grid.Column="2"
                                          Text="{Binding LocalPath}"
                                          ToolTip.Tip="{Binding LocalPath}"
                                          FontSize="12"

@@ -2,6 +2,7 @@
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
 using System.Net;
+using System.Threading.Channels;
 using Cotton.Files;
 using Cotton.Nodes;
 using Cotton.Sync.Local;
@@ -34,6 +35,7 @@ namespace Cotton.Sync
         private readonly IRemoteTreeCrawler _remoteCrawler;
         private readonly IRemoteTreeLookupCrawler? _remoteLookupCrawler;
         private readonly IRemotePathLookupCrawler? _remotePathLookupCrawler;
+        private readonly IRemoteTreeStreamingCrawler? _remoteStreamingCrawler;
         private readonly IRemoteFileSynchronizer _remoteFiles;
         private readonly ISyncStateStore _stateStore;
         private readonly ILocalFileSyncWriter _localWriter;
@@ -63,6 +65,7 @@ namespace Cotton.Sync
             _remoteCrawler = remoteCrawler ?? throw new ArgumentNullException(nameof(remoteCrawler));
             _remoteLookupCrawler = remoteCrawler as IRemoteTreeLookupCrawler;
             _remotePathLookupCrawler = remoteCrawler as IRemotePathLookupCrawler;
+            _remoteStreamingCrawler = remoteCrawler as IRemoteTreeStreamingCrawler;
             _remoteFiles = remoteFiles ?? throw new ArgumentNullException(nameof(remoteFiles));
             _stateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
             _localWriter = localWriter ?? new AtomicLocalFileSyncWriter();
@@ -88,6 +91,21 @@ namespace Cotton.Sync
             ReportRunProgress(options, SyncRunProgressStage.ScanningLocal, 0, null, null, startedAtUtc);
             _logger.LogInformation("Starting sync pass for pair {SyncPairId}.", syncPair.SyncPairId);
             await _stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            SyncRunResult? initialVirtualFilesResult = await TryRunInitialWindowsVirtualFilesStreamingPopulationAsync(
+                    syncPair,
+                    options,
+                    startedAtUtc,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (initialVirtualFilesResult is not null)
+            {
+                _logger.LogInformation(
+                    "Completed sync pass for pair {SyncPairId} with {ActivityCount} activities.",
+                    syncPair.SyncPairId,
+                    initialVirtualFilesResult.TotalActivityCount);
+                return initialVirtualFilesResult;
+            }
+
             SyncTreeLookups treeLookups = await ScanTreesAndBuildLookupsAsync(syncPair, options, startedAtUtc, cancellationToken)
                 .ConfigureAwait(false);
             (Dictionary<string, SyncStateEntry> directoryStateByPath, Dictionary<string, SyncStateEntry> stateByPath) =
@@ -639,6 +657,262 @@ namespace Cotton.Sync
                     new RemoteTreeScanProgressReporter(options, startedAtUtc),
                     cancellationToken)
                 .ConfigureAwait(false);
+        }
+
+        private async Task<SyncRunResult?> TryRunInitialWindowsVirtualFilesStreamingPopulationAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            DateTime startedAtUtc,
+            CancellationToken cancellationToken)
+        {
+            if (!await CanRunInitialWindowsVirtualFilesStreamingPopulationAsync(syncPair, options, startedAtUtc, cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                return null;
+            }
+
+            _logger.LogInformation(
+                "Starting initial streaming Windows virtual-files population for pair {SyncPairId}.",
+                syncPair.SyncPairId);
+            var result = new SyncRunResult();
+            var channel = Channel.CreateBounded<InitialVirtualFilesPopulationItem>(
+                new BoundedChannelOptions(options.InitialVirtualFilesPopulationQueueCapacity)
+                {
+                    FullMode = BoundedChannelFullMode.Wait,
+                    SingleReader = true,
+                    SingleWriter = true,
+                });
+            int discoveredFiles = 0;
+            int completedFiles = 0;
+            DateTime? lastPlaceholderProgressReportedAtUtc = null;
+            ReportRunProgress(options, SyncRunProgressStage.ScanningRemote, 0, null, null, startedAtUtc);
+            ReportRunProgress(options, SyncRunProgressStage.CreatingPlaceholders, 0, null, null, startedAtUtc);
+
+            using var streamingCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var sink = new InitialVirtualFilesPopulationSink(
+                channel.Writer,
+                () => Interlocked.Increment(ref discoveredFiles));
+            Task producer = ProduceInitialWindowsVirtualFilesPopulationAsync(
+                syncPair,
+                options,
+                startedAtUtc,
+                channel,
+                sink,
+                streamingCancellation.Token);
+            Task consumer = ConsumeInitialWindowsVirtualFilesPopulationAsync(
+                syncPair,
+                options,
+                result,
+                channel.Reader,
+                startedAtUtc,
+                () => Volatile.Read(ref discoveredFiles),
+                () => completedFiles,
+                value => completedFiles = value,
+                () => lastPlaceholderProgressReportedAtUtc,
+                value => lastPlaceholderProgressReportedAtUtc = value,
+                streamingCancellation.Token);
+
+            Task firstCompleted = await Task.WhenAny(producer, consumer).ConfigureAwait(false);
+            if (firstCompleted.IsFaulted || firstCompleted.IsCanceled)
+            {
+                await streamingCancellation.CancelAsync().ConfigureAwait(false);
+                channel.Writer.TryComplete(firstCompleted.Exception);
+            }
+
+            await Task.WhenAll(producer, consumer).ConfigureAwait(false);
+            ReportRunProgress(
+                options,
+                SyncRunProgressStage.CreatingPlaceholders,
+                completedFiles,
+                completedFiles,
+                null,
+                startedAtUtc);
+            ReportRunProgress(
+                options,
+                SyncRunProgressStage.Completed,
+                completedFiles,
+                completedFiles,
+                null,
+                startedAtUtc,
+                isCompleted: true);
+            return result;
+        }
+
+        private async Task<bool> CanRunInitialWindowsVirtualFilesStreamingPopulationAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            DateTime startedAtUtc,
+            CancellationToken cancellationToken)
+        {
+            if (syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles
+                || !options.Scope.IsFull
+                || _remoteStreamingCrawler is null
+                || _remoteFilePlaceholderWriter is null)
+            {
+                return false;
+            }
+
+            if (!await IsLocalTreeEmptyAsync(syncPair.LocalRootPath, options, startedAtUtc, cancellationToken).ConfigureAwait(false))
+            {
+                return false;
+            }
+
+            return await IsPairStateEmptyAsync(syncPair.SyncPairId, cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task<bool> IsLocalTreeEmptyAsync(
+            string localRootPath,
+            SyncRunOptions options,
+            DateTime startedAtUtc,
+            CancellationToken cancellationToken)
+        {
+            LocalTreeLookupSnapshot? localTreeLookups = await ScanLocalTreeLookupsAsync(
+                    localRootPath,
+                    options,
+                    startedAtUtc,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (localTreeLookups is not null)
+            {
+                return localTreeLookups.DirectoriesByPath.Count == 0 && localTreeLookups.FilesByPath.Count == 0;
+            }
+
+            LocalTreeSnapshot localTree = await ScanLocalTreeAsync(localRootPath, options, startedAtUtc, cancellationToken)
+                .ConfigureAwait(false);
+            return localTree.Directories.Count == 0 && localTree.Files.Count == 0;
+        }
+
+        private async Task<bool> IsPairStateEmptyAsync(string syncPairId, CancellationToken cancellationToken)
+        {
+            DateTime? lastSyncedAtUtc = await _stateStore.GetPairLastSyncedAtUtcAsync(syncPairId, cancellationToken)
+                .ConfigureAwait(false);
+            if (lastSyncedAtUtc.HasValue)
+            {
+                return false;
+            }
+
+            await foreach (SyncStateEntry _ in _stateStore.LoadPairEntriesAsync(syncPairId, cancellationToken)
+                               .ConfigureAwait(false))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private async Task ProduceInitialWindowsVirtualFilesPopulationAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            DateTime startedAtUtc,
+            Channel<InitialVirtualFilesPopulationItem> channel,
+            IRemoteTreeStreamSink sink,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                await _remoteStreamingCrawler!
+                    .CrawlStreamingAsync(
+                        syncPair.RemoteRootNodeId,
+                        sink,
+                        new RemoteTreeScanProgressReporter(options, startedAtUtc),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                channel.Writer.TryComplete();
+            }
+            catch (Exception exception)
+            {
+                channel.Writer.TryComplete(exception);
+                throw;
+            }
+        }
+
+        private async Task ConsumeInitialWindowsVirtualFilesPopulationAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            SyncRunResult result,
+            ChannelReader<InitialVirtualFilesPopulationItem> reader,
+            DateTime startedAtUtc,
+            Func<int> getDiscoveredFiles,
+            Func<int> getCompletedFiles,
+            Action<int> setCompletedFiles,
+            Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
+            Action<DateTime?> setLastPlaceholderProgressReportedAtUtc,
+            CancellationToken cancellationToken)
+        {
+            await foreach (InitialVirtualFilesPopulationItem item in reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                switch (item)
+                {
+                    case InitialVirtualFilesDirectoryPopulationItem directoryItem:
+                        await _localWriter
+                            .CreateDirectoryAsync(syncPair.LocalRootPath, directoryItem.Directory.RelativePath, cancellationToken)
+                            .ConfigureAwait(false);
+                        await _stateStore
+                            .UpsertAsync(
+                                BuildDirectoryBaseline(
+                                    syncPair,
+                                    directoryItem.Directory.RelativePath,
+                                    directoryItem.Directory.Node),
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                        Report(result, options, SyncActivityKind.Downloaded, directoryItem.Directory.RelativePath, "Created local folder.");
+                        break;
+
+                    case InitialVirtualFilesFilePopulationItem fileItem:
+                        await MaterializeRemoteOnlyFileAsync(
+                                syncPair,
+                                options,
+                                result,
+                                fileItem.File.RelativePath,
+                                fileItem.File.File,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                        int completedFiles = getCompletedFiles() + 1;
+                        setCompletedFiles(completedFiles);
+                        ReportStreamingPlaceholderProgress(
+                            options,
+                            completedFiles,
+                            getDiscoveredFiles(),
+                            fileItem.File.RelativePath,
+                            startedAtUtc,
+                            getLastPlaceholderProgressReportedAtUtc(),
+                            setLastPlaceholderProgressReportedAtUtc);
+                        await YieldAfterLargeBatchAsync(
+                                options,
+                                completedFiles,
+                                Math.Max(completedFiles, getDiscoveredFiles()),
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                        break;
+                }
+            }
+        }
+
+        private static void ReportStreamingPlaceholderProgress(
+            SyncRunOptions options,
+            int filesCompleted,
+            int filesDiscovered,
+            string relativePath,
+            DateTime startedAtUtc,
+            DateTime? lastReportedAtUtc,
+            Action<DateTime?> setLastReportedAtUtc)
+        {
+            int filesTotal = Math.Max(filesCompleted, filesDiscovered);
+            DateTime occurredAtUtc = DateTime.UtcNow;
+            if (!ShouldReportItemRunProgress(filesCompleted, filesTotal, lastReportedAtUtc, occurredAtUtc))
+            {
+                return;
+            }
+
+            setLastReportedAtUtc(occurredAtUtc);
+            ReportRunProgress(
+                options,
+                SyncRunProgressStage.CreatingPlaceholders,
+                filesCompleted,
+                filesTotal,
+                relativePath,
+                startedAtUtc);
         }
 
         private async Task ReconcileDirectoriesWithoutBaselineAsync(
@@ -1848,6 +2122,13 @@ namespace Cotton.Sync
                     nameof(options),
                     "Maximum stored result activities cannot be negative.");
             }
+
+            if (options.InitialVirtualFilesPopulationQueueCapacity <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(options),
+                    "Initial virtual-files population queue capacity must be positive.");
+            }
         }
 
         private static void EnsureEnoughLocalFreeSpace(string localRootPath, string relativePath, long requiredBytes)
@@ -2888,6 +3169,44 @@ namespace Cotton.Sync
         }
 
         private readonly record struct MoveCandidateKey(string ContentHash, long SizeBytes);
+
+        private abstract record InitialVirtualFilesPopulationItem;
+
+        private sealed record InitialVirtualFilesDirectoryPopulationItem(RemoteDirectorySnapshot Directory)
+            : InitialVirtualFilesPopulationItem;
+
+        private sealed record InitialVirtualFilesFilePopulationItem(RemoteFileSnapshot File)
+            : InitialVirtualFilesPopulationItem;
+
+        private sealed class InitialVirtualFilesPopulationSink : IRemoteTreeStreamSink
+        {
+            private readonly ChannelWriter<InitialVirtualFilesPopulationItem> _writer;
+            private readonly Action _onFileDiscovered;
+
+            public InitialVirtualFilesPopulationSink(
+                ChannelWriter<InitialVirtualFilesPopulationItem> writer,
+                Action onFileDiscovered)
+            {
+                _writer = writer ?? throw new ArgumentNullException(nameof(writer));
+                _onFileDiscovered = onFileDiscovered ?? throw new ArgumentNullException(nameof(onFileDiscovered));
+            }
+
+            public ValueTask AddDirectoryAsync(
+                RemoteDirectorySnapshot directory,
+                CancellationToken cancellationToken = default)
+            {
+                ArgumentNullException.ThrowIfNull(directory);
+                return _writer.WriteAsync(new InitialVirtualFilesDirectoryPopulationItem(directory), cancellationToken);
+            }
+
+            public async ValueTask AddFileAsync(RemoteFileSnapshot file, CancellationToken cancellationToken = default)
+            {
+                ArgumentNullException.ThrowIfNull(file);
+                await _writer.WriteAsync(new InitialVirtualFilesFilePopulationItem(file), cancellationToken)
+                    .ConfigureAwait(false);
+                _onFileDiscovered();
+            }
+        }
 
         private static void ReportRunProgress(
             SyncRunOptions options,
