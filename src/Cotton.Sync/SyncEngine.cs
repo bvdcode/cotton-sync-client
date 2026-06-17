@@ -959,7 +959,6 @@ namespace Cotton.Sync
                                         directoryItem.Directory.Node),
                                     cancellationToken)
                                 .ConfigureAwait(false);
-                            Report(result, options, SyncActivityKind.Downloaded, directoryItem.Directory.RelativePath, "Created local folder.");
                             break;
 
                         case InitialVirtualFilesFilePopulationItem fileItem:
@@ -1129,7 +1128,7 @@ namespace Cotton.Sync
                             SyncActivityKind.PlaceholderCreated,
                             Details: null,
                             RequiresUserAction: false,
-                            ReportActivity: true);
+                            ReportActivity: false);
                     }
                     catch (RemoteFilePlaceholderUnavailableException exception)
                     {
