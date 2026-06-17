@@ -1254,6 +1254,66 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesUsesBatchPlaceholderWriterDuringStreamingPopulation()
+        {
+            List<RemoteFileSnapshot> remoteFiles = Enumerable
+                .Range(0, 7)
+                .Select(index =>
+                {
+                    string relativePath = "Desktop/file-" + index.ToString("D4", CultureInfo.InvariantCulture) + ".txt";
+                    return new RemoteFileSnapshot
+                    {
+                        RelativePath = relativePath,
+                        File = RemoteFile(relativePath, HashText("remote-" + index.ToString(CultureInfo.InvariantCulture)), sizeBytes: 10 + index),
+                    };
+                })
+                .ToList();
+            var remoteCrawler = new StreamingRemoteTreeCrawler(_remoteRootNodeId, remoteFiles);
+            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new BatchRemoteFilePlaceholderWriter();
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            var engine = new SyncEngine(
+                new FakeLocalFileScanner(),
+                remoteCrawler,
+                remoteFileSynchronizer,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions
+                {
+                    InitialVirtualFilesPopulationQueueCapacity = 2,
+                    InitialVirtualFilesPlaceholderBatchSize = 3,
+                    InitialVirtualFilesPlaceholderConcurrency = 1,
+                });
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
+                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
+                Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
+                Assert.That(placeholderWriter.SingleRequests, Is.Empty);
+                Assert.That(
+                    placeholderWriter.Batches.Select(batch => batch.ToArray()).ToArray(),
+                    Is.EqualTo(new[]
+                    {
+                        new[] { "Desktop/file-0000.txt", "Desktop/file-0001.txt", "Desktop/file-0002.txt" },
+                        new[] { "Desktop/file-0003.txt", "Desktop/file-0004.txt", "Desktop/file-0005.txt" },
+                        new[] { "Desktop/file-0006.txt" },
+                    }));
+                Assert.That(result.Activities, Is.Empty);
+                Assert.That(state.Count(entry => entry.Kind == SyncEntryKind.File), Is.EqualTo(remoteFiles.Count));
+                Assert.That(state.Where(entry => entry.Kind == SyncEntryKind.File), Has.All.Matches<SyncStateEntry>(
+                    entry => entry.PlaceholderHydrationState == SyncPlaceholderHydrationState.RemoteOnly
+                        && entry.PlaceholderIdentity is { Length: > 0 }
+                        && entry.LocalContentHash is null
+                        && entry.LocalSizeBytes is null));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesResumesStreamingPopulationWhenOnlyTrackedPlaceholdersExist()
         {
             NodeFileManifestDto existingRemote = RemoteFile(
@@ -4448,6 +4508,52 @@ namespace Cotton.Sync.Tests
             }
         }
 
+        private sealed class StreamingRemoteTreeCrawler : IRemoteTreeStreamingCrawler
+        {
+            private readonly Guid _rootNodeId;
+            private readonly IReadOnlyList<RemoteFileSnapshot> _files;
+
+            public StreamingRemoteTreeCrawler(Guid rootNodeId, IReadOnlyList<RemoteFileSnapshot> files)
+            {
+                _rootNodeId = rootNodeId;
+                _files = files;
+            }
+
+            public int SnapshotCrawlCalls { get; private set; }
+
+            public int StreamingCrawlCalls { get; private set; }
+
+            public Task<RemoteTreeSnapshot> CrawlAsync(Guid rootNodeId, CancellationToken cancellationToken = default)
+            {
+                SnapshotCrawlCalls++;
+                throw new InvalidOperationException("Initial virtual-files population must use streaming remote crawl.");
+            }
+
+            public async Task<NodeDto> CrawlStreamingAsync(
+                Guid rootNodeId,
+                IRemoteTreeStreamSink sink,
+                IProgress<RemoteTreeScanProgress>? progress,
+                CancellationToken cancellationToken = default)
+            {
+                StreamingCrawlCalls++;
+                var root = new NodeDto
+                {
+                    Id = _rootNodeId,
+                    Name = "root",
+                };
+                progress?.Report(new RemoteTreeScanProgress(0, 0, currentPath: null));
+                for (int index = 0; index < _files.Count; index++)
+                {
+                    RemoteFileSnapshot file = _files[index];
+                    await sink.AddFileAsync(file, cancellationToken).ConfigureAwait(false);
+                    progress?.Report(new RemoteTreeScanProgress(index + 1, 0, file.RelativePath));
+                }
+
+                progress?.Report(new RemoteTreeScanProgress(_files.Count, 0, currentPath: null));
+                return root;
+            }
+        }
+
         private class LookupOnlyRemoteTreeCrawler : IRemoteTreeLookupCrawler
         {
             private readonly RemoteTreeSnapshot _snapshot;
@@ -4660,6 +4766,36 @@ namespace Cotton.Sync.Tests
 
                 _firstPlaceholderStarted.TrySetResult();
                 return Task.FromResult(new RemoteFilePlaceholderResult(PlaceholderIdentity));
+            }
+        }
+
+        private sealed class BatchRemoteFilePlaceholderWriter : IRemoteFilePlaceholderBatchWriter
+        {
+            private static readonly byte[] PlaceholderIdentity = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E];
+
+            public List<string> SingleRequests { get; } = [];
+
+            public List<IReadOnlyList<string>> Batches { get; } = [];
+
+            public Task<RemoteFilePlaceholderResult> CreatePlaceholderAsync(
+                RemoteFilePlaceholderRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                SingleRequests.Add(request.RelativePath);
+                return Task.FromResult(new RemoteFilePlaceholderResult(PlaceholderIdentity));
+            }
+
+            public Task<IReadOnlyList<RemoteFilePlaceholderBatchResult>> CreatePlaceholdersAsync(
+                IReadOnlyList<RemoteFilePlaceholderRequest> requests,
+                CancellationToken cancellationToken = default)
+            {
+                Batches.Add(requests.Select(static request => request.RelativePath).ToArray());
+                return Task.FromResult<IReadOnlyList<RemoteFilePlaceholderBatchResult>>(
+                    requests
+                        .Select(static request => RemoteFilePlaceholderBatchResult.Success(
+                            request,
+                            new RemoteFilePlaceholderResult(PlaceholderIdentity)))
+                        .ToArray());
             }
         }
 

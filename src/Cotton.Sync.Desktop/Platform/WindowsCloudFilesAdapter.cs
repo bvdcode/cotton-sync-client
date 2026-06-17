@@ -73,6 +73,121 @@ namespace Cotton.Sync.Desktop.Platform
         public RemoteFilePlaceholderResult CreateFilePlaceholder(RemoteFilePlaceholderRequest request)
         {
             ArgumentNullException.ThrowIfNull(request);
+            return CreateFilePlaceholders([request])[0];
+        }
+
+        public IReadOnlyList<RemoteFilePlaceholderResult> CreateFilePlaceholders(
+            IReadOnlyList<RemoteFilePlaceholderRequest> requests)
+        {
+            ArgumentNullException.ThrowIfNull(requests);
+            if (requests.Count == 0)
+            {
+                return [];
+            }
+
+            var prepared = new PreparedFilePlaceholder[requests.Count];
+            for (int index = 0; index < requests.Count; index++)
+            {
+                prepared[index] = PrepareFilePlaceholder(index, requests[index]);
+            }
+
+            foreach (PreparedFilePlaceholder item in prepared)
+            {
+                EnsureSyncRootRegistered(item.SyncPairId, item.LocalRootPath, item.SyncRootIdentity);
+                Directory.CreateDirectory(item.Placeholder.BaseDirectoryPath);
+            }
+
+            var results = new RemoteFilePlaceholderResult[prepared.Length];
+            foreach (PreparedFilePlaceholder item in prepared.Where(static item => item.UpdateExistingPlaceholder))
+            {
+                const string operation = "update-placeholder";
+                try
+                {
+                    ExecuteNativeOperationWithTransientPathRetry(
+                        () => _nativeApi.UpdatePlaceholder(item.Placeholder),
+                        operation,
+                        item.SyncPairId,
+                        item.LocalRootPath,
+                        item.NormalizedRelativePath);
+                }
+                catch (Exception exception)
+                {
+                    RecordFailure(
+                        operation,
+                        item.SyncPairId,
+                        item.LocalRootPath,
+                        item.NormalizedRelativePath,
+                        exception);
+                    throw;
+                }
+
+                results[item.Index] = new RemoteFilePlaceholderResult(
+                    item.FileIdentity,
+                    SyncPlaceholderHydrationState.RemoteOnly);
+            }
+
+            foreach (IGrouping<string, PreparedFilePlaceholder> group in prepared
+                .Where(static item => !item.UpdateExistingPlaceholder)
+                .GroupBy(static item => item.Placeholder.BaseDirectoryPath, StringComparer.OrdinalIgnoreCase))
+            {
+                PreparedFilePlaceholder[] batch = [.. group];
+                const string createOperation = "create-placeholders";
+                try
+                {
+                    _nativeApi.CreatePlaceholders(batch.Select(static item => item.Placeholder).ToArray());
+                }
+                catch (Exception exception)
+                {
+                    foreach (PreparedFilePlaceholder item in batch)
+                    {
+                        RecordFailure(
+                            createOperation,
+                            item.SyncPairId,
+                            item.LocalRootPath,
+                            item.NormalizedRelativePath,
+                            exception);
+                    }
+
+                    throw;
+                }
+
+                foreach (PreparedFilePlaceholder item in batch)
+                {
+                    const string pinOperation = "set-pin-state";
+                    try
+                    {
+                        ExecuteNativeOperationWithTransientPathRetry(
+                            () => _nativeApi.SetPinState(item.FullPlaceholderPath, WindowsCloudFilesPinState.Unpinned),
+                            pinOperation,
+                            item.SyncPairId,
+                            item.LocalRootPath,
+                            item.NormalizedRelativePath);
+                    }
+                    catch (Exception exception)
+                    {
+                        RecordFailure(
+                            pinOperation,
+                            item.SyncPairId,
+                            item.LocalRootPath,
+                            item.NormalizedRelativePath,
+                            exception);
+                        throw;
+                    }
+
+                    results[item.Index] = new RemoteFilePlaceholderResult(
+                        item.FileIdentity,
+                        SyncPlaceholderHydrationState.RemoteOnly);
+                }
+            }
+
+            return results;
+        }
+
+        private PreparedFilePlaceholder PrepareFilePlaceholder(
+            int index,
+            RemoteFilePlaceholderRequest request)
+        {
+            ArgumentNullException.ThrowIfNull(request);
             WindowsVirtualFilesRootSafetyResult safety = _rootSafety.Validate(request.LocalRootPath);
             if (!safety.IsSafe)
             {
@@ -100,42 +215,17 @@ namespace Cotton.Sync.Desktop.Platform
                 placeholderPath.BaseDirectoryPath,
                 placeholderPath.RelativeFileName);
             bool updateExistingPlaceholder = File.Exists(fullPlaceholderPath) && _isReparsePoint(fullPlaceholderPath);
-            string operation = updateExistingPlaceholder ? "update-placeholder" : "create-placeholder";
-            try
-            {
-                if (updateExistingPlaceholder)
-                {
-                    ExecuteNativeOperationWithTransientPathRetry(
-                        () => _nativeApi.UpdatePlaceholder(nativePlaceholder),
-                        operation,
-                        request.SyncPairId,
-                        safety.FullPath,
-                        normalizedPath);
-                }
-                else
-                {
-                    _nativeApi.CreatePlaceholder(nativePlaceholder);
-                    operation = "set-pin-state";
-                    ExecuteNativeOperationWithTransientPathRetry(
-                        () => _nativeApi.SetPinState(fullPlaceholderPath, WindowsCloudFilesPinState.Unpinned),
-                        operation,
-                        request.SyncPairId,
-                        safety.FullPath,
-                        normalizedPath);
-                }
-            }
-            catch (Exception exception)
-            {
-                RecordFailure(
-                    operation,
-                    request.SyncPairId,
-                    safety.FullPath,
-                    normalizedPath,
-                    exception);
-                throw;
-            }
 
-            return new RemoteFilePlaceholderResult(fileIdentity, SyncPlaceholderHydrationState.RemoteOnly);
+            return new PreparedFilePlaceholder(
+                index,
+                request.SyncPairId,
+                safety.FullPath,
+                normalizedPath,
+                nativePlaceholder,
+                fullPlaceholderPath,
+                updateExistingPlaceholder,
+                syncRootIdentity,
+                fileIdentity);
         }
 
         public void UnregisterSyncRoot(SyncPairSettings syncPair)
@@ -452,5 +542,16 @@ namespace Cotton.Sync.Desktop.Platform
         }
 
         private sealed record PlaceholderPath(string BaseDirectoryPath, string RelativeFileName);
+
+        private sealed record PreparedFilePlaceholder(
+            int Index,
+            string SyncPairId,
+            string LocalRootPath,
+            string NormalizedRelativePath,
+            WindowsCloudFilesNativePlaceholder Placeholder,
+            string FullPlaceholderPath,
+            bool UpdateExistingPlaceholder,
+            byte[] SyncRootIdentity,
+            byte[] FileIdentity);
     }
 }

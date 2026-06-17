@@ -114,6 +114,40 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void CreateFilePlaceholders_BatchesNativeCreatesByDirectoryAndReturnsResults()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            string root = Path.Combine(_tempDirectory, "root");
+            RemoteFilePlaceholderRequest[] requests =
+            [
+                CreateRequest(root, "Projects/first.txt"),
+                CreateRequest(root, "Projects/second.txt"),
+                CreateRequest(root, "Other/third.txt"),
+            ];
+
+            IReadOnlyList<RemoteFilePlaceholderResult> results = adapter.CreateFilePlaceholders(requests);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.Registrations, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.Placeholders, Has.Count.EqualTo(3));
+                Assert.That(nativeApi.PlaceholderBatches, Has.Count.EqualTo(2));
+                Assert.That(nativeApi.PlaceholderBatches[0].Select(static item => item.RelativeFileName), Is.EqualTo(new[] { "first.txt", "second.txt" }));
+                Assert.That(nativeApi.PlaceholderBatches[1].Select(static item => item.RelativeFileName), Is.EqualTo(new[] { "third.txt" }));
+                Assert.That(results, Has.Count.EqualTo(3));
+                Assert.That(results.Select(static result => result.HydrationState), Is.All.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+                Assert.That(results.Select(static result => result.PlaceholderIdentity), Is.EqualTo(nativeApi.Placeholders.Select(static placeholder => placeholder.FileIdentity)));
+                Assert.That(nativeApi.PinStates.Select(static pin => pin.FilePath), Is.EqualTo(new[]
+                {
+                    Path.GetFullPath(Path.Combine(root, "Projects", "first.txt")),
+                    Path.GetFullPath(Path.Combine(root, "Projects", "second.txt")),
+                    Path.GetFullPath(Path.Combine(root, "Other", "third.txt")),
+                }));
+            });
+        }
+
+        [Test]
         public void CreateFilePlaceholder_RetriesTransientPinStatePathOpenFailure()
         {
             var nativeApi = new FakeCloudFilesNativeApi
@@ -616,6 +650,14 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public void CreatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder)
             {
                 Placeholders.Add(placeholder);
+            }
+
+            public List<IReadOnlyList<WindowsCloudFilesNativePlaceholder>> PlaceholderBatches { get; } = [];
+
+            public void CreatePlaceholders(IReadOnlyList<WindowsCloudFilesNativePlaceholder> placeholders)
+            {
+                PlaceholderBatches.Add(placeholders.ToArray());
+                Placeholders.AddRange(placeholders);
             }
 
             public void UpdatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder)

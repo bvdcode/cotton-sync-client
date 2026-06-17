@@ -53,46 +53,72 @@ namespace Cotton.Sync.Desktop.Platform
         public void CreatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder)
         {
             ArgumentNullException.ThrowIfNull(placeholder);
-            Directory.CreateDirectory(placeholder.BaseDirectoryPath);
+            CreatePlaceholders([placeholder]);
+        }
 
-            PinnedBuffer fileIdentity = PinnedBuffer.Pin(placeholder.FileIdentity);
+        public void CreatePlaceholders(IReadOnlyList<WindowsCloudFilesNativePlaceholder> placeholders)
+        {
+            ArgumentNullException.ThrowIfNull(placeholders);
+            foreach (IGrouping<string, WindowsCloudFilesNativePlaceholder> group in placeholders
+                .GroupBy(static placeholder => placeholder.BaseDirectoryPath, StringComparer.OrdinalIgnoreCase))
+            {
+                CreatePlaceholdersInDirectory(group.Key, [.. group]);
+            }
+        }
+
+        private static void CreatePlaceholdersInDirectory(
+            string baseDirectoryPath,
+            IReadOnlyList<WindowsCloudFilesNativePlaceholder> placeholders)
+        {
+            Directory.CreateDirectory(baseDirectoryPath);
+            var pinnedIdentities = new PinnedBuffer[placeholders.Count];
             try
             {
-                var placeholders = new[]
+                var nativePlaceholders = new CfPlaceholderCreateInfo[placeholders.Count];
+                for (int index = 0; index < placeholders.Count; index++)
                 {
-                    new CfPlaceholderCreateInfo
+                    WindowsCloudFilesNativePlaceholder placeholder = placeholders[index];
+                    pinnedIdentities[index] = PinnedBuffer.Pin(placeholder.FileIdentity);
+                    nativePlaceholders[index] = new CfPlaceholderCreateInfo
                     {
                         RelativeFileName = placeholder.RelativeFileName,
                         FsMetadata = CfFsMetadata.CreateFile(
                             placeholder.FileSizeBytes,
                             placeholder.CreatedAtUtc,
                             placeholder.UpdatedAtUtc),
-                        FileIdentity = fileIdentity.Pointer,
-                        FileIdentityLength = fileIdentity.Length,
+                        FileIdentity = pinnedIdentities[index].Pointer,
+                        FileIdentityLength = pinnedIdentities[index].Length,
                         Flags = CfPlaceholderCreateFlags.MarkInSync,
                         Result = Succeeded,
                         CreateUsn = 0,
-                    },
-                };
+                    };
+                }
 
                 int result = CfCreatePlaceholders(
-                    WindowsNativePath.ToWin32FilePath(placeholder.BaseDirectoryPath),
-                    placeholders,
-                    (uint)placeholders.Length,
+                    WindowsNativePath.ToWin32FilePath(baseDirectoryPath),
+                    nativePlaceholders,
+                    (uint)nativePlaceholders.Length,
                     CfCreateFlags.StopOnError,
                     out uint entriesProcessed);
                 ThrowIfFailed(result, nameof(CfCreatePlaceholders));
 
-                if (entriesProcessed != placeholders.Length)
+                uint processed = Math.Min(entriesProcessed, (uint)nativePlaceholders.Length);
+                for (int index = 0; index < processed; index++)
+                {
+                    ThrowIfFailed(nativePlaceholders[index].Result, nameof(CfCreatePlaceholders));
+                }
+
+                if (entriesProcessed != nativePlaceholders.Length)
                 {
                     throw new WindowsCloudFilesNativeException(nameof(CfCreatePlaceholders), unchecked((int)0x80004005));
                 }
-
-                ThrowIfFailed(placeholders[0].Result, nameof(CfCreatePlaceholders));
             }
             finally
             {
-                fileIdentity.Dispose();
+                foreach (PinnedBuffer pinnedIdentity in pinnedIdentities)
+                {
+                    pinnedIdentity.Dispose();
+                }
             }
         }
 

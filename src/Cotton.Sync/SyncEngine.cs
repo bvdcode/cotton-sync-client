@@ -920,7 +920,12 @@ namespace Cotton.Sync
             CancellationToken cancellationToken)
         {
             var pendingFileStates = new List<SyncStateEntry>(options.InitialVirtualFilesStateBatchSize);
-            var pendingFileTasks = new List<Task<InitialVirtualFilesFileWorkResult>>(options.InitialVirtualFilesPlaceholderConcurrency);
+            int placeholderBatchSize = _remoteFilePlaceholderWriter is IRemoteFilePlaceholderBatchWriter
+                ? options.InitialVirtualFilesPlaceholderBatchSize
+                : 1;
+            var pendingFileBatch = new List<RemoteFileSnapshot>(placeholderBatchSize);
+            var pendingFileTasks = new List<Task<IReadOnlyList<InitialVirtualFilesFileWorkResult>>>(
+                options.InitialVirtualFilesPlaceholderConcurrency);
             try
             {
                 await foreach (InitialVirtualFilesPopulationItem item in reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
@@ -929,6 +934,12 @@ namespace Cotton.Sync
                     switch (item)
                     {
                         case InitialVirtualFilesDirectoryPopulationItem directoryItem:
+                            EnqueueInitialVirtualFilesFileBatchWork(
+                                pendingFileTasks,
+                                pendingFileBatch,
+                                syncPair,
+                                options,
+                                cancellationToken);
                             await DrainCompletedInitialVirtualFilesAsync(
                                     pendingFileTasks,
                                     pendingFileStates,
@@ -967,11 +978,17 @@ namespace Cotton.Sync
                                         fileItem.File,
                                         streamingPlan))
                             {
-                                pendingFileTasks.Add(CreateInitialVirtualFilesFileWorkAsync(
-                                    syncPair,
-                                    options,
-                                    fileItem.File,
-                                    cancellationToken));
+                                pendingFileBatch.Add(fileItem.File);
+                                if (pendingFileBatch.Count >= placeholderBatchSize)
+                                {
+                                    EnqueueInitialVirtualFilesFileBatchWork(
+                                        pendingFileTasks,
+                                        pendingFileBatch,
+                                        syncPair,
+                                        options,
+                                        cancellationToken);
+                                }
+
                                 if (pendingFileTasks.Count >= options.InitialVirtualFilesPlaceholderConcurrency)
                                 {
                                     await DrainCompletedInitialVirtualFilesAsync(
@@ -1012,6 +1029,12 @@ namespace Cotton.Sync
                     }
                 }
 
+                EnqueueInitialVirtualFilesFileBatchWork(
+                    pendingFileTasks,
+                    pendingFileBatch,
+                    syncPair,
+                    options,
+                    cancellationToken);
                 while (pendingFileTasks.Count > 0)
                 {
                     await DrainCompletedInitialVirtualFilesAsync(
@@ -1038,7 +1061,7 @@ namespace Cotton.Sync
         }
 
         private async Task DrainCompletedInitialVirtualFilesAsync(
-            List<Task<InitialVirtualFilesFileWorkResult>> pendingFileTasks,
+            List<Task<IReadOnlyList<InitialVirtualFilesFileWorkResult>>> pendingFileTasks,
             List<SyncStateEntry> pendingFileStates,
             SyncPair syncPair,
             SyncRunOptions options,
@@ -1059,10 +1082,10 @@ namespace Cotton.Sync
 
             if (waitForOne)
             {
-                Task<InitialVirtualFilesFileWorkResult> completedTask =
+                Task<IReadOnlyList<InitialVirtualFilesFileWorkResult>> completedTask =
                     await Task.WhenAny(pendingFileTasks).ConfigureAwait(false);
                 pendingFileTasks.Remove(completedTask);
-                await CompleteInitialVirtualFilesFileWorkAsync(
+                await CompleteInitialVirtualFilesFileWorkBatchAsync(
                         await completedTask.ConfigureAwait(false),
                         pendingFileStates,
                         syncPair,
@@ -1080,14 +1103,14 @@ namespace Cotton.Sync
 
             for (int index = pendingFileTasks.Count - 1; index >= 0; index--)
             {
-                Task<InitialVirtualFilesFileWorkResult> task = pendingFileTasks[index];
+                Task<IReadOnlyList<InitialVirtualFilesFileWorkResult>> task = pendingFileTasks[index];
                 if (!task.IsCompleted)
                 {
                     continue;
                 }
 
                 pendingFileTasks.RemoveAt(index);
-                await CompleteInitialVirtualFilesFileWorkAsync(
+                await CompleteInitialVirtualFilesFileWorkBatchAsync(
                         await task.ConfigureAwait(false),
                         pendingFileStates,
                         syncPair,
@@ -1104,44 +1127,197 @@ namespace Cotton.Sync
             }
         }
 
-        private Task<InitialVirtualFilesFileWorkResult> CreateInitialVirtualFilesFileWorkAsync(
+        private void EnqueueInitialVirtualFilesFileBatchWork(
+            List<Task<IReadOnlyList<InitialVirtualFilesFileWorkResult>>> pendingFileTasks,
+            List<RemoteFileSnapshot> pendingFileBatch,
             SyncPair syncPair,
             SyncRunOptions options,
-            RemoteFileSnapshot remote,
+            CancellationToken cancellationToken)
+        {
+            if (pendingFileBatch.Count == 0)
+            {
+                return;
+            }
+
+            RemoteFileSnapshot[] batch = [.. pendingFileBatch];
+            pendingFileBatch.Clear();
+            pendingFileTasks.Add(CreateInitialVirtualFilesFileBatchWorkAsync(
+                syncPair,
+                options,
+                batch,
+                cancellationToken));
+        }
+
+        private Task<IReadOnlyList<InitialVirtualFilesFileWorkResult>> CreateInitialVirtualFilesFileBatchWorkAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            IReadOnlyList<RemoteFileSnapshot> remoteFiles,
             CancellationToken cancellationToken)
         {
             return Task.Run(
                 async () =>
                 {
-                    try
+                    if (remoteFiles.Count == 0)
                     {
-                        SyncStateEntry? placeholderState = await TryCreateRemoteOnlyFilePlaceholderStateAsync(
+                        return Array.Empty<InitialVirtualFilesFileWorkResult>();
+                    }
+
+                    if (_remoteFilePlaceholderWriter is IRemoteFilePlaceholderBatchWriter batchWriter)
+                    {
+                        return await CreateInitialVirtualFilesBatchResultsAsync(
                                 syncPair,
-                                options,
-                                remote.RelativePath,
-                                remote.File,
+                                batchWriter,
+                                remoteFiles,
                                 cancellationToken)
                             .ConfigureAwait(false);
-                        return new InitialVirtualFilesFileWorkResult(
+                    }
+
+                    var results = new InitialVirtualFilesFileWorkResult[remoteFiles.Count];
+                    for (int index = 0; index < remoteFiles.Count; index++)
+                    {
+                        results[index] = await CreateInitialVirtualFilesFileResultAsync(
+                                syncPair,
+                                options,
+                                remoteFiles[index],
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
+                    return results;
+                },
+                cancellationToken);
+        }
+
+        private async Task<IReadOnlyList<InitialVirtualFilesFileWorkResult>> CreateInitialVirtualFilesBatchResultsAsync(
+            SyncPair syncPair,
+            IRemoteFilePlaceholderBatchWriter batchWriter,
+            IReadOnlyList<RemoteFileSnapshot> remoteFiles,
+            CancellationToken cancellationToken)
+        {
+            var requests = new RemoteFilePlaceholderRequest[remoteFiles.Count];
+            for (int index = 0; index < remoteFiles.Count; index++)
+            {
+                RemoteFileSnapshot remote = remoteFiles[index];
+                requests[index] = CreateRemoteFilePlaceholderRequest(syncPair, remote.RelativePath, remote.File);
+            }
+
+            try
+            {
+                IReadOnlyList<RemoteFilePlaceholderBatchResult> batchResults =
+                    await batchWriter.CreatePlaceholdersAsync(requests, cancellationToken).ConfigureAwait(false);
+                if (batchResults.Count != remoteFiles.Count)
+                {
+                    throw new InvalidOperationException("Batch placeholder writer returned a different number of results.");
+                }
+
+                var results = new InitialVirtualFilesFileWorkResult[remoteFiles.Count];
+                for (int index = 0; index < remoteFiles.Count; index++)
+                {
+                    RemoteFileSnapshot remote = remoteFiles[index];
+                    RemoteFilePlaceholderBatchResult batchResult = batchResults[index];
+                    results[index] = batchResult.Placeholder is null
+                        ? new InitialVirtualFilesFileWorkResult(
                             remote.RelativePath,
-                            placeholderState,
+                            State: null,
+                            SyncActivityKind.Skipped,
+                            batchResult.UnavailableReason,
+                            RequiresUserAction: true,
+                            ReportActivity: true)
+                        : new InitialVirtualFilesFileWorkResult(
+                            remote.RelativePath,
+                            BuildPlaceholderBaseline(syncPair, remote.RelativePath, remote.File, batchResult.Placeholder),
                             SyncActivityKind.PlaceholderCreated,
                             Details: null,
                             RequiresUserAction: false,
                             ReportActivity: false);
-                    }
-                    catch (RemoteFilePlaceholderUnavailableException exception)
-                    {
-                        return new InitialVirtualFilesFileWorkResult(
-                            remote.RelativePath,
-                            State: null,
-                            SyncActivityKind.Skipped,
-                            exception.Reason,
-                            RequiresUserAction: true,
-                            ReportActivity: true);
-                    }
-                },
-                cancellationToken);
+                }
+
+                return results;
+            }
+            catch (RemoteFilePlaceholderUnavailableException exception)
+            {
+                var results = new InitialVirtualFilesFileWorkResult[remoteFiles.Count];
+                for (int index = 0; index < remoteFiles.Count; index++)
+                {
+                    results[index] = new InitialVirtualFilesFileWorkResult(
+                        remoteFiles[index].RelativePath,
+                        State: null,
+                        SyncActivityKind.Skipped,
+                        exception.Reason,
+                        RequiresUserAction: true,
+                        ReportActivity: true);
+                }
+
+                return results;
+            }
+        }
+
+        private async Task<InitialVirtualFilesFileWorkResult> CreateInitialVirtualFilesFileResultAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            RemoteFileSnapshot remote,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                SyncStateEntry? placeholderState = await TryCreateRemoteOnlyFilePlaceholderStateAsync(
+                        syncPair,
+                        options,
+                        remote.RelativePath,
+                        remote.File,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                return new InitialVirtualFilesFileWorkResult(
+                    remote.RelativePath,
+                    placeholderState,
+                    SyncActivityKind.PlaceholderCreated,
+                    Details: null,
+                    RequiresUserAction: false,
+                    ReportActivity: false);
+            }
+            catch (RemoteFilePlaceholderUnavailableException exception)
+            {
+                return new InitialVirtualFilesFileWorkResult(
+                    remote.RelativePath,
+                    State: null,
+                    SyncActivityKind.Skipped,
+                    exception.Reason,
+                    RequiresUserAction: true,
+                    ReportActivity: true);
+            }
+        }
+
+        private async Task CompleteInitialVirtualFilesFileWorkBatchAsync(
+            IReadOnlyList<InitialVirtualFilesFileWorkResult> workResults,
+            List<SyncStateEntry> pendingFileStates,
+            SyncPair syncPair,
+            SyncRunOptions options,
+            SyncRunResult result,
+            DateTime startedAtUtc,
+            Func<int> getDiscoveredFiles,
+            Func<int> getCompletedFiles,
+            Action<int> setCompletedFiles,
+            Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
+            Action<DateTime?> setLastPlaceholderProgressReportedAtUtc,
+            CancellationToken cancellationToken)
+        {
+            foreach (InitialVirtualFilesFileWorkResult workResult in workResults)
+            {
+                await CompleteInitialVirtualFilesFileWorkAsync(
+                        workResult,
+                        pendingFileStates,
+                        syncPair,
+                        options,
+                        result,
+                        startedAtUtc,
+                        getDiscoveredFiles,
+                        getCompletedFiles,
+                        setCompletedFiles,
+                        getLastPlaceholderProgressReportedAtUtc,
+                        setLastPlaceholderProgressReportedAtUtc,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
 
         private async Task CompleteInitialVirtualFilesFileWorkAsync(
@@ -1234,12 +1410,7 @@ namespace Cotton.Sync
             {
                 placeholder = await _remoteFilePlaceholderWriter
                     .CreatePlaceholderAsync(
-                        new RemoteFilePlaceholderRequest(
-                            syncPair.SyncPairId,
-                            syncPair.LocalRootPath,
-                            syncPair.RemoteRootNodeId,
-                            SyncPath.Normalize(relativePath),
-                            remoteFile),
+                        CreateRemoteFilePlaceholderRequest(syncPair, relativePath, remoteFile),
                         cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -1249,6 +1420,19 @@ namespace Cotton.Sync
             }
 
             return BuildPlaceholderBaseline(syncPair, relativePath, remoteFile, placeholder, existingHydrationState);
+        }
+
+        private static RemoteFilePlaceholderRequest CreateRemoteFilePlaceholderRequest(
+            SyncPair syncPair,
+            string relativePath,
+            NodeFileManifestDto remoteFile)
+        {
+            return new RemoteFilePlaceholderRequest(
+                syncPair.SyncPairId,
+                syncPair.LocalRootPath,
+                syncPair.RemoteRootNodeId,
+                SyncPath.Normalize(relativePath),
+                remoteFile);
         }
 
         private async Task MaterializeRemoteOnlyFileAsync(
@@ -2532,6 +2716,13 @@ namespace Cotton.Sync
                     nameof(options),
                     "Initial virtual-files placeholder concurrency must be positive.");
             }
+
+            if (options.InitialVirtualFilesPlaceholderBatchSize <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(options),
+                    "Initial virtual-files placeholder batch size must be positive.");
+            }
         }
 
         private static void EnsureEnoughLocalFreeSpace(string localRootPath, string relativePath, long requiredBytes)
@@ -3185,6 +3376,10 @@ namespace Cotton.Sync
                 MaximumLocalDeletesPerRun = options.MaximumLocalDeletesPerRun,
                 MaximumRemoteDeletesPerRun = options.MaximumRemoteDeletesPerRun,
                 MaximumStoredResultActivities = options.MaximumStoredResultActivities,
+                InitialVirtualFilesPopulationQueueCapacity = options.InitialVirtualFilesPopulationQueueCapacity,
+                InitialVirtualFilesStateBatchSize = options.InitialVirtualFilesStateBatchSize,
+                InitialVirtualFilesPlaceholderConcurrency = options.InitialVirtualFilesPlaceholderConcurrency,
+                InitialVirtualFilesPlaceholderBatchSize = options.InitialVirtualFilesPlaceholderBatchSize,
                 ActivityProgress = options.ActivityProgress,
                 TransferProgress = options.TransferProgress,
                 RunProgress = options.RunProgress,
