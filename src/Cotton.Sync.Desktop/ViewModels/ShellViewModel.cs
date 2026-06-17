@@ -750,6 +750,11 @@ namespace Cotton.Sync.Desktop.ViewModels
 
             foreach (DesktopRunProgressSnapshot progress in _runProgressByPair.Values)
             {
+                if (!IsQueuedWorkIndicatorStage(progress.Stage))
+                {
+                    continue;
+                }
+
                 int workCount = progress.FilesTotal ?? Math.Max(progress.FilesCompleted, 0);
                 if (workCount >= QueuedWorkIndicatorFileThreshold)
                 {
@@ -758,6 +763,12 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
 
             return false;
+        }
+
+        private static bool IsQueuedWorkIndicatorStage(SyncRunProgressStage stage)
+        {
+            return stage is SyncRunProgressStage.ReconcilingDirectories
+                or SyncRunProgressStage.ReconcilingFiles;
         }
 
         public bool IsBusy

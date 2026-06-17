@@ -2010,6 +2010,58 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task RunProgressChanged_KeepsQueuedWorkIndicatorOffForLargeRemoteScan()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.ScanningRemote,
+                FilesCompleted: 99_300,
+                FilesTotal: null,
+                CurrentPath: "Photos/2026",
+                StartedAtUtc: new DateTime(2026, 6, 16, 19, 31, 0, DateTimeKind.Utc),
+                IsCompleted: false,
+                OccurredAtUtc: new DateTime(2026, 6, 16, 19, 31, 10, DateTimeKind.Utc)));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.HasCurrentRunProgress, Is.True);
+                Assert.That(viewModel.CurrentWorkProgressDetails, Does.StartWith("Scanning Cotton Cloud"));
+                Assert.That(viewModel.CurrentWorkProgressSecondaryDetails, Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task RunProgressChanged_KeepsQueuedWorkIndicatorOffForLargePlaceholderCreation()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.CreatingPlaceholders,
+                FilesCompleted: 1_200,
+                FilesTotal: 100_000,
+                CurrentPath: "Photos/2026/image-1200.jpg",
+                StartedAtUtc: new DateTime(2026, 6, 16, 19, 31, 0, DateTimeKind.Utc),
+                IsCompleted: false,
+                OccurredAtUtc: new DateTime(2026, 6, 16, 19, 31, 10, DateTimeKind.Utc)));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.HasCurrentRunProgress, Is.True);
+                Assert.That(viewModel.CurrentWorkProgressDetails, Does.StartWith("Making cloud files available"));
+                Assert.That(viewModel.CurrentWorkProgressSecondaryDetails, Is.Empty);
+            });
+        }
+
+        [Test]
         public async Task RunProgressChanged_ShowsRemoteScanCurrentPathBeforeFilesAreFound()
         {
             Guid syncPairId = Guid.NewGuid();
