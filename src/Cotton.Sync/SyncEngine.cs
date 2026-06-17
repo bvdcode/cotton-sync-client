@@ -823,7 +823,7 @@ namespace Cotton.Sync
             }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            (Dictionary<string, SyncStateEntry> directoryStateByPath, Dictionary<string, InitialVirtualFilesPlaceholderBaseline> fileBaselineByPath) =
+            (Dictionary<string, Guid?> directoryStateByPath, Dictionary<string, InitialVirtualFilesPlaceholderBaseline> fileBaselineByPath) =
                 await LoadInitialVirtualFilesResumeStateByPathAsync(
                         syncPair.SyncPairId,
                         localDirectoriesByPath.Keys.Concat(localFilesByPath.Keys),
@@ -838,8 +838,8 @@ namespace Cotton.Sync
                 stopwatch.ElapsedMilliseconds);
             foreach (string directoryKey in localDirectoriesByPath.Keys)
             {
-                if (!directoryStateByPath.TryGetValue(directoryKey, out SyncStateEntry? state)
-                    || state.RemoteNodeId is null)
+                if (!directoryStateByPath.TryGetValue(directoryKey, out Guid? remoteNodeId)
+                    || remoteNodeId is null)
                 {
                     return null;
                 }
@@ -867,14 +867,44 @@ namespace Cotton.Sync
         }
 
         private async Task<(
-            Dictionary<string, SyncStateEntry> DirectoryStateByPath,
+            Dictionary<string, Guid?> DirectoryRemoteNodeIdByPath,
             Dictionary<string, InitialVirtualFilesPlaceholderBaseline> FileBaselineByPath)> LoadInitialVirtualFilesResumeStateByPathAsync(
             string syncPairId,
             IEnumerable<string> keys,
             CancellationToken cancellationToken)
         {
-            var directoryStateByPath = new Dictionary<string, SyncStateEntry>(PathComparer);
+            var directoryStateByPath = new Dictionary<string, Guid?>(PathComparer);
             var fileBaselineByPath = new Dictionary<string, InitialVirtualFilesPlaceholderBaseline>(PathComparer);
+            if (_stateStore is IVirtualFilesResumeStateStore virtualFilesResumeStateStore)
+            {
+                await foreach (SyncVirtualFilesResumeEntry entry in virtualFilesResumeStateStore.LoadVirtualFilesResumeEntriesByPathKeysAsync(syncPairId, keys, cancellationToken)
+                                   .WithCancellation(cancellationToken)
+                                   .ConfigureAwait(false))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (SyncPathIgnoreRules.ShouldIgnore(entry.RelativePath))
+                    {
+                        await _stateStore.DeleteAsync(syncPairId, entry.RelativePath, cancellationToken).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    string stateKey = SyncPath.ToKey(entry.RelativePath);
+                    switch (entry.Kind)
+                    {
+                        case SyncEntryKind.Directory:
+                            directoryStateByPath[stateKey] = entry.RemoteNodeId;
+                            break;
+                        case SyncEntryKind.File:
+                            fileBaselineByPath[stateKey] = InitialVirtualFilesPlaceholderBaseline.FromResumeEntry(entry);
+                            break;
+                        default:
+                            throw new ArgumentOutOfRangeException(nameof(entry), entry.Kind, "Unknown sync state entry kind.");
+                    }
+                }
+
+                return (directoryStateByPath, fileBaselineByPath);
+            }
+
             await foreach (SyncStateEntry entry in _stateStore.LoadEntriesByPathKeysAsync(syncPairId, keys, cancellationToken)
                                .WithCancellation(cancellationToken)
                                .ConfigureAwait(false))
@@ -890,7 +920,7 @@ namespace Cotton.Sync
                 switch (entry.Kind)
                 {
                     case SyncEntryKind.Directory:
-                        directoryStateByPath[stateKey] = entry;
+                        directoryStateByPath[stateKey] = entry.RemoteNodeId;
                         break;
                     case SyncEntryKind.File:
                         fileBaselineByPath[stateKey] = InitialVirtualFilesPlaceholderBaseline.FromState(entry);
@@ -3859,6 +3889,17 @@ namespace Cotton.Sync
                     state.RemoteETag,
                     state.PlaceholderHydrationState,
                     state.PlaceholderIdentity is { Length: > 0 });
+            }
+
+            public static InitialVirtualFilesPlaceholderBaseline FromResumeEntry(
+                SyncVirtualFilesResumeEntry entry)
+            {
+                return new InitialVirtualFilesPlaceholderBaseline(
+                    entry.RemoteFileId,
+                    entry.RemoteContentHash,
+                    entry.RemoteETag,
+                    entry.PlaceholderHydrationState,
+                    entry.HasPlaceholderIdentity);
             }
         }
 
