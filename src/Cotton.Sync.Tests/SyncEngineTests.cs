@@ -1254,6 +1254,90 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesResumesStreamingPopulationWhenOnlyTrackedPlaceholdersExist()
+        {
+            NodeFileManifestDto existingRemote = RemoteFile(
+                "Desktop/existing.txt",
+                HashText("existing"),
+                sizeBytes: 11);
+            NodeFileManifestDto newRemote = RemoteFile(
+                "Desktop/new.txt",
+                HashText("new"),
+                sizeBytes: 12);
+            List<RemoteFileSnapshot> remoteFiles =
+            [
+                new() { RelativePath = "Desktop/existing.txt", File = existingRemote },
+                new() { RelativePath = "Desktop/new.txt", File = newRemote },
+            ];
+            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(_remoteRootNodeId, remoteFiles);
+            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            await InsertPlaceholderBaselineAsync(stateStore, "Desktop/existing.txt", existingRemote);
+            var scanner = new FakeLocalFileScanner(CloudFilesPlaceholderLocal("Desktop/existing.txt", existingRemote.SizeBytes));
+            var engine = new SyncEngine(
+                scanner,
+                remoteCrawler,
+                remoteFileSynchronizer,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { InitialVirtualFilesPopulationQueueCapacity = 1 });
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
+                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
+                Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[]
+                {
+                    "Desktop/existing.txt",
+                    "Desktop/new.txt",
+                }));
+                Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.All.EqualTo(SyncActivityKind.PlaceholderCreated));
+                Assert.That(state, Has.Count.EqualTo(2));
+                Assert.That(state.Select(entry => entry.PlaceholderHydrationState), Is.All.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesDoesNotResumeStreamingWhenLocalFileHasNoBaseline()
+        {
+            LocalFileSnapshot local = LocalFile("Desktop/local.txt", "local-content");
+            var scanner = new FakeLocalFileScanner(local);
+            var remoteTree = EmptyRemoteTree();
+            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
+                _remoteRootNodeId,
+                [],
+                snapshotCrawlResult: remoteTree);
+            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            var engine = new SyncEngine(
+                scanner,
+                remoteCrawler,
+                remoteFileSynchronizer,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { InitialVirtualFilesPopulationQueueCapacity = 1 });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.Zero);
+                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.EqualTo(1));
+                Assert.That(remoteFileSynchronizer.Uploads.Select(upload => upload.LocalFile.RelativePath), Is.EqualTo(new[] { "Desktop/local.txt" }));
+                Assert.That(placeholderWriter.Requests, Is.Empty);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesCreatesLocalFolderForNestedRemoteOnlyPlaceholder()
         {
             RemoteDirectorySnapshot remoteDirectory = RemoteDirectory("Projects");
@@ -4097,11 +4181,16 @@ namespace Cotton.Sync.Tests
         {
             private readonly Guid _rootNodeId;
             private readonly IReadOnlyList<RemoteFileSnapshot> _files;
+            private readonly RemoteTreeSnapshot? _snapshotCrawlResult;
 
-            public BlockingStreamingRemoteTreeCrawler(Guid rootNodeId, IReadOnlyList<RemoteFileSnapshot> files)
+            public BlockingStreamingRemoteTreeCrawler(
+                Guid rootNodeId,
+                IReadOnlyList<RemoteFileSnapshot> files,
+                RemoteTreeSnapshot? snapshotCrawlResult = null)
             {
                 _rootNodeId = rootNodeId;
                 _files = files;
+                _snapshotCrawlResult = snapshotCrawlResult;
             }
 
             public TaskCompletionSource FirstPlaceholderStarted { get; } =
@@ -4118,6 +4207,11 @@ namespace Cotton.Sync.Tests
             public Task<RemoteTreeSnapshot> CrawlAsync(Guid rootNodeId, CancellationToken cancellationToken = default)
             {
                 SnapshotCrawlCalls++;
+                if (_snapshotCrawlResult is not null)
+                {
+                    return Task.FromResult(_snapshotCrawlResult);
+                }
+
                 throw new InvalidOperationException("Initial virtual-files population must use streaming remote crawl.");
             }
 
