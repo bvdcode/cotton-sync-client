@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Cotton.Files;
 using Cotton.Nodes;
+using Cotton.Sdk;
 using Cotton.Sync.Local;
 using Cotton.Sync.Remote;
 using Cotton.Sync.State;
@@ -2051,6 +2052,51 @@ namespace Cotton.Sync.Tests
                 Assert.That(state.Select(entry => entry.RelativePath), Is.EqualTo(new[] { "Projects", "Projects/Archive" }));
                 Assert.That(state.Select(entry => entry.RemoteNodeId), Is.EqualTo(remoteDirectories.Creates.Select(call => call.ReturnedNode.Id)));
                 Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded, SyncActivityKind.Uploaded }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_ReusesExistingRemoteFolderWhenLocalCreateHitsConflict()
+        {
+            var existingProjectsNode = new NodeDto
+            {
+                Id = Guid.NewGuid(),
+                ParentId = _remoteRootNodeId,
+                Name = "Projects",
+            };
+            var scanner = new FakeLocalFileScanner
+            {
+                Directories =
+                {
+                    LocalDirectory("Projects"),
+                    LocalDirectory("Projects/Archive"),
+                },
+            };
+            var remoteDirectories = new FakeRemoteDirectorySynchronizer();
+            remoteDirectories.ConflictCreates.Add((_remoteRootNodeId, "Projects"));
+            remoteDirectories.ExistingDirectories.Add(existingProjectsNode);
+            SyncEngine engine = CreateEngine(
+                scanner,
+                EmptyRemoteTree(),
+                new FakeRemoteFileSynchronizer(),
+                out SqliteSyncStateStore stateStore,
+                remoteDirectories);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteDirectories.CreateAttempts.Select(call => call.Name), Is.EqualTo(new[] { "Projects", "Archive" }));
+                Assert.That(remoteDirectories.FindChildDirectoryCalls, Is.EqualTo(new[] { (_remoteRootNodeId, "Projects") }));
+                Assert.That(remoteDirectories.Creates, Has.Count.EqualTo(1));
+                Assert.That(remoteDirectories.Creates[0].ParentNodeId, Is.EqualTo(existingProjectsNode.Id));
+                Assert.That(remoteDirectories.Creates[0].Name, Is.EqualTo("Archive"));
+                Assert.That(state.Select(entry => entry.RelativePath), Is.EqualTo(new[] { "Projects", "Projects/Archive" }));
+                Assert.That(state.Select(entry => entry.RemoteNodeId), Is.EqualTo(new[] { existingProjectsNode.Id, remoteDirectories.Creates[0].ReturnedNode.Id }));
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded, SyncActivityKind.Uploaded }));
+                Assert.That(result.Activities[0].Details, Does.Contain("Reused existing remote folder"));
             });
         }
 
@@ -4967,15 +5013,46 @@ namespace Cotton.Sync.Tests
 
         private class FakeRemoteDirectorySynchronizer : IRemoteDirectorySynchronizer
         {
+            public List<CreateDirectoryCall> CreateAttempts { get; } = [];
+
             public List<CreateDirectoryCall> Creates { get; } = [];
 
             public List<(Guid NodeId, bool SkipTrash)> Deletes { get; } = [];
+
+            public List<(Guid ParentNodeId, string Name)> ConflictCreates { get; } = [];
+
+            public List<NodeDto> ExistingDirectories { get; } = [];
+
+            public List<(Guid ParentNodeId, string Name)> FindChildDirectoryCalls { get; } = [];
+
+            public Task<NodeDto?> FindChildDirectoryAsync(
+                Guid parentNodeId,
+                string name,
+                CancellationToken cancellationToken = default)
+            {
+                FindChildDirectoryCalls.Add((parentNodeId, name));
+                NodeDto? match = ExistingDirectories.FirstOrDefault(node =>
+                    node.ParentId == parentNodeId
+                    && string.Equals(node.Name, name, StringComparison.OrdinalIgnoreCase));
+                return Task.FromResult(match);
+            }
 
             public Task<NodeDto> CreateDirectoryAsync(
                 Guid parentNodeId,
                 string name,
                 CancellationToken cancellationToken = default)
             {
+                CreateAttempts.Add(new CreateDirectoryCall(parentNodeId, name, new NodeDto()));
+                if (ConflictCreates.Any(item =>
+                    item.ParentNodeId == parentNodeId
+                    && string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase)))
+                {
+                    throw new CottonApiException(
+                        HttpStatusCode.Conflict,
+                        "{\"message\":\"A folder with the same name already exists.\"}",
+                        "Cotton API request PUT /api/v1/layouts/nodes failed with status 409 (Conflict).");
+                }
+
                 NodeDto node = new()
                 {
                     Id = Guid.NewGuid(),
