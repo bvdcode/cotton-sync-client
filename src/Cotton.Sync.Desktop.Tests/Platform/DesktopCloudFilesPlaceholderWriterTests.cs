@@ -112,6 +112,45 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task CreatePlaceholdersAsync_SuppressesLocalWatcherEventsBeforeBatchAdapterCall()
+        {
+            var suppression = new RecordingLocalChangeSuppression();
+            var adapter = new FakeCloudFilesAdapter
+            {
+                OnCreateBatch = _ => Assert.That(suppression.SuppressedWrites, Has.Count.EqualTo(2)),
+            };
+            var writer = new DesktopCloudFilesPlaceholderWriter(
+                cloudFilesAdapter: adapter,
+                localChangeSuppression: suppression,
+                getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
+            Guid syncPairId = Guid.Parse("77777777-7777-7777-7777-777777777777");
+
+            IReadOnlyList<RemoteFilePlaceholderBatchResult> results = await writer.CreatePlaceholdersAsync(
+            [
+                CreateRequest(_tempDirectory, syncPairId.ToString("D"), "Projects/first.txt"),
+                CreateRequest(_tempDirectory, syncPairId.ToString("D"), "Projects/second.txt"),
+            ]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(adapter.BatchRequests, Has.Count.EqualTo(1));
+                Assert.That(adapter.BatchRequests[0].Select(static request => request.RelativePath), Is.EqualTo(new[]
+                {
+                    "Projects/first.txt",
+                    "Projects/second.txt",
+                }));
+                Assert.That(results.Select(static result => result.IsSuccess), Is.All.True);
+                Assert.That(
+                    suppression.SuppressedWrites,
+                    Is.EqualTo(new[]
+                    {
+                        new SuppressedWrite(syncPairId, _tempDirectory, "Projects/first.txt"),
+                        new SuppressedWrite(syncPairId, _tempDirectory, "Projects/second.txt"),
+                    }));
+            });
+        }
+
+        [Test]
         public async Task BeforeCreateDirectoryAsync_SuppressesLocalWatcherEventsForDirectoryPath()
         {
             var suppression = new RecordingLocalChangeSuppression();
@@ -222,9 +261,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<RemoteFilePlaceholderRequest> Requests { get; } = [];
 
+            public List<IReadOnlyList<RemoteFilePlaceholderRequest>> BatchRequests { get; } = [];
+
             public Exception? Exception { get; set; }
 
             public Action<RemoteFilePlaceholderRequest>? OnCreate { get; set; }
+
+            public Action<IReadOnlyList<RemoteFilePlaceholderRequest>>? OnCreateBatch { get; set; }
 
             public RemoteFilePlaceholderResult CreateFilePlaceholder(RemoteFilePlaceholderRequest request)
             {
@@ -236,6 +279,22 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 }
 
                 return new RemoteFilePlaceholderResult(PlaceholderIdentity);
+            }
+
+            public IReadOnlyList<RemoteFilePlaceholderResult> CreateFilePlaceholders(
+                IReadOnlyList<RemoteFilePlaceholderRequest> requests)
+            {
+                OnCreateBatch?.Invoke(requests);
+                BatchRequests.Add(requests.ToArray());
+                if (Exception is not null)
+                {
+                    throw Exception;
+                }
+
+                Requests.AddRange(requests);
+                return requests
+                    .Select(_ => new RemoteFilePlaceholderResult(PlaceholderIdentity))
+                    .ToArray();
             }
 
             public void UnregisterSyncRoot(SyncPairSettings syncPair)

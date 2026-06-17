@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Cotton.Sync.Desktop.Platform
 {
     internal sealed class DesktopCloudFilesPlaceholderWriter :
-        IRemoteFilePlaceholderWriter,
+        IRemoteFilePlaceholderBatchWriter,
         IRemoteDirectoryMaterializationObserver
     {
         private readonly Func<SyncPairModeCapabilitySnapshot> _getCapabilities;
@@ -69,6 +69,68 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
+        public Task<IReadOnlyList<RemoteFilePlaceholderBatchResult>> CreatePlaceholdersAsync(
+            IReadOnlyList<RemoteFilePlaceholderRequest> requests,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(requests);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (requests.Count == 0)
+            {
+                return Task.FromResult<IReadOnlyList<RemoteFilePlaceholderBatchResult>>([]);
+            }
+
+            SyncPairModeCapabilitySnapshot capabilities = _getCapabilities();
+            if (!capabilities.IsWindowsVirtualFilesSupported)
+            {
+                return Task.FromResult<IReadOnlyList<RemoteFilePlaceholderBatchResult>>(
+                    requests
+                        .Select(request => RemoteFilePlaceholderBatchResult.Unavailable(
+                            request,
+                            capabilities.GetUnsupportedMessage(SyncPairMode.WindowsVirtualFiles)))
+                        .ToArray());
+            }
+
+            foreach (RemoteFilePlaceholderRequest request in requests)
+            {
+                WindowsVirtualFilesRootSafetyResult safety = _rootSafety.Validate(request.LocalRootPath);
+                if (!safety.IsSafe)
+                {
+                    return Task.FromResult<IReadOnlyList<RemoteFilePlaceholderBatchResult>>(
+                        requests
+                            .Select(item => RemoteFilePlaceholderBatchResult.Unavailable(item, safety.Details))
+                            .ToArray());
+                }
+
+                SuppressProviderWrite(request.SyncPairId, safety.FullPath, request.RelativePath);
+            }
+
+            try
+            {
+                IReadOnlyList<RemoteFilePlaceholderResult> placeholders = _cloudFilesAdapter.CreateFilePlaceholders(requests);
+                if (placeholders.Count != requests.Count)
+                {
+                    throw new InvalidOperationException("Cloud Files adapter returned a different number of placeholder results.");
+                }
+
+                var results = new RemoteFilePlaceholderBatchResult[requests.Count];
+                for (int index = 0; index < requests.Count; index++)
+                {
+                    results[index] = RemoteFilePlaceholderBatchResult.Success(requests[index], placeholders[index]);
+                }
+
+                return Task.FromResult<IReadOnlyList<RemoteFilePlaceholderBatchResult>>(results);
+            }
+            catch (Exception exception) when (IsRecoverablePlaceholderFailure(exception))
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Windows Cloud Files batch placeholder creation failed for {PlaceholderCount} placeholders.",
+                    requests.Count);
+                return CreatePlaceholdersIndividuallyAfterBatchFailureAsync(requests, cancellationToken);
+            }
+        }
+
         public Task BeforeCreateDirectoryAsync(
             RemoteDirectoryMaterializationRequest request,
             CancellationToken cancellationToken = default)
@@ -77,6 +139,29 @@ namespace Cotton.Sync.Desktop.Platform
             cancellationToken.ThrowIfCancellationRequested();
             SuppressProviderWrite(request.SyncPairId, request.LocalRootPath, request.RelativePath);
             return Task.CompletedTask;
+        }
+
+        private async Task<IReadOnlyList<RemoteFilePlaceholderBatchResult>> CreatePlaceholdersIndividuallyAfterBatchFailureAsync(
+            IReadOnlyList<RemoteFilePlaceholderRequest> requests,
+            CancellationToken cancellationToken)
+        {
+            var results = new RemoteFilePlaceholderBatchResult[requests.Count];
+            for (int index = 0; index < requests.Count; index++)
+            {
+                RemoteFilePlaceholderRequest request = requests[index];
+                try
+                {
+                    RemoteFilePlaceholderResult placeholder =
+                        await CreatePlaceholderAsync(request, cancellationToken).ConfigureAwait(false);
+                    results[index] = RemoteFilePlaceholderBatchResult.Success(request, placeholder);
+                }
+                catch (RemoteFilePlaceholderUnavailableException exception)
+                {
+                    results[index] = RemoteFilePlaceholderBatchResult.Unavailable(request, exception.Reason);
+                }
+            }
+
+            return results;
         }
 
         private static bool IsRecoverablePlaceholderFailure(Exception exception)

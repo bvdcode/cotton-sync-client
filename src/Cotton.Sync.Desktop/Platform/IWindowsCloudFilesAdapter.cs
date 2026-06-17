@@ -10,6 +10,18 @@ namespace Cotton.Sync.Desktop.Platform
     {
         RemoteFilePlaceholderResult CreateFilePlaceholder(RemoteFilePlaceholderRequest request);
 
+        IReadOnlyList<RemoteFilePlaceholderResult> CreateFilePlaceholders(IReadOnlyList<RemoteFilePlaceholderRequest> requests)
+        {
+            ArgumentNullException.ThrowIfNull(requests);
+            var results = new List<RemoteFilePlaceholderResult>(requests.Count);
+            foreach (RemoteFilePlaceholderRequest request in requests)
+            {
+                results.Add(CreateFilePlaceholder(request));
+            }
+
+            return results;
+        }
+
         void UnregisterSyncRoot(SyncPairSettings syncPair);
 
         void DehydratePlaceholder(SyncPairSettings syncPair, string relativePath);

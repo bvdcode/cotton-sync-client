@@ -11,6 +11,15 @@ namespace Cotton.Sync.Desktop.Platform
 
         void CreatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder);
 
+        void CreatePlaceholders(IReadOnlyList<WindowsCloudFilesNativePlaceholder> placeholders)
+        {
+            ArgumentNullException.ThrowIfNull(placeholders);
+            foreach (WindowsCloudFilesNativePlaceholder placeholder in placeholders)
+            {
+                CreatePlaceholder(placeholder);
+            }
+        }
+
         void UpdatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder);
 
         void SetPinState(string filePath, WindowsCloudFilesPinState pinState);
