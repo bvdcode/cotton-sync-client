@@ -203,7 +203,7 @@ namespace Cotton.Sync.Desktop.Platform
                 request.LocalRootPath,
                 callbackState.CallbackTable,
                 callbackState.Context,
-                CfConnectFlags.None,
+                CfConnectFlags.RequireProcessInfo | CfConnectFlags.BlockSelfImplicitHydration,
                 out long connectionKey);
             if (result < Succeeded)
             {
@@ -653,6 +653,8 @@ namespace Cotton.Sync.Desktop.Platform
         private enum CfConnectFlags : uint
         {
             None = 0x00000000,
+            RequireProcessInfo = 0x00000002,
+            BlockSelfImplicitHydration = 0x00000008,
         }
 
         [Flags]
@@ -815,6 +817,24 @@ namespace Cotton.Sync.Desktop.Platform
             public IntPtr ProcessInfo;
 
             public long RequestKey;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct CfProcessInfo
+        {
+            public uint StructSize;
+
+            public uint ProcessId;
+
+            public IntPtr ImagePath;
+
+            public IntPtr PackageName;
+
+            public IntPtr ApplicationId;
+
+            public IntPtr CommandLine;
+
+            public uint SessionId;
         }
 
         [StructLayout(LayoutKind.Explicit)]
@@ -1031,7 +1051,8 @@ namespace Cotton.Sync.Desktop.Platform
                         parameters.OptionalFileOffset,
                         parameters.OptionalLength,
                         Marshal.PtrToStringUni(info.NormalizedPath),
-                        info.PriorityHint);
+                        info.PriorityHint,
+                        TryReadProcessInfo(info.ProcessInfo));
                 }
                 catch
                 {
@@ -1039,6 +1060,30 @@ namespace Cotton.Sync.Desktop.Platform
                 }
 
                 _dispatcher.QueueFetchData(request);
+            }
+
+            private static WindowsCloudFilesProcessInfo? TryReadProcessInfo(IntPtr processInfo)
+            {
+                if (processInfo == IntPtr.Zero)
+                {
+                    return null;
+                }
+
+                try
+                {
+                    CfProcessInfo info = Marshal.PtrToStructure<CfProcessInfo>(processInfo);
+                    return new WindowsCloudFilesProcessInfo(
+                        info.ProcessId,
+                        Marshal.PtrToStringUni(info.ImagePath),
+                        Marshal.PtrToStringUni(info.PackageName),
+                        Marshal.PtrToStringUni(info.ApplicationId),
+                        Marshal.PtrToStringUni(info.CommandLine),
+                        info.SessionId);
+                }
+                catch
+                {
+                    return null;
+                }
             }
 
             private void HandleCancelFetchData(IntPtr callbackInfo, IntPtr callbackParameters)
