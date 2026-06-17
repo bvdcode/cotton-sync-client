@@ -7,6 +7,7 @@ using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
 using Cotton.Files;
+using Cotton.Nodes;
 
 namespace Cotton.Sync.Desktop.Tests.Platform
 {
@@ -108,6 +109,27 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             Assert.That(
                 suppression.SuppressedWrites,
                 Is.EqualTo(new[] { new SuppressedWrite(syncPairId, _tempDirectory, "Projects/report.txt") }));
+        }
+
+        [Test]
+        public async Task BeforeCreateDirectoryAsync_SuppressesLocalWatcherEventsForDirectoryPath()
+        {
+            var suppression = new RecordingLocalChangeSuppression();
+            var writer = new DesktopCloudFilesPlaceholderWriter(
+                localChangeSuppression: suppression,
+                getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
+            Guid syncPairId = Guid.Parse("77777777-7777-7777-7777-777777777777");
+
+            await writer.BeforeCreateDirectoryAsync(new RemoteDirectoryMaterializationRequest(
+                syncPairId.ToString("D"),
+                _tempDirectory,
+                Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                "Projects/Nested",
+                new NodeDto { Id = Guid.Parse("22222222-2222-2222-2222-222222222222"), Name = "Nested" }));
+
+            Assert.That(
+                suppression.SuppressedWrites,
+                Is.EqualTo(new[] { new SuppressedWrite(syncPairId, _tempDirectory, "Projects/Nested") }));
         }
 
         [Test]

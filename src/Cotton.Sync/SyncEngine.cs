@@ -40,6 +40,7 @@ namespace Cotton.Sync
         private readonly ISyncStateStore _stateStore;
         private readonly ILocalFileSyncWriter _localWriter;
         private readonly IRemoteFilePlaceholderWriter? _remoteFilePlaceholderWriter;
+        private readonly IRemoteDirectoryMaterializationObserver? _remoteDirectoryMaterializationObserver;
         private readonly ILogger<SyncEngine> _logger;
 
         /// <summary>
@@ -71,6 +72,8 @@ namespace Cotton.Sync
             _localWriter = localWriter ?? new AtomicLocalFileSyncWriter();
             _remoteDirectories = remoteDirectories;
             _remoteFilePlaceholderWriter = remoteFilePlaceholderWriter;
+            _remoteDirectoryMaterializationObserver =
+                remoteFilePlaceholderWriter as IRemoteDirectoryMaterializationObserver;
             _logger = logger ?? NullLogger<SyncEngine>.Instance;
         }
 
@@ -845,8 +848,11 @@ namespace Cotton.Sync
                 switch (item)
                 {
                     case InitialVirtualFilesDirectoryPopulationItem directoryItem:
-                        await _localWriter
-                            .CreateDirectoryAsync(syncPair.LocalRootPath, directoryItem.Directory.RelativePath, cancellationToken)
+                        await CreateRemoteBackedLocalDirectoryAsync(
+                                syncPair,
+                                directoryItem.Directory.RelativePath,
+                                directoryItem.Directory.Node,
+                                cancellationToken)
                             .ConfigureAwait(false);
                         await _stateStore
                             .UpsertAsync(
@@ -960,7 +966,8 @@ namespace Cotton.Sync
 
                 if (local is null && remote is not null)
                 {
-                    await _localWriter.CreateDirectoryAsync(syncPair.LocalRootPath, relativePath, cancellationToken).ConfigureAwait(false);
+                    await CreateRemoteBackedLocalDirectoryAsync(syncPair, relativePath, remote.Node, cancellationToken)
+                        .ConfigureAwait(false);
                     await _stateStore.UpsertAsync(BuildDirectoryBaseline(syncPair, relativePath, remote.Node), cancellationToken)
                         .ConfigureAwait(false);
                     Report(result, options, SyncActivityKind.Downloaded, relativePath, "Created local folder.");
@@ -1034,6 +1041,31 @@ namespace Cotton.Sync
                     startedAtUtc,
                     ref lastDirectoryRunProgressReportedAtUtc);
             }
+        }
+
+        private async Task CreateRemoteBackedLocalDirectoryAsync(
+            SyncPair syncPair,
+            string relativePath,
+            NodeDto remoteDirectory,
+            CancellationToken cancellationToken)
+        {
+            if (syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
+                && _remoteDirectoryMaterializationObserver is not null)
+            {
+                await _remoteDirectoryMaterializationObserver
+                    .BeforeCreateDirectoryAsync(
+                        new RemoteDirectoryMaterializationRequest(
+                            syncPair.SyncPairId,
+                            syncPair.LocalRootPath,
+                            syncPair.RemoteRootNodeId,
+                            SyncPath.Normalize(relativePath),
+                            remoteDirectory),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            await _localWriter.CreateDirectoryAsync(syncPair.LocalRootPath, relativePath, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         private static bool TryGetRemoteDirectoryNodeId(

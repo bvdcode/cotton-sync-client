@@ -9,7 +9,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal sealed class DesktopCloudFilesPlaceholderWriter : IRemoteFilePlaceholderWriter
+    internal sealed class DesktopCloudFilesPlaceholderWriter :
+        IRemoteFilePlaceholderWriter,
+        IRemoteDirectoryMaterializationObserver
     {
         private readonly Func<SyncPairModeCapabilitySnapshot> _getCapabilities;
         private readonly WindowsVirtualFilesRootSafetyPolicy _rootSafety;
@@ -54,7 +56,7 @@ namespace Cotton.Sync.Desktop.Platform
 
             try
             {
-                SuppressProviderWrite(request, safety.FullPath);
+                SuppressProviderWrite(request.SyncPairId, safety.FullPath, request.RelativePath);
                 return Task.FromResult(_cloudFilesAdapter.CreateFilePlaceholder(request));
             }
             catch (Exception exception) when (IsRecoverablePlaceholderFailure(exception))
@@ -67,6 +69,16 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
+        public Task BeforeCreateDirectoryAsync(
+            RemoteDirectoryMaterializationRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            cancellationToken.ThrowIfCancellationRequested();
+            SuppressProviderWrite(request.SyncPairId, request.LocalRootPath, request.RelativePath);
+            return Task.CompletedTask;
+        }
+
         private static bool IsRecoverablePlaceholderFailure(Exception exception)
         {
             return exception is WindowsCloudFilesNativeException
@@ -76,22 +88,22 @@ namespace Cotton.Sync.Desktop.Platform
                 or UnauthorizedAccessException;
         }
 
-        private void SuppressProviderWrite(RemoteFilePlaceholderRequest request, string localRootPath)
+        private void SuppressProviderWrite(string syncPairIdValue, string localRootPath, string relativePath)
         {
             if (_localChangeSuppression is null)
             {
                 return;
             }
 
-            if (!Guid.TryParse(request.SyncPairId, out Guid syncPairId))
+            if (!Guid.TryParse(syncPairIdValue, out Guid syncPairId))
             {
                 _logger.LogDebug(
-                    "Skipping local watcher suppression for placeholder {RelativePath} because sync pair id is not a GUID.",
-                    request.RelativePath);
+                    "Skipping local watcher suppression for provider write {RelativePath} because sync pair id is not a GUID.",
+                    relativePath);
                 return;
             }
 
-            _localChangeSuppression.SuppressProviderWrite(syncPairId, localRootPath, request.RelativePath);
+            _localChangeSuppression.SuppressProviderWrite(syncPairId, localRootPath, relativePath);
         }
     }
 }
