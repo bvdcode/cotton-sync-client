@@ -1291,15 +1291,58 @@ namespace Cotton.Sync.Tests
             {
                 Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
                 Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
-                Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[]
-                {
-                    "Desktop/existing.txt",
-                    "Desktop/new.txt",
-                }));
+                Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[] { "Desktop/new.txt" }));
                 Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
                 Assert.That(result.Activities.Select(activity => activity.Kind), Is.All.EqualTo(SyncActivityKind.PlaceholderCreated));
                 Assert.That(state, Has.Count.EqualTo(2));
                 Assert.That(state.Select(entry => entry.PlaceholderHydrationState), Is.All.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesStreamingRefreshesTrackedPlaceholderWhenRemoteChanged()
+        {
+            string relativePath = "Desktop/existing.txt";
+            NodeFileManifestDto oldRemote = RemoteFile(
+                relativePath,
+                HashText("old"),
+                sizeBytes: 11);
+            NodeFileManifestDto newRemote = RemoteFile(
+                relativePath,
+                HashText("new"),
+                id: oldRemote.Id,
+                sizeBytes: 12);
+            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
+                _remoteRootNodeId,
+                [new RemoteFileSnapshot { RelativePath = relativePath, File = newRemote }]);
+            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            await InsertPlaceholderBaselineAsync(stateStore, relativePath, oldRemote);
+            var scanner = new FakeLocalFileScanner(CloudFilesPlaceholderLocal(relativePath, oldRemote.SizeBytes));
+            var engine = new SyncEngine(
+                scanner,
+                remoteCrawler,
+                remoteFileSynchronizer,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { InitialVirtualFilesPopulationQueueCapacity = 1 });
+
+            SyncStateEntry? state = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
+                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
+                Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[] { relativePath }));
+                Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.PlaceholderCreated }));
+                Assert.That(state, Is.Not.Null);
+                Assert.That(state!.RemoteContentHash, Is.EqualTo(newRemote.ContentHash));
+                Assert.That(state.RemoteSizeBytes, Is.EqualTo(newRemote.SizeBytes));
+                Assert.That(state.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
             });
         }
 
@@ -4013,7 +4056,7 @@ namespace Cotton.Sync.Tests
             return Convert.ToHexStringLower(SHA256.HashData(bytes));
         }
 
-        private class FakeLocalFileScanner : ILocalFileScanner, ILocalTreeScanner
+        private class FakeLocalFileScanner : ILocalFileScanner, ILocalTreeScanner, ILocalFileMetadataPathLookupScanner
         {
             public FakeLocalFileScanner(params LocalFileSnapshot[] files)
             {
@@ -4040,6 +4083,35 @@ namespace Cotton.Sync.Tests
                     Directories = Directories,
                     Files = Files,
                 });
+            }
+
+            public Task<LocalTreeLookupSnapshot> ScanPathMetadataLookupsAsync(
+                string rootPath,
+                IReadOnlyCollection<string> relativePaths,
+                IProgress<LocalTreeScanProgress>? progress,
+                CancellationToken cancellationToken = default)
+            {
+                var snapshot = new LocalTreeLookupSnapshot();
+                var requested = new HashSet<string>(
+                    relativePaths.Select(path => SyncPath.ToKey(path)),
+                    StringComparer.OrdinalIgnoreCase);
+                foreach (LocalDirectorySnapshot directory in Directories)
+                {
+                    if (requested.Contains(SyncPath.ToKey(directory.RelativePath)))
+                    {
+                        snapshot.DirectoriesByPath[SyncPath.ToKey(directory.RelativePath)] = directory;
+                    }
+                }
+
+                foreach (LocalFileSnapshot file in Files)
+                {
+                    if (requested.Contains(SyncPath.ToKey(file.RelativePath)))
+                    {
+                        snapshot.FilesByPath[SyncPath.ToKey(file.RelativePath)] = file;
+                    }
+                }
+
+                return Task.FromResult(snapshot);
             }
         }
 
