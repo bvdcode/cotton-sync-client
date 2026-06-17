@@ -21,6 +21,16 @@ on:
       - develop
   workflow_dispatch:
     inputs:
+      package_target:
+        description: "Package target to build for this manual run."
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - desktop-windows
+          - desktop-linux
+          - cli-windows
       publish_release:
         description: "Publish or update the GitHub Release from this run."
         required: false
@@ -30,6 +40,7 @@ on:
 jobs:
   linux:
     name: Desktop Linux Package Smoke
+    if: github.event_name != 'workflow_dispatch' || inputs.publish_release || inputs.package_target == 'all' || inputs.package_target == 'desktop-linux'
     runs-on: ubuntu-latest
     outputs:
       Version: ${{ steps.gitversion.outputs.SemVer }}
@@ -250,6 +261,7 @@ jobs:
 
   windows:
     name: Desktop Windows Package Smoke
+    if: github.event_name != 'workflow_dispatch' || inputs.publish_release || inputs.package_target == 'all' || inputs.package_target == 'desktop-windows'
     runs-on: windows-latest
     outputs:
       Version: ${{ steps.gitversion.outputs.SemVer }}
@@ -611,6 +623,7 @@ jobs:
 
   cli-windows:
     name: Sync CLI Windows Package Smoke
+    if: github.event_name != 'workflow_dispatch' || inputs.publish_release || inputs.package_target == 'all' || inputs.package_target == 'cli-windows'
     runs-on: windows-latest
     permissions:
       contents: read
@@ -709,6 +722,7 @@ jobs:
       - linux
       - windows
       - cli-windows
+    if: github.event_name != 'workflow_dispatch' || inputs.publish_release || inputs.package_target == 'all'
     permissions:
       contents: read
     steps:
