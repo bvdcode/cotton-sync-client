@@ -81,6 +81,47 @@ namespace Cotton.Sync.Tests.State
         }
 
         [Test]
+        public async Task LoadEntriesByPathKeysAsync_LoadsOnlyRequestedKeysInPathOrder()
+        {
+            var store = CreateStore();
+            await store.InitializeAsync();
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "z-last.txt",
+                Kind = SyncEntryKind.File,
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "a-first.txt",
+                Kind = SyncEntryKind.File,
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "ignored.txt",
+                Kind = SyncEntryKind.File,
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-b",
+                RelativePath = "z-last.txt",
+                Kind = SyncEntryKind.File,
+            });
+
+            var entries = new List<SyncStateEntry>();
+            await foreach (SyncStateEntry entry in store.LoadEntriesByPathKeysAsync(
+                               "pair-a",
+                               ["z-last.txt", "missing.txt", "a-first.txt"]))
+            {
+                entries.Add(entry);
+            }
+
+            Assert.That(entries.Select(entry => entry.RelativePath), Is.EqualTo(new[] { "a-first.txt", "z-last.txt" }));
+        }
+
+        [Test]
         public async Task UpsertManyAsync_InsertsAndUpdatesEntriesInOneBatch()
         {
             var store = CreateStore();

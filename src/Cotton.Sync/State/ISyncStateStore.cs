@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
+using System.Runtime.CompilerServices;
+
 namespace Cotton.Sync.State
 {
     /// <summary>
@@ -24,6 +26,32 @@ namespace Cotton.Sync.State
         IAsyncEnumerable<SyncStateEntry> LoadPairEntriesAsync(
             string syncPairId,
             CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Streams entries for the specified relative path keys.
+        /// </summary>
+        async IAsyncEnumerable<SyncStateEntry> LoadEntriesByPathKeysAsync(
+            string syncPairId,
+            IEnumerable<string> relativePathKeys,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
+            ArgumentNullException.ThrowIfNull(relativePathKeys);
+            foreach (string key in relativePathKeys)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (string.IsNullOrWhiteSpace(key) || SyncPathIgnoreRules.ShouldIgnore(key))
+                {
+                    continue;
+                }
+
+                SyncStateEntry? entry = await GetAsync(syncPairId, key, cancellationToken).ConfigureAwait(false);
+                if (entry is not null)
+                {
+                    yield return entry;
+                }
+            }
+        }
 
         /// <summary>
         /// Loads the latest sync timestamp for a sync pair without materializing all entries.

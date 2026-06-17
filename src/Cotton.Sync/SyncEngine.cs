@@ -480,17 +480,14 @@ namespace Cotton.Sync
         {
             var directoryStateByPath = new Dictionary<string, SyncStateEntry>(PathComparer);
             var fileStateByPath = new Dictionary<string, SyncStateEntry>(PathComparer);
-            foreach (string key in keys.Distinct(PathComparer))
+            await foreach (SyncStateEntry entry in _stateStore.LoadEntriesByPathKeysAsync(syncPairId, keys, cancellationToken)
+                               .WithCancellation(cancellationToken)
+                               .ConfigureAwait(false))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (string.IsNullOrWhiteSpace(key) || SyncPathIgnoreRules.ShouldIgnore(key))
+                if (SyncPathIgnoreRules.ShouldIgnore(entry.RelativePath))
                 {
-                    continue;
-                }
-
-                SyncStateEntry? entry = await _stateStore.GetAsync(syncPairId, key, cancellationToken).ConfigureAwait(false);
-                if (entry is null)
-                {
+                    await _stateStore.DeleteAsync(syncPairId, entry.RelativePath, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
@@ -827,10 +824,14 @@ namespace Cotton.Sync
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             (Dictionary<string, SyncStateEntry> directoryStateByPath, Dictionary<string, SyncStateEntry> fileStateByPath) =
-                await LoadAllStateByPathAsync(syncPair.SyncPairId, cancellationToken).ConfigureAwait(false);
+                await LoadStateByPathAsync(
+                        syncPair.SyncPairId,
+                        localDirectoriesByPath.Keys.Concat(localFilesByPath.Keys),
+                        cancellationToken)
+                    .ConfigureAwait(false);
             stopwatch.Stop();
             _logger.LogInformation(
-                "Loaded Windows virtual-files resume state for pair {SyncPairId} with {DirectoryStateCount} directories and {FileStateCount} files in {ElapsedMilliseconds} ms.",
+                "Loaded Windows virtual-files resume state matching the local tree for pair {SyncPairId} with {DirectoryStateCount} directories and {FileStateCount} files in {ElapsedMilliseconds} ms.",
                 syncPair.SyncPairId,
                 directoryStateByPath.Count,
                 fileStateByPath.Count,
@@ -844,13 +845,11 @@ namespace Cotton.Sync
                 }
             }
 
-            var currentPlaceholderStateByPath = new Dictionary<string, SyncStateEntry>(PathComparer);
             foreach ((string fileKey, LocalFileSnapshot local) in localFilesByPath)
             {
                 if (fileStateByPath.TryGetValue(fileKey, out SyncStateEntry? state)
                     && IsResumeCompatibleVirtualFilesPlaceholder(local, state))
                 {
-                    currentPlaceholderStateByPath[fileKey] = state;
                     continue;
                 }
 
@@ -864,7 +863,7 @@ namespace Cotton.Sync
 
             return new InitialVirtualFilesStreamingPlan(
                 SkipCurrentPlaceholders: true,
-                CurrentPlaceholderStateByPath: currentPlaceholderStateByPath);
+                CurrentPlaceholderStateByPath: fileStateByPath);
         }
 
         private static bool IsUntrackedVirtualFilesPlaceholderCompatibleWithInitialStreaming(LocalFileSnapshot local)
