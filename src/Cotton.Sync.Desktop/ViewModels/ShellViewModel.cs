@@ -5456,11 +5456,18 @@ namespace Cotton.Sync.Desktop.ViewModels
                 && IsCountedRunStage(progress.Stage)
                 && progress.FilesTotal is > 0
                 && progress.FilesCompleted == 0
-                && string.IsNullOrWhiteSpace(progress.CurrentPath);
+                && (string.IsNullOrWhiteSpace(progress.CurrentPath)
+                    || progress.Stage == SyncRunProgressStage.CreatingPlaceholders);
         }
 
         private static int GetDisplayedRunProgressCount(DesktopRunProgressSnapshot progress)
         {
+            if (progress.Stage == SyncRunProgressStage.CreatingPlaceholders
+                && progress.FilesCompleted == 0)
+            {
+                return 0;
+            }
+
             if (!progress.IsCompleted
                 && IsCountedRunStage(progress.Stage)
                 && progress.FilesTotal is > 0

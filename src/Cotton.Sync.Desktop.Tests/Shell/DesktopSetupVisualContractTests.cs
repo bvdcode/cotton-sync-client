@@ -225,18 +225,19 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             Assert.Multiple(() =>
             {
-                Assert.That(modeAndLocalPathRow, Does.Contain("ColumnDefinitions=\"Auto,Auto,*\""));
+                Assert.That(modeAndLocalPathRow, Does.Contain("ColumnDefinitions=\"Auto,*\""));
                 Assert.That(modeAndLocalPathRow, Does.Contain("Kind=\"CloudOutline\""));
                 Assert.That(modeAndLocalPathRow, Does.Contain("IsVisible=\"{Binding IsWindowsVirtualFilesMode}\""));
                 Assert.That(modeAndLocalPathRow, Does.Contain("Kind=\"FolderOpenOutline\""));
                 Assert.That(modeAndLocalPathRow, Does.Contain("IsVisible=\"{Binding IsFullMirrorMode}\""));
-                Assert.That(modeAndLocalPathRow, Does.Contain("Text=\"{Binding ModeLabel}\""));
                 Assert.That(modeAndLocalPathRow, Does.Contain("ToolTip.Tip=\"{Binding ModeLabel}\""));
+                Assert.That(modeAndLocalPathRow, Does.Not.Contain("Text=\"{Binding ModeLabel}\""));
                 Assert.That(modeAndLocalPathRow, Does.Contain("Text=\"{Binding LocalPath}\""));
                 Assert.That(modeAndLocalPathRow, Does.Contain("ToolTip.Tip=\"{Binding LocalPath}\""));
-                Assert.That(CountOccurrences(modeAndLocalPathRow, "TextTrimming=\"CharacterEllipsis\""), Is.EqualTo(2));
-                Assert.That(remotePathRow, Does.Contain("Text=\"{Binding RemotePath}\""));
-                Assert.That(remotePathRow, Does.Contain("ToolTip.Tip=\"{Binding RemotePath}\""));
+                Assert.That(CountOccurrences(modeAndLocalPathRow, "TextTrimming=\"CharacterEllipsis\""), Is.EqualTo(1));
+                Assert.That(remotePathRow, Does.Contain("Text=\"{Binding RemotePathLabel}\""));
+                Assert.That(remotePathRow, Does.Contain("ToolTip.Tip=\"{Binding RemotePathLabel}\""));
+                Assert.That(remotePathRow, Does.Contain("IsVisible=\"{Binding HasRemotePathLabel}\""));
                 Assert.That(remotePathRow, Does.Contain("TextTrimming=\"CharacterEllipsis\""));
             });
         }
@@ -867,8 +868,9 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(cloudFolderPicker, Does.Contain("Kind=\"ChevronRight\""));
                 Assert.That(CountOccurrences(cloudFolderPicker, "Classes=\"icon\""), Is.EqualTo(4));
                 Assert.That(cloudFolderPicker, Does.Not.Contain("RowDefinitions=\"Auto,Auto,160,Auto\""));
-                Assert.That(cloudFolderPicker, Does.Contain("MinHeight=\"160\""));
-                Assert.That(cloudFolderPicker, Does.Contain("Height=\"260\""));
+                Assert.That(cloudFolderPicker, Does.Contain("MinHeight=\"96\""));
+                Assert.That(cloudFolderPicker, Does.Contain("MaxHeight=\"160\""));
+                Assert.That(cloudFolderPicker, Does.Not.Contain("Height=\"260\""));
                 Assert.That(cloudFolderPicker, Does.Contain("ScrollViewer.VerticalScrollBarVisibility=\"Auto\""));
                 Assert.That(cloudFolderPicker, Does.Not.Contain("Text=\"›\""));
                 Assert.That(cloudFolderPicker, Does.Not.Contain("Content=\"←\""));
@@ -918,10 +920,31 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(addFolderWizard, Does.Contain("Classes=\"sync-mode-card\""));
                 Assert.That(addFolderWizard, Does.Contain("Text=\"Stores every file on this device.\""));
                 Assert.That(addFolderWizard, Does.Contain("Text=\"Saves disk space; downloads on open.\""));
-                Assert.That(addFolderWizard, Does.Contain("Text=\"Available\""));
+                Assert.That(addFolderWizard, Does.Not.Contain("Text=\"Available\""));
                 Assert.That(addFolderWizard, Does.Not.Contain("Text=\"Not implemented\""));
                 Assert.That(appXaml, Does.Contain("Style Selector=\"RadioButton.sync-mode-card\""));
                 Assert.That(appXaml, Does.Contain("Style Selector=\"RadioButton.sync-mode-card:checked\""));
+            });
+        }
+
+        [Test]
+        public void AddFolderWizard_KeepsCloudModeAndActionVisibleInCompactHeight()
+        {
+            string mainWindowXaml = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml"));
+            string cloudStep = GetSlice(
+                mainWindowXaml,
+                "IsVisible=\"{Binding IsAddSyncPairCloudStepVisible}\"",
+                "IsVisible=\"{Binding IsSettingsVisible}\"");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(cloudStep, Does.Contain("MaxHeight=\"160\""));
+                Assert.That(cloudStep, Does.Contain("MinHeight=\"96\""));
+                Assert.That(cloudStep, Does.Not.Contain("Height=\"260\""));
+                Assert.That(cloudStep, Does.Contain("Text=\"Sync mode\""));
+                Assert.That(cloudStep, Does.Contain("Content=\"{Binding RemoteFolderWizardPrimaryActionText}\""));
+                Assert.That(cloudStep.IndexOf("Text=\"Sync mode\"", StringComparison.Ordinal), Is.LessThan(
+                    cloudStep.IndexOf("Content=\"{Binding RemoteFolderWizardPrimaryActionText}\"", StringComparison.Ordinal)));
             });
         }
 

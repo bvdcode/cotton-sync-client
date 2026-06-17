@@ -187,8 +187,21 @@ namespace Cotton.Sync.Desktop.ViewModels
         public string RemotePath
         {
             get => _remotePath;
-            set => SetProperty(ref _remotePath, value);
+            set
+            {
+                if (SetProperty(ref _remotePath, value))
+                {
+                    OnPropertyChanged(nameof(RemotePathLabel));
+                    OnPropertyChanged(nameof(HasRemotePathLabel));
+                }
+            }
         }
+
+        public string RemotePathLabel => string.Equals(RemotePath, "/", StringComparison.Ordinal)
+            ? string.Empty
+            : RemotePath;
+
+        public bool HasRemotePathLabel => !string.IsNullOrWhiteSpace(RemotePathLabel);
 
         public string Status
         {

@@ -78,5 +78,28 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(row.IsWindowsVirtualFilesMode, Is.True);
             });
         }
+
+        [Test]
+        public void RemotePathLabel_HidesRootPathNoise()
+        {
+            var row = new SyncPairRowViewModel
+            {
+                RemotePath = "/",
+            };
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(row.RemotePathLabel, Is.Empty);
+                Assert.That(row.HasRemotePathLabel, Is.False);
+            });
+
+            row.RemotePath = "/Documents";
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(row.RemotePathLabel, Is.EqualTo("/Documents"));
+                Assert.That(row.HasRemotePathLabel, Is.True);
+            });
+        }
     }
 }
