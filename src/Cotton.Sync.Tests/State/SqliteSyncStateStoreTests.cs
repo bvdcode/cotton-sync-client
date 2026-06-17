@@ -122,6 +122,61 @@ namespace Cotton.Sync.Tests.State
         }
 
         [Test]
+        public async Task LoadVirtualFilesResumeEntriesByPathKeysAsync_LoadsCompactResumeRows()
+        {
+            var store = CreateStore();
+            await store.InitializeAsync();
+            Guid remoteNodeId = Guid.NewGuid();
+            Guid remoteFileId = Guid.NewGuid();
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "Docs",
+                Kind = SyncEntryKind.Directory,
+                RemoteNodeId = remoteNodeId,
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "Docs/remote-only.txt",
+                Kind = SyncEntryKind.File,
+                RemoteFileId = remoteFileId,
+                RemoteContentHash = "remote-hash",
+                RemoteETag = "etag-1",
+                PlaceholderHydrationState = SyncPlaceholderHydrationState.RemoteOnly,
+                PlaceholderIdentity = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E],
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-b",
+                RelativePath = "Docs/ignored.txt",
+                Kind = SyncEntryKind.File,
+                PlaceholderIdentity = [0x01],
+            });
+
+            var entries = new List<SyncVirtualFilesResumeEntry>();
+            await foreach (SyncVirtualFilesResumeEntry entry in store.LoadVirtualFilesResumeEntriesByPathKeysAsync(
+                               "pair-a",
+                               ["Docs/remote-only.txt", "Docs", "missing.txt"]))
+            {
+                entries.Add(entry);
+            }
+
+            SyncVirtualFilesResumeEntry directory = entries.Single(entry => entry.Kind == SyncEntryKind.Directory);
+            SyncVirtualFilesResumeEntry file = entries.Single(entry => entry.Kind == SyncEntryKind.File);
+            Assert.Multiple(() =>
+            {
+                Assert.That(entries.Select(entry => entry.RelativePath), Is.EqualTo(new[] { "Docs", "Docs/remote-only.txt" }));
+                Assert.That(directory.RemoteNodeId, Is.EqualTo(remoteNodeId));
+                Assert.That(file.RemoteFileId, Is.EqualTo(remoteFileId));
+                Assert.That(file.RemoteContentHash, Is.EqualTo("remote-hash"));
+                Assert.That(file.RemoteETag, Is.EqualTo("etag-1"));
+                Assert.That(file.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+                Assert.That(file.HasPlaceholderIdentity, Is.True);
+            });
+        }
+
+        [Test]
         public async Task UpsertManyAsync_InsertsAndUpdatesEntriesInOneBatch()
         {
             var store = CreateStore();

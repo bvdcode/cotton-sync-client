@@ -11,7 +11,7 @@ namespace Cotton.Sync.State
     /// <summary>
     /// Persists sync baselines in a SQLite database through Entity Framework Core.
     /// </summary>
-    public class SqliteSyncStateStore : ISyncStateStore
+    public class SqliteSyncStateStore : ISyncStateStore, IVirtualFilesResumeStateStore
     {
         private static readonly ConcurrentDictionary<string, SemaphoreSlim> MigrationGates = new(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<string, SemaphoreSlim> WriteGates = new(StringComparer.OrdinalIgnoreCase);
@@ -195,6 +195,50 @@ namespace Cotton.Sync.State
             if (keyBatch.Count > 0)
             {
                 foreach (SyncStateEntry entry in await LoadEntriesByPathKeyBatchAsync(syncPairId, keyBatch, cancellationToken).ConfigureAwait(false))
+                {
+                    yield return entry;
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public async IAsyncEnumerable<SyncVirtualFilesResumeEntry> LoadVirtualFilesResumeEntriesByPathKeysAsync(
+            string syncPairId,
+            IEnumerable<string> relativePathKeys,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
+            ArgumentNullException.ThrowIfNull(relativePathKeys);
+            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+            var keyBatch = new List<string>(DefaultPathKeyLookupBatchSize);
+            foreach (string key in relativePathKeys)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (string.IsNullOrWhiteSpace(key) || SyncPathIgnoreRules.ShouldIgnore(key))
+                {
+                    continue;
+                }
+
+                string normalizedKey = SyncPath.ToKey(key);
+                if (!keyBatch.Contains(normalizedKey, StringComparer.OrdinalIgnoreCase))
+                {
+                    keyBatch.Add(normalizedKey);
+                }
+
+                if (keyBatch.Count >= DefaultPathKeyLookupBatchSize)
+                {
+                    foreach (SyncVirtualFilesResumeEntry entry in await LoadVirtualFilesResumeEntriesByPathKeyBatchAsync(syncPairId, keyBatch, cancellationToken).ConfigureAwait(false))
+                    {
+                        yield return entry;
+                    }
+
+                    keyBatch.Clear();
+                }
+            }
+
+            if (keyBatch.Count > 0)
+            {
+                foreach (SyncVirtualFilesResumeEntry entry in await LoadVirtualFilesResumeEntriesByPathKeyBatchAsync(syncPairId, keyBatch, cancellationToken).ConfigureAwait(false))
                 {
                     yield return entry;
                 }
@@ -552,6 +596,29 @@ namespace Cotton.Sync.State
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false);
             return entities.Select(ToModel).ToArray();
+        }
+
+        private async Task<IReadOnlyList<SyncVirtualFilesResumeEntry>> LoadVirtualFilesResumeEntriesByPathKeyBatchAsync(
+            string syncPairId,
+            IReadOnlyCollection<string> keys,
+            CancellationToken cancellationToken)
+        {
+            await using SyncStateDbContext context = CreateContext();
+            return await context.SyncEntries
+                .AsNoTracking()
+                .Where(entry => entry.SyncPairId == syncPairId && keys.Contains(entry.RelativePathKey))
+                .OrderBy(entry => entry.RelativePathKey)
+                .Select(entry => new SyncVirtualFilesResumeEntry(
+                    entry.RelativePath,
+                    entry.Kind,
+                    entry.RemoteNodeId,
+                    entry.RemoteFileId,
+                    entry.RemoteContentHash,
+                    entry.RemoteETag,
+                    entry.PlaceholderHydrationState,
+                    entry.PlaceholderIdentity != null && entry.PlaceholderIdentity.Length > 0))
+                .ToArrayAsync(cancellationToken)
+                .ConfigureAwait(false);
         }
 
         private SemaphoreSlim GetWriteGate()
