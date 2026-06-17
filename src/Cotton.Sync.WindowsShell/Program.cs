@@ -14,10 +14,12 @@ namespace Cotton.Sync.WindowsShell
         private const string ProviderId = "Cotton.Sync.Desktop";
         private const string ProviderAccount = "Default";
         private const string ProviderDisplayName = "Cotton Cloud";
+        private const string LegacyProviderDisplayName = "Cotton Sync";
         private const string ShellNamespaceRegistryPath =
             @"Software\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace";
         private const string ClassesClsidRegistryPath = @"Software\Classes\CLSID";
         private const string WowClassesClsidRegistryPath = @"Software\Classes\WOW6432Node\CLSID";
+        private const string PinnedToNamespaceTreeValueName = "System.IsPinnedToNameSpaceTree";
 
         public static async Task<int> Main(string[] args)
         {
@@ -114,11 +116,14 @@ namespace Cotton.Sync.WindowsShell
             }
 
             int shellRootsRemoved = RemoveOrphanedShellNamespaceRoots(prefix);
+            int legacyClassIdsRemoved = RemoveLegacyPinnedProviderClassIds();
             Console.WriteLine(
                 "unregister-all storage-provider="
                 + unregistered.ToString(System.Globalization.CultureInfo.InvariantCulture)
                 + " shell-namespace="
                 + shellRootsRemoved.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + " legacy-clsid="
+                + legacyClassIdsRemoved.ToString(System.Globalization.CultureInfo.InvariantCulture)
                 + " failures="
                 + failures.ToString(System.Globalization.CultureInfo.InvariantCulture));
             return failures == 0 ? 0 : 1;
@@ -167,6 +172,55 @@ namespace Cotton.Sync.WindowsShell
             }
 
             return removed;
+        }
+
+        private static int RemoveLegacyPinnedProviderClassIds()
+        {
+            return RemoveLegacyPinnedProviderClassIds(ClassesClsidRegistryPath)
+                + RemoveLegacyPinnedProviderClassIds(WowClassesClsidRegistryPath);
+        }
+
+        private static int RemoveLegacyPinnedProviderClassIds(string registryPath)
+        {
+            using RegistryKey? parentKey = Registry.CurrentUser.OpenSubKey(registryPath, writable: true);
+            if (parentKey is null)
+            {
+                return 0;
+            }
+
+            int removed = 0;
+            foreach (string subKeyName in parentKey.GetSubKeyNames())
+            {
+                using RegistryKey? classIdKey = parentKey.OpenSubKey(subKeyName);
+                if (classIdKey?.GetValue(null) is not string displayName
+                    || !IsCottonProviderDisplayName(displayName)
+                    || !IsPinnedToNamespaceTree(classIdKey))
+                {
+                    continue;
+                }
+
+                parentKey.DeleteSubKeyTree(subKeyName, throwOnMissingSubKey: false);
+                removed++;
+                Console.WriteLine("removed legacy shell class " + subKeyName + " -> " + displayName);
+            }
+
+            return removed;
+        }
+
+        private static bool IsCottonProviderDisplayName(string displayName)
+        {
+            return string.Equals(displayName, ProviderDisplayName, StringComparison.Ordinal)
+                || string.Equals(displayName, LegacyProviderDisplayName, StringComparison.Ordinal);
+        }
+
+        private static bool IsPinnedToNamespaceTree(RegistryKey classIdKey)
+        {
+            return classIdKey.GetValue(PinnedToNamespaceTreeValueName) switch
+            {
+                int intValue => intValue != 0,
+                string stringValue => stringValue == "1",
+                _ => false,
+            };
         }
 
         private static void DeleteClassIdSubKey(string registryPath, string classId)
