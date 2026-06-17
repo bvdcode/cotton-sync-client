@@ -37,10 +37,14 @@ namespace Cotton.Sync.App.Runners
         {
             ArgumentNullException.ThrowIfNull(syncPair);
             ArgumentNullException.ThrowIfNull(request);
-            RemoteChangeFeedBatch remoteBatch = await ReadRemoteChangesAsync(syncPair, cancellationToken)
+            RemoteChangeFeedReadResult remoteRead = await ReadRemoteChangesAsync(syncPair, cancellationToken)
                 .ConfigureAwait(false);
+            RemoteChangeFeedBatch remoteBatch = remoteRead.Batch;
 
-            await _inner.RunOnceAsync(syncPair, request, cancellationToken).ConfigureAwait(false);
+            if (!CanSkipInnerSync(syncPair, request, remoteRead))
+            {
+                await _inner.RunOnceAsync(syncPair, request, cancellationToken).ConfigureAwait(false);
+            }
 
             if (remoteBatch.CursorExpired)
             {
@@ -51,7 +55,7 @@ namespace Cotton.Sync.App.Runners
             await _remoteChanges.AcknowledgeAsync(remoteBatch, cancellationToken).ConfigureAwait(false);
         }
 
-        private async Task<RemoteChangeFeedBatch> ReadRemoteChangesAsync(
+        private async Task<RemoteChangeFeedReadResult> ReadRemoteChangesAsync(
             SyncPairSettings syncPair,
             CancellationToken cancellationToken)
         {
@@ -59,15 +63,30 @@ namespace Cotton.Sync.App.Runners
             RemoteChangeFeedBatch batch = await _remoteChanges
                 .ReadAsync(syncPairId, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
+            bool hasObservedChanges = !batch.Snapshot.IsEmpty;
 
             while (ShouldReadNextPage(batch))
             {
                 batch = await _remoteChanges
                     .ReadFromCursorAsync(syncPairId, batch.NextCursor, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
+                hasObservedChanges |= !batch.Snapshot.IsEmpty;
             }
 
-            return batch;
+            return new RemoteChangeFeedReadResult(batch, hasObservedChanges);
+        }
+
+        private static bool CanSkipInnerSync(
+            SyncPairSettings syncPair,
+            SyncRunRequest request,
+            RemoteChangeFeedReadResult remoteRead)
+        {
+            return syncPair.Mode == SyncPairMode.WindowsVirtualFiles
+                && request.IsFull
+                && remoteRead.Batch.SinceCursor > 0
+                && !remoteRead.Batch.CursorExpired
+                && !remoteRead.Batch.HasMore
+                && !remoteRead.HasObservedChanges;
         }
 
         private static bool ShouldReadNextPage(RemoteChangeFeedBatch batch)
@@ -84,5 +103,7 @@ namespace Cotton.Sync.App.Runners
 
             return true;
         }
+
+        private sealed record RemoteChangeFeedReadResult(RemoteChangeFeedBatch Batch, bool HasObservedChanges);
     }
 }
