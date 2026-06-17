@@ -3508,7 +3508,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private bool TryPostCoalescedActivity(DesktopActivitySnapshot activity)
         {
-            if (!IsHighVolumeTransferActivity(activity.Kind))
+            if (!IsHighVolumeActivity(activity.Kind))
             {
                 return false;
             }
@@ -3555,7 +3555,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             DesktopActivitySnapshot pending,
             DesktopActivitySnapshot next)
         {
-            if (!IsHighVolumeTransferActivity(next.Kind)
+            if (!IsHighVolumeActivity(next.Kind)
                 || !string.Equals(pending.Kind, next.Kind, StringComparison.Ordinal)
                 || !Equals(pending.SyncPairId, next.SyncPairId)
                 || next.OccurredAtUtc < pending.OccurredAtUtc)
@@ -4184,7 +4184,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private bool ShouldCoalesceActivity(string kind, Guid? syncPairId, DateTimeOffset occurredAt)
         {
-            if (!IsHighVolumeTransferActivity(kind)
+            if (!IsHighVolumeActivity(kind)
                 || Activities.Count == 0
                 || !_lastCoalescedActivityAt.HasValue
                 || !Equals(_lastCoalescedActivitySyncPairId, syncPairId))
@@ -4200,7 +4200,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private void TrackCoalescibleActivity(string kind, Guid? syncPairId, DateTimeOffset occurredAt)
         {
-            if (!IsHighVolumeTransferActivity(kind))
+            if (!IsHighVolumeActivity(kind))
             {
                 _lastCoalescedActivityAt = null;
                 _lastCoalescedActivitySyncPairId = null;
@@ -4211,12 +4211,13 @@ namespace Cotton.Sync.Desktop.ViewModels
             _lastCoalescedActivitySyncPairId = syncPairId;
         }
 
-        private static bool IsHighVolumeTransferActivity(string kind)
+        private static bool IsHighVolumeActivity(string kind)
         {
             return string.Equals(kind, "Uploaded", StringComparison.Ordinal)
                 || string.Equals(kind, "Downloaded", StringComparison.Ordinal)
                 || string.Equals(kind, "Deleted local copy", StringComparison.Ordinal)
-                || string.Equals(kind, "Deleted remote copy", StringComparison.Ordinal);
+                || string.Equals(kind, "Deleted remote copy", StringComparison.Ordinal)
+                || string.Equals(kind, "PlaceholderCreated", StringComparison.Ordinal);
         }
 
         private void AddConflict(Guid? syncPairId, string path, string details, DateTimeOffset occurredAt)
