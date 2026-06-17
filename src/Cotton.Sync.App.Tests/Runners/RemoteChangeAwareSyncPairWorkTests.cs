@@ -38,6 +38,125 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesSkipsInnerFullRunForEmptyInitializedRemoteBatch()
+        {
+            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            var inner = new FakeSyncPairWork();
+            var remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 12,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes: Array.Empty<SyncChangeDto>()));
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+
+            await work.RunOnceAsync(syncPair);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.Zero);
+                Assert.That(remoteChanges.AcknowledgedBatches, Has.Count.EqualTo(1));
+                Assert.That(remoteChanges.FullResyncAcknowledgedBatches, Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesRunsInitialFullWhenRemoteCursorIsZero()
+        {
+            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            var inner = new FakeSyncPairWork();
+            var remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 0,
+                nextCursor: 0,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 0,
+                changes: Array.Empty<SyncChangeDto>()));
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+
+            await work.RunOnceAsync(syncPair);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(remoteChanges.AcknowledgedBatches, Has.Count.EqualTo(1));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesPreservesScopedLocalRequestForEmptyRemoteBatch()
+        {
+            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            var inner = new FakeSyncPairWork();
+            var remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 12,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes: Array.Empty<SyncChangeDto>()));
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+            SyncRunRequest request = SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]);
+
+            await work.RunOnceAsync(syncPair, request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest, Is.SameAs(request));
+                Assert.That(inner.LastRequest?.IsFull, Is.False);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesRunsWhenDrainedRemotePageHadChanges()
+        {
+            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            var inner = new FakeSyncPairWork();
+            var firstBatch = new RemoteChangeFeedBatch(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 12,
+                hasMore: true,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes:
+                [
+                    new SyncChangeDto
+                    {
+                        Id = 11,
+                        Kind = SyncChangeKind.FileCreated,
+                        LayoutId = Guid.NewGuid(),
+                        ItemId = Guid.NewGuid(),
+                        ParentNodeId = Guid.NewGuid(),
+                        Name = "report.txt",
+                    },
+                ]);
+            var secondBatch = new RemoteChangeFeedBatch(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 12,
+                nextCursor: 12,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes: Array.Empty<SyncChangeDto>());
+            var remoteChanges = new FakeRemoteChangeFeedReader(firstBatch, secondBatch);
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+
+            await work.RunOnceAsync(syncPair);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { secondBatch }));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_PreservesRequestedSyncSurface()
         {
             var syncPair = CreateSyncPair();
@@ -197,7 +316,7 @@ namespace Cotton.Sync.App.Tests.Runners
             });
         }
 
-        private static SyncPairSettings CreateSyncPair()
+        private static SyncPairSettings CreateSyncPair(SyncPairMode mode = SyncPairMode.FullMirror)
         {
             return new SyncPairSettings
             {
@@ -207,7 +326,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 RemoteRootNodeId = Guid.NewGuid(),
                 RemoteDisplayPath = "/Documents",
                 IsEnabled = true,
-                Mode = SyncPairMode.FullMirror,
+                Mode = mode,
             };
         }
 
