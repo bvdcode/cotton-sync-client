@@ -668,8 +668,10 @@ namespace Cotton.Sync
             DateTime startedAtUtc,
             CancellationToken cancellationToken)
         {
-            if (!await CanRunInitialWindowsVirtualFilesStreamingPopulationAsync(syncPair, options, startedAtUtc, cancellationToken)
-                    .ConfigureAwait(false))
+            InitialVirtualFilesStreamingPlan? streamingPlan =
+                await CreateInitialWindowsVirtualFilesStreamingPlanAsync(syncPair, options, startedAtUtc, cancellationToken)
+                    .ConfigureAwait(false);
+            if (streamingPlan is null)
             {
                 return null;
             }
@@ -707,6 +709,7 @@ namespace Cotton.Sync
                 result,
                 channel.Reader,
                 startedAtUtc,
+                streamingPlan.SkipCurrentPlaceholders,
                 () => Volatile.Read(ref discoveredFiles),
                 () => completedFiles,
                 value => completedFiles = value,
@@ -740,7 +743,7 @@ namespace Cotton.Sync
             return result;
         }
 
-        private async Task<bool> CanRunInitialWindowsVirtualFilesStreamingPopulationAsync(
+        private async Task<InitialVirtualFilesStreamingPlan?> CreateInitialWindowsVirtualFilesStreamingPlanAsync(
             SyncPair syncPair,
             SyncRunOptions options,
             DateTime startedAtUtc,
@@ -751,22 +754,17 @@ namespace Cotton.Sync
                 || _remoteStreamingCrawler is null
                 || _remoteFilePlaceholderWriter is null)
             {
-                return false;
+                return null;
             }
 
-            if (!await IsLocalTreeCompatibleWithInitialWindowsVirtualFilesStreamingPopulationAsync(
+            return await InspectLocalTreeForInitialWindowsVirtualFilesStreamingAsync(
                     syncPair,
                     options,
                     startedAtUtc,
-                    cancellationToken).ConfigureAwait(false))
-            {
-                return false;
-            }
-
-            return true;
+                    cancellationToken).ConfigureAwait(false);
         }
 
-        private async Task<bool> IsLocalTreeCompatibleWithInitialWindowsVirtualFilesStreamingPopulationAsync(
+        private async Task<InitialVirtualFilesStreamingPlan?> InspectLocalTreeForInitialWindowsVirtualFilesStreamingAsync(
             SyncPair syncPair,
             SyncRunOptions options,
             DateTime startedAtUtc,
@@ -780,7 +778,7 @@ namespace Cotton.Sync
                 .ConfigureAwait(false);
             if (localTreeLookups is not null)
             {
-                return await IsLocalTreeCompatibleWithInitialWindowsVirtualFilesStreamingPopulationAsync(
+                return await CreateInitialWindowsVirtualFilesStreamingPlanAsync(
                         syncPair,
                         localTreeLookups.DirectoriesByPath,
                         localTreeLookups.FilesByPath,
@@ -796,7 +794,7 @@ namespace Cotton.Sync
             Dictionary<string, LocalFileSnapshot> filesByPath = localTree.Files.ToDictionary(
                 file => SyncPath.ToKey(file.RelativePath),
                 PathComparer);
-            return await IsLocalTreeCompatibleWithInitialWindowsVirtualFilesStreamingPopulationAsync(
+            return await CreateInitialWindowsVirtualFilesStreamingPlanAsync(
                     syncPair,
                     directoriesByPath,
                     filesByPath,
@@ -804,7 +802,7 @@ namespace Cotton.Sync
                 .ConfigureAwait(false);
         }
 
-        private async Task<bool> IsLocalTreeCompatibleWithInitialWindowsVirtualFilesStreamingPopulationAsync(
+        private async Task<InitialVirtualFilesStreamingPlan?> CreateInitialWindowsVirtualFilesStreamingPlanAsync(
             SyncPair syncPair,
             IReadOnlyDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath,
             IReadOnlyDictionary<string, LocalFileSnapshot> localFilesByPath,
@@ -812,7 +810,7 @@ namespace Cotton.Sync
         {
             if (localDirectoriesByPath.Count == 0 && localFilesByPath.Count == 0)
             {
-                return true;
+                return new InitialVirtualFilesStreamingPlan(SkipCurrentPlaceholders: false);
             }
 
             List<string> keys = BuildUniquePathKeyList(localDirectoriesByPath.Keys, localFilesByPath.Keys);
@@ -823,7 +821,7 @@ namespace Cotton.Sync
                 if (!directoryStateByPath.TryGetValue(directoryKey, out SyncStateEntry? state)
                     || state.RemoteNodeId is null)
                 {
-                    return false;
+                    return null;
                 }
             }
 
@@ -840,10 +838,10 @@ namespace Cotton.Sync
                     continue;
                 }
 
-                return false;
+                return null;
             }
 
-            return true;
+            return new InitialVirtualFilesStreamingPlan(SkipCurrentPlaceholders: true);
         }
 
         private static bool IsUntrackedVirtualFilesPlaceholderCompatibleWithInitialStreaming(LocalFileSnapshot local)
@@ -890,6 +888,7 @@ namespace Cotton.Sync
             SyncRunResult result,
             ChannelReader<InitialVirtualFilesPopulationItem> reader,
             DateTime startedAtUtc,
+            bool skipCurrentPlaceholders,
             Func<int> getDiscoveredFiles,
             Func<int> getCompletedFiles,
             Action<int> setCompletedFiles,
@@ -921,14 +920,22 @@ namespace Cotton.Sync
                         break;
 
                     case InitialVirtualFilesFilePopulationItem fileItem:
-                        await MaterializeRemoteOnlyFileAsync(
-                                syncPair,
-                                options,
-                                result,
-                                fileItem.File.RelativePath,
-                                fileItem.File.File,
-                                cancellationToken)
-                            .ConfigureAwait(false);
+                        if (!skipCurrentPlaceholders
+                            || !await IsStreamingRemoteOnlyPlaceholderAlreadyCurrentAsync(
+                                    syncPair,
+                                    fileItem.File,
+                                    cancellationToken).ConfigureAwait(false))
+                        {
+                            await MaterializeRemoteOnlyFileAsync(
+                                    syncPair,
+                                    options,
+                                    result,
+                                    fileItem.File.RelativePath,
+                                    fileItem.File.File,
+                                    cancellationToken)
+                                .ConfigureAwait(false);
+                        }
+
                         int completedFiles = getCompletedFiles() + 1;
                         setCompletedFiles(completedFiles);
                         ReportStreamingPlaceholderProgress(
@@ -948,6 +955,38 @@ namespace Cotton.Sync
                         break;
                 }
             }
+        }
+
+        private async Task<bool> IsStreamingRemoteOnlyPlaceholderAlreadyCurrentAsync(
+            SyncPair syncPair,
+            RemoteFileSnapshot remote,
+            CancellationToken cancellationToken)
+        {
+            if (_localMetadataPathLookupScanner is null)
+            {
+                return false;
+            }
+
+            SyncStateEntry? state = await _stateStore
+                .GetAsync(syncPair.SyncPairId, remote.RelativePath, cancellationToken)
+                .ConfigureAwait(false);
+            if (state is null
+                || !IsOnlineOnlyPlaceholderBaseline(syncPair, state)
+                || !RemoteMatchesBaseline(remote.File, state))
+            {
+                return false;
+            }
+
+            LocalTreeLookupSnapshot localTree = await _localMetadataPathLookupScanner
+                .ScanPathMetadataLookupsAsync(
+                    syncPair.LocalRootPath,
+                    [remote.RelativePath],
+                    progress: null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            string key = SyncPath.ToKey(remote.RelativePath);
+            return localTree.FilesByPath.TryGetValue(key, out LocalFileSnapshot? local)
+                && IsResumeCompatibleVirtualFilesPlaceholder(local, state);
         }
 
         private static void ReportStreamingPlaceholderProgress(
@@ -3256,6 +3295,8 @@ namespace Cotton.Sync
         }
 
         private readonly record struct MoveCandidateKey(string ContentHash, long SizeBytes);
+
+        private sealed record InitialVirtualFilesStreamingPlan(bool SkipCurrentPlaceholders);
 
         private abstract record InitialVirtualFilesPopulationItem;
 
