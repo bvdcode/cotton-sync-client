@@ -1240,7 +1240,7 @@ namespace Cotton.Sync.Tests
                 Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
                 Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
                 Assert.That(remoteCrawler.FirstPlaceholderStartedBeforeStreamingCompleted, Is.True);
-                Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[]
+                Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EquivalentTo(new[]
                 {
                     "Desktop/first.txt",
                     "Desktop/second.txt",
@@ -4554,6 +4554,8 @@ namespace Cotton.Sync.Tests
             IRemoteFilePlaceholderWriter,
             IRemoteDirectoryMaterializationObserver
         {
+            private readonly object _requestsLock = new();
+
             public byte[] PlaceholderIdentity { get; } = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E];
 
             public List<RemoteFilePlaceholderRequest> Requests { get; } = [];
@@ -4574,7 +4576,11 @@ namespace Cotton.Sync.Tests
                 RemoteFilePlaceholderRequest request,
                 CancellationToken cancellationToken = default)
             {
-                Requests.Add(request);
+                lock (_requestsLock)
+                {
+                    Requests.Add(request);
+                }
+
                 if (!string.IsNullOrWhiteSpace(UnavailableReason))
                 {
                     throw new RemoteFilePlaceholderUnavailableException(request.RelativePath, UnavailableReason);
@@ -4587,6 +4593,7 @@ namespace Cotton.Sync.Tests
         private sealed class SignalingRemoteFilePlaceholderWriter : IRemoteFilePlaceholderWriter
         {
             private static readonly byte[] PlaceholderIdentity = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E];
+            private readonly object _requestsLock = new();
             private readonly TaskCompletionSource _firstPlaceholderStarted;
 
             public SignalingRemoteFilePlaceholderWriter(TaskCompletionSource firstPlaceholderStarted)
@@ -4600,7 +4607,11 @@ namespace Cotton.Sync.Tests
                 RemoteFilePlaceholderRequest request,
                 CancellationToken cancellationToken = default)
             {
-                Requests.Add(request);
+                lock (_requestsLock)
+                {
+                    Requests.Add(request);
+                }
+
                 _firstPlaceholderStarted.TrySetResult();
                 return Task.FromResult(new RemoteFilePlaceholderResult(PlaceholderIdentity));
             }
