@@ -252,6 +252,38 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public async Task SignInWithBrowserAsync_ReturnsBeforeSyncCoreStartCompletes()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            Uri serverUrl = new("https://cotton.example.test/");
+            FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
+            host.App.StartSyncStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            host.App.StartSyncRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            using DesktopShellController controller = CreateController(paths, factory);
+
+            try
+            {
+                AuthSession session = await controller
+                    .SignInWithBrowserAsync(serverUrl.AbsoluteUri)
+                    .WaitAsync(TimeSpan.FromSeconds(2));
+
+                await host.App.StartSyncStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(session.Email, Does.EndWith("@example.test"));
+                    Assert.That(host.App.StartSyncCalls, Is.EqualTo(1));
+                    Assert.That(host.AsyncResource.DisposeAsyncCalls, Is.Zero);
+                });
+            }
+            finally
+            {
+                host.App.StartSyncRelease.TrySetResult();
+            }
+        }
+
+        [Test]
         public async Task LoadAsync_SkipsSessionRestoreWhenTokenStorageIsInsecure()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
@@ -987,6 +1019,10 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             public IAppPreferencesStore? PreferencesStore { get; set; }
 
+            public TaskCompletionSource? StartSyncStarted { get; set; }
+
+            public TaskCompletionSource? StartSyncRelease { get; set; }
+
             public async Task<AuthSession> SignInAsync(
                 PasswordSignInRequest request,
                 CancellationToken cancellationToken = default)
@@ -1070,7 +1106,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             public Task StartSyncAsync(CancellationToken cancellationToken = default)
             {
                 StartSyncCalls++;
-                return Task.CompletedTask;
+                StartSyncStarted?.TrySetResult();
+                return StartSyncRelease?.Task ?? Task.CompletedTask;
             }
 
             public Task SyncAllAsync(CancellationToken cancellationToken = default)
