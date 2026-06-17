@@ -29,7 +29,8 @@ mkdir -p "$output_dir"
 
 "$script_dir/smoke-gui-screenshot.sh" \
   "$app_executable" \
-  "$output_dir/cotton-sync-desktop-linux-gui.png"
+  "$output_dir/cotton-sync-desktop-linux-gui.png" \
+  --visual-smoke sign-in-error
 
 for scenario in "$@"; do
   "$script_dir/smoke-gui-screenshot.sh" \

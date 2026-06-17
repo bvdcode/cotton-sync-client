@@ -688,7 +688,6 @@ namespace Cotton.Sync
             int discoveredFiles = 0;
             int completedFiles = 0;
             DateTime? lastPlaceholderProgressReportedAtUtc = null;
-            ReportRunProgress(options, SyncRunProgressStage.ScanningRemote, 0, null, null, startedAtUtc);
             ReportRunProgress(options, SyncRunProgressStage.CreatingPlaceholders, 0, null, null, startedAtUtc);
 
             using var streamingCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -830,14 +829,26 @@ namespace Cotton.Sync
 
             foreach ((string fileKey, LocalFileSnapshot local) in localFilesByPath)
             {
-                if (!fileStateByPath.TryGetValue(fileKey, out SyncStateEntry? state)
-                    || !IsResumeCompatibleVirtualFilesPlaceholder(local, state))
+                if (fileStateByPath.TryGetValue(fileKey, out SyncStateEntry? state)
+                    && IsResumeCompatibleVirtualFilesPlaceholder(local, state))
                 {
-                    return false;
+                    continue;
                 }
+
+                if (IsUntrackedVirtualFilesPlaceholderCompatibleWithInitialStreaming(local))
+                {
+                    continue;
+                }
+
+                return false;
             }
 
             return true;
+        }
+
+        private static bool IsUntrackedVirtualFilesPlaceholderCompatibleWithInitialStreaming(LocalFileSnapshot local)
+        {
+            return local.IsCloudFilesPlaceholder;
         }
 
         private static bool IsResumeCompatibleVirtualFilesPlaceholder(LocalFileSnapshot local, SyncStateEntry state)
@@ -861,7 +872,7 @@ namespace Cotton.Sync
                     .CrawlStreamingAsync(
                         syncPair.RemoteRootNodeId,
                         sink,
-                        new RemoteTreeScanProgressReporter(options, startedAtUtc),
+                        progress: null,
                         cancellationToken)
                     .ConfigureAwait(false);
                 channel.Writer.TryComplete();
