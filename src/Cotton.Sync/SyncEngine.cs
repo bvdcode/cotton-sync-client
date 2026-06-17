@@ -755,52 +755,96 @@ namespace Cotton.Sync
                 return false;
             }
 
-            if (!await IsLocalTreeEmptyAsync(syncPair.LocalRootPath, options, startedAtUtc, cancellationToken).ConfigureAwait(false))
+            if (!await IsLocalTreeCompatibleWithInitialWindowsVirtualFilesStreamingPopulationAsync(
+                    syncPair,
+                    options,
+                    startedAtUtc,
+                    cancellationToken).ConfigureAwait(false))
             {
                 return false;
             }
 
-            return await IsPairStateEmptyAsync(syncPair.SyncPairId, cancellationToken).ConfigureAwait(false);
+            return true;
         }
 
-        private async Task<bool> IsLocalTreeEmptyAsync(
-            string localRootPath,
+        private async Task<bool> IsLocalTreeCompatibleWithInitialWindowsVirtualFilesStreamingPopulationAsync(
+            SyncPair syncPair,
             SyncRunOptions options,
             DateTime startedAtUtc,
             CancellationToken cancellationToken)
         {
             LocalTreeLookupSnapshot? localTreeLookups = await ScanLocalTreeLookupsAsync(
-                    localRootPath,
+                    syncPair.LocalRootPath,
                     options,
                     startedAtUtc,
                     cancellationToken)
                 .ConfigureAwait(false);
             if (localTreeLookups is not null)
             {
-                return localTreeLookups.DirectoriesByPath.Count == 0 && localTreeLookups.FilesByPath.Count == 0;
+                return await IsLocalTreeCompatibleWithInitialWindowsVirtualFilesStreamingPopulationAsync(
+                        syncPair,
+                        localTreeLookups.DirectoriesByPath,
+                        localTreeLookups.FilesByPath,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
 
-            LocalTreeSnapshot localTree = await ScanLocalTreeAsync(localRootPath, options, startedAtUtc, cancellationToken)
+            LocalTreeSnapshot localTree = await ScanLocalTreeAsync(syncPair.LocalRootPath, options, startedAtUtc, cancellationToken)
                 .ConfigureAwait(false);
-            return localTree.Directories.Count == 0 && localTree.Files.Count == 0;
+            Dictionary<string, LocalDirectorySnapshot> directoriesByPath = localTree.Directories.ToDictionary(
+                directory => SyncPath.ToKey(directory.RelativePath),
+                PathComparer);
+            Dictionary<string, LocalFileSnapshot> filesByPath = localTree.Files.ToDictionary(
+                file => SyncPath.ToKey(file.RelativePath),
+                PathComparer);
+            return await IsLocalTreeCompatibleWithInitialWindowsVirtualFilesStreamingPopulationAsync(
+                    syncPair,
+                    directoriesByPath,
+                    filesByPath,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
 
-        private async Task<bool> IsPairStateEmptyAsync(string syncPairId, CancellationToken cancellationToken)
+        private async Task<bool> IsLocalTreeCompatibleWithInitialWindowsVirtualFilesStreamingPopulationAsync(
+            SyncPair syncPair,
+            IReadOnlyDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath,
+            IReadOnlyDictionary<string, LocalFileSnapshot> localFilesByPath,
+            CancellationToken cancellationToken)
         {
-            DateTime? lastSyncedAtUtc = await _stateStore.GetPairLastSyncedAtUtcAsync(syncPairId, cancellationToken)
-                .ConfigureAwait(false);
-            if (lastSyncedAtUtc.HasValue)
+            if (localDirectoriesByPath.Count == 0 && localFilesByPath.Count == 0)
             {
-                return false;
+                return true;
             }
 
-            await foreach (SyncStateEntry _ in _stateStore.LoadPairEntriesAsync(syncPairId, cancellationToken)
-                               .ConfigureAwait(false))
+            List<string> keys = BuildUniquePathKeyList(localDirectoriesByPath.Keys, localFilesByPath.Keys);
+            (Dictionary<string, SyncStateEntry> directoryStateByPath, Dictionary<string, SyncStateEntry> fileStateByPath) =
+                await LoadStateByPathAsync(syncPair.SyncPairId, keys, cancellationToken).ConfigureAwait(false);
+            foreach (string directoryKey in localDirectoriesByPath.Keys)
             {
-                return false;
+                if (!directoryStateByPath.TryGetValue(directoryKey, out SyncStateEntry? state)
+                    || state.RemoteNodeId is null)
+                {
+                    return false;
+                }
+            }
+
+            foreach ((string fileKey, LocalFileSnapshot local) in localFilesByPath)
+            {
+                if (!fileStateByPath.TryGetValue(fileKey, out SyncStateEntry? state)
+                    || !IsResumeCompatibleVirtualFilesPlaceholder(local, state))
+                {
+                    return false;
+                }
             }
 
             return true;
+        }
+
+        private static bool IsResumeCompatibleVirtualFilesPlaceholder(LocalFileSnapshot local, SyncStateEntry state)
+        {
+            return local.IsCloudFilesPlaceholder
+                && IsOnlineOnlyPlaceholderState(state)
+                && state.RemoteFileId.HasValue;
         }
 
         private async Task ProduceInitialWindowsVirtualFilesPopulationAsync(
