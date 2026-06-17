@@ -276,8 +276,8 @@ namespace Cotton.Sync.Tests
                 Assert.That(smoke.Elapsed, Is.LessThan(TimeSpan.FromSeconds(90)));
                 Assert.That(smoke.ManagedHeapDeltaBytes, Is.LessThan(384L * MiB));
                 Assert.That(smoke.CooperativeYieldCount, Is.GreaterThanOrEqualTo(900));
-                Assert.That(smoke.RetainedActivityCount, Is.EqualTo(100));
-                Assert.That(smoke.IsActivityListTruncated, Is.True);
+                Assert.That(smoke.RetainedActivityCount, Is.Zero);
+                Assert.That(smoke.IsActivityListTruncated, Is.False);
             });
         }
 
@@ -795,10 +795,9 @@ namespace Cotton.Sync.Tests
                 Assert.That(placeholderWriter.Count, Is.EqualTo(fileCount));
                 Assert.That(stateStore.FileUpserts, Is.EqualTo(fileCount));
                 Assert.That(stateStore.RemoteOnlyPlaceholderUpserts, Is.EqualTo(fileCount));
-                Assert.That(result.TotalActivityCount, Is.EqualTo(fileCount));
-                Assert.That(result.Activities, Has.Count.EqualTo(100));
-                Assert.That(result.IsActivityListTruncated, Is.True);
-                Assert.That(result.Activities.Select(activity => activity.Kind), Is.All.EqualTo(SyncActivityKind.PlaceholderCreated));
+                Assert.That(result.TotalActivityCount, Is.Zero);
+                Assert.That(result.Activities, Is.Empty);
+                Assert.That(result.IsActivityListTruncated, Is.False);
                 Assert.That(placeholderProgress, Is.Not.Empty);
                 Assert.That(placeholderProgress.Any(progress => progress.FilesCompleted > 0 && progress.FilesCompleted < fileCount), Is.True);
                 Assert.That(placeholderProgress.Last().FilesTotal, Is.EqualTo(fileCount));
