@@ -3318,6 +3318,77 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task ActivityReported_CoalescesHighVolumePlaceholderBurst()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            int initialActivityCount = viewModel.Activities.Count;
+            DateTime startedAtUtc = new(2026, 6, 6, 10, 0, 0, DateTimeKind.Utc);
+
+            for (int index = 0; index < 100; index++)
+            {
+                string path = "Cloud/link-" + index.ToString("000", CultureInfo.InvariantCulture) + ".txt";
+                controller.ReportActivity(new DesktopActivitySnapshot(
+                    "PlaceholderCreated",
+                    path,
+                    "Created placeholder " + path,
+                    startedAtUtc.AddMilliseconds(index * 5),
+                    syncPairId));
+            }
+
+            ActivityRowViewModel activity = viewModel.Activities.First();
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.Activities, Has.Count.EqualTo(initialActivityCount + 1));
+                Assert.That(activity.Kind, Is.EqualTo("PlaceholderCreated"));
+                Assert.That(activity.Path, Is.EqualTo("Cloud/link-099.txt"));
+                Assert.That(activity.Details, Is.EqualTo("Created placeholder Cloud/link-099.txt"));
+            });
+        }
+
+        [Test]
+        public async Task ActivityReported_CoalescesHighVolumePlaceholderBurstBeforeUiQueue()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
+            var dispatcher = new QueuedDesktopUiDispatcher();
+            using ShellViewModel viewModel = CreateViewModel(controller, uiDispatcher: dispatcher);
+            await viewModel.InitializeAsync();
+            int initialActivityCount = viewModel.Activities.Count;
+            DateTime startedAtUtc = new(2026, 6, 6, 10, 0, 0, DateTimeKind.Utc);
+
+            for (int index = 0; index < 100; index++)
+            {
+                string path = "Cloud/link-" + index.ToString("000", CultureInfo.InvariantCulture) + ".txt";
+                controller.ReportActivity(new DesktopActivitySnapshot(
+                    "PlaceholderCreated",
+                    path,
+                    "Created placeholder " + path,
+                    startedAtUtc.AddMilliseconds(index * 5),
+                    syncPairId));
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(dispatcher.PostedActionCount, Is.EqualTo(1));
+                Assert.That(dispatcher.PendingActionCount, Is.EqualTo(1));
+                Assert.That(viewModel.Activities, Has.Count.EqualTo(initialActivityCount));
+            });
+
+            dispatcher.DrainAll();
+
+            ActivityRowViewModel activity = viewModel.Activities.First();
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.Activities, Has.Count.EqualTo(initialActivityCount + 1));
+                Assert.That(activity.Kind, Is.EqualTo("PlaceholderCreated"));
+                Assert.That(activity.Path, Is.EqualTo("Cloud/link-099.txt"));
+            });
+        }
+
+        [Test]
         public async Task ActivityReported_DoesNotCoalesceDifferentSyncPairTransferRows()
         {
             Guid documentsPairId = Guid.NewGuid();
