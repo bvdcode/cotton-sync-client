@@ -9,6 +9,7 @@ using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Shell;
 using Cotton.Sync.State;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -540,11 +541,12 @@ namespace Cotton.Sync.Desktop.Startup
             string content,
             CancellationToken cancellationToken)
         {
+            string fullPath = FullPath(localRoot, relativePath);
             await WriteFileAsync(localRoot, relativePath, content, cancellationToken).ConfigureAwait(false);
             return new LiveSyncSmokeSeededLocalFile(
-                FullPath(localRoot, relativePath),
+                fullPath,
                 relativePath,
-                Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(content))));
+                await ComputeFileSha256Async(fullPath, cancellationToken).ConfigureAwait(false));
         }
 
         private static async Task<int> VerifySeededLocalFilesAsync(
@@ -567,9 +569,8 @@ namespace Cotton.Sync.Desktop.Startup
                     continue;
                 }
 
-                await using FileStream stream = File.OpenRead(file.FullPath);
-                string actualHash = Convert.ToHexStringLower(
-                    await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false));
+                string actualHash = await ComputeFileSha256Async(file.FullPath, cancellationToken)
+                    .ConfigureAwait(false);
                 if (!string.Equals(actualHash, file.Sha256, StringComparison.OrdinalIgnoreCase))
                 {
                     failures.Add(file.RelativePath + "=sha256-mismatch:" + actualHash);
@@ -921,19 +922,129 @@ namespace Cotton.Sync.Desktop.Startup
         {
             string firstPath = FullPath(firstLocalRoot, relativePath);
             string secondPath = FullPath(secondLocalRoot, relativePath);
-            bool firstExists = File.Exists(firstPath);
-            bool secondExists = File.Exists(secondPath);
-            string? firstContent = firstExists ? await File.ReadAllTextAsync(firstPath, cancellationToken).ConfigureAwait(false) : null;
-            string? secondContent = secondExists ? await File.ReadAllTextAsync(secondPath, cancellationToken).ConfigureAwait(false) : null;
-            bool firstMatches = string.Equals(firstContent, expectedContent, StringComparison.Ordinal);
-            bool secondMatches = string.Equals(secondContent, expectedContent, StringComparison.Ordinal);
-            bool passed = firstExists && secondExists && firstMatches && secondMatches;
+            TextReadSnapshot first = await TryReadAllTextForLiveSmokeAsync(firstPath, cancellationToken)
+                .ConfigureAwait(false);
+            TextReadSnapshot second = await TryReadAllTextForLiveSmokeAsync(secondPath, cancellationToken)
+                .ConfigureAwait(false);
+            bool firstMatches = string.Equals(first.Content, expectedContent, StringComparison.Ordinal);
+            bool secondMatches = string.Equals(second.Content, expectedContent, StringComparison.Ordinal);
+            bool passed = first.Exists && second.Exists && first.Read && second.Read && firstMatches && secondMatches;
             return new PresenceSnapshot(
                 passed,
-                "firstExists=" + firstExists
-                + ", secondExists=" + secondExists
+                "firstExists=" + first.Exists
+                + ", secondExists=" + second.Exists
+                + ", firstRead=" + first.Read
+                + ", secondRead=" + second.Read
                 + ", firstMatches=" + firstMatches
-                + ", secondMatches=" + secondMatches);
+                + ", secondMatches=" + secondMatches
+                + (first.Details.Length == 0 ? string.Empty : ", firstDetails=" + first.Details)
+                + (second.Details.Length == 0 ? string.Empty : ", secondDetails=" + second.Details));
+        }
+
+        private static async Task<string> ComputeFileSha256Async(
+            string filePath,
+            CancellationToken cancellationToken)
+        {
+            await using FileStream stream = File.OpenRead(filePath);
+            byte[] hash = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
+            return Convert.ToHexStringLower(hash);
+        }
+
+        private static async Task<TextReadSnapshot> TryReadAllTextForLiveSmokeAsync(
+            string filePath,
+            CancellationToken cancellationToken)
+        {
+            if (!File.Exists(filePath))
+            {
+                return new TextReadSnapshot(false, false, null, string.Empty);
+            }
+
+            try
+            {
+                string content = await ReadAllTextThroughExternalProcessAsync(filePath, cancellationToken)
+                    .ConfigureAwait(false);
+                return new TextReadSnapshot(true, true, content, string.Empty);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                return new TextReadSnapshot(true, false, null, CleanSingleLine(exception.Message));
+            }
+        }
+
+        private static async Task<string> ReadAllTextThroughExternalProcessAsync(
+            string filePath,
+            CancellationToken cancellationToken)
+        {
+            byte[] bytes = await ReadAllBytesThroughExternalProcessAsync(filePath, cancellationToken)
+                .ConfigureAwait(false);
+            string text = Encoding.UTF8.GetString(bytes);
+            return text.Length > 0 && text[0] == '\uFEFF'
+                ? text[1..]
+                : text;
+        }
+
+        private static async Task<byte[]> ReadAllBytesThroughExternalProcessAsync(
+            string filePath,
+            CancellationToken cancellationToken)
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                return await File.ReadAllBytesAsync(filePath, cancellationToken).ConfigureAwait(false);
+            }
+
+            string base64 = await RunPowerShellFileReadAsync(
+                "$ErrorActionPreference='Stop'; "
+                + "$bytes=[System.IO.File]::ReadAllBytes($env:COTTON_SYNC_EXTERNAL_READ_PATH); "
+                + "[Convert]::ToBase64String($bytes)",
+                filePath,
+                cancellationToken)
+                .ConfigureAwait(false);
+            return Convert.FromBase64String(base64.Trim());
+        }
+
+        private static async Task<string> RunPowerShellFileReadAsync(
+            string script,
+            string filePath,
+            CancellationToken cancellationToken)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            startInfo.ArgumentList.Add("-NoProfile");
+            startInfo.ArgumentList.Add("-NonInteractive");
+            startInfo.ArgumentList.Add("-ExecutionPolicy");
+            startInfo.ArgumentList.Add("Bypass");
+            startInfo.ArgumentList.Add("-Command");
+            startInfo.ArgumentList.Add(script);
+            startInfo.Environment["COTTON_SYNC_EXTERNAL_READ_PATH"] = filePath;
+
+            using var process = new Process { StartInfo = startInfo };
+            if (!process.Start())
+            {
+                throw new InvalidOperationException("Failed to start the external file-read helper process.");
+            }
+
+            Task<string> stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            Task<string> stderr = process.StandardError.ReadToEndAsync(cancellationToken);
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            string output = await stdout.ConfigureAwait(false);
+            string error = await stderr.ConfigureAwait(false);
+            if (process.ExitCode != 0)
+            {
+                throw new IOException(
+                    "External file-read helper failed with exit code "
+                    + process.ExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ": "
+                    + CleanSingleLine(error));
+            }
+
+            return output;
         }
 
         private static RenameSnapshot CaptureRename(
@@ -1059,6 +1170,8 @@ namespace Cotton.Sync.Desktop.Startup
         private readonly record struct RenameSnapshot(bool Passed, string Details);
 
         private readonly record struct AbsentSnapshot(bool Passed, string Details);
+
+        private readonly record struct TextReadSnapshot(bool Exists, bool Read, string? Content, string Details);
 
         private sealed record LiveSyncSmokeSeededLocalFile(string FullPath, string RelativePath, string Sha256);
 
