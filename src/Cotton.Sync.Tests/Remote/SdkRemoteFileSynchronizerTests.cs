@@ -367,6 +367,37 @@ namespace Cotton.Sync.Tests.Remote
             });
         }
 
+        [Test]
+        public async Task DownloadFileRangeAsync_DelegatesToSdkRangeApiWithETagAndProgress()
+        {
+            Guid fileId = Guid.NewGuid();
+            var client = new FakeCottonCloudClient(chunkSizeBytes: 8);
+            client.FilesClient.Downloads[fileId] = Encoding.UTF8.GetBytes("0123456789abcdef");
+            var synchronizer = new SdkRemoteFileSynchronizer(client);
+            await using var destination = new MemoryStream();
+            var progress = new RecordingProgress<SyncTransferProgress>();
+
+            await synchronizer.DownloadFileRangeAsync(
+                fileId,
+                "Docs/file.txt",
+                offset: 4,
+                length: 6,
+                expectedETag: "sha256-current",
+                destination,
+                progress);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(Encoding.UTF8.GetString(destination.ToArray()), Is.EqualTo("456789"));
+                Assert.That(client.FilesClient.RangeDownloads, Is.EqualTo(new[] { (fileId, 4L, 6L, "sha256-current") }));
+                Assert.That(progress.Values.Select(value => value.TransferredBytes), Is.EqualTo(new long[] { 0, 6, 6 }));
+                Assert.That(progress.Values.Select(value => value.TotalBytes), Is.All.EqualTo(6));
+                Assert.That(progress.Values.Select(value => value.Direction), Is.All.EqualTo(SyncTransferDirection.Download));
+                Assert.That(progress.Values.Select(value => value.RelativePath), Is.All.EqualTo("Docs/file.txt"));
+                Assert.That(progress.Values[^1].IsCompleted, Is.True);
+            });
+        }
+
         private LocalFileSnapshot WriteLocalFile(string relativePath, byte[] bytes)
         {
             string fullPath = Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar));
@@ -673,6 +704,8 @@ namespace Cotton.Sync.Tests.Remote
 
             public Dictionary<Guid, byte[]> Downloads { get; } = [];
 
+            public List<(Guid NodeFileId, long Offset, long Length, string? ExpectedETag)> RangeDownloads { get; } = [];
+
             public Task<NodeFileManifestDto> CreateFromChunksAsync(
                 CreateFileFromChunksRequestDto request,
                 CancellationToken cancellationToken = default)
@@ -764,6 +797,31 @@ namespace Cotton.Sync.Tests.Remote
                 byte[] bytes = Downloads[nodeFileId];
                 await destination.WriteAsync(bytes, cancellationToken);
                 progress?.Report(bytes.Length);
+            }
+
+            public async Task DownloadContentRangeAsync(
+                Guid nodeFileId,
+                Stream destination,
+                long offset,
+                long length,
+                string? expectedETag = null,
+                IProgress<long>? progress = null,
+                CancellationToken cancellationToken = default)
+            {
+                RangeDownloads.Add((nodeFileId, offset, length, expectedETag));
+                byte[] bytes = Downloads[nodeFileId];
+                await destination.WriteAsync(
+                    bytes.AsMemory(checked((int)offset), checked((int)length)),
+                    cancellationToken);
+                progress?.Report(length);
+            }
+
+            public Task<FileContentManifestDto> GetContentManifestAsync(
+                Guid nodeFileId,
+                string? expectedETag = null,
+                CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
             }
 
             private static NodeFileManifestDto FileFromRequest(Guid id, CreateFileFromChunksRequestDto request)
