@@ -2,6 +2,8 @@ name: Desktop Sync
 
 on:
   push:
+    tags:
+      - "v*"
     paths:
       - "src/Cotton.Sync/**"
       - "src/Cotton.Sync.Tests/**"
@@ -24,9 +26,10 @@ on:
       package_target:
         description: "Package target to build for this manual run."
         required: false
-        default: all
+        default: quick-checks
         type: choice
         options:
+          - quick-checks
           - all
           - desktop-windows
           - desktop-linux
@@ -37,10 +40,33 @@ on:
         default: false
         type: boolean
 
+concurrency:
+  group: desktop-sync-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.package_target || 'push' }}-${{ github.event_name == 'workflow_dispatch' && inputs.publish_release || false }}
+  cancel-in-progress: true
+
 jobs:
+  build-budget-guard:
+    name: Build Budget Guard
+    if: (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'workflow_dispatch' && !inputs.publish_release && inputs.package_target == 'quick-checks')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Explain package build policy
+        run: |
+          cat <<'EOF'
+          Package builds are intentionally skipped for this run.
+
+          Use workflow_dispatch with package_target=desktop-windows, desktop-linux,
+          cli-windows, or all when an artifact is actually needed.
+
+          Use publish_release=true or push a v* tag only when release assets must
+          be produced and published.
+          EOF
+
   linux:
     name: Desktop Linux Package Smoke
-    if: github.event_name != 'workflow_dispatch' || inputs.publish_release || inputs.package_target == 'all' || inputs.package_target == 'desktop-linux'
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && (inputs.publish_release || inputs.package_target == 'all' || inputs.package_target == 'desktop-linux'))
     runs-on: ubuntu-latest
     outputs:
       Version: ${{ steps.gitversion.outputs.SemVer }}
@@ -261,7 +287,7 @@ jobs:
 
   windows:
     name: Desktop Windows Package Smoke
-    if: github.event_name != 'workflow_dispatch' || inputs.publish_release || inputs.package_target == 'all' || inputs.package_target == 'desktop-windows'
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && (inputs.publish_release || inputs.package_target == 'all' || inputs.package_target == 'desktop-windows'))
     runs-on: windows-latest
     outputs:
       Version: ${{ steps.gitversion.outputs.SemVer }}
@@ -627,7 +653,7 @@ jobs:
 
   cli-windows:
     name: Sync CLI Windows Package Smoke
-    if: github.event_name != 'workflow_dispatch' || inputs.publish_release || inputs.package_target == 'all' || inputs.package_target == 'cli-windows'
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && (inputs.publish_release || inputs.package_target == 'all' || inputs.package_target == 'cli-windows'))
     runs-on: windows-latest
     permissions:
       contents: read
@@ -726,7 +752,7 @@ jobs:
       - linux
       - windows
       - cli-windows
-    if: github.event_name != 'workflow_dispatch' || inputs.publish_release || inputs.package_target == 'all'
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
     permissions:
       contents: read
     steps:
@@ -790,7 +816,7 @@ jobs:
       - windows
       - cli-windows
       - release-checksums
-    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
     permissions:
       contents: write
     steps:
@@ -956,7 +982,7 @@ jobs:
     needs:
       - linux
       - release
-    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
     permissions:
       contents: read
     steps:
