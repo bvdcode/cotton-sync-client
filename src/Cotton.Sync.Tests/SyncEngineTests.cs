@@ -1338,6 +1338,80 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesResumesStreamingWhenUntrackedCloudFilesPlaceholderExists()
+        {
+            string relativePath = "Desktop/orphaned-placeholder.txt";
+            NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote"), sizeBytes: 12);
+            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
+                _remoteRootNodeId,
+                [new RemoteFileSnapshot { RelativePath = relativePath, File = remote }]);
+            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            var scanner = new FakeLocalFileScanner(CloudFilesPlaceholderLocal(relativePath, remote.SizeBytes));
+            var engine = new SyncEngine(
+                scanner,
+                remoteCrawler,
+                remoteFileSynchronizer,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { InitialVirtualFilesPopulationQueueCapacity = 1 });
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
+                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
+                Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
+                Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[] { relativePath }));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.PlaceholderCreated }));
+                Assert.That(state, Has.Count.EqualTo(1));
+                Assert.That(state[0].RelativePath, Is.EqualTo(relativePath));
+                Assert.That(state[0].PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesStreamingDoesNotPublishRemoteScanProgress()
+        {
+            List<RemoteFileSnapshot> remoteFiles =
+            [
+                new() { RelativePath = "Desktop/first.txt", File = RemoteFile("Desktop/first.txt", HashText("first"), sizeBytes: 11) },
+                new() { RelativePath = "Desktop/second.txt", File = RemoteFile("Desktop/second.txt", HashText("second"), sizeBytes: 12) },
+            ];
+            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(_remoteRootNodeId, remoteFiles);
+            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            var runProgress = new RecordingProgress<SyncRunProgress>();
+            var engine = new SyncEngine(
+                new FakeLocalFileScanner(),
+                remoteCrawler,
+                remoteFileSynchronizer,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions
+                {
+                    InitialVirtualFilesPopulationQueueCapacity = 1,
+                    RunProgress = runProgress,
+                });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(runProgress.Values.Any(progress => progress.Stage == SyncRunProgressStage.ScanningRemote), Is.False);
+                Assert.That(runProgress.Values.Any(progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders), Is.True);
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
+                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesCreatesLocalFolderForNestedRemoteOnlyPlaceholder()
         {
             RemoteDirectorySnapshot remoteDirectory = RemoteDirectory("Projects");
