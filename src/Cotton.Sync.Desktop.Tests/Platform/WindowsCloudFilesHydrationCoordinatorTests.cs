@@ -244,6 +244,38 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RemoteRangeContentProvider_UsesRangeDownloadWithPlaceholderETag()
+        {
+            var remoteFiles = new ProgressRemoteFileSynchronizer();
+            var provider = new RemoteFileRangeSynchronizerCloudFilesContentProvider(remoteFiles);
+            var progress = new RecordingProgress<SyncTransferProgress>();
+            byte[] content = Encoding.UTF8.GetBytes("0123456789abcdef");
+            WindowsCloudFilesPlaceholderIdentity identity = WindowsCloudFilesPlaceholderIdentity
+                .Create(CreatePlaceholderRequest(content), "remote-only.txt");
+            await using var destination = new MemoryStream();
+
+            await provider.DownloadVerifiedRangeAsync(
+                identity,
+                destination,
+                offset: 4,
+                length: 6,
+                transferProgress: progress);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.RangeDownloads, Is.EqualTo(1));
+                Assert.That(remoteFiles.ProgressAwareDownloads, Is.Zero);
+                Assert.That(remoteFiles.PlainDownloads, Is.Zero);
+                Assert.That(remoteFiles.LastNodeFileId, Is.EqualTo(identity.NodeFileId));
+                Assert.That(remoteFiles.LastRelativePath, Is.EqualTo("remote-only.txt"));
+                Assert.That(remoteFiles.LastOffset, Is.EqualTo(4));
+                Assert.That(remoteFiles.LastLength, Is.EqualTo(6));
+                Assert.That(remoteFiles.LastExpectedETag, Is.EqualTo("etag"));
+                Assert.That(remoteFiles.LastTransferProgress, Is.SameAs(progress));
+            });
+        }
+
+        [Test]
         public void AppTransferProgressReporter_PublishesHydrationProgressToDesktopPipeline()
         {
             var publisher = new InMemoryAppTransferProgressPublisher();
@@ -783,17 +815,27 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class ProgressRemoteFileSynchronizer : IRemoteFileTransferProgressSynchronizer
+        private sealed class ProgressRemoteFileSynchronizer :
+            IRemoteFileTransferProgressSynchronizer,
+            IRemoteFileRangeSynchronizer
         {
             public int PlainDownloads { get; private set; }
 
             public int ProgressAwareDownloads { get; private set; }
+
+            public int RangeDownloads { get; private set; }
 
             public Guid LastNodeFileId { get; private set; }
 
             public string LastRelativePath { get; private set; } = string.Empty;
 
             public long? LastTotalBytes { get; private set; }
+
+            public long LastOffset { get; private set; }
+
+            public long LastLength { get; private set; }
+
+            public string? LastExpectedETag { get; private set; }
 
             public IProgress<SyncTransferProgress>? LastTransferProgress { get; private set; }
 
@@ -836,6 +878,26 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 LastNodeFileId = nodeFileId;
                 LastRelativePath = relativePath;
                 LastTotalBytes = totalBytes;
+                LastTransferProgress = transferProgress;
+                return Task.CompletedTask;
+            }
+
+            public Task DownloadFileRangeAsync(
+                Guid nodeFileId,
+                string relativePath,
+                long offset,
+                long length,
+                string? expectedETag,
+                Stream destination,
+                IProgress<SyncTransferProgress>? transferProgress,
+                CancellationToken cancellationToken = default)
+            {
+                RangeDownloads++;
+                LastNodeFileId = nodeFileId;
+                LastRelativePath = relativePath;
+                LastOffset = offset;
+                LastLength = length;
+                LastExpectedETag = expectedETag;
                 LastTransferProgress = transferProgress;
                 return Task.CompletedTask;
             }

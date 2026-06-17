@@ -15,7 +15,7 @@ namespace Cotton.Sync.Remote
     /// <summary>
     /// Synchronizes remote files through Cotton SDK clients.
     /// </summary>
-    public class SdkRemoteFileSynchronizer : IRemoteFileTransferProgressSynchronizer
+    public class SdkRemoteFileSynchronizer : IRemoteFileTransferProgressSynchronizer, IRemoteFileRangeSynchronizer
     {
         private const string DefaultContentType = "application/octet-stream";
         private const int MaximumInitialChunkCollectionCapacity = 65_536;
@@ -183,6 +183,49 @@ namespace Cotton.Sync.Remote
                 normalizedPath,
                 completedBytes,
                 totalBytes,
+                isCompleted: true);
+        }
+
+        /// <inheritdoc />
+        public async Task DownloadFileRangeAsync(
+            Guid nodeFileId,
+            string relativePath,
+            long offset,
+            long length,
+            string? expectedETag,
+            Stream destination,
+            IProgress<SyncTransferProgress>? transferProgress,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(destination);
+            ArgumentOutOfRangeException.ThrowIfNegative(offset);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(length);
+            string normalizedPath = SyncPath.Normalize(relativePath);
+            ReportTransfer(
+                transferProgress,
+                SyncTransferDirection.Download,
+                normalizedPath,
+                transferredBytes: 0,
+                totalBytes: length);
+            DownloadTransferProgress? progress = transferProgress is null
+                ? null
+                : new DownloadTransferProgress(transferProgress, normalizedPath, length);
+            await _client.Files
+                .DownloadContentRangeAsync(
+                    nodeFileId,
+                    destination,
+                    offset,
+                    length,
+                    expectedETag,
+                    progress,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            ReportTransfer(
+                transferProgress,
+                SyncTransferDirection.Download,
+                normalizedPath,
+                length,
+                length,
                 isCompleted: true);
         }
 

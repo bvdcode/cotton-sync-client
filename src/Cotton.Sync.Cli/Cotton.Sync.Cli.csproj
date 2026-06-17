@@ -19,7 +19,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Cotton.Sdk" Version="0.4.31" />
+    <PackageReference Include="Cotton.Sdk" Version="0.4.32" />
     <ProjectReference Include="../Cotton.Sync/Cotton.Sync.csproj" />
     <ProjectReference Include="../Cotton.Sync.App/Cotton.Sync.App.csproj" />
   </ItemGroup>

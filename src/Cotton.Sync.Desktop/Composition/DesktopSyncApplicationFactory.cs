@@ -74,7 +74,7 @@ namespace Cotton.Sync.Desktop.Composition
             var cloudFilesNativeApi = new WindowsCloudFilesNativeApi();
             var cloudFilesAdapter = new WindowsCloudFilesAdapter(nativeApi: cloudFilesNativeApi);
             var cloudFilesHydration = new WindowsCloudFilesHydrationCoordinator(
-                new RemoteFileSynchronizerCloudFilesContentProvider(remoteFileSynchronizer),
+                new RemoteFileRangeSynchronizerCloudFilesContentProvider(remoteFileSynchronizer),
                 cloudFilesNativeApi,
                 transferProgressFactory: syncPairId =>
                     new WindowsCloudFilesAppTransferProgressReporter(syncPairId, transferProgressPublisher));
