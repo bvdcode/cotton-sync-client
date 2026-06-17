@@ -12,6 +12,7 @@ namespace Cotton.Sync
         private const int DefaultMaximumStoredResultActivities = 1_000;
         private const int DefaultInitialVirtualFilesPopulationQueueCapacity = 2_048;
         private const int DefaultInitialVirtualFilesStateBatchSize = 512;
+        private const int DefaultInitialVirtualFilesPlaceholderConcurrency = 4;
 
         /// <summary>
         /// Gets or sets the filesystem surface reconciled by this pass.
@@ -54,6 +55,11 @@ namespace Cotton.Sync
         /// Gets or sets how many initial Windows virtual-file placeholder state entries are flushed per durable write batch.
         /// </summary>
         public int InitialVirtualFilesStateBatchSize { get; set; } = DefaultInitialVirtualFilesStateBatchSize;
+
+        /// <summary>
+        /// Gets or sets how many Windows virtual-file placeholders can be created concurrently during initial population.
+        /// </summary>
+        public int InitialVirtualFilesPlaceholderConcurrency { get; set; } = DefaultInitialVirtualFilesPlaceholderConcurrency;
 
         /// <summary>
         /// Gets or sets the optional live activity reporter used by UI and CLI clients.

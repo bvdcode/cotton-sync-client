@@ -252,8 +252,8 @@ namespace Cotton.Sync.Tests
                 Assert.That(smoke.Elapsed, Is.LessThan(TimeSpan.FromSeconds(60)));
                 Assert.That(smoke.CooperativeYieldCount, Is.GreaterThanOrEqualTo(500));
                 Assert.That(smoke.RunProgressCount, Is.GreaterThanOrEqualTo(500));
-                Assert.That(smoke.FirstPlaceholderPath, Is.EqualTo("node_modules/package-0000/dist/file-00000.js"));
-                Assert.That(smoke.LastPlaceholderPath, Is.EqualTo("node_modules/package-0599/dist/file-59999.js"));
+                Assert.That(smoke.FirstPlaceholderPath, Does.StartWith("node_modules/"));
+                Assert.That(smoke.LastPlaceholderPath, Does.StartWith("node_modules/"));
             });
         }
 
@@ -278,6 +278,58 @@ namespace Cotton.Sync.Tests
                 Assert.That(smoke.CooperativeYieldCount, Is.GreaterThanOrEqualTo(900));
                 Assert.That(smoke.RetainedActivityCount, Is.EqualTo(100));
                 Assert.That(smoke.IsActivityListTruncated, Is.True);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesCreatesPlaceholdersConcurrentlyWithinConfiguredLimit()
+        {
+            const int fileCount = 64;
+            const int placeholderConcurrency = 4;
+            List<RemoteFileSnapshot> remoteFiles = new(fileCount);
+            for (int index = 0; index < fileCount; index++)
+            {
+                string relativePath = "Concurrent/file-" + index.ToString("D4", System.Globalization.CultureInfo.InvariantCulture) + ".txt";
+                remoteFiles.Add(new RemoteFileSnapshot
+                {
+                    RelativePath = relativePath,
+                    File = LightweightRemoteFile(relativePath, index),
+                });
+            }
+
+            var remoteCrawler = new StaticRemoteTreeCrawler(remoteFiles);
+            var stateStore = new CountingVirtualPlaceholderStateStore();
+            var placeholderWriter = new CountingRemoteFilePlaceholderWriter
+            {
+                OperationDelay = TimeSpan.FromMilliseconds(25),
+            };
+            var engine = new SyncEngine(
+                new EmptyLocalFileScanner(),
+                remoteCrawler,
+                new GuardedRemoteFileSynchronizer(),
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            await engine.RunOnceAsync(
+                new SyncPair
+                {
+                    SyncPairId = "performance-vfs-placeholder-concurrency",
+                    LocalRootPath = _root,
+                    RemoteRootNodeId = RemoteRootNodeId,
+                    MaterializationMode = SyncPairMaterializationMode.WindowsVirtualFiles,
+                },
+                new SyncRunOptions
+                {
+                    InitialVirtualFilesPlaceholderConcurrency = placeholderConcurrency,
+                });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
+                Assert.That(placeholderWriter.Count, Is.EqualTo(fileCount));
+                Assert.That(stateStore.FileUpserts, Is.EqualTo(fileCount));
+                Assert.That(placeholderWriter.MaxConcurrent, Is.GreaterThan(1));
+                Assert.That(placeholderWriter.MaxConcurrent, Is.LessThanOrEqualTo(placeholderConcurrency));
             });
         }
 
@@ -1109,9 +1161,12 @@ namespace Cotton.Sync.Tests
 
         private sealed class CountingVirtualPlaceholderStateStore : ISyncStateStore
         {
-            public int FileUpserts { get; private set; }
+            private int _fileUpserts;
+            private int _remoteOnlyPlaceholderUpserts;
 
-            public int RemoteOnlyPlaceholderUpserts { get; private set; }
+            public int FileUpserts => Volatile.Read(ref _fileUpserts);
+
+            public int RemoteOnlyPlaceholderUpserts => Volatile.Read(ref _remoteOnlyPlaceholderUpserts);
 
             public Task InitializeAsync(CancellationToken cancellationToken = default)
             {
@@ -1159,14 +1214,26 @@ namespace Cotton.Sync.Tests
             {
                 if (entry.Kind == SyncEntryKind.File)
                 {
-                    FileUpserts++;
+                    Interlocked.Increment(ref _fileUpserts);
                     if (entry.PlaceholderHydrationState == SyncPlaceholderHydrationState.RemoteOnly
                         && entry.PlaceholderIdentity is { Length: > 0 }
                         && entry.LocalContentHash is null
                         && entry.LocalSizeBytes is null)
                     {
-                        RemoteOnlyPlaceholderUpserts++;
+                        Interlocked.Increment(ref _remoteOnlyPlaceholderUpserts);
                     }
+                }
+
+                return Task.CompletedTask;
+            }
+
+            public Task UpsertManyAsync(
+                IReadOnlyCollection<SyncStateEntry> entries,
+                CancellationToken cancellationToken = default)
+            {
+                foreach (SyncStateEntry entry in entries)
+                {
+                    UpsertAsync(entry, cancellationToken);
                 }
 
                 return Task.CompletedTask;
@@ -1202,25 +1269,58 @@ namespace Cotton.Sync.Tests
         private sealed class CountingRemoteFilePlaceholderWriter : IRemoteFilePlaceholderWriter
         {
             private static readonly byte[] PlaceholderIdentity = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E];
+            private int _count;
+            private int _active;
+            private int _maxConcurrent;
+            private string _firstRelativePath = string.Empty;
+            private string _lastRelativePath = string.Empty;
 
-            public int Count { get; private set; }
+            public TimeSpan OperationDelay { get; init; }
 
-            public string FirstRelativePath { get; private set; } = string.Empty;
+            public int Count => Volatile.Read(ref _count);
 
-            public string LastRelativePath { get; private set; } = string.Empty;
+            public int MaxConcurrent => Volatile.Read(ref _maxConcurrent);
 
-            public Task<RemoteFilePlaceholderResult> CreatePlaceholderAsync(
+            public string FirstRelativePath => Volatile.Read(ref _firstRelativePath);
+
+            public string LastRelativePath => Volatile.Read(ref _lastRelativePath);
+
+            public async Task<RemoteFilePlaceholderResult> CreatePlaceholderAsync(
                 RemoteFilePlaceholderRequest request,
                 CancellationToken cancellationToken = default)
             {
-                Count++;
-                if (Count == 1)
+                int active = Interlocked.Increment(ref _active);
+                try
                 {
-                    FirstRelativePath = request.RelativePath;
-                }
+                    int observed;
+                    do
+                    {
+                        observed = Volatile.Read(ref _maxConcurrent);
+                        if (active <= observed)
+                        {
+                            break;
+                        }
+                    }
+                    while (Interlocked.CompareExchange(ref _maxConcurrent, active, observed) != observed);
 
-                LastRelativePath = request.RelativePath;
-                return Task.FromResult(new RemoteFilePlaceholderResult(PlaceholderIdentity));
+                    if (OperationDelay > TimeSpan.Zero)
+                    {
+                        await Task.Delay(OperationDelay, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    int count = Interlocked.Increment(ref _count);
+                    if (count == 1)
+                    {
+                        Volatile.Write(ref _firstRelativePath, request.RelativePath);
+                    }
+
+                    Volatile.Write(ref _lastRelativePath, request.RelativePath);
+                    return new RemoteFilePlaceholderResult(PlaceholderIdentity);
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _active);
+                }
             }
         }
 
