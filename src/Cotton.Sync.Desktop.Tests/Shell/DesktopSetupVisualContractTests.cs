@@ -217,7 +217,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             string modeAndLocalPathRow = GetSlice(
                 foldersSection,
                 "<Grid Grid.Row=\"3\"",
-                "</Grid>");
+                "<TextBlock Grid.Row=\"4\"");
             string remotePathRow = GetSlice(
                 foldersSection,
                 "<TextBlock Grid.Row=\"4\"",
@@ -225,7 +225,11 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             Assert.Multiple(() =>
             {
-                Assert.That(modeAndLocalPathRow, Does.Contain("ColumnDefinitions=\"Auto,*\""));
+                Assert.That(modeAndLocalPathRow, Does.Contain("ColumnDefinitions=\"Auto,Auto,*\""));
+                Assert.That(modeAndLocalPathRow, Does.Contain("Kind=\"CloudOutline\""));
+                Assert.That(modeAndLocalPathRow, Does.Contain("IsVisible=\"{Binding IsWindowsVirtualFilesMode}\""));
+                Assert.That(modeAndLocalPathRow, Does.Contain("Kind=\"FolderOpenOutline\""));
+                Assert.That(modeAndLocalPathRow, Does.Contain("IsVisible=\"{Binding IsFullMirrorMode}\""));
                 Assert.That(modeAndLocalPathRow, Does.Contain("Text=\"{Binding ModeLabel}\""));
                 Assert.That(modeAndLocalPathRow, Does.Contain("ToolTip.Tip=\"{Binding ModeLabel}\""));
                 Assert.That(modeAndLocalPathRow, Does.Contain("Text=\"{Binding LocalPath}\""));

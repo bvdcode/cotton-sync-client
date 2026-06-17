@@ -10,6 +10,7 @@ namespace Cotton.Sync
     {
         private const int DefaultMaximumDeletesPerRun = 100;
         private const int DefaultMaximumStoredResultActivities = 1_000;
+        private const int DefaultInitialVirtualFilesPopulationQueueCapacity = 2_048;
 
         /// <summary>
         /// Gets or sets the filesystem surface reconciled by this pass.
@@ -42,6 +43,11 @@ namespace Cotton.Sync
         /// Live activity progress is still reported for every activity.
         /// </summary>
         public int MaximumStoredResultActivities { get; set; } = DefaultMaximumStoredResultActivities;
+
+        /// <summary>
+        /// Gets or sets the bounded queue size used while initial Windows virtual-files discovery streams placeholders to disk.
+        /// </summary>
+        public int InitialVirtualFilesPopulationQueueCapacity { get; set; } = DefaultInitialVirtualFilesPopulationQueueCapacity;
 
         /// <summary>
         /// Gets or sets the optional live activity reporter used by UI and CLI clients.

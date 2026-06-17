@@ -738,7 +738,8 @@ namespace Cotton.Sync.Tests
                 Assert.That(remoteFilesClient.DownloadCalls, Is.Zero);
                 Assert.That(remoteFilesClient.DeleteCalls, Is.Zero);
                 Assert.That(remoteFilesClient.MoveCalls, Is.Zero);
-                Assert.That(remoteCrawler.FullCrawlCalls, Is.EqualTo(1));
+                Assert.That(remoteCrawler.FullCrawlCalls, Is.Zero);
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
                 Assert.That(placeholderWriter.Count, Is.EqualTo(fileCount));
                 Assert.That(stateStore.FileUpserts, Is.EqualTo(fileCount));
                 Assert.That(stateStore.RemoteOnlyPlaceholderUpserts, Is.EqualTo(fileCount));
@@ -860,7 +861,7 @@ namespace Cotton.Sync.Tests
             return new Guid(bytes);
         }
 
-        private class StaticRemoteTreeCrawler : IRemoteTreeCrawler, IRemotePathLookupCrawler
+        private class StaticRemoteTreeCrawler : IRemoteTreeStreamingCrawler, IRemotePathLookupCrawler
         {
             private readonly IReadOnlyList<RemoteFileSnapshot> _files;
 
@@ -872,6 +873,8 @@ namespace Cotton.Sync.Tests
             public int FullCrawlCalls { get; private set; }
 
             public int PathCrawlCalls { get; private set; }
+
+            public int StreamingCrawlCalls { get; private set; }
 
             public Task<RemoteTreeSnapshot> CrawlAsync(Guid rootNodeId, CancellationToken cancellationToken = default)
             {
@@ -885,6 +888,34 @@ namespace Cotton.Sync.Tests
                     },
                     Files = _files.ToList(),
                 });
+            }
+
+            public async Task<NodeDto> CrawlStreamingAsync(
+                Guid rootNodeId,
+                IRemoteTreeStreamSink sink,
+                IProgress<RemoteTreeScanProgress>? progress,
+                CancellationToken cancellationToken = default)
+            {
+                StreamingCrawlCalls++;
+                var root = new NodeDto
+                {
+                    Id = rootNodeId,
+                    Name = "root",
+                };
+                progress?.Report(new RemoteTreeScanProgress(0, 0, currentPath: null));
+                for (int index = 0; index < _files.Count; index++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    RemoteFileSnapshot file = _files[index];
+                    await sink.AddFileAsync(file, cancellationToken).ConfigureAwait(false);
+                    if (index == 0 || (index + 1) % 100 == 0)
+                    {
+                        progress?.Report(new RemoteTreeScanProgress(index + 1, 0, file.RelativePath));
+                    }
+                }
+
+                progress?.Report(new RemoteTreeScanProgress(_files.Count, 0, currentPath: null));
+                return root;
             }
 
             public Task<RemoteTreeLookupSnapshot> CrawlPathLookupsAsync(
