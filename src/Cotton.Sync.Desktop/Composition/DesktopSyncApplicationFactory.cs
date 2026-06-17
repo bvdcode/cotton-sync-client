@@ -70,6 +70,7 @@ namespace Cotton.Sync.Desktop.Composition
             var sessionRevocationPublisher = new InMemorySessionRevocationPublisher();
             var transferProgressPublisher = new InMemoryAppTransferProgressPublisher();
             var runProgressPublisher = new InMemoryAppRunProgressPublisher();
+            var localChangeSuppression = new LocalChangeSuppression();
             var cloudFilesNativeApi = new WindowsCloudFilesNativeApi();
             var cloudFilesAdapter = new WindowsCloudFilesAdapter(nativeApi: cloudFilesNativeApi);
             var cloudFilesHydration = new WindowsCloudFilesHydrationCoordinator(
@@ -87,6 +88,7 @@ namespace Cotton.Sync.Desktop.Composition
                 _loggerFactory.CreateLogger<WindowsCloudFilesSyncPairDeletionHandler>());
             var remoteFilePlaceholderWriter = new DesktopCloudFilesPlaceholderWriter(
                 cloudFilesAdapter: cloudFilesAdapter,
+                localChangeSuppression: localChangeSuppression,
                 logger: _loggerFactory.CreateLogger<DesktopCloudFilesPlaceholderWriter>());
             var syncEngine = new HeadlessSyncEngine(
                 new LocalFileScanner(),
@@ -102,7 +104,8 @@ namespace Cotton.Sync.Desktop.Composition
                     remoteChangeFeed),
                 stateStore,
                 cloudFilesAdapter,
-                new LocalFileScanner());
+                new LocalFileScanner(),
+                localChangeSuppression: localChangeSuppression);
             var runnerFactory = new SyncPairRunnerFactory(pairWork, loggerFactory: _loggerFactory);
             var statusPublisher = new InMemoryAppStatusPublisher();
             var supervisor = new SyncSupervisor(syncPairStore, runnerFactory, statusPublisher);
@@ -110,7 +113,8 @@ namespace Cotton.Sync.Desktop.Composition
                 syncPairStore,
                 supervisor,
                 new FileSystemLocalSyncRootWatcherFactory(_loggerFactory),
-                logger: _loggerFactory.CreateLogger<LocalChangeSyncCoordinator>());
+                logger: _loggerFactory.CreateLogger<LocalChangeSyncCoordinator>(),
+                changeSuppression: localChangeSuppression);
             var periodicSync = new PeriodicSyncCoordinator(
                 supervisor,
                 logger: _loggerFactory.CreateLogger<PeriodicSyncCoordinator>());

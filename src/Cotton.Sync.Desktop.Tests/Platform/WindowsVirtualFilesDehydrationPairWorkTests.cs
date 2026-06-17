@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
+using Cotton.Sync.App.LocalChanges;
 using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Platform;
@@ -24,13 +25,15 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             var cloudFiles = new FakeCloudFilesAdapter();
             var diagnostics = new WindowsCloudFilesDiagnostics();
             var inner = new RecordingSyncPairWork();
+            var suppression = new RecordingLocalChangeSuppression();
             var work = new WindowsVirtualFilesDehydrationPairWork(
                 inner,
                 stateStore,
                 cloudFiles,
                 new FakeContentHasher("remote-hash"),
                 diagnostics,
-                _ => CreateUnpinnedHydratedDiskState());
+                _ => CreateUnpinnedHydratedDiskState(),
+                suppression);
 
             await work.RunOnceAsync(syncPair, SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]));
 
@@ -40,6 +43,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 Assert.That(inner.Requests, Is.Empty);
                 Assert.That(cloudFiles.DehydratedPaths, Is.EqualTo(new[] { "Docs/report.txt" }));
+                Assert.That(
+                    suppression.SuppressedWrites,
+                    Is.EqualTo(new[] { new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs/report.txt") }));
                 Assert.That(updated.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Dehydrated));
                 Assert.That(updated.LocalContentHash, Is.Null);
                 Assert.That(updated.LocalLastWriteUtc, Is.Null);
@@ -199,6 +205,23 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 CancellationToken cancellationToken = default)
             {
                 return Task.FromResult(_hash);
+            }
+        }
+
+        private sealed record SuppressedWrite(Guid SyncPairId, string LocalRootPath, string RelativePath);
+
+        private sealed class RecordingLocalChangeSuppression : ILocalChangeSuppression
+        {
+            public List<SuppressedWrite> SuppressedWrites { get; } = [];
+
+            public void SuppressProviderWrite(Guid syncPairId, string localRootPath, string relativePath)
+            {
+                SuppressedWrites.Add(new SuppressedWrite(syncPairId, localRootPath, relativePath));
+            }
+
+            public bool ShouldSuppress(LocalSyncRootChange change)
+            {
+                return false;
             }
         }
 

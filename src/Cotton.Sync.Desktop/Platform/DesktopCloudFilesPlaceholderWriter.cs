@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
+using Cotton.Sync.App.LocalChanges;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.VirtualFiles;
 using Microsoft.Extensions.Logging;
@@ -13,17 +14,20 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly Func<SyncPairModeCapabilitySnapshot> _getCapabilities;
         private readonly WindowsVirtualFilesRootSafetyPolicy _rootSafety;
         private readonly IWindowsCloudFilesAdapter _cloudFilesAdapter;
+        private readonly ILocalChangeSuppression? _localChangeSuppression;
         private readonly ILogger<DesktopCloudFilesPlaceholderWriter> _logger;
 
         public DesktopCloudFilesPlaceholderWriter(
             WindowsVirtualFilesRootSafetyPolicy? rootSafety = null,
             IWindowsCloudFilesAdapter? cloudFilesAdapter = null,
             Func<SyncPairModeCapabilitySnapshot>? getCapabilities = null,
+            ILocalChangeSuppression? localChangeSuppression = null,
             ILogger<DesktopCloudFilesPlaceholderWriter>? logger = null)
         {
             _rootSafety = rootSafety ?? new WindowsVirtualFilesRootSafetyPolicy();
             _cloudFilesAdapter = cloudFilesAdapter ?? new WindowsCloudFilesAdapter(_rootSafety);
             _getCapabilities = getCapabilities ?? DesktopCloudFilesCapabilities.CreateSyncPairModeCapabilities;
+            _localChangeSuppression = localChangeSuppression;
             _logger = logger ?? NullLogger<DesktopCloudFilesPlaceholderWriter>.Instance;
         }
 
@@ -50,6 +54,7 @@ namespace Cotton.Sync.Desktop.Platform
 
             try
             {
+                SuppressProviderWrite(request, safety.FullPath);
                 return Task.FromResult(_cloudFilesAdapter.CreateFilePlaceholder(request));
             }
             catch (Exception exception) when (IsRecoverablePlaceholderFailure(exception))
@@ -69,6 +74,24 @@ namespace Cotton.Sync.Desktop.Platform
                 or ArgumentException
                 or IOException
                 or UnauthorizedAccessException;
+        }
+
+        private void SuppressProviderWrite(RemoteFilePlaceholderRequest request, string localRootPath)
+        {
+            if (_localChangeSuppression is null)
+            {
+                return;
+            }
+
+            if (!Guid.TryParse(request.SyncPairId, out Guid syncPairId))
+            {
+                _logger.LogDebug(
+                    "Skipping local watcher suppression for placeholder {RelativePath} because sync pair id is not a GUID.",
+                    request.RelativePath);
+                return;
+            }
+
+            _localChangeSuppression.SuppressProviderWrite(syncPairId, localRootPath, request.RelativePath);
         }
     }
 }
