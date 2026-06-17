@@ -41,7 +41,8 @@ namespace Cotton.Sync.App.Runners
                 .ConfigureAwait(false);
             RemoteChangeFeedBatch remoteBatch = remoteRead.Batch;
 
-            if (!CanSkipInnerSync(syncPair, request, remoteRead))
+            bool skippedInnerSync = CanSkipInnerSync(syncPair, request, remoteRead);
+            if (!skippedInnerSync)
             {
                 await _inner.RunOnceAsync(syncPair, request, cancellationToken).ConfigureAwait(false);
             }
@@ -52,7 +53,10 @@ namespace Cotton.Sync.App.Runners
                 return;
             }
 
-            await _remoteChanges.AcknowledgeAsync(remoteBatch, cancellationToken).ConfigureAwait(false);
+            if (ShouldAcknowledgeRemoteBatch(syncPair, request, remoteRead, skippedInnerSync))
+            {
+                await _remoteChanges.AcknowledgeAsync(remoteBatch, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         private async Task<RemoteChangeFeedReadResult> ReadRemoteChangesAsync(
@@ -102,6 +106,24 @@ namespace Cotton.Sync.App.Runners
             }
 
             return true;
+        }
+
+        private static bool ShouldAcknowledgeRemoteBatch(
+            SyncPairSettings syncPair,
+            SyncRunRequest request,
+            RemoteChangeFeedReadResult remoteRead,
+            bool skippedInnerSync)
+        {
+            if (syncPair.Mode != SyncPairMode.WindowsVirtualFiles
+                || remoteRead.HasObservedChanges
+                || (request.IsFull && !skippedInnerSync))
+            {
+                return true;
+            }
+
+            // An empty VFS feed page can be a high-water snapshot before another client's mutation is visible.
+            // Keep the cursor pinned unless a full sync actually reconciled the tree.
+            return false;
         }
 
         private sealed record RemoteChangeFeedReadResult(RemoteChangeFeedBatch Batch, bool HasObservedChanges);

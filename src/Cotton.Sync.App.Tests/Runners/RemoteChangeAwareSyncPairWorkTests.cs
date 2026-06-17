@@ -38,7 +38,7 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
-        public async Task RunOnceAsync_WithWindowsVirtualFilesSkipsInnerFullRunForEmptyInitializedRemoteBatch()
+        public async Task RunOnceAsync_WithWindowsVirtualFilesSkipsInnerFullRunWithoutAcknowledgingEmptyBatch()
         {
             var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
             var inner = new FakeSyncPairWork();
@@ -57,7 +57,53 @@ namespace Cotton.Sync.App.Tests.Runners
             Assert.Multiple(() =>
             {
                 Assert.That(inner.RunCallCount, Is.Zero);
-                Assert.That(remoteChanges.AcknowledgedBatches, Has.Count.EqualTo(1));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.Empty);
+                Assert.That(remoteChanges.FullResyncAcknowledgedBatches, Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesProcessesDelayedChangeAfterSkippedEmptyBatch()
+        {
+            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            var inner = new FakeSyncPairWork();
+            var emptyBatch = new RemoteChangeFeedBatch(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 12,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes: Array.Empty<SyncChangeDto>());
+            var delayedBatch = new RemoteChangeFeedBatch(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 12,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes:
+                [
+                    new SyncChangeDto
+                    {
+                        Id = 11,
+                        Kind = SyncChangeKind.FileCreated,
+                        LayoutId = Guid.NewGuid(),
+                        ItemId = Guid.NewGuid(),
+                        ParentNodeId = Guid.NewGuid(),
+                        Name = "remote-origin.txt",
+                    },
+                ]);
+            var remoteChanges = new FakeRemoteChangeFeedReader(emptyBatch, delayedBatch);
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+
+            await work.RunOnceAsync(syncPair);
+            await work.RunOnceAsync(syncPair);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { delayedBatch }));
                 Assert.That(remoteChanges.FullResyncAcknowledgedBatches, Is.Empty);
             });
         }
