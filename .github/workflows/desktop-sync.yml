@@ -354,6 +354,7 @@ jobs:
           }
 
       - name: Smoke desktop Windows installer
+        timeout-minutes: 8
         shell: pwsh
         run: |
           $installDir = Join-Path $env:RUNNER_TEMP "cotton-sync-installed"
@@ -482,6 +483,7 @@ jobs:
           }
 
       - name: Smoke desktop Windows installer upgrade
+        timeout-minutes: 8
         shell: pwsh
         run: |
           $publishDir = Resolve-Path "src/Cotton.Sync.Desktop/bin/Release/net10.0/publish/win-x64"
