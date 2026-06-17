@@ -16,6 +16,7 @@ namespace Cotton.Sync.State
         private static readonly ConcurrentDictionary<string, SemaphoreSlim> MigrationGates = new(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<string, SemaphoreSlim> WriteGates = new(StringComparer.OrdinalIgnoreCase);
         private const int DefaultSqliteTimeoutSeconds = 30;
+        private const int DefaultPathKeyLookupBatchSize = 500;
 
         private readonly string _databasePath;
         private bool _initialized;
@@ -153,6 +154,50 @@ namespace Cotton.Sync.State
             finally
             {
                 gate.Release();
+            }
+        }
+
+        /// <inheritdoc />
+        public async IAsyncEnumerable<SyncStateEntry> LoadEntriesByPathKeysAsync(
+            string syncPairId,
+            IEnumerable<string> relativePathKeys,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
+            ArgumentNullException.ThrowIfNull(relativePathKeys);
+            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+            var keyBatch = new List<string>(DefaultPathKeyLookupBatchSize);
+            foreach (string key in relativePathKeys)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (string.IsNullOrWhiteSpace(key) || SyncPathIgnoreRules.ShouldIgnore(key))
+                {
+                    continue;
+                }
+
+                string normalizedKey = SyncPath.ToKey(key);
+                if (!keyBatch.Contains(normalizedKey, StringComparer.OrdinalIgnoreCase))
+                {
+                    keyBatch.Add(normalizedKey);
+                }
+
+                if (keyBatch.Count >= DefaultPathKeyLookupBatchSize)
+                {
+                    foreach (SyncStateEntry entry in await LoadEntriesByPathKeyBatchAsync(syncPairId, keyBatch, cancellationToken).ConfigureAwait(false))
+                    {
+                        yield return entry;
+                    }
+
+                    keyBatch.Clear();
+                }
+            }
+
+            if (keyBatch.Count > 0)
+            {
+                foreach (SyncStateEntry entry in await LoadEntriesByPathKeyBatchAsync(syncPairId, keyBatch, cancellationToken).ConfigureAwait(false))
+                {
+                    yield return entry;
+                }
             }
         }
 
@@ -492,6 +537,21 @@ namespace Cotton.Sync.State
                 .UseSqlite(connectionString)
                 .Options;
             return new SyncStateDbContext(options);
+        }
+
+        private async Task<IReadOnlyList<SyncStateEntry>> LoadEntriesByPathKeyBatchAsync(
+            string syncPairId,
+            IReadOnlyCollection<string> keys,
+            CancellationToken cancellationToken)
+        {
+            await using SyncStateDbContext context = CreateContext();
+            List<SyncStateEntity> entities = await context.SyncEntries
+                .AsNoTracking()
+                .Where(entry => entry.SyncPairId == syncPairId && keys.Contains(entry.RelativePathKey))
+                .OrderBy(entry => entry.RelativePathKey)
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+            return entities.Select(ToModel).ToArray();
         }
 
         private SemaphoreSlim GetWriteGate()

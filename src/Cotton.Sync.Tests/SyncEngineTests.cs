@@ -1360,7 +1360,7 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
-        public async Task RunOnceAsync_WithWindowsVirtualFilesResumeLoadsStateThroughStreamingApi()
+        public async Task RunOnceAsync_WithWindowsVirtualFilesResumeLoadsStateThroughScopedBatchApi()
         {
             NodeFileManifestDto newRemote = RemoteFile(
                 "Desktop/new.txt",
@@ -1397,7 +1397,8 @@ namespace Cotton.Sync.Tests
             {
                 Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
                 Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
-                Assert.That(stateStore.LoadPairEntriesCallCount, Is.EqualTo(1));
+                Assert.That(stateStore.LoadEntriesByPathKeysCallCount, Is.EqualTo(1));
+                Assert.That(stateStore.LoadPairEntriesCallCount, Is.Zero);
                 Assert.That(stateStore.GetAsyncCallCount, Is.Zero);
                 Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[] { "Desktop/new.txt" }));
                 Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
@@ -5033,6 +5034,14 @@ namespace Cotton.Sync.Tests
                 return _inner.LoadPairEntriesAsync(syncPairId, cancellationToken);
             }
 
+            public virtual IAsyncEnumerable<SyncStateEntry> LoadEntriesByPathKeysAsync(
+                string syncPairId,
+                IEnumerable<string> relativePathKeys,
+                CancellationToken cancellationToken = default)
+            {
+                return _inner.LoadEntriesByPathKeysAsync(syncPairId, relativePathKeys, cancellationToken);
+            }
+
             public virtual Task<DateTime?> GetPairLastSyncedAtUtcAsync(string syncPairId, CancellationToken cancellationToken = default)
             {
                 return _inner.GetPairLastSyncedAtUtcAsync(syncPairId, cancellationToken);
@@ -5109,6 +5118,8 @@ namespace Cotton.Sync.Tests
 
             public int LoadPairEntriesCallCount { get; private set; }
 
+            public int LoadEntriesByPathKeysCallCount { get; private set; }
+
             public int GetAsyncCallCount { get; private set; }
 
             public override Task<IReadOnlyList<SyncStateEntry>> LoadPairAsync(
@@ -5124,6 +5135,15 @@ namespace Cotton.Sync.Tests
             {
                 LoadPairEntriesCallCount++;
                 return base.LoadPairEntriesAsync(syncPairId, cancellationToken);
+            }
+
+            public override IAsyncEnumerable<SyncStateEntry> LoadEntriesByPathKeysAsync(
+                string syncPairId,
+                IEnumerable<string> relativePathKeys,
+                CancellationToken cancellationToken = default)
+            {
+                LoadEntriesByPathKeysCallCount++;
+                return base.LoadEntriesByPathKeysAsync(syncPairId, relativePathKeys, cancellationToken);
             }
 
             public override Task<SyncStateEntry?> GetAsync(
