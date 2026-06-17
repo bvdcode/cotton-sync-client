@@ -9,10 +9,12 @@ namespace Cotton.Sync.Desktop.Diagnostics
     internal class DesktopTraceLogger : ILogger
     {
         private readonly string _categoryName;
+        private readonly LogLevel _minimumLevel;
 
-        public DesktopTraceLogger(string categoryName)
+        public DesktopTraceLogger(string categoryName, LogLevel minimumLevel = LogLevel.Information)
         {
             _categoryName = string.IsNullOrWhiteSpace(categoryName) ? "Cotton.Sync.Desktop" : categoryName;
+            _minimumLevel = minimumLevel;
         }
 
         public IDisposable? BeginScope<TState>(TState state)
@@ -23,7 +25,7 @@ namespace Cotton.Sync.Desktop.Diagnostics
 
         public bool IsEnabled(LogLevel logLevel)
         {
-            return logLevel != LogLevel.None;
+            return logLevel != LogLevel.None && logLevel >= _minimumLevel;
         }
 
         public void Log<TState>(

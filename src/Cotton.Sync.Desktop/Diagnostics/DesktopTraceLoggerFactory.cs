@@ -7,9 +7,21 @@ namespace Cotton.Sync.Desktop.Diagnostics
 {
     internal class DesktopTraceLoggerFactory : ILoggerFactory
     {
+        private readonly LogLevel _minimumLevel;
+
+        public DesktopTraceLoggerFactory()
+            : this(DesktopTraceLogLevel.ResolveMinimumLevel())
+        {
+        }
+
+        public DesktopTraceLoggerFactory(LogLevel minimumLevel)
+        {
+            _minimumLevel = minimumLevel;
+        }
+
         public ILogger CreateLogger(string categoryName)
         {
-            return new DesktopTraceLogger(categoryName);
+            return new DesktopTraceLogger(categoryName, _minimumLevel);
         }
 
         public void AddProvider(ILoggerProvider provider)
