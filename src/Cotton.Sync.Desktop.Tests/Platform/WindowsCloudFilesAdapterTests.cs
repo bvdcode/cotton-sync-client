@@ -608,6 +608,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<Guid> UnregisteredSyncPairIds { get; } = [];
 
+            public int UnregisterAllCalls { get; private set; }
+
             public bool IsSupported()
             {
                 return true;
@@ -623,6 +625,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 _operationLog.Add("storage-provider-unregister");
                 UnregisteredSyncPairIds.Add(syncPairId);
+            }
+
+            public void UnregisterAllForCurrentUser()
+            {
+                _operationLog.Add("storage-provider-unregister-all");
+                UnregisterAllCalls++;
             }
         }
 

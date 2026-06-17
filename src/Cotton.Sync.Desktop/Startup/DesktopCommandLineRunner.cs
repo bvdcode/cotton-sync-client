@@ -95,6 +95,7 @@ namespace Cotton.Sync.Desktop.Startup
             DesktopStartupOptions startupOptions,
             TextWriter output,
             IWindowsCloudFilesAdapter? cloudFilesAdapter = null,
+            IWindowsStorageProviderSyncRootRegistrar? storageProviderRegistrar = null,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(paths);
@@ -126,6 +127,35 @@ namespace Cotton.Sync.Desktop.Startup
                     failures++;
                     await output
                         .WriteLineAsync("Failed: " + syncPair.LocalRootPath + " - " + CleanSingleLine(exception.Message))
+                        .ConfigureAwait(false);
+                }
+            }
+
+            IWindowsStorageProviderSyncRootRegistrar? registrar =
+                storageProviderRegistrar ?? WindowsStorageProviderSyncRootRegistrar.TryCreateDefault();
+            if (registrar is not null)
+            {
+                try
+                {
+                    if (registrar.IsSupported())
+                    {
+                        registrar.UnregisterAllForCurrentUser();
+                        await output
+                            .WriteLineAsync("Orphaned storage-provider roots cleaned.")
+                            .ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await output
+                            .WriteLineAsync("Orphaned storage-provider cleanup skipped: Windows StorageProvider is unavailable.")
+                            .ConfigureAwait(false);
+                    }
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    failures++;
+                    await output
+                        .WriteLineAsync("Failed orphaned storage-provider cleanup: " + CleanSingleLine(exception.Message))
                         .ConfigureAwait(false);
                 }
             }
