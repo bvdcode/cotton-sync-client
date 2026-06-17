@@ -2775,6 +2775,53 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task RunProgressChanged_KeepsPlaceholderRowOperationStableDuringStreamingBurst()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(
+                syncPairId,
+                "Cloud",
+                "Syncing",
+                mode: SyncPairMode.WindowsVirtualFiles)));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            DateTime startedAtUtc = new(2026, 6, 17, 5, 30, 0, DateTimeKind.Utc);
+
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.CreatingPlaceholders,
+                FilesCompleted: 120,
+                FilesTotal: 10_000,
+                CurrentPath: "Cloud/file-000120.txt",
+                StartedAtUtc: startedAtUtc,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc.AddSeconds(5)));
+            SyncPairRowViewModel row = viewModel.SyncPairs.Single();
+            string firstOperation = row.CurrentOperation;
+            string firstDetails = viewModel.CurrentWorkProgressDetails;
+
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.CreatingPlaceholders,
+                FilesCompleted: 260,
+                FilesTotal: 10_500,
+                CurrentPath: "Cloud/file-000260.txt",
+                StartedAtUtc: startedAtUtc,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc.AddSeconds(10)));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(firstOperation, Is.EqualTo("Making cloud files available"));
+                Assert.That(row.CurrentOperation, Is.EqualTo(firstOperation));
+                Assert.That(firstDetails, Is.EqualTo("Making cloud files available \u00B7 120 cloud files ready \u00B7 discovering cloud \u00B7 saving state"));
+                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Making cloud files available \u00B7 260 cloud files ready \u00B7 discovering cloud \u00B7 saving state"));
+                Assert.That(viewModel.CurrentWorkProgressSecondaryDetails, Is.Empty);
+                Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.True);
+            });
+        }
+
+        [Test]
         public async Task RunProgressChanged_ShowsGlobalFileRateAfterShortManyFileProgress()
         {
             Guid syncPairId = Guid.NewGuid();
