@@ -56,6 +56,72 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
             }
         }
 
+        [Test]
+        public void Log_DefaultMinimumLevelSkipsDebugMessages()
+        {
+            var listener = new CollectingTraceListener();
+            Trace.Listeners.Add(listener);
+            try
+            {
+                ILogger logger = new DesktopTraceLogger("Cotton.Sync.Desktop.Tests");
+
+                logger.LogDebug("debug request flood");
+                logger.LogInformation("sync started");
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(listener.Output, Does.Not.Contain("debug request flood"));
+                    Assert.That(listener.Output, Does.Contain("sync started"));
+                });
+            }
+            finally
+            {
+                Trace.Listeners.Remove(listener);
+            }
+        }
+
+        [Test]
+        public void Log_DebugMinimumLevelKeepsDebugMessages()
+        {
+            var listener = new CollectingTraceListener();
+            Trace.Listeners.Add(listener);
+            try
+            {
+                ILogger logger = new DesktopTraceLogger("Cotton.Sync.Desktop.Tests", LogLevel.Debug);
+
+                logger.LogDebug("diagnostic request trace");
+
+                Assert.That(listener.Output, Does.Contain("diagnostic request trace"));
+            }
+            finally
+            {
+                Trace.Listeners.Remove(listener);
+            }
+        }
+
+        [Test]
+        public void Factory_UsesEnvironmentMinimumLevel()
+        {
+            string? previous = Environment.GetEnvironmentVariable(DesktopTraceLogLevel.EnvironmentVariableName);
+            Environment.SetEnvironmentVariable(DesktopTraceLogLevel.EnvironmentVariableName, "Debug");
+            var listener = new CollectingTraceListener();
+            Trace.Listeners.Add(listener);
+            try
+            {
+                using var factory = new DesktopTraceLoggerFactory();
+                ILogger logger = factory.CreateLogger("Cotton.Sync.Desktop.Tests");
+
+                logger.LogDebug("debug enabled from environment");
+
+                Assert.That(listener.Output, Does.Contain("debug enabled from environment"));
+            }
+            finally
+            {
+                Trace.Listeners.Remove(listener);
+                Environment.SetEnvironmentVariable(DesktopTraceLogLevel.EnvironmentVariableName, previous);
+            }
+        }
+
         private class CollectingTraceListener : TraceListener
         {
             public string Output { get; private set; } = string.Empty;
