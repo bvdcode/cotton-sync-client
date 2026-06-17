@@ -5377,7 +5377,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
             if (IsOpenEndedPlaceholderCreation(progress) && progress.FilesCompleted > 0)
             {
-                return label + " " + GetDisplayedRunProgressCount(progress).ToString(CultureInfo.CurrentCulture);
+                return label;
             }
 
             if (progress.FilesTotal.HasValue && IsCountedRunStage(progress.Stage))
