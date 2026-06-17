@@ -2,6 +2,7 @@
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.Runners;
+using Cotton.Sync.App.LocalChanges;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Local;
 using Cotton.Sync.State;
@@ -18,6 +19,7 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly IWindowsCloudFilesAdapter _cloudFiles;
         private readonly ILocalFileContentHasher _contentHasher;
         private readonly IWindowsCloudFilesDiagnostics _diagnostics;
+        private readonly ILocalChangeSuppression? _localChangeSuppression;
         private readonly Func<string, WindowsVirtualFileDiskState?> _readDiskState;
 
         public WindowsVirtualFilesDehydrationPairWork(
@@ -26,13 +28,15 @@ namespace Cotton.Sync.Desktop.Platform
             IWindowsCloudFilesAdapter cloudFiles,
             ILocalFileContentHasher? contentHasher = null,
             IWindowsCloudFilesDiagnostics? diagnostics = null,
-            Func<string, WindowsVirtualFileDiskState?>? readDiskState = null)
+            Func<string, WindowsVirtualFileDiskState?>? readDiskState = null,
+            ILocalChangeSuppression? localChangeSuppression = null)
         {
             _inner = inner ?? throw new ArgumentNullException(nameof(inner));
             _stateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
             _cloudFiles = cloudFiles ?? throw new ArgumentNullException(nameof(cloudFiles));
             _contentHasher = contentHasher ?? new LocalFileScanner();
             _diagnostics = diagnostics ?? WindowsCloudFilesDiagnostics.Shared;
+            _localChangeSuppression = localChangeSuppression;
             _readDiskState = readDiskState ?? ReadDiskState;
         }
 
@@ -145,6 +149,7 @@ namespace Cotton.Sync.Desktop.Platform
                 return false;
             }
 
+            _localChangeSuppression?.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, normalizedPath);
             _cloudFiles.DehydratePlaceholder(syncPair, normalizedPath);
             state!.PlaceholderHydrationState = SyncPlaceholderHydrationState.Dehydrated;
             state.LocalContentHash = null;

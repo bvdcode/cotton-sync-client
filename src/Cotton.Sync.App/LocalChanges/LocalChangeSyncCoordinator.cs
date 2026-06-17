@@ -20,6 +20,7 @@ namespace Cotton.Sync.App.LocalChanges
         private readonly object _pendingGate = new();
         private readonly TimeSpan _debounceInterval;
         private readonly ILogger<LocalChangeSyncCoordinator> _logger;
+        private readonly ILocalChangeSuppression? _changeSuppression;
         private readonly ISyncPairSettingsStore _syncPairs;
         private readonly ISyncSupervisor _supervisor;
         private readonly ILocalSyncRootWatcherFactory _watcherFactory;
@@ -59,11 +60,13 @@ namespace Cotton.Sync.App.LocalChanges
             ISyncSupervisor supervisor,
             ILocalSyncRootWatcherFactory watcherFactory,
             TimeSpan? debounceInterval = null,
-            ILogger<LocalChangeSyncCoordinator>? logger = null)
+            ILogger<LocalChangeSyncCoordinator>? logger = null,
+            ILocalChangeSuppression? changeSuppression = null)
         {
             _syncPairs = syncPairs ?? throw new ArgumentNullException(nameof(syncPairs));
             _supervisor = supervisor ?? throw new ArgumentNullException(nameof(supervisor));
             _watcherFactory = watcherFactory ?? throw new ArgumentNullException(nameof(watcherFactory));
+            _changeSuppression = changeSuppression;
             _debounceInterval = debounceInterval ?? DefaultDebounceInterval;
             if (_debounceInterval < TimeSpan.Zero)
             {
@@ -158,6 +161,15 @@ namespace Cotton.Sync.App.LocalChanges
             CancellationTokenSource? lifetime = _lifetime;
             if (lifetime is null || lifetime.IsCancellationRequested)
             {
+                return;
+            }
+
+            if (_changeSuppression?.ShouldSuppress(change) == true)
+            {
+                _logger.LogDebug(
+                    "Ignoring provider-originated local sync root watcher event for {SyncPairId} at {ChangedPath}.",
+                    change.SyncPairId,
+                    change.FullPath);
                 return;
             }
 
