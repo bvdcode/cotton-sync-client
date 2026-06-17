@@ -375,6 +375,18 @@ namespace Cotton.Sync.Desktop.Startup
             }
             finally
             {
+                if (firstPair is not null)
+                {
+                    await TryRemoveLiveSmokeSyncPairAsync(firstController, firstPair, output, "first")
+                        .ConfigureAwait(false);
+                }
+
+                if (secondPair is not null)
+                {
+                    await TryRemoveLiveSmokeSyncPairAsync(secondController, secondPair, output, "second")
+                        .ConfigureAwait(false);
+                }
+
                 if (firstSignedIn)
                 {
                     await TrySignOutAsync(firstController, output, "first").ConfigureAwait(false);
@@ -1089,6 +1101,33 @@ namespace Cotton.Sync.Desktop.Startup
                 .LoadPairAsync(syncPairId.ToString("D"), cancellationToken)
                 .ConfigureAwait(false);
             return entries.Count;
+        }
+
+        private static async Task TryRemoveLiveSmokeSyncPairAsync(
+            DesktopShellController controller,
+            SyncPairSettings syncPair,
+            TextWriter output,
+            string label)
+        {
+            try
+            {
+                await controller.RemoveSyncPairAsync(syncPair.Id, CancellationToken.None).ConfigureAwait(false);
+                await output.WriteLineAsync(
+                    "Removed "
+                    + label
+                    + " live-smoke sync pair: "
+                    + syncPair.LocalRootPath).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                await output.WriteLineAsync(
+                    "Warning: failed to remove "
+                    + label
+                    + " live-smoke sync pair "
+                    + syncPair.Id
+                    + ": "
+                    + CleanSingleLine(exception.Message)).ConfigureAwait(false);
+            }
         }
 
         private static async Task TrySignOutAsync(
