@@ -29,11 +29,50 @@ namespace Cotton.Sync.Tests.Remote
             });
         }
 
+        [Test]
+        public async Task FindChildDirectoryAsync_ReturnsCaseInsensitiveChildDirectory()
+        {
+            Guid parentId = Guid.NewGuid();
+            var child = new NodeDto
+            {
+                Id = Guid.NewGuid(),
+                ParentId = parentId,
+                Name = "Reports",
+            };
+            var client = new FakeNodeClient();
+            client.Children[parentId] = [child];
+            var synchronizer = new SdkRemoteDirectorySynchronizer(client);
+
+            NodeDto? found = await synchronizer.FindChildDirectoryAsync(parentId, " reports ");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(found, Is.SameAs(child));
+                Assert.That(client.GetChildrenCalls, Is.EqualTo(new[] { (parentId, 1, 100, 0) }));
+            });
+        }
+
+        [Test]
+        public async Task FindChildDirectoryAsync_ReturnsNullWhenChildDirectoryIsMissing()
+        {
+            Guid parentId = Guid.NewGuid();
+            var client = new FakeNodeClient();
+            var synchronizer = new SdkRemoteDirectorySynchronizer(client);
+
+            NodeDto? found = await synchronizer.FindChildDirectoryAsync(parentId, "Missing");
+
+            Assert.That(found, Is.Null);
+        }
+
         private class FakeNodeClient : ICottonNodeClient
         {
             public List<(Guid ParentId, string Name)> CreatedDirectories { get; } = [];
 
             public List<(Guid NodeId, bool SkipTrash)> DeletedDirectories { get; } = [];
+
+            public Dictionary<Guid, List<NodeDto>> Children { get; } = [];
+
+            public List<(Guid NodeId, int Page, int PageSize, int Depth)> GetChildrenCalls { get; } = [];
 
             public Task<NodeDto> ResolveAsync(string? path = null, CancellationToken cancellationToken = default)
             {
@@ -52,7 +91,15 @@ namespace Cotton.Sync.Tests.Remote
                 int depth = 0,
                 CancellationToken cancellationToken = default)
             {
-                throw new NotSupportedException();
+                cancellationToken.ThrowIfCancellationRequested();
+                GetChildrenCalls.Add((nodeId, page, pageSize, depth));
+                Children.TryGetValue(nodeId, out List<NodeDto>? children);
+                children ??= [];
+                return Task.FromResult(new NodeContentDto
+                {
+                    Nodes = children,
+                    TotalCount = children.Count,
+                });
             }
 
             public Task<NodeDto> CreateAsync(Guid parentId, string name, CancellationToken cancellationToken = default)

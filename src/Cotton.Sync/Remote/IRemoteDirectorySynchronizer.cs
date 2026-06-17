@@ -11,6 +11,14 @@ namespace Cotton.Sync.Remote
     public interface IRemoteDirectorySynchronizer
     {
         /// <summary>
+        /// Finds a remote child directory under the specified parent node.
+        /// </summary>
+        Task<NodeDto?> FindChildDirectoryAsync(
+            Guid parentNodeId,
+            string name,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Creates a remote child directory under the specified parent node.
         /// </summary>
         Task<NodeDto> CreateDirectoryAsync(

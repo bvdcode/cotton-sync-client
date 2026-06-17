@@ -6,6 +6,7 @@ using System.Net;
 using System.Threading.Channels;
 using Cotton.Files;
 using Cotton.Nodes;
+using Cotton.Sdk;
 using Cotton.Sync.Local;
 using Cotton.Sync.Remote;
 using Cotton.Sync.State;
@@ -1674,18 +1675,28 @@ namespace Cotton.Sync
                         continue;
                     }
 
-                    NodeDto created = await _remoteDirectories
-                        .CreateDirectoryAsync(parentNodeId, GetFileName(relativePath), cancellationToken)
+                    RemoteDirectoryCreationResult creation = await CreateOrReuseRemoteDirectoryAsync(
+                            _remoteDirectories,
+                            parentNodeId,
+                            GetFileName(relativePath),
+                            cancellationToken)
                         .ConfigureAwait(false);
                     var createdSnapshot = new RemoteDirectorySnapshot
                     {
                         RelativePath = relativePath,
-                        Node = created,
+                        Node = creation.Node,
                     };
                     remoteByPath[SyncPath.ToKey(relativePath)] = createdSnapshot;
-                    await _stateStore.UpsertAsync(BuildDirectoryBaseline(syncPair, relativePath, created), cancellationToken)
+                    await _stateStore.UpsertAsync(BuildDirectoryBaseline(syncPair, relativePath, creation.Node), cancellationToken)
                         .ConfigureAwait(false);
-                    Report(result, options, SyncActivityKind.Uploaded, relativePath, "Created remote folder.");
+                    Report(
+                        result,
+                        options,
+                        SyncActivityKind.Uploaded,
+                        relativePath,
+                        creation.ReusedExisting
+                            ? "Reused existing remote folder after create conflict."
+                            : "Created remote folder.");
                     foldersCompleted++;
                     ReportItemRunProgress(
                         options,
@@ -1713,6 +1724,38 @@ namespace Cotton.Sync
                     relativePath,
                     startedAtUtc,
                     ref lastDirectoryRunProgressReportedAtUtc);
+            }
+        }
+
+        private async Task<RemoteDirectoryCreationResult> CreateOrReuseRemoteDirectoryAsync(
+            IRemoteDirectorySynchronizer remoteDirectories,
+            Guid parentNodeId,
+            string name,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                NodeDto created = await remoteDirectories
+                    .CreateDirectoryAsync(parentNodeId, name, cancellationToken)
+                    .ConfigureAwait(false);
+                return new RemoteDirectoryCreationResult(created, ReusedExisting: false);
+            }
+            catch (CottonApiException exception) when (exception.StatusCode == HttpStatusCode.Conflict)
+            {
+                NodeDto? existing = await remoteDirectories
+                    .FindChildDirectoryAsync(parentNodeId, name, cancellationToken)
+                    .ConfigureAwait(false);
+                if (existing is null)
+                {
+                    throw;
+                }
+
+                _logger.LogInformation(
+                    "Remote folder create for {DirectoryName} under {ParentNodeId} hit conflict; reusing existing node {NodeId}.",
+                    name,
+                    parentNodeId,
+                    existing.Id);
+                return new RemoteDirectoryCreationResult(existing, ReusedExisting: true);
             }
         }
 
@@ -3869,6 +3912,8 @@ namespace Cotton.Sync
         }
 
         private readonly record struct MoveCandidateKey(string ContentHash, long SizeBytes);
+
+        private readonly record struct RemoteDirectoryCreationResult(NodeDto Node, bool ReusedExisting);
 
         private sealed record InitialVirtualFilesStreamingPlan(
             bool SkipCurrentPlaceholders,
