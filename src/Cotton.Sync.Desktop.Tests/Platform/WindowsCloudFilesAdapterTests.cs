@@ -13,6 +13,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
     [Platform(Include = "Win")]
     public class WindowsCloudFilesAdapterTests
     {
+        private const int HResultPathNotFound = unchecked((int)0x80070003);
         private string _tempDirectory = string.Empty;
 
         [SetUp]
@@ -113,6 +114,34 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void CreateFilePlaceholder_RetriesTransientPinStatePathOpenFailure()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi
+            {
+                PinStateFailuresBeforeSuccess = 2,
+            };
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                diagnostics: diagnostics,
+                transientRetryDelay: _ => { });
+            string root = Path.Combine(_tempDirectory, "root");
+
+            adapter.CreateFilePlaceholder(CreateRequest(root, "Projects/remote-only.txt"));
+
+            IReadOnlyList<WindowsCloudFilesDiagnosticEvent> retryEvents = diagnostics.Snapshot();
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.PinStateCalls, Is.EqualTo(3));
+                Assert.That(nativeApi.PinStates, Has.Count.EqualTo(1));
+                Assert.That(retryEvents.Select(static item => item.Status), Is.EqualTo(new[] { "retrying", "retrying" }));
+                Assert.That(retryEvents.Select(static item => item.Operation), Is.All.EqualTo("set-pin-state"));
+                Assert.That(retryEvents.Select(static item => item.HResult), Is.All.EqualTo(HResultPathNotFound));
+            });
+        }
+
+        [Test]
         public void CreateFilePlaceholder_UpdatesExistingCloudFilesPlaceholder()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
@@ -137,6 +166,39 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(nativeApi.UpdatedPlaceholders[0].BaseDirectoryPath, Is.EqualTo(Path.Combine(Path.GetFullPath(root), "Projects")));
                 Assert.That(nativeApi.UpdatedPlaceholders[0].RelativeFileName, Is.EqualTo("remote-only.txt"));
                 Assert.That(nativeApi.UpdatedPlaceholders[0].FileIdentity, Is.EqualTo(result.PlaceholderIdentity));
+            });
+        }
+
+        [Test]
+        public void CreateFilePlaceholder_RetriesTransientUpdatePathOpenFailure()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi
+            {
+                UpdateFailuresBeforeSuccess = 1,
+            };
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            string root = Path.Combine(_tempDirectory, "root");
+            string target = Path.GetFullPath(Path.Combine(root, "Projects", "remote-only.txt"));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllText(target, string.Empty);
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                diagnostics: diagnostics,
+                isReparsePoint: path => string.Equals(Path.GetFullPath(path), target, StringComparison.OrdinalIgnoreCase),
+                transientRetryDelay: _ => { });
+            RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/remote-only.txt");
+
+            adapter.CreateFilePlaceholder(request);
+
+            WindowsCloudFilesDiagnosticEvent retryEvent = diagnostics.Snapshot().Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.UpdateCalls, Is.EqualTo(2));
+                Assert.That(nativeApi.UpdatedPlaceholders, Has.Count.EqualTo(1));
+                Assert.That(retryEvent.Operation, Is.EqualTo("update-placeholder"));
+                Assert.That(retryEvent.Status, Is.EqualTo("retrying"));
+                Assert.That(retryEvent.HResult, Is.EqualTo(HResultPathNotFound));
             });
         }
 
@@ -523,6 +585,14 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public Exception? UnregisterException { get; set; }
 
+            public int UpdateFailuresBeforeSuccess { get; set; }
+
+            public int UpdateCalls { get; private set; }
+
+            public int PinStateFailuresBeforeSuccess { get; set; }
+
+            public int PinStateCalls { get; private set; }
+
             public void RegisterSyncRoot(WindowsCloudFilesNativeSyncRootRegistration registration)
             {
                 OperationLog?.Add("native-register");
@@ -550,11 +620,25 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public void UpdatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder)
             {
+                UpdateCalls++;
+                if (UpdateFailuresBeforeSuccess > 0)
+                {
+                    UpdateFailuresBeforeSuccess--;
+                    throw new WindowsCloudFilesNativeException("CreateFile", HResultPathNotFound);
+                }
+
                 UpdatedPlaceholders.Add(placeholder);
             }
 
             public void SetPinState(string filePath, WindowsCloudFilesPinState pinState)
             {
+                PinStateCalls++;
+                if (PinStateFailuresBeforeSuccess > 0)
+                {
+                    PinStateFailuresBeforeSuccess--;
+                    throw new WindowsCloudFilesNativeException("CreateFile", HResultPathNotFound);
+                }
+
                 PinStates.Add(new PinStateCall(filePath, pinState));
             }
 

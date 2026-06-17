@@ -166,10 +166,6 @@ namespace Cotton.Sync.App.LocalChanges
 
             if (_changeSuppression?.ShouldSuppress(change) == true)
             {
-                _logger.LogDebug(
-                    "Ignoring provider-originated local sync root watcher event for {SyncPairId} at {ChangedPath}.",
-                    change.SyncPairId,
-                    change.FullPath);
                 return;
             }
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
+using System.Diagnostics;
 using System.Net;
 using System.Threading.Channels;
 using Cotton.Files;
@@ -614,12 +615,21 @@ namespace Cotton.Sync
                 return null;
             }
 
-            return await _localMetadataTreeLookupScanner
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            LocalTreeLookupSnapshot snapshot = await _localMetadataTreeLookupScanner
                 .ScanTreeMetadataLookupsAsync(
                     localRootPath,
                     new LocalTreeScanProgressReporter(options, startedAtUtc),
                     cancellationToken)
                 .ConfigureAwait(false);
+            stopwatch.Stop();
+            _logger.LogInformation(
+                "Scanned local tree metadata for {LocalRootPath} with {DirectoryCount} directories and {FileCount} files in {ElapsedMilliseconds} ms.",
+                localRootPath,
+                snapshot.DirectoriesByPath.Count,
+                snapshot.FilesByPath.Count,
+                stopwatch.ElapsedMilliseconds);
+            return snapshot;
         }
 
         private async Task<RemoteTreeSnapshot> ScanRemoteTreeAsync(
@@ -815,9 +825,16 @@ namespace Cotton.Sync
                     CurrentPlaceholderStateByPath: new Dictionary<string, SyncStateEntry>(PathComparer));
             }
 
-            List<string> keys = BuildUniquePathKeyList(localDirectoriesByPath.Keys, localFilesByPath.Keys);
+            Stopwatch stopwatch = Stopwatch.StartNew();
             (Dictionary<string, SyncStateEntry> directoryStateByPath, Dictionary<string, SyncStateEntry> fileStateByPath) =
-                await LoadStateByPathAsync(syncPair.SyncPairId, keys, cancellationToken).ConfigureAwait(false);
+                await LoadAllStateByPathAsync(syncPair.SyncPairId, cancellationToken).ConfigureAwait(false);
+            stopwatch.Stop();
+            _logger.LogInformation(
+                "Loaded Windows virtual-files resume state for pair {SyncPairId} with {DirectoryStateCount} directories and {FileStateCount} files in {ElapsedMilliseconds} ms.",
+                syncPair.SyncPairId,
+                directoryStateByPath.Count,
+                fileStateByPath.Count,
+                stopwatch.ElapsedMilliseconds);
             foreach (string directoryKey in localDirectoriesByPath.Keys)
             {
                 if (!directoryStateByPath.TryGetValue(directoryKey, out SyncStateEntry? state)

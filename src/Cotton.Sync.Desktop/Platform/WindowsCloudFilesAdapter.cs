@@ -14,13 +14,22 @@ namespace Cotton.Sync.Desktop.Platform
         public const string ProviderId = "Cotton.Sync.Desktop";
         public const string ProviderName = "Cotton Cloud";
 
+        private const int HResultFileNotFound = unchecked((int)0x80070002);
+        private const int HResultPathNotFound = unchecked((int)0x80070003);
         private static readonly Guid ProviderGuid = Guid.Parse("6453b9dc-e042-4a73-a675-c5b2aa6c9607");
+        private static readonly TimeSpan[] TransientPathRetryDelays =
+        [
+            TimeSpan.FromMilliseconds(25),
+            TimeSpan.FromMilliseconds(75),
+            TimeSpan.FromMilliseconds(150),
+        ];
 
         private readonly WindowsVirtualFilesRootSafetyPolicy _rootSafety;
         private readonly IWindowsCloudFilesNativeApi _nativeApi;
         private readonly IWindowsStorageProviderSyncRootRegistrar? _storageProviderRegistrar;
         private readonly IWindowsCloudFilesDiagnostics _diagnostics;
         private readonly Func<string, bool> _isReparsePoint;
+        private readonly Action<TimeSpan> _transientRetryDelay;
         private readonly object _registrationGate = new();
         private readonly HashSet<string> _registeredRootPaths = new(StringComparer.OrdinalIgnoreCase);
 
@@ -29,13 +38,15 @@ namespace Cotton.Sync.Desktop.Platform
             IWindowsCloudFilesNativeApi? nativeApi = null,
             IWindowsStorageProviderSyncRootRegistrar? storageProviderRegistrar = null,
             IWindowsCloudFilesDiagnostics? diagnostics = null,
-            Func<string, bool>? isReparsePoint = null)
+            Func<string, bool>? isReparsePoint = null,
+            Action<TimeSpan>? transientRetryDelay = null)
         {
             _rootSafety = rootSafety ?? new WindowsVirtualFilesRootSafetyPolicy();
             _nativeApi = nativeApi ?? new WindowsCloudFilesNativeApi();
             _storageProviderRegistrar = storageProviderRegistrar ?? WindowsStorageProviderSyncRootRegistrar.TryCreateDefault();
             _diagnostics = diagnostics ?? WindowsCloudFilesDiagnostics.Shared;
             _isReparsePoint = isReparsePoint ?? IsReparsePoint;
+            _transientRetryDelay = transientRetryDelay ?? Thread.Sleep;
         }
 
         public WindowsCloudFilesSyncRootRegistration CreateRegistration(SyncPairSettings syncPair)
@@ -94,13 +105,23 @@ namespace Cotton.Sync.Desktop.Platform
             {
                 if (updateExistingPlaceholder)
                 {
-                    _nativeApi.UpdatePlaceholder(nativePlaceholder);
+                    ExecuteNativeOperationWithTransientPathRetry(
+                        () => _nativeApi.UpdatePlaceholder(nativePlaceholder),
+                        operation,
+                        request.SyncPairId,
+                        safety.FullPath,
+                        normalizedPath);
                 }
                 else
                 {
                     _nativeApi.CreatePlaceholder(nativePlaceholder);
                     operation = "set-pin-state";
-                    _nativeApi.SetPinState(fullPlaceholderPath, WindowsCloudFilesPinState.Unpinned);
+                    ExecuteNativeOperationWithTransientPathRetry(
+                        () => _nativeApi.SetPinState(fullPlaceholderPath, WindowsCloudFilesPinState.Unpinned),
+                        operation,
+                        request.SyncPairId,
+                        safety.FullPath,
+                        normalizedPath);
                 }
             }
             catch (Exception exception)
@@ -336,6 +357,42 @@ namespace Cotton.Sync.Desktop.Platform
                 relativePath,
                 exception.Message,
                 exception is WindowsCloudFilesNativeException nativeException ? nativeException.HResult : null);
+        }
+
+        private void ExecuteNativeOperationWithTransientPathRetry(
+            Action operation,
+            string operationName,
+            string? syncPairId,
+            string? localRootPath,
+            string? relativePath)
+        {
+            for (int attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    operation();
+                    return;
+                }
+                catch (WindowsCloudFilesNativeException exception)
+                    when (IsTransientPathOpenFailure(exception) && attempt < TransientPathRetryDelays.Length)
+                {
+                    _diagnostics.Record(
+                        operationName,
+                        "retrying",
+                        syncPairId,
+                        localRootPath,
+                        relativePath,
+                        exception.Message,
+                        exception.HResult);
+                    _transientRetryDelay(TransientPathRetryDelays[attempt]);
+                }
+            }
+        }
+
+        private static bool IsTransientPathOpenFailure(WindowsCloudFilesNativeException exception)
+        {
+            return exception.Operation == "CreateFile"
+                && (exception.HResult == HResultFileNotFound || exception.HResult == HResultPathNotFound);
         }
 
         private static bool IsSamePathOrChild(string candidatePath, string rootPath)
