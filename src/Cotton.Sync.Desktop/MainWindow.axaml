@@ -643,7 +643,7 @@
                                 CornerRadius="6"
                                 Background="{DynamicResource CottonSurfaceMutedBrush}">
                           <Grid ColumnDefinitions="*,Auto,Auto"
-                                RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
+                                RowDefinitions="Auto,Auto,Auto,Auto,Auto"
                                 ColumnSpacing="10">
                             <Grid ColumnDefinitions="Auto,*"
                                   ColumnSpacing="7">
@@ -678,7 +678,7 @@
                                          IsIndeterminate="{Binding IsCurrentProgressIndeterminate}"
                                          IsVisible="{Binding HasCurrentProgress}" />
                             <Grid Grid.Row="3"
-                                  ColumnDefinitions="Auto,Auto,*"
+                                  ColumnDefinitions="Auto,*"
                                   ColumnSpacing="8">
                               <Border Width="22"
                                       Height="18"
@@ -706,13 +706,6 @@
                                 </Grid>
                               </Border>
                               <TextBlock Grid.Column="1"
-                                         Text="{Binding ModeLabel}"
-                                         ToolTip.Tip="{Binding ModeLabel}"
-                                         FontSize="12"
-                                         FontWeight="SemiBold"
-                                         TextTrimming="CharacterEllipsis"
-                                         Opacity="0.82" />
-                              <TextBlock Grid.Column="2"
                                          Text="{Binding LocalPath}"
                                          ToolTip.Tip="{Binding LocalPath}"
                                          FontSize="12"
@@ -720,13 +713,14 @@
                                          Opacity="0.74" />
                             </Grid>
                             <TextBlock Grid.Row="4"
-                                       Text="{Binding RemotePath}"
-                                       ToolTip.Tip="{Binding RemotePath}"
+                                       Text="{Binding RemotePathLabel}"
+                                       ToolTip.Tip="{Binding RemotePathLabel}"
                                        FontSize="12"
                                        TextTrimming="CharacterEllipsis"
-                                       Opacity="0.74" />
+                                       Opacity="0.74"
+                                       IsVisible="{Binding HasRemotePathLabel}" />
                             <Button Grid.Column="1"
-                                    Grid.RowSpan="5"
+                                    Grid.RowSpan="4"
                                     Classes="icon"
                                     ToolTip.Tip="Open local folder"
                                     AutomationProperties.Name="Open local folder"
@@ -739,7 +733,7 @@
                                                           Foreground="{DynamicResource CottonTextPrimaryBrush}" />
                             </Button>
                             <Button Grid.Column="2"
-                                    Grid.RowSpan="5"
+                                    Grid.RowSpan="4"
                                     Classes="icon"
                                     ToolTip.Tip="Rename or manage sync folder"
                                     AutomationProperties.Name="Rename or manage sync folder"
@@ -751,7 +745,7 @@
                                                           Height="16"
                                                           Foreground="{DynamicResource CottonTextPrimaryBrush}" />
                             </Button>
-                            <Border Grid.Row="5"
+                            <Border Grid.Row="4"
                                     Grid.ColumnSpan="3"
                                     Margin="0,6,0,0"
                                     Padding="6"
@@ -1057,7 +1051,7 @@
                   </Button>
                 </StackPanel>
 
-                <StackPanel Spacing="12"
+                <StackPanel Spacing="8"
                             IsVisible="{Binding IsAddSyncPairCloudStepVisible}">
                   <Grid ColumnDefinitions="Auto,*,Auto"
                         ColumnSpacing="8"
@@ -1154,7 +1148,8 @@
                       </Grid>
 
                       <Grid Grid.Row="2"
-                            MinHeight="160">
+                            MinHeight="96"
+                            MaxHeight="160">
                         <StackPanel Spacing="3"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
@@ -1173,7 +1168,8 @@
                                  SelectedItem="{Binding SelectedRemoteFolder}"
                                  BorderThickness="0"
                                  Background="Transparent"
-                                 Height="260"
+                                 MinHeight="96"
+                                 MaxHeight="160"
                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
                                  DoubleTapped="RemoteFoldersListBox_DoubleTapped"
                                  IsVisible="{Binding HasRemoteFolders}">
@@ -1207,7 +1203,7 @@
                     </Grid>
                   </Border>
 
-                  <StackPanel Spacing="7"
+                  <StackPanel Spacing="6"
                               IsVisible="{Binding IsFutureSyncModesVisible}">
                     <TextBlock Text="Sync mode"
                                FontSize="12"
@@ -1217,17 +1213,13 @@
                       <RadioButton GroupName="AddSyncPairMode"
                                    IsChecked="{Binding IsFullMirrorSyncModeSelected}"
                                    Classes="sync-mode-card">
-                        <Grid RowDefinitions="Auto,Auto,Auto"
+                        <Grid RowDefinitions="Auto,Auto"
                               RowSpacing="2">
                           <TextBlock Text="Full mirror"
                                      FontSize="12"
                                      FontWeight="SemiBold"
                                      TextTrimming="CharacterEllipsis" />
                           <TextBlock Grid.Row="1"
-                                     Text="Available"
-                                     Classes="secondary"
-                                     FontSize="11" />
-                          <TextBlock Grid.Row="2"
                                      Text="Stores every file on this device."
                                      Classes="secondary"
                                      FontSize="11"
@@ -1238,17 +1230,13 @@
                                    GroupName="AddSyncPairMode"
                                    IsChecked="{Binding IsWindowsVirtualFilesSyncModeSelected}"
                                    Classes="sync-mode-card">
-                        <Grid RowDefinitions="Auto,Auto,Auto"
+                        <Grid RowDefinitions="Auto,Auto"
                               RowSpacing="2">
                           <TextBlock Text="Virtual files"
                                      FontSize="12"
                                      FontWeight="SemiBold"
                                      TextTrimming="CharacterEllipsis" />
                           <TextBlock Grid.Row="1"
-                                     Text="Available"
-                                     Classes="secondary"
-                                     FontSize="11" />
-                          <TextBlock Grid.Row="2"
                                      Text="Saves disk space; downloads on open."
                                      Classes="secondary"
                                      FontSize="11"

@@ -2062,6 +2062,50 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task RunProgressChanged_KeepsPlaceholderCreationStableBeforeFirstCreatedFile()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            DateTime startedAtUtc = new(2026, 6, 17, 3, 50, 0, DateTimeKind.Utc);
+
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.CreatingPlaceholders,
+                FilesCompleted: 0,
+                FilesTotal: 500_000,
+                CurrentPath: "Photos/2026/image-000001.jpg",
+                StartedAtUtc: startedAtUtc,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc.AddSeconds(1)));
+            string withPathDetails = viewModel.CurrentWorkProgressDetails;
+            bool withPathIndeterminate = viewModel.IsCurrentWorkProgressIndeterminate;
+            double withPathValue = viewModel.CurrentWorkProgressValue;
+
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.CreatingPlaceholders,
+                FilesCompleted: 0,
+                FilesTotal: 500_000,
+                CurrentPath: string.Empty,
+                StartedAtUtc: startedAtUtc,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc.AddSeconds(2)));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(withPathDetails, Is.EqualTo("Preparing cloud files \u00B7 500000 cloud files queued"));
+                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo(withPathDetails));
+                Assert.That(withPathIndeterminate, Is.True);
+                Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.True);
+                Assert.That(withPathValue, Is.EqualTo(0));
+                Assert.That(viewModel.CurrentWorkProgressValue, Is.EqualTo(0));
+                Assert.That(viewModel.CurrentWorkProgressDetails, Does.Not.Contain("1 of 500,000"));
+            });
+        }
+
+        [Test]
         public async Task RunProgressChanged_ShowsRemoteScanCurrentPathBeforeFilesAreFound()
         {
             Guid syncPairId = Guid.NewGuid();
