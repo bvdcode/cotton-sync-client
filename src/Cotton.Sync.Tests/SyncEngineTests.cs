@@ -1279,6 +1279,7 @@ namespace Cotton.Sync.Tests
                 Assert.That(Directory.Exists(Path.Combine(_root, "Projects")), Is.True);
                 Assert.That(File.Exists(Path.Combine(_root, "Projects", "remote-only.txt")), Is.False);
                 Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(placeholderWriter.DirectoryRequests.Select(request => request.RelativePath), Is.EqualTo(new[] { "Projects" }));
                 Assert.That(placeholderWriter.Requests, Has.Count.EqualTo(1));
                 Assert.That(placeholderWriter.Requests[0].RelativePath, Is.EqualTo("Projects/remote-only.txt"));
                 Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[]
@@ -4309,13 +4310,25 @@ namespace Cotton.Sync.Tests
             }
         }
 
-        private class FakeRemoteFilePlaceholderWriter : IRemoteFilePlaceholderWriter
+        private class FakeRemoteFilePlaceholderWriter :
+            IRemoteFilePlaceholderWriter,
+            IRemoteDirectoryMaterializationObserver
         {
             public byte[] PlaceholderIdentity { get; } = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E];
 
             public List<RemoteFilePlaceholderRequest> Requests { get; } = [];
 
+            public List<RemoteDirectoryMaterializationRequest> DirectoryRequests { get; } = [];
+
             public string? UnavailableReason { get; set; }
+
+            public Task BeforeCreateDirectoryAsync(
+                RemoteDirectoryMaterializationRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                DirectoryRequests.Add(request);
+                return Task.CompletedTask;
+            }
 
             public Task<RemoteFilePlaceholderResult> CreatePlaceholderAsync(
                 RemoteFilePlaceholderRequest request,
