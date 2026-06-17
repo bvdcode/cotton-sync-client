@@ -28,6 +28,9 @@ namespace Cotton.Sync.Desktop.ViewModels
         private const int QueuedWorkIndicatorFileThreshold = 500;
         private const int ServerProbeMaxAttempts = 3;
         private const string QueuedWorkIndicatorText = "Processing queued changes";
+        private const string RemoteScanRowProgressLabel = "Checking cloud";
+        private const string PreparingOnlineOnlyFilesProgressLabel = "Preparing online-only files";
+        private const string CreatingOnlineOnlyFilesProgressLabel = "Making online-only files available";
         private static readonly TimeSpan TransferActivityCoalescingWindow = TimeSpan.FromMilliseconds(750);
         private static readonly TimeSpan VisibleTransferProgressUpdateInterval = TimeSpan.FromMilliseconds(100);
         private static readonly TimeSpan VisibleRunProgressUpdateInterval = TimeSpan.FromMilliseconds(100);
@@ -5369,10 +5372,10 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private static string CreateRunProgressOperation(DesktopRunProgressSnapshot progress)
         {
-            string label = GetRunStageLabel(progress.Stage);
+            string label = GetRunOperationLabel(progress.Stage);
             if (IsStartingCountedRunProgress(progress))
             {
-                return GetStartingRunProgressLabel(progress.Stage);
+                return GetStartingRunProgressOperationLabel(progress.Stage);
             }
 
             if (IsOpenEndedPlaceholderCreation(progress) && progress.FilesCompleted > 0)
@@ -5398,13 +5401,13 @@ namespace Cotton.Sync.Desktop.ViewModels
                     int readyCount = GetDisplayedRunProgressCount(progress);
                     if (readyCount <= 0)
                     {
-                        return VirtualFileUserFacingCopy.PreparingCloudFilesProgressLabel
-                            + " \u00B7 discovering cloud files \u00B7 creating placeholders \u00B7 saving state";
+                        return PreparingOnlineOnlyFilesProgressLabel
+                            + " \u00B7 scanning cloud \u00B7 creating placeholders \u00B7 saving state";
                     }
 
                     return readyCount.ToString(CultureInfo.CurrentCulture)
-                        + (readyCount == 1 ? " cloud file ready" : " cloud files ready")
-                        + " \u00B7 discovering cloud \u00B7 saving state";
+                        + (readyCount == 1 ? " file ready" : " files ready")
+                        + " \u00B7 scanning cloud \u00B7 saving state";
                 }
 
                 if (IsStartingCountedRunProgress(progress))
@@ -5436,7 +5439,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 SyncRunProgressStage.ScanningLocal => CreateLocalScanProgressDetails(progress),
                 SyncRunProgressStage.ScanningRemote => CreateRemoteScanProgressDetails(progress),
                 SyncRunProgressStage.ReconcilingDirectories => "Preparing folders.",
-                SyncRunProgressStage.CreatingPlaceholders => VirtualFileUserFacingCopy.PreparingCloudFilesProgressLabel + ".",
+                SyncRunProgressStage.CreatingPlaceholders => PreparingOnlineOnlyFilesProgressLabel + ".",
                 SyncRunProgressStage.Completed => "Sync pass completed.",
                 _ => "Preparing sync.",
             };
@@ -5560,9 +5563,19 @@ namespace Cotton.Sync.Desktop.ViewModels
                 SyncRunProgressStage.ScanningRemote => "Scanning Cotton Cloud",
                 SyncRunProgressStage.ReconcilingDirectories => "Preparing folders",
                 SyncRunProgressStage.ReconcilingFiles => "Checking files",
-                SyncRunProgressStage.CreatingPlaceholders => VirtualFileUserFacingCopy.CreatingCloudFilesProgressLabel,
+                SyncRunProgressStage.CreatingPlaceholders => CreatingOnlineOnlyFilesProgressLabel,
                 SyncRunProgressStage.Completed => "Finishing sync",
                 _ => "Syncing",
+            };
+        }
+
+        private static string GetRunOperationLabel(SyncRunProgressStage stage)
+        {
+            return stage switch
+            {
+                SyncRunProgressStage.ScanningRemote => RemoteScanRowProgressLabel,
+                SyncRunProgressStage.CreatingPlaceholders => PreparingOnlineOnlyFilesProgressLabel,
+                _ => GetRunStageLabel(stage),
             };
         }
 
@@ -5572,9 +5585,16 @@ namespace Cotton.Sync.Desktop.ViewModels
             {
                 SyncRunProgressStage.ReconcilingDirectories => "Preparing folders",
                 SyncRunProgressStage.ReconcilingFiles => "Preparing file checks",
-                SyncRunProgressStage.CreatingPlaceholders => VirtualFileUserFacingCopy.PreparingCloudFilesProgressLabel,
+                SyncRunProgressStage.CreatingPlaceholders => PreparingOnlineOnlyFilesProgressLabel,
                 _ => "Preparing sync",
             };
+        }
+
+        private static string GetStartingRunProgressOperationLabel(SyncRunProgressStage stage)
+        {
+            return stage == SyncRunProgressStage.CreatingPlaceholders
+                ? PreparingOnlineOnlyFilesProgressLabel
+                : GetStartingRunProgressLabel(stage);
         }
 
         private static string CreateTransferTitle(DesktopTransferProgressSnapshot progress, string syncPairName)
