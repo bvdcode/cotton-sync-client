@@ -21,6 +21,8 @@ namespace Cotton.Sync.Desktop.Startup
         private const string LocalRenamedPath = "local-renamed.txt";
         private const string RemoteOriginPath = "remote-origin.txt";
         private const string RemoteRenamedPath = "remote-renamed.txt";
+        private const string PreExistingClientAPath = "pre-existing/client-a/original-a.txt";
+        private const string PreExistingClientBPath = "pre-existing/client-b/original-b.txt";
         private static readonly TimeSpan DesktopLocalQuietWindow = TimeSpan.FromMilliseconds(2300);
         private static readonly TimeSpan PropagationTimeout = TimeSpan.FromSeconds(45);
         private static readonly TimeSpan PropagationPollInterval = TimeSpan.FromSeconds(1);
@@ -233,6 +235,10 @@ namespace Cotton.Sync.Desktop.Startup
             Directory.CreateDirectory(paths.DataDirectory);
             Directory.CreateDirectory(startupOptions.LocalRoot!);
             Directory.CreateDirectory(startupOptions.SecondLocalRoot!);
+            IReadOnlyList<LiveSyncSmokeSeededLocalFile> seededLocalFiles =
+                startupOptions.LiveSyncSmokePreserveExistingLocalFiles
+                    ? await SeedExistingLocalFilesAsync(startupOptions, output, cancellationToken).ConfigureAwait(false)
+                    : [];
             DesktopTraceLogging.Install(paths);
 
             DesktopAppPaths firstPaths = DesktopAppPaths.CreateForDataDirectory(
@@ -289,6 +295,11 @@ namespace Cotton.Sync.Desktop.Startup
                     "Initial desktop sync reached idle/up-to-date.",
                     output,
                     cancellationToken).ConfigureAwait(false);
+                failures += await VerifySeededLocalFilesAsync(
+                    seededLocalFiles,
+                    "Pre-existing local files survived sync pair creation.",
+                    output,
+                    cancellationToken).ConfigureAwait(false);
                 failures += await RunClientACreateAsync(
                     startupOptions,
                     firstController,
@@ -328,13 +339,22 @@ namespace Cotton.Sync.Desktop.Startup
 
                 await RunFinalConvergenceAsync(firstController, secondController, cancellationToken)
                     .ConfigureAwait(false);
+                failures += await VerifySeededLocalFilesAsync(
+                    seededLocalFiles,
+                    "Pre-existing local files survived final convergence.",
+                    output,
+                    cancellationToken).ConfigureAwait(false);
                 int finalStateEntries = await CountStateEntriesAsync(firstPaths, firstPair.Id, cancellationToken)
                     .ConfigureAwait(false)
                     + await CountStateEntriesAsync(secondPaths, secondPair.Id, cancellationToken)
-                    .ConfigureAwait(false);
+                        .ConfigureAwait(false);
+                int expectedFinalStateEntries = seededLocalFiles.Count == 0 ? 0 : seededLocalFiles.Count * 2;
                 await output.WriteLineAsync("Final state entries: " + finalStateEntries.ToString(System.Globalization.CultureInfo.InvariantCulture))
                     .ConfigureAwait(false);
-                if (finalStateEntries != 0)
+                await output.WriteLineAsync(
+                    "Expected final state entries: "
+                    + expectedFinalStateEntries.ToString(System.Globalization.CultureInfo.InvariantCulture)).ConfigureAwait(false);
+                if (finalStateEntries != expectedFinalStateEntries)
                 {
                     failures++;
                 }
@@ -479,6 +499,88 @@ namespace Cotton.Sync.Desktop.Startup
                 FormatCheck(passed, label)
                 + " firstStatus=" + (firstPair?.Status ?? "<missing>")
                 + ", secondStatus=" + (secondPair?.Status ?? "<missing>")).ConfigureAwait(false);
+            return passed ? 0 : 1;
+        }
+
+        private static async Task<IReadOnlyList<LiveSyncSmokeSeededLocalFile>> SeedExistingLocalFilesAsync(
+            DesktopStartupOptions startupOptions,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            string firstContent = "Cotton Sync Desktop live smoke pre-existing file from client A"
+                + Environment.NewLine
+                + DateTime.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture)
+                + Environment.NewLine;
+            string secondContent = "Cotton Sync Desktop live smoke pre-existing file from client B"
+                + Environment.NewLine
+                + DateTime.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture)
+                + Environment.NewLine;
+            var files = new[]
+            {
+                await WriteSeededLocalFileAsync(
+                    startupOptions.LocalRoot!,
+                    PreExistingClientAPath,
+                    firstContent,
+                    cancellationToken).ConfigureAwait(false),
+                await WriteSeededLocalFileAsync(
+                    startupOptions.SecondLocalRoot!,
+                    PreExistingClientBPath,
+                    secondContent,
+                    cancellationToken).ConfigureAwait(false),
+            };
+            await output.WriteLineAsync(
+                "Seeded pre-existing local files before sync pair creation: "
+                + files.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)).ConfigureAwait(false);
+            return files;
+        }
+
+        private static async Task<LiveSyncSmokeSeededLocalFile> WriteSeededLocalFileAsync(
+            string localRoot,
+            string relativePath,
+            string content,
+            CancellationToken cancellationToken)
+        {
+            await WriteFileAsync(localRoot, relativePath, content, cancellationToken).ConfigureAwait(false);
+            return new LiveSyncSmokeSeededLocalFile(
+                FullPath(localRoot, relativePath),
+                relativePath,
+                Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(content))));
+        }
+
+        private static async Task<int> VerifySeededLocalFilesAsync(
+            IReadOnlyList<LiveSyncSmokeSeededLocalFile> files,
+            string label,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            if (files.Count == 0)
+            {
+                return 0;
+            }
+
+            List<string> failures = [];
+            foreach (LiveSyncSmokeSeededLocalFile file in files)
+            {
+                if (!File.Exists(file.FullPath))
+                {
+                    failures.Add(file.RelativePath + "=missing");
+                    continue;
+                }
+
+                await using FileStream stream = File.OpenRead(file.FullPath);
+                string actualHash = Convert.ToHexStringLower(
+                    await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false));
+                if (!string.Equals(actualHash, file.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    failures.Add(file.RelativePath + "=sha256-mismatch:" + actualHash);
+                }
+            }
+
+            bool passed = failures.Count == 0;
+            await output.WriteLineAsync(
+                FormatCheck(passed, label)
+                + " files=" + files.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + (passed ? string.Empty : ", " + string.Join(", ", failures))).ConfigureAwait(false);
             return passed ? 0 : 1;
         }
 
@@ -957,6 +1059,8 @@ namespace Cotton.Sync.Desktop.Startup
         private readonly record struct RenameSnapshot(bool Passed, string Details);
 
         private readonly record struct AbsentSnapshot(bool Passed, string Details);
+
+        private sealed record LiveSyncSmokeSeededLocalFile(string FullPath, string RelativePath, string Sha256);
 
         private sealed class LiveSmokePlatformCommandService(TextWriter output, TimeSpan approvalHold) : IPlatformCommandService
         {

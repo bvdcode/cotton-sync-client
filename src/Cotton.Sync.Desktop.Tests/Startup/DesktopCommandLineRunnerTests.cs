@@ -260,6 +260,41 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public async Task RunLiveSyncSmokeAsync_RejectsNonEmptyLocalRootsWhenPreserveExistingLocalFilesIsEnabled()
+        {
+            string dataDirectory = Path.Combine(_tempDirectory, "smoke-state");
+            string firstLocalRoot = Path.Combine(_tempDirectory, "client-a");
+            string secondLocalRoot = Path.Combine(_tempDirectory, "client-b");
+            Directory.CreateDirectory(firstLocalRoot);
+            Directory.CreateDirectory(secondLocalRoot);
+            await File.WriteAllTextAsync(Path.Combine(firstLocalRoot, "existing.txt"), "do not touch");
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--live-sync-smoke",
+                    "--server",
+                    "app.cottoncloud.dev",
+                    "--data-dir",
+                    dataDirectory,
+                    "--local-root",
+                    firstLocalRoot,
+                    "--second-local-root",
+                    secondLocalRoot,
+                    "--remote-path",
+                    "/CodexSyncQa/DesktopSmoke",
+                    "--live-sync-smoke-preserve-existing-local-files",
+                ]);
+            using var output = new StringWriter();
+
+            int exitCode = await DesktopCommandLineRunner.RunLiveSyncSmokeAsync(options, output);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(2));
+                Assert.That(output.ToString(), Does.Contain("--local-root must be empty or missing"));
+            });
+        }
+
+        [Test]
         public async Task RunLiveSyncSmokeAsync_RejectsInvalidSyncModeBeforeTouchingRoots()
         {
             string dataDirectory = Path.Combine(_tempDirectory, "smoke-state");

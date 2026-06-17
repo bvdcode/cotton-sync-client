@@ -22,6 +22,7 @@ namespace Cotton.Sync.Desktop.Startup
             TimeSpan windowsVirtualFilesSmokeHoldAfterPlaceholder,
             string? windowsVirtualFilesSmokePhase,
             TimeSpan liveSyncSmokeApprovalHold,
+            bool liveSyncSmokePreserveExistingLocalFiles,
             string? localRoot,
             string? secondLocalRoot,
             string? remotePath,
@@ -42,6 +43,7 @@ namespace Cotton.Sync.Desktop.Startup
             WindowsVirtualFilesSmokeHoldAfterPlaceholder = windowsVirtualFilesSmokeHoldAfterPlaceholder;
             WindowsVirtualFilesSmokePhase = windowsVirtualFilesSmokePhase;
             LiveSyncSmokeApprovalHold = liveSyncSmokeApprovalHold;
+            LiveSyncSmokePreserveExistingLocalFiles = liveSyncSmokePreserveExistingLocalFiles;
             LocalRoot = localRoot;
             SecondLocalRoot = secondLocalRoot;
             RemotePath = remotePath;
@@ -64,6 +66,7 @@ namespace Cotton.Sync.Desktop.Startup
             TimeSpan.Zero,
             null,
             TimeSpan.Zero,
+            false,
             null,
             null,
             null,
@@ -97,6 +100,8 @@ namespace Cotton.Sync.Desktop.Startup
         public string? WindowsVirtualFilesSmokePhase { get; }
 
         public TimeSpan LiveSyncSmokeApprovalHold { get; }
+
+        public bool LiveSyncSmokePreserveExistingLocalFiles { get; }
 
         public string? LocalRoot { get; }
 
@@ -138,6 +143,8 @@ namespace Cotton.Sync.Desktop.Startup
                 || HasFlag(args, "--vfs-smoke");
             bool runLiveSyncSmoke = HasFlag(args, "--live-sync-smoke")
                 || HasFlag(args, "--desktop-live-sync-smoke");
+            bool liveSyncSmokePreserveExistingLocalFiles =
+                HasFlag(args, "--live-sync-smoke-preserve-existing-local-files");
             bool printVersion = HasFlag(args, "--version")
                 || HasFlag(args, "-v")
                 || HasFlag(args, "version");
@@ -156,6 +163,7 @@ namespace Cotton.Sync.Desktop.Startup
                 ParseNonNegativeSeconds(windowsVirtualFilesSmokeHoldAfterPlaceholder),
                 NormalizeOptional(windowsVirtualFilesSmokePhase),
                 ParseNonNegativeSeconds(liveSyncSmokeApprovalHold),
+                liveSyncSmokePreserveExistingLocalFiles,
                 NormalizeOptional(localRoot),
                 NormalizeOptional(secondLocalRoot),
                 NormalizeOptional(remotePath),
