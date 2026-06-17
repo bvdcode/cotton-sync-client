@@ -296,6 +296,7 @@ jobs:
         run: dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj /p:PublishProfile=win-x64 -p:Version='${{ steps.gitversion.outputs.SemVer }}' -p:InformationalVersion='${{ steps.gitversion.outputs.SemVer }}'
 
       - name: Smoke desktop Windows self-test
+        timeout-minutes: 4
         shell: pwsh
         run: |
           $dataDir = Join-Path $env:RUNNER_TEMP "cotton-sync-smoke"
@@ -317,6 +318,7 @@ jobs:
           cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}.zip
 
       - name: Smoke desktop Windows zip archive
+        timeout-minutes: 5
         shell: pwsh
         run: |
           $extractDir = Join-Path $env:RUNNER_TEMP "cotton-sync-win-zip"
@@ -336,6 +338,7 @@ jobs:
             -ExpectedAppVersion "${{ steps.gitversion.outputs.SemVer }}"
 
       - name: Install Inno Setup
+        timeout-minutes: 10
         shell: pwsh
         run: |
           choco install innosetup --yes --no-progress
@@ -347,6 +350,7 @@ jobs:
           "INNO_SETUP_COMPILER=$compiler" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Package desktop Windows installer
+        timeout-minutes: 5
         shell: pwsh
         run: |
           $publishDir = Resolve-Path "src/Cotton.Sync.Desktop/bin/Release/net10.0/publish/win-x64"
@@ -962,6 +966,7 @@ jobs:
           lfs: "true"
 
       - name: Install Inno Setup
+        timeout-minutes: 10
         shell: pwsh
         run: |
           choco install innosetup --yes --no-progress
