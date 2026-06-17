@@ -21,4 +21,4 @@ dotnet publish src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj -c Release -r win-x64 
 
 ## Windows Virtual Files
 
-The first public Windows release is a normal full-mirror sync client. Windows virtual files/placeholders are tracked separately and must not be treated as release-ready until the virtual-files release gate is fully closed. See `docs/windows-virtual-files-release-notes.md`.
+The first public Windows release is a normal full-mirror sync client. Windows virtual files/placeholders are tracked separately and must not be treated as release-ready until the virtual-files release gate is fully closed. See `docs/windows-virtual-files-scale-report.md`.
