@@ -3871,7 +3871,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             syncPair.HasCurrentProgress = true;
             if (_runProgressByPair.TryGetValue(progress.SyncPairId, out DesktopRunProgressSnapshot? runProgress))
             {
-                syncPair.IsCurrentProgressIndeterminate = !runProgress.FilesTotal.HasValue && !runProgress.IsCompleted;
+                syncPair.IsCurrentProgressIndeterminate = IsIndeterminateRunProgress(runProgress);
                 syncPair.CurrentProgressValue = CalculateRunProgressValue(runProgress);
                 RefreshRunProgressSummary();
             }
@@ -3916,7 +3916,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
 
             syncPair.HasCurrentProgress = true;
-            syncPair.IsCurrentProgressIndeterminate = !progress.FilesTotal.HasValue && !progress.IsCompleted;
+            syncPair.IsCurrentProgressIndeterminate = IsIndeterminateRunProgress(progress);
             syncPair.CurrentProgressValue = CalculateRunProgressValue(progress);
             RefreshRunProgressSummary();
             RefreshCurrentProgressText();
@@ -4856,6 +4856,13 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
 
             UpdateRunFileRate(observedFilesPerSecond, occurredAtUtc);
+            if (progressValues.Any(IsOpenEndedPlaceholderCreation))
+            {
+                _currentRunProgressEstimatedTimeRemaining = null;
+                _lastRunProgressEstimateOccurredAtUtc = null;
+                return;
+            }
+
             TimeSpan? rawEstimatedTimeRemaining = _currentRunProgressFilesPerSecond is > 0
                 ? TimeSpan.FromSeconds(remainingFiles / _currentRunProgressFilesPerSecond.Value)
                 : null;
@@ -5367,6 +5374,11 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return GetStartingRunProgressLabel(progress.Stage);
             }
 
+            if (IsOpenEndedPlaceholderCreation(progress) && progress.FilesCompleted > 0)
+            {
+                return label + " " + GetDisplayedRunProgressCount(progress).ToString(CultureInfo.CurrentCulture);
+            }
+
             if (progress.FilesTotal.HasValue && IsCountedRunStage(progress.Stage))
             {
                 return label + " " + GetDisplayedRunProgressCount(progress).ToString(CultureInfo.CurrentCulture)
@@ -5380,6 +5392,20 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             if (progress.FilesTotal.HasValue)
             {
+                if (IsOpenEndedPlaceholderCreation(progress))
+                {
+                    int readyCount = GetDisplayedRunProgressCount(progress);
+                    if (readyCount <= 0)
+                    {
+                        return VirtualFileUserFacingCopy.PreparingCloudFilesProgressLabel
+                            + " · discovering cloud files";
+                    }
+
+                    return readyCount.ToString(CultureInfo.CurrentCulture)
+                        + (readyCount == 1 ? " cloud file ready" : " cloud files ready")
+                        + " · discovering more";
+                }
+
                 if (IsStartingCountedRunProgress(progress))
                 {
                     int total = progress.FilesTotal.Value;
@@ -5447,7 +5473,14 @@ namespace Cotton.Sync.Desktop.ViewModels
         private static bool IsIndeterminateRunProgress(DesktopRunProgressSnapshot progress)
         {
             return (!progress.FilesTotal.HasValue && !progress.IsCompleted)
+                || IsOpenEndedPlaceholderCreation(progress)
                 || IsStartingCountedRunProgress(progress);
+        }
+
+        private static bool IsOpenEndedPlaceholderCreation(DesktopRunProgressSnapshot progress)
+        {
+            return !progress.IsCompleted
+                && progress.Stage == SyncRunProgressStage.CreatingPlaceholders;
         }
 
         private static bool IsStartingCountedRunProgress(DesktopRunProgressSnapshot progress)

@@ -1568,15 +1568,16 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             {
                 SyncPairRowViewModel row = viewModel.SyncPairs.Single();
                 Assert.That(viewModel.HasCurrentRunProgress, Is.True);
-                Assert.That(viewModel.IsCurrentRunProgressIndeterminate, Is.False);
+                Assert.That(viewModel.IsCurrentRunProgressIndeterminate, Is.True);
                 Assert.That(viewModel.CurrentRunProgressValue, Is.EqualTo(30).Within(0.01));
-                Assert.That(viewModel.CurrentRunProgressDetails, Is.EqualTo("Making cloud files available \u00B7 3 of 10 cloud files"));
-                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Making cloud files available \u00B7 3 of 10 cloud files"));
-                Assert.That(row.CurrentOperation, Is.EqualTo("Making cloud files available 3 of 10"));
+                Assert.That(viewModel.CurrentRunProgressDetails, Is.EqualTo("Making cloud files available \u00B7 3 cloud files ready \u00B7 discovering more"));
+                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Making cloud files available \u00B7 3 cloud files ready \u00B7 discovering more"));
+                Assert.That(row.CurrentOperation, Is.EqualTo("Making cloud files available 3"));
                 Assert.That(row.HasCurrentOperation, Is.True);
                 Assert.That(row.HasCurrentProgress, Is.True);
+                Assert.That(row.IsCurrentProgressIndeterminate, Is.True);
                 Assert.That(row.CurrentProgressValue, Is.EqualTo(30).Within(0.01));
-                Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Documents: Making cloud files available 3 of 10"));
+                Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Documents: Making cloud files available 3"));
             });
         }
 
@@ -2095,13 +2096,14 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             Assert.Multiple(() =>
             {
-                Assert.That(withPathDetails, Is.EqualTo("Preparing cloud files \u00B7 500000 cloud files queued"));
+                Assert.That(withPathDetails, Is.EqualTo("Preparing cloud files \u00B7 discovering cloud files"));
                 Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo(withPathDetails));
                 Assert.That(withPathIndeterminate, Is.True);
                 Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.True);
                 Assert.That(withPathValue, Is.EqualTo(0));
                 Assert.That(viewModel.CurrentWorkProgressValue, Is.EqualTo(0));
                 Assert.That(viewModel.CurrentWorkProgressDetails, Does.Not.Contain("1 of 500,000"));
+                Assert.That(viewModel.CurrentWorkProgressDetails, Does.Not.Contain("500000 cloud files queued"));
             });
         }
 
@@ -2731,6 +2733,44 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressHeaderRateDetails, Is.EqualTo("10 files/s · 1m 30s left"));
                 Assert.That(viewModel.CurrentWorkProgressHeaderDetails, Is.EqualTo("10 files/s · 1m 30s left"));
                 Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Checking files · 100 of 1000 files"));
+            });
+        }
+
+        [Test]
+        public async Task RunProgressChanged_DoesNotShowPlaceholderEtaForGrowingStreamingTotal()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            DateTime startedAtUtc = new(2026, 6, 17, 4, 35, 0, DateTimeKind.Utc);
+
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.CreatingPlaceholders,
+                FilesCompleted: 0,
+                FilesTotal: 1000,
+                CurrentPath: "Cloud/file-0000.txt",
+                StartedAtUtc: startedAtUtc,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc));
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.CreatingPlaceholders,
+                FilesCompleted: 100,
+                FilesTotal: 1100,
+                CurrentPath: "Cloud/file-0100.txt",
+                StartedAtUtc: startedAtUtc,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc.AddSeconds(10)));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.True);
+                Assert.That(viewModel.CurrentWorkProgressHeaderRateDetails, Is.EqualTo("10 files/s"));
+                Assert.That(viewModel.CurrentWorkProgressHeaderRateDetails, Does.Not.Contain("left"));
+                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Making cloud files available \u00B7 100 cloud files ready \u00B7 discovering more"));
+                Assert.That(viewModel.CurrentWorkProgressDetails, Does.Not.Contain("of 1100"));
             });
         }
 
