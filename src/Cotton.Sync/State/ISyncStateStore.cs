@@ -46,6 +46,20 @@ namespace Cotton.Sync.State
         Task UpsertAsync(SyncStateEntry entry, CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Inserts or updates several sync entries as one durable write batch when supported.
+        /// </summary>
+        async Task UpsertManyAsync(
+            IReadOnlyCollection<SyncStateEntry> entries,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(entries);
+            foreach (SyncStateEntry entry in entries)
+            {
+                await UpsertAsync(entry, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
         /// Inserts or updates the remote change-feed checkpoint for a sync pair.
         /// </summary>
         Task SaveChangeCursorAsync(SyncChangeCursor cursor, CancellationToken cancellationToken = default);

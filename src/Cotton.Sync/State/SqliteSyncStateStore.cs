@@ -157,6 +157,77 @@ namespace Cotton.Sync.State
         }
 
         /// <inheritdoc />
+        public async Task UpsertManyAsync(
+            IReadOnlyCollection<SyncStateEntry> entries,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(entries);
+            if (entries.Count == 0)
+            {
+                return;
+            }
+
+            var normalizedEntries = new List<(SyncStateEntry Entry, string Key)>(entries.Count);
+            foreach (SyncStateEntry entry in entries)
+            {
+                ArgumentNullException.ThrowIfNull(entry);
+                ArgumentException.ThrowIfNullOrWhiteSpace(entry.SyncPairId);
+                entry.RelativePath = SyncPath.Normalize(entry.RelativePath);
+                if (entry.SyncedAtUtc == default)
+                {
+                    entry.SyncedAtUtc = DateTime.UtcNow;
+                }
+
+                normalizedEntries.Add((entry, SyncPath.ToKey(entry.RelativePath)));
+            }
+
+            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+            SemaphoreSlim gate = GetWriteGate();
+            await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await using SyncStateDbContext context = CreateContext();
+                await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+                context.ChangeTracker.AutoDetectChangesEnabled = false;
+                foreach (IGrouping<string, (SyncStateEntry Entry, string Key)> group in normalizedEntries.GroupBy(item => item.Entry.SyncPairId))
+                {
+                    string syncPairId = group.Key;
+                    Dictionary<string, (SyncStateEntry Entry, string Key)> entriesByKey = group
+                        .GroupBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(item => item.Key, item => item.Last(), StringComparer.OrdinalIgnoreCase);
+                    string[] keys = entriesByKey.Keys.ToArray();
+                    Dictionary<string, SyncStateEntity> existingByKey = await context.SyncEntries
+                        .Where(entry => entry.SyncPairId == syncPairId && keys.Contains(entry.RelativePathKey))
+                        .ToDictionaryAsync(entry => entry.RelativePathKey, StringComparer.OrdinalIgnoreCase, cancellationToken)
+                        .ConfigureAwait(false);
+
+                    foreach ((string key, (SyncStateEntry entry, _)) in entriesByKey)
+                    {
+                        if (!existingByKey.TryGetValue(key, out SyncStateEntity? entity))
+                        {
+                            entity = new SyncStateEntity
+                            {
+                                SyncPairId = syncPairId,
+                                RelativePathKey = key,
+                            };
+                            context.SyncEntries.Add(entity);
+                        }
+
+                        UpdateEntity(entity, entry, key);
+                    }
+                }
+
+                context.ChangeTracker.DetectChanges();
+                await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
+
+        /// <inheritdoc />
         public async Task SaveChangeCursorAsync(SyncChangeCursor cursor, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(cursor);
