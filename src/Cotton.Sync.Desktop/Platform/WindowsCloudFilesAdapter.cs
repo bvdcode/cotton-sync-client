@@ -12,7 +12,7 @@ namespace Cotton.Sync.Desktop.Platform
     internal sealed class WindowsCloudFilesAdapter : IWindowsCloudFilesAdapter
     {
         public const string ProviderId = "Cotton.Sync.Desktop";
-        public const string ProviderName = "Cotton Sync";
+        public const string ProviderName = "Cotton Cloud";
 
         private static readonly Guid ProviderGuid = Guid.Parse("6453b9dc-e042-4a73-a675-c5b2aa6c9607");
 
