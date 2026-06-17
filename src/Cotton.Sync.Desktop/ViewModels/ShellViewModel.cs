@@ -5399,12 +5399,12 @@ namespace Cotton.Sync.Desktop.ViewModels
                     if (readyCount <= 0)
                     {
                         return VirtualFileUserFacingCopy.PreparingCloudFilesProgressLabel
-                            + " · discovering cloud files";
+                            + " \u00B7 discovering cloud files \u00B7 creating placeholders \u00B7 saving state";
                     }
 
                     return readyCount.ToString(CultureInfo.CurrentCulture)
                         + (readyCount == 1 ? " cloud file ready" : " cloud files ready")
-                        + " · discovering more";
+                        + " \u00B7 discovering cloud \u00B7 saving state";
                 }
 
                 if (IsStartingCountedRunProgress(progress))
