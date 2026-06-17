@@ -819,12 +819,12 @@ namespace Cotton.Sync
             {
                 return new InitialVirtualFilesStreamingPlan(
                     SkipCurrentPlaceholders: false,
-                    CurrentPlaceholderStateByPath: new Dictionary<string, SyncStateEntry>(PathComparer));
+                    CurrentPlaceholderBaselineByPath: new Dictionary<string, InitialVirtualFilesPlaceholderBaseline>(PathComparer));
             }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            (Dictionary<string, SyncStateEntry> directoryStateByPath, Dictionary<string, SyncStateEntry> fileStateByPath) =
-                await LoadStateByPathAsync(
+            (Dictionary<string, SyncStateEntry> directoryStateByPath, Dictionary<string, InitialVirtualFilesPlaceholderBaseline> fileBaselineByPath) =
+                await LoadInitialVirtualFilesResumeStateByPathAsync(
                         syncPair.SyncPairId,
                         localDirectoriesByPath.Keys.Concat(localFilesByPath.Keys),
                         cancellationToken)
@@ -834,7 +834,7 @@ namespace Cotton.Sync
                 "Loaded Windows virtual-files resume state matching the local tree for pair {SyncPairId} with {DirectoryStateCount} directories and {FileStateCount} files in {ElapsedMilliseconds} ms.",
                 syncPair.SyncPairId,
                 directoryStateByPath.Count,
-                fileStateByPath.Count,
+                fileBaselineByPath.Count,
                 stopwatch.ElapsedMilliseconds);
             foreach (string directoryKey in localDirectoriesByPath.Keys)
             {
@@ -847,8 +847,8 @@ namespace Cotton.Sync
 
             foreach ((string fileKey, LocalFileSnapshot local) in localFilesByPath)
             {
-                if (fileStateByPath.TryGetValue(fileKey, out SyncStateEntry? state)
-                    && IsResumeCompatibleVirtualFilesPlaceholder(local, state))
+                if (fileBaselineByPath.TryGetValue(fileKey, out InitialVirtualFilesPlaceholderBaseline baseline)
+                    && IsResumeCompatibleVirtualFilesPlaceholder(local, baseline))
                 {
                     continue;
                 }
@@ -863,7 +863,44 @@ namespace Cotton.Sync
 
             return new InitialVirtualFilesStreamingPlan(
                 SkipCurrentPlaceholders: true,
-                CurrentPlaceholderStateByPath: fileStateByPath);
+                CurrentPlaceholderBaselineByPath: fileBaselineByPath);
+        }
+
+        private async Task<(
+            Dictionary<string, SyncStateEntry> DirectoryStateByPath,
+            Dictionary<string, InitialVirtualFilesPlaceholderBaseline> FileBaselineByPath)> LoadInitialVirtualFilesResumeStateByPathAsync(
+            string syncPairId,
+            IEnumerable<string> keys,
+            CancellationToken cancellationToken)
+        {
+            var directoryStateByPath = new Dictionary<string, SyncStateEntry>(PathComparer);
+            var fileBaselineByPath = new Dictionary<string, InitialVirtualFilesPlaceholderBaseline>(PathComparer);
+            await foreach (SyncStateEntry entry in _stateStore.LoadEntriesByPathKeysAsync(syncPairId, keys, cancellationToken)
+                               .WithCancellation(cancellationToken)
+                               .ConfigureAwait(false))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (SyncPathIgnoreRules.ShouldIgnore(entry.RelativePath))
+                {
+                    await _stateStore.DeleteAsync(syncPairId, entry.RelativePath, cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
+
+                string stateKey = SyncPath.ToKey(entry.RelativePath);
+                switch (entry.Kind)
+                {
+                    case SyncEntryKind.Directory:
+                        directoryStateByPath[stateKey] = entry;
+                        break;
+                    case SyncEntryKind.File:
+                        fileBaselineByPath[stateKey] = InitialVirtualFilesPlaceholderBaseline.FromState(entry);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(entry), entry.Kind, "Unknown sync state entry kind.");
+                }
+            }
+
+            return (directoryStateByPath, fileBaselineByPath);
         }
 
         private static bool IsUntrackedVirtualFilesPlaceholderCompatibleWithInitialStreaming(LocalFileSnapshot local)
@@ -871,11 +908,13 @@ namespace Cotton.Sync
             return local.IsCloudFilesPlaceholder;
         }
 
-        private static bool IsResumeCompatibleVirtualFilesPlaceholder(LocalFileSnapshot local, SyncStateEntry state)
+        private static bool IsResumeCompatibleVirtualFilesPlaceholder(
+            LocalFileSnapshot local,
+            InitialVirtualFilesPlaceholderBaseline baseline)
         {
             return local.IsCloudFilesPlaceholder
-                && IsOnlineOnlyPlaceholderState(state)
-                && state.RemoteFileId.HasValue;
+                && IsOnlineOnlyPlaceholderState(baseline)
+                && baseline.RemoteFileId.HasValue;
         }
 
         private async Task ProduceInitialWindowsVirtualFilesPopulationAsync(
@@ -1492,9 +1531,11 @@ namespace Cotton.Sync
             }
 
             string key = SyncPath.ToKey(remote.RelativePath);
-            return streamingPlan.CurrentPlaceholderStateByPath.TryGetValue(key, out SyncStateEntry? state)
-                && IsOnlineOnlyPlaceholderBaseline(syncPair, state)
-                && RemoteMatchesBaseline(remote.File, state);
+            return streamingPlan.CurrentPlaceholderBaselineByPath.TryGetValue(
+                    key,
+                    out InitialVirtualFilesPlaceholderBaseline baseline)
+                && IsOnlineOnlyPlaceholderBaseline(syncPair, baseline)
+                && RemoteMatchesBaseline(remote.File, baseline);
         }
 
         private static void ReportStreamingPlaceholderProgress(
@@ -2640,6 +2681,23 @@ namespace Cotton.Sync
             return state.RemoteFileId.HasValue && remoteFile.Id == state.RemoteFileId.Value;
         }
 
+        private static bool RemoteMatchesBaseline(
+            NodeFileManifestDto remoteFile,
+            InitialVirtualFilesPlaceholderBaseline baseline)
+        {
+            if (!string.IsNullOrWhiteSpace(baseline.RemoteContentHash))
+            {
+                return ContentMatches(remoteFile.ContentHash, baseline.RemoteContentHash);
+            }
+
+            if (!string.IsNullOrWhiteSpace(baseline.RemoteETag))
+            {
+                return string.Equals(remoteFile.ETag, baseline.RemoteETag, StringComparison.Ordinal);
+            }
+
+            return baseline.RemoteFileId.HasValue && remoteFile.Id == baseline.RemoteFileId.Value;
+        }
+
         private static bool BaselineMatchesCurrentFile(
             SyncPair syncPair,
             string relativePath,
@@ -3341,6 +3399,14 @@ namespace Cotton.Sync
                 && IsOnlineOnlyPlaceholderState(state);
         }
 
+        private static bool IsOnlineOnlyPlaceholderBaseline(
+            SyncPair syncPair,
+            InitialVirtualFilesPlaceholderBaseline baseline)
+        {
+            return syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
+                && IsOnlineOnlyPlaceholderState(baseline);
+        }
+
         private static bool IsLocalOnlineOnlyPlaceholderBaseline(
             SyncPair syncPair,
             LocalFileSnapshot local,
@@ -3356,6 +3422,13 @@ namespace Cotton.Sync
                 && (state.PlaceholderHydrationState == SyncPlaceholderHydrationState.RemoteOnly
                     || state.PlaceholderHydrationState == SyncPlaceholderHydrationState.Dehydrated)
                 && state.PlaceholderIdentity is { Length: > 0 };
+        }
+
+        private static bool IsOnlineOnlyPlaceholderState(InitialVirtualFilesPlaceholderBaseline baseline)
+        {
+            return (baseline.PlaceholderHydrationState == SyncPlaceholderHydrationState.RemoteOnly
+                    || baseline.PlaceholderHydrationState == SyncPlaceholderHydrationState.Dehydrated)
+                && baseline.HasPlaceholderIdentity;
         }
 
         private static bool ContentMatches(string? left, string? right)
@@ -3769,7 +3842,25 @@ namespace Cotton.Sync
 
         private sealed record InitialVirtualFilesStreamingPlan(
             bool SkipCurrentPlaceholders,
-            IReadOnlyDictionary<string, SyncStateEntry> CurrentPlaceholderStateByPath);
+            IReadOnlyDictionary<string, InitialVirtualFilesPlaceholderBaseline> CurrentPlaceholderBaselineByPath);
+
+        private readonly record struct InitialVirtualFilesPlaceholderBaseline(
+            Guid? RemoteFileId,
+            string? RemoteContentHash,
+            string? RemoteETag,
+            SyncPlaceholderHydrationState PlaceholderHydrationState,
+            bool HasPlaceholderIdentity)
+        {
+            public static InitialVirtualFilesPlaceholderBaseline FromState(SyncStateEntry state)
+            {
+                return new InitialVirtualFilesPlaceholderBaseline(
+                    state.RemoteFileId,
+                    state.RemoteContentHash,
+                    state.RemoteETag,
+                    state.PlaceholderHydrationState,
+                    state.PlaceholderIdentity is { Length: > 0 });
+            }
+        }
 
         private abstract record InitialVirtualFilesPopulationItem;
 
