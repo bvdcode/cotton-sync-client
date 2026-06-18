@@ -36,6 +36,8 @@ namespace Cotton.Sync.Desktop.Shell
         private static readonly TimeSpan SavedSessionRestoreRetryBaseDelay = TimeSpan.FromSeconds(1);
         private static readonly TimeSpan ServerProbeTimeout = TimeSpan.FromSeconds(5);
         private const int SavedSessionRestoreMaxAttempts = 3;
+        private const long EmptyStateDatabaseFreelistWarningBytes = 4L * 1024 * 1024;
+        private const double EmptyStateDatabaseFreelistWarningRatio = 0.50d;
 
         private readonly IDesktopSyncApplicationFactory _factory;
         private readonly IPlatformCommandService _platformCommands;
@@ -696,7 +698,9 @@ namespace Cotton.Sync.Desktop.Shell
                     var stateStore = new SqliteSyncStateStore(_paths.SyncStateDatabasePath);
                     await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
                     await stateStore.GetChangeCursorAsync(SelfTestSyncPairId, cancellationToken).ConfigureAwait(false);
-                    return "Ready: " + _paths.SyncStateDatabasePath;
+                    SyncStateStoreDiagnostics diagnostics = await stateStore.GetDiagnosticsAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                    return CreateSyncStateDatabaseDetails(diagnostics);
                 }).ConfigureAwait(false);
 
             await AddSelfTestCheckAsync(
@@ -968,6 +972,52 @@ namespace Cotton.Sync.Desktop.Shell
                 _paths.AppDatabasePath,
                 _paths.SyncStateDatabasePath,
                 _paths.TokenStorePath);
+        }
+
+        private static string CreateSyncStateDatabaseDetails(SyncStateStoreDiagnostics diagnostics)
+        {
+            if (IsEmptyBloatedStateDatabase(diagnostics))
+            {
+                throw new InvalidOperationException(
+                    "State database has no sync entries or change cursors, but still reserves "
+                    + FormatBytes(diagnostics.FileSizeBytes)
+                    + " with "
+                    + FormatBytes(diagnostics.FreelistBytes)
+                    + " free SQLite pages. Database maintenance is required.");
+            }
+
+            return "Ready: entries="
+                + diagnostics.SyncEntryCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", cursors="
+                + diagnostics.SyncChangeCursorCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", file="
+                + FormatBytes(diagnostics.FileSizeBytes)
+                + ", used="
+                + FormatBytes(diagnostics.UsedBytes)
+                + ", free="
+                + FormatBytes(diagnostics.FreelistBytes);
+        }
+
+        private static bool IsEmptyBloatedStateDatabase(SyncStateStoreDiagnostics diagnostics)
+        {
+            return !diagnostics.HasRows
+                && diagnostics.FreelistBytes >= EmptyStateDatabaseFreelistWarningBytes
+                && diagnostics.FreelistRatio >= EmptyStateDatabaseFreelistWarningRatio;
+        }
+
+        private static string FormatBytes(double bytes)
+        {
+            string[] units = ["B", "KB", "MB", "GB", "TB"];
+            double value = Math.Max(0, bytes);
+            int unitIndex = 0;
+            while (value >= 1024 && unitIndex < units.Length - 1)
+            {
+                value /= 1024;
+                unitIndex++;
+            }
+
+            string format = unitIndex == 0 || value >= 10 ? "0" : "0.0";
+            return value.ToString(format, System.Globalization.CultureInfo.InvariantCulture) + " " + units[unitIndex];
         }
 
         private static DesktopUpdateStatusSnapshot ToUpdateStatus(
