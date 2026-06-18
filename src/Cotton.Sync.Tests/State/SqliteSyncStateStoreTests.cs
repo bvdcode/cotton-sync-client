@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
+using System.Data.Common;
 using Cotton.Sync.State;
 using Microsoft.EntityFrameworkCore;
 
@@ -660,6 +661,65 @@ namespace Cotton.Sync.Tests.State
             });
         }
 
+        [Test]
+        public async Task DeletePairAsync_CompactsLargeFreelistAfterRemovingLargePair()
+        {
+            string databasePath = DatabasePath();
+            var store = new SqliteSyncStateStore(databasePath);
+            await store.InitializeAsync();
+            byte[] placeholderIdentity = Enumerable.Range(0, 16 * 1024)
+                .Select(index => (byte)(index % 251))
+                .ToArray();
+            SyncStateEntry[] largePairEntries = Enumerable.Range(0, 512)
+                .Select(index => new SyncStateEntry
+                {
+                    SyncPairId = "pair-a",
+                    RelativePath = "Large/file-" + index.ToString("D4", System.Globalization.CultureInfo.InvariantCulture) + ".txt",
+                    Kind = SyncEntryKind.File,
+                    RemoteFileId = Guid.NewGuid(),
+                    RemoteContentHash = "hash-" + index.ToString("D4", System.Globalization.CultureInfo.InvariantCulture),
+                    RemoteETag = "etag-" + index.ToString("D4", System.Globalization.CultureInfo.InvariantCulture),
+                    PlaceholderIdentity = placeholderIdentity,
+                    PlaceholderHydrationState = SyncPlaceholderHydrationState.RemoteOnly,
+                })
+                .ToArray();
+
+            await store.UpsertManyAsync(largePairEntries);
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-b",
+                RelativePath = "keep.txt",
+                Kind = SyncEntryKind.File,
+                RemoteContentHash = "keep",
+            });
+            await store.SaveChangeCursorAsync(new SyncChangeCursor
+            {
+                SyncPairId = "pair-a",
+                LastCursor = 123,
+            });
+
+            long beforeLength = new FileInfo(databasePath).Length;
+            SqlitePageUsage beforeUsage = await ReadPageUsageAsync(databasePath);
+
+            await store.DeletePairAsync("pair-a");
+
+            IReadOnlyList<SyncStateEntry> pairA = await store.LoadPairAsync("pair-a");
+            IReadOnlyList<SyncStateEntry> pairB = await store.LoadPairAsync("pair-b");
+            SyncChangeCursor pairACursor = await store.GetChangeCursorAsync("pair-a");
+            long afterLength = new FileInfo(databasePath).Length;
+            SqlitePageUsage afterUsage = await ReadPageUsageAsync(databasePath);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(beforeUsage.FileBytes, Is.GreaterThan(4L * 1024 * 1024));
+                Assert.That(pairA, Is.Empty);
+                Assert.That(pairB.Select(entry => entry.RelativePath), Is.EqualTo(new[] { "keep.txt" }));
+                Assert.That(pairACursor.LastCursor, Is.Zero);
+                Assert.That(afterUsage.FreelistBytes, Is.LessThan(1024 * 1024));
+                Assert.That(afterLength, Is.LessThan(beforeLength / 2));
+            });
+        }
+
         private SqliteSyncStateStore CreateStore()
         {
             return new SqliteSyncStateStore(DatabasePath());
@@ -692,6 +752,47 @@ namespace Cotton.Sync.Tests.State
                 .Options;
             await using var context = new SyncStateDbContext(options);
             await context.Database.MigrateAsync(migration);
+        }
+
+        private static async Task<SqlitePageUsage> ReadPageUsageAsync(string databasePath)
+        {
+            var connectionString = new DbConnectionStringBuilder
+            {
+                ["Data Source"] = databasePath,
+                ["Pooling"] = false,
+            }.ToString();
+            DbContextOptions<SyncStateDbContext> options = new DbContextOptionsBuilder<SyncStateDbContext>()
+                .UseSqlite(connectionString)
+                .Options;
+            await using var context = new SyncStateDbContext(options);
+            await context.Database.OpenConnectionAsync();
+            try
+            {
+                DbConnection connection = context.Database.GetDbConnection();
+                long pageCount = await ExecuteScalarLongAsync(connection, "PRAGMA page_count;");
+                long freelistCount = await ExecuteScalarLongAsync(connection, "PRAGMA freelist_count;");
+                long pageSize = await ExecuteScalarLongAsync(connection, "PRAGMA page_size;");
+                return new SqlitePageUsage(pageCount, freelistCount, pageSize);
+            }
+            finally
+            {
+                await context.Database.CloseConnectionAsync();
+            }
+        }
+
+        private static async Task<long> ExecuteScalarLongAsync(DbConnection connection, string commandText)
+        {
+            await using DbCommand command = connection.CreateCommand();
+            command.CommandText = commandText;
+            object? result = await command.ExecuteScalarAsync();
+            return Convert.ToInt64(result, System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        private sealed record SqlitePageUsage(long PageCount, long FreelistCount, long PageSize)
+        {
+            public long FileBytes => PageCount * PageSize;
+
+            public long FreelistBytes => FreelistCount * PageSize;
         }
     }
 }

@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Data.Common;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,7 +17,10 @@ namespace Cotton.Sync.State
         private static readonly ConcurrentDictionary<string, SemaphoreSlim> MigrationGates = new(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<string, SemaphoreSlim> WriteGates = new(StringComparer.OrdinalIgnoreCase);
         private const int DefaultSqliteTimeoutSeconds = 30;
+        private const int MaintenanceSqliteTimeoutSeconds = 120;
         private const int DefaultPathKeyLookupBatchSize = 500;
+        private const long MinimumFreelistBytesForVacuum = 4L * 1024 * 1024;
+        private const double MinimumFreelistRatioForVacuum = 0.25d;
 
         private readonly string _databasePath;
         private bool _initialized;
@@ -383,17 +387,21 @@ namespace Cotton.Sync.State
             await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                await using SyncStateDbContext context = CreateContext();
-                await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-                await context.SyncEntries
-                    .Where(entry => entry.SyncPairId == syncPairId)
-                    .ExecuteDeleteAsync(cancellationToken)
-                    .ConfigureAwait(false);
-                await context.SyncChangeCursors
-                    .Where(cursor => cursor.SyncPairId == syncPairId)
-                    .ExecuteDeleteAsync(cancellationToken)
-                    .ConfigureAwait(false);
-                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+                await using (SyncStateDbContext context = CreateContext())
+                {
+                    await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+                    await context.SyncEntries
+                        .Where(entry => entry.SyncPairId == syncPairId)
+                        .ExecuteDeleteAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                    await context.SyncChangeCursors
+                        .Where(cursor => cursor.SyncPairId == syncPairId)
+                        .ExecuteDeleteAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                    await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                await TryCompactLargeFreelistAsync(cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -626,6 +634,76 @@ namespace Cotton.Sync.State
             return WriteGates.GetOrAdd(
                 Path.GetFullPath(_databasePath),
                 static _ => new SemaphoreSlim(1, 1));
+        }
+
+        private async Task TryCompactLargeFreelistAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                await CompactLargeFreelistAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                Trace.TraceWarning(
+                    "Failed to compact sync state database after deleting a sync pair. {0}",
+                    exception);
+            }
+        }
+
+        private async Task CompactLargeFreelistAsync(CancellationToken cancellationToken)
+        {
+            await using SyncStateDbContext context = CreateContext();
+            await context.Database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                DbConnection connection = context.Database.GetDbConnection();
+                long pageCount = await ExecuteScalarLongAsync(connection, "PRAGMA page_count;", cancellationToken)
+                    .ConfigureAwait(false);
+                long freelistCount = await ExecuteScalarLongAsync(connection, "PRAGMA freelist_count;", cancellationToken)
+                    .ConfigureAwait(false);
+                long pageSize = await ExecuteScalarLongAsync(connection, "PRAGMA page_size;", cancellationToken)
+                    .ConfigureAwait(false);
+                if (!ShouldVacuumFreelist(pageCount, freelistCount, pageSize))
+                {
+                    return;
+                }
+
+                await using DbCommand command = connection.CreateCommand();
+                command.CommandText = "VACUUM;";
+                command.CommandTimeout = MaintenanceSqliteTimeoutSeconds;
+                await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                await context.Database.CloseConnectionAsync().ConfigureAwait(false);
+            }
+        }
+
+        private static bool ShouldVacuumFreelist(long pageCount, long freelistCount, long pageSize)
+        {
+            if (pageCount <= 0 || freelistCount <= 0 || pageSize <= 0)
+            {
+                return false;
+            }
+
+            long freelistBytes = freelistCount > long.MaxValue / pageSize
+                ? long.MaxValue
+                : freelistCount * pageSize;
+            double freelistRatio = freelistCount / (double)pageCount;
+            return freelistBytes >= MinimumFreelistBytesForVacuum
+                && freelistRatio >= MinimumFreelistRatioForVacuum;
+        }
+
+        private static async Task<long> ExecuteScalarLongAsync(
+            DbConnection connection,
+            string commandText,
+            CancellationToken cancellationToken)
+        {
+            await using DbCommand command = connection.CreateCommand();
+            command.CommandText = commandText;
+            command.CommandTimeout = DefaultSqliteTimeoutSeconds;
+            object? result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            return Convert.ToInt64(result, System.Globalization.CultureInfo.InvariantCulture);
         }
 
         private void EnsureDirectoryExists()
