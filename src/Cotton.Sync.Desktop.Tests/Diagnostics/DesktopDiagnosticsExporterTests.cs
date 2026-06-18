@@ -140,10 +140,10 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
 
             Assert.Multiple(() =>
             {
-                Assert.That(dataPaths.GetProperty("dataDirectory").GetString(), Is.EqualTo(paths.DataDirectory));
-                Assert.That(dataPaths.GetProperty("appDatabasePath").GetString(), Is.EqualTo(paths.AppDatabasePath));
-                Assert.That(dataPaths.GetProperty("syncStateDatabasePath").GetString(), Is.EqualTo(paths.SyncStateDatabasePath));
-                Assert.That(dataPaths.GetProperty("tokenStorePath").GetString(), Is.EqualTo(paths.TokenStorePath));
+                Assert.That(dataPaths.GetProperty("dataDirectory").GetString(), Is.EqualTo("[data-directory]"));
+                Assert.That(dataPaths.GetProperty("appDatabasePath").GetString(), Is.EqualTo("[app-database]"));
+                Assert.That(dataPaths.GetProperty("syncStateDatabasePath").GetString(), Is.EqualTo("[sync-state-database]"));
+                Assert.That(dataPaths.GetProperty("tokenStorePath").GetString(), Is.EqualTo("[token-store]"));
             });
         }
 
@@ -173,8 +173,80 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
             {
                 Assert.That(item.GetProperty("operation").GetString(), Is.EqualTo("hydrate"));
                 Assert.That(item.GetProperty("status").GetString(), Is.EqualTo("failed"));
-                Assert.That(item.GetProperty("relativePath").GetString(), Is.EqualTo("remote-only.txt"));
+                Assert.That(item.GetProperty("syncPairId").GetString(), Is.EqualTo("[sync-pair-id]"));
+                Assert.That(item.GetProperty("localRootPath").GetString(), Is.EqualTo("[cloud-files-local-root]"));
+                Assert.That(item.GetProperty("relativePath").GetString(), Is.EqualTo("[cloud-files-relative-path]"));
                 Assert.That(item.GetProperty("hResult").GetInt32(), Is.EqualTo(unchecked((int)0x8007017C)));
+            });
+        }
+
+        [Test]
+        public async Task ExportAsync_RemovesAccountServerAndPathValuesFromPublicBundleAndLogs()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            const string serverUrl = "https://private.cotton.example/";
+            const string accountName = "person@example.test";
+            const string localRoot = @"C:\Users\Person\Cotton\Sensitive";
+            const string remoteRoot = "/Private/Sensitive";
+            const string cloudRelativePath = "Private/file-name.txt";
+            string logContent =
+                serverUrl
+                + Environment.NewLine
+                + accountName
+                + Environment.NewLine
+                + paths.DataDirectory
+                + Environment.NewLine
+                + localRoot
+                + Environment.NewLine
+                + remoteRoot
+                + Environment.NewLine
+                + cloudRelativePath;
+            File.WriteAllText(paths.LogFilePath, logContent);
+            var exporter = new DesktopDiagnosticsExporter();
+
+            string archivePath = await exporter.ExportAsync(
+                paths,
+                CreateBundle(
+                    paths,
+                    [
+                        new WindowsCloudFilesDiagnosticEvent(
+                            DateTimeOffset.Parse("2026-06-16T10:00:00Z", System.Globalization.CultureInfo.InvariantCulture),
+                            "create-placeholder",
+                            "failed",
+                            "11111111-1111-1111-1111-111111111111",
+                            localRoot,
+                            cloudRelativePath,
+                            "Failed under " + localRoot + " for " + cloudRelativePath,
+                            unchecked((int)0x8007017C)),
+                    ],
+                    serverUrl: serverUrl,
+                    accountName: accountName,
+                    localPath: localRoot,
+                    remotePath: remoteRoot));
+
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
+            string exportedLog = ReadEntry(archive, "logs/cotton-sync.log");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(diagnosticsJson, Does.Not.Contain(serverUrl));
+                Assert.That(diagnosticsJson, Does.Not.Contain(accountName));
+                Assert.That(diagnosticsJson, Does.Not.Contain(paths.DataDirectory));
+                Assert.That(diagnosticsJson, Does.Not.Contain(localRoot));
+                Assert.That(diagnosticsJson, Does.Not.Contain(remoteRoot));
+                Assert.That(diagnosticsJson, Does.Not.Contain(cloudRelativePath));
+                Assert.That(diagnosticsJson, Does.Contain("[server-url]"));
+                Assert.That(diagnosticsJson, Does.Contain("[sync-pair-1-local-root]"));
+                Assert.That(exportedLog, Does.Not.Contain(serverUrl));
+                Assert.That(exportedLog, Does.Not.Contain(accountName));
+                Assert.That(exportedLog, Does.Not.Contain(paths.DataDirectory));
+                Assert.That(exportedLog, Does.Not.Contain(localRoot));
+                Assert.That(exportedLog, Does.Not.Contain(remoteRoot));
+                Assert.That(exportedLog, Does.Not.Contain(cloudRelativePath));
+                Assert.That(exportedLog, Does.Contain("[server-url]"));
+                Assert.That(exportedLog, Does.Contain("[account]"));
+                Assert.That(exportedLog, Does.Contain("[data-directory]"));
             });
         }
 
@@ -258,10 +330,10 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                 Assert.That(cloudFilesEvents.GetArrayLength(), Is.EqualTo(200));
                 Assert.That(
                     cloudFilesEvents[0].GetProperty("relativePath").GetString(),
-                    Is.EqualTo("node_modules/package-09800.js"));
+                    Is.EqualTo("[cloud-files-relative-path]"));
                 Assert.That(
                     cloudFilesEvents[199].GetProperty("relativePath").GetString(),
-                    Is.EqualTo("node_modules/package-09999.js"));
+                    Is.EqualTo("[cloud-files-relative-path]"));
                 Assert.That(new FileInfo(archivePath).Length, Is.LessThan(512 * 1024));
                 Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(2)));
             });
@@ -271,13 +343,17 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
             DesktopAppPaths paths,
             IReadOnlyList<WindowsCloudFilesDiagnosticEvent>? cloudFilesEvents = null,
             SyncStateStoreDiagnostics? syncState = null,
-            DesktopRuntimeHealthSnapshot? runtimeHealth = null)
+            DesktopRuntimeHealthSnapshot? runtimeHealth = null,
+            string serverUrl = "https://app.cottoncloud.dev/",
+            string accountName = "user@example.test",
+            string localPath = "/home/user/Documents",
+            string remotePath = "/Documents")
         {
             return new DesktopDiagnosticsBundle(
                 DateTimeOffset.Parse("2026-06-03T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture),
                 "1.0.0",
-                "https://app.cottoncloud.dev/",
-                "user@example.test",
+                serverUrl,
+                accountName,
                 new DesktopDataPathSnapshot(
                     paths.DataDirectory,
                     paths.AppDatabasePath,
@@ -287,8 +363,8 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                     new DesktopSyncPairSnapshot(
                         Guid.NewGuid(),
                         "Documents",
-                        "/home/user/Documents",
-                        "/Documents",
+                        localPath,
+                        remotePath,
                         "Idle"),
                 ],
                 syncState ?? new SyncStateStoreDiagnostics(

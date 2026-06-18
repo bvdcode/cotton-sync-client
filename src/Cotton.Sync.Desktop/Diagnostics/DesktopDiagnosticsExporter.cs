@@ -31,19 +31,21 @@ namespace Cotton.Sync.Desktop.Diagnostics
 
             await using FileStream archiveStream = File.Create(archivePath);
             using var archive = new ZipArchive(archiveStream, ZipArchiveMode.Create);
-            await WriteJsonEntryAsync(archive, bundle, cancellationToken).ConfigureAwait(false);
-            await AddLogEntriesAsync(archive, paths.LogFilePath, cancellationToken).ConfigureAwait(false);
+            await WriteJsonEntryAsync(archive, paths, bundle, cancellationToken).ConfigureAwait(false);
+            await AddLogEntriesAsync(archive, paths, bundle, cancellationToken).ConfigureAwait(false);
             return archivePath;
         }
 
         private static async Task WriteJsonEntryAsync(
             ZipArchive archive,
+            DesktopAppPaths paths,
             DesktopDiagnosticsBundle bundle,
             CancellationToken cancellationToken)
         {
             ZipArchiveEntry entry = archive.CreateEntry(DiagnosticsJsonEntryName);
             await using Stream entryStream = entry.Open();
-            string json = JsonSerializer.Serialize(bundle, JsonOptions);
+            DesktopDiagnosticsBundle publicBundle = DesktopDiagnosticsPublicSanitizer.SanitizeBundle(paths, bundle);
+            string json = JsonSerializer.Serialize(publicBundle, JsonOptions);
             string redactedJson = DesktopSecretRedactor.Redact(json);
             await entryStream.WriteAsync(Encoding.UTF8.GetBytes(redactedJson), cancellationToken).ConfigureAwait(false);
         }
@@ -60,16 +62,20 @@ namespace Cotton.Sync.Desktop.Diagnostics
 
         private static async Task AddLogEntriesAsync(
             ZipArchive archive,
-            string logFilePath,
+            DesktopAppPaths paths,
+            DesktopDiagnosticsBundle bundle,
             CancellationToken cancellationToken)
         {
-            await AddFileIfExistsAsync(archive, logFilePath, "cotton-sync.log", cancellationToken).ConfigureAwait(false);
+            await AddFileIfExistsAsync(archive, paths.LogFilePath, "cotton-sync.log", paths, bundle, cancellationToken)
+                .ConfigureAwait(false);
             for (int index = 1; index <= 3; index++)
             {
                 await AddFileIfExistsAsync(
                     archive,
-                    logFilePath + "." + index.ToString(CultureInfo.InvariantCulture),
+                    paths.LogFilePath + "." + index.ToString(CultureInfo.InvariantCulture),
                     "cotton-sync.log." + index.ToString(CultureInfo.InvariantCulture),
+                    paths,
+                    bundle,
                     cancellationToken).ConfigureAwait(false);
             }
         }
@@ -78,6 +84,8 @@ namespace Cotton.Sync.Desktop.Diagnostics
             ZipArchive archive,
             string sourcePath,
             string entryName,
+            DesktopAppPaths paths,
+            DesktopDiagnosticsBundle bundle,
             CancellationToken cancellationToken)
         {
             if (!File.Exists(sourcePath))
@@ -98,7 +106,7 @@ namespace Cotton.Sync.Desktop.Diagnostics
                 logContent = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            string redactedLog = DesktopSecretRedactor.Redact(logContent);
+            string redactedLog = DesktopDiagnosticsPublicSanitizer.SanitizeText(logContent, paths, bundle);
             await entryStream.WriteAsync(Encoding.UTF8.GetBytes(redactedLog), cancellationToken).ConfigureAwait(false);
         }
 
