@@ -1352,6 +1352,7 @@ namespace Cotton.Sync.Tests
             {
                 Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
                 Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
+                Assert.That(scanner.ScanCalls, Is.Zero);
                 Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[] { "Desktop/new.txt" }));
                 Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
                 Assert.That(result.Activities, Is.Empty);
@@ -1361,7 +1362,7 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
-        public async Task RunOnceAsync_WithWindowsVirtualFilesResumeLoadsStateThroughScopedBatchApi()
+        public async Task RunOnceAsync_WithWindowsVirtualFilesResumeLoadsStateWithoutScanningLocalPlaceholderTree()
         {
             NodeFileManifestDto newRemote = RemoteFile(
                 "Desktop/new.txt",
@@ -1398,8 +1399,9 @@ namespace Cotton.Sync.Tests
             {
                 Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
                 Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
-                Assert.That(stateStore.LoadEntriesByPathKeysCallCount, Is.EqualTo(1));
-                Assert.That(stateStore.LoadPairEntriesCallCount, Is.Zero);
+                Assert.That(scanner.ScanCalls, Is.Zero);
+                Assert.That(stateStore.LoadPairEntriesCallCount, Is.EqualTo(1));
+                Assert.That(stateStore.LoadEntriesByPathKeysCallCount, Is.Zero);
                 Assert.That(stateStore.GetAsyncCallCount, Is.Zero);
                 Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[] { "Desktop/new.txt" }));
                 Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
