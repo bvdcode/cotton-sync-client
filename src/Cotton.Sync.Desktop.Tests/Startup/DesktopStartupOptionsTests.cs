@@ -355,7 +355,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                     "--second-local-root",
                     " C:\\Temp\\cotton-desktop-b ",
                     "--remote-path",
-                    " /CodexSyncQa/Desktop ",
+                    " /CottonSyncQa/Desktop ",
                     "--live-sync-smoke-approval-hold-seconds",
                     "7",
                     "--live-sync-smoke-preserve-existing-local-files",
@@ -368,7 +368,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(options.DataDirectory, Is.EqualTo("C:\\Temp\\cotton-desktop-smoke"));
                 Assert.That(options.LocalRoot, Is.EqualTo("C:\\Temp\\cotton-desktop-a"));
                 Assert.That(options.SecondLocalRoot, Is.EqualTo("C:\\Temp\\cotton-desktop-b"));
-                Assert.That(options.RemotePath, Is.EqualTo("/CodexSyncQa/Desktop"));
+                Assert.That(options.RemotePath, Is.EqualTo("/CottonSyncQa/Desktop"));
                 Assert.That(options.LiveSyncSmokeApprovalHold, Is.EqualTo(TimeSpan.FromSeconds(7)));
                 Assert.That(options.LiveSyncSmokePreserveExistingLocalFiles, Is.True);
                 Assert.That(options.SyncMode, Is.EqualTo(SyncPairMode.FullMirror));

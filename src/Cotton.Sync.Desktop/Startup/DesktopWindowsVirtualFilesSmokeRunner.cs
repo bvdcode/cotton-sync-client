@@ -1428,7 +1428,7 @@ namespace Cotton.Sync.Desktop.Startup
                 Id = Guid.Parse("11111111-1111-1111-1111-111111111111"),
                 DisplayName = "Cotton Sync VFS smoke",
                 LocalRootPath = rootPath,
-                RemoteDisplayPath = "/CodexSyncQa/WindowsVirtualFilesSmoke",
+                RemoteDisplayPath = "/CottonSyncQa/WindowsVirtualFilesSmoke",
                 RemoteRootNodeId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
                 Mode = SyncPairMode.WindowsVirtualFiles,
                 IsEnabled = true,
@@ -1833,7 +1833,7 @@ namespace Cotton.Sync.Desktop.Startup
         private static bool IsFreeUpSpaceVerb(string value)
         {
             return value.Contains("Free up space", StringComparison.OrdinalIgnoreCase)
-                || value.Contains("Освободить место", StringComparison.OrdinalIgnoreCase);
+                || value.Contains("\u041e\u0441\u0432\u043e\u0431\u043e\u0434\u0438\u0442\u044c \u043c\u0435\u0441\u0442\u043e", StringComparison.OrdinalIgnoreCase);
         }
 
         private sealed record ShellVerbInvocationResult(

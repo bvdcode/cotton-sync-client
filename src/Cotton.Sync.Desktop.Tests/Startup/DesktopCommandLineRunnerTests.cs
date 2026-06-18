@@ -211,7 +211,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                     "--second-local-root",
                     Path.Combine(_tempDirectory, "client-b"),
                     "--remote-path",
-                    "/CodexSyncQa/DesktopSmoke",
+                    "/CottonSyncQa/DesktopSmoke",
                 ]);
             using var output = new StringWriter();
 
@@ -246,7 +246,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                     "--second-local-root",
                     secondLocalRoot,
                     "--remote-path",
-                    "/CodexSyncQa/DesktopSmoke",
+                    "/CottonSyncQa/DesktopSmoke",
                 ]);
             using var output = new StringWriter();
 
@@ -280,7 +280,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                     "--second-local-root",
                     secondLocalRoot,
                     "--remote-path",
-                    "/CodexSyncQa/DesktopSmoke",
+                    "/CottonSyncQa/DesktopSmoke",
                     "--live-sync-smoke-preserve-existing-local-files",
                 ]);
             using var output = new StringWriter();
@@ -312,7 +312,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                     "--second-local-root",
                     secondLocalRoot,
                     "--remote-path",
-                    "/CodexSyncQa/DesktopSmoke",
+                    "/CottonSyncQa/DesktopSmoke",
                     "--sync-mode",
                     "placeholder",
                 ]);
