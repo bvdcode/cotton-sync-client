@@ -612,17 +612,63 @@
                         Background="{DynamicResource CottonSurfaceMutedBrush}"
                         BorderBrush="{DynamicResource CottonBorderBrush}"
                         BorderThickness="1"
-                        VerticalAlignment="Top"
+                        MinHeight="166"
+                        VerticalAlignment="Stretch"
                         IsVisible="{Binding HasNoSyncPairs}">
-                  <StackPanel Spacing="1"
+                  <StackPanel Spacing="10"
+                              HorizontalAlignment="Center"
                               VerticalAlignment="Center">
-                    <TextBlock Text="No folders yet"
-                               FontSize="14"
-                               FontWeight="SemiBold"
-                               TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="Choose local and Cotton Cloud folders."
+                    <Border Width="46"
+                            Height="46"
+                            CornerRadius="10"
+                            Background="{DynamicResource CottonPrimarySoftBrush}"
+                            HorizontalAlignment="Center">
+                      <materialIcons:MaterialIcon Kind="FolderPlusOutline"
+                                                  Width="26"
+                                                  Height="26"
+                                                  Foreground="{DynamicResource CottonTextPrimaryBrush}"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel Spacing="2"
+                                HorizontalAlignment="Center">
+                      <TextBlock Text="No folders yet"
+                                 FontSize="14"
+                                 FontWeight="SemiBold"
+                                 TextAlignment="Center"
+                                 HorizontalAlignment="Center"
+                                 TextTrimming="CharacterEllipsis" />
+                      <TextBlock Text="Choose a local folder and where it syncs in Cotton Cloud."
+                                 Classes="secondary"
+                                 FontSize="12"
+                                 MaxWidth="260"
+                                 TextAlignment="Center"
+                                 TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button Classes="primary"
+                            Padding="12,6"
+                            HorizontalAlignment="Center"
+                            ToolTip.Tip="Add sync folder"
+                            AutomationProperties.Name="Add sync folder"
+                            Command="{Binding ShowAddSyncPairCommand}">
+                      <StackPanel Orientation="Horizontal"
+                                  Spacing="6">
+                        <materialIcons:MaterialIcon Kind="FolderPlusOutline"
+                                                    Width="15"
+                                                    Height="15"
+                                                    Foreground="{DynamicResource CottonPrimaryTextBrush}"
+                                                    VerticalAlignment="Center" />
+                        <TextBlock Text="Add sync folder"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource CottonPrimaryTextBrush}"
+                                   VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                    <TextBlock Text="You can add more folders later."
                                Classes="secondary"
-                               FontSize="12"
+                               FontSize="11"
+                               TextAlignment="Center"
                                TextTrimming="CharacterEllipsis" />
                   </StackPanel>
                 </Border>
@@ -1079,7 +1125,7 @@
                   <Border Padding="10"
                           CornerRadius="6"
                           Background="{DynamicResource CottonSurfaceMutedBrush}">
-                    <Grid RowDefinitions="Auto,Auto,Auto,Auto"
+                    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto"
                           RowSpacing="8">
                       <Grid ColumnDefinitions="Auto,*,Auto,Auto"
                             ColumnSpacing="6">
@@ -1148,17 +1194,30 @@
                       </Grid>
 
                       <Grid Grid.Row="2"
-                            MinHeight="96"
-                            MaxHeight="160">
+                            ColumnDefinitions="*,Auto"
+                            ColumnSpacing="8">
+                        <TextBox Text="{Binding RemoteFolderFilter, UpdateSourceTrigger=PropertyChanged}"
+                                 PlaceholderText="Search cloud folders" />
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding RemoteFolderCountLabel}"
+                                   Classes="secondary"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding HasRemoteFolderCount}" />
+                      </Grid>
+
+                      <Grid Grid.Row="3"
+                            MinHeight="132"
+                            MaxHeight="240">
                         <StackPanel Spacing="3"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
                                     IsVisible="{Binding HasNoRemoteFolders}">
-                          <TextBlock Text="No folders here"
+                          <TextBlock Text="{Binding RemoteFolderEmptyTitle}"
                                      FontSize="13"
                                      FontWeight="SemiBold"
                                      HorizontalAlignment="Center" />
-                          <TextBlock Text="The current cloud folder can still be selected."
+                          <TextBlock Text="{Binding RemoteFolderEmptySubtitle}"
                                      Classes="secondary"
                                      FontSize="12"
                                      TextAlignment="Center"
@@ -1168,8 +1227,8 @@
                                  SelectedItem="{Binding SelectedRemoteFolder}"
                                  BorderThickness="0"
                                  Background="Transparent"
-                                 MinHeight="96"
-                                 MaxHeight="160"
+                                 MinHeight="132"
+                                 MaxHeight="240"
                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
                                  DoubleTapped="RemoteFoldersListBox_DoubleTapped"
                                  IsVisible="{Binding HasRemoteFolders}">
@@ -1194,7 +1253,7 @@
                         </ListBox>
                       </Grid>
 
-                      <TextBlock Grid.Row="3"
+                      <TextBlock Grid.Row="4"
                                  Text="{Binding RemoteFolderSelectionLabel}"
                                  ToolTip.Tip="{Binding RemoteFolderSelectionLabel}"
                                  Classes="secondary"

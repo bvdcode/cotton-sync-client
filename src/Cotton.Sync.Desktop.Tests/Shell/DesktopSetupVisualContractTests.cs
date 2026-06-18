@@ -114,19 +114,24 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
-        public void EmptyFoldersState_DoesNotDuplicateAddFolderCommand()
+        public void EmptyFoldersState_ProvidesPrimaryAddFolderCommand()
         {
             string mainWindowXaml = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml"));
             string emptyFoldersState = GetSlice(
                 mainWindowXaml,
-                "IsVisible=\"{Binding HasNoSyncPairs}\"",
-                "<Grid RowDefinitions=\"Auto,Auto\"");
+                "MinHeight=\"166\"",
+                "<ScrollViewer x:Name=\"SyncPairsScrollViewer\"");
 
             Assert.Multiple(() =>
             {
-                Assert.That(CountOccurrences(emptyFoldersState, "ShowAddSyncPairCommand"), Is.Zero);
+                Assert.That(CountOccurrences(emptyFoldersState, "ShowAddSyncPairCommand"), Is.EqualTo(1));
                 Assert.That(CountOccurrences(emptyFoldersState, "Content=\"+\""), Is.Zero);
                 Assert.That(emptyFoldersState, Does.Contain("Text=\"No folders yet\""));
+                Assert.That(emptyFoldersState, Does.Contain("Text=\"Add sync folder\""));
+                Assert.That(emptyFoldersState, Does.Contain("Text=\"Choose a local folder and where it syncs in Cotton Cloud.\""));
+                Assert.That(emptyFoldersState, Does.Contain("MinHeight=\"166\""));
+                Assert.That(emptyFoldersState, Does.Contain("VerticalAlignment=\"Center\""));
+                Assert.That(emptyFoldersState, Does.Contain("Classes=\"primary\""));
                 Assert.That(emptyFoldersState, Does.Not.Contain("<TextBlock Text=\"+\""));
             });
         }
@@ -491,7 +496,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
-        public void FoldersPanel_UsesSingleHeaderAddAction()
+        public void FoldersPanel_ProvidesHeaderAndEmptyStateAddActions()
         {
             string mainWindowXaml = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml"));
             string foldersPanel = GetSlice(
@@ -501,9 +506,10 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             Assert.Multiple(() =>
             {
-                Assert.That(CountOccurrences(foldersPanel, "Command=\"{Binding ShowAddSyncPairCommand}\""), Is.EqualTo(1));
+                Assert.That(CountOccurrences(foldersPanel, "Command=\"{Binding ShowAddSyncPairCommand}\""), Is.EqualTo(2));
                 Assert.That(foldersPanel, Does.Contain("ToolTip.Tip=\"Add sync folder\""));
                 Assert.That(foldersPanel, Does.Contain("Text=\"No folders yet\""));
+                Assert.That(foldersPanel, Does.Contain("Text=\"You can add more folders later.\""));
                 Assert.That(foldersPanel, Does.Not.Contain("Text=\"Add a folder\""));
             });
         }
@@ -868,8 +874,15 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(cloudFolderPicker, Does.Contain("Kind=\"ChevronRight\""));
                 Assert.That(CountOccurrences(cloudFolderPicker, "Classes=\"icon\""), Is.EqualTo(4));
                 Assert.That(cloudFolderPicker, Does.Not.Contain("RowDefinitions=\"Auto,Auto,160,Auto\""));
-                Assert.That(cloudFolderPicker, Does.Contain("MinHeight=\"96\""));
-                Assert.That(cloudFolderPicker, Does.Contain("MaxHeight=\"160\""));
+                Assert.That(cloudFolderPicker, Does.Contain("Text=\"{Binding RemoteFolderFilter, UpdateSourceTrigger=PropertyChanged}\""));
+                Assert.That(cloudFolderPicker, Does.Contain("PlaceholderText=\"Search cloud folders\""));
+                Assert.That(cloudFolderPicker, Does.Contain("Text=\"{Binding RemoteFolderCountLabel}\""));
+                Assert.That(cloudFolderPicker, Does.Contain("IsVisible=\"{Binding HasRemoteFolderCount}\""));
+                Assert.That(cloudFolderPicker, Does.Contain("Text=\"{Binding RemoteFolderEmptyTitle}\""));
+                Assert.That(cloudFolderPicker, Does.Contain("Text=\"{Binding RemoteFolderEmptySubtitle}\""));
+                Assert.That(cloudFolderPicker, Does.Contain("MinHeight=\"132\""));
+                Assert.That(cloudFolderPicker, Does.Contain("MaxHeight=\"240\""));
+                Assert.That(cloudFolderPicker, Does.Not.Contain("MaxHeight=\"160\""));
                 Assert.That(cloudFolderPicker, Does.Not.Contain("Height=\"260\""));
                 Assert.That(cloudFolderPicker, Does.Contain("ScrollViewer.VerticalScrollBarVisibility=\"Auto\""));
                 Assert.That(cloudFolderPicker, Does.Not.Contain("Text=\"›\""));
@@ -938,9 +951,10 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             Assert.Multiple(() =>
             {
-                Assert.That(cloudStep, Does.Contain("MaxHeight=\"160\""));
-                Assert.That(cloudStep, Does.Contain("MinHeight=\"96\""));
+                Assert.That(cloudStep, Does.Contain("MaxHeight=\"240\""));
+                Assert.That(cloudStep, Does.Contain("MinHeight=\"132\""));
                 Assert.That(cloudStep, Does.Not.Contain("Height=\"260\""));
+                Assert.That(cloudStep, Does.Contain("PlaceholderText=\"Search cloud folders\""));
                 Assert.That(cloudStep, Does.Contain("Text=\"Sync mode\""));
                 Assert.That(cloudStep, Does.Contain("Content=\"{Binding RemoteFolderWizardPrimaryActionText}\""));
                 Assert.That(cloudStep.IndexOf("Text=\"Sync mode\"", StringComparison.Ordinal), Is.LessThan(

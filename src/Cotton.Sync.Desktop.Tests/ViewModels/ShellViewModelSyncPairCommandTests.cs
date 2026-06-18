@@ -3841,6 +3841,58 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task RemoteFolderFilter_FiltersLoadedCloudFoldersAndKeepsCurrentFolderSelectable()
+        {
+            var localFolderPicker = new FakeLocalFolderPicker();
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            controller.RemoteFoldersByPath["/"] = new DesktopRemoteFolderListSnapshot(
+                "/",
+                [
+                    new DesktopRemoteFolderSnapshot(Guid.NewGuid(), "Documents", "/Documents"),
+                    new DesktopRemoteFolderSnapshot(Guid.NewGuid(), "Pictures", "/Pictures"),
+                    new DesktopRemoteFolderSnapshot(Guid.NewGuid(), "Project archive", "/Archive/Project"),
+                ]);
+            using ShellViewModel viewModel = CreateViewModel(controller, localFolderPicker: localFolderPicker);
+            await viewModel.InitializeAsync();
+            viewModel.LocalFolderPath = "/home/user/Cotton";
+            await ExecuteAsync(viewModel.ShowAddSyncPairCommand);
+            viewModel.SelectedRemoteFolder = viewModel.RemoteFolders.Single(folder => folder.Name == "Documents");
+
+            viewModel.RemoteFolderFilter = "pic";
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.RemoteFolders.Select(static folder => folder.Name), Is.EqualTo(new[] { "Pictures" }));
+                Assert.That(viewModel.SelectedRemoteFolder, Is.Null);
+                Assert.That(viewModel.HasRemoteFolders, Is.True);
+                Assert.That(viewModel.HasNoRemoteFolders, Is.False);
+                Assert.That(viewModel.HasRemoteFolderCount, Is.True);
+                Assert.That(viewModel.RemoteFolderCountLabel, Is.EqualTo("1 of 3 folders"));
+                Assert.That(viewModel.RemoteFolderSelectionLabel, Is.EqualTo("Cloud folder: /"));
+            });
+
+            viewModel.RemoteFolderFilter = "missing";
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.RemoteFolders, Is.Empty);
+                Assert.That(viewModel.HasRemoteFolders, Is.False);
+                Assert.That(viewModel.HasNoRemoteFolders, Is.True);
+                Assert.That(viewModel.RemoteFolderCountLabel, Is.EqualTo("0 of 3 folders"));
+                Assert.That(viewModel.RemoteFolderEmptyTitle, Is.EqualTo("No matching folders"));
+            });
+
+            viewModel.RemoteFolderFilter = string.Empty;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.RemoteFolders.Select(static folder => folder.Name), Is.EqualTo(new[] { "Documents", "Pictures", "Project archive" }));
+                Assert.That(viewModel.RemoteFolderCountLabel, Is.EqualTo("3 folders"));
+                Assert.That(viewModel.RemoteFolderEmptyTitle, Is.EqualTo("No folders here"));
+            });
+        }
+
+        [Test]
         public async Task ShowAddSyncPairCommand_OpensLocalStepWithoutPromptingForFolder()
         {
             var localFolderPicker = new FakeLocalFolderPicker("/home/user/Cotton");

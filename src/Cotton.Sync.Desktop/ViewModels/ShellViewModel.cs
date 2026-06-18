@@ -61,6 +61,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private readonly Dictionary<RunTransferProgressKey, long> _runTransferBytesByKey = [];
         private readonly Queue<RunFileProgressSample> _runFileProgressSamples = new();
         private readonly Queue<RunTransferProgressSample> _runTransferSamples = new();
+        private readonly List<RemoteFolderRowViewModel> _remoteFolderRows = [];
         private readonly SyncPairSettingsValidator _syncPairSettingsValidator = new();
         private readonly Dictionary<Guid, string> _lastStatusErrorActivityMessages = [];
         private string _accountName = "Signed out";
@@ -101,6 +102,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private string _localFolderPath = string.Empty;
         private string _newRemoteFolderName = string.Empty;
         private string _password = string.Empty;
+        private string _remoteFolderFilter = string.Empty;
         private string _browserSignInStatus = string.Empty;
         private string _remoteBrowserPath = "/";
         private string _remoteFolderPath = string.Empty;
@@ -1279,6 +1281,51 @@ namespace Cotton.Sync.Desktop.ViewModels
         public string RemoteFolderSelectionLabel => string.IsNullOrWhiteSpace(RemoteFolderPath)
             ? "Cloud folder: /"
             : $"Cloud folder: {RemoteFolderPath}";
+
+        public string RemoteFolderFilter
+        {
+            get => _remoteFolderFilter;
+            set
+            {
+                if (SetProperty(ref _remoteFolderFilter, value))
+                {
+                    ApplyRemoteFolderFilter();
+                    RaiseRemoteFolderListStateProperties();
+                }
+            }
+        }
+
+        public string RemoteFolderCountLabel
+        {
+            get
+            {
+                int total = _remoteFolderRows.Count;
+                int visible = RemoteFolders.Count;
+                if (total == 0)
+                {
+                    return "0 folders";
+                }
+
+                string totalLabel = total == 1 ? "1 folder" : total.ToString(CultureInfo.CurrentCulture) + " folders";
+                if (visible == total)
+                {
+                    return totalLabel;
+                }
+
+                string visibleLabel = visible == 1 ? "1" : visible.ToString(CultureInfo.CurrentCulture);
+                return visibleLabel + " of " + totalLabel;
+            }
+        }
+
+        public bool HasRemoteFolderCount => _remoteFolderRows.Count > 0;
+
+        public string RemoteFolderEmptyTitle => string.IsNullOrWhiteSpace(RemoteFolderFilter)
+            ? "No folders here"
+            : "No matching folders";
+
+        public string RemoteFolderEmptySubtitle => string.IsNullOrWhiteSpace(RemoteFolderFilter)
+            ? "The current cloud folder can still be selected."
+            : "Try a different search or select the current cloud folder.";
 
         public bool IsServerProbeChecking
         {
@@ -3392,8 +3439,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private void OnRemoteFoldersChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
-            OnPropertyChanged(nameof(HasNoRemoteFolders));
-            OnPropertyChanged(nameof(HasRemoteFolders));
+            RaiseRemoteFolderListStateProperties();
             OpenRemoteFolderCommand.RaiseCanExecuteChanged();
         }
 
@@ -3421,10 +3467,11 @@ namespace Cotton.Sync.Desktop.ViewModels
                     .ConfigureAwait(true);
                 RemoteBrowserPath = folders.CurrentPath;
                 RemoteFolderPath = folders.CurrentPath;
-                RemoteFolders.Clear();
+                ClearRemoteFolderFilter();
+                _remoteFolderRows.Clear();
                 foreach (DesktopRemoteFolderSnapshot folder in folders.Folders)
                 {
-                    RemoteFolders.Add(new RemoteFolderRowViewModel
+                    _remoteFolderRows.Add(new RemoteFolderRowViewModel
                     {
                         Id = folder.Id,
                         Name = folder.Name,
@@ -3432,6 +3479,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                     });
                 }
 
+                ApplyRemoteFolderFilter();
                 SelectedRemoteFolder = null;
             }
             finally
@@ -3447,7 +3495,56 @@ namespace Cotton.Sync.Desktop.ViewModels
             SelectedRemoteFolder = null;
             NewRemoteFolderName = string.Empty;
             IsCreateRemoteFolderVisible = false;
+            ClearRemoteFolderFilter();
+            _remoteFolderRows.Clear();
             RemoteFolders.Clear();
+            RaiseRemoteFolderListStateProperties();
+        }
+
+        private void ClearRemoteFolderFilter()
+        {
+            if (!string.IsNullOrEmpty(_remoteFolderFilter))
+            {
+                _remoteFolderFilter = string.Empty;
+                OnPropertyChanged(nameof(RemoteFolderFilter));
+            }
+        }
+
+        private void ApplyRemoteFolderFilter()
+        {
+            string filter = RemoteFolderFilter.Trim();
+            RemoteFolders.Clear();
+            IEnumerable<RemoteFolderRowViewModel> rows = _remoteFolderRows;
+            if (!string.IsNullOrWhiteSpace(filter))
+            {
+                rows = rows.Where(row => RemoteFolderMatchesFilter(row, filter));
+            }
+
+            foreach (RemoteFolderRowViewModel row in rows)
+            {
+                RemoteFolders.Add(row);
+            }
+
+            if (SelectedRemoteFolder is not null && !RemoteFolders.Contains(SelectedRemoteFolder))
+            {
+                SelectedRemoteFolder = null;
+            }
+        }
+
+        private static bool RemoteFolderMatchesFilter(RemoteFolderRowViewModel row, string filter)
+        {
+            return row.Name.Contains(filter, StringComparison.CurrentCultureIgnoreCase)
+                || row.Path.Contains(filter, StringComparison.CurrentCultureIgnoreCase);
+        }
+
+        private void RaiseRemoteFolderListStateProperties()
+        {
+            OnPropertyChanged(nameof(HasNoRemoteFolders));
+            OnPropertyChanged(nameof(HasRemoteFolders));
+            OnPropertyChanged(nameof(RemoteFolderCountLabel));
+            OnPropertyChanged(nameof(HasRemoteFolderCount));
+            OnPropertyChanged(nameof(RemoteFolderEmptyTitle));
+            OnPropertyChanged(nameof(RemoteFolderEmptySubtitle));
         }
 
         private void OnStatusChanged(object? sender, DesktopSyncStatusSnapshot status)
