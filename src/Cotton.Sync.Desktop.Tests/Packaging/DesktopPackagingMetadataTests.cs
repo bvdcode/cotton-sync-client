@@ -30,6 +30,21 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             });
         }
 
+        [TestCaseSource(nameof(VersionedApplicationProjectPaths))]
+        public void ApplicationProject_DoesNotHardCodeGeneratedReleaseVersionMetadata(string projectPath)
+        {
+            XDocument project = XDocument.Load(projectPath);
+            XElement propertyGroup = project.Root!.Elements("PropertyGroup").First();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(GetProperty(propertyGroup, "VersionPrefix"), Is.EqualTo("0.1.0"));
+                Assert.That(GetProperty(propertyGroup, "AssemblyVersion"), Is.Null);
+                Assert.That(GetProperty(propertyGroup, "FileVersion"), Is.Null);
+                Assert.That(GetProperty(propertyGroup, "InformationalVersion"), Is.Null);
+            });
+        }
+
         [TestCase("win-x64")]
         [TestCase("linux-x64")]
         public void PublishProfile_DefinesSelfContainedPortableArtifact(string runtimeIdentifier)
@@ -893,9 +908,15 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             {
                 Assert.That(workflow, Does.Contain("Publish Sync Client Release"));
                 Assert.That(workflow, Does.Contain("contents: write"));
+                Assert.That(workflow, Does.Contain("branches:"));
+                Assert.That(workflow, Does.Contain("- main"));
+                Assert.That(workflow, Does.Contain("- develop"));
+                Assert.That(workflow, Does.Contain("tags:"));
+                Assert.That(workflow, Does.Contain("- \"v*\""));
+                Assert.That(workflow, Does.Contain("workflow_dispatch:"));
                 Assert.That(workflow, Does.Contain("refs/heads/main"));
                 Assert.That(workflow, Does.Not.Contain("    paths:"));
-                Assert.That(workflow, Does.Contain("github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')"));
+                Assert.That(workflow, Does.Contain("github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)"));
                 Assert.That(workflow, Does.Contain("github.ref != 'refs/heads/main'"));
                 Assert.That(workflow, Does.Contain("Pushes to main and v* tags produce and publish release assets automatically."));
                 Assert.That(workflow, Does.Contain("Normalize desktop release asset names"));
@@ -939,6 +960,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             Assert.Multiple(() =>
             {
                 Assert.That(gitVersion, Does.Contain("next-version: 0.1.0"));
+                Assert.That(gitVersion, Does.Not.Contain("next-version: 0.0.0"));
                 Assert.That(gitVersion, Does.Contain("strategies:"));
                 Assert.That(gitVersion, Does.Contain("- Mainline"));
                 Assert.That(gitVersion, Does.Contain("increment: Patch"));
@@ -979,6 +1001,15 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         private static string GetDesktopProjectPath()
         {
             return GetDesktopFilePath("Cotton.Sync.Desktop.csproj");
+        }
+
+        private static IEnumerable<string> VersionedApplicationProjectPaths()
+        {
+            yield return GetDesktopProjectPath();
+            yield return GetRepositoryFilePath(Path.Combine(
+                "src",
+                "Cotton.Sync.Cli",
+                "Cotton.Sync.Cli.csproj"));
         }
 
         private static string GetWindowsShellProjectPath()

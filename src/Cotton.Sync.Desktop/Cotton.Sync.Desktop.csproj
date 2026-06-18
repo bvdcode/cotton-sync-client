@@ -12,10 +12,7 @@
     <Company>bvdcode</Company>
     <Product>Cotton Sync</Product>
     <Description>Cross-platform desktop synchronization client for Cotton Cloud.</Description>
-    <VersionPrefix>0.0.1</VersionPrefix>
-    <AssemblyVersion>0.0.1.0</AssemblyVersion>
-    <FileVersion>0.0.1.0</FileVersion>
-    <InformationalVersion>0.0.1-dev</InformationalVersion>
+    <VersionPrefix>0.1.0</VersionPrefix>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <UseAppHost>true</UseAppHost>
     <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>

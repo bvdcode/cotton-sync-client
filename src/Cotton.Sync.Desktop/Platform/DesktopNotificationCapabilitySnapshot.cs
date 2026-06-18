@@ -11,8 +11,16 @@ namespace Cotton.Sync.Desktop.Platform
         string? AppUserModelId,
         string? ExecutablePath,
         string? IconPath,
-        string? PlatformDetails = null)
+        string? PlatformDetails = null,
+        bool IsInstalledAppIdentityVerified = false,
+        string? InstalledAppIdentityDetails = null)
     {
+        public bool SelfTestPassed =>
+            IsSupported
+            && (Platform != DesktopNotificationPlatform.Windows || IsInstalledAppIdentityVerified);
+
+        public bool SelfTestSkipped => !SelfTestPassed;
+
         public string Details
         {
             get
@@ -37,6 +45,11 @@ namespace Cotton.Sync.Desktop.Platform
                 if (!string.IsNullOrWhiteSpace(PlatformDetails))
                 {
                     parts.Add(PlatformDetails);
+                }
+
+                if (!string.IsNullOrWhiteSpace(InstalledAppIdentityDetails))
+                {
+                    parts.Add(InstalledAppIdentityDetails);
                 }
 
                 return string.Join("; ", parts);

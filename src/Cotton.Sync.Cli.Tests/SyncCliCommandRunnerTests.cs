@@ -884,11 +884,11 @@ namespace Cotton.Sync.Cli.Tests
                 {
                     "/api/v1/auth/login",
                     "/api/v1/layouts/nodes/" + remoteRootId.ToString("D"),
-                    "/api/v1/layouts/nodes/" + remoteRootId.ToString("D") + "/children?page=1&pageSize=100&depth=0",
+                    "/api/v1/layouts/nodes/" + remoteRootId.ToString("D") + "/children?page=1&pageSize=500&depth=0",
                     "/api/v1/layouts/nodes/" + remoteRootId.ToString("D"),
-                    "/api/v1/layouts/nodes/" + remoteRootId.ToString("D") + "/children?page=1&pageSize=100&depth=0",
+                    "/api/v1/layouts/nodes/" + remoteRootId.ToString("D") + "/children?page=1&pageSize=500&depth=0",
                     "/api/v1/layouts/nodes/" + remoteRootId.ToString("D"),
-                    "/api/v1/layouts/nodes/" + remoteRootId.ToString("D") + "/children?page=1&pageSize=100&depth=0",
+                    "/api/v1/layouts/nodes/" + remoteRootId.ToString("D") + "/children?page=1&pageSize=500&depth=0",
                     "/api/v1/auth/logout?refreshToken=refresh-token",
                 }));
             });
@@ -952,9 +952,9 @@ namespace Cotton.Sync.Cli.Tests
                 {
                     "/api/v1/auth/login",
                     "/api/v1/layouts/nodes/" + remoteRootId.ToString("D"),
-                    "/api/v1/layouts/nodes/" + remoteRootId.ToString("D") + "/children?page=1&pageSize=100&depth=0",
+                    "/api/v1/layouts/nodes/" + remoteRootId.ToString("D") + "/children?page=1&pageSize=500&depth=0",
                     "/api/v1/layouts/nodes/" + remoteRootId.ToString("D"),
-                    "/api/v1/layouts/nodes/" + remoteRootId.ToString("D") + "/children?page=1&pageSize=100&depth=0",
+                    "/api/v1/layouts/nodes/" + remoteRootId.ToString("D") + "/children?page=1&pageSize=500&depth=0",
                     "/api/v1/layouts/nodes",
                     "/api/v1/auth/logout?refreshToken=refresh-token",
                 }));
@@ -1130,7 +1130,7 @@ namespace Cotton.Sync.Cli.Tests
                 {
                     "/api/v1/auth/login",
                     "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111",
-                    "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111/children?page=1&pageSize=100&depth=0",
+                    "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111/children?page=1&pageSize=500&depth=0",
                     "/api/v1/settings",
                     "/api/v1/chunks/" + contentHash + "/exists",
                     "/api/v1/chunks/raw?hash=" + contentHash,
@@ -1194,7 +1194,7 @@ namespace Cotton.Sync.Cli.Tests
                     "/api/v1/auth/login",
                     "/api/v1/layouts/resolver",
                     "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111",
-                    "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111/children?page=1&pageSize=100&depth=0",
+                    "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111/children?page=1&pageSize=500&depth=0",
                     "/api/v1/settings",
                     "/api/v1/chunks/" + contentHash + "/exists",
                     "/api/v1/chunks/raw?hash=" + contentHash,
@@ -1263,7 +1263,7 @@ namespace Cotton.Sync.Cli.Tests
                 {
                     "/api/v1/auth/login",
                     "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111",
-                    "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111/children?page=1&pageSize=100&depth=0",
+                    "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111/children?page=1&pageSize=500&depth=0",
                     "/api/v1/settings",
                     chunkExistsPath,
                     "/api/v1/auth/refresh?refreshToken=refresh-token",
@@ -1343,7 +1343,7 @@ namespace Cotton.Sync.Cli.Tests
                     "/api/v1/oauth/app-code/poll",
                     "/api/v1/auth/me",
                     "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111",
-                    "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111/children?page=1&pageSize=100&depth=0",
+                    "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111/children?page=1&pageSize=500&depth=0",
                     "/api/v1/settings",
                     "/api/v1/chunks/" + contentHash + "/exists",
                     "/api/v1/chunks/raw?hash=" + contentHash,
@@ -1419,7 +1419,7 @@ namespace Cotton.Sync.Cli.Tests
                     "/api/v1/oauth/app-code/poll",
                     "/api/v1/auth/me",
                     "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111",
-                    "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111/children?page=1&pageSize=100&depth=0",
+                    "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111/children?page=1&pageSize=500&depth=0",
                     "/api/v1/settings",
                     "/api/v1/chunks/" + contentHash + "/exists",
                     "/api/v1/chunks/raw?hash=" + contentHash,
@@ -2073,7 +2073,7 @@ namespace Cotton.Sync.Cli.Tests
                 {
                     "/api/v1/auth/login",
                     "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111",
-                    "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111/children?page=1&pageSize=100&depth=0",
+                    "/api/v1/layouts/nodes/11111111-1111-1111-1111-111111111111/children?page=1&pageSize=500&depth=0",
                     "/api/v1/layouts/nodes",
                     "/api/v1/auth/logout?refreshToken=refresh-token",
                 }));
