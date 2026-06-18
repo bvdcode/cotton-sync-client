@@ -1067,7 +1067,7 @@
                 ClipToBounds="True"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch">
-          <Grid RowDefinitions="Auto,Auto,*"
+          <Grid RowDefinitions="Auto,Auto,*,Auto"
                 RowSpacing="14"
                 MinHeight="0">
             <Grid ColumnDefinitions="*,Auto"
@@ -1324,60 +1324,65 @@
                     </Grid>
                   </Border>
 
-                  <StackPanel Spacing="6"
-                              IsVisible="{Binding IsFutureSyncModesVisible}">
-                    <TextBlock Text="Sync mode"
-                               FontSize="12"
-                               FontWeight="SemiBold" />
-                    <Grid ColumnDefinitions="*,*"
-                          ColumnSpacing="8">
-                      <RadioButton GroupName="AddSyncPairMode"
-                                   IsChecked="{Binding IsFullMirrorSyncModeSelected}"
-                                   Classes="sync-mode-card">
-                        <Grid RowDefinitions="Auto,Auto"
-                              RowSpacing="2">
-                          <TextBlock Text="Full mirror"
-                                     FontSize="12"
-                                     FontWeight="SemiBold"
-                                     TextTrimming="CharacterEllipsis" />
-                          <TextBlock Grid.Row="1"
-                                     Text="Stores every file on this device."
-                                     Classes="secondary"
-                                     FontSize="11"
-                                     TextWrapping="Wrap" />
-                        </Grid>
-                      </RadioButton>
-                      <RadioButton Grid.Column="1"
-                                   GroupName="AddSyncPairMode"
-                                   IsChecked="{Binding IsWindowsVirtualFilesSyncModeSelected}"
-                                   Classes="sync-mode-card">
-                        <Grid RowDefinitions="Auto,Auto"
-                              RowSpacing="2">
-                          <TextBlock Text="Virtual files"
-                                     FontSize="12"
-                                     FontWeight="SemiBold"
-                                     TextTrimming="CharacterEllipsis" />
-                          <TextBlock Grid.Row="1"
-                                     Text="Saves disk space; downloads on open."
-                                     Classes="secondary"
-                                     FontSize="11"
-                                     TextWrapping="Wrap" />
-                        </Grid>
-                      </RadioButton>
-                    </Grid>
-                  </StackPanel>
-
-                  <Grid ColumnDefinitions="*,Auto"
-                        ColumnSpacing="8">
-                    <Button Grid.Column="1"
-                            Content="{Binding RemoteFolderWizardPrimaryActionText}"
-                            Classes="primary"
-                            ToolTip.Tip="{Binding RemoteFolderWizardPrimaryActionToolTip}"
-                            Command="{Binding UseRemoteFolderCommand}" />
-                  </Grid>
                 </StackPanel>
               </Grid>
             </ScrollViewer>
+
+            <StackPanel Grid.Row="3"
+                        Spacing="8"
+                        IsVisible="{Binding IsAddSyncPairCloudStepVisible}">
+              <StackPanel Spacing="6"
+                          IsVisible="{Binding IsFutureSyncModesVisible}">
+                <TextBlock Text="Sync mode"
+                           FontSize="12"
+                           FontWeight="SemiBold" />
+                <Grid ColumnDefinitions="*,*"
+                      ColumnSpacing="8">
+                  <RadioButton GroupName="AddSyncPairMode"
+                               IsChecked="{Binding IsFullMirrorSyncModeSelected}"
+                               Classes="sync-mode-card">
+                    <Grid RowDefinitions="Auto,Auto"
+                          RowSpacing="2">
+                      <TextBlock Text="Full mirror"
+                                 FontSize="12"
+                                 FontWeight="SemiBold"
+                                 TextTrimming="CharacterEllipsis" />
+                      <TextBlock Grid.Row="1"
+                                 Text="Stores every file on this device."
+                                 Classes="secondary"
+                                 FontSize="11"
+                                 TextWrapping="Wrap" />
+                    </Grid>
+                  </RadioButton>
+                  <RadioButton Grid.Column="1"
+                               GroupName="AddSyncPairMode"
+                               IsChecked="{Binding IsWindowsVirtualFilesSyncModeSelected}"
+                               Classes="sync-mode-card">
+                    <Grid RowDefinitions="Auto,Auto"
+                          RowSpacing="2">
+                      <TextBlock Text="Virtual files"
+                                 FontSize="12"
+                                 FontWeight="SemiBold"
+                                 TextTrimming="CharacterEllipsis" />
+                      <TextBlock Grid.Row="1"
+                                 Text="Saves disk space; downloads on open."
+                                 Classes="secondary"
+                                 FontSize="11"
+                                 TextWrapping="Wrap" />
+                    </Grid>
+                  </RadioButton>
+                </Grid>
+              </StackPanel>
+
+              <Grid ColumnDefinitions="*,Auto"
+                    ColumnSpacing="8">
+                <Button Grid.Column="1"
+                        Content="{Binding RemoteFolderWizardPrimaryActionText}"
+                        Classes="primary"
+                        ToolTip.Tip="{Binding RemoteFolderWizardPrimaryActionToolTip}"
+                        Command="{Binding UseRemoteFolderCommand}" />
+              </Grid>
+            </StackPanel>
           </Grid>
         </Border>
       </Border>
