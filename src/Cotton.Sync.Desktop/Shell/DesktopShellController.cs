@@ -747,19 +747,21 @@ namespace Cotton.Sync.Desktop.Shell
                 true,
                 platformCapabilities.TrayLifecycleDetails));
 
-            SyncPairModeCapabilitySnapshot modeCapabilities = DesktopCloudFilesCapabilities.CreateSyncPairModeCapabilities();
+            DesktopCloudFilesSelfTestCapabilitySnapshot modeCapabilities =
+                DesktopCloudFilesCapabilities.CreateSelfTestCapability();
             items.Add(new DesktopSelfTestItemSnapshot(
                 "Windows virtual files",
-                modeCapabilities.IsWindowsVirtualFilesSupported,
-                modeCapabilities.WindowsVirtualFilesDetails,
-                Skipped: !modeCapabilities.IsWindowsVirtualFilesSupported));
+                modeCapabilities.Passed,
+                modeCapabilities.Details,
+                Skipped: modeCapabilities.Skipped));
 
             DesktopNotificationCapabilitySnapshot notificationCapabilities =
-                DesktopNotificationServiceFactory.CreateCapabilitySnapshot();
+                DesktopNotificationServiceFactory.CreateSelfTestCapabilitySnapshot();
             items.Add(new DesktopSelfTestItemSnapshot(
                 "Notification adapter",
-                true,
-                notificationCapabilities.Details));
+                notificationCapabilities.SelfTestPassed,
+                notificationCapabilities.Details,
+                Skipped: notificationCapabilities.SelfTestSkipped));
 
             await AddSelfTestCheckAsync(
                 items,

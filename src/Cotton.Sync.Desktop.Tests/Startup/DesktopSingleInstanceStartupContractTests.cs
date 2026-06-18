@@ -97,6 +97,26 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             });
         }
 
+        [Test]
+        public void App_StartMinimizedToTraySuppressesInitialWindowShow()
+        {
+            string app = File.ReadAllText(GetDesktopFilePath("App.axaml.cs"));
+            string mainWindow = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml.cs"));
+            int hiddenStartupIndex = app.IndexOf("window.StartHiddenToTray();", StringComparison.Ordinal);
+            int mainWindowAssignmentIndex = app.IndexOf("desktop.MainWindow = window;", StringComparison.Ordinal);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(app, Does.Contain("bool startHiddenToTray"));
+                Assert.That(app, Does.Contain("StartupOptions.StartMinimizedToTray"));
+                Assert.That(app, Does.Contain("useTrayLifecycle"));
+                Assert.That(hiddenStartupIndex, Is.GreaterThanOrEqualTo(0));
+                Assert.That(mainWindowAssignmentIndex, Is.GreaterThan(hiddenStartupIndex));
+                Assert.That(mainWindow, Does.Contain("internal void StartHiddenToTray()"));
+                Assert.That(mainWindow, Does.Contain("InitializeShellOnceAsync(viewModel)"));
+            });
+        }
+
         private static string GetDesktopFilePath(string relativePath)
         {
             string directory = TestContext.CurrentContext.TestDirectory;

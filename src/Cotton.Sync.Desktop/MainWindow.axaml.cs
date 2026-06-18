@@ -101,6 +101,19 @@ namespace Cotton.Sync.Desktop
             Activate();
         }
 
+        internal void StartHiddenToTray()
+        {
+            if (DataContext is not ShellViewModel viewModel)
+            {
+                return;
+            }
+
+            Dispatcher.UIThread.Post(async () =>
+            {
+                await InitializeShellOnceAsync(viewModel).ConfigureAwait(true);
+            });
+        }
+
         private void OnClosing(object? sender, WindowClosingEventArgs e)
         {
             if (_lifecyclePolicy.ResolveCloseAction() == DesktopWindowCloseAction.Close)

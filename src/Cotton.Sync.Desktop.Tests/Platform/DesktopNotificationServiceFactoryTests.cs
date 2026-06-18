@@ -170,10 +170,39 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(snapshot.AppUserModelId, Is.EqualTo(DesktopAppIdentity.AppUserModelId));
                 Assert.That(snapshot.ExecutablePath, Is.EqualTo(commandPath));
                 Assert.That(snapshot.IconPath, Is.EqualTo(iconPath));
+                Assert.That(snapshot.IsInstalledAppIdentityVerified, Is.False);
+                Assert.That(snapshot.SelfTestPassed, Is.False);
+                Assert.That(snapshot.SelfTestSkipped, Is.True);
                 Assert.That(snapshot.Details, Does.Contain("adapter: Windows toast"));
                 Assert.That(snapshot.Details, Does.Contain("AppUserModelID: " + DesktopAppIdentity.AppUserModelId));
                 Assert.That(snapshot.Details, Does.Contain("icon: " + iconPath));
-                Assert.That(snapshot.Details, Does.Contain("registered Start Menu AppUserModelID shortcut"));
+                Assert.That(snapshot.Details, Does.Contain("PowerShell is only the toast delivery helper"));
+                Assert.That(snapshot.Details, Does.Contain("Start Menu AppUserModelID shortcut: not verified"));
+            });
+        }
+
+        [Test]
+        public void CreateCapabilitySnapshot_MarksWindowsSelfTestReadyWhenInstalledIdentityIsVerified()
+        {
+            string commandPath = Path.Combine(_tempDirectory, "powershell.exe");
+            File.WriteAllText(commandPath, string.Empty);
+
+            DesktopNotificationCapabilitySnapshot snapshot = DesktopNotificationServiceFactory.CreateCapabilitySnapshot(
+                DesktopNotificationPlatform.Windows,
+                _tempDirectory,
+                _tempDirectory,
+                verifyWindowsInstalledIdentity: powerShellPath => string.Equals(
+                    powerShellPath,
+                    commandPath,
+                    StringComparison.Ordinal));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(snapshot.IsSupported, Is.True);
+                Assert.That(snapshot.IsInstalledAppIdentityVerified, Is.True);
+                Assert.That(snapshot.SelfTestPassed, Is.True);
+                Assert.That(snapshot.SelfTestSkipped, Is.False);
+                Assert.That(snapshot.Details, Does.Contain("Start Menu AppUserModelID shortcut: verified"));
             });
         }
 
@@ -199,6 +228,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 Assert.That(snapshot.IsSupported, Is.False);
                 Assert.That(snapshot.ExecutablePath, Is.Null);
+                Assert.That(snapshot.SelfTestPassed, Is.False);
+                Assert.That(snapshot.SelfTestSkipped, Is.True);
                 Assert.That(snapshot.Details, Does.StartWith("Not available on this platform"));
                 Assert.That(snapshot.Details, Does.Contain("AppUserModelID: " + DesktopAppIdentity.AppUserModelId));
                 Assert.That(snapshot.Details, Does.Contain("icon: missing"));

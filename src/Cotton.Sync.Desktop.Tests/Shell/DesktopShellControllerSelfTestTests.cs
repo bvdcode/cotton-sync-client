@@ -117,10 +117,15 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             DesktopSelfTestItemSnapshot item = result.Items.Single(static selfTestItem => selfTestItem.Name == "Notification adapter");
             Assert.Multiple(() =>
             {
-                Assert.That(item.Passed, Is.True);
+                Assert.That(item.Passed || item.Skipped, Is.True);
                 Assert.That(item.Details, Does.Contain("adapter: "));
                 Assert.That(item.Details, Does.Contain("app name: Cotton Sync"));
                 Assert.That(item.Details, Does.Contain("icon: "));
+                if (OperatingSystem.IsWindows())
+                {
+                    Assert.That(item.Details, Does.Contain("PowerShell is only the toast delivery helper"));
+                    Assert.That(item.Details, Does.Contain("Start Menu AppUserModelID shortcut: "));
+                }
             });
         }
 
