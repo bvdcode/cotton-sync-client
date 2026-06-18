@@ -8,6 +8,7 @@ using Cotton.Sync.Desktop.Composition;
 using Cotton.Sync.Desktop.Diagnostics;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Shell;
+using Cotton.Sync.State;
 
 namespace Cotton.Sync.Desktop.Tests.Diagnostics
 {
@@ -178,6 +179,51 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         }
 
         [Test]
+        public async Task ExportAsync_SerializesStateAndRuntimeHealthMetrics()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            var exporter = new DesktopDiagnosticsExporter();
+            var syncState = new SyncStateStoreDiagnostics(
+                FileSizeBytes: 8192,
+                PageCount: 2,
+                FreelistCount: 1,
+                PageSizeBytes: 4096,
+                SyncEntryCount: 3,
+                SyncChangeCursorCount: 1);
+            var runtimeHealth = new DesktopRuntimeHealthSnapshot(
+                ProcessId: 123,
+                ProcessName: "Cotton.Sync.Desktop",
+                WorkingSetBytes: 456,
+                PrivateMemoryBytes: 321,
+                ThreadCount: 7,
+                HandleCount: 9);
+
+            string archivePath = await exporter.ExportAsync(
+                paths,
+                CreateBundle(paths, syncState: syncState, runtimeHealth: runtimeHealth));
+
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
+            using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
+            JsonElement state = document.RootElement.GetProperty("syncState");
+            JsonElement runtime = document.RootElement.GetProperty("runtimeHealth");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(state.GetProperty("fileSizeBytes").GetInt64(), Is.EqualTo(8192));
+                Assert.That(state.GetProperty("usedBytes").GetInt64(), Is.EqualTo(4096));
+                Assert.That(state.GetProperty("freelistBytes").GetInt64(), Is.EqualTo(4096));
+                Assert.That(state.GetProperty("syncEntryCount").GetInt64(), Is.EqualTo(3));
+                Assert.That(state.GetProperty("syncChangeCursorCount").GetInt64(), Is.EqualTo(1));
+                Assert.That(runtime.GetProperty("processId").GetInt32(), Is.EqualTo(123));
+                Assert.That(runtime.GetProperty("workingSetBytes").GetInt64(), Is.EqualTo(456));
+                Assert.That(runtime.GetProperty("privateMemoryBytes").GetInt64(), Is.EqualTo(321));
+                Assert.That(runtime.GetProperty("threadCount").GetInt32(), Is.EqualTo(7));
+                Assert.That(runtime.GetProperty("handleCount").GetInt32(), Is.EqualTo(9));
+            });
+        }
+
+        [Test]
         public async Task ExportAsync_RemainsBoundedAfterLargeCloudFilesDiagnosticStorm()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
@@ -223,7 +269,9 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
 
         private static DesktopDiagnosticsBundle CreateBundle(
             DesktopAppPaths paths,
-            IReadOnlyList<WindowsCloudFilesDiagnosticEvent>? cloudFilesEvents = null)
+            IReadOnlyList<WindowsCloudFilesDiagnosticEvent>? cloudFilesEvents = null,
+            SyncStateStoreDiagnostics? syncState = null,
+            DesktopRuntimeHealthSnapshot? runtimeHealth = null)
         {
             return new DesktopDiagnosticsBundle(
                 DateTimeOffset.Parse("2026-06-03T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture),
@@ -243,6 +291,20 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                         "/Documents",
                         "Idle"),
                 ],
+                syncState ?? new SyncStateStoreDiagnostics(
+                    FileSizeBytes: 4096,
+                    PageCount: 1,
+                    FreelistCount: 0,
+                    PageSizeBytes: 4096,
+                    SyncEntryCount: 1,
+                    SyncChangeCursorCount: 1),
+                runtimeHealth ?? new DesktopRuntimeHealthSnapshot(
+                    ProcessId: 1,
+                    ProcessName: "Cotton.Sync.Desktop",
+                    WorkingSetBytes: 1024,
+                    PrivateMemoryBytes: 2048,
+                    ThreadCount: 4,
+                    HandleCount: 8),
                 [
                     new DesktopSelfTestItemSnapshot("Server identity", true, "Cotton Cloud"),
                 ],

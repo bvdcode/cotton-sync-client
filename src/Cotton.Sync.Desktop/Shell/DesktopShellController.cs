@@ -855,6 +855,8 @@ namespace Cotton.Sync.Desktop.Shell
             AppPreferences preferences = await _preferencesStore.GetAsync(cancellationToken).ConfigureAwait(false);
             IReadOnlyList<SyncPairSettings> syncPairs = await _syncPairStore.ListAsync(cancellationToken).ConfigureAwait(false);
             DesktopSelfTestSnapshot selfTest = await RunSelfTestAsync(cancellationToken).ConfigureAwait(false);
+            SyncStateStoreDiagnostics syncStateDiagnostics = await CreateSyncStateDiagnosticsAsync(cancellationToken)
+                .ConfigureAwait(false);
             var bundle = new DesktopDiagnosticsBundle(
                 DateTimeOffset.UtcNow,
                 DesktopAppVersion.Current,
@@ -862,6 +864,8 @@ namespace Cotton.Sync.Desktop.Shell
                 _host is null ? "Signed out" : preferences.RememberedUsername ?? "Signed in",
                 CreateDataPathSnapshot(),
                 await BuildSyncPairSnapshotsAsync(syncPairs, cancellationToken).ConfigureAwait(false),
+                syncStateDiagnostics,
+                CreateRuntimeHealthSnapshot(),
                 selfTest.Items,
                 WindowsCloudFilesDiagnostics.Shared.Snapshot());
             return await _diagnosticsExporter.ExportAsync(_paths, bundle, cancellationToken).ConfigureAwait(false);
@@ -951,6 +955,13 @@ namespace Cotton.Sync.Desktop.Shell
             await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
         }
 
+        private async Task<SyncStateStoreDiagnostics> CreateSyncStateDiagnosticsAsync(CancellationToken cancellationToken)
+        {
+            var stateStore = new SqliteSyncStateStore(_paths.SyncStateDatabasePath);
+            await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            return await stateStore.GetDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         private static Task<string> CheckLocalRootAsync(
             SyncPairSettings syncPair,
             CancellationToken cancellationToken)
@@ -1003,6 +1014,43 @@ namespace Cotton.Sync.Desktop.Shell
             return !diagnostics.HasRows
                 && diagnostics.FreelistBytes >= EmptyStateDatabaseFreelistWarningBytes
                 && diagnostics.FreelistRatio >= EmptyStateDatabaseFreelistWarningRatio;
+        }
+
+        private static DesktopRuntimeHealthSnapshot CreateRuntimeHealthSnapshot()
+        {
+            using Process process = Process.GetCurrentProcess();
+            process.Refresh();
+            return new DesktopRuntimeHealthSnapshot(
+                process.Id,
+                process.ProcessName,
+                process.WorkingSet64,
+                TryReadInt64(() => process.PrivateMemorySize64),
+                TryReadInt32(() => process.Threads.Count),
+                TryReadInt32(() => process.HandleCount));
+        }
+
+        private static long? TryReadInt64(Func<long> read)
+        {
+            try
+            {
+                return read();
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or PlatformNotSupportedException)
+            {
+                return null;
+            }
+        }
+
+        private static int? TryReadInt32(Func<int> read)
+        {
+            try
+            {
+                return read();
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or PlatformNotSupportedException)
+            {
+                return null;
+            }
         }
 
         private static string FormatBytes(double bytes)
