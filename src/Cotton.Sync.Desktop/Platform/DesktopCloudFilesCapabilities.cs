@@ -7,6 +7,9 @@ namespace Cotton.Sync.Desktop.Platform
 {
     internal static class DesktopCloudFilesCapabilities
     {
+        private static readonly Guid SelfTestRemoteRootNodeId =
+            Guid.Parse("f8c8b2b5-39f4-4d60-a4c3-09e7c01bde12");
+
         public static SyncPairModeCapabilitySnapshot CreateSyncPairModeCapabilities()
         {
             if (!OperatingSystem.IsWindows())
@@ -53,5 +56,149 @@ namespace Cotton.Sync.Desktop.Platform
                 true,
                 "Windows Cloud Files API, StorageProvider sync-root registration, and Explorer dehydration handling are available.");
         }
+
+        internal static DesktopCloudFilesSelfTestCapabilitySnapshot CreateSelfTestCapability(
+            SyncPairModeCapabilitySnapshot? basicCapabilities = null,
+            IWindowsCloudFilesAdapter? cloudFilesAdapter = null,
+            Func<string>? createProbeRoot = null)
+        {
+            SyncPairModeCapabilitySnapshot basic = basicCapabilities ?? CreateSyncPairModeCapabilities();
+            if (!basic.IsWindowsVirtualFilesSupported)
+            {
+                return new DesktopCloudFilesSelfTestCapabilitySnapshot(
+                    false,
+                    true,
+                    basic.WindowsVirtualFilesDetails);
+            }
+
+            IWindowsCloudFilesAdapter cloudFiles = cloudFilesAdapter ?? new WindowsCloudFilesAdapter();
+            string probeRoot = (createProbeRoot ?? CreateProbeRoot)();
+            var syncPair = new SyncPairSettings
+            {
+                Id = Guid.NewGuid(),
+                DisplayName = "Cotton Sync self-test",
+                LocalRootPath = probeRoot,
+                RemoteDisplayPath = "/",
+                RemoteRootNodeId = SelfTestRemoteRootNodeId,
+                Mode = SyncPairMode.WindowsVirtualFiles,
+                IsEnabled = true,
+            };
+            WindowsCloudFilesConnection? connection = null;
+            Exception? failure = null;
+            Exception? cleanupFailure = null;
+
+            try
+            {
+                Directory.CreateDirectory(probeRoot);
+                connection = cloudFiles.ConnectSyncRoot(syncPair, NoopWindowsCloudFilesCallbackHandler.Instance);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+            finally
+            {
+                try
+                {
+                    connection?.Dispose();
+                }
+                catch (Exception exception)
+                {
+                    cleanupFailure ??= exception;
+                }
+
+                try
+                {
+                    cloudFiles.UnregisterSyncRoot(syncPair);
+                }
+                catch (Exception exception)
+                {
+                    cleanupFailure ??= exception;
+                }
+
+                try
+                {
+                    if (Directory.Exists(probeRoot))
+                    {
+                        Directory.Delete(probeRoot, recursive: true);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    cleanupFailure ??= exception;
+                }
+            }
+
+            if (failure is not null)
+            {
+                return new DesktopCloudFilesSelfTestCapabilitySnapshot(
+                    false,
+                    false,
+                    "Windows Cloud Files API and StorageProvider sync-root registration are available, but "
+                    + "CfConnectSyncRoot could not be verified: "
+                    + CleanSingleLine(failure.Message));
+            }
+
+            if (cleanupFailure is not null)
+            {
+                return new DesktopCloudFilesSelfTestCapabilitySnapshot(
+                    false,
+                    false,
+                    "Windows Cloud Files sync-root connection succeeded, but self-test cleanup could not be verified: "
+                    + CleanSingleLine(cleanupFailure.Message));
+            }
+
+            return new DesktopCloudFilesSelfTestCapabilitySnapshot(
+                true,
+                false,
+                "Windows Cloud Files API, StorageProvider sync-root registration, CfConnectSyncRoot, and cleanup are available.");
+        }
+
+        private static string CreateProbeRoot()
+        {
+            return Path.Combine(
+                Path.GetTempPath(),
+                "cotton-cloud-files-self-test-" + Guid.NewGuid().ToString("N"));
+        }
+
+        private static string CleanSingleLine(string value)
+        {
+            return (string.IsNullOrWhiteSpace(value) ? "Operation could not be completed." : value)
+                .Replace('\r', ' ')
+                .Replace('\n', ' ')
+                .Trim();
+        }
+
+        private sealed class NoopWindowsCloudFilesCallbackHandler : IWindowsCloudFilesCallbackHandler
+        {
+            public static NoopWindowsCloudFilesCallbackHandler Instance { get; } = new();
+
+            public Task HandleFetchDataAsync(
+                WindowsCloudFilesFetchDataRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public void CancelFetchData(WindowsCloudFilesCancelFetchDataRequest request)
+            {
+            }
+
+            public Task HandleDehydrateAsync(
+                WindowsCloudFilesDehydrateRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public void NotifyDehydrateCompleted(WindowsCloudFilesDehydrateCompletionNotification notification)
+            {
+            }
+        }
     }
+
+    internal sealed record DesktopCloudFilesSelfTestCapabilitySnapshot(
+        bool Passed,
+        bool Skipped,
+        string Details);
 }
