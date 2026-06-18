@@ -687,6 +687,7 @@ namespace Cotton.Sync
             _logger.LogInformation(
                 "Starting initial streaming Windows virtual-files population for pair {SyncPairId}.",
                 syncPair.SyncPairId);
+            Stopwatch stopwatch = Stopwatch.StartNew();
             var result = new SyncRunResult();
             var channel = Channel.CreateBounded<InitialVirtualFilesPopulationItem>(
                 new BoundedChannelOptions(options.InitialVirtualFilesPopulationQueueCapacity)
@@ -696,14 +697,19 @@ namespace Cotton.Sync
                     SingleWriter = false,
                 });
             int discoveredFiles = 0;
+            int discoveredDirectories = 0;
             int completedFiles = 0;
+            int createdPlaceholders = 0;
+            int skippedCurrentPlaceholders = 0;
+            int skippedUnavailablePlaceholders = 0;
             DateTime? lastPlaceholderProgressReportedAtUtc = null;
             ReportRunProgress(options, SyncRunProgressStage.CreatingPlaceholders, 0, null, null, startedAtUtc);
 
             using var streamingCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var sink = new InitialVirtualFilesPopulationSink(
                 channel.Writer,
-                () => Interlocked.Increment(ref discoveredFiles));
+                () => Interlocked.Increment(ref discoveredFiles),
+                () => Interlocked.Increment(ref discoveredDirectories));
             Task producer = ProduceInitialWindowsVirtualFilesPopulationAsync(
                 syncPair,
                 options,
@@ -723,6 +729,21 @@ namespace Cotton.Sync
                 value => completedFiles = value,
                 () => lastPlaceholderProgressReportedAtUtc,
                 value => lastPlaceholderProgressReportedAtUtc = value,
+                workResult =>
+                {
+                    if (workResult.ActivityKind == SyncActivityKind.PlaceholderCreated && workResult.State is not null)
+                    {
+                        createdPlaceholders++;
+                    }
+                    else if (workResult.ActivityKind == SyncActivityKind.Skipped && workResult.ReportActivity)
+                    {
+                        skippedUnavailablePlaceholders++;
+                    }
+                    else if (workResult.ActivityKind == SyncActivityKind.Skipped)
+                    {
+                        skippedCurrentPlaceholders++;
+                    }
+                },
                 streamingCancellation.Token);
 
             Task firstCompleted = await Task.WhenAny(producer, consumer).ConfigureAwait(false);
@@ -733,6 +754,7 @@ namespace Cotton.Sync
             }
 
             await Task.WhenAll(producer, consumer).ConfigureAwait(false);
+            stopwatch.Stop();
             ReportRunProgress(
                 options,
                 SyncRunProgressStage.CreatingPlaceholders,
@@ -748,6 +770,16 @@ namespace Cotton.Sync
                 null,
                 startedAtUtc,
                 isCompleted: true);
+            _logger.LogInformation(
+                "Completed initial streaming Windows virtual-files population for pair {SyncPairId} with {DirectoryCount} directories discovered, {FileCount} files discovered, {CompletedFileCount} file items completed, {CreatedPlaceholderCount} placeholders created or refreshed, {SkippedCurrentPlaceholderCount} current placeholders skipped, {SkippedUnavailablePlaceholderCount} placeholders skipped with user action in {ElapsedMilliseconds} ms.",
+                syncPair.SyncPairId,
+                Volatile.Read(ref discoveredDirectories),
+                Volatile.Read(ref discoveredFiles),
+                completedFiles,
+                createdPlaceholders,
+                skippedCurrentPlaceholders,
+                skippedUnavailablePlaceholders,
+                stopwatch.ElapsedMilliseconds);
             return result;
         }
 
@@ -1056,6 +1088,7 @@ namespace Cotton.Sync
             Action<int> setCompletedFiles,
             Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
             Action<DateTime?> setLastPlaceholderProgressReportedAtUtc,
+            Action<InitialVirtualFilesFileWorkResult> recordFileWorkResult,
             CancellationToken cancellationToken)
         {
             var pendingFileStates = new List<SyncStateEntry>(options.InitialVirtualFilesStateBatchSize);
@@ -1091,6 +1124,7 @@ namespace Cotton.Sync
                                     setCompletedFiles,
                                     getLastPlaceholderProgressReportedAtUtc,
                                     setLastPlaceholderProgressReportedAtUtc,
+                                    recordFileWorkResult,
                                     waitForOne: false,
                                     cancellationToken)
                                 .ConfigureAwait(false);
@@ -1142,6 +1176,7 @@ namespace Cotton.Sync
                                             setCompletedFiles,
                                             getLastPlaceholderProgressReportedAtUtc,
                                             setLastPlaceholderProgressReportedAtUtc,
+                                            recordFileWorkResult,
                                             waitForOne: true,
                                             cancellationToken)
                                         .ConfigureAwait(false);
@@ -1162,6 +1197,7 @@ namespace Cotton.Sync
                                     setCompletedFiles,
                                     getLastPlaceholderProgressReportedAtUtc,
                                     setLastPlaceholderProgressReportedAtUtc,
+                                    recordFileWorkResult,
                                     cancellationToken)
                                 .ConfigureAwait(false);
                             break;
@@ -1188,6 +1224,7 @@ namespace Cotton.Sync
                             setCompletedFiles,
                             getLastPlaceholderProgressReportedAtUtc,
                             setLastPlaceholderProgressReportedAtUtc,
+                            recordFileWorkResult,
                             waitForOne: true,
                             cancellationToken)
                         .ConfigureAwait(false);
@@ -1211,6 +1248,7 @@ namespace Cotton.Sync
             Action<int> setCompletedFiles,
             Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
             Action<DateTime?> setLastPlaceholderProgressReportedAtUtc,
+            Action<InitialVirtualFilesFileWorkResult> recordFileWorkResult,
             bool waitForOne,
             CancellationToken cancellationToken)
         {
@@ -1236,6 +1274,7 @@ namespace Cotton.Sync
                         setCompletedFiles,
                         getLastPlaceholderProgressReportedAtUtc,
                         setLastPlaceholderProgressReportedAtUtc,
+                        recordFileWorkResult,
                         cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -1261,6 +1300,7 @@ namespace Cotton.Sync
                         setCompletedFiles,
                         getLastPlaceholderProgressReportedAtUtc,
                         setLastPlaceholderProgressReportedAtUtc,
+                        recordFileWorkResult,
                         cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -1438,6 +1478,7 @@ namespace Cotton.Sync
             Action<int> setCompletedFiles,
             Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
             Action<DateTime?> setLastPlaceholderProgressReportedAtUtc,
+            Action<InitialVirtualFilesFileWorkResult> recordFileWorkResult,
             CancellationToken cancellationToken)
         {
             foreach (InitialVirtualFilesFileWorkResult workResult in workResults)
@@ -1454,6 +1495,7 @@ namespace Cotton.Sync
                         setCompletedFiles,
                         getLastPlaceholderProgressReportedAtUtc,
                         setLastPlaceholderProgressReportedAtUtc,
+                        recordFileWorkResult,
                         cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -1471,18 +1513,10 @@ namespace Cotton.Sync
             Action<int> setCompletedFiles,
             Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
             Action<DateTime?> setLastPlaceholderProgressReportedAtUtc,
+            Action<InitialVirtualFilesFileWorkResult> recordFileWorkResult,
             CancellationToken cancellationToken)
         {
-            if (workResult.ReportActivity)
-            {
-                Report(
-                    result,
-                    options,
-                    workResult.ActivityKind,
-                    workResult.RelativePath,
-                    workResult.Details,
-                    workResult.RequiresUserAction);
-            }
+            recordFileWorkResult(workResult);
 
             if (workResult.State is not null)
             {
@@ -1495,7 +1529,7 @@ namespace Cotton.Sync
 
             int completedFiles = getCompletedFiles() + 1;
             setCompletedFiles(completedFiles);
-            ReportStreamingPlaceholderProgress(
+            bool reportedProgress = ReportStreamingPlaceholderProgress(
                 options,
                 completedFiles,
                 getDiscoveredFiles(),
@@ -1503,6 +1537,20 @@ namespace Cotton.Sync
                 startedAtUtc,
                 getLastPlaceholderProgressReportedAtUtc(),
                 setLastPlaceholderProgressReportedAtUtc);
+            bool reportCreatedPlaceholderActivity =
+                workResult.ActivityKind == SyncActivityKind.PlaceholderCreated && workResult.State is not null;
+            if (workResult.ReportActivity || reportCreatedPlaceholderActivity)
+            {
+                Report(
+                    result,
+                    options,
+                    workResult.ActivityKind,
+                    workResult.RelativePath,
+                    workResult.Details,
+                    workResult.RequiresUserAction,
+                    publishActivityProgress: workResult.ReportActivity || reportedProgress);
+            }
+
             await YieldAfterLargeBatchAsync(
                     options,
                     completedFiles,
@@ -1639,7 +1687,7 @@ namespace Cotton.Sync
                 && RemoteMatchesBaseline(remote.File, baseline);
         }
 
-        private static void ReportStreamingPlaceholderProgress(
+        private static bool ReportStreamingPlaceholderProgress(
             SyncRunOptions options,
             int filesCompleted,
             int filesDiscovered,
@@ -1652,7 +1700,7 @@ namespace Cotton.Sync
             DateTime occurredAtUtc = DateTime.UtcNow;
             if (!ShouldReportItemRunProgress(filesCompleted, filesTotal, lastReportedAtUtc, occurredAtUtc))
             {
-                return;
+                return false;
             }
 
             setLastReportedAtUtc(occurredAtUtc);
@@ -1663,6 +1711,7 @@ namespace Cotton.Sync
                 filesTotal,
                 relativePath,
                 startedAtUtc);
+            return true;
         }
 
         private async Task ReconcileDirectoriesWithoutBaselineAsync(
@@ -3878,7 +3927,8 @@ namespace Cotton.Sync
             SyncActivityKind kind,
             string relativePath,
             string? details,
-            bool requiresUserAction = false)
+            bool requiresUserAction = false,
+            bool publishActivityProgress = true)
         {
             var activity = new SyncActivity
             {
@@ -3888,7 +3938,10 @@ namespace Cotton.Sync
                 RequiresUserAction = requiresUserAction,
             };
             result.RecordActivity(activity, options.MaximumStoredResultActivities);
-            options.ActivityProgress?.Report(activity);
+            if (publishActivityProgress)
+            {
+                options.ActivityProgress?.Report(activity);
+            }
         }
 
         private static void ReportTransfer(
@@ -4038,21 +4091,26 @@ namespace Cotton.Sync
         {
             private readonly ChannelWriter<InitialVirtualFilesPopulationItem> _writer;
             private readonly Action _onFileDiscovered;
+            private readonly Action _onDirectoryDiscovered;
 
             public InitialVirtualFilesPopulationSink(
                 ChannelWriter<InitialVirtualFilesPopulationItem> writer,
-                Action onFileDiscovered)
+                Action onFileDiscovered,
+                Action onDirectoryDiscovered)
             {
                 _writer = writer ?? throw new ArgumentNullException(nameof(writer));
                 _onFileDiscovered = onFileDiscovered ?? throw new ArgumentNullException(nameof(onFileDiscovered));
+                _onDirectoryDiscovered = onDirectoryDiscovered ?? throw new ArgumentNullException(nameof(onDirectoryDiscovered));
             }
 
-            public ValueTask AddDirectoryAsync(
+            public async ValueTask AddDirectoryAsync(
                 RemoteDirectorySnapshot directory,
                 CancellationToken cancellationToken = default)
             {
                 ArgumentNullException.ThrowIfNull(directory);
-                return _writer.WriteAsync(new InitialVirtualFilesDirectoryPopulationItem(directory), cancellationToken);
+                await _writer.WriteAsync(new InitialVirtualFilesDirectoryPopulationItem(directory), cancellationToken)
+                    .ConfigureAwait(false);
+                _onDirectoryDiscovered();
             }
 
             public async ValueTask AddFileAsync(RemoteFileSnapshot file, CancellationToken cancellationToken = default)
