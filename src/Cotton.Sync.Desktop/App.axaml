@@ -18,6 +18,7 @@
           <SolidColorBrush x:Key="CottonSecondaryBrush" Color="#1BCEA7" />
           <SolidColorBrush x:Key="CottonSuccessBrush" Color="#1BCEA7" />
           <SolidColorBrush x:Key="CottonWarningBrush" Color="#D97706" />
+          <SolidColorBrush x:Key="CottonWarningSoftBrush" Color="#FFF7ED" />
           <SolidColorBrush x:Key="CottonErrorBrush" Color="#D32F2F" />
           <SolidColorBrush x:Key="CottonErrorSoftBrush" Color="#FDECEC" />
           <SolidColorBrush x:Key="CottonOverlayBrush" Color="#66000000" />
@@ -36,6 +37,7 @@
           <SolidColorBrush x:Key="CottonSecondaryBrush" Color="#1BCEA7" />
           <SolidColorBrush x:Key="CottonSuccessBrush" Color="#1BCEA7" />
           <SolidColorBrush x:Key="CottonWarningBrush" Color="#FBBF24" />
+          <SolidColorBrush x:Key="CottonWarningSoftBrush" Color="#3A2D13" />
           <SolidColorBrush x:Key="CottonErrorBrush" Color="#EF5350" />
           <SolidColorBrush x:Key="CottonErrorSoftBrush" Color="#3A2224" />
           <SolidColorBrush x:Key="CottonOverlayBrush" Color="#99000000" />
@@ -74,11 +76,18 @@
       <Setter Property="Background" Value="{DynamicResource CottonErrorSoftBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource CottonErrorBrush}" />
     </Style>
+    <Style Selector="Border.statusCard.offline">
+      <Setter Property="Background" Value="{DynamicResource CottonWarningSoftBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CottonWarningBrush}" />
+    </Style>
     <Style Selector="Border.statusDot">
       <Setter Property="Background" Value="{DynamicResource CottonSuccessBrush}" />
     </Style>
     <Style Selector="Border.statusDot.actionRequired">
       <Setter Property="Background" Value="{DynamicResource CottonErrorBrush}" />
+    </Style>
+    <Style Selector="Border.statusDot.offline">
+      <Setter Property="Background" Value="{DynamicResource CottonWarningBrush}" />
     </Style>
     <Style Selector="Border.syncPairStatusIndicator">
       <Setter Property="Background" Value="{DynamicResource CottonTextSecondaryBrush}" />
@@ -89,8 +98,14 @@
     <Style Selector="Border.syncPairStatusIndicator.paused">
       <Setter Property="Background" Value="{DynamicResource CottonWarningBrush}" />
     </Style>
+    <Style Selector="Border.syncPairStatusIndicator.offline">
+      <Setter Property="Background" Value="{DynamicResource CottonWarningBrush}" />
+    </Style>
     <Style Selector="Border.syncPairStatusIndicator.attention">
       <Setter Property="Background" Value="{DynamicResource CottonErrorBrush}" />
+    </Style>
+    <Style Selector="MenuItem.dangerMenuItem">
+      <Setter Property="Foreground" Value="{DynamicResource CottonErrorBrush}" />
     </Style>
     <Style Selector="Button.primary">
       <Setter Property="Background" Value="{DynamicResource CottonPrimaryBrush}" />
@@ -107,6 +122,14 @@
       <Setter Property="MinHeight" Value="32" />
       <Setter Property="Padding" Value="10,4" />
       <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="Button.danger">
+      <Setter Property="BorderBrush" Value="{DynamicResource CottonErrorBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource CottonErrorBrush}" />
+    </Style>
+    <Style Selector="Button.danger:pointerover">
+      <Setter Property="Background" Value="{DynamicResource CottonErrorSoftBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CottonErrorBrush}" />
     </Style>
     <Style Selector="Button.inlineChange">
       <Setter Property="MinHeight" Value="24" />

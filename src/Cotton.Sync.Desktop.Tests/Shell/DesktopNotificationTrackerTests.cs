@@ -116,7 +116,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(notification.Kind, Is.EqualTo(DesktopNotificationKind.ActionRequiredError));
                 Assert.That(
                     notification.Message,
-                    Is.EqualTo("Documents: This Cotton server does not expose the desktop sync changes API yet. Deploy the latest Cotton backend and retry sync."));
+                    Is.EqualTo("Documents: This Cotton server needs an update before desktop sync can continue. Contact the server admin, then retry sync."));
                 Assert.That(notification.Message, Does.Not.Contain("invalid JSON"));
                 Assert.That(notification.Message, Does.Not.Contain("<!doctype html>"));
             });

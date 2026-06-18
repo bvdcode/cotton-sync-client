@@ -52,7 +52,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             {
                 Assert.That(mainWindowXaml, Does.Not.Contain("Kind=\"RefreshCircle\""));
                 Assert.That(CountOccurrences(mainWindowXaml, "Kind=\"Refresh\""), Is.EqualTo(3));
-                Assert.That(CountOccurrences(mainWindowXaml, "Classes=\"icon flatIcon\""), Is.EqualTo(3));
+                Assert.That(CountOccurrences(mainWindowXaml, "Classes=\"icon flatIcon\""), Is.EqualTo(2));
                 Assert.That(CountOccurrences(mainWindowXaml, "Foreground=\"{DynamicResource CottonPrimaryBrush}\""), Is.EqualTo(3));
                 Assert.That(appXaml, Does.Contain("Style Selector=\"Button.flatIcon\""));
                 Assert.That(appXaml, Does.Contain("Property=\"Background\" Value=\"Transparent\""));
@@ -158,6 +158,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(foldersSection, Does.Contain("Classes=\"syncPairStatusIndicator\""));
                 Assert.That(foldersSection, Does.Contain("Classes.active=\"{Binding IsStatusActive}\""));
                 Assert.That(foldersSection, Does.Contain("Classes.paused=\"{Binding IsStatusPaused}\""));
+                Assert.That(foldersSection, Does.Contain("Classes.offline=\"{Binding IsStatusOffline}\""));
                 Assert.That(foldersSection, Does.Contain("Classes.attention=\"{Binding IsStatusAttention}\""));
                 Assert.That(foldersSection, Does.Contain("ToolTip.Tip=\"{Binding StatusIndicatorToolTip}\""));
                 Assert.That(foldersSection, Does.Contain("IsVisible=\"{Binding IsStatusIndicatorVisible}\""));
@@ -166,6 +167,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(appXaml, Does.Contain("Border.syncPairStatusIndicator"));
                 Assert.That(appXaml, Does.Contain("Border.syncPairStatusIndicator.active"));
                 Assert.That(appXaml, Does.Contain("Border.syncPairStatusIndicator.paused"));
+                Assert.That(appXaml, Does.Contain("Border.syncPairStatusIndicator.offline"));
                 Assert.That(appXaml, Does.Contain("Border.syncPairStatusIndicator.attention"));
                 Assert.That(foldersSection, Does.Contain("Text=\"{Binding EditableDisplayName}\""));
                 Assert.That(foldersSection, Does.Not.Contain("SelectedSyncPairEditableDisplayName"));
@@ -197,6 +199,15 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(foldersSection, Does.Not.Contain("Kind=\"PauseCircleOutline\""));
                 Assert.That(foldersSection, Does.Not.Contain("Kind=\"PlayCircleOutline\""));
                 Assert.That(foldersSection, Does.Contain("Kind=\"TrashCanOutline\""));
+                Assert.That(foldersSection, Does.Contain("Text=\"Folder name\""));
+                Assert.That(foldersSection, Does.Contain("Text=\"Save\""));
+                Assert.That(foldersSection, Does.Contain("Text=\"Local\""));
+                Assert.That(foldersSection, Does.Contain("Text=\"Cloud\""));
+                Assert.That(foldersSection, Does.Contain("Text=\"{Binding ToggleEnabledShortLabel}\""));
+                Assert.That(foldersSection, Does.Contain("Text=\"Remove\""));
+                Assert.That(foldersSection, Does.Contain("Classes=\"compact danger\""));
+                Assert.That(foldersSection, Does.Contain("Grid.Row=\"5\""));
+                Assert.That(foldersSection, Does.Contain("RowDefinitions=\"Auto,Auto,Auto,Auto,Auto,Auto\""));
                 Assert.That(foldersSection, Does.Not.Contain("<Path Data="));
                 Assert.That(foldersSection, Does.Not.Contain("Content=\"{Binding ToggleEnabledIcon}\""));
                 Assert.That(foldersSection, Does.Not.Contain("Content=\"💾\""));
@@ -206,6 +217,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(foldersSection, Does.Contain("Text=\"{Binding CurrentOperation}\""));
                 Assert.That(foldersSection, Does.Contain("IsVisible=\"{Binding HasCurrentOperation}\""));
                 Assert.That(foldersSection, Does.Contain("Value=\"{Binding CurrentProgressValue}\""));
+                Assert.That(foldersSection, Does.Contain("Margin=\"0,3,0,0\""));
                 Assert.That(foldersSection, Does.Contain("IsIndeterminate=\"{Binding IsCurrentProgressIndeterminate}\""));
                 Assert.That(foldersSection, Does.Contain("IsVisible=\"{Binding HasCurrentProgress}\""));
             });
@@ -303,6 +315,27 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(signInStep, Does.Not.Contain("Text=\"✓\""));
                 Assert.That(mainWindowCode, Does.Contain("e.Key != Key.Enter && e.Key != Key.Return"));
                 Assert.That(mainWindowCode, Does.Contain("viewModel.SignInCommand.Execute(null);"));
+            });
+        }
+
+        [Test]
+        public void PasswordSignIn_UsesActivePrimarySubmitButton()
+        {
+            string mainWindowXaml = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml"));
+            string signInStep = GetSlice(
+                mainWindowXaml,
+                "IsVisible=\"{Binding IsSignInStepVisible}\"",
+                "<Grid Grid.Row=\"2\"");
+            string signInButton = GetSlice(
+                signInStep,
+                "<Button Content=\"Sign in\"",
+                "</StackPanel>");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(signInButton, Does.Contain("Content=\"Sign in\""));
+                Assert.That(signInButton, Does.Contain("Classes=\"primary\""));
+                Assert.That(signInButton, Does.Contain("Command=\"{Binding SignInCommand}\""));
             });
         }
 
@@ -525,20 +558,22 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             Assert.Multiple(() =>
             {
-                Assert.That(settingsOverlay, Does.Contain("Text=\"Account, startup, preferences, diagnostics\""));
+                Assert.That(settingsOverlay, Does.Contain("Text=\"Manage account, sync behavior, and diagnostics.\""));
+                Assert.That(settingsOverlay, Does.Not.Contain("Text=\"Account, startup, preferences, diagnostics\""));
                 Assert.That(settingsOverlay, Does.Not.Contain("Text=\"Account, startup, and diagnostics\""));
                 Assert.That(settingsOverlay, Does.Contain("<TabItem Header=\"Account\""));
-                Assert.That(settingsOverlay, Does.Contain("<TabItem Header=\"Startup\""));
+                Assert.That(settingsOverlay, Does.Not.Contain("<TabItem Header=\"Startup\""));
                 Assert.That(settingsOverlay, Does.Contain("<TabItem Header=\"Preferences\""));
                 Assert.That(settingsOverlay, Does.Contain("<TabItem Header=\"Diagnostics\""));
                 Assert.That(settingsOverlay, Does.Contain("AutomationProperties.Name=\"Account settings\""));
-                Assert.That(settingsOverlay, Does.Contain("AutomationProperties.Name=\"Startup settings\""));
+                Assert.That(settingsOverlay, Does.Not.Contain("AutomationProperties.Name=\"Startup settings\""));
                 Assert.That(settingsOverlay, Does.Contain("AutomationProperties.Name=\"Preferences settings\""));
                 Assert.That(settingsOverlay, Does.Contain("AutomationProperties.Name=\"Diagnostics settings\""));
                 Assert.That(settingsOverlay, Does.Contain("TabIndex=\"0\""));
                 Assert.That(settingsOverlay, Does.Contain("TabIndex=\"1\""));
                 Assert.That(settingsOverlay, Does.Contain("TabIndex=\"2\""));
-                Assert.That(settingsOverlay, Does.Contain("TabIndex=\"3\""));
+                Assert.That(settingsOverlay, Does.Not.Contain("TabIndex=\"3\""));
+                Assert.That(CountOccurrences(settingsOverlay, "<TabItem Header="), Is.EqualTo(3));
                 Assert.That(settingsOverlay, Does.Not.Contain("Header=\"Start\""));
                 Assert.That(settingsOverlay, Does.Not.Contain("Header=\"Prefs\""));
                 Assert.That(settingsOverlay, Does.Not.Contain("Header=\"Diag\""));
@@ -546,20 +581,23 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
-        public void SettingsStart_HidesUnsupportedAutostartAction()
+        public void SettingsPreferences_IncludesStartupControls()
         {
             string mainWindowXaml = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml"));
-            string startSection = GetSlice(
+            string preferencesSection = GetSlice(
                 mainWindowXaml,
-                "<TabItem Header=\"Startup\"",
+                "<TabItem Header=\"Preferences\"",
                 "</TabItem>");
 
             Assert.Multiple(() =>
             {
-                Assert.That(startSection, Does.Contain("Content=\"Launch on startup\""));
-                Assert.That(startSection, Does.Contain("IsVisible=\"{Binding IsStartWithOperatingSystemSupported}\""));
-                Assert.That(startSection, Does.Not.Contain("IsEnabled=\"{Binding IsStartWithOperatingSystemSupported}\""));
-                Assert.That(startSection, Does.Contain("Text=\"{Binding AutostartStatusText}\""));
+                Assert.That(preferencesSection, Does.Contain("Text=\"Appearance\""));
+                Assert.That(preferencesSection, Does.Contain("Text=\"Notifications\""));
+                Assert.That(preferencesSection, Does.Contain("Text=\"Startup\""));
+                Assert.That(preferencesSection, Does.Contain("Content=\"Launch on startup\""));
+                Assert.That(preferencesSection, Does.Contain("IsVisible=\"{Binding IsStartWithOperatingSystemSupported}\""));
+                Assert.That(preferencesSection, Does.Not.Contain("IsEnabled=\"{Binding IsStartWithOperatingSystemSupported}\""));
+                Assert.That(preferencesSection, Does.Contain("Text=\"{Binding AutostartStatusText}\""));
             });
         }
 
@@ -574,7 +612,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             string accountTab = GetSlice(
                 settingsOverlay,
                 "<TabItem Header=\"Account\"",
-                "<TabItem Header=\"Startup\"");
+                "<TabItem Header=\"Preferences\"");
 
             Assert.Multiple(() =>
             {
@@ -583,12 +621,12 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(accountTab, Does.Contain("Text=\"Device name\""));
                 Assert.That(accountTab, Does.Contain("Text=\"{Binding DeviceName}\""));
                 Assert.That(accountTab, Does.Not.Contain("Text=\"Cotton Sync Desktop\""));
-                Assert.That(CountOccurrences(settingsOverlay, "<TabItem Header="), Is.EqualTo(4));
+                Assert.That(CountOccurrences(settingsOverlay, "<TabItem Header="), Is.EqualTo(3));
             });
         }
 
         [Test]
-        public void DashboardActionRows_UseIconButtonsForNarrowActions()
+        public void DashboardActionRows_LabelRepairActionsAndKeepNarrowHeaderActionsIconOnly()
         {
             string mainWindowXaml = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml"));
             string dashboardHeader = GetSlice(
@@ -607,6 +645,10 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 mainWindowXaml,
                 "<TextBlock Text=\"Conflicts\"",
                 "<TextBlock Text=\"Folders\"");
+            string conflictDetails = GetSlice(
+                conflictsSection,
+                "Text=\"{Binding Details}\"",
+                "<Button Grid.Column=\"2\"");
 
             Assert.Multiple(() =>
             {
@@ -616,6 +658,9 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(dashboardHeader, Does.Contain("Kind=\"Refresh\""));
                 Assert.That(dashboardHeader, Does.Contain("IsVisible=\"{Binding CanSyncNow}\""));
                 Assert.That(dashboardHeader, Does.Contain("Header=\"Open in web\""));
+                Assert.That(dashboardHeader, Does.Contain("<Separator />"));
+                Assert.That(dashboardHeader, Does.Contain("Header=\"Sign out\""));
+                Assert.That(dashboardHeader, Does.Contain("Classes=\"dangerMenuItem\""));
                 Assert.That(dashboardHeader, Does.Not.Contain("Header=\"Web app\""));
                 Assert.That(dashboardHeader, Does.Not.Contain("Header=\"Open in Cotton Cloud\""));
                 Assert.That(dashboardHeader, Does.Not.Contain("Header=\"Open Cotton Cloud\""));
@@ -625,6 +670,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(actionRequiredRow, Does.Contain("MaxLines=\"3\""));
                 Assert.That(actionRequiredRow, Does.Contain("TextWrapping=\"Wrap\""));
                 Assert.That(actionRequiredRow, Does.Contain("ToolTip.Tip=\"{Binding ActionRequiredMessage}\""));
+                Assert.That(actionRequiredRow, Does.Contain("Text=\"Retry\""));
+                Assert.That(actionRequiredRow, Does.Contain("Text=\"Diagnostics\""));
                 Assert.That(actionRequiredRow, Does.Not.Contain("Content=\"Retry\""));
                 Assert.That(actionRequiredRow, Does.Not.Contain("Content=\"Check\""));
                 Assert.That(conflictsHeader, Does.Contain("Kind=\"Refresh\""));
@@ -636,6 +683,9 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(conflictsSection, Does.Contain("CommandParameter=\"{Binding}\""));
                 Assert.That(conflictsSection, Does.Contain("ToolTip.Tip=\"Open conflict location\""));
                 Assert.That(conflictsSection, Does.Contain("Kind=\"ArrowTopRight\""));
+                Assert.That(conflictDetails, Does.Contain("TextWrapping=\"Wrap\""));
+                Assert.That(conflictDetails, Does.Contain("MaxLines=\"3\""));
+                Assert.That(conflictDetails, Does.Not.Contain("TextTrimming=\"CharacterEllipsis\""));
                 Assert.That(conflictsHeader, Does.Not.Contain("Content=\"Retry\""));
                 Assert.That(conflictsHeader, Does.Not.Contain("Content=\"Open\""));
             });
@@ -701,6 +751,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(mainWindowXaml, Does.Not.Contain("Text=\"{Binding GlobalStatus}\""));
                 Assert.That(statusCard, Does.Contain("IsVisible=\"{Binding IsStatusCardVisible}\""));
                 Assert.That(statusCard, Does.Contain("Classes.actionRequired=\"{Binding HasStatusAttention}\""));
+                Assert.That(statusCard, Does.Contain("Classes.offline=\"{Binding HasOfflineStatus}\""));
                 Assert.That(statusCard, Does.Not.Contain("Classes.actionRequired=\"{Binding HasActionRequired}\""));
                 Assert.That(statusCard, Does.Contain("Text=\"{Binding StatusCardDetailText}\""));
                 Assert.That(statusCard, Does.Contain("IsVisible=\"{Binding HasStatusCardDetail}\""));
@@ -810,7 +861,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
-        public void SettingsDiagnostics_ProvidesExpandableSelfTestDetails()
+        public void SettingsDiagnostics_ShowsFlatSelfTestDetailsWithoutFalseDropdowns()
         {
             string mainWindowXaml = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml"));
             string diagnosticsSection = GetSlice(
@@ -820,12 +871,13 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             Assert.Multiple(() =>
             {
-                Assert.That(diagnosticsSection, Does.Contain("<Expander Grid.Row=\"1\""));
-                Assert.That(diagnosticsSection, Does.Contain("IsExpanded=\"{Binding AreDetailsExpanded}\""));
+                Assert.That(diagnosticsSection, Does.Not.Contain("<Expander"));
+                Assert.That(diagnosticsSection, Does.Not.Contain("AreDetailsExpanded"));
+                Assert.That(diagnosticsSection, Does.Not.Contain("AutomationProperties.Name=\"Toggle diagnostic details\""));
+                Assert.That(diagnosticsSection, Does.Not.Contain("<Expander.Header>"));
+                Assert.That(diagnosticsSection, Does.Contain("Grid.Row=\"1\""));
+                Assert.That(diagnosticsSection, Does.Contain("Text=\"{Binding Details}\""));
                 Assert.That(diagnosticsSection, Does.Contain("IsVisible=\"{Binding HasDetails}\""));
-                Assert.That(diagnosticsSection, Does.Contain("AutomationProperties.Name=\"Toggle diagnostic details\""));
-                Assert.That(diagnosticsSection, Does.Contain("<Expander.Header>"));
-                Assert.That(diagnosticsSection, Does.Contain("TextTrimming=\"CharacterEllipsis\""));
                 Assert.That(diagnosticsSection, Does.Contain("TextWrapping=\"Wrap\""));
             });
         }

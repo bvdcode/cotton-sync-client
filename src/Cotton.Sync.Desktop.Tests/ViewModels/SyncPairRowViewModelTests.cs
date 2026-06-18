@@ -45,6 +45,18 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(row.DisplayStatus, Is.EqualTo("Paused"));
                 Assert.That(row.IsStatusActive, Is.False);
                 Assert.That(row.IsStatusPaused, Is.True);
+                Assert.That(row.IsStatusOffline, Is.False);
+                Assert.That(row.IsStatusAttention, Is.False);
+            });
+
+            row.Status = "Offline";
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(row.DisplayStatus, Is.EqualTo("Offline"));
+                Assert.That(row.IsStatusActive, Is.False);
+                Assert.That(row.IsStatusPaused, Is.False);
+                Assert.That(row.IsStatusOffline, Is.True);
                 Assert.That(row.IsStatusAttention, Is.False);
             });
 
@@ -53,6 +65,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Assert.Multiple(() =>
             {
                 Assert.That(row.DisplayStatus, Is.EqualTo("Error"));
+                Assert.That(row.IsStatusOffline, Is.False);
                 Assert.That(row.IsStatusAttention, Is.True);
             });
         }

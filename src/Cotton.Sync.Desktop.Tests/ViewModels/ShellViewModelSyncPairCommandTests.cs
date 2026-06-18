@@ -18,21 +18,16 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
     public class ShellViewModelSyncPairCommandTests
     {
         [Test]
-        public void SelfTestItemRowViewModel_TracksExpandableDetailsState()
+        public void SelfTestItemRowViewModel_TracksDetailsAvailability()
         {
             var item = new SelfTestItemRowViewModel
             {
                 Details = "Server identity check failed with a long supportable explanation.",
             };
 
-            item.AreDetailsExpanded = true;
             item.Details = string.Empty;
 
-            Assert.Multiple(() =>
-            {
-                Assert.That(item.AreDetailsExpanded, Is.True);
-                Assert.That(item.HasDetails, Is.False);
-            });
+            Assert.That(item.HasDetails, Is.False);
         }
 
         [Test]
@@ -421,7 +416,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsStatusCardVisible, Is.False);
                 Assert.That(
                     viewModel.ActionRequiredMessage,
-                    Is.EqualTo("This Cotton server does not expose the desktop sync changes API yet. Deploy the latest Cotton backend and retry sync."));
+                    Is.EqualTo("This Cotton server needs an update before desktop sync can continue. Contact the server admin, then retry sync."));
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Fix the issue below to continue syncing."));
             });
         }
@@ -459,7 +454,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.ServerUrl, Is.EqualTo("https://app.cottoncloud.dev/"));
                 Assert.That(viewModel.Username, Is.EqualTo("qa@cottoncloud.dev"));
                 Assert.That(viewModel.Password, Is.Not.Empty);
-                Assert.That(viewModel.TotpCode, Is.EqualTo("000000"));
+                Assert.That(viewModel.TotpCode, Is.Empty);
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Sign-in failed"));
                 Assert.That(viewModel.HasActionRequired, Is.True);
                 Assert.That(viewModel.CanRetryActionRequired, Is.False);
@@ -572,7 +567,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             {
                 Assert.That(viewModel.IsSettingsVisible, Is.True);
                 Assert.That(viewModel.IsDashboardChromeVisible, Is.False);
-                Assert.That(viewModel.SelectedSettingsTabIndex, Is.EqualTo(3));
+                Assert.That(viewModel.SelectedSettingsTabIndex, Is.EqualTo(2));
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Diagnostics exported"));
                 Assert.That(viewModel.HasSelfTestItems, Is.True);
                 Assert.That(viewModel.SelfTestItems, Has.Count.EqualTo(2));
@@ -597,7 +592,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Fix the issue below to continue syncing."));
                 Assert.That(
                     viewModel.ActionRequiredMessage,
-                    Is.EqualTo("This Cotton server does not expose the desktop sync changes API yet. Deploy the latest Cotton backend and retry sync."));
+                    Is.EqualTo("This Cotton server needs an update before desktop sync can continue. Contact the server admin, then retry sync."));
             });
         }
 
@@ -627,7 +622,10 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsOfflineState()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")));
+            var controller = new FakeDesktopShellController(
+                CreateSignedInSnapshot(
+                    CreatePair(Guid.NewGuid(), "Documents", "Idle"),
+                    CreatePair(Guid.NewGuid(), "Camera uploads", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -636,13 +634,14 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             const string message = "Cannot reach Cotton Cloud. Sync will retry automatically.";
             Assert.Multiple(() =>
             {
-                SyncPairRowViewModel row = viewModel.SyncPairs.Single();
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Offline"));
                 Assert.That(viewModel.HeaderStatusText, Is.EqualTo("Offline"));
                 Assert.That(viewModel.StatusCardTitle, Is.EqualTo("Offline"));
+                Assert.That(viewModel.HasOfflineStatus, Is.True);
+                Assert.That(viewModel.HasStatusAttention, Is.False);
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Waiting for connection to recover."));
-                Assert.That(row.Status, Is.EqualTo("Offline"));
-                Assert.That(row.LastError, Is.EqualTo(message));
+                Assert.That(viewModel.SyncPairs.Select(static row => row.Status), Is.All.EqualTo("Offline"));
+                Assert.That(viewModel.SyncPairs.Select(static row => row.LastError), Is.All.EqualTo(message));
                 Assert.That(viewModel.Activities.First().Details, Is.EqualTo(message));
             });
         }
@@ -1128,6 +1127,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Offline"));
                 Assert.That(viewModel.HeaderStatusText, Is.EqualTo("Offline"));
                 Assert.That(viewModel.StatusCardTitle, Is.EqualTo("Offline"));
+                Assert.That(viewModel.HasOfflineStatus, Is.True);
+                Assert.That(viewModel.HasStatusAttention, Is.False);
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Waiting for connection to recover."));
                 Assert.That(row.Status, Is.EqualTo("Offline"));
                 Assert.That(row.LastError, Is.EqualTo("Cannot reach Cotton Cloud"));
@@ -3710,6 +3711,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(conflict.SyncPairId, Is.EqualTo(syncPairId));
                 Assert.That(conflict.Path, Is.EqualTo("Documents/report.txt"));
                 Assert.That(conflict.Details, Is.EqualTo("Created conflict copy Documents/report.txt"));
+                Assert.That(viewModel.SyncPairs.Single().Status, Is.EqualTo("Conflict"));
+                Assert.That(viewModel.SyncPairs.Single().IsStatusAttention, Is.True);
                 Assert.That(viewModel.Activities.First().Kind, Is.EqualTo("Conflict"));
             });
         }
@@ -4091,7 +4094,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Action required"));
                 Assert.That(
                     viewModel.ActionRequiredMessage,
-                    Is.EqualTo("This Cotton server does not expose the desktop sync changes API yet. Deploy the latest Cotton backend and retry sync."));
+                    Is.EqualTo("This Cotton server needs an update before desktop sync can continue. Contact the server admin, then retry sync."));
             });
 
             await ExecuteAsync(viewModel.ExportDiagnosticsCommand);
@@ -4104,7 +4107,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Action required"));
                 Assert.That(
                     viewModel.ActionRequiredMessage,
-                    Is.EqualTo("This Cotton server does not expose the desktop sync changes API yet. Deploy the latest Cotton backend and retry sync."));
+                    Is.EqualTo("This Cotton server needs an update before desktop sync can continue. Contact the server admin, then retry sync."));
                 Assert.That(viewModel.HasLastDiagnosticsBundlePath, Is.True);
             });
         }
@@ -4204,7 +4207,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Action required"));
                 Assert.That(
                     viewModel.ActionRequiredMessage,
-                    Is.EqualTo("This Cotton server does not expose the desktop sync changes API yet. Deploy the latest Cotton backend and retry sync."));
+                    Is.EqualTo("This Cotton server needs an update before desktop sync can continue. Contact the server admin, then retry sync."));
                 Assert.That(viewModel.ShowAddSyncPairCommand.CanExecute(null), Is.False);
                 Assert.That(viewModel.AddSyncPairCommand.CanExecute(null), Is.False);
             });

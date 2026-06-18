@@ -37,7 +37,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 Assert.That(snapshot.OperatingSystemName, Is.EqualTo("Linux"));
                 Assert.That(snapshot.IsTrayLifecycleSupported, Is.False);
-                Assert.That(snapshot.TrayLifecycleDetails, Does.Contain("varies by desktop environment"));
+                Assert.That(snapshot.TrayLifecycleDetails, Does.Contain("varies by Linux desktop environment"));
+                Assert.That(snapshot.TrayLifecycleDetails, Does.Not.Contain("native Linux tray adapter"));
             });
         }
     }
