@@ -4,20 +4,6 @@ on:
   push:
     tags:
       - "v*"
-    paths:
-      - "src/Cotton.Sync/**"
-      - "src/Cotton.Sync.Tests/**"
-      - "src/Cotton.Sync.App/**"
-      - "src/Cotton.Sync.App.Tests/**"
-      - "src/Cotton.Sync.Cli/**"
-      - "src/Cotton.Sync.Desktop/**"
-      - "src/Cotton.Sync.Desktop.Tests/**"
-      - "src/Cotton.Sync.WindowsShell/**"
-      - "src/Cotton.sln"
-      - "GitVersion.yml"
-      - "dotnet-tools.json"
-      - ".github/scripts/determine-version.ps1"
-      - ".github/workflows/desktop-sync.yml"
     branches:
       - main
       - develop
@@ -47,7 +33,7 @@ concurrency:
 jobs:
   build-budget-guard:
     name: Build Budget Guard
-    if: (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'workflow_dispatch' && !inputs.publish_release && inputs.package_target == 'quick-checks')
+    if: (github.event_name == 'push' && github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) || (github.event_name == 'workflow_dispatch' && !inputs.publish_release && inputs.package_target == 'quick-checks')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -57,16 +43,18 @@ jobs:
           cat <<'EOF'
           Package builds are intentionally skipped for this run.
 
+          Pushes to main and v* tags produce and publish release assets automatically.
+
           Use workflow_dispatch with package_target=desktop-windows, desktop-linux,
           cli-windows, or all when an artifact is actually needed.
 
-          Use publish_release=true or push a v* tag only when release assets must
-          be produced and published.
+          Use publish_release=true when release assets must be produced and
+          published from a manual run.
           EOF
 
   linux:
     name: Desktop Linux Package Smoke
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && (inputs.publish_release || inputs.package_target == 'all' || inputs.package_target == 'desktop-linux'))
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && (inputs.publish_release || inputs.package_target == 'all' || inputs.package_target == 'desktop-linux'))
     runs-on: ubuntu-latest
     outputs:
       Version: ${{ steps.gitversion.outputs.SemVer }}
@@ -287,7 +275,7 @@ jobs:
 
   windows:
     name: Desktop Windows Package Smoke
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && (inputs.publish_release || inputs.package_target == 'all' || inputs.package_target == 'desktop-windows'))
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && (inputs.publish_release || inputs.package_target == 'all' || inputs.package_target == 'desktop-windows'))
     runs-on: windows-latest
     outputs:
       Version: ${{ steps.gitversion.outputs.SemVer }}
@@ -653,7 +641,7 @@ jobs:
 
   cli-windows:
     name: Sync CLI Windows Package Smoke
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && (inputs.publish_release || inputs.package_target == 'all' || inputs.package_target == 'cli-windows'))
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && (inputs.publish_release || inputs.package_target == 'all' || inputs.package_target == 'cli-windows'))
     runs-on: windows-latest
     permissions:
       contents: read
@@ -752,7 +740,7 @@ jobs:
       - linux
       - windows
       - cli-windows
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
     permissions:
       contents: read
     steps:
@@ -816,7 +804,7 @@ jobs:
       - windows
       - cli-windows
       - release-checksums
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
     permissions:
       contents: write
     steps:
@@ -982,7 +970,7 @@ jobs:
     needs:
       - linux
       - release
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)
     permissions:
       contents: read
     steps:
