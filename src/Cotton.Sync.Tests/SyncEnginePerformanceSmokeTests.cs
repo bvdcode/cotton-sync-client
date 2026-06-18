@@ -282,6 +282,30 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesRepeatPassOnOneHundredThousandPlaceholdersAvoidsFullLocalScan()
+        {
+            VirtualPlaceholderRepeatPassSmokeResult smoke =
+                await VerifyVirtualPlaceholderRepeatPassAvoidsFullLocalScanAsync(
+                    "performance-vfs-repeat-100k",
+                    fileCount: 100_000,
+                    relativePathFactory: index => "HugeTree/"
+                        + (index / 1_000).ToString("D3", System.Globalization.CultureInfo.InvariantCulture)
+                        + "/file-"
+                        + index.ToString("D6", System.Globalization.CultureInfo.InvariantCulture)
+                        + ".bin",
+                    smokeTarget: TimeSpan.FromSeconds(15));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(smoke.Elapsed, Is.LessThan(TimeSpan.FromSeconds(15)));
+                Assert.That(smoke.LocalFullScanCalls, Is.Zero);
+                Assert.That(smoke.PlaceholderWrites, Is.Zero);
+                Assert.That(smoke.StateEntriesLoaded, Is.EqualTo(100_000));
+                Assert.That(smoke.StreamingCrawlCalls, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesCreatesPlaceholdersConcurrentlyWithinConfiguredLimit()
         {
             const int fileCount = 64;
@@ -820,6 +844,105 @@ namespace Cotton.Sync.Tests
                 result.IsActivityListTruncated);
         }
 
+        private async Task<VirtualPlaceholderRepeatPassSmokeResult> VerifyVirtualPlaceholderRepeatPassAvoidsFullLocalScanAsync(
+            string syncPairId,
+            int fileCount,
+            Func<int, string> relativePathFactory,
+            TimeSpan smokeTarget)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
+            ArgumentNullException.ThrowIfNull(relativePathFactory);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(fileCount);
+
+            List<RemoteFileSnapshot> remoteFiles = new(fileCount);
+            List<SyncStateEntry> baselineEntries = new(fileCount);
+            for (int index = 0; index < fileCount; index++)
+            {
+                string relativePath = relativePathFactory(index);
+                NodeFileManifestDto remoteFile = LightweightRemoteFile(relativePath, index);
+                remoteFiles.Add(new RemoteFileSnapshot
+                {
+                    RelativePath = relativePath,
+                    File = remoteFile,
+                });
+                baselineEntries.Add(CreateRemoteOnlyPlaceholderState(syncPairId, relativePath, remoteFile));
+            }
+
+            var localScanner = new FailOnFullScanLocalFileScanner();
+            var remoteCrawler = new StaticRemoteTreeCrawler(remoteFiles);
+            var remoteFilesClient = new GuardedRemoteFileSynchronizer();
+            var stateStore = new CountingVirtualPlaceholderStateStore(baselineEntries);
+            var placeholderWriter = new CountingRemoteFilePlaceholderWriter();
+            var runProgress = new RecordingProgress<SyncRunProgress>();
+            var engine = new SyncEngine(
+                localScanner,
+                remoteCrawler,
+                remoteFilesClient,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            SyncRunResult result = await engine.RunOnceAsync(
+                new SyncPair
+                {
+                    SyncPairId = syncPairId,
+                    LocalRootPath = _root,
+                    RemoteRootNodeId = RemoteRootNodeId,
+                    MaterializationMode = SyncPairMaterializationMode.WindowsVirtualFiles,
+                },
+                new SyncRunOptions
+                {
+                    MaximumStoredResultActivities = 100,
+                    RunProgress = runProgress,
+                });
+            stopwatch.Stop();
+
+            List<SyncRunProgress> placeholderProgress = runProgress.Values
+                .Where(progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders)
+                .ToList();
+            TestContext.WriteLine(
+                "Virtual-files repeat pass for {0:N0} persisted placeholders completed in {1:N0} ms; state entries loaded {2:N0}; local full scans {3}; streaming crawls {4}; placeholder writes {5}; retained activities {6:N0}/{7:N0}; progress samples {8:N0}.",
+                fileCount,
+                stopwatch.Elapsed.TotalMilliseconds,
+                stateStore.LoadPairEntriesYieldCount,
+                localScanner.ScanCalls,
+                remoteCrawler.StreamingCrawlCalls,
+                placeholderWriter.Count,
+                result.Activities.Count,
+                result.TotalActivityCount,
+                placeholderProgress.Count);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFilesClient.UploadCalls, Is.Zero);
+                Assert.That(remoteFilesClient.DownloadCalls, Is.Zero);
+                Assert.That(remoteFilesClient.DeleteCalls, Is.Zero);
+                Assert.That(remoteFilesClient.MoveCalls, Is.Zero);
+                Assert.That(remoteCrawler.FullCrawlCalls, Is.Zero);
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
+                Assert.That(stateStore.LoadPairEntriesCalls, Is.EqualTo(1));
+                Assert.That(stateStore.LoadPairEntriesYieldCount, Is.EqualTo(fileCount));
+                Assert.That(localScanner.ScanCalls, Is.Zero);
+                Assert.That(placeholderWriter.Count, Is.Zero);
+                Assert.That(result.TotalActivityCount, Is.Zero);
+                Assert.That(result.Activities, Is.Empty);
+                Assert.That(result.IsActivityListTruncated, Is.False);
+                Assert.That(placeholderProgress, Is.Not.Empty);
+                Assert.That(placeholderProgress.Last().FilesTotal, Is.EqualTo(fileCount));
+                Assert.That(stopwatch.Elapsed, Is.LessThan(smokeTarget));
+            });
+
+            return new VirtualPlaceholderRepeatPassSmokeResult(
+                stopwatch.Elapsed,
+                localScanner.ScanCalls,
+                placeholderWriter.Count,
+                stateStore.LoadPairEntriesYieldCount,
+                remoteCrawler.StreamingCrawlCalls,
+                result.Activities.Count,
+                result.TotalActivityCount,
+                placeholderProgress.Count);
+        }
+
         private static string Hash(byte[] bytes)
         {
             return Convert.ToHexStringLower(SHA256.HashData(bytes));
@@ -901,6 +1024,27 @@ namespace Cotton.Sync.Tests
                 ContentHash = hash,
                 ETag = "sha256-" + hash,
                 Metadata = [],
+            };
+        }
+
+        private static SyncStateEntry CreateRemoteOnlyPlaceholderState(
+            string syncPairId,
+            string relativePath,
+            NodeFileManifestDto remoteFile)
+        {
+            return new SyncStateEntry
+            {
+                SyncPairId = syncPairId,
+                RelativePath = relativePath,
+                Kind = SyncEntryKind.File,
+                RemoteNodeId = remoteFile.NodeId,
+                RemoteFileId = remoteFile.Id,
+                RemoteSizeBytes = remoteFile.SizeBytes,
+                RemoteContentHash = remoteFile.ContentHash,
+                RemoteETag = remoteFile.ETag,
+                PlaceholderIdentity = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E],
+                PlaceholderHydrationState = SyncPlaceholderHydrationState.RemoteOnly,
+                SyncedAtUtc = new DateTime(2026, 6, 16, 12, 0, 0, DateTimeKind.Utc),
             };
         }
 
@@ -1004,6 +1148,19 @@ namespace Cotton.Sync.Tests
                 CancellationToken cancellationToken = default)
             {
                 return Task.FromResult<IReadOnlyList<LocalFileSnapshot>>(Array.Empty<LocalFileSnapshot>());
+            }
+        }
+
+        private sealed class FailOnFullScanLocalFileScanner : ILocalFileScanner
+        {
+            public int ScanCalls { get; private set; }
+
+            public Task<IReadOnlyList<LocalFileSnapshot>> ScanAsync(
+                string rootPath,
+                CancellationToken cancellationToken = default)
+            {
+                ScanCalls++;
+                throw new InvalidOperationException("VFS repeat-pass performance smoke must not run a full local placeholder-tree scan.");
             }
         }
 
@@ -1160,12 +1317,29 @@ namespace Cotton.Sync.Tests
 
         private sealed class CountingVirtualPlaceholderStateStore : ISyncStateStore
         {
+            private readonly Dictionary<string, SyncStateEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
             private int _fileUpserts;
             private int _remoteOnlyPlaceholderUpserts;
+
+            public CountingVirtualPlaceholderStateStore()
+            {
+            }
+
+            public CountingVirtualPlaceholderStateStore(IEnumerable<SyncStateEntry> entries)
+            {
+                foreach (SyncStateEntry entry in entries)
+                {
+                    _entries[SyncPath.ToKey(entry.RelativePath)] = entry;
+                }
+            }
 
             public int FileUpserts => Volatile.Read(ref _fileUpserts);
 
             public int RemoteOnlyPlaceholderUpserts => Volatile.Read(ref _remoteOnlyPlaceholderUpserts);
+
+            public int LoadPairEntriesCalls { get; private set; }
+
+            public int LoadPairEntriesYieldCount { get; private set; }
 
             public Task InitializeAsync(CancellationToken cancellationToken = default)
             {
@@ -1176,15 +1350,21 @@ namespace Cotton.Sync.Tests
                 string syncPairId,
                 CancellationToken cancellationToken = default)
             {
-                return Task.FromResult<IReadOnlyList<SyncStateEntry>>(Array.Empty<SyncStateEntry>());
+                return Task.FromResult<IReadOnlyList<SyncStateEntry>>(_entries.Values.ToList());
             }
 
             public async IAsyncEnumerable<SyncStateEntry> LoadPairEntriesAsync(
                 string syncPairId,
                 [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
             {
+                LoadPairEntriesCalls++;
                 await Task.CompletedTask.ConfigureAwait(false);
-                yield break;
+                foreach (SyncStateEntry entry in _entries.Values.ToList())
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    LoadPairEntriesYieldCount++;
+                    yield return entry;
+                }
             }
 
             public Task<DateTime?> GetPairLastSyncedAtUtcAsync(
@@ -1206,11 +1386,13 @@ namespace Cotton.Sync.Tests
                 string relativePath,
                 CancellationToken cancellationToken = default)
             {
-                return Task.FromResult<SyncStateEntry?>(null);
+                _entries.TryGetValue(SyncPath.ToKey(relativePath), out SyncStateEntry? entry);
+                return Task.FromResult(entry);
             }
 
             public Task UpsertAsync(SyncStateEntry entry, CancellationToken cancellationToken = default)
             {
+                _entries[SyncPath.ToKey(entry.RelativePath)] = entry;
                 if (entry.Kind == SyncEntryKind.File)
                 {
                     Interlocked.Increment(ref _fileUpserts);
@@ -1248,12 +1430,14 @@ namespace Cotton.Sync.Tests
                 string relativePath,
                 CancellationToken cancellationToken = default)
             {
-                throw new InvalidOperationException("Virtual placeholder population smoke must not delete state.");
+                _entries.Remove(SyncPath.ToKey(relativePath));
+                return Task.CompletedTask;
             }
 
             public Task DeletePairAsync(string syncPairId, CancellationToken cancellationToken = default)
             {
-                throw new InvalidOperationException("Virtual placeholder population smoke must not delete pair state.");
+                _entries.Clear();
+                return Task.CompletedTask;
             }
 
             public Task ReplacePairAsync(
@@ -1261,7 +1445,13 @@ namespace Cotton.Sync.Tests
                 IReadOnlyCollection<SyncStateEntry> entries,
                 CancellationToken cancellationToken = default)
             {
-                throw new InvalidOperationException("Virtual placeholder population smoke must not replace full state.");
+                _entries.Clear();
+                foreach (SyncStateEntry entry in entries)
+                {
+                    _entries[SyncPath.ToKey(entry.RelativePath)] = entry;
+                }
+
+                return Task.CompletedTask;
             }
         }
 
@@ -1463,6 +1653,16 @@ namespace Cotton.Sync.Tests
             int CooperativeYieldCount,
             int RetainedActivityCount,
             bool IsActivityListTruncated);
+
+        private sealed record VirtualPlaceholderRepeatPassSmokeResult(
+            TimeSpan Elapsed,
+            int LocalFullScanCalls,
+            int PlaceholderWrites,
+            int StateEntriesLoaded,
+            int StreamingCrawlCalls,
+            int RetainedActivityCount,
+            int TotalActivityCount,
+            int RunProgressCount);
 
         private class RecordingProgress<T> : IProgress<T>
         {
