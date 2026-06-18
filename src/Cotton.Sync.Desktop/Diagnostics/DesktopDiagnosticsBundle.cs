@@ -3,6 +3,7 @@
 
 using Cotton.Sync.Desktop.Shell;
 using Cotton.Sync.Desktop.Platform;
+using Cotton.Sync.State;
 
 namespace Cotton.Sync.Desktop.Diagnostics
 {
@@ -13,6 +14,8 @@ namespace Cotton.Sync.Desktop.Diagnostics
         string AccountName,
         DesktopDataPathSnapshot DataPaths,
         IReadOnlyList<DesktopSyncPairSnapshot> SyncPairs,
+        SyncStateStoreDiagnostics SyncState,
+        DesktopRuntimeHealthSnapshot RuntimeHealth,
         IReadOnlyList<DesktopSelfTestItemSnapshot> SelfTestItems,
         IReadOnlyList<WindowsCloudFilesDiagnosticEvent> CloudFilesEvents);
 }
