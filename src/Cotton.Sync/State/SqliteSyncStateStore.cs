@@ -103,6 +103,29 @@ namespace Cotton.Sync.State
             return entity is null ? CreateDefaultCursor(syncPairId) : ToModel(entity);
         }
 
+        public async Task<SyncStateStoreDiagnostics> GetDiagnosticsAsync(CancellationToken cancellationToken = default)
+        {
+            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+            string fullPath = Path.GetFullPath(_databasePath);
+            await using SyncStateDbContext context = CreateContext();
+            long syncEntryCount = await context.SyncEntries
+                .LongCountAsync(cancellationToken)
+                .ConfigureAwait(false);
+            long syncChangeCursorCount = await context.SyncChangeCursors
+                .LongCountAsync(cancellationToken)
+                .ConfigureAwait(false);
+            SqlitePageUsage pageUsage = await ReadPageUsageAsync(context, cancellationToken)
+                .ConfigureAwait(false);
+            long fileSizeBytes = File.Exists(fullPath) ? new FileInfo(fullPath).Length : 0;
+            return new SyncStateStoreDiagnostics(
+                fileSizeBytes,
+                pageUsage.PageCount,
+                pageUsage.FreelistCount,
+                pageUsage.PageSize,
+                syncEntryCount,
+                syncChangeCursorCount);
+        }
+
         /// <inheritdoc />
         public async Task<SyncStateEntry?> GetAsync(string syncPairId, string relativePath, CancellationToken cancellationToken = default)
         {
@@ -653,21 +676,16 @@ namespace Cotton.Sync.State
         private async Task CompactLargeFreelistAsync(CancellationToken cancellationToken)
         {
             await using SyncStateDbContext context = CreateContext();
+            SqlitePageUsage pageUsage = await ReadPageUsageAsync(context, cancellationToken).ConfigureAwait(false);
+            if (!ShouldVacuumFreelist(pageUsage.PageCount, pageUsage.FreelistCount, pageUsage.PageSize))
+            {
+                return;
+            }
+
             await context.Database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 DbConnection connection = context.Database.GetDbConnection();
-                long pageCount = await ExecuteScalarLongAsync(connection, "PRAGMA page_count;", cancellationToken)
-                    .ConfigureAwait(false);
-                long freelistCount = await ExecuteScalarLongAsync(connection, "PRAGMA freelist_count;", cancellationToken)
-                    .ConfigureAwait(false);
-                long pageSize = await ExecuteScalarLongAsync(connection, "PRAGMA page_size;", cancellationToken)
-                    .ConfigureAwait(false);
-                if (!ShouldVacuumFreelist(pageCount, freelistCount, pageSize))
-                {
-                    return;
-                }
-
                 await using DbCommand command = connection.CreateCommand();
                 command.CommandText = "VACUUM;";
                 command.CommandTimeout = MaintenanceSqliteTimeoutSeconds;
@@ -694,6 +712,28 @@ namespace Cotton.Sync.State
                 && freelistRatio >= MinimumFreelistRatioForVacuum;
         }
 
+        private static async Task<SqlitePageUsage> ReadPageUsageAsync(
+            SyncStateDbContext context,
+            CancellationToken cancellationToken)
+        {
+            await context.Database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                DbConnection connection = context.Database.GetDbConnection();
+                long pageCount = await ExecuteScalarLongAsync(connection, "PRAGMA page_count;", cancellationToken)
+                    .ConfigureAwait(false);
+                long freelistCount = await ExecuteScalarLongAsync(connection, "PRAGMA freelist_count;", cancellationToken)
+                    .ConfigureAwait(false);
+                long pageSize = await ExecuteScalarLongAsync(connection, "PRAGMA page_size;", cancellationToken)
+                    .ConfigureAwait(false);
+                return new SqlitePageUsage(pageCount, freelistCount, pageSize);
+            }
+            finally
+            {
+                await context.Database.CloseConnectionAsync().ConfigureAwait(false);
+            }
+        }
+
         private static async Task<long> ExecuteScalarLongAsync(
             DbConnection connection,
             string commandText,
@@ -705,6 +745,8 @@ namespace Cotton.Sync.State
             object? result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
             return Convert.ToInt64(result, System.Globalization.CultureInfo.InvariantCulture);
         }
+
+        private readonly record struct SqlitePageUsage(long PageCount, long FreelistCount, long PageSize);
 
         private void EnsureDirectoryExists()
         {

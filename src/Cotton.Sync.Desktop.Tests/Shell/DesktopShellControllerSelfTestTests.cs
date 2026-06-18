@@ -202,7 +202,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
-        public async Task RunSelfTestAsync_VerifiesSyncStateCursorStoreAndReportsPath()
+        public async Task RunSelfTestAsync_VerifiesSyncStateCursorStoreAndReportsStorageMetrics()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             using DesktopShellController controller = CreateController(paths, new SqliteSyncPairSettingsStore(paths.AppDatabasePath));
@@ -216,9 +216,37 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             Assert.Multiple(() =>
             {
                 Assert.That(item.Passed, Is.True);
-                Assert.That(item.Details, Does.Contain(paths.SyncStateDatabasePath));
+                Assert.That(item.Details, Does.Contain("entries="));
+                Assert.That(item.Details, Does.Contain("cursors="));
+                Assert.That(item.Details, Does.Contain("file="));
+                Assert.That(item.Details, Does.Contain("used="));
+                Assert.That(item.Details, Does.Contain("free="));
+                Assert.That(item.Details, Does.Not.Contain(paths.SyncStateDatabasePath));
                 Assert.That(File.Exists(paths.SyncStateDatabasePath), Is.True);
                 Assert.That(cursor.LastCursor, Is.Zero);
+            });
+        }
+
+        [Test]
+        public async Task RunSelfTestAsync_FailsWhenSyncStateDatabaseIsEmptyButMostlyFreelist()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            await stateStore.InitializeAsync();
+            await stateStore.UpsertManyAsync(CreateLargePlaceholderStateEntries("pair-a"));
+            await stateStore.ReplacePairAsync("pair-a", Array.Empty<SyncStateEntry>());
+            using DesktopShellController controller = CreateController(paths, new SqliteSyncPairSettingsStore(paths.AppDatabasePath));
+
+            DesktopSelfTestSnapshot result = await controller.RunSelfTestAsync();
+
+            DesktopSelfTestItemSnapshot item = result.Items.Single(static selfTestItem => selfTestItem.Name == "Sync state database");
+            Assert.Multiple(() =>
+            {
+                Assert.That(item.Passed, Is.False);
+                Assert.That(result.Passed, Is.False);
+                Assert.That(item.Details, Does.Contain("no sync entries or change cursors"));
+                Assert.That(item.Details, Does.Contain("free SQLite pages"));
+                Assert.That(item.Details, Does.Not.Contain(paths.SyncStateDatabasePath));
             });
         }
 
@@ -813,6 +841,26 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 CreatedAtUtc = DateTime.UtcNow.AddMinutes(-2),
                 UpdatedAtUtc = DateTime.UtcNow.AddMinutes(-1),
             };
+        }
+
+        private static SyncStateEntry[] CreateLargePlaceholderStateEntries(string syncPairId)
+        {
+            byte[] placeholderIdentity = Enumerable.Range(0, 16 * 1024)
+                .Select(index => (byte)(index % 251))
+                .ToArray();
+            return Enumerable.Range(0, 512)
+                .Select(index => new SyncStateEntry
+                {
+                    SyncPairId = syncPairId,
+                    RelativePath = "Large/file-" + index.ToString("D4", System.Globalization.CultureInfo.InvariantCulture) + ".txt",
+                    Kind = SyncEntryKind.File,
+                    RemoteFileId = Guid.NewGuid(),
+                    RemoteContentHash = "hash-" + index.ToString("D4", System.Globalization.CultureInfo.InvariantCulture),
+                    RemoteETag = "etag-" + index.ToString("D4", System.Globalization.CultureInfo.InvariantCulture),
+                    PlaceholderIdentity = placeholderIdentity,
+                    PlaceholderHydrationState = SyncPlaceholderHydrationState.RemoteOnly,
+                })
+                .ToArray();
         }
 
         private static string ReadEntry(ZipArchive archive, string name)
