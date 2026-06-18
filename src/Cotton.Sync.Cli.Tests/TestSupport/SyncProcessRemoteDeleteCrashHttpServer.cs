@@ -90,7 +90,7 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
             }
 
             if (request.Method == HttpMethod.Get
-                && request.PathAndQuery == "/api/v1/layouts/nodes/" + _remoteRootId.ToString("D") + "/children?page=1&pageSize=100&depth=0")
+                && request.PathAndQuery == "/api/v1/layouts/nodes/" + _remoteRootId.ToString("D") + "/children?page=1&pageSize=500&depth=0")
             {
                 await WriteJsonAsync(response, HttpStatusCode.OK, CreateRootContent(), cancellationToken).ConfigureAwait(false);
                 return;
