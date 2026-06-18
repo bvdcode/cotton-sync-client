@@ -765,11 +765,81 @@ namespace Cotton.Sync
                 return null;
             }
 
+            InitialVirtualFilesStreamingPlan? stateFirstPlan =
+                await TryCreateStateFirstWindowsVirtualFilesStreamingPlanAsync(syncPair, cancellationToken)
+                    .ConfigureAwait(false);
+            if (stateFirstPlan is not null)
+            {
+                return stateFirstPlan;
+            }
+
             return await InspectLocalTreeForInitialWindowsVirtualFilesStreamingAsync(
                     syncPair,
                     options,
                     startedAtUtc,
                     cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task<InitialVirtualFilesStreamingPlan?> TryCreateStateFirstWindowsVirtualFilesStreamingPlanAsync(
+            SyncPair syncPair,
+            CancellationToken cancellationToken)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            int entriesSeen = 0;
+            int directoryEntries = 0;
+            var fileBaselineByPath = new Dictionary<string, InitialVirtualFilesPlaceholderBaseline>(PathComparer);
+            await foreach (SyncStateEntry entry in _stateStore
+                               .LoadPairEntriesAsync(syncPair.SyncPairId, cancellationToken)
+                               .WithCancellation(cancellationToken)
+                               .ConfigureAwait(false))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                entriesSeen++;
+                if (SyncPathIgnoreRules.ShouldIgnore(entry.RelativePath))
+                {
+                    await _stateStore.DeleteAsync(syncPair.SyncPairId, entry.RelativePath, cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
+
+                switch (entry.Kind)
+                {
+                    case SyncEntryKind.Directory:
+                        if (entry.RemoteNodeId is null)
+                        {
+                            return null;
+                        }
+
+                        directoryEntries++;
+                        break;
+                    case SyncEntryKind.File:
+                        if (!IsOnlineOnlyPlaceholderState(entry))
+                        {
+                            return null;
+                        }
+
+                        fileBaselineByPath[SyncPath.ToKey(entry.RelativePath)] =
+                            InitialVirtualFilesPlaceholderBaseline.FromState(entry);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(entry), entry.Kind, "Unknown sync state entry kind.");
+                }
+            }
+
+            stopwatch.Stop();
+            if (entriesSeen == 0)
+            {
+                return null;
+            }
+
+            _logger.LogInformation(
+                "Loaded Windows virtual-files state-first resume plan for pair {SyncPairId} with {DirectoryStateCount} directories and {FileStateCount} files in {ElapsedMilliseconds} ms without scanning the local placeholder tree.",
+                syncPair.SyncPairId,
+                directoryEntries,
+                fileBaselineByPath.Count,
+                stopwatch.ElapsedMilliseconds);
+            return new InitialVirtualFilesStreamingPlan(
+                SkipCurrentPlaceholders: true,
+                CurrentPlaceholderBaselineByPath: fileBaselineByPath);
         }
 
         private async Task<InitialVirtualFilesStreamingPlan?> InspectLocalTreeForInitialWindowsVirtualFilesStreamingAsync(
