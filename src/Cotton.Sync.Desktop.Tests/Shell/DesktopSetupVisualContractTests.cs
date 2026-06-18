@@ -897,7 +897,9 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(addFolderWizard, Does.Contain("HorizontalAlignment=\"Stretch\""));
                 Assert.That(addFolderWizard, Does.Contain("VerticalAlignment=\"Stretch\""));
                 Assert.That(addFolderWizard, Does.Contain("ClipToBounds=\"True\""));
+                Assert.That(addFolderWizard, Does.Contain("<Grid RowDefinitions=\"Auto,Auto,*,Auto\""));
                 Assert.That(addFolderWizard, Does.Contain("<ScrollViewer Grid.Row=\"2\""));
+                Assert.That(addFolderWizard, Does.Contain("<StackPanel Grid.Row=\"3\""));
                 Assert.That(addFolderWizard, Does.Contain("VerticalScrollBarVisibility=\"Auto\""));
                 Assert.That(addFolderWizard, Does.Contain("ToolTip.Tip=\"{Binding ActionRequiredMessage}\""));
                 Assert.That(addFolderWizard, Does.Not.Contain("<Border Width=\"372\""));
@@ -1009,6 +1011,9 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(cloudStep, Does.Contain("PlaceholderText=\"Search cloud folders\""));
                 Assert.That(cloudStep, Does.Contain("Text=\"Sync mode\""));
                 Assert.That(cloudStep, Does.Contain("Content=\"{Binding RemoteFolderWizardPrimaryActionText}\""));
+                Assert.That(cloudStep, Does.Contain("<StackPanel Grid.Row=\"3\""));
+                Assert.That(cloudStep.IndexOf("</ScrollViewer>", StringComparison.Ordinal), Is.LessThan(
+                    cloudStep.IndexOf("Content=\"{Binding RemoteFolderWizardPrimaryActionText}\"", StringComparison.Ordinal)));
                 Assert.That(cloudStep.IndexOf("Text=\"Sync mode\"", StringComparison.Ordinal), Is.LessThan(
                     cloudStep.IndexOf("Content=\"{Binding RemoteFolderWizardPrimaryActionText}\"", StringComparison.Ordinal)));
             });
