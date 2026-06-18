@@ -54,7 +54,7 @@ namespace Cotton.Sync.Desktop.Platform
 
             if (OperatingSystem.IsLinux())
             {
-                return "Linux tray availability varies by desktop environment, so Cotton Sync uses normal window lifecycle until a native Linux tray adapter is verified.";
+                return "Tray availability varies by Linux desktop environment, so Cotton Sync opens as a normal window on this system.";
             }
 
             return "Tray lifecycle is not supported on this platform yet.";

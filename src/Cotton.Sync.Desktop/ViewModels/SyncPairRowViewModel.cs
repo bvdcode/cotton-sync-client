@@ -38,6 +38,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 if (SetProperty(ref _isEnabled, value))
                 {
                     OnPropertyChanged(nameof(ToggleEnabledLabel));
+                    OnPropertyChanged(nameof(ToggleEnabledShortLabel));
                     OnPropertyChanged(nameof(IsDisabled));
                     OnPropertyChanged(nameof(IsStatusIndicatorVisible));
                     OnPropertyChanged(nameof(IsStatusActive));
@@ -49,6 +50,8 @@ namespace Cotton.Sync.Desktop.ViewModels
         public bool IsDisabled => !IsEnabled;
 
         public string ToggleEnabledLabel => IsEnabled ? "Disable sync folder" : "Enable sync folder";
+
+        public string ToggleEnabledShortLabel => IsEnabled ? "Disable" : "Enable";
 
         public bool IsEditorVisible
         {
@@ -101,10 +104,11 @@ namespace Cotton.Sync.Desktop.ViewModels
             string.Equals(DisplayStatus, "Paused", StringComparison.Ordinal)
             || string.Equals(DisplayStatus, "Pausing", StringComparison.Ordinal);
 
+        public bool IsStatusOffline => string.Equals(DisplayStatus, "Offline", StringComparison.Ordinal);
+
         public bool IsStatusAttention =>
             string.Equals(DisplayStatus, "Error", StringComparison.Ordinal)
-            || string.Equals(DisplayStatus, "Conflict", StringComparison.Ordinal)
-            || string.Equals(DisplayStatus, "Offline", StringComparison.Ordinal);
+            || string.Equals(DisplayStatus, "Conflict", StringComparison.Ordinal);
 
         public bool HasCurrentProgress
         {
@@ -216,6 +220,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                     OnPropertyChanged(nameof(StatusIndicatorToolTip));
                     OnPropertyChanged(nameof(IsStatusActive));
                     OnPropertyChanged(nameof(IsStatusPaused));
+                    OnPropertyChanged(nameof(IsStatusOffline));
                     OnPropertyChanged(nameof(IsStatusAttention));
                 }
             }

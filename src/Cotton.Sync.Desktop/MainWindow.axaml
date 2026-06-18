@@ -77,7 +77,9 @@
                           Command="{Binding PauseResumeCommand}" />
                 <MenuItem Header="Settings"
                           Command="{Binding ShowSettingsCommand}" />
+                <Separator />
                 <MenuItem Header="Sign out"
+                          Classes="dangerMenuItem"
                           Command="{Binding SignOutCommand}" />
               </MenuFlyout>
             </Button.Flyout>
@@ -284,6 +286,7 @@
                      Text="{Binding TotpCode}"
                      KeyDown="SignInInput_KeyDown" />
             <Button Content="Sign in"
+                    Classes="primary"
                     HorizontalAlignment="Stretch"
                     Command="{Binding SignInCommand}" />
           </StackPanel>
@@ -306,6 +309,7 @@
                   CornerRadius="6"
                   Classes="statusCard"
                   Classes.actionRequired="{Binding HasStatusAttention}"
+                  Classes.offline="{Binding HasOfflineStatus}"
                   IsVisible="{Binding IsStatusCardVisible}">
             <Grid ColumnDefinitions="Auto,*"
                   ColumnSpacing="9">
@@ -314,6 +318,7 @@
                       CornerRadius="6"
                       Classes="statusDot"
                       Classes.actionRequired="{Binding HasStatusAttention}"
+                      Classes.offline="{Binding HasOfflineStatus}"
                       VerticalAlignment="Center" />
               <StackPanel Grid.Column="1"
                           Spacing="1">
@@ -425,24 +430,38 @@
                         Orientation="Horizontal"
                         Spacing="6"
                         VerticalAlignment="Center">
-              <Button Classes="icon flatIcon"
+              <Button Classes="compact"
                       ToolTip.Tip="Run synchronization again"
                       AutomationProperties.Name="Run synchronization again"
                       IsVisible="{Binding CanRetryActionRequired}"
                       Command="{Binding SyncNowCommand}">
-                <materialIcons:MaterialIcon Kind="Refresh"
-                                            Width="16"
-                                            Height="16"
-                                            Foreground="{DynamicResource CottonPrimaryBrush}" />
+                <StackPanel Orientation="Horizontal"
+                            Spacing="5">
+                  <materialIcons:MaterialIcon Kind="Refresh"
+                                              Width="14"
+                                              Height="14"
+                                              Foreground="{DynamicResource CottonPrimaryBrush}"
+                                              VerticalAlignment="Center" />
+                  <TextBlock Text="Retry"
+                             FontSize="12"
+                             VerticalAlignment="Center" />
+                </StackPanel>
               </Button>
-              <Button Classes="icon"
+              <Button Classes="compact"
                       ToolTip.Tip="Run desktop self-test"
                       AutomationProperties.Name="Run desktop self-test"
                       Command="{Binding SelfTestCommand}">
-                <materialIcons:MaterialIcon Kind="CheckCircleOutline"
-                                            Width="16"
-                                            Height="16"
-                                            Foreground="{DynamicResource CottonTextPrimaryBrush}" />
+                <StackPanel Orientation="Horizontal"
+                            Spacing="5">
+                  <materialIcons:MaterialIcon Kind="CheckCircleOutline"
+                                              Width="14"
+                                              Height="14"
+                                              Foreground="{DynamicResource CottonTextPrimaryBrush}"
+                                              VerticalAlignment="Center" />
+                  <TextBlock Text="Diagnostics"
+                             FontSize="12"
+                             VerticalAlignment="Center" />
+                </StackPanel>
               </Button>
             </StackPanel>
           </Grid>
@@ -483,7 +502,7 @@
         </Border>
 
         <Border Padding="10"
-                MaxHeight="116"
+                MaxHeight="150"
                 CornerRadius="6"
                 Background="{DynamicResource CottonErrorSoftBrush}"
                 BorderBrush="{DynamicResource CottonErrorBrush}"
@@ -537,7 +556,8 @@
                                  Classes="secondary"
                                  FontSize="11"
                                  ToolTip.Tip="{Binding Details}"
-                                 TextTrimming="CharacterEllipsis" />
+                                 TextWrapping="Wrap"
+                                 MaxLines="3" />
                       <Button Grid.Column="2"
                               Grid.RowSpan="2"
                               Classes="icon"
@@ -689,7 +709,7 @@
                                 CornerRadius="6"
                                 Background="{DynamicResource CottonSurfaceMutedBrush}">
                           <Grid ColumnDefinitions="*,Auto,Auto"
-                                RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+                                RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
                                 ColumnSpacing="10">
                             <Grid ColumnDefinitions="Auto,*"
                                   ColumnSpacing="7">
@@ -699,6 +719,7 @@
                                       Classes="syncPairStatusIndicator"
                                       Classes.active="{Binding IsStatusActive}"
                                       Classes.paused="{Binding IsStatusPaused}"
+                                      Classes.offline="{Binding IsStatusOffline}"
                                       Classes.attention="{Binding IsStatusAttention}"
                                       ToolTip.Tip="{Binding StatusIndicatorToolTip}"
                                       VerticalAlignment="Center"
@@ -718,6 +739,7 @@
                                        IsVisible="{Binding HasCurrentOperation}" />
                             <ProgressBar Grid.Row="2"
                                          Height="3"
+                                         Margin="0,3,0,0"
                                          Minimum="0"
                                          Maximum="100"
                                          Value="{Binding CurrentProgressValue}"
@@ -766,7 +788,7 @@
                                        Opacity="0.74"
                                        IsVisible="{Binding HasRemotePathLabel}" />
                             <Button Grid.Column="1"
-                                    Grid.RowSpan="4"
+                                    Grid.RowSpan="5"
                                     Classes="icon"
                                     ToolTip.Tip="Open local folder"
                                     AutomationProperties.Name="Open local folder"
@@ -779,7 +801,7 @@
                                                           Foreground="{DynamicResource CottonTextPrimaryBrush}" />
                             </Button>
                             <Button Grid.Column="2"
-                                    Grid.RowSpan="4"
+                                    Grid.RowSpan="5"
                                     Classes="icon"
                                     ToolTip.Tip="Rename or manage sync folder"
                                     AutomationProperties.Name="Rename or manage sync folder"
@@ -791,7 +813,7 @@
                                                           Height="16"
                                                           Foreground="{DynamicResource CottonTextPrimaryBrush}" />
                             </Button>
-                            <Border Grid.Row="4"
+                            <Border Grid.Row="5"
                                     Grid.ColumnSpan="3"
                                     Margin="0,6,0,0"
                                     Padding="6"
@@ -802,65 +824,105 @@
                                     IsVisible="{Binding IsEditorVisible}">
                               <Grid RowDefinitions="Auto,Auto"
                                     RowSpacing="6">
-                                <TextBox Text="{Binding EditableDisplayName}"
-                                         PlaceholderText="Folder name" />
+                                <StackPanel Spacing="3">
+                                  <TextBlock Text="Folder name"
+                                             Classes="secondary"
+                                             FontSize="11" />
+                                  <TextBox Text="{Binding EditableDisplayName}"
+                                           PlaceholderText="Folder name" />
+                                </StackPanel>
                                 <WrapPanel Grid.Row="1"
                                            Orientation="Horizontal"
                                            ItemSpacing="6"
                                            LineSpacing="6"
                                            HorizontalAlignment="Right">
-                                  <Button Classes="icon"
+                                  <Button Classes="compact"
                                           ToolTip.Tip="Save folder name"
                                           AutomationProperties.Name="Save folder name"
                                           Command="{Binding $parent[Window].DataContext.SaveSelectedSyncPairNameCommand}">
-                                    <materialIcons:MaterialIcon Kind="ContentSaveOutline"
-                                                                Width="16"
-                                                                Height="16"
-                                                                Foreground="{DynamicResource CottonTextPrimaryBrush}" />
+                                    <StackPanel Orientation="Horizontal"
+                                                Spacing="5">
+                                      <materialIcons:MaterialIcon Kind="ContentSaveOutline"
+                                                                  Width="14"
+                                                                  Height="14"
+                                                                  Foreground="{DynamicResource CottonTextPrimaryBrush}"
+                                                                  VerticalAlignment="Center" />
+                                      <TextBlock Text="Save"
+                                                 FontSize="12"
+                                                 VerticalAlignment="Center" />
+                                    </StackPanel>
                                   </Button>
-                                  <Button Classes="icon"
+                                  <Button Classes="compact"
                                           ToolTip.Tip="Change local folder"
                                           AutomationProperties.Name="Change local folder"
                                           Command="{Binding $parent[Window].DataContext.ChangeSelectedSyncPairLocalFolderCommand}">
-                                    <materialIcons:MaterialIcon Kind="FolderSearchOutline"
-                                                                Width="16"
-                                                                Height="16"
-                                                                Foreground="{DynamicResource CottonTextPrimaryBrush}" />
+                                    <StackPanel Orientation="Horizontal"
+                                                Spacing="5">
+                                      <materialIcons:MaterialIcon Kind="FolderSearchOutline"
+                                                                  Width="14"
+                                                                  Height="14"
+                                                                  Foreground="{DynamicResource CottonTextPrimaryBrush}"
+                                                                  VerticalAlignment="Center" />
+                                      <TextBlock Text="Local"
+                                                 FontSize="12"
+                                                 VerticalAlignment="Center" />
+                                    </StackPanel>
                                   </Button>
-                                  <Button Classes="icon"
+                                  <Button Classes="compact"
                                           ToolTip.Tip="Change cloud folder"
                                           AutomationProperties.Name="Change cloud folder"
                                           Command="{Binding $parent[Window].DataContext.ChangeSelectedSyncPairRemoteFolderCommand}">
-                                    <materialIcons:MaterialIcon Kind="CloudSearchOutline"
-                                                                Width="16"
-                                                                Height="16"
-                                                                Foreground="{DynamicResource CottonTextPrimaryBrush}" />
+                                    <StackPanel Orientation="Horizontal"
+                                                Spacing="5">
+                                      <materialIcons:MaterialIcon Kind="CloudSearchOutline"
+                                                                  Width="14"
+                                                                  Height="14"
+                                                                  Foreground="{DynamicResource CottonTextPrimaryBrush}"
+                                                                  VerticalAlignment="Center" />
+                                      <TextBlock Text="Cloud"
+                                                 FontSize="12"
+                                                 VerticalAlignment="Center" />
+                                    </StackPanel>
                                   </Button>
-                                  <Button Classes="icon"
+                                  <Button Classes="compact"
                                           ToolTip.Tip="{Binding ToggleEnabledLabel}"
                                           AutomationProperties.Name="{Binding ToggleEnabledLabel}"
                                           Command="{Binding $parent[Window].DataContext.ToggleSelectedSyncPairEnabledCommand}">
-                                    <Grid>
+                                    <StackPanel Orientation="Horizontal"
+                                                Spacing="5">
+                                      <Grid Width="14"
+                                            Height="14">
                                       <materialIcons:MaterialIcon Kind="FolderOffOutline"
-                                                                  Width="16"
-                                                                  Height="16"
+                                                                  Width="14"
+                                                                  Height="14"
                                                                   Foreground="{DynamicResource CottonTextPrimaryBrush}"
                                                                   IsVisible="{Binding IsEnabled}" />
                                       <materialIcons:MaterialIcon Kind="FolderCheckOutline"
-                                                                  Width="16"
-                                                                  Height="16"
+                                                                  Width="14"
+                                                                  Height="14"
                                                                   Foreground="{DynamicResource CottonTextPrimaryBrush}"
                                                                   IsVisible="{Binding IsDisabled}" />
-                                    </Grid>
+                                      </Grid>
+                                      <TextBlock Text="{Binding ToggleEnabledShortLabel}"
+                                                 FontSize="12"
+                                                 VerticalAlignment="Center" />
+                                    </StackPanel>
                                   </Button>
-                                  <Button Classes="icon"
+                                  <Button Classes="compact danger"
                                           ToolTip.Tip="Remove sync folder"
                                           AutomationProperties.Name="Remove sync folder"
                                           Command="{Binding $parent[Window].DataContext.RemoveSelectedSyncPairCommand}">
-                                    <materialIcons:MaterialIcon Kind="TrashCanOutline"
-                                                                Width="16"
-                                                                Height="16"
-                                                                Foreground="{DynamicResource CottonTextPrimaryBrush}" />
+                                    <StackPanel Orientation="Horizontal"
+                                                Spacing="5">
+                                      <materialIcons:MaterialIcon Kind="TrashCanOutline"
+                                                                  Width="14"
+                                                                  Height="14"
+                                                                  Foreground="{DynamicResource CottonErrorBrush}"
+                                                                  VerticalAlignment="Center" />
+                                      <TextBlock Text="Remove"
+                                                 FontSize="12"
+                                                 VerticalAlignment="Center" />
+                                    </StackPanel>
                                   </Button>
                                 </WrapPanel>
                               </Grid>
@@ -1341,7 +1403,7 @@
                            FontSize="18"
                            FontWeight="SemiBold"
                            TextTrimming="CharacterEllipsis" />
-                <TextBlock Text="Account, startup, preferences, diagnostics"
+                <TextBlock Text="Manage account, sync behavior, and diagnostics."
                            Classes="secondary"
                            FontSize="12"
                            TextWrapping="Wrap" />
@@ -1409,7 +1471,7 @@
                     </Grid>
                     <Button Grid.Column="1"
                             Content="Sign out"
-                            Classes="compact"
+                            Classes="compact danger"
                             Command="{Binding SignOutCommand}" />
                   </Grid>
 
@@ -1470,33 +1532,11 @@
                 </StackPanel>
               </TabItem>
 
-              <TabItem Header="Startup"
-                       AutomationProperties.Name="Startup settings"
-                       Focusable="True"
-                       IsTabStop="True"
-                       TabIndex="1">
-                <StackPanel Margin="0,10,0,0"
-                            Spacing="7">
-                  <CheckBox Content="Launch on startup"
-                            IsVisible="{Binding IsStartWithOperatingSystemSupported}"
-                            IsChecked="{Binding StartWithOperatingSystem}" />
-                  <TextBlock Text="{Binding AutostartStatusText}"
-                             Classes="secondary"
-                             FontSize="12"
-                             TextWrapping="Wrap" />
-                  <TextBlock Text="{Binding TrayLifecycleStatusText}"
-                             Classes="secondary"
-                             FontSize="12"
-                             TextWrapping="Wrap"
-                             IsVisible="{Binding IsTrayLifecycleUnsupported}" />
-                </StackPanel>
-              </TabItem>
-
               <TabItem Header="Preferences"
                        AutomationProperties.Name="Preferences settings"
                        Focusable="True"
                        IsTabStop="True"
-                       TabIndex="2">
+                       TabIndex="1">
                 <StackPanel Margin="0,10,0,0"
                             Spacing="14">
                   <StackPanel Spacing="6">
@@ -1523,6 +1563,26 @@
                                FontSize="12"
                                TextWrapping="Wrap" />
                   </StackPanel>
+
+                  <Border Height="1"
+                          Background="{DynamicResource CottonBorderBrush}" />
+
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Startup"
+                               FontWeight="SemiBold" />
+                    <CheckBox Content="Launch on startup"
+                              IsVisible="{Binding IsStartWithOperatingSystemSupported}"
+                              IsChecked="{Binding StartWithOperatingSystem}" />
+                    <TextBlock Text="{Binding AutostartStatusText}"
+                               Classes="secondary"
+                               FontSize="12"
+                               TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding TrayLifecycleStatusText}"
+                               Classes="secondary"
+                               FontSize="12"
+                               TextWrapping="Wrap"
+                               IsVisible="{Binding IsTrayLifecycleUnsupported}" />
+                  </StackPanel>
                 </StackPanel>
               </TabItem>
 
@@ -1530,7 +1590,7 @@
                        AutomationProperties.Name="Diagnostics settings"
                        Focusable="True"
                        IsTabStop="True"
-                       TabIndex="3">
+                       TabIndex="2">
                 <ScrollViewer Margin="0,10,0,0"
                               VerticalScrollBarVisibility="Auto">
                   <StackPanel Spacing="8">
@@ -1605,23 +1665,14 @@
                                          Classes.passed="{Binding Passed}"
                                          Classes.failed="{Binding IsFailed}"
                                          FontSize="12" />
-                              <Expander Grid.Row="1"
-                                        Grid.ColumnSpan="2"
-                                        IsExpanded="{Binding AreDetailsExpanded}"
-                                        IsVisible="{Binding HasDetails}"
-                                        ToolTip.Tip="{Binding Details}"
-                                        AutomationProperties.Name="Toggle diagnostic details">
-                                <Expander.Header>
-                                  <TextBlock Text="{Binding Details}"
-                                             Classes="secondary"
-                                             FontSize="11"
-                                             TextTrimming="CharacterEllipsis" />
-                                </Expander.Header>
-                                <TextBlock Text="{Binding Details}"
-                                           Classes="secondary"
-                                           FontSize="11"
-                                           TextWrapping="Wrap" />
-                              </Expander>
+                              <TextBlock Grid.Row="1"
+                                         Grid.ColumnSpan="2"
+                                         Text="{Binding Details}"
+                                         Classes="secondary"
+                                         FontSize="11"
+                                         TextWrapping="Wrap"
+                                         ToolTip.Tip="{Binding Details}"
+                                         IsVisible="{Binding HasDetails}" />
                             </Grid>
                           </DataTemplate>
                         </ItemsControl.ItemTemplate>

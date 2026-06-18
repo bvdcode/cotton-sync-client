@@ -12,7 +12,7 @@ namespace Cotton.Sync.Desktop.Shell
     internal static class DesktopActionRequiredMessageResolver
     {
         internal const string MissingDesktopSyncChangesApiMessage =
-            "This Cotton server does not expose the desktop sync changes API yet. Deploy the latest Cotton backend and retry sync.";
+            "This Cotton server needs an update before desktop sync can continue. Contact the server admin, then retry sync.";
 
         private const string HtmlInsteadOfJsonMessage =
             "Cotton API returned a web page instead of JSON. Check the server URL or backend deployment and retry.";

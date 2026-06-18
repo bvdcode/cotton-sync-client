@@ -42,7 +42,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             Assert.That(
                 message,
-                Is.EqualTo("This Cotton server does not expose the desktop sync changes API yet. Deploy the latest Cotton backend and retry sync."));
+                Is.EqualTo("This Cotton server needs an update before desktop sync can continue. Contact the server admin, then retry sync."));
         }
 
         [Test]

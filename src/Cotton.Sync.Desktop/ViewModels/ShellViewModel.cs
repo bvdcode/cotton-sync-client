@@ -498,6 +498,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                     OnPropertyChanged(nameof(HasStatusAttention));
                     OnPropertyChanged(nameof(HeaderStatusText));
                     OnPropertyChanged(nameof(IsStatusCardVisible));
+                    OnPropertyChanged(nameof(HasOfflineStatus));
                     OnPropertyChanged(nameof(ActionRequiredOpacity));
                     OnPropertyChanged(nameof(CanRetryActionRequired));
                     OnPropertyChanged(nameof(StatusCardTitle));
@@ -557,13 +558,13 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             get
             {
+                if (HasOfflineStatus)
+                {
+                    return "Offline";
+                }
+
                 if (HasActionRequired || HasPairStatusAttention)
                 {
-                    if (HasOfflineSyncPairs && !HasActionRequired)
-                    {
-                        return "Offline";
-                    }
-
                     return "Sync needs attention";
                 }
 
@@ -571,7 +572,9 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
         }
 
-        public string StatusCardDetailText => HasActionRequired || HasPairStatusAttention ? CurrentProgressText : string.Empty;
+        public string StatusCardDetailText => HasActionRequired || HasPairStatusAttention || HasOfflineStatus
+            ? CurrentProgressText
+            : string.Empty;
 
         public bool HasStatusCardDetail => !string.IsNullOrWhiteSpace(StatusCardDetailText);
 
@@ -874,6 +877,8 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private bool HasOfflineSyncPairs => SyncPairs.Any(static pair => pair.IsEnabled
             && string.Equals(pair.Status, "Offline", StringComparison.Ordinal));
+
+        public bool HasOfflineStatus => HasOfflineSyncPairs && !HasActionRequired && !HasConflicts;
 
         private bool HasPairStatusAttention => SyncPairs.Any(static pair => pair.IsStatusAttention);
 
@@ -1719,7 +1724,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                     ServerProbeStatus = "Cotton Cloud verified";
                     Username = string.IsNullOrWhiteSpace(Username) ? "qa@cottoncloud.dev" : Username;
                     Password = "wrong-password";
-                    TotpCode = "000000";
+                    TotpCode = string.Empty;
                     GlobalStatus = "Sign-in failed";
                     ActionRequiredMessage = "Invalid username or password.";
                     break;
@@ -1736,7 +1741,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                     await ShowSettingsAsync().ConfigureAwait(true);
                     break;
                 case DesktopVisualSmokeScenario.SettingsDiagnostics:
-                    SelectedSettingsTabIndex = 3;
+                    SelectedSettingsTabIndex = 2;
                     await ShowSettingsAsync().ConfigureAwait(true);
                     await SelfTestAsync().ConfigureAwait(true);
                     await ExportDiagnosticsAsync().ConfigureAwait(true);
@@ -1819,16 +1824,24 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             const string message = "Cannot reach Cotton Cloud. Sync will retry automatically.";
             GlobalStatus = "Offline";
-            if (SelectedSyncPair is { } syncPair)
+            SyncPairRowViewModel? activityPair = null;
+            foreach (SyncPairRowViewModel syncPair in SyncPairs.Where(static pair => pair.IsEnabled))
             {
                 syncPair.Status = "Offline";
                 syncPair.LastError = message;
-                AddActivity("Network", syncPair.LocalPath, message);
+                activityPair ??= syncPair;
+            }
+
+            if (activityPair is not null)
+            {
+                AddActivity("Network", activityPair.LocalPath, message);
             }
             else
             {
                 AddActivity("Network", string.Empty, message);
             }
+
+            RaiseSyncStateProperties();
         }
 
         private void ApplyVisualSmokeProgressScenario()
@@ -3427,6 +3440,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             OnPropertyChanged(nameof(HasConflicts));
             OnPropertyChanged(nameof(HasStatusAttention));
+            OnPropertyChanged(nameof(HasOfflineStatus));
             OnPropertyChanged(nameof(IsStatusCardVisible));
             OnPropertyChanged(nameof(HasDashboardNotifications));
             OnPropertyChanged(nameof(ConflictCountLabel));
@@ -4322,6 +4336,13 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private void AddConflict(Guid? syncPairId, string path, string details, DateTimeOffset occurredAt)
         {
+            if (syncPairId.HasValue
+                && SyncPairs.FirstOrDefault(pair => pair.Id == syncPairId.Value) is { } syncPair)
+            {
+                syncPair.Status = "Conflict";
+                syncPair.LastError = details;
+            }
+
             var conflict = new ConflictRowViewModel
             {
                 SyncPairId = syncPairId,
@@ -4335,6 +4356,8 @@ namespace Cotton.Sync.Desktop.ViewModels
             {
                 Conflicts.RemoveAt(Conflicts.Count - 1);
             }
+
+            RaiseSyncStateProperties();
         }
 
         private void RaiseCommandStates()
@@ -4408,6 +4431,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             OnPropertyChanged(nameof(PauseResumeTrayLabel));
             OnPropertyChanged(nameof(IsSyncPaused));
             OnPropertyChanged(nameof(HasStatusAttention));
+            OnPropertyChanged(nameof(HasOfflineStatus));
             OnPropertyChanged(nameof(IsStatusCardVisible));
             OnPropertyChanged(nameof(HeaderStatusText));
             OnPropertyChanged(nameof(StatusCardTitle));
@@ -4529,6 +4553,12 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return;
             }
 
+            if (HasConflicts)
+            {
+                CurrentProgressText = "Review conflicts below to continue syncing.";
+                return;
+            }
+
             if (HasPairStatusAttention)
             {
                 CurrentProgressText = "Fix the folder issue to continue syncing.";
@@ -4554,12 +4584,6 @@ namespace Cotton.Sync.Desktop.ViewModels
             if (SyncPairs.Any(static pair => string.Equals(pair.Status, "Paused", StringComparison.Ordinal)))
             {
                 CurrentProgressText = "Sync is paused.";
-                return;
-            }
-
-            if (HasConflicts)
-            {
-                CurrentProgressText = "Review conflicts below to continue syncing.";
                 return;
             }
 
