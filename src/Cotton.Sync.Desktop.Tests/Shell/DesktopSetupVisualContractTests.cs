@@ -899,7 +899,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(addFolderWizard, Does.Contain("ClipToBounds=\"True\""));
                 Assert.That(addFolderWizard, Does.Contain("<Grid RowDefinitions=\"Auto,Auto,*,Auto\""));
                 Assert.That(addFolderWizard, Does.Contain("<ScrollViewer Grid.Row=\"2\""));
-                Assert.That(addFolderWizard, Does.Contain("<StackPanel Grid.Row=\"3\""));
+                Assert.That(addFolderWizard, Does.Contain("<Grid Grid.Row=\"3\""));
                 Assert.That(addFolderWizard, Does.Contain("VerticalScrollBarVisibility=\"Auto\""));
                 Assert.That(addFolderWizard, Does.Contain("ToolTip.Tip=\"{Binding ActionRequiredMessage}\""));
                 Assert.That(addFolderWizard, Does.Not.Contain("<Border Width=\"372\""));
@@ -913,7 +913,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             string cloudFolderPicker = GetSlice(
                 mainWindowXaml,
                 "IsVisible=\"{Binding IsAddSyncPairCloudStepVisible}\"",
-                "Text=\"Sync mode\"");
+                "<Grid Grid.Row=\"3\"\n                  ColumnDefinitions=\"*,Auto\"");
 
             Assert.Multiple(() =>
             {
@@ -984,13 +984,18 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(addFolderWizard, Does.Contain("GroupName=\"AddSyncPairMode\""));
                 Assert.That(addFolderWizard, Does.Contain("IsFullMirrorSyncModeSelected"));
                 Assert.That(addFolderWizard, Does.Contain("IsWindowsVirtualFilesSyncModeSelected"));
-                Assert.That(addFolderWizard, Does.Contain("Classes=\"sync-mode-card\""));
-                Assert.That(addFolderWizard, Does.Contain("Text=\"Stores every file on this device.\""));
-                Assert.That(addFolderWizard, Does.Contain("Text=\"Saves disk space; downloads on open.\""));
+                Assert.That(addFolderWizard, Does.Contain("Classes=\"sync-mode-pill\""));
+                Assert.That(addFolderWizard, Does.Contain("Content=\"Full\""));
+                Assert.That(addFolderWizard, Does.Contain("Content=\"Virtual\""));
+                Assert.That(addFolderWizard, Does.Contain("ToolTip.Tip=\"Full mirror: stores every file on this device.\""));
+                Assert.That(addFolderWizard, Does.Contain("ToolTip.Tip=\"Virtual files: saves disk space; downloads on open.\""));
+                Assert.That(addFolderWizard, Does.Not.Contain("Classes=\"sync-mode-card\""));
+                Assert.That(addFolderWizard, Does.Not.Contain("Text=\"Stores every file on this device.\""));
+                Assert.That(addFolderWizard, Does.Not.Contain("Text=\"Saves disk space; downloads on open.\""));
                 Assert.That(addFolderWizard, Does.Not.Contain("Text=\"Available\""));
                 Assert.That(addFolderWizard, Does.Not.Contain("Text=\"Not implemented\""));
-                Assert.That(appXaml, Does.Contain("Style Selector=\"RadioButton.sync-mode-card\""));
-                Assert.That(appXaml, Does.Contain("Style Selector=\"RadioButton.sync-mode-card:checked\""));
+                Assert.That(appXaml, Does.Contain("Style Selector=\"RadioButton.sync-mode-pill\""));
+                Assert.That(appXaml, Does.Contain("Style Selector=\"RadioButton.sync-mode-pill:checked\""));
             });
         }
 
@@ -1009,12 +1014,14 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(cloudStep, Does.Contain("MinHeight=\"132\""));
                 Assert.That(cloudStep, Does.Not.Contain("Height=\"260\""));
                 Assert.That(cloudStep, Does.Contain("PlaceholderText=\"Search cloud folders\""));
-                Assert.That(cloudStep, Does.Contain("Text=\"Sync mode\""));
+                Assert.That(cloudStep, Does.Contain("Orientation=\"Horizontal\""));
+                Assert.That(cloudStep, Does.Contain("Content=\"Full\""));
+                Assert.That(cloudStep, Does.Contain("Content=\"Virtual\""));
                 Assert.That(cloudStep, Does.Contain("Content=\"{Binding RemoteFolderWizardPrimaryActionText}\""));
-                Assert.That(cloudStep, Does.Contain("<StackPanel Grid.Row=\"3\""));
+                Assert.That(cloudStep, Does.Contain("<Grid Grid.Row=\"3\""));
                 Assert.That(cloudStep.IndexOf("</ScrollViewer>", StringComparison.Ordinal), Is.LessThan(
                     cloudStep.IndexOf("Content=\"{Binding RemoteFolderWizardPrimaryActionText}\"", StringComparison.Ordinal)));
-                Assert.That(cloudStep.IndexOf("Text=\"Sync mode\"", StringComparison.Ordinal), Is.LessThan(
+                Assert.That(cloudStep.IndexOf("Content=\"Virtual\"", StringComparison.Ordinal), Is.LessThan(
                     cloudStep.IndexOf("Content=\"{Binding RemoteFolderWizardPrimaryActionText}\"", StringComparison.Ordinal)));
             });
         }
