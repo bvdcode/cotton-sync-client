@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
+using System.Diagnostics;
+using System.Text;
+
 namespace Cotton.Sync.Desktop.Platform
 {
     internal static class DesktopNotificationServiceFactory
@@ -8,10 +11,11 @@ namespace Cotton.Sync.Desktop.Platform
         private const string NotifySendCommandName = "notify-send";
         private const string WindowsPowerShellCommandName = "powershell.exe";
         private const string PowerShellCoreCommandName = "pwsh.exe";
+        private const int WindowsShortcutInspectionTimeoutMilliseconds = 5_000;
         private const string LinuxNotificationDetails =
             "requires DBus session bus; sender name, icon rendering, timeout, and actions depend on the desktop notification daemon; actions are not used";
         private const string WindowsNotificationDetails =
-            "installed sender identity depends on a registered Start Menu AppUserModelID shortcut; debug launches can show the raw process identity";
+            "PowerShell is only the toast delivery helper; full installed notification identity requires a verified Start Menu AppUserModelID shortcut";
 
         public static IDesktopNotificationService CreateDefault()
         {
@@ -29,6 +33,16 @@ namespace Cotton.Sync.Desktop.Platform
                 Environment.GetEnvironmentVariable("PATH"),
                 AppContext.BaseDirectory,
                 Environment.GetEnvironmentVariable("DBUS_SESSION_BUS_ADDRESS"));
+        }
+
+        public static DesktopNotificationCapabilitySnapshot CreateSelfTestCapabilitySnapshot()
+        {
+            return CreateCapabilitySnapshot(
+                ResolvePlatform(),
+                Environment.GetEnvironmentVariable("PATH"),
+                AppContext.BaseDirectory,
+                Environment.GetEnvironmentVariable("DBUS_SESSION_BUS_ADDRESS"),
+                VerifyWindowsStartMenuAppIdentity);
         }
 
         internal static IDesktopNotificationService CreateForPlatform(
@@ -63,7 +77,8 @@ namespace Cotton.Sync.Desktop.Platform
             DesktopNotificationPlatform platform,
             string? pathValue,
             string? appBaseDirectory = null,
-            string? dbusSessionBusAddress = null)
+            string? dbusSessionBusAddress = null,
+            Func<string?, bool>? verifyWindowsInstalledIdentity = null)
         {
             string? iconPath = ResolveNotificationIconPath(appBaseDirectory ?? AppContext.BaseDirectory);
             if (platform == DesktopNotificationPlatform.Linux)
@@ -88,6 +103,8 @@ namespace Cotton.Sync.Desktop.Platform
                 string? powerShellPath = ResolveFirstExecutablePath(
                     [WindowsPowerShellCommandName, PowerShellCoreCommandName],
                     pathValue);
+                bool installedIdentityVerified =
+                    powerShellPath is not null && verifyWindowsInstalledIdentity?.Invoke(powerShellPath) == true;
                 return new DesktopNotificationCapabilitySnapshot(
                     Platform: platform,
                     AdapterName: "Windows toast",
@@ -96,7 +113,10 @@ namespace Cotton.Sync.Desktop.Platform
                     AppUserModelId: DesktopAppIdentity.AppUserModelId,
                     ExecutablePath: powerShellPath,
                     IconPath: iconPath,
-                    PlatformDetails: WindowsNotificationDetails);
+                    PlatformDetails: WindowsNotificationDetails,
+                    IsInstalledAppIdentityVerified: installedIdentityVerified,
+                    InstalledAppIdentityDetails: "Start Menu AppUserModelID shortcut: "
+                    + (installedIdentityVerified ? "verified" : "not verified"));
             }
 
             return new DesktopNotificationCapabilitySnapshot(
@@ -150,6 +170,131 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             return null;
+        }
+
+        private static bool VerifyWindowsStartMenuAppIdentity(string? powerShellPath)
+        {
+            if (string.IsNullOrWhiteSpace(powerShellPath))
+            {
+                return false;
+            }
+
+            foreach (string shortcutPath in EnumerateWindowsStartMenuShortcutCandidates())
+            {
+                if (!File.Exists(shortcutPath))
+                {
+                    continue;
+                }
+
+                if (TryReadShortcutAppUserModelId(powerShellPath, shortcutPath, out string? appUserModelId)
+                    && string.Equals(appUserModelId, DesktopAppIdentity.AppUserModelId, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<string> EnumerateWindowsStartMenuShortcutCandidates()
+        {
+            string programs = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
+            if (!string.IsNullOrWhiteSpace(programs))
+            {
+                yield return Path.Combine(programs, "Cotton Sync", "Cotton Sync.lnk");
+            }
+
+            string commonPrograms = Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms);
+            if (!string.IsNullOrWhiteSpace(commonPrograms))
+            {
+                yield return Path.Combine(commonPrograms, "Cotton Sync", "Cotton Sync.lnk");
+            }
+        }
+
+        private static bool TryReadShortcutAppUserModelId(
+            string powerShellPath,
+            string shortcutPath,
+            out string? appUserModelId)
+        {
+            appUserModelId = null;
+            try
+            {
+                using Process process = Process.Start(CreateShortcutInspectionStartInfo(powerShellPath, shortcutPath))
+                    ?? throw new InvalidOperationException("PowerShell could not be started.");
+                string output = process.StandardOutput.ReadToEnd();
+                _ = process.StandardError.ReadToEnd();
+                if (!process.WaitForExit(WindowsShortcutInspectionTimeoutMilliseconds))
+                {
+                    try
+                    {
+                        process.Kill(entireProcessTree: true);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                    }
+
+                    return false;
+                }
+
+                if (process.ExitCode != 0)
+                {
+                    return false;
+                }
+
+                appUserModelId = output.Trim();
+                return !string.IsNullOrWhiteSpace(appUserModelId);
+            }
+            catch (Exception exception) when (exception is IOException or InvalidOperationException or ObjectDisposedException)
+            {
+                return false;
+            }
+        }
+
+        private static ProcessStartInfo CreateShortcutInspectionStartInfo(
+            string powerShellPath,
+            string shortcutPath)
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = powerShellPath,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            startInfo.ArgumentList.Add("-NoProfile");
+            startInfo.ArgumentList.Add("-NonInteractive");
+            startInfo.ArgumentList.Add("-ExecutionPolicy");
+            startInfo.ArgumentList.Add("Bypass");
+            startInfo.ArgumentList.Add("-EncodedCommand");
+            startInfo.ArgumentList.Add(Convert.ToBase64String(Encoding.Unicode.GetBytes(CreateShortcutInspectionCommand(shortcutPath))));
+            return startInfo;
+        }
+
+        private static string CreateShortcutInspectionCommand(string shortcutPath)
+        {
+            string shortcutLiteral = ToPowerShellSingleQuotedLiteral(shortcutPath);
+            return string.Join(
+                Environment.NewLine,
+                [
+                    "$ErrorActionPreference = 'Stop'",
+                    "$shortcut = " + shortcutLiteral,
+                    "$folderPath = Split-Path -Parent -LiteralPath $shortcut",
+                    "$shortcutFileName = Split-Path -Leaf -LiteralPath $shortcut",
+                    "$shell = New-Object -ComObject Shell.Application",
+                    "$folder = $shell.Namespace($folderPath)",
+                    "if ($null -eq $folder) { exit 2 }",
+                    "$shortcutItem = $folder.ParseName($shortcutFileName)",
+                    "if ($null -eq $shortcutItem) { exit 3 }",
+                    "$appUserModelId = [string]$shortcutItem.ExtendedProperty('System.AppUserModel.ID')",
+                    "if ([string]::IsNullOrWhiteSpace($appUserModelId)) { exit 4 }",
+                    "[Console]::Out.Write($appUserModelId)",
+                ]);
+        }
+
+        private static string ToPowerShellSingleQuotedLiteral(string value)
+        {
+            return "'" + value.Replace("'", "''", StringComparison.Ordinal) + "'";
         }
     }
 }

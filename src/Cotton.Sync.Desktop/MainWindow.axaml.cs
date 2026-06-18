@@ -69,10 +69,15 @@ namespace Cotton.Sync.Desktop
             {
                 _hasOpened = true;
                 CenterOnCurrentScreen();
+                if (_lifecyclePolicy.ShouldHideAfterStartup())
+                {
+                    HideForTrayStartup();
+                }
+
                 await InitializeShellOnceAsync(viewModel).ConfigureAwait(true);
                 if (_lifecyclePolicy.ShouldHideAfterStartup())
                 {
-                    Hide();
+                    HideForTrayStartup();
                 }
             };
             Closing += OnClosing;
@@ -92,6 +97,8 @@ namespace Cotton.Sync.Desktop
         internal void ShowShell()
         {
             _lifecyclePolicy.RequestShow();
+            ShowInTaskbar = true;
+            Opacity = 1;
             if (WindowState == WindowState.Minimized)
             {
                 WindowState = WindowState.Normal;
@@ -99,6 +106,28 @@ namespace Cotton.Sync.Desktop
 
             Show();
             Activate();
+        }
+
+        internal void StartHiddenToTray()
+        {
+            if (DataContext is not ShellViewModel viewModel)
+            {
+                return;
+            }
+
+            HideForTrayStartup();
+            Dispatcher.UIThread.Post(async () =>
+            {
+                await InitializeShellOnceAsync(viewModel).ConfigureAwait(true);
+            });
+        }
+
+        private void HideForTrayStartup()
+        {
+            ShowInTaskbar = false;
+            Opacity = 0;
+            WindowState = WindowState.Minimized;
+            Hide();
         }
 
         private void OnClosing(object? sender, WindowClosingEventArgs e)

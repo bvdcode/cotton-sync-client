@@ -48,12 +48,24 @@ namespace Cotton.Sync.Desktop
                 IDesktopShellController controller = StartupOptions.VisualSmokeScenario is { } scenario
                     ? VisualSmokeShellController.Create(scenario)
                     : DesktopShellController.CreateDefault(paths, StartupOptions);
+                bool startHiddenToTray =
+                    StartupOptions.StartMinimizedToTray
+                    && useTrayLifecycle
+                    && StartupOptions.VisualSmokeScenario is null;
                 var window = new MainWindow(
                     controller,
                     StartupOptions.StartMinimizedToTray,
                     useTrayLifecycle,
                     StartupOptions.VisualSmokeScenario);
-                desktop.MainWindow = window;
+                if (startHiddenToTray)
+                {
+                    window.StartHiddenToTray();
+                }
+                else
+                {
+                    desktop.MainWindow = window;
+                }
+
                 if (useTrayLifecycle)
                 {
                     _trayController = new DesktopTrayController(window, desktop);
