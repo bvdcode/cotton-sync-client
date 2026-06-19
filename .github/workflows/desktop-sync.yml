@@ -320,6 +320,10 @@ jobs:
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-associated-icon.ps1" `
             -AppExecutable "src/Cotton.Sync.Desktop/bin/Release/net10.0/publish/win-x64/Cotton.Sync.Desktop.exe" `
             -ExpectedIcon "src/Cotton.Sync.Desktop/Assets/app.ico"
+          & "src/Cotton.Sync.Desktop/Packaging/windows/verify-version-metadata.ps1" `
+            -Executable "src/Cotton.Sync.Desktop/bin/Release/net10.0/publish/win-x64/Cotton.Sync.Desktop.exe" `
+            -ExpectedProductVersion "${{ steps.gitversion.outputs.SemVer }}" `
+            -Label "desktop publish executable"
           src/Cotton.Sync.Desktop/bin/Release/net10.0/publish/win-x64/Cotton.Sync.Desktop.exe --self-test --data-dir "$dataDir"
 
       - name: Package desktop Windows x64 archive
@@ -345,6 +349,10 @@ jobs:
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-associated-icon.ps1" `
             -AppExecutable (Join-Path $extractDir "Cotton.Sync.Desktop.exe") `
             -ExpectedIcon "src/Cotton.Sync.Desktop/Assets/app.ico"
+          & "src/Cotton.Sync.Desktop/Packaging/windows/verify-version-metadata.ps1" `
+            -Executable (Join-Path $extractDir "Cotton.Sync.Desktop.exe") `
+            -ExpectedProductVersion "${{ steps.gitversion.outputs.SemVer }}" `
+            -Label "desktop zip executable"
           & (Join-Path $extractDir "Cotton.Sync.Desktop.exe") --self-test --data-dir "$dataDir"
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-diagnostics-export.ps1" `
             -AppExecutable (Join-Path $extractDir "Cotton.Sync.Desktop.exe") `
@@ -411,6 +419,10 @@ jobs:
             Get-ChildItem $installDir -Recurse -ErrorAction SilentlyContinue
             throw "Installed desktop executable was not found."
           }
+          & "src/Cotton.Sync.Desktop/Packaging/windows/verify-version-metadata.ps1" `
+            -Executable $installedExe `
+            -ExpectedProductVersion "${{ steps.gitversion.outputs.SemVer }}" `
+            -Label "installed desktop executable"
 
           $startMenuShortcut = Join-Path ([Environment]::GetFolderPath("Programs")) "Cotton Sync\Cotton Sync.lnk"
           $startMenuUninstallShortcut = Join-Path ([Environment]::GetFolderPath("Programs")) "Cotton Sync\Uninstall Cotton Sync.lnk"
@@ -680,6 +692,10 @@ jobs:
           if (-not (Test-Path $cliExe)) {
             throw "Published CLI executable was not found: $cliExe."
           }
+          & "src/Cotton.Sync.Desktop/Packaging/windows/verify-version-metadata.ps1" `
+            -Executable $cliExe `
+            -ExpectedProductVersion "${{ steps.gitversion.outputs.SemVer }}" `
+            -Label "CLI publish executable"
 
           $help = & $cliExe --help
           if ($LASTEXITCODE -ne 0) {
@@ -726,6 +742,10 @@ jobs:
           if (-not (Test-Path $cliExe)) {
             throw "CLI executable was not found in the release zip."
           }
+          & "src/Cotton.Sync.Desktop/Packaging/windows/verify-version-metadata.ps1" `
+            -Executable $cliExe `
+            -ExpectedProductVersion "${{ steps.gitversion.outputs.SemVer }}" `
+            -Label "CLI zip executable"
           & $cliExe --help | Out-Host
           if ($LASTEXITCODE -ne 0) {
             throw "CLI archive help exited with code $LASTEXITCODE."

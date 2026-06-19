@@ -798,6 +798,26 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         }
 
         [Test]
+        public void WindowsVersionMetadataVerifierScript_ChecksProductAndFileVersions()
+        {
+            string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/verify-version-metadata.ps1"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(script, Does.Contain("[string]$Executable"));
+                Assert.That(script, Does.Contain("[string]$ExpectedProductVersion"));
+                Assert.That(script, Does.Contain("[System.Diagnostics.FileVersionInfo]::GetVersionInfo($resolvedExecutable)"));
+                Assert.That(script, Does.Contain("Remove-VersionMetadata"));
+                Assert.That(script, Does.Contain("Get-SemVerCore"));
+                Assert.That(script, Does.Contain("$versionInfo.FileMajorPart"));
+                Assert.That(script, Does.Contain("$versionInfo.FileMinorPart"));
+                Assert.That(script, Does.Contain("$versionInfo.FileBuildPart"));
+                Assert.That(script, Does.Contain("ProductVersion was"));
+                Assert.That(script, Does.Contain("FileVersion was"));
+            });
+        }
+
+        [Test]
         public void WindowsGithubReleaseUpgradeSmokeScript_UsesPublishedReleaseInstaller()
         {
             string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/smoke-github-release-upgrade.ps1"));
@@ -847,6 +867,11 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("& $installedExe --self-test --data-dir"));
                 Assert.That(workflow, Does.Contain("-PublishDirectory $installDir"));
                 Assert.That(workflow, Does.Contain("-ExpectedIcon \"src/Cotton.Sync.Desktop/Assets/app.ico\""));
+                Assert.That(workflow, Does.Contain("Packaging/windows/verify-version-metadata.ps1"));
+                Assert.That(workflow, Does.Contain("-ExpectedProductVersion \"${{ steps.gitversion.outputs.SemVer }}\""));
+                Assert.That(workflow, Does.Contain("-Label \"desktop publish executable\""));
+                Assert.That(workflow, Does.Contain("-Label \"desktop zip executable\""));
+                Assert.That(workflow, Does.Contain("-Label \"installed desktop executable\""));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-diagnostics-export.ps1"));
                 Assert.That(workflow, Does.Contain("-ExpectedAppVersion \"${{ steps.gitversion.outputs.SemVer }}\""));
                 Assert.That(workflow, Does.Contain("Windows uninstaller was not found after upgrade."));
@@ -928,6 +953,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Sync CLI Windows Package Smoke"));
                 Assert.That(workflow, Does.Contain("dotnet publish src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj"));
                 Assert.That(workflow, Does.Contain("Cotton.Sync.Cli.exe"));
+                Assert.That(workflow, Does.Contain("Packaging/windows/verify-version-metadata.ps1"));
+                Assert.That(workflow, Does.Contain("-Label \"CLI publish executable\""));
+                Assert.That(workflow, Does.Contain("-Label \"CLI zip executable\""));
                 Assert.That(workflow, Does.Contain("auth-browser"));
                 Assert.That(workflow, Does.Contain("state-summary"));
                 Assert.That(workflow, Does.Contain("sync-once"));
