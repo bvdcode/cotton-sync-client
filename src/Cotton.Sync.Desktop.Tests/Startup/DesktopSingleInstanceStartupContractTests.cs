@@ -9,12 +9,17 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         public void Program_RequestsExistingInstanceActivationWhenLockIsHeld()
         {
             string program = File.ReadAllText(GetDesktopFilePath("Program.cs"));
+            int lockHeldIndex = program.IndexOf("singleInstance is null", StringComparison.Ordinal);
+            int hiddenLaunchCheckIndex = program.IndexOf("!startupOptions.StartMinimizedToTray", StringComparison.Ordinal);
+            int requestShowIndex = program.IndexOf("TryRequestShowAsync(paths.SingleInstanceLockPath)", StringComparison.Ordinal);
 
             Assert.Multiple(() =>
             {
                 Assert.That(program, Does.Contain("singleInstance is null"));
                 Assert.That(program, Does.Contain("DesktopSingleInstanceActivation"));
                 Assert.That(program, Does.Contain("TryRequestShowAsync(paths.SingleInstanceLockPath)"));
+                Assert.That(hiddenLaunchCheckIndex, Is.GreaterThan(lockHeldIndex));
+                Assert.That(requestShowIndex, Is.GreaterThan(hiddenLaunchCheckIndex));
             });
         }
 

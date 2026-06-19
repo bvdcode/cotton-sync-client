@@ -103,10 +103,14 @@ namespace Cotton.Sync.Desktop
                 .TryAcquire(paths.SingleInstanceLockPath);
             if (singleInstance is null)
             {
-                DesktopSingleInstanceActivation
-                    .TryRequestShowAsync(paths.SingleInstanceLockPath)
-                    .GetAwaiter()
-                    .GetResult();
+                if (!startupOptions.StartMinimizedToTray)
+                {
+                    DesktopSingleInstanceActivation
+                        .TryRequestShowAsync(paths.SingleInstanceLockPath)
+                        .GetAwaiter()
+                        .GetResult();
+                }
+
                 return 0;
             }
 
