@@ -28,6 +28,46 @@ namespace Cotton.Sync.State
             CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Streams directory entries matching remote folder identifiers and file entries matching remote file identifiers.
+        /// </summary>
+        async IAsyncEnumerable<SyncStateEntry> LoadEntriesByRemoteIdsAsync(
+            string syncPairId,
+            IEnumerable<Guid> remoteNodeIds,
+            IEnumerable<Guid> remoteFileIds,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
+            ArgumentNullException.ThrowIfNull(remoteNodeIds);
+            ArgumentNullException.ThrowIfNull(remoteFileIds);
+            HashSet<Guid> nodeIds = remoteNodeIds
+                .Where(static id => id != Guid.Empty)
+                .ToHashSet();
+            HashSet<Guid> fileIds = remoteFileIds
+                .Where(static id => id != Guid.Empty)
+                .ToHashSet();
+            if (nodeIds.Count == 0 && fileIds.Count == 0)
+            {
+                yield break;
+            }
+
+            await foreach (SyncStateEntry entry in LoadPairEntriesAsync(syncPairId, cancellationToken)
+                               .WithCancellation(cancellationToken)
+                               .ConfigureAwait(false))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if ((entry.Kind == SyncEntryKind.Directory
+                        && entry.RemoteNodeId.HasValue
+                        && nodeIds.Contains(entry.RemoteNodeId.Value))
+                    || (entry.Kind == SyncEntryKind.File
+                        && entry.RemoteFileId.HasValue
+                        && fileIds.Contains(entry.RemoteFileId.Value)))
+                {
+                    yield return entry;
+                }
+            }
+        }
+
+        /// <summary>
         /// Streams entries for the specified relative path keys.
         /// </summary>
         async IAsyncEnumerable<SyncStateEntry> LoadEntriesByPathKeysAsync(
