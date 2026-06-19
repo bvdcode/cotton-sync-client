@@ -5,12 +5,19 @@ using System.Security.Cryptography;
 using System.Text;
 using Cotton.Auth;
 using Cotton.Sync.Desktop.Auth;
+using Cotton.Sync.Desktop.Diagnostics;
 
 namespace Cotton.Sync.Desktop.Tests.Auth
 {
     public class FileCottonTokenStoreTests
     {
         private const string TestTokenPayloadScheme = "test-file-store-v1";
+
+        [SetUp]
+        public void SetUp()
+        {
+            DesktopAuthDiagnosticsState.ResetForTests();
+        }
 
         [Test]
         public async Task GetAsync_ReturnsNullWhenFileIsMissing()
@@ -245,6 +252,43 @@ namespace Cotton.Sync.Desktop.Tests.Auth
                     Assert.That(loaded, Is.Not.Null);
                     Assert.That(loaded!.AccessToken, Is.EqualTo("second-access-token"));
                     Assert.That(loaded.RefreshToken, Is.EqualTo("second-refresh-token"));
+                });
+            }
+            finally
+            {
+                DeleteTempDirectory(directory);
+            }
+        }
+
+        [Test]
+        public async Task SaveAsync_RecordsRefreshSuccessWhenExistingTokensAreReplacedAfterUnauthorizedChallenge()
+        {
+            string directory = CreateTempDirectory();
+            try
+            {
+                string path = Path.Combine(directory, "tokens.json");
+                var store = CreateStore(path);
+                await store.SaveAsync(new TokenPairDto
+                {
+                    AccessToken = "first-access-token",
+                    RefreshToken = "first-refresh-token",
+                });
+                DesktopAuthDiagnosticsState.RecordUnauthorizedChallenge();
+
+                await store.SaveAsync(new TokenPairDto
+                {
+                    AccessToken = "second-access-token",
+                    RefreshToken = "second-refresh-token",
+                });
+
+                DesktopAuthDiagnosticsSnapshot snapshot = DesktopAuthDiagnosticsState.Snapshot();
+                Assert.Multiple(() =>
+                {
+                    Assert.That(snapshot.LastTokenRefreshStatus, Is.EqualTo("succeeded"));
+                    Assert.That(snapshot.TokenSaveCount, Is.EqualTo(2));
+                    Assert.That(snapshot.TokenRefreshSaveCount, Is.EqualTo(1));
+                    Assert.That(snapshot.LastUnauthorizedChallengeAtUtc, Is.Not.Null);
+                    Assert.That(snapshot.LastTokenRefreshAtUtc, Is.Not.Null);
                 });
             }
             finally

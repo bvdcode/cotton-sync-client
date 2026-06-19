@@ -37,7 +37,7 @@ namespace Cotton.Sync.Desktop.Diagnostics
         private static partial Regex JsonSecretRegex();
 
         [GeneratedRegex(
-            @"((?:(?:access|refresh|id)[_-]?token|client[_-]?secret|password|two[_-]?factor[_-]?code|totp[_-]?code|api[_-]?key)=)([^&\s]+)(&?)",
+            @"((?:(?:access|refresh|id)[_-]?token|client[_-]?secret|password|two[_-]?factor[_-]?code|totp[_-]?code|api[_-]?key)=)([^&\s""',}]+)(&?)",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
         private static partial Regex QuerySecretRegex();
     }
