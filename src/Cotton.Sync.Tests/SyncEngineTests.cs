@@ -1617,7 +1617,7 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
-        public async Task RunOnceAsync_WithWindowsVirtualFilesStreamingDoesNotPublishRemoteScanProgress()
+        public async Task RunOnceAsync_WithWindowsVirtualFilesStreamingPublishesDiscoveryAsPlaceholderProgress()
         {
             List<RemoteFileSnapshot> remoteFiles =
             [
@@ -1644,10 +1644,20 @@ namespace Cotton.Sync.Tests
                     RunProgress = runProgress,
                 });
 
+            List<SyncRunProgress> placeholderProgress = runProgress.Values
+                .Where(progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders)
+                .ToList();
             Assert.Multiple(() =>
             {
                 Assert.That(runProgress.Values.Any(progress => progress.Stage == SyncRunProgressStage.ScanningRemote), Is.False);
-                Assert.That(runProgress.Values.Any(progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders), Is.True);
+                Assert.That(placeholderProgress, Is.Not.Empty);
+                Assert.That(placeholderProgress.Any(progress =>
+                    progress.FilesCompleted == 0
+                    && progress.FilesTotal == 1
+                    && progress.CurrentPath == "Desktop/first.txt"), Is.True);
+                Assert.That(placeholderProgress.Any(progress =>
+                    progress.FilesTotal == remoteFiles.Count), Is.True);
+                Assert.That(placeholderProgress.Last().FilesTotal, Is.EqualTo(remoteFiles.Count));
                 Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
                 Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
             });

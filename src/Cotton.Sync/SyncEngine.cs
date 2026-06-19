@@ -716,6 +716,11 @@ namespace Cotton.Sync
             int stateDirectoryRowsWritten = 0;
             DateTime? lastPlaceholderProgressReportedAtUtc = null;
             var remoteScanProgress = new RemoteTreeScanProgressCounter();
+            var initialVirtualFilesProgress = new InitialVirtualFilesRemoteProgressReporter(
+                remoteScanProgress,
+                options,
+                startedAtUtc,
+                () => Volatile.Read(ref completedFiles));
             ReportRunProgress(options, SyncRunProgressStage.CreatingPlaceholders, 0, null, null, startedAtUtc);
 
             using IDisposable? providerWriteBurst = _remoteFilePlaceholderPopulationObserver
@@ -731,7 +736,7 @@ namespace Cotton.Sync
                 startedAtUtc,
                 channel,
                 sink,
-                remoteScanProgress,
+                initialVirtualFilesProgress,
                 streamingCancellation.Token);
             Task consumer = ConsumeInitialWindowsVirtualFilesPopulationAsync(
                 syncPair,
@@ -741,8 +746,8 @@ namespace Cotton.Sync
                 startedAtUtc,
                 streamingPlan,
                 () => Volatile.Read(ref discoveredFiles),
-                () => completedFiles,
-                value => completedFiles = value,
+                () => Volatile.Read(ref completedFiles),
+                value => Volatile.Write(ref completedFiles, value),
                 () => lastPlaceholderProgressReportedAtUtc,
                 value => lastPlaceholderProgressReportedAtUtc = value,
                 workResult =>
@@ -4207,6 +4212,46 @@ namespace Cotton.Sync
                     }
                 }
                 while (Interlocked.CompareExchange(ref _pagesScanned, value.PagesScanned, current) != current);
+            }
+        }
+
+        private sealed class InitialVirtualFilesRemoteProgressReporter : IProgress<RemoteTreeScanProgress>
+        {
+            private readonly IProgress<RemoteTreeScanProgress> _inner;
+            private readonly SyncRunOptions _options;
+            private readonly DateTime _startedAtUtc;
+            private readonly Func<int> _getCompletedFiles;
+
+            public InitialVirtualFilesRemoteProgressReporter(
+                IProgress<RemoteTreeScanProgress> inner,
+                SyncRunOptions options,
+                DateTime startedAtUtc,
+                Func<int> getCompletedFiles)
+            {
+                _inner = inner;
+                _options = options;
+                _startedAtUtc = startedAtUtc;
+                _getCompletedFiles = getCompletedFiles;
+            }
+
+            public void Report(RemoteTreeScanProgress value)
+            {
+                ArgumentNullException.ThrowIfNull(value);
+                _inner.Report(value);
+                if (value.FilesScanned == 0)
+                {
+                    return;
+                }
+
+                int filesCompleted = _getCompletedFiles();
+                int filesTotal = Math.Max(filesCompleted, value.FilesScanned);
+                ReportRunProgress(
+                    _options,
+                    SyncRunProgressStage.CreatingPlaceholders,
+                    filesCompleted,
+                    filesTotal,
+                    value.CurrentPath,
+                    _startedAtUtc);
             }
         }
 
