@@ -1051,6 +1051,10 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
         private static string GetSlice(string text, string startMarker, string endMarker)
         {
+            text = NormalizeLineEndings(text);
+            startMarker = NormalizeLineEndings(startMarker);
+            endMarker = NormalizeLineEndings(endMarker);
+
             int start = text.IndexOf(startMarker, StringComparison.Ordinal);
             if (start < 0)
             {
@@ -1064,6 +1068,11 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             }
 
             return text[start..end];
+        }
+
+        private static string NormalizeLineEndings(string value)
+        {
+            return value.Replace("\r\n", "\n", StringComparison.Ordinal);
         }
 
         private static int CountOccurrences(string text, string value)
