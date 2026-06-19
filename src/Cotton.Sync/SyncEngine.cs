@@ -42,6 +42,7 @@ namespace Cotton.Sync
         private readonly ISyncStateStore _stateStore;
         private readonly ILocalFileSyncWriter _localWriter;
         private readonly IRemoteFilePlaceholderWriter? _remoteFilePlaceholderWriter;
+        private readonly IRemoteFilePlaceholderPopulationObserver? _remoteFilePlaceholderPopulationObserver;
         private readonly IRemoteDirectoryMaterializationObserver? _remoteDirectoryMaterializationObserver;
         private readonly ILogger<SyncEngine> _logger;
 
@@ -74,6 +75,8 @@ namespace Cotton.Sync
             _localWriter = localWriter ?? new AtomicLocalFileSyncWriter();
             _remoteDirectories = remoteDirectories;
             _remoteFilePlaceholderWriter = remoteFilePlaceholderWriter;
+            _remoteFilePlaceholderPopulationObserver =
+                remoteFilePlaceholderWriter as IRemoteFilePlaceholderPopulationObserver;
             _remoteDirectoryMaterializationObserver =
                 remoteFilePlaceholderWriter as IRemoteDirectoryMaterializationObserver;
             _logger = logger ?? NullLogger<SyncEngine>.Instance;
@@ -705,6 +708,8 @@ namespace Cotton.Sync
             DateTime? lastPlaceholderProgressReportedAtUtc = null;
             ReportRunProgress(options, SyncRunProgressStage.CreatingPlaceholders, 0, null, null, startedAtUtc);
 
+            using IDisposable? providerWriteBurst = _remoteFilePlaceholderPopulationObserver
+                ?.BeginPopulation(syncPair.SyncPairId, syncPair.LocalRootPath);
             using var streamingCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var sink = new InitialVirtualFilesPopulationSink(
                 channel.Writer,

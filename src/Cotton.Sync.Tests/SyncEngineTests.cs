@@ -4765,6 +4765,7 @@ namespace Cotton.Sync.Tests
 
         private class FakeRemoteFilePlaceholderWriter :
             IRemoteFilePlaceholderWriter,
+            IRemoteFilePlaceholderPopulationObserver,
             IRemoteDirectoryMaterializationObserver
         {
             private readonly object _requestsLock = new();
@@ -4776,6 +4777,16 @@ namespace Cotton.Sync.Tests
             public List<RemoteDirectoryMaterializationRequest> DirectoryRequests { get; } = [];
 
             public string? UnavailableReason { get; set; }
+
+            public int BeginPopulationCalls { get; private set; }
+
+            public int EndPopulationCalls { get; private set; }
+
+            public IDisposable BeginPopulation(string syncPairId, string localRootPath)
+            {
+                BeginPopulationCalls++;
+                return new PopulationLease(this);
+            }
 
             public Task BeforeCreateDirectoryAsync(
                 RemoteDirectoryMaterializationRequest request,
@@ -4800,6 +4811,25 @@ namespace Cotton.Sync.Tests
                 }
 
                 return Task.FromResult(new RemoteFilePlaceholderResult(PlaceholderIdentity));
+            }
+
+            private sealed class PopulationLease : IDisposable
+            {
+                private FakeRemoteFilePlaceholderWriter? _owner;
+
+                public PopulationLease(FakeRemoteFilePlaceholderWriter owner)
+                {
+                    _owner = owner;
+                }
+
+                public void Dispose()
+                {
+                    FakeRemoteFilePlaceholderWriter? owner = Interlocked.Exchange(ref _owner, null);
+                    if (owner is not null)
+                    {
+                        owner.EndPopulationCalls++;
+                    }
+                }
             }
         }
 

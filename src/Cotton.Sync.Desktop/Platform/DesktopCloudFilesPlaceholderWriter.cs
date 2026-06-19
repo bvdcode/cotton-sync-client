@@ -11,6 +11,7 @@ namespace Cotton.Sync.Desktop.Platform
 {
     internal sealed class DesktopCloudFilesPlaceholderWriter :
         IRemoteFilePlaceholderBatchWriter,
+        IRemoteFilePlaceholderPopulationObserver,
         IRemoteDirectoryMaterializationObserver
     {
         private readonly Func<SyncPairModeCapabilitySnapshot> _getCapabilities;
@@ -131,6 +132,25 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
+        public IDisposable BeginPopulation(string syncPairIdValue, string localRootPath)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairIdValue);
+            ArgumentException.ThrowIfNullOrWhiteSpace(localRootPath);
+            if (_localChangeSuppression is null)
+            {
+                return NoopDisposable.Instance;
+            }
+
+            if (!Guid.TryParse(syncPairIdValue, out Guid syncPairId))
+            {
+                _logger.LogDebug(
+                    "Skipping local watcher burst suppression because sync pair id is not a GUID.");
+                return NoopDisposable.Instance;
+            }
+
+            return _localChangeSuppression.SuppressProviderWriteBurst(syncPairId, localRootPath);
+        }
+
         public Task BeforeCreateDirectoryAsync(
             RemoteDirectoryMaterializationRequest request,
             CancellationToken cancellationToken = default)
@@ -189,6 +209,15 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             _localChangeSuppression.SuppressProviderWrite(syncPairId, localRootPath, relativePath);
+        }
+
+        private sealed class NoopDisposable : IDisposable
+        {
+            public static NoopDisposable Instance { get; } = new();
+
+            public void Dispose()
+            {
+            }
         }
     }
 }

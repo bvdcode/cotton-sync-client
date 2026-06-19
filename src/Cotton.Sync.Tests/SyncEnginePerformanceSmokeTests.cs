@@ -816,6 +816,8 @@ namespace Cotton.Sync.Tests
                 Assert.That(remoteFilesClient.MoveCalls, Is.Zero);
                 Assert.That(remoteCrawler.FullCrawlCalls, Is.Zero);
                 Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
+                Assert.That(placeholderWriter.BeginPopulationCalls, Is.EqualTo(1));
+                Assert.That(placeholderWriter.EndPopulationCalls, Is.EqualTo(1));
                 Assert.That(placeholderWriter.Count, Is.EqualTo(fileCount));
                 Assert.That(stateStore.FileUpserts, Is.EqualTo(fileCount));
                 Assert.That(stateStore.RemoteOnlyPlaceholderUpserts, Is.EqualTo(fileCount));
@@ -1456,12 +1458,16 @@ namespace Cotton.Sync.Tests
             }
         }
 
-        private sealed class CountingRemoteFilePlaceholderWriter : IRemoteFilePlaceholderWriter
+        private sealed class CountingRemoteFilePlaceholderWriter :
+            IRemoteFilePlaceholderWriter,
+            IRemoteFilePlaceholderPopulationObserver
         {
             private static readonly byte[] PlaceholderIdentity = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E];
             private int _count;
             private int _active;
             private int _maxConcurrent;
+            private int _beginPopulationCalls;
+            private int _endPopulationCalls;
             private string _firstRelativePath = string.Empty;
             private string _lastRelativePath = string.Empty;
 
@@ -1471,9 +1477,19 @@ namespace Cotton.Sync.Tests
 
             public int MaxConcurrent => Volatile.Read(ref _maxConcurrent);
 
+            public int BeginPopulationCalls => Volatile.Read(ref _beginPopulationCalls);
+
+            public int EndPopulationCalls => Volatile.Read(ref _endPopulationCalls);
+
             public string FirstRelativePath => Volatile.Read(ref _firstRelativePath);
 
             public string LastRelativePath => Volatile.Read(ref _lastRelativePath);
+
+            public IDisposable BeginPopulation(string syncPairId, string localRootPath)
+            {
+                Interlocked.Increment(ref _beginPopulationCalls);
+                return new PopulationLease(this);
+            }
 
             public async Task<RemoteFilePlaceholderResult> CreatePlaceholderAsync(
                 RemoteFilePlaceholderRequest request,
@@ -1510,6 +1526,25 @@ namespace Cotton.Sync.Tests
                 finally
                 {
                     Interlocked.Decrement(ref _active);
+                }
+            }
+
+            private sealed class PopulationLease : IDisposable
+            {
+                private CountingRemoteFilePlaceholderWriter? _owner;
+
+                public PopulationLease(CountingRemoteFilePlaceholderWriter owner)
+                {
+                    _owner = owner;
+                }
+
+                public void Dispose()
+                {
+                    CountingRemoteFilePlaceholderWriter? owner = Interlocked.Exchange(ref _owner, null);
+                    if (owner is not null)
+                    {
+                        Interlocked.Increment(ref owner._endPopulationCalls);
+                    }
                 }
             }
         }

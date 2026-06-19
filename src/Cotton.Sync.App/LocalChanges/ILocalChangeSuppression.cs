@@ -14,6 +14,11 @@ namespace Cotton.Sync.App.LocalChanges
         void SuppressProviderWrite(Guid syncPairId, string localRootPath, string relativePath);
 
         /// <summary>
+        /// Suppresses watcher overflow and provider-generated Cloud Files echoes while a large provider write is active.
+        /// </summary>
+        IDisposable SuppressProviderWriteBurst(Guid syncPairId, string localRootPath);
+
+        /// <summary>
         /// Returns whether the watcher event should be ignored as provider-originated churn.
         /// </summary>
         bool ShouldSuppress(LocalSyncRootChange change);

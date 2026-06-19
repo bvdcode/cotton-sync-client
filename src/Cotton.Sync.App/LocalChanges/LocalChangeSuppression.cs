@@ -10,6 +10,8 @@ namespace Cotton.Sync.App.LocalChanges
     /// </summary>
     public sealed class LocalChangeSuppression : ILocalChangeSuppression
     {
+        private const int FileAttributeUnpinned = 0x00100000;
+        private const int FileAttributeRecallOnDataAccess = 0x00400000;
         private static readonly TimeSpan DefaultEntryLifetime = TimeSpan.FromMinutes(2);
         private static readonly char[] DirectorySeparators = [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar];
 
@@ -19,6 +21,7 @@ namespace Cotton.Sync.App.LocalChanges
         private readonly int _eventBudget;
         private readonly int _maxEntriesPerPair;
         private readonly Dictionary<Guid, Dictionary<string, SuppressionEntry>> _entriesByPair = [];
+        private readonly Dictionary<Guid, ProviderWriteBurstScope> _providerWriteBurstsByPair = [];
         private int _registrationCount;
 
         /// <summary>
@@ -94,12 +97,41 @@ namespace Cotton.Sync.App.LocalChanges
         }
 
         /// <inheritdoc />
+        public IDisposable SuppressProviderWriteBurst(Guid syncPairId, string localRootPath)
+        {
+            if (syncPairId == Guid.Empty)
+            {
+                throw new ArgumentException("Sync pair id cannot be empty.", nameof(syncPairId));
+            }
+
+            ArgumentException.ThrowIfNullOrWhiteSpace(localRootPath);
+            string rootPath = NormalizePathKey(localRootPath);
+            lock (_gate)
+            {
+                if (_providerWriteBurstsByPair.TryGetValue(syncPairId, out ProviderWriteBurstScope? scope))
+                {
+                    scope.ActiveCount++;
+                    scope.RootPath = rootPath;
+                }
+                else
+                {
+                    _providerWriteBurstsByPair[syncPairId] = new ProviderWriteBurstScope(rootPath);
+                }
+            }
+
+            return new ProviderWriteBurstLease(this, syncPairId);
+        }
+
+        /// <inheritdoc />
         public bool ShouldSuppress(LocalSyncRootChange change)
         {
             ArgumentNullException.ThrowIfNull(change);
             if (change.Kind == LocalSyncRootChangeKind.Error)
             {
-                return false;
+                lock (_gate)
+                {
+                    return ShouldSuppressProviderBurst(change, includeCloudFilesPlaceholderProbe: false);
+                }
             }
 
             DateTimeOffset now = _timeProvider.GetUtcNow();
@@ -107,7 +139,7 @@ namespace Cotton.Sync.App.LocalChanges
             {
                 if (!_entriesByPair.TryGetValue(change.SyncPairId, out Dictionary<string, SuppressionEntry>? entries))
                 {
-                    return false;
+                    return ShouldSuppressProviderBurst(change, includeCloudFilesPlaceholderProbe: true);
                 }
 
                 bool suppress = TryConsume(entries, change.FullPath, now);
@@ -121,7 +153,24 @@ namespace Cotton.Sync.App.LocalChanges
                     _entriesByPair.Remove(change.SyncPairId);
                 }
 
-                return suppress;
+                return suppress || ShouldSuppressProviderBurst(change, includeCloudFilesPlaceholderProbe: true);
+            }
+        }
+
+        private void EndProviderWriteBurst(Guid syncPairId)
+        {
+            lock (_gate)
+            {
+                if (!_providerWriteBurstsByPair.TryGetValue(syncPairId, out ProviderWriteBurstScope? scope))
+                {
+                    return;
+                }
+
+                scope.ActiveCount--;
+                if (scope.ActiveCount <= 0)
+                {
+                    _providerWriteBurstsByPair.Remove(syncPairId);
+                }
             }
         }
 
@@ -211,6 +260,45 @@ namespace Cotton.Sync.App.LocalChanges
             }
         }
 
+        private bool ShouldSuppressProviderBurst(
+            LocalSyncRootChange change,
+            bool includeCloudFilesPlaceholderProbe)
+        {
+            if (!_providerWriteBurstsByPair.TryGetValue(change.SyncPairId, out ProviderWriteBurstScope? scope)
+                || scope.ActiveCount <= 0
+                || !IsInsideRoot(scope.RootPath, change.FullPath))
+            {
+                return false;
+            }
+
+            if (change.Kind == LocalSyncRootChangeKind.Error)
+            {
+                return true;
+            }
+
+            return includeCloudFilesPlaceholderProbe
+                && IsOnlineOnlyCloudFilesPlaceholder(change.FullPath);
+        }
+
+        private static bool IsOnlineOnlyCloudFilesPlaceholder(string fullPath)
+        {
+            try
+            {
+                FileAttributes attributes = File.GetAttributes(fullPath);
+                return HasRawAttribute(attributes, FileAttributeUnpinned)
+                    && HasRawAttribute(attributes, FileAttributeRecallOnDataAccess);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                return false;
+            }
+        }
+
+        private static bool HasRawAttribute(FileAttributes attributes, int rawAttribute)
+        {
+            return (((int)attributes) & rawAttribute) == rawAttribute;
+        }
+
         private static string ResolveInsideRoot(string localRootPath, string relativePath)
         {
             string normalizedRelativePath = SyncPath.Normalize(relativePath);
@@ -271,6 +359,37 @@ namespace Cotton.Sync.App.LocalChanges
             public DateTimeOffset ExpiresAt { get; set; }
 
             public int RemainingEvents { get; set; }
+        }
+
+        private sealed class ProviderWriteBurstScope
+        {
+            public ProviderWriteBurstScope(string rootPath)
+            {
+                RootPath = rootPath;
+                ActiveCount = 1;
+            }
+
+            public string RootPath { get; set; }
+
+            public int ActiveCount { get; set; }
+        }
+
+        private sealed class ProviderWriteBurstLease : IDisposable
+        {
+            private LocalChangeSuppression? _owner;
+            private readonly Guid _syncPairId;
+
+            public ProviderWriteBurstLease(LocalChangeSuppression owner, Guid syncPairId)
+            {
+                _owner = owner;
+                _syncPairId = syncPairId;
+            }
+
+            public void Dispose()
+            {
+                LocalChangeSuppression? owner = Interlocked.Exchange(ref _owner, null);
+                owner?.EndProviderWriteBurst(_syncPairId);
+            }
         }
     }
 }
