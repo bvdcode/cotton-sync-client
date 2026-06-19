@@ -13,6 +13,14 @@ namespace Cotton.Sync.Desktop.Shell
             DesktopSyncStatusSnapshot status,
             IReadOnlyDictionary<Guid, string> displayNames)
         {
+            return Apply(status, displayNames, suppressedInitialSyncCompletePairIds: null);
+        }
+
+        public IReadOnlyList<DesktopNotificationRequest> Apply(
+            DesktopSyncStatusSnapshot status,
+            IReadOnlyDictionary<Guid, string> displayNames,
+            IReadOnlySet<Guid>? suppressedInitialSyncCompletePairIds)
+        {
             ArgumentNullException.ThrowIfNull(status);
             ArgumentNullException.ThrowIfNull(displayNames);
             var notifications = new List<DesktopNotificationRequest>();
@@ -22,8 +30,23 @@ namespace Cotton.Sync.Desktop.Shell
                 string displayName = displayNames.GetValueOrDefault(pair.Id, "Sync folder");
                 string? previousError = _previousErrors.GetValueOrDefault(pair.Id);
                 string currentError = DesktopActionRequiredMessageResolver.FromSyncPairStatus(pair);
-                AddNotificationIfNeeded(notifications, pair, previousStatus, previousError, currentError, displayName);
-                _previousStatuses[pair.Id] = pair.Status;
+                bool suppressInitialSyncComplete = ShouldSuppressInitialSyncComplete(
+                    pair,
+                    previousStatus,
+                    suppressedInitialSyncCompletePairIds);
+                AddNotificationIfNeeded(
+                    notifications,
+                    pair,
+                    previousStatus,
+                    previousError,
+                    currentError,
+                    displayName,
+                    suppressInitialSyncComplete);
+                if (!suppressInitialSyncComplete)
+                {
+                    _previousStatuses[pair.Id] = pair.Status;
+                }
+
                 _previousErrors[pair.Id] = string.IsNullOrWhiteSpace(currentError) ? null : currentError;
             }
 
@@ -37,13 +60,26 @@ namespace Cotton.Sync.Desktop.Shell
             _previousStatuses.Clear();
         }
 
+        private bool ShouldSuppressInitialSyncComplete(
+            DesktopSyncPairStatusSnapshot pair,
+            string previousStatus,
+            IReadOnlySet<Guid>? suppressedInitialSyncCompletePairIds)
+        {
+            return suppressedInitialSyncCompletePairIds?.Contains(pair.Id) == true
+                && !_initialSyncCompleted.Contains(pair.Id)
+                && string.Equals(pair.Status, "Idle", StringComparison.Ordinal)
+                && pair.LastSyncedAtUtc.HasValue
+                && IsSyncingLike(previousStatus);
+        }
+
         private void AddNotificationIfNeeded(
             List<DesktopNotificationRequest> notifications,
             DesktopSyncPairStatusSnapshot pair,
             string previousStatus,
             string? previousError,
             string currentError,
-            string displayName)
+            string displayName,
+            bool suppressInitialSyncComplete)
         {
             if (string.Equals(pair.Status, "Error", StringComparison.Ordinal)
                 && !string.IsNullOrWhiteSpace(currentError))
@@ -72,7 +108,8 @@ namespace Cotton.Sync.Desktop.Shell
                 return;
             }
 
-            if (!_initialSyncCompleted.Contains(pair.Id)
+            if (!suppressInitialSyncComplete
+                && !_initialSyncCompleted.Contains(pair.Id)
                 && string.Equals(pair.Status, "Idle", StringComparison.Ordinal)
                 && pair.LastSyncedAtUtc.HasValue
                 && IsSyncingLike(previousStatus))

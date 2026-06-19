@@ -4124,6 +4124,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private void ApplyStatus(DesktopSyncStatusSnapshot status)
         {
+            HashSet<Guid> suppressedInitialSyncCompletePairIds = GetInitialSyncCompleteNotificationSuppressionIds();
             bool hasActiveSyncStatus = false;
             bool runProgressChanged = false;
             bool shouldClearCurrentTransfer = false;
@@ -4199,7 +4200,10 @@ namespace Cotton.Sync.Desktop.ViewModels
 
             RaiseSyncStateProperties();
             RefreshCurrentProgressText();
-            AddNotifications(_notificationTracker.Apply(status, SyncPairs.ToDictionary(static pair => pair.Id, static pair => pair.DisplayName)));
+            AddNotifications(_notificationTracker.Apply(
+                status,
+                SyncPairs.ToDictionary(static pair => pair.Id, static pair => pair.DisplayName),
+                suppressedInitialSyncCompletePairIds));
             RefreshDiagnosticsItems();
         }
 
@@ -4219,6 +4223,28 @@ namespace Cotton.Sync.Desktop.ViewModels
 
             _lastStatusErrorActivityMessages[pairStatus.Id] = pairStatus.LastError;
             return true;
+        }
+
+        private HashSet<Guid> GetInitialSyncCompleteNotificationSuppressionIds()
+        {
+            var syncPairIds = new HashSet<Guid>();
+            foreach (DesktopRunProgressSnapshot progress in _runProgressByPair.Values)
+            {
+                if (progress.Stage != SyncRunProgressStage.CreatingPlaceholders
+                    || progress.IsCompleted
+                    || !HasFreshDetailedProgress(progress.SyncPairId))
+                {
+                    continue;
+                }
+
+                SyncPairRowViewModel? syncPair = SyncPairs.FirstOrDefault(pair => pair.Id == progress.SyncPairId);
+                if (syncPair?.Mode == SyncPairMode.WindowsVirtualFiles)
+                {
+                    syncPairIds.Add(progress.SyncPairId);
+                }
+            }
+
+            return syncPairIds;
         }
 
         private bool HasFreshDetailedProgress(Guid syncPairId)
