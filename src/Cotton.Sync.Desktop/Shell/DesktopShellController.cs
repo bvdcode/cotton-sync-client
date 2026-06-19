@@ -859,6 +859,15 @@ namespace Cotton.Sync.Desktop.Shell
 
         public async Task<string> ExportDiagnosticsAsync(CancellationToken cancellationToken = default)
         {
+            return await ExportDiagnosticsAsync(DesktopDiagnosticsExportOptions.Public, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        public async Task<string> ExportDiagnosticsAsync(
+            DesktopDiagnosticsExportOptions options,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(options);
             await _preferencesStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
             await _syncPairStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
             AppPreferences preferences = await _preferencesStore.GetAsync(cancellationToken).ConfigureAwait(false);
@@ -882,7 +891,7 @@ namespace Cotton.Sync.Desktop.Shell
                 DesktopCloudFilesRegistrationDiagnosticsSnapshot.Create(syncPairs),
                 selfTest.Items,
                 WindowsCloudFilesDiagnostics.Shared.Snapshot());
-            return await _diagnosticsExporter.ExportAsync(_paths, bundle, cancellationToken).ConfigureAwait(false);
+            return await _diagnosticsExporter.ExportAsync(_paths, bundle, options, cancellationToken).ConfigureAwait(false);
         }
 
         public async Task<DesktopUpdateStatusSnapshot> CheckForUpdateAsync(

@@ -23,16 +23,27 @@ namespace Cotton.Sync.Desktop.Diagnostics
             DesktopDiagnosticsBundle bundle,
             CancellationToken cancellationToken = default)
         {
+            return await ExportAsync(paths, bundle, DesktopDiagnosticsExportOptions.Public, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        public async Task<string> ExportAsync(
+            DesktopAppPaths paths,
+            DesktopDiagnosticsBundle bundle,
+            DesktopDiagnosticsExportOptions options,
+            CancellationToken cancellationToken = default)
+        {
             ArgumentNullException.ThrowIfNull(paths);
             ArgumentNullException.ThrowIfNull(bundle);
+            ArgumentNullException.ThrowIfNull(options);
             string diagnosticsDirectory = Path.Combine(paths.DataDirectory, DiagnosticsDirectoryName);
             Directory.CreateDirectory(diagnosticsDirectory);
-            string archivePath = Path.Combine(diagnosticsDirectory, CreateArchiveFileName(bundle.CreatedAtUtc));
+            string archivePath = Path.Combine(diagnosticsDirectory, CreateArchiveFileName(bundle.CreatedAtUtc, options));
 
             await using FileStream archiveStream = File.Create(archivePath);
             using var archive = new ZipArchive(archiveStream, ZipArchiveMode.Create);
-            await WriteJsonEntryAsync(archive, paths, bundle, cancellationToken).ConfigureAwait(false);
-            await AddLogEntriesAsync(archive, paths, bundle, cancellationToken).ConfigureAwait(false);
+            await WriteJsonEntryAsync(archive, paths, bundle, options, cancellationToken).ConfigureAwait(false);
+            await AddLogEntriesAsync(archive, paths, bundle, options, cancellationToken).ConfigureAwait(false);
             return archivePath;
         }
 
@@ -40,12 +51,15 @@ namespace Cotton.Sync.Desktop.Diagnostics
             ZipArchive archive,
             DesktopAppPaths paths,
             DesktopDiagnosticsBundle bundle,
+            DesktopDiagnosticsExportOptions options,
             CancellationToken cancellationToken)
         {
             ZipArchiveEntry entry = archive.CreateEntry(DiagnosticsJsonEntryName);
             await using Stream entryStream = entry.Open();
-            DesktopDiagnosticsBundle publicBundle = DesktopDiagnosticsPublicSanitizer.SanitizeBundle(paths, bundle);
-            string json = JsonSerializer.Serialize(publicBundle, JsonOptions);
+            DesktopDiagnosticsBundle exportBundle = options.IncludePrivateSupportData
+                ? bundle
+                : DesktopDiagnosticsPublicSanitizer.SanitizeBundle(paths, bundle);
+            string json = JsonSerializer.Serialize(exportBundle, JsonOptions);
             string redactedJson = DesktopSecretRedactor.Redact(json);
             await entryStream.WriteAsync(Encoding.UTF8.GetBytes(redactedJson), cancellationToken).ConfigureAwait(false);
         }
@@ -64,9 +78,10 @@ namespace Cotton.Sync.Desktop.Diagnostics
             ZipArchive archive,
             DesktopAppPaths paths,
             DesktopDiagnosticsBundle bundle,
+            DesktopDiagnosticsExportOptions options,
             CancellationToken cancellationToken)
         {
-            await AddFileIfExistsAsync(archive, paths.LogFilePath, "cotton-sync.log", paths, bundle, cancellationToken)
+            await AddFileIfExistsAsync(archive, paths.LogFilePath, "cotton-sync.log", paths, bundle, options, cancellationToken)
                 .ConfigureAwait(false);
             for (int index = 1; index <= 3; index++)
             {
@@ -76,6 +91,7 @@ namespace Cotton.Sync.Desktop.Diagnostics
                     "cotton-sync.log." + index.ToString(CultureInfo.InvariantCulture),
                     paths,
                     bundle,
+                    options,
                     cancellationToken).ConfigureAwait(false);
             }
         }
@@ -86,6 +102,7 @@ namespace Cotton.Sync.Desktop.Diagnostics
             string entryName,
             DesktopAppPaths paths,
             DesktopDiagnosticsBundle bundle,
+            DesktopDiagnosticsExportOptions options,
             CancellationToken cancellationToken)
         {
             if (!File.Exists(sourcePath))
@@ -106,13 +123,19 @@ namespace Cotton.Sync.Desktop.Diagnostics
                 logContent = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            string redactedLog = DesktopDiagnosticsPublicSanitizer.SanitizeText(logContent, paths, bundle);
+            string redactedLog = options.IncludePrivateSupportData
+                ? DesktopSecretRedactor.Redact(logContent)
+                : DesktopDiagnosticsPublicSanitizer.SanitizeText(logContent, paths, bundle);
             await entryStream.WriteAsync(Encoding.UTF8.GetBytes(redactedLog), cancellationToken).ConfigureAwait(false);
         }
 
-        private static string CreateArchiveFileName(DateTimeOffset createdAtUtc)
+        private static string CreateArchiveFileName(
+            DateTimeOffset createdAtUtc,
+            DesktopDiagnosticsExportOptions options)
         {
-            return "cotton-sync-diagnostics-"
+            return "cotton-sync-diagnostics"
+                + options.FileNameSegment
+                + "-"
                 + createdAtUtc.UtcDateTime.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)
                 + "-"
                 + Guid.NewGuid().ToString("N")[..8]

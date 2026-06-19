@@ -4,6 +4,7 @@
 using Cotton.Sync.App.Auth;
 using Cotton.Sync.App.Preferences;
 using Cotton.Sync.App.SyncPairs;
+using Cotton.Sync.Desktop.Diagnostics;
 
 namespace Cotton.Sync.Desktop.Shell
 {
@@ -83,5 +84,9 @@ namespace Cotton.Sync.Desktop.Shell
         Task InstallDownloadedUpdateAsync(string installerPath, CancellationToken cancellationToken = default);
 
         Task<string> ExportDiagnosticsAsync(CancellationToken cancellationToken = default);
+
+        Task<string> ExportDiagnosticsAsync(
+            DesktopDiagnosticsExportOptions options,
+            CancellationToken cancellationToken = default);
     }
 }

@@ -264,6 +264,11 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(smokeScript, Does.Contain("command -v python3"));
                 Assert.That(smokeScript, Does.Contain("diagnostics.json"));
                 Assert.That(smokeScript, Does.Contain("\"dataPaths\""));
+                Assert.That(smokeScript, Does.Contain("\"[data-directory]\""));
+                Assert.That(smokeScript, Does.Contain("\"[app-database]\""));
+                Assert.That(smokeScript, Does.Contain("\"[sync-state-database]\""));
+                Assert.That(smokeScript, Does.Contain("\"[token-store]\""));
+                Assert.That(smokeScript, Does.Contain("Public diagnostics JSON leaked private path value"));
                 Assert.That(smokeScript, Does.Contain("\"sync-app.db\""));
                 Assert.That(smokeScript, Does.Contain("\"sync-state.db\""));
                 Assert.That(smokeScript, Does.Contain("\"tokens.json\""));
@@ -306,6 +311,11 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(smokeScript, Does.Contain("ConvertFrom-Json"));
                 Assert.That(smokeScript, Does.Contain("Diagnostics appVersion was"));
                 Assert.That(smokeScript, Does.Contain("dataPaths"));
+                Assert.That(smokeScript, Does.Contain("[data-directory]"));
+                Assert.That(smokeScript, Does.Contain("[app-database]"));
+                Assert.That(smokeScript, Does.Contain("[sync-state-database]"));
+                Assert.That(smokeScript, Does.Contain("[token-store]"));
+                Assert.That(smokeScript, Does.Contain("Public diagnostics JSON leaked private path value"));
                 Assert.That(smokeScript, Does.Contain("sync-app.db"));
                 Assert.That(smokeScript, Does.Contain("sync-state.db"));
                 Assert.That(smokeScript, Does.Contain("tokens.json"));
