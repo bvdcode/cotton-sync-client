@@ -3175,6 +3175,59 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task StatusChanged_DelaysVirtualFilesCompletionNotificationWhileCloudFilesProgressIsFresh()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(
+                CreateSignedInSnapshotWithNotifications(
+                    enableNotifications: false,
+                    CreatePair(syncPairId, "Cloud", "Syncing", mode: SyncPairMode.WindowsVirtualFiles)));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            controller.ReportStatus(new DesktopSyncStatusSnapshot(
+            [
+                new DesktopSyncPairStatusSnapshot(syncPairId, "Syncing", null),
+            ]));
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.CreatingPlaceholders,
+                FilesCompleted: 3,
+                FilesTotal: 100,
+                CurrentPath: "Videos/clip.mp4",
+                StartedAtUtc: new DateTime(2026, 6, 4, 8, 0, 0, DateTimeKind.Utc),
+                IsCompleted: false,
+                OccurredAtUtc: new DateTime(2026, 6, 4, 8, 0, 1, DateTimeKind.Utc)));
+
+            controller.ReportStatus(new DesktopSyncStatusSnapshot(
+            [
+                new DesktopSyncPairStatusSnapshot(
+                    syncPairId,
+                    "Idle",
+                    null,
+                    LastSyncedAtUtc: new DateTime(2026, 6, 4, 8, 1, 0, DateTimeKind.Utc)),
+            ]));
+
+            Assert.That(viewModel.HasNotifications, Is.False);
+
+            controller.ReportStatus(new DesktopSyncStatusSnapshot(
+            [
+                new DesktopSyncPairStatusSnapshot(
+                    syncPairId,
+                    "Idle",
+                    null,
+                    LastSyncedAtUtc: new DateTime(2026, 6, 4, 8, 1, 1, DateTimeKind.Utc)),
+            ]));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.HasNotifications, Is.True);
+                Assert.That(viewModel.Notifications.Single().Title, Is.EqualTo("Initial sync complete"));
+                Assert.That(viewModel.Notifications.Single().Message, Is.EqualTo("Cloud is up to date."));
+            });
+        }
+
+        [Test]
         public async Task RunProgressChanged_HidesCompletionNotificationWhileAnotherFolderIsActive()
         {
             Guid completedPairId = Guid.NewGuid();
