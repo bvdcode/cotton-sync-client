@@ -944,7 +944,7 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         }
 
         [Test]
-        public async Task DeleteSyncPairAsync_RestartsSyncComponentsWhenSyncCoreIsRunning()
+        public async Task DeleteSyncPairAsync_KeepsSyncCoreStoppedAfterDeletingLastPair()
         {
             var store = new InMemorySyncPairSettingsStore();
             var supervisor = new FakeSyncSupervisor();
@@ -965,6 +965,76 @@ namespace Cotton.Sync.App.Tests.SyncApplication
 
             Assert.Multiple(() =>
             {
+                Assert.That(supervisor.StopCallCount, Is.EqualTo(1));
+                Assert.That(localChanges.StopCallCount, Is.EqualTo(1));
+                Assert.That(remoteChanges.StopCallCount, Is.EqualTo(1));
+                Assert.That(periodicSync.StopCallCount, Is.EqualTo(1));
+                Assert.That(supervisor.StartCallCount, Is.EqualTo(1));
+                Assert.That(localChanges.StartCallCount, Is.EqualTo(1));
+                Assert.That(remoteChanges.StartCallCount, Is.EqualTo(1));
+                Assert.That(periodicSync.StartCallCount, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
+        public async Task DeleteSyncPairAsync_RestartsSyncComponentsWhenOtherPairsRemain()
+        {
+            var store = new InMemorySyncPairSettingsStore();
+            var supervisor = new FakeSyncSupervisor();
+            var localChanges = new FakeLocalChangeSyncCoordinator();
+            var remoteChanges = new FakeRemoteChangeSyncCoordinator();
+            var periodicSync = new FakePeriodicSyncCoordinator();
+            SyncApplicationService service = CreateService(
+                store,
+                supervisor: supervisor,
+                localChanges: localChanges,
+                remoteChanges: remoteChanges,
+                periodicSync: periodicSync);
+            SyncPairSettings firstPair = CreatePair("/home/user/Cotton");
+            SyncPairSettings secondPair = CreatePair("/home/user/Pictures");
+            await service.SaveSyncPairAsync(firstPair);
+            await service.SaveSyncPairAsync(secondPair);
+            await service.StartSyncAsync();
+
+            await service.DeleteSyncPairAsync(firstPair.Id);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(supervisor.StopCallCount, Is.EqualTo(1));
+                Assert.That(localChanges.StopCallCount, Is.EqualTo(1));
+                Assert.That(remoteChanges.StopCallCount, Is.EqualTo(1));
+                Assert.That(periodicSync.StopCallCount, Is.EqualTo(1));
+                Assert.That(supervisor.StartCallCount, Is.EqualTo(2));
+                Assert.That(localChanges.StartCallCount, Is.EqualTo(2));
+                Assert.That(remoteChanges.StartCallCount, Is.EqualTo(2));
+                Assert.That(periodicSync.StartCallCount, Is.EqualTo(2));
+            });
+        }
+
+        [Test]
+        public async Task SaveSyncPairAsync_RestartsSyncCoreAfterLastPairDeletionWhenNewPairIsAdded()
+        {
+            var store = new InMemorySyncPairSettingsStore();
+            var supervisor = new FakeSyncSupervisor();
+            var localChanges = new FakeLocalChangeSyncCoordinator();
+            var remoteChanges = new FakeRemoteChangeSyncCoordinator();
+            var periodicSync = new FakePeriodicSyncCoordinator();
+            SyncApplicationService service = CreateService(
+                store,
+                supervisor: supervisor,
+                localChanges: localChanges,
+                remoteChanges: remoteChanges,
+                periodicSync: periodicSync);
+            SyncPairSettings firstPair = CreatePair("/home/user/Cotton");
+            await service.SaveSyncPairAsync(firstPair);
+            await service.StartSyncAsync();
+            await service.DeleteSyncPairAsync(firstPair.Id);
+
+            SyncPairSaveResult result = await service.SaveSyncPairAsync(CreatePair("/home/user/Pictures"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.IsSaved, Is.True);
                 Assert.That(supervisor.StopCallCount, Is.EqualTo(1));
                 Assert.That(localChanges.StopCallCount, Is.EqualTo(1));
                 Assert.That(remoteChanges.StopCallCount, Is.EqualTo(1));
@@ -998,6 +1068,7 @@ namespace Cotton.Sync.App.Tests.SyncApplication
             SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
             await service.SaveSyncPairAsync(syncPair);
             await service.StartSyncAsync();
+            calls.Clear();
 
             await service.DeleteSyncPairAsync(syncPair.Id);
 
@@ -1005,7 +1076,7 @@ namespace Cotton.Sync.App.Tests.SyncApplication
             {
                 Assert.That(deletionHandler.DeletedPairs.Select(static pair => pair.Id), Is.EqualTo(new[] { syncPair.Id }));
                 Assert.That(calls.LastIndexOf("cloud-files:stop"), Is.LessThan(calls.IndexOf("deletion-handler:before-delete")));
-                Assert.That(calls.IndexOf("deletion-handler:before-delete"), Is.LessThan(calls.LastIndexOf("cloud-files:start")));
+                Assert.That(calls, Does.Not.Contain("cloud-files:start"));
             });
         }
 

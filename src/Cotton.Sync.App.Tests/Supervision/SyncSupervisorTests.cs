@@ -218,7 +218,7 @@ namespace Cotton.Sync.App.Tests.Supervision
         }
 
         [Test]
-        public async Task StopAsync_StopsEveryRunnerAndPublishesDisabledStatuses()
+        public async Task StopAsync_StopsEveryRunnerPublishesDisabledStatusesAndClearsReferences()
         {
             SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
             SyncPairSettings pictures = CreatePair("Pictures", isEnabled: true);
@@ -238,6 +238,7 @@ namespace Cotton.Sync.App.Tests.Supervision
                 Assert.That(
                     publisher.Current.SyncPairs.Select(status => status.State),
                     Is.All.EqualTo(SyncPairRunState.Disabled));
+                Assert.That(supervisor.CurrentStatuses, Is.Empty);
             });
         }
 
