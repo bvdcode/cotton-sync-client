@@ -46,7 +46,6 @@ OutputDir={#OutputDir}
 OutputBaseFilename={#OutputBaseFilename}
 SetupIconFile={#IconFile}
 UninstallDisplayIcon={app}\Cotton.Sync.Desktop.exe
-AppMutex={#AppMutexName}
 CloseApplications=force
 RestartApplications=no
 Compression=lzma2

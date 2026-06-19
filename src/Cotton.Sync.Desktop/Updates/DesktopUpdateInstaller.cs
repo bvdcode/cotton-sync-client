@@ -40,6 +40,7 @@ namespace Cotton.Sync.Desktop.Updates
                     "/SUPPRESSMSGBOXES",
                     "/NORESTART",
                     "/CLOSEAPPLICATIONS",
+                    "/FORCECLOSEAPPLICATIONS",
                     "/LaunchAfterUpdate=1",
                 ]
                 :
@@ -48,6 +49,7 @@ namespace Cotton.Sync.Desktop.Updates
                     "/SUPPRESSMSGBOXES",
                     "/NORESTART",
                     "/CLOSEAPPLICATIONS",
+                    "/FORCECLOSEAPPLICATIONS",
                 ];
             return string.Join(" ", switches);
         }

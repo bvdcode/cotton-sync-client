@@ -648,7 +648,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(installerScript, Does.Contain("UninstallDisplayIcon={app}\\Cotton.Sync.Desktop.exe"));
                 Assert.That(installerScript, Does.Contain("#define AppMutexName \"CottonSyncDesktop_B671C18E_1E77_437C_AB9B_5C5C9D877E18\""));
                 Assert.That(installerScript, Does.Contain("#define AppUserModelId \"" + DesktopAppIdentity.AppUserModelId + "\""));
-                Assert.That(installerScript, Does.Contain("AppMutex={#AppMutexName}"));
+                Assert.That(installerScript, Does.Not.Contain("AppMutex={#AppMutexName}"));
                 Assert.That(installerScript, Does.Contain("CloseApplications=force"));
                 Assert.That(installerScript, Does.Contain("RestartApplications=no"));
                 Assert.That(installerScript, Does.Contain("InitializeUninstall"));
