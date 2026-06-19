@@ -236,7 +236,12 @@ namespace Cotton.Sync.App.Supervision
             try
             {
                 await StopRunnersAsync(cancellationToken).ConfigureAwait(false);
-                status = CreateAppStatusSnapshot();
+                IReadOnlyList<SyncPairStatus> stoppedStatuses = CreatePairStatusSnapshot();
+                _runners.Clear();
+                status = new SyncAppStatus(
+                    _statusPublisher.Current.IsAuthenticated,
+                    stoppedStatuses,
+                    DateTime.UtcNow);
             }
             finally
             {

@@ -38,6 +38,7 @@ namespace Cotton.Sync.App.SyncApplication
         private readonly ILogger<SyncApplicationService> _logger;
         private bool _isSyncCoreStarted;
         private bool _isSyncGloballyPaused;
+        private bool _startSyncCoreWhenSyncPairsExist;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SyncApplicationService" /> class.
@@ -179,7 +180,7 @@ namespace Cotton.Sync.App.SyncApplication
             }
 
             await _syncPairs.UpsertAsync(syncPair, cancellationToken).ConfigureAwait(false);
-            await RestartSyncCoreIfStartedAsync(cancellationToken).ConfigureAwait(false);
+            await RefreshSyncCoreAfterSyncPairSaveAsync(cancellationToken).ConfigureAwait(false);
             return SyncPairSaveResult.Saved(validation);
         }
 
@@ -219,8 +220,10 @@ namespace Cotton.Sync.App.SyncApplication
         /// <inheritdoc />
         public async Task DeleteSyncPairAsync(Guid syncPairId, CancellationToken cancellationToken = default)
         {
-            bool shouldRestartSyncCore = false;
+            bool syncCoreWasRunning = false;
             bool restartAttempted = false;
+            bool syncPairSettingsDeleted = false;
+            bool keepSyncCoreStoppedUntilPairAdded = false;
             await _syncCoreGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
@@ -229,7 +232,7 @@ namespace Cotton.Sync.App.SyncApplication
                 if (_isSyncCoreStarted)
                 {
                     await StopSyncCoreUnlockedAsync(cancellationToken, force: false).ConfigureAwait(false);
-                    shouldRestartSyncCore = true;
+                    syncCoreWasRunning = true;
                 }
 
                 if (syncPair is not null)
@@ -238,25 +241,61 @@ namespace Cotton.Sync.App.SyncApplication
                 }
 
                 await _syncPairs.DeleteAsync(syncPairId, cancellationToken).ConfigureAwait(false);
+                syncPairSettingsDeleted = true;
                 if (_syncStateStore is not null)
                 {
                     await _syncStateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
                     await _syncStateStore.DeletePairAsync(syncPairId.ToString(), cancellationToken).ConfigureAwait(false);
                 }
 
-                if (shouldRestartSyncCore)
+                if (syncCoreWasRunning)
                 {
-                    restartAttempted = true;
-                    await StartSyncCoreUnlockedAsync(cancellationToken).ConfigureAwait(false);
+                    if (await HasConfiguredSyncPairsAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        restartAttempted = true;
+                        await StartSyncCoreUnlockedAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        keepSyncCoreStoppedUntilPairAdded = true;
+                        _startSyncCoreWhenSyncPairsExist = true;
+                    }
                 }
             }
             finally
             {
-                if (shouldRestartSyncCore && !restartAttempted && !_isSyncCoreStarted)
+                if (syncCoreWasRunning
+                    && !restartAttempted
+                    && !_isSyncCoreStarted
+                    && !keepSyncCoreStoppedUntilPairAdded)
                 {
                     try
                     {
-                        await StartSyncCoreUnlockedAsync(CancellationToken.None).ConfigureAwait(false);
+                        bool shouldRestartAfterFailure = !syncPairSettingsDeleted;
+                        if (syncPairSettingsDeleted)
+                        {
+                            try
+                            {
+                                shouldRestartAfterFailure = await HasConfiguredSyncPairsAsync(CancellationToken.None)
+                                    .ConfigureAwait(false);
+                                if (!shouldRestartAfterFailure)
+                                {
+                                    _startSyncCoreWhenSyncPairsExist = true;
+                                }
+                            }
+                            catch (Exception exception)
+                            {
+                                shouldRestartAfterFailure = true;
+                                _logger.LogWarning(
+                                    exception,
+                                    "Failed to inspect sync pairs after deletion was interrupted; restarting sync core.");
+                            }
+                        }
+
+                        if (shouldRestartAfterFailure)
+                        {
+                            await StartSyncCoreUnlockedAsync(CancellationToken.None).ConfigureAwait(false);
+                        }
                     }
                     catch (Exception exception)
                     {
@@ -350,6 +389,7 @@ namespace Cotton.Sync.App.SyncApplication
             await _syncCoreGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
+                _startSyncCoreWhenSyncPairsExist = false;
                 await StopSyncCoreUnlockedAsync(cancellationToken, force: true).ConfigureAwait(false);
             }
             finally
@@ -358,18 +398,27 @@ namespace Cotton.Sync.App.SyncApplication
             }
         }
 
-        private async Task RestartSyncCoreIfStartedAsync(CancellationToken cancellationToken)
+        private async Task RefreshSyncCoreAfterSyncPairSaveAsync(CancellationToken cancellationToken)
         {
             await _syncCoreGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                if (!_isSyncCoreStarted)
+                if (_isSyncCoreStarted)
+                {
+                    await StopSyncCoreUnlockedAsync(cancellationToken, force: false).ConfigureAwait(false);
+                    await StartSyncCoreUnlockedAsync(cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
+                if (!_startSyncCoreWhenSyncPairsExist)
                 {
                     return;
                 }
 
-                await StopSyncCoreUnlockedAsync(cancellationToken, force: false).ConfigureAwait(false);
-                await StartSyncCoreUnlockedAsync(cancellationToken).ConfigureAwait(false);
+                if (await HasConfiguredSyncPairsAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    await StartSyncCoreUnlockedAsync(cancellationToken).ConfigureAwait(false);
+                }
             }
             finally
             {
@@ -417,6 +466,7 @@ namespace Cotton.Sync.App.SyncApplication
                     "periodic sync coordinator",
                     token => _periodicSync.StopAsync(token)));
                 _isSyncCoreStarted = true;
+                _startSyncCoreWhenSyncPairsExist = false;
             }
             catch (Exception exception)
             {
@@ -459,6 +509,13 @@ namespace Cotton.Sync.App.SyncApplication
             }
 
             _isSyncCoreStarted = false;
+        }
+
+        private async Task<bool> HasConfiguredSyncPairsAsync(CancellationToken cancellationToken)
+        {
+            await _syncPairs.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<SyncPairSettings> syncPairs = await _syncPairs.ListAsync(cancellationToken).ConfigureAwait(false);
+            return syncPairs.Count > 0;
         }
 
         private async Task RollBackStartedComponentsAsync(IReadOnlyList<StartedSyncComponent> startedComponents)
