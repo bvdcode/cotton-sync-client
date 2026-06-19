@@ -5400,6 +5400,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Assert.Multiple(() =>
             {
                 Assert.That(controller.DownloadUpdateCalls, Is.EqualTo(1));
+                Assert.That(controller.DownloadUpdateSources, Is.EqualTo(new[] { DesktopUpdateCheckSource.Download }));
                 Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Update ready"));
                 Assert.That(viewModel.IsUpdateReady, Is.True);
                 Assert.That(viewModel.CanInstallUpdate, Is.True);
@@ -5433,6 +5434,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Assert.Multiple(() =>
             {
                 Assert.That(controller.DownloadUpdateCalls, Is.EqualTo(1));
+                Assert.That(controller.DownloadUpdateSources, Is.EqualTo(new[] { DesktopUpdateCheckSource.Startup }));
                 Assert.That(controller.CheckForUpdateCalls, Is.EqualTo(0));
                 Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Update ready"));
                 Assert.That(viewModel.IsUpdateReady, Is.True);
@@ -5440,6 +5442,53 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CanSyncNow, Is.True);
                 Assert.That(notificationService.Notifications, Has.Count.EqualTo(1));
                 Assert.That(notificationService.Notifications[0].Title, Is.EqualTo("Update ready"));
+            });
+        }
+
+        [Test]
+        public async Task InitializeAsync_RunsPeriodicUpdateCheckAfterStartupUpdatePolicyDelay()
+        {
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            {
+                UpdateDownloadSnapshot = new DesktopUpdateStatusSnapshot(
+                    "0.0.1",
+                    "0.0.1",
+                    false,
+                    false,
+                    "Cotton Sync is up to date.",
+                    null,
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/v0.0.1")),
+                UpdateCheckSnapshot = new DesktopUpdateStatusSnapshot(
+                    "0.0.1",
+                    "0.0.2",
+                    true,
+                    false,
+                    "Update 0.0.2 is available.",
+                    null,
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/v0.0.2")),
+            };
+            using var periodicDelay = new ManualPeriodicUpdateDelay();
+            using ShellViewModel viewModel = CreateViewModel(
+                controller,
+                checkForUpdatesOnStartup: true,
+                periodicUpdateCheckInterval: TimeSpan.FromMinutes(30),
+                updateDelayAsync: periodicDelay.DelayAsync);
+
+            await viewModel.InitializeAsync();
+            await viewModel.StartupUpdateTask!;
+            await WaitForAsync(() => periodicDelay.RequestedDelays.Count > 0);
+            periodicDelay.ReleaseNextDelay();
+            await WaitForAsync(() => controller.CheckForUpdateCalls == 1);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(controller.DownloadUpdateCalls, Is.EqualTo(1));
+                Assert.That(controller.DownloadUpdateSources, Is.EqualTo(new[] { DesktopUpdateCheckSource.Startup }));
+                Assert.That(controller.CheckForUpdateSources, Is.EqualTo(new[] { DesktopUpdateCheckSource.Periodic }));
+                Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Update available"));
+                Assert.That(viewModel.UpdateDetailsText, Is.EqualTo("Update 0.0.2 is available."));
+                Assert.That(viewModel.CanSyncNow, Is.True);
+                Assert.That(periodicDelay.RequestedDelays[0], Is.EqualTo(TimeSpan.FromMinutes(30)));
             });
         }
 
@@ -5831,6 +5880,10 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             public int DownloadUpdateCalls { get; private set; }
 
+            public List<DesktopUpdateCheckSource> CheckForUpdateSources { get; } = [];
+
+            public List<DesktopUpdateCheckSource> DownloadUpdateSources { get; } = [];
+
             public string? InstalledUpdatePath { get; private set; }
 
             public DesktopServerProbeResult? ServerProbeResult { get; set; }
@@ -6192,10 +6245,13 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 return Task.FromResult(SelfTestSnapshot);
             }
 
-            public Task<DesktopUpdateStatusSnapshot> CheckForUpdateAsync(CancellationToken cancellationToken = default)
+            public Task<DesktopUpdateStatusSnapshot> CheckForUpdateAsync(
+                DesktopUpdateCheckSource source = DesktopUpdateCheckSource.Manual,
+                CancellationToken cancellationToken = default)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 CheckForUpdateCalls++;
+                CheckForUpdateSources.Add(source);
                 if (UpdateCheckException is not null)
                 {
                     throw UpdateCheckException;
@@ -6204,10 +6260,13 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 return Task.FromResult(UpdateCheckSnapshot);
             }
 
-            public Task<DesktopUpdateStatusSnapshot> DownloadUpdateAsync(CancellationToken cancellationToken = default)
+            public Task<DesktopUpdateStatusSnapshot> DownloadUpdateAsync(
+                DesktopUpdateCheckSource source = DesktopUpdateCheckSource.Download,
+                CancellationToken cancellationToken = default)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 DownloadUpdateCalls++;
+                DownloadUpdateSources.Add(source);
                 if (UpdateDownloadException is not null)
                 {
                     throw UpdateDownloadException;
@@ -6252,7 +6311,9 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             IDesktopNotificationService? notificationService = null,
             IDesktopUiDispatcher? uiDispatcher = null,
             bool checkForUpdatesOnStartup = false,
-            bool notifyOnSessionRestore = false)
+            bool notifyOnSessionRestore = false,
+            TimeSpan? periodicUpdateCheckInterval = null,
+            Func<TimeSpan, CancellationToken, Task>? updateDelayAsync = null)
         {
             return new ShellViewModel(
                 controller,
@@ -6262,7 +6323,51 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 uiDispatcher ?? new InlineDesktopUiDispatcher(),
                 featureFlags,
                 checkForUpdatesOnStartup,
-                notifyOnSessionRestore);
+                notifyOnSessionRestore,
+                periodicUpdateCheckInterval,
+                updateDelayAsync);
+        }
+
+        private sealed class ManualPeriodicUpdateDelay : IDisposable
+        {
+            private readonly Queue<TaskCompletionSource> _pendingDelays = new();
+            private bool _disposed;
+
+            public List<TimeSpan> RequestedDelays { get; } = [];
+
+            public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken)
+            {
+                RequestedDelays.Add(delay);
+                var source = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                if (_disposed || cancellationToken.IsCancellationRequested)
+                {
+                    source.SetCanceled(cancellationToken);
+                    return source.Task;
+                }
+
+                _pendingDelays.Enqueue(source);
+                cancellationToken.Register(() => source.TrySetCanceled(cancellationToken));
+                return source.Task;
+            }
+
+            public void ReleaseNextDelay()
+            {
+                if (_pendingDelays.Count == 0)
+                {
+                    throw new InvalidOperationException("No periodic update delay is pending.");
+                }
+
+                _pendingDelays.Dequeue().SetResult();
+            }
+
+            public void Dispose()
+            {
+                _disposed = true;
+                while (_pendingDelays.Count > 0)
+                {
+                    _pendingDelays.Dequeue().TrySetCanceled();
+                }
+            }
         }
 
         private class FakeLocalFolderPicker : ILocalFolderPicker

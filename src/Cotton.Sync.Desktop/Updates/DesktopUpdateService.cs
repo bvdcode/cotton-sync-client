@@ -2,6 +2,7 @@
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
 using System.Globalization;
+using System.Diagnostics;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -65,6 +66,12 @@ namespace Cotton.Sync.Desktop.Updates
 
         public async Task<DesktopUpdateCheckResult> CheckAsync(CancellationToken cancellationToken = default)
         {
+            Trace.TraceInformation(
+                "Desktop update manifest check started: manifestUri={0}, currentVersion={1}, platform={2}, updateCacheDirectory={3}.",
+                _manifestUri,
+                _currentVersion,
+                _platform,
+                _updateCacheDirectory);
             using HttpResponseMessage response = await SendWithRetryAsync(
                     token => _httpClient.GetAsync(_manifestUri, token),
                     cancellationToken)
@@ -76,6 +83,14 @@ namespace Cotton.Sync.Desktop.Updates
             DesktopSemanticVersion latestVersion = manifest.ParsedVersion;
             bool updateAvailable = latestVersion.CompareTo(currentVersion) > 0;
             DesktopReleaseAsset? installerAsset = FindInstallerAsset(manifest, _platform);
+            Trace.TraceInformation(
+                "Desktop update manifest check completed: manifestUri={0}, currentVersion={1}, latestVersion={2}, updateAvailable={3}, installerAsset={4}, releaseUrl={5}.",
+                _manifestUri,
+                currentVersion,
+                latestVersion,
+                updateAvailable,
+                installerAsset?.Name ?? "none",
+                manifest.ReleaseUrl);
             return new DesktopUpdateCheckResult(
                 manifest,
                 currentVersion,
@@ -99,12 +114,23 @@ namespace Cotton.Sync.Desktop.Updates
             string versionDirectory = Path.Combine(_updateCacheDirectory, SanitizePathSegment(checkResult.LatestVersion.ToString()));
             Directory.CreateDirectory(versionDirectory);
             string finalPath = Path.Combine(versionDirectory, asset.Name);
+            Trace.TraceInformation(
+                "Desktop update installer download started: version={0}, asset={1}, url={2}, updateCacheDirectory={3}.",
+                checkResult.LatestVersion,
+                asset.Name,
+                asset.Url,
+                _updateCacheDirectory);
             if (File.Exists(finalPath))
             {
                 FileHashSnapshot existing = await HashFileAsync(finalPath, cancellationToken).ConfigureAwait(false);
                 if (string.Equals(existing.Sha256, asset.Sha256, StringComparison.OrdinalIgnoreCase)
                     && existing.SizeBytes == asset.SizeBytes)
                 {
+                    Trace.TraceInformation(
+                        "Desktop update installer download reused cached file: version={0}, asset={1}, sizeBytes={2}.",
+                        checkResult.LatestVersion,
+                        asset.Name,
+                        existing.SizeBytes);
                     return new DesktopUpdateDownloadResult(
                         checkResult.Manifest,
                         asset,
@@ -161,6 +187,11 @@ namespace Cotton.Sync.Desktop.Updates
                 }
 
                 File.Move(tempPath, finalPath);
+                Trace.TraceInformation(
+                    "Desktop update installer download completed: version={0}, asset={1}, sizeBytes={2}.",
+                    checkResult.LatestVersion,
+                    asset.Name,
+                    hash.SizeBytes);
                 return new DesktopUpdateDownloadResult(
                     checkResult.Manifest,
                     asset,

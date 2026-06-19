@@ -877,17 +877,19 @@ namespace Cotton.Sync.Desktop.Shell
             return await _diagnosticsExporter.ExportAsync(_paths, bundle, cancellationToken).ConfigureAwait(false);
         }
 
-        public async Task<DesktopUpdateStatusSnapshot> CheckForUpdateAsync(CancellationToken cancellationToken = default)
+        public async Task<DesktopUpdateStatusSnapshot> CheckForUpdateAsync(
+            DesktopUpdateCheckSource source = DesktopUpdateCheckSource.Manual,
+            CancellationToken cancellationToken = default)
         {
-            const string source = "manual";
+            string sourceName = FormatUpdateCheckSource(source);
             try
             {
-                Trace.TraceInformation("Starting desktop update check: source={0}, currentVersion={1}.", source, DesktopAppVersion.Current);
+                Trace.TraceInformation("Starting desktop update check: source={0}, currentVersion={1}.", sourceName, DesktopAppVersion.Current);
                 DesktopUpdateCheckResult check = await _updateService.CheckAsync(cancellationToken).ConfigureAwait(false);
-                RecordUpdateCheckSuccess(source, check, installerPath: null);
+                RecordUpdateCheckSuccess(sourceName, check, installerPath: null);
                 Trace.TraceInformation(
                     "Desktop update check completed: source={0}, currentVersion={1}, latestVersion={2}, updateAvailable={3}, installerAsset={4}.",
-                    source,
+                    sourceName,
                     check.CurrentVersion,
                     check.LatestVersion,
                     check.IsUpdateAvailable,
@@ -896,22 +898,24 @@ namespace Cotton.Sync.Desktop.Shell
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                RecordUpdateCheckFailure(source, exception);
-                Trace.TraceWarning("Desktop update check failed: source={0}, error={1}.", source, exception);
+                RecordUpdateCheckFailure(sourceName, exception);
+                Trace.TraceWarning("Desktop update check failed: source={0}, error={1}.", sourceName, exception);
                 throw;
             }
         }
 
-        public async Task<DesktopUpdateStatusSnapshot> DownloadUpdateAsync(CancellationToken cancellationToken = default)
+        public async Task<DesktopUpdateStatusSnapshot> DownloadUpdateAsync(
+            DesktopUpdateCheckSource source = DesktopUpdateCheckSource.Download,
+            CancellationToken cancellationToken = default)
         {
-            const string source = "download";
+            string sourceName = FormatUpdateCheckSource(source);
             try
             {
-                Trace.TraceInformation("Starting desktop update download flow: currentVersion={0}.", DesktopAppVersion.Current);
+                Trace.TraceInformation("Starting desktop update download flow: source={0}, currentVersion={1}.", sourceName, DesktopAppVersion.Current);
                 DesktopUpdateCheckResult check = await _updateService.CheckAsync(cancellationToken).ConfigureAwait(false);
                 if (!check.IsUpdateAvailable || check.InstallerAsset is null)
                 {
-                    RecordUpdateCheckSuccess(source, check, installerPath: null);
+                    RecordUpdateCheckSuccess(sourceName, check, installerPath: null);
                     return ToUpdateStatus(check, installerPath: null);
                 }
 
@@ -924,9 +928,10 @@ namespace Cotton.Sync.Desktop.Shell
                     download.Sha256,
                     download.SizeBytes,
                     DateTime.UtcNow));
-                RecordUpdateCheckSuccess(source, check, download.FilePath);
+                RecordUpdateCheckSuccess(sourceName, check, download.FilePath);
                 Trace.TraceInformation(
-                    "Desktop update download completed: latestVersion={0}, installerAsset={1}, sizeBytes={2}.",
+                    "Desktop update download completed: source={0}, latestVersion={1}, installerAsset={2}, sizeBytes={3}.",
+                    sourceName,
                     check.LatestVersion,
                     download.InstallerAsset.Name,
                     download.SizeBytes);
@@ -934,8 +939,8 @@ namespace Cotton.Sync.Desktop.Shell
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                RecordUpdateCheckFailure(source, exception);
-                Trace.TraceWarning("Desktop update download flow failed: error={0}.", exception);
+                RecordUpdateCheckFailure(sourceName, exception);
+                Trace.TraceWarning("Desktop update download flow failed: source={0}, error={1}.", sourceName, exception);
                 throw;
             }
         }
@@ -1181,6 +1186,18 @@ namespace Cotton.Sync.Desktop.Shell
                 details,
                 installerPath,
                 check.Manifest.ReleaseUrl);
+        }
+
+        private static string FormatUpdateCheckSource(DesktopUpdateCheckSource source)
+        {
+            return source switch
+            {
+                DesktopUpdateCheckSource.Manual => "manual",
+                DesktopUpdateCheckSource.Periodic => "periodic",
+                DesktopUpdateCheckSource.Startup => "startup",
+                DesktopUpdateCheckSource.Download => "download",
+                _ => "unknown",
+            };
         }
 
         private async Task<string> CheckAuthenticationStateAsync(CancellationToken cancellationToken)

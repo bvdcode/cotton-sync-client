@@ -734,6 +734,29 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public async Task ExportDiagnosticsAsync_ReportsLastPeriodicUpdateCheckOutcome()
+        {
+            var updateService = new FakeUpdateService(CreateUpdateCheckResult(isUpdateAvailable: true));
+            using DesktopShellController controller = CreateController(updateService: updateService);
+
+            await controller.CheckForUpdateAsync(DesktopUpdateCheckSource.Periodic);
+            string archivePath = await controller.ExportDiagnosticsAsync();
+
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
+            using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
+            JsonElement update = document.RootElement.GetProperty("update");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(update.GetProperty("lastCheckStatus").GetString(), Is.EqualTo("succeeded"));
+                Assert.That(update.GetProperty("lastCheckSource").GetString(), Is.EqualTo("periodic"));
+                Assert.That(update.GetProperty("latestVersion").GetString(), Is.EqualTo("0.0.2"));
+                Assert.That(update.GetProperty("isUpdateAvailable").GetBoolean(), Is.True);
+            });
+        }
+
+        [Test]
         public async Task DownloadUpdateAsync_ReturnsReadyInstallerPath()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
@@ -761,6 +784,37 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                         "Update 0.0.2 is ready. Click Update to install it now, or it will install automatically on next app start."));
                 Assert.That(pending?.Version, Is.EqualTo("0.0.2"));
                 Assert.That(pending?.InstallerPath, Is.EqualTo(installerPath));
+            });
+        }
+
+        [Test]
+        public async Task ExportDiagnosticsAsync_ReportsStartupUpdateDownloadOutcome()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            string installerPath = Path.Combine(_tempDirectory, "CottonSync-Windows-Setup.exe");
+            var updateService = new FakeUpdateService(
+                CreateUpdateCheckResult(isUpdateAvailable: true),
+                CreateUpdateDownloadResult(installerPath));
+            using DesktopShellController controller = CreateController(
+                paths,
+                new SqliteSyncPairSettingsStore(paths.AppDatabasePath),
+                updateService: updateService);
+
+            await controller.DownloadUpdateAsync(DesktopUpdateCheckSource.Startup);
+            string archivePath = await controller.ExportDiagnosticsAsync();
+
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
+            using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
+            JsonElement update = document.RootElement.GetProperty("update");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(update.GetProperty("lastCheckStatus").GetString(), Is.EqualTo("succeeded"));
+                Assert.That(update.GetProperty("lastCheckSource").GetString(), Is.EqualTo("startup"));
+                Assert.That(update.GetProperty("isInstallerReady").GetBoolean(), Is.True);
+                Assert.That(update.GetProperty("hasPendingUpdate").GetBoolean(), Is.True);
+                Assert.That(diagnosticsJson, Does.Not.Contain(installerPath));
             });
         }
 
