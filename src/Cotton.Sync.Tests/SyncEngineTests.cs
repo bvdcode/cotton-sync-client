@@ -1224,18 +1224,25 @@ namespace Cotton.Sync.Tests
             var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
             var placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
             var stateStore = new SqliteSyncStateStore(_databasePath);
+            var logger = new RecordingLogger<SyncEngine>();
             var engine = new SyncEngine(
                 new FakeLocalFileScanner(),
                 remoteCrawler,
                 remoteFileSynchronizer,
                 stateStore,
-                remoteFilePlaceholderWriter: placeholderWriter);
+                remoteFilePlaceholderWriter: placeholderWriter,
+                logger: logger);
 
             SyncRunResult result = await engine.RunOnceAsync(
                 Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
                 new SyncRunOptions { InitialVirtualFilesPopulationQueueCapacity = 1 });
 
             IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            string completionLog = logger.Entries
+                .Single(entry => entry.Message.Contains(
+                    "Completed initial streaming Windows virtual-files population",
+                    StringComparison.Ordinal))
+                .Message;
             Assert.Multiple(() =>
             {
                 Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
@@ -1253,6 +1260,11 @@ namespace Cotton.Sync.Tests
                 Assert.That(result.Activities.Select(activity => activity.RelativePath), Is.EquivalentTo(remoteFiles.Select(file => file.RelativePath)));
                 Assert.That(state, Has.Count.EqualTo(3));
                 Assert.That(state.Select(entry => entry.PlaceholderHydrationState), Is.All.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+                Assert.That(completionLog, Does.Contain("3 files discovered"));
+                Assert.That(completionLog, Does.Contain("3 placeholders created or refreshed"));
+                Assert.That(completionLog, Does.Contain("placeholders/sec"));
+                Assert.That(completionLog, Does.Contain("activities retained 3/3"));
+                Assert.That(completionLog, Does.Contain("truncated=False"));
             });
         }
 

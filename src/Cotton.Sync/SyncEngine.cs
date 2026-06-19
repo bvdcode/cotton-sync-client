@@ -775,8 +775,11 @@ namespace Cotton.Sync
                 null,
                 startedAtUtc,
                 isCompleted: true);
+            double createdPlaceholderRatePerSecond = stopwatch.Elapsed.TotalSeconds <= 0d
+                ? createdPlaceholders
+                : createdPlaceholders / stopwatch.Elapsed.TotalSeconds;
             _logger.LogInformation(
-                "Completed initial streaming Windows virtual-files population for pair {SyncPairId} with {DirectoryCount} directories discovered, {FileCount} files discovered, {CompletedFileCount} file items completed, {CreatedPlaceholderCount} placeholders created or refreshed, {SkippedCurrentPlaceholderCount} current placeholders skipped, {SkippedUnavailablePlaceholderCount} placeholders skipped with user action in {ElapsedMilliseconds} ms.",
+                "Completed initial streaming Windows virtual-files population for pair {SyncPairId} with {DirectoryCount} directories discovered, {FileCount} files discovered, {CompletedFileCount} file items completed, {CreatedPlaceholderCount} placeholders created or refreshed, {SkippedCurrentPlaceholderCount} current placeholders skipped, {SkippedUnavailablePlaceholderCount} placeholders skipped with user action in {ElapsedMilliseconds} ms at {CreatedPlaceholderRatePerSecond:F2} placeholders/sec; activities retained {RetainedActivityCount}/{TotalActivityCount}, truncated={ActivityListTruncated}.",
                 syncPair.SyncPairId,
                 Volatile.Read(ref discoveredDirectories),
                 Volatile.Read(ref discoveredFiles),
@@ -784,7 +787,11 @@ namespace Cotton.Sync
                 createdPlaceholders,
                 skippedCurrentPlaceholders,
                 skippedUnavailablePlaceholders,
-                stopwatch.ElapsedMilliseconds);
+                stopwatch.ElapsedMilliseconds,
+                createdPlaceholderRatePerSecond,
+                result.Activities.Count,
+                result.TotalActivityCount,
+                result.IsActivityListTruncated);
             return result;
         }
 
