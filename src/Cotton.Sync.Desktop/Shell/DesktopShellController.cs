@@ -31,6 +31,11 @@ namespace Cotton.Sync.Desktop.Shell
     internal class DesktopShellController : IDesktopShellController
     {
         private const string SelfTestSyncPairId = "__desktop_self_test__";
+        private const string SyncCoreStateSignedOut = "signedOut";
+        private const string SyncCoreStateStopped = "stopped";
+        private const string SyncCoreStateStarting = "starting";
+        private const string SyncCoreStateRunning = "running";
+        private const string SyncCoreStateStartFailed = "startFailed";
 
         private static readonly TimeSpan SavedSessionRestoreTimeout = TimeSpan.FromSeconds(15);
         private static readonly TimeSpan SavedSessionRestoreRetryBaseDelay = TimeSpan.FromSeconds(1);
@@ -61,6 +66,7 @@ namespace Cotton.Sync.Desktop.Shell
         private DesktopSyncApplicationHost? _host;
         private IDisposable? _runProgressSubscription;
         private IDisposable? _sessionRevocationSubscription;
+        private string _syncCoreState = SyncCoreStateSignedOut;
         private IDisposable? _statusSubscription;
         private IDisposable? _transferProgressSubscription;
 
@@ -512,6 +518,7 @@ namespace Cotton.Sync.Desktop.Shell
                 if (ReferenceEquals(_host, host))
                 {
                     _host = null;
+                    _syncCoreState = SyncCoreStateSignedOut;
                     _activitySubscription?.Dispose();
                     _activitySubscription = null;
                     _statusSubscription?.Dispose();
@@ -868,6 +875,7 @@ namespace Cotton.Sync.Desktop.Shell
                 await BuildSyncPairSnapshotsAsync(syncPairs, cancellationToken).ConfigureAwait(false),
                 syncStateDiagnostics,
                 CreateRuntimeHealthSnapshot(),
+                CreateSyncLifecycleDiagnosticsSnapshot(syncPairs),
                 DesktopNotificationDiagnosticsSnapshot.FromCapability(
                     DesktopNotificationServiceFactory.CreateSelfTestCapabilitySnapshot()),
                 CreateUpdateDiagnosticsSnapshot(),
@@ -1111,6 +1119,53 @@ namespace Cotton.Sync.Desktop.Shell
                 TryReadInt64(() => process.PrivateMemorySize64),
                 TryReadInt32(() => process.Threads.Count),
                 TryReadInt32(() => process.HandleCount));
+        }
+
+        private DesktopSyncLifecycleDiagnosticsSnapshot CreateSyncLifecycleDiagnosticsSnapshot(
+            IReadOnlyList<SyncPairSettings> syncPairs)
+        {
+            DesktopSyncApplicationHost? host = _host;
+            bool isSignedIn = host is not null;
+            string syncCoreState = isSignedIn ? _syncCoreState : SyncCoreStateSignedOut;
+            bool isBackgroundActive = isSignedIn
+                && (string.Equals(syncCoreState, SyncCoreStateStarting, StringComparison.Ordinal)
+                    || string.Equals(syncCoreState, SyncCoreStateRunning, StringComparison.Ordinal));
+            int enabledSyncPairCount = syncPairs.Count(static syncPair => syncPair.IsEnabled);
+            bool hasNoSyncPairs = syncPairs.Count == 0;
+            bool isZeroPairBackgroundActive = hasNoSyncPairs && isBackgroundActive;
+            string status;
+            string details;
+            if (!isSignedIn)
+            {
+                status = "signedOut";
+                details = "Signed out; sync background is not running.";
+            }
+            else if (isZeroPairBackgroundActive)
+            {
+                status = "zeroPairBackgroundActive";
+                details = "Signed in with no configured sync pairs; sync background is active.";
+            }
+            else if (hasNoSyncPairs)
+            {
+                status = "zeroPairBackgroundInactive";
+                details = "Signed in with no configured sync pairs; sync background is not active.";
+            }
+            else
+            {
+                status = "configuredPairs";
+                details = "Signed in with configured sync pairs.";
+            }
+
+            return new DesktopSyncLifecycleDiagnosticsSnapshot(
+                isSignedIn,
+                syncCoreState,
+                isBackgroundActive,
+                syncPairs.Count,
+                enabledSyncPairCount,
+                hasNoSyncPairs,
+                isZeroPairBackgroundActive,
+                status,
+                details);
         }
 
         private static long? TryReadInt64(Func<long> read)
@@ -1457,6 +1512,7 @@ namespace Cotton.Sync.Desktop.Shell
         {
             DesktopSyncApplicationHost? host = _host;
             _host = null;
+            _syncCoreState = SyncCoreStateSignedOut;
             _activitySubscription?.Dispose();
             _activitySubscription = null;
             _sessionRevocationSubscription?.Dispose();
@@ -1475,6 +1531,7 @@ namespace Cotton.Sync.Desktop.Shell
             cancellationToken.ThrowIfCancellationRequested();
             DesktopSyncApplicationHost? previous = _host;
             _host = host;
+            _syncCoreState = SyncCoreStateStopped;
             _activitySubscription?.Dispose();
             _sessionRevocationSubscription?.Dispose();
             _statusSubscription?.Dispose();
@@ -1725,7 +1782,12 @@ namespace Cotton.Sync.Desktop.Shell
                         return;
                     }
 
+                    _syncCoreState = SyncCoreStateStarting;
                     await host.App.StartSyncAsync(CancellationToken.None).ConfigureAwait(false);
+                    if (ReferenceEquals(_host, host))
+                    {
+                        _syncCoreState = SyncCoreStateRunning;
+                    }
                 }
                 catch (Exception exception)
                 {
@@ -1735,6 +1797,7 @@ namespace Cotton.Sync.Desktop.Shell
                         return;
                     }
 
+                    _syncCoreState = SyncCoreStateStartFailed;
                     ActivityReported?.Invoke(
                         this,
                         new DesktopActivitySnapshot(
