@@ -531,6 +531,11 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 throw new NotSupportedException();
             }
 
+            public void SetInSyncState(SyncPairSettings syncPair, string relativePath)
+            {
+                throw new NotSupportedException();
+            }
+
             public WindowsCloudFilesConnection ConnectSyncRoot(
                 SyncPairSettings syncPair,
                 IWindowsCloudFilesCallbackHandler callbackHandler)

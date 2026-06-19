@@ -26,6 +26,8 @@ namespace Cotton.Sync.Desktop.Platform
 
         void DehydratePlaceholder(SyncPairSettings syncPair, string relativePath);
 
+        void SetInSyncState(SyncPairSettings syncPair, string relativePath);
+
         WindowsCloudFilesConnection ConnectSyncRoot(
             SyncPairSettings syncPair,
             IWindowsCloudFilesCallbackHandler callbackHandler);
