@@ -427,6 +427,8 @@ jobs:
             throw "Autostart registry value was not installed correctly. Expected '$expectedRunValue', got '$runValue'."
           }
 
+          & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-autostart-launch.ps1" `
+            -AppExecutable $installedExe
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-shortcut-app-id.ps1" `
             -ShortcutPath $startMenuShortcut `
             -ExpectedAppUserModelId "Cotton.Sync.Desktop"
@@ -581,6 +583,8 @@ jobs:
             throw "Upgraded autostart registry value was not installed correctly. Expected '$expectedRunValue', got '$runValue'."
           }
 
+          & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-autostart-launch.ps1" `
+            -AppExecutable $installedExe
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-shortcut-app-id.ps1" `
             -ShortcutPath $startMenuShortcut `
             -ExpectedAppUserModelId "Cotton.Sync.Desktop"
