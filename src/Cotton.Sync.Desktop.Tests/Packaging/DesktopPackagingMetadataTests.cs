@@ -1047,7 +1047,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         }
 
         [Test]
-        public void ReleaseVersioning_UsesGitVersionMainlinePatchBump()
+        public void ReleaseVersioning_UsesLatestTagPlusOnePatchPolicy()
         {
             string gitVersion = File.ReadAllText(GetRepositoryFilePath("GitVersion.yml"));
             string versionScript = File.ReadAllText(GetRepositoryFilePath(Path.Combine(".github", "scripts", "determine-version.ps1")));
@@ -1061,6 +1061,13 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(gitVersion, Does.Contain("strategies:"));
                 Assert.That(gitVersion, Does.Contain("- Mainline"));
                 Assert.That(gitVersion, Does.Contain("increment: Patch"));
+                Assert.That(versionScript, Does.Contain("Get-ReleasePolicyVersion"));
+                Assert.That(versionScript, Does.Contain("git tag --points-at HEAD"));
+                Assert.That(versionScript, Does.Contain("git tag --list \"v[0-9]*.[0-9]*.[0-9]*\""));
+                Assert.That(versionScript, Does.Contain("Policy = \"latest-tag-plus-one\""));
+                Assert.That(versionScript, Does.Contain("Policy = \"tag\""));
+                Assert.That(versionScript, Does.Contain("VersionPolicy"));
+                Assert.That(versionScript, Does.Contain("Release SemVer"));
                 Assert.That(versionScript, Does.Contain("dotnet tool restore"));
                 Assert.That(versionScript, Does.Contain("dotnet gitversion /output json"));
                 Assert.That(versionScript, Does.Contain("$gitVersion.MajorMinorPatch"));
