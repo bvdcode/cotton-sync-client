@@ -23,6 +23,18 @@ namespace Cotton.Sync.Desktop
                 return 0;
             }
 
+            if (startupOptions.RunWindowsVirtualFilesSmoke)
+            {
+                int startupEnvironmentExitCode = DesktopWindowsVirtualFilesSmokeRunner
+                    .PrepareStartupEnvironmentAsync(startupOptions, Console.Out)
+                    .GetAwaiter()
+                    .GetResult();
+                if (startupEnvironmentExitCode != 0)
+                {
+                    return startupEnvironmentExitCode;
+                }
+            }
+
             DesktopAppPaths paths = DesktopStartupPathResolver.Resolve(startupOptions);
             DesktopTraceLogging.Install(paths);
             DesktopUnhandledExceptionReporter.Install();
