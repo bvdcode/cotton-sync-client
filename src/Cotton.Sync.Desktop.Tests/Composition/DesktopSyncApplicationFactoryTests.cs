@@ -78,7 +78,8 @@ namespace Cotton.Sync.Desktop.Tests.Composition
 
             object supervisor = GetPrivateFieldValue(host.App, "_supervisor");
             object runnerFactory = GetPrivateFieldValue(supervisor, "_runnerFactory");
-            object dehydrationWork = GetPrivateFieldValue(runnerFactory, "_work");
+            object finalizationWork = GetPrivateFieldValue(runnerFactory, "_work");
+            object dehydrationWork = GetPrivateFieldValue(finalizationWork, "_inner");
             object remoteChangeAwareWork = GetPrivateFieldValue(dehydrationWork, "_inner");
             object syncEnginePairWork = GetPrivateFieldValue(remoteChangeAwareWork, "_inner");
             object syncEngine = GetPrivateFieldValue(syncEnginePairWork, "_syncEngine");
@@ -88,7 +89,7 @@ namespace Cotton.Sync.Desktop.Tests.Composition
         }
 
         [Test]
-        public async Task Create_WiresWindowsVirtualFilesDehydrationBeforeRemoteChangeAcknowledgement()
+        public async Task Create_WiresWindowsVirtualFilesFinalizationAndDehydrationBeforeRemoteChangeAcknowledgement()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             var factory = new DesktopSyncApplicationFactory(paths);
@@ -98,12 +99,14 @@ namespace Cotton.Sync.Desktop.Tests.Composition
             object supervisor = GetPrivateFieldValue(host.App, "_supervisor");
             object runnerFactory = GetPrivateFieldValue(supervisor, "_runnerFactory");
             object pairWork = GetPrivateFieldValue(runnerFactory, "_work");
-            object inner = GetPrivateFieldValue(pairWork, "_inner");
+            object dehydrationWork = GetPrivateFieldValue(pairWork, "_inner");
+            object remoteChangeAwareWork = GetPrivateFieldValue(dehydrationWork, "_inner");
 
             Assert.Multiple(() =>
             {
-                Assert.That(pairWork, Is.TypeOf<WindowsVirtualFilesDehydrationPairWork>());
-                Assert.That(inner.GetType().Name, Is.EqualTo("RemoteChangeAwareSyncPairWork"));
+                Assert.That(pairWork, Is.TypeOf<WindowsVirtualFilesUploadFinalizationPairWork>());
+                Assert.That(dehydrationWork, Is.TypeOf<WindowsVirtualFilesDehydrationPairWork>());
+                Assert.That(remoteChangeAwareWork.GetType().Name, Is.EqualTo("RemoteChangeAwareSyncPairWork"));
             });
         }
 

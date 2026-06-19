@@ -98,15 +98,19 @@ namespace Cotton.Sync.Desktop.Composition
                 remoteDirectories: remoteDirectorySynchronizer,
                 remoteFilePlaceholderWriter: remoteFilePlaceholderWriter,
                 logger: _loggerFactory.CreateLogger<HeadlessSyncEngine>());
-            ISyncPairWork pairWork = new WindowsVirtualFilesDehydrationPairWork(
-                new RemoteChangeAwareSyncPairWork(
-                    new SyncEnginePairWork(syncEngine, activityPublisher, transferProgressPublisher, runProgressPublisher),
-                    remoteChangeFeed,
-                    stateStore),
-                stateStore,
+            ISyncPairWork pairWork = new WindowsVirtualFilesUploadFinalizationPairWork(
+                new WindowsVirtualFilesDehydrationPairWork(
+                    new RemoteChangeAwareSyncPairWork(
+                        new SyncEnginePairWork(syncEngine, activityPublisher, transferProgressPublisher, runProgressPublisher),
+                        remoteChangeFeed,
+                        stateStore),
+                    stateStore,
+                    cloudFilesAdapter,
+                    new LocalFileScanner(),
+                    localChangeSuppression: localChangeSuppression),
+                activityPublisher,
                 cloudFilesAdapter,
-                new LocalFileScanner(),
-                localChangeSuppression: localChangeSuppression);
+                localChangeSuppression);
             var runnerFactory = new SyncPairRunnerFactory(pairWork, loggerFactory: _loggerFactory);
             var statusPublisher = new InMemoryAppStatusPublisher();
             var supervisor = new SyncSupervisor(syncPairStore, runnerFactory, statusPublisher);

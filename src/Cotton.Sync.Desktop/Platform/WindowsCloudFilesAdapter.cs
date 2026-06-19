@@ -311,6 +311,59 @@ namespace Cotton.Sync.Desktop.Platform
                 "Windows Cloud Files placeholder was dehydrated.");
         }
 
+        public void SetInSyncState(SyncPairSettings syncPair, string relativePath)
+        {
+            ArgumentNullException.ThrowIfNull(syncPair);
+            ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
+            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
+            string normalizedPath = SyncPath.Normalize(relativePath);
+            PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
+            EnsureNoReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
+            string fullPlaceholderPath = Path.Combine(
+                placeholderPath.BaseDirectoryPath,
+                placeholderPath.RelativeFileName);
+            const string operation = "set-in-sync-state";
+            if (!File.Exists(fullPlaceholderPath) || !_isReparsePoint(fullPlaceholderPath))
+            {
+                _diagnostics.Record(
+                    operation,
+                    "skipped",
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    normalizedPath,
+                    "Windows Cloud Files in-sync state was skipped for a non-placeholder file.");
+                return;
+            }
+
+            try
+            {
+                ExecuteNativeOperationWithTransientPathRetry(
+                    () => _nativeApi.SetInSyncState(fullPlaceholderPath),
+                    operation,
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    normalizedPath);
+            }
+            catch (Exception exception)
+            {
+                RecordFailure(
+                    operation,
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    normalizedPath,
+                    exception);
+                throw;
+            }
+
+            _diagnostics.Record(
+                operation,
+                "completed",
+                syncPair.Id.ToString(),
+                registration.LocalRootPath,
+                normalizedPath,
+                "Windows Cloud Files placeholder was marked in sync.");
+        }
+
         private void EnsureNoReparsePointDescendant(string syncRootPath, string targetDirectoryPath)
         {
             string root = Path.GetFullPath(syncRootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);

@@ -258,6 +258,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 DehydratedPaths.Add(relativePath);
             }
 
+            public void SetInSyncState(SyncPairSettings syncPair, string relativePath)
+            {
+                throw new NotSupportedException();
+            }
+
             public WindowsCloudFilesConnection ConnectSyncRoot(
                 SyncPairSettings syncPair,
                 IWindowsCloudFilesCallbackHandler callbackHandler)
