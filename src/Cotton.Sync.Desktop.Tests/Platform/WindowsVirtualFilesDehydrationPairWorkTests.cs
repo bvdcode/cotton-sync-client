@@ -219,9 +219,23 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 SuppressedWrites.Add(new SuppressedWrite(syncPairId, localRootPath, relativePath));
             }
 
+            public IDisposable SuppressProviderWriteBurst(Guid syncPairId, string localRootPath)
+            {
+                return NoopDisposable.Instance;
+            }
+
             public bool ShouldSuppress(LocalSyncRootChange change)
             {
                 return false;
+            }
+        }
+
+        private sealed class NoopDisposable : IDisposable
+        {
+            public static NoopDisposable Instance { get; } = new();
+
+            public void Dispose()
+            {
             }
         }
 
