@@ -55,6 +55,50 @@ namespace Cotton.Sync.Cli.Tests
         }
 
         [Test]
+        public async Task SyncOnceSuccess_PrintsTotalActivitiesWhenRetainedActivityListIsTruncated()
+        {
+            using var output = new StringWriter();
+            var result = new SyncRunResult();
+            result.RecordActivity(
+                new SyncActivity
+                {
+                    Kind = SyncActivityKind.PlaceholderCreated,
+                    RelativePath = "Cloud/file-0001.txt",
+                },
+                maximumStoredActivities: 1);
+            result.RecordActivity(
+                new SyncActivity
+                {
+                    Kind = SyncActivityKind.PlaceholderCreated,
+                    RelativePath = "Cloud/file-0002.txt",
+                },
+                maximumStoredActivities: 1);
+            var options = new SyncCliConnectionOptions(
+                new Uri("https://cotton.test/"),
+                "testuser",
+                "testpassword",
+                "C:\\Sync",
+                Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                null,
+                "pair-a",
+                "sync-state.db",
+                null,
+                UseBrowserLogin: false);
+            var pass = new SyncCliPassResult(result, []);
+
+            await SyncCliCommandRunner.WriteSyncOnceSuccessAsync(output, options, pass);
+
+            string text = output.ToString();
+            Assert.Multiple(() =>
+            {
+                Assert.That(text, Does.Contain("Activities: 2"));
+                Assert.That(text, Does.Contain("Retained activities: 1"));
+                Assert.That(text, Does.Contain("PlaceholderCreated Cloud/file-0001.txt"));
+                Assert.That(text, Does.Not.Contain("Activities: 1"));
+            });
+        }
+
+        [Test]
         public async Task AuthBrowser_PrintsApprovalUrlAndSignedInAccount()
         {
             var handler = new AppCodeAuthServerHandler();
