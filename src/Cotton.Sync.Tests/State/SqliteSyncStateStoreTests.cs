@@ -123,6 +123,67 @@ namespace Cotton.Sync.Tests.State
         }
 
         [Test]
+        public async Task LoadEntriesByRemoteIdsAsync_LoadsDirectoryAndFileTargetsWithoutParentFileFanout()
+        {
+            var store = CreateStore();
+            await store.InitializeAsync();
+            Guid parentNodeId = Guid.NewGuid();
+            Guid directoryNodeId = Guid.NewGuid();
+            Guid requestedFileId = Guid.NewGuid();
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "Docs",
+                Kind = SyncEntryKind.Directory,
+                RemoteNodeId = parentNodeId,
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "Docs/Archive",
+                Kind = SyncEntryKind.Directory,
+                RemoteNodeId = directoryNodeId,
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "Docs/report.txt",
+                Kind = SyncEntryKind.File,
+                RemoteNodeId = parentNodeId,
+                RemoteFileId = requestedFileId,
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "Docs/sibling.txt",
+                Kind = SyncEntryKind.File,
+                RemoteNodeId = parentNodeId,
+                RemoteFileId = Guid.NewGuid(),
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-b",
+                RelativePath = "Docs/report.txt",
+                Kind = SyncEntryKind.File,
+                RemoteNodeId = parentNodeId,
+                RemoteFileId = requestedFileId,
+            });
+
+            var entries = new List<SyncStateEntry>();
+            await foreach (SyncStateEntry entry in store.LoadEntriesByRemoteIdsAsync(
+                               "pair-a",
+                               [parentNodeId, directoryNodeId],
+                               [requestedFileId]))
+            {
+                entries.Add(entry);
+            }
+
+            Assert.That(
+                entries.Select(entry => entry.RelativePath),
+                Is.EqualTo(new[] { "Docs", "Docs/Archive", "Docs/report.txt" }));
+        }
+
+        [Test]
         public async Task LoadVirtualFilesResumeEntriesByPathKeysAsync_LoadsCompactResumeRows()
         {
             var store = CreateStore();

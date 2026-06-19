@@ -74,6 +74,60 @@ namespace Cotton.Sync.State
         }
 
         /// <inheritdoc />
+        public async IAsyncEnumerable<SyncStateEntry> LoadEntriesByRemoteIdsAsync(
+            string syncPairId,
+            IEnumerable<Guid> remoteNodeIds,
+            IEnumerable<Guid> remoteFileIds,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
+            ArgumentNullException.ThrowIfNull(remoteNodeIds);
+            ArgumentNullException.ThrowIfNull(remoteFileIds);
+            Guid[] nodeIds = remoteNodeIds
+                .Where(static id => id != Guid.Empty)
+                .Distinct()
+                .OrderBy(static id => id)
+                .ToArray();
+            Guid[] fileIds = remoteFileIds
+                .Where(static id => id != Guid.Empty)
+                .Distinct()
+                .OrderBy(static id => id)
+                .ToArray();
+            if (nodeIds.Length == 0 && fileIds.Length == 0)
+            {
+                yield break;
+            }
+
+            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+            var yieldedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (IReadOnlyCollection<Guid> batch in CreateBatches(nodeIds, DefaultPathKeyLookupBatchSize))
+            {
+                IReadOnlyList<SyncStateEntry> entries =
+                    await LoadEntriesByRemoteNodeIdBatchAsync(syncPairId, batch, cancellationToken).ConfigureAwait(false);
+                foreach (SyncStateEntry entry in entries)
+                {
+                    if (yieldedKeys.Add(SyncPath.ToKey(entry.RelativePath)))
+                    {
+                        yield return entry;
+                    }
+                }
+            }
+
+            foreach (IReadOnlyCollection<Guid> batch in CreateBatches(fileIds, DefaultPathKeyLookupBatchSize))
+            {
+                IReadOnlyList<SyncStateEntry> entries =
+                    await LoadEntriesByRemoteFileIdBatchAsync(syncPairId, batch, cancellationToken).ConfigureAwait(false);
+                foreach (SyncStateEntry entry in entries)
+                {
+                    if (yieldedKeys.Add(SyncPath.ToKey(entry.RelativePath)))
+                    {
+                        yield return entry;
+                    }
+                }
+            }
+        }
+
+        /// <inheritdoc />
         public async Task<DateTime?> GetPairLastSyncedAtUtcAsync(string syncPairId, CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
@@ -614,6 +668,23 @@ namespace Cotton.Sync.State
             return new SyncStateDbContext(options);
         }
 
+        private static IEnumerable<IReadOnlyCollection<T>> CreateBatches<T>(IReadOnlyList<T> items, int batchSize)
+        {
+            ArgumentNullException.ThrowIfNull(items);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
+            for (int index = 0; index < items.Count; index += batchSize)
+            {
+                int count = Math.Min(batchSize, items.Count - index);
+                T[] batch = new T[count];
+                for (int offset = 0; offset < count; offset++)
+                {
+                    batch[offset] = items[index + offset];
+                }
+
+                yield return batch;
+            }
+        }
+
         private async Task<IReadOnlyList<SyncStateEntry>> LoadEntriesByPathKeyBatchAsync(
             string syncPairId,
             IReadOnlyCollection<string> keys,
@@ -623,6 +694,42 @@ namespace Cotton.Sync.State
             List<SyncStateEntity> entities = await context.SyncEntries
                 .AsNoTracking()
                 .Where(entry => entry.SyncPairId == syncPairId && keys.Contains(entry.RelativePathKey))
+                .OrderBy(entry => entry.RelativePathKey)
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+            return entities.Select(ToModel).ToArray();
+        }
+
+        private async Task<IReadOnlyList<SyncStateEntry>> LoadEntriesByRemoteNodeIdBatchAsync(
+            string syncPairId,
+            IReadOnlyCollection<Guid> remoteNodeIds,
+            CancellationToken cancellationToken)
+        {
+            await using SyncStateDbContext context = CreateContext();
+            List<SyncStateEntity> entities = await context.SyncEntries
+                .AsNoTracking()
+                .Where(entry => entry.SyncPairId == syncPairId
+                    && entry.Kind == SyncEntryKind.Directory
+                    && entry.RemoteNodeId.HasValue
+                    && remoteNodeIds.Contains(entry.RemoteNodeId.Value))
+                .OrderBy(entry => entry.RelativePathKey)
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+            return entities.Select(ToModel).ToArray();
+        }
+
+        private async Task<IReadOnlyList<SyncStateEntry>> LoadEntriesByRemoteFileIdBatchAsync(
+            string syncPairId,
+            IReadOnlyCollection<Guid> remoteFileIds,
+            CancellationToken cancellationToken)
+        {
+            await using SyncStateDbContext context = CreateContext();
+            List<SyncStateEntity> entities = await context.SyncEntries
+                .AsNoTracking()
+                .Where(entry => entry.SyncPairId == syncPairId
+                    && entry.Kind == SyncEntryKind.File
+                    && entry.RemoteFileId.HasValue
+                    && remoteFileIds.Contains(entry.RemoteFileId.Value))
                 .OrderBy(entry => entry.RelativePathKey)
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false);

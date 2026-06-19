@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
+using Cotton.Sync;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Remote;
+using Cotton.Sync.State;
 
 namespace Cotton.Sync.App.Runners
 {
@@ -13,14 +15,19 @@ namespace Cotton.Sync.App.Runners
     {
         private readonly ISyncPairWork _inner;
         private readonly IRemoteChangeFeedReader _remoteChanges;
+        private readonly RemoteChangeScopedSyncPlanner? _scopedSyncPlanner;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="RemoteChangeAwareSyncPairWork" /> class.
         /// </summary>
-        public RemoteChangeAwareSyncPairWork(ISyncPairWork inner, IRemoteChangeFeedReader remoteChanges)
+        public RemoteChangeAwareSyncPairWork(
+            ISyncPairWork inner,
+            IRemoteChangeFeedReader remoteChanges,
+            ISyncStateStore? stateStore = null)
         {
             _inner = inner ?? throw new ArgumentNullException(nameof(inner));
             _remoteChanges = remoteChanges ?? throw new ArgumentNullException(nameof(remoteChanges));
+            _scopedSyncPlanner = stateStore is null ? null : new RemoteChangeScopedSyncPlanner(stateStore);
         }
 
         /// <inheritdoc />
@@ -44,7 +51,13 @@ namespace Cotton.Sync.App.Runners
             bool skippedInnerSync = CanSkipInnerSync(syncPair, request, remoteRead);
             if (!skippedInnerSync)
             {
-                await _inner.RunOnceAsync(syncPair, request, cancellationToken).ConfigureAwait(false);
+                SyncRunRequest plannedRequest = await CreateInnerRequestAsync(
+                        syncPair,
+                        request,
+                        remoteRead,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                await _inner.RunOnceAsync(syncPair, plannedRequest, cancellationToken).ConfigureAwait(false);
             }
 
             if (remoteBatch.CursorExpired)
@@ -67,17 +80,17 @@ namespace Cotton.Sync.App.Runners
             RemoteChangeFeedBatch batch = await _remoteChanges
                 .ReadAsync(syncPairId, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
-            bool hasObservedChanges = !batch.Snapshot.IsEmpty;
+            var changes = new List<SyncChangeDto>(batch.Changes);
 
             while (ShouldReadNextPage(batch))
             {
                 batch = await _remoteChanges
                     .ReadFromCursorAsync(syncPairId, batch.NextCursor, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
-                hasObservedChanges |= !batch.Snapshot.IsEmpty;
+                changes.AddRange(batch.Changes);
             }
 
-            return new RemoteChangeFeedReadResult(batch, hasObservedChanges);
+            return new RemoteChangeFeedReadResult(batch, RemoteChangeFeedSnapshot.FromChanges(changes));
         }
 
         private static bool CanSkipInnerSync(
@@ -108,6 +121,27 @@ namespace Cotton.Sync.App.Runners
             return true;
         }
 
+        private async Task<SyncRunRequest> CreateInnerRequestAsync(
+            SyncPairSettings syncPair,
+            SyncRunRequest request,
+            RemoteChangeFeedReadResult remoteRead,
+            CancellationToken cancellationToken)
+        {
+            if (syncPair.Mode != SyncPairMode.WindowsVirtualFiles
+                || !remoteRead.HasObservedChanges
+                || remoteRead.Batch.CursorExpired
+                || remoteRead.Batch.HasMore
+                || _scopedSyncPlanner is null)
+            {
+                return request;
+            }
+
+            SyncRunRequest? scopedRequest = await _scopedSyncPlanner
+                .TryCreateScopedRequestAsync(syncPair, request, remoteRead.Snapshot, cancellationToken)
+                .ConfigureAwait(false);
+            return scopedRequest ?? SyncRunRequest.Full;
+        }
+
         private static bool ShouldAcknowledgeRemoteBatch(
             SyncPairSettings syncPair,
             SyncRunRequest request,
@@ -126,6 +160,9 @@ namespace Cotton.Sync.App.Runners
             return false;
         }
 
-        private sealed record RemoteChangeFeedReadResult(RemoteChangeFeedBatch Batch, bool HasObservedChanges);
+        private sealed record RemoteChangeFeedReadResult(RemoteChangeFeedBatch Batch, RemoteChangeFeedSnapshot Snapshot)
+        {
+            public bool HasObservedChanges => !Snapshot.IsEmpty;
+        }
     }
 }

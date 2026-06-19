@@ -101,7 +101,8 @@ namespace Cotton.Sync.Desktop.Composition
             ISyncPairWork pairWork = new WindowsVirtualFilesDehydrationPairWork(
                 new RemoteChangeAwareSyncPairWork(
                     new SyncEnginePairWork(syncEngine, activityPublisher, transferProgressPublisher, runProgressPublisher),
-                    remoteChangeFeed),
+                    remoteChangeFeed,
+                    stateStore),
                 stateStore,
                 cloudFilesAdapter,
                 new LocalFileScanner(),
