@@ -5,6 +5,7 @@ using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.Status;
 using Cotton.Sync.App.Supervision;
 using Cotton.Sync.App.SyncPairs;
+using System.Runtime.CompilerServices;
 
 namespace Cotton.Sync.App.Tests.Supervision
 {
@@ -243,6 +244,21 @@ namespace Cotton.Sync.App.Tests.Supervision
         }
 
         [Test]
+        public async Task StopAsync_ReleasesRunnerReferencesForGarbageCollection()
+        {
+            (WeakReference runnerReference, WeakReference payloadReference) =
+                await CreateStoppedRunnerWeakReferencesAsync();
+
+            ForceFullCollection();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(runnerReference.IsAlive, Is.False);
+                Assert.That(payloadReference.IsAlive, Is.False);
+            });
+        }
+
+        [Test]
         public async Task StopAsync_ReachesRunnerWhileSyncAllIsRunning()
         {
             SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
@@ -269,6 +285,30 @@ namespace Cotton.Sync.App.Tests.Supervision
                 Assert.That(runner.StopCallCount, Is.EqualTo(1));
                 Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Disabled));
             });
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static async Task<(WeakReference RunnerReference, WeakReference PayloadReference)>
+            CreateStoppedRunnerWeakReferencesAsync()
+        {
+            SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
+            var factory = new WeakReferenceRunnerFactory();
+            var supervisor = new SyncSupervisor(
+                new FakeSyncPairSettingsStore([documents]),
+                factory,
+                new InMemoryAppStatusPublisher());
+
+            await supervisor.StartAsync();
+            await supervisor.StopAsync();
+
+            return (factory.RunnerReference!, factory.PayloadReference!);
+        }
+
+        private static void ForceFullCollection()
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
         }
 
         private static SyncPairSettings CreatePair(string displayName, bool isEnabled)
@@ -461,6 +501,76 @@ namespace Cotton.Sync.App.Tests.Supervision
             private static TaskCompletionSource CreateCompletionSource()
             {
                 return new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+        }
+
+        private class WeakReferenceRunnerFactory : ISyncPairRunnerFactory
+        {
+            public WeakReference? RunnerReference { get; private set; }
+
+            public WeakReference? PayloadReference { get; private set; }
+
+            public ISyncPairRunner Create(SyncPairSettings syncPair)
+            {
+                var payload = new byte[8 * 1024 * 1024];
+                var runner = new MemoryProbeSyncPairRunner(syncPair, payload);
+                RunnerReference = new WeakReference(runner);
+                PayloadReference = new WeakReference(payload);
+                return runner;
+            }
+        }
+
+        private class MemoryProbeSyncPairRunner : ISyncPairRunner
+        {
+            private readonly byte[] _payload;
+            private readonly SyncPairSettings _syncPair;
+            private SyncPairRunState _state;
+
+            public MemoryProbeSyncPairRunner(SyncPairSettings syncPair, byte[] payload)
+            {
+                _syncPair = syncPair;
+                _payload = payload;
+                _state = syncPair.IsEnabled ? SyncPairRunState.Idle : SyncPairRunState.Disabled;
+            }
+
+            public Guid SyncPairId => _syncPair.Id;
+
+            public SyncPairStatus Status => new(
+                _syncPair.Id,
+                _syncPair.DisplayName,
+                _state,
+                null,
+                null,
+                DateTime.UtcNow);
+
+            public Task StartAsync(CancellationToken cancellationToken = default)
+            {
+                _state = _syncPair.IsEnabled ? SyncPairRunState.Idle : SyncPairRunState.Disabled;
+                GC.KeepAlive(_payload);
+                return Task.CompletedTask;
+            }
+
+            public Task PauseAsync(CancellationToken cancellationToken = default)
+            {
+                _state = SyncPairRunState.Paused;
+                return Task.CompletedTask;
+            }
+
+            public Task ResumeAsync(CancellationToken cancellationToken = default)
+            {
+                _state = _syncPair.IsEnabled ? SyncPairRunState.Idle : SyncPairRunState.Disabled;
+                return Task.CompletedTask;
+            }
+
+            public Task SyncNowAsync(CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public Task StopAsync(CancellationToken cancellationToken = default)
+            {
+                _state = SyncPairRunState.Disabled;
+                return Task.CompletedTask;
             }
         }
     }
