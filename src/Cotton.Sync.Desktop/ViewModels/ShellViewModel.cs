@@ -2887,6 +2887,14 @@ namespace Cotton.Sync.Desktop.ViewModels
                 GlobalStatus = "Installing update";
                 AddActivity("Update", installerPath, "Silent update installer started");
             }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                string message = ResolveUpdateFailureMessage(exception);
+                UpdateStatusText = "Update failed";
+                UpdateDetailsText = message;
+                GlobalStatus = "Update failed";
+                AddActivity("Warning", "Update", message);
+            }
             finally
             {
                 IsUpdateBusy = false;

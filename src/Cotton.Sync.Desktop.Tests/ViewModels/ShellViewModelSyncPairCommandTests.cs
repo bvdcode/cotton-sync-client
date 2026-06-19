@@ -5552,7 +5552,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task InstallUpdateCommand_StartsDownloadedInstaller()
         {
-            string installerPath = @"C:\Users\qa\AppData\Roaming\Cotton\Sync\updates\0.0.2\CottonSync-Windows-Setup.exe";
+            string installerPath = @"C:\CottonSyncUpdateCache\0.0.2\CottonSync-Windows-Setup.exe";
             var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
             {
                 UpdateCheckSnapshot = new DesktopUpdateStatusSnapshot(
@@ -5584,6 +5584,47 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(controller.InstalledUpdatePath, Is.EqualTo(installerPath));
                 Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Installing update"));
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Installing update"));
+            });
+        }
+
+        [Test]
+        public async Task InstallUpdateCommand_ShowsFailureWhenInstallerLaunchFails()
+        {
+            string installerPath = @"C:\CottonSyncUpdateCache\0.0.2\CottonSync-Windows-Setup.exe";
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            {
+                UpdateCheckSnapshot = new DesktopUpdateStatusSnapshot(
+                    "0.0.1",
+                    "0.0.2",
+                    true,
+                    false,
+                    "Update 0.0.2 is available.",
+                    null,
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/v0.0.2")),
+                UpdateDownloadSnapshot = new DesktopUpdateStatusSnapshot(
+                    "0.0.1",
+                    "0.0.2",
+                    true,
+                    true,
+                    "Update 0.0.2 is ready. Click Update to install it now, or it will install automatically on next app start.",
+                    installerPath,
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/v0.0.2")),
+                InstallUpdateException = new InvalidOperationException("Cotton Sync update installer could not be started."),
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            await ExecuteAsync(viewModel.CheckForUpdatesCommand);
+            await ExecuteAsync(viewModel.DownloadUpdateCommand);
+
+            await ExecuteAsync(viewModel.InstallUpdateCommand);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(controller.InstalledUpdatePath, Is.EqualTo(installerPath));
+                Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Update failed"));
+                Assert.That(viewModel.UpdateDetailsText, Is.EqualTo("Cotton Sync update installer could not be started."));
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Update failed"));
+                Assert.That(viewModel.CanInstallUpdate, Is.True);
             });
         }
 
@@ -5934,6 +5975,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             public Exception? UpdateCheckException { get; set; }
 
             public Exception? UpdateDownloadException { get; set; }
+
+            public Exception? InstallUpdateException { get; set; }
 
             public int CheckForUpdateCalls { get; private set; }
 
@@ -6352,6 +6395,11 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 InstalledUpdatePath = installerPath;
+                if (InstallUpdateException is not null)
+                {
+                    throw InstallUpdateException;
+                }
+
                 return Task.CompletedTask;
             }
 
