@@ -2,7 +2,16 @@
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
 using Cotton.Files;
+using Cotton.Sync.App.Auth;
+using Cotton.Sync.App.Continuous;
+using Cotton.Sync.App.LocalChanges;
+using Cotton.Sync.App.Platform;
+using Cotton.Sync.App.Preferences;
+using Cotton.Sync.App.RemoteChanges;
 using Cotton.Sync.App.Runners;
+using Cotton.Sync.App.Status;
+using Cotton.Sync.App.Supervision;
+using Cotton.Sync.App.SyncApplication;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Composition;
 using Cotton.Sync.Desktop.Platform;
@@ -22,6 +31,7 @@ namespace Cotton.Sync.Desktop.Startup
         private const string RelativePlaceholderPath = "remote-only-smoke.txt";
         private const string LargeTreeDirectoryName = "large-tree";
         private const int LargeTreePlaceholderCount = 10_000;
+        private const int LargeCleanupStateWriteBatchSize = 500;
         private const string LargeHydrationRelativePath = "large-hydration-smoke.bin";
         private const int LargeHydrationSizeBytes = 32 * 1024 * 1024;
         private const int LargeHydrationChunkBytes = 1024 * 1024;
@@ -109,6 +119,7 @@ namespace Cotton.Sync.Desktop.Startup
             bool largeTree = string.Equals(phase, "large-tree", StringComparison.Ordinal);
             bool largeHydration = string.Equals(phase, "large-hydration-progress", StringComparison.Ordinal);
             bool removePairCleanup = string.Equals(phase, "remove-pair-cleanup", StringComparison.Ordinal);
+            bool largeRemovePairCleanup = string.Equals(phase, "large-remove-pair-cleanup", StringComparison.Ordinal);
             bool trayQuitDisconnect = string.Equals(phase, "tray-quit-disconnect", StringComparison.Ordinal);
             bool explorerFreeUpSpace = string.Equals(phase, "explorer-free-up-space", StringComparison.Ordinal);
             bool remoteUpdateAfterDehydrate = string.Equals(phase, "remote-update-after-dehydrate", StringComparison.Ordinal);
@@ -118,6 +129,7 @@ namespace Cotton.Sync.Desktop.Startup
                 && !largeTree
                 && !largeHydration
                 && !removePairCleanup
+                && !largeRemovePairCleanup
                 && !trayQuitDisconnect
                 && !explorerFreeUpSpace
                 && !remoteUpdateAfterDehydrate)
@@ -149,6 +161,20 @@ namespace Cotton.Sync.Desktop.Startup
             if (removePairCleanup)
             {
                 return await RunRemovePairCleanupAsync(
+                    paths,
+                    output,
+                    cloudFiles,
+                    nativeApi,
+                    syncPair,
+                    diagnostics,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (largeRemovePairCleanup)
+            {
+                return await RunLargeRemovePairCleanupAsync(
+                    paths,
                     output,
                     cloudFiles,
                     nativeApi,
@@ -742,6 +768,80 @@ namespace Cotton.Sync.Desktop.Startup
             };
         }
 
+        private static async Task<int> VerifyPairDeletedAsync(
+            ISyncPairSettingsStore syncPairs,
+            ISyncStateStore stateStore,
+            SyncPairSettings syncPair,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            int failures = 0;
+            IReadOnlyList<SyncPairSettings> remainingPairs =
+                await syncPairs.ListAsync(cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<SyncStateEntry> remainingEntries =
+                await stateStore.LoadPairAsync(syncPair.Id.ToString("D"), cancellationToken).ConfigureAwait(false);
+            SyncChangeCursor remainingCursor =
+                await stateStore.GetChangeCursorAsync(syncPair.Id.ToString("D"), cancellationToken).ConfigureAwait(false);
+            if (remainingPairs.Count == 0 && remainingEntries.Count == 0 && remainingCursor.LastCursor == 0)
+            {
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Pair settings, sync-state rows, and change cursor were removed.")
+                    + " settings="
+                    + remainingPairs.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", entries="
+                    + remainingEntries.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", cursor="
+                    + remainingCursor.LastCursor.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                failures++;
+                await output.WriteLineAsync(
+                    FormatCheck(false, "Pair deletion left settings or sync-state behind.")
+                    + " settings="
+                    + remainingPairs.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", entries="
+                    + remainingEntries.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", cursor="
+                    + remainingCursor.LastCursor.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+            }
+
+            return failures;
+        }
+
+        private static SyncApplicationService CreateDeletionSmokeApplication(
+            ISyncPairSettingsStore syncPairs,
+            ISyncStateStore stateStore,
+            IWindowsCloudFilesAdapter cloudFiles)
+        {
+            return new SyncApplicationService(
+                syncPairs,
+                NoopSyncPairPrerequisiteValidator.Instance,
+                new NoopAppPreferencesStore(),
+                NoopAuthFlow.Instance,
+                NoopAppCodeBrowserAuthFlow.Instance,
+                new NoopSyncSupervisor(),
+                NoopPlatformCommandService.Instance,
+                NullLocalChangeSyncCoordinator.Instance,
+                NullRemoteChangeSyncCoordinator.Instance,
+                NullPeriodicSyncCoordinator.Instance,
+                syncStateStore: stateStore,
+                syncPairDeletionHandler: new WindowsCloudFilesSyncPairDeletionHandler(cloudFiles));
+        }
+
+        private static byte[] CreateLargeSmokePlaceholderIdentity(int index)
+        {
+            byte[] identity = new byte[1024];
+            for (int offset = 0; offset < identity.Length; offset++)
+            {
+                identity[offset] = (byte)((index + offset * 17) & 0xff);
+            }
+
+            return identity;
+        }
+
         private static async Task<int> RunTrayQuitDisconnectAsync(
             DesktopAppPaths paths,
             TextWriter output,
@@ -907,6 +1007,7 @@ namespace Cotton.Sync.Desktop.Startup
         }
 
         private static async Task<int> RunRemovePairCleanupAsync(
+            DesktopAppPaths paths,
             TextWriter output,
             IWindowsCloudFilesAdapter cloudFiles,
             IWindowsCloudFilesNativeApi? nativeApi,
@@ -926,23 +1027,32 @@ namespace Cotton.Sync.Desktop.Startup
             string placeholderPath = Path.Combine(rootPath, RelativePlaceholderPath);
             byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
             string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
+            var syncPairs = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
             int failures = 0;
 
             try
             {
                 TryUnregisterExistingRoot(cloudFiles, syncPair, output);
                 PrepareRoot(rootPath);
+                await syncPairs.InitializeAsync(cancellationToken).ConfigureAwait(false);
+                await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+                await syncPairs.UpsertAsync(syncPair, cancellationToken).ConfigureAwait(false);
                 await output.WriteLineAsync(
                     FormatCheck(true, "Isolated QA root prepared for remove-pair cleanup smoke.")
                     + " root="
                     + rootPath)
                     .ConfigureAwait(false);
 
-                cloudFiles.CreateFilePlaceholder(CreatePlaceholderRequest(
+                RemoteFilePlaceholderRequest placeholderRequest = CreatePlaceholderRequest(
                     syncPair,
                     RelativePlaceholderPath,
                     expectedContent.LongLength,
-                    expectedHash));
+                    expectedHash);
+                RemoteFilePlaceholderResult placeholder = cloudFiles.CreateFilePlaceholder(placeholderRequest);
+                await stateStore
+                    .UpsertAsync(CreatePlaceholderState(syncPair, placeholderRequest, placeholder), cancellationToken)
+                    .ConfigureAwait(false);
                 await output.WriteLineAsync(
                     FormatCheck(true, "Registered Cloud Files root and placeholder before pair removal.")
                     + " path="
@@ -951,12 +1061,16 @@ namespace Cotton.Sync.Desktop.Startup
                     + FormatAttributes(File.GetAttributes(placeholderPath)))
                     .ConfigureAwait(false);
 
-                var deletionHandler = new WindowsCloudFilesSyncPairDeletionHandler(cloudFiles);
-                await deletionHandler.BeforeDeleteAsync(syncPair, cancellationToken).ConfigureAwait(false);
+                SyncApplicationService app = CreateDeletionSmokeApplication(syncPairs, stateStore, cloudFiles);
+                await app.StartSyncAsync(cancellationToken).ConfigureAwait(false);
+                await app.DeleteSyncPairAsync(syncPair.Id, cancellationToken).ConfigureAwait(false);
                 await output.WriteLineAsync(
                     FormatCheck(true, "Removing the virtual-files sync pair unregistered the Cloud Files root.")
                     + " root="
                     + rootPath)
+                    .ConfigureAwait(false);
+
+                failures += await VerifyPairDeletedAsync(syncPairs, stateStore, syncPair, output, cancellationToken)
                     .ConfigureAwait(false);
 
                 if (!Directory.Exists(rootPath))
@@ -972,6 +1086,198 @@ namespace Cotton.Sync.Desktop.Startup
                     failures++;
                     await output.WriteLineAsync(
                         FormatCheck(false, "Removing the virtual-files sync pair left the local placeholder root behind.")
+                        + " root="
+                        + rootPath)
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                failures++;
+                await output.WriteLineAsync(
+                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
+                    .ConfigureAwait(false);
+            }
+
+            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
+            {
+                await output.WriteLineAsync(
+                    "Diagnostic: "
+                    + item.Operation
+                    + " "
+                    + item.Status
+                    + " "
+                    + CleanSingleLine(item.Details))
+                    .ConfigureAwait(false);
+            }
+
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> RunLargeRemovePairCleanupAsync(
+            DesktopAppPaths paths,
+            TextWriter output,
+            IWindowsCloudFilesAdapter cloudFiles,
+            IWindowsCloudFilesNativeApi? nativeApi,
+            SyncPairSettings syncPair,
+            WindowsCloudFilesDiagnostics diagnostics,
+            CancellationToken cancellationToken)
+        {
+            if (nativeApi is null)
+            {
+                await output.WriteLineAsync(FormatCheck(false, "Large remove-pair cleanup smoke requires the native Windows Cloud Files API."))
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                return 2;
+            }
+
+            string rootPath = syncPair.LocalRootPath;
+            string largeTreePath = Path.Combine(rootPath, LargeTreeDirectoryName);
+            byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
+            string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
+            var syncPairs = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            int failures = 0;
+
+            try
+            {
+                TryUnregisterExistingRoot(cloudFiles, syncPair, output);
+                PrepareRoot(rootPath);
+                Directory.CreateDirectory(largeTreePath);
+                await syncPairs.InitializeAsync(cancellationToken).ConfigureAwait(false);
+                await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+                await syncPairs.UpsertAsync(syncPair, cancellationToken).ConfigureAwait(false);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Isolated QA root prepared for large remove-pair cleanup smoke.")
+                    + " root="
+                    + rootPath)
+                    .ConfigureAwait(false);
+
+                var createdEntries = new List<SyncStateEntry>(LargeTreePlaceholderCount);
+                var createTimer = Stopwatch.StartNew();
+                for (int index = 0; index < LargeTreePlaceholderCount; index++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    string relativePath = LargeTreeDirectoryName
+                        + "/file-"
+                        + index.ToString("D5", System.Globalization.CultureInfo.InvariantCulture)
+                        + ".txt";
+                    RemoteFilePlaceholderRequest request = CreatePlaceholderRequest(
+                        syncPair,
+                        relativePath,
+                        expectedContent.LongLength,
+                        expectedHash);
+                    RemoteFilePlaceholderResult placeholder = cloudFiles.CreateFilePlaceholder(request);
+                    SyncStateEntry stateEntry = CreatePlaceholderState(syncPair, request, placeholder);
+                    stateEntry.PlaceholderIdentity = CreateLargeSmokePlaceholderIdentity(index);
+                    createdEntries.Add(stateEntry);
+
+                    if ((index + 1) % 1_000 == 0)
+                    {
+                        await output.WriteLineAsync(
+                            "Progress: created "
+                            + (index + 1).ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                            + " / "
+                            + LargeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                            + " placeholders.")
+                            .ConfigureAwait(false);
+                    }
+                }
+
+                foreach (SyncStateEntry[] batch in createdEntries.Chunk(LargeCleanupStateWriteBatchSize))
+                {
+                    await stateStore.UpsertManyAsync(batch, cancellationToken).ConfigureAwait(false);
+                }
+
+                await stateStore.SaveChangeCursorAsync(
+                    new SyncChangeCursor
+                    {
+                        SyncPairId = syncPair.Id.ToString("D"),
+                        LastCursor = LargeTreePlaceholderCount,
+                        UpdatedAtUtc = DateTime.UtcNow,
+                    },
+                    cancellationToken)
+                    .ConfigureAwait(false);
+                createTimer.Stop();
+
+                SyncStateStoreDiagnostics beforeDiagnostics =
+                    await stateStore.GetDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Large virtual-files pair persisted placeholders before deletion.")
+                    + " files="
+                    + LargeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                    + ", elapsedMs="
+                    + createTimer.ElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", stateEntries="
+                    + beforeDiagnostics.SyncEntryCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", cursors="
+                    + beforeDiagnostics.SyncChangeCursorCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", dbBytes="
+                    + beforeDiagnostics.FileSizeBytes.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+
+                SyncApplicationService app = CreateDeletionSmokeApplication(syncPairs, stateStore, cloudFiles);
+                await app.StartSyncAsync(cancellationToken).ConfigureAwait(false);
+                await app.DeleteSyncPairAsync(syncPair.Id, cancellationToken).ConfigureAwait(false);
+
+                SyncStateStoreDiagnostics afterDiagnostics =
+                    await stateStore.GetDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Large virtual-files pair deletion completed through the app lifecycle.")
+                    + " stateEntries="
+                    + afterDiagnostics.SyncEntryCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", cursors="
+                    + afterDiagnostics.SyncChangeCursorCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", dbBytes="
+                    + afterDiagnostics.FileSizeBytes.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", freelistBytes="
+                    + afterDiagnostics.FreelistBytes.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+
+                failures += await VerifyPairDeletedAsync(syncPairs, stateStore, syncPair, output, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (afterDiagnostics.FileSizeBytes < beforeDiagnostics.FileSizeBytes / 2
+                    && afterDiagnostics.FreelistBytes < 1024 * 1024)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Deleting the large virtual-files pair compacted the sync-state database.")
+                        + " beforeBytes="
+                        + beforeDiagnostics.FileSizeBytes.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", afterBytes="
+                        + afterDiagnostics.FileSizeBytes.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", freelistBytes="
+                        + afterDiagnostics.FreelistBytes.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Deleting the large virtual-files pair left too much sync-state storage behind.")
+                        + " beforeBytes="
+                        + beforeDiagnostics.FileSizeBytes.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", afterBytes="
+                        + afterDiagnostics.FileSizeBytes.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", freelistBytes="
+                        + afterDiagnostics.FreelistBytes.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+
+                if (!Directory.Exists(rootPath))
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Deleting the large virtual-files pair removed the local placeholder root.")
+                        + " root="
+                        + rootPath)
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Deleting the large virtual-files pair left the local placeholder root behind.")
                         + " root="
                         + rootPath)
                         .ConfigureAwait(false);
@@ -2263,6 +2569,151 @@ namespace Cotton.Sync.Desktop.Startup
         private sealed record SubstResult(int ExitCode, string Output, string Error);
 
         private sealed record FileContentHash(long Length, string Sha256);
+
+        private sealed class NoopSyncPairPrerequisiteValidator : ISyncPairPrerequisiteValidator
+        {
+            public static NoopSyncPairPrerequisiteValidator Instance { get; } = new();
+
+            public Task<IReadOnlyList<SyncPairValidationError>> ValidateAsync(
+                SyncPairSettings syncPair,
+                CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult<IReadOnlyList<SyncPairValidationError>>([]);
+            }
+        }
+
+        private sealed class NoopAppPreferencesStore : IAppPreferencesStore
+        {
+            private AppPreferences _preferences = new();
+
+            public Task InitializeAsync(CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public Task<AppPreferences> GetAsync(CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(_preferences);
+            }
+
+            public Task SaveAsync(AppPreferences preferences, CancellationToken cancellationToken = default)
+            {
+                _preferences = preferences;
+                return Task.CompletedTask;
+            }
+        }
+
+        private sealed class NoopAuthFlow : IAuthFlow
+        {
+            public static NoopAuthFlow Instance { get; } = new();
+
+            public Task<AuthSession> SignInAsync(
+                PasswordSignInRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(CreateSession());
+            }
+
+            public Task<AuthSession> RestoreSessionAsync(CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(CreateSession());
+            }
+
+            public Task SignOutAsync(CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            private static AuthSession CreateSession()
+            {
+                return new AuthSession(
+                    Guid.Parse("88888888-8888-8888-8888-888888888888"),
+                    "smoke",
+                    null,
+                    false);
+            }
+        }
+
+        private sealed class NoopAppCodeBrowserAuthFlow : IAppCodeBrowserAuthFlow
+        {
+            public static NoopAppCodeBrowserAuthFlow Instance { get; } = new();
+
+            public Task<AuthSession> SignInAsync(
+                AppCodeBrowserSignInRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(new AuthSession(
+                    Guid.Parse("99999999-9999-9999-9999-999999999999"),
+                    "browser-smoke",
+                    null,
+                    false));
+            }
+        }
+
+        private sealed class NoopPlatformCommandService : IPlatformCommandService
+        {
+            public static NoopPlatformCommandService Instance { get; } = new();
+
+            public Task OpenFolderAsync(string localPath, CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public Task OpenWebAsync(Uri url, CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+        }
+
+        private sealed class NoopSyncSupervisor : ISyncSupervisor
+        {
+            public IReadOnlyList<SyncPairStatus> CurrentStatuses => [];
+
+            public Task StartAsync(CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public Task StartAsync(bool startPaused, CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public Task SyncAllAsync(CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public Task SyncNowAsync(Guid syncPairId, CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public Task PauseAllAsync(CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public Task PauseAsync(Guid syncPairId, CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public Task ResumeAllAsync(CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public Task ResumeAsync(Guid syncPairId, CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+
+            public Task StopAsync(CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+        }
 
         private sealed class NoopCloudFilesCallbackHandler : IWindowsCloudFilesCallbackHandler
         {

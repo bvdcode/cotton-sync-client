@@ -50,6 +50,24 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             });
         }
 
+        [Test]
+        public void RunAsync_ExposesLargeRemovePairCleanupPhaseThroughProductDeletionPath()
+        {
+            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(runner, Does.Contain("\"large-remove-pair-cleanup\""));
+                Assert.That(runner, Does.Contain("RunLargeRemovePairCleanupAsync("));
+                Assert.That(runner, Does.Contain("new SqliteSyncPairSettingsStore(paths.AppDatabasePath)"));
+                Assert.That(runner, Does.Contain("new SqliteSyncStateStore(paths.SyncStateDatabasePath)"));
+                Assert.That(runner, Does.Contain("CreateDeletionSmokeApplication(syncPairs, stateStore, cloudFiles)"));
+                Assert.That(runner, Does.Contain("DeleteSyncPairAsync(syncPair.Id"));
+                Assert.That(runner, Does.Contain("Deleting the large virtual-files pair compacted the sync-state database."));
+                Assert.That(runner, Does.Contain("Deleting the large virtual-files pair removed the local placeholder root."));
+            });
+        }
+
         private static string GetDesktopFilePath(string relativePath)
         {
             string directory = TestContext.CurrentContext.TestDirectory;
