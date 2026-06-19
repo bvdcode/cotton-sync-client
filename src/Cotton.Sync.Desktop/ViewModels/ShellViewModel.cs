@@ -2769,9 +2769,11 @@ namespace Cotton.Sync.Desktop.ViewModels
         private async Task DownloadUpdateAsync()
         {
             var progress = new ActionProgress<DesktopUpdateDownloadProgress>(ApplyUpdateDownloadProgress);
+            UpdateDetailsText = "Preparing update download.";
             await RunUpdateActionAsync(
                 "Downloading update",
-                () => _controller.DownloadUpdateAsync(DesktopUpdateCheckSource.Download, progress)).ConfigureAwait(true);
+                () => _controller.DownloadUpdateAsync(DesktopUpdateCheckSource.Download, progress),
+                updateGlobalStatusOnStart: true).ConfigureAwait(true);
         }
 
         private void ApplyUpdateDownloadProgress(DesktopUpdateDownloadProgress progress)
@@ -2811,11 +2813,15 @@ namespace Cotton.Sync.Desktop.ViewModels
                     return;
                 }
 
+                var progress = new ActionProgress<DesktopUpdateDownloadProgress>(ApplyUpdateDownloadProgress);
+                UpdateDetailsText = "Preparing update download.";
                 await RunUpdateActionAsync(
-                        "Checking for updates",
+                        "Downloading update",
                         () => _controller.DownloadUpdateAsync(
                             DesktopUpdateCheckSource.Startup,
+                            progress,
                             cancellationToken: cancellationToken),
+                        updateGlobalStatusOnStart: true,
                         updateGlobalStatusOnFailure: false,
                         notifyWhenInstallerReady: true)
                     .ConfigureAwait(true);
@@ -2879,6 +2885,9 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
 
             IsUpdateBusy = true;
+            UpdateStatusText = "Installing update";
+            UpdateDetailsText = "Starting the update installer.";
+            GlobalStatus = "Installing update";
             try
             {
                 await _controller.InstallDownloadedUpdateAsync(installerPath).ConfigureAwait(true);
@@ -2904,11 +2913,18 @@ namespace Cotton.Sync.Desktop.ViewModels
         private async Task RunUpdateActionAsync(
             string busyStatus,
             Func<Task<DesktopUpdateStatusSnapshot>> updateActionAsync,
+            bool updateGlobalStatusOnStart = false,
             bool updateGlobalStatusOnFailure = true,
             bool notifyWhenInstallerReady = false)
         {
+            string previousGlobalStatus = GlobalStatus;
             IsUpdateBusy = true;
             UpdateStatusText = busyStatus;
+            if (updateGlobalStatusOnStart)
+            {
+                GlobalStatus = busyStatus;
+            }
+
             try
             {
                 DesktopUpdateStatusSnapshot result = await updateActionAsync().ConfigureAwait(true);
@@ -2927,6 +2943,10 @@ namespace Cotton.Sync.Desktop.ViewModels
                 if (updateGlobalStatusOnFailure)
                 {
                     GlobalStatus = "Update failed";
+                }
+                else
+                {
+                    GlobalStatus = previousGlobalStatus;
                 }
 
                 AddActivity("Warning", "Update", message);
