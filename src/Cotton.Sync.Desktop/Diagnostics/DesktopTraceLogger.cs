@@ -41,8 +41,38 @@ namespace Cotton.Sync.Desktop.Diagnostics
                 return;
             }
 
-            string message = DesktopTraceLogFormatter.Format(_categoryName, logLevel, eventId, formatter(state, exception), exception);
+            string rawMessage = formatter(state, exception);
+            LogLevel effectiveLogLevel = NormalizeLogLevel(logLevel, rawMessage);
+            if (!IsEnabled(effectiveLogLevel))
+            {
+                return;
+            }
+
+            string message = DesktopTraceLogFormatter.Format(
+                _categoryName,
+                effectiveLogLevel,
+                eventId,
+                rawMessage,
+                exception);
             Trace.WriteLine(DesktopSecretRedactor.Redact(message));
+        }
+
+        private LogLevel NormalizeLogLevel(LogLevel logLevel, string message)
+        {
+            if (logLevel == LogLevel.Warning
+                && string.Equals(
+                    _categoryName,
+                    "Cotton.Sdk.Internal.CottonHttpTransport",
+                    StringComparison.Ordinal)
+                && message.Contains("Cotton API request ", StringComparison.Ordinal)
+                && message.Contains(" completed with status ", StringComparison.Ordinal)
+                && (message.Contains("401", StringComparison.Ordinal)
+                    || message.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase)))
+            {
+                return LogLevel.Information;
+            }
+
+            return logLevel;
         }
     }
 }

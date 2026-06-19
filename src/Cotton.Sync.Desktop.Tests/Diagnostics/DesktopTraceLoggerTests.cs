@@ -100,6 +100,54 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         }
 
         [Test]
+        public void Log_DowngradesSdkUnauthorizedChallengeToInformation()
+        {
+            var listener = new CollectingTraceListener();
+            Trace.Listeners.Add(listener);
+            try
+            {
+                ILogger logger = new DesktopTraceLogger("Cotton.Sdk.Internal.CottonHttpTransport");
+
+                logger.LogWarning("Cotton API request GET /api/v1/me completed with status Unauthorized in 15 ms.");
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(listener.Output, Does.Contain("Information"));
+                    Assert.That(listener.Output, Does.Not.Contain("Warning"));
+                    Assert.That(listener.Output, Does.Contain("completed with status Unauthorized"));
+                });
+            }
+            finally
+            {
+                Trace.Listeners.Remove(listener);
+            }
+        }
+
+        [Test]
+        public void Log_KeepsNonSdkUnauthorizedWarningsAsWarnings()
+        {
+            var listener = new CollectingTraceListener();
+            Trace.Listeners.Add(listener);
+            try
+            {
+                ILogger logger = new DesktopTraceLogger("Cotton.Sync.App.Runners.SyncPairRunner");
+
+                logger.LogWarning("Session expired after unauthorized response.");
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(listener.Output, Does.Contain("Warning"));
+                    Assert.That(listener.Output, Does.Not.Contain("Information"));
+                    Assert.That(listener.Output, Does.Contain("Session expired"));
+                });
+            }
+            finally
+            {
+                Trace.Listeners.Remove(listener);
+            }
+        }
+
+        [Test]
         public void Factory_UsesEnvironmentMinimumLevel()
         {
             string? previous = Environment.GetEnvironmentVariable(DesktopTraceLogLevel.EnvironmentVariableName);
