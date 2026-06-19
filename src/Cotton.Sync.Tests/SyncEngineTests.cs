@@ -1275,6 +1275,11 @@ namespace Cotton.Sync.Tests
                 new SyncRunOptions { InitialVirtualFilesPopulationQueueCapacity = 1 });
 
             IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            string startLog = logger.Entries
+                .Single(entry => entry.Message.Contains(
+                    "Starting initial streaming Windows virtual-files population",
+                    StringComparison.Ordinal))
+                .Message;
             string completionLog = logger.Entries
                 .Single(entry => entry.Message.Contains(
                     "Completed initial streaming Windows virtual-files population",
@@ -1302,9 +1307,24 @@ namespace Cotton.Sync.Tests
                 Assert.That(result.Activities.Select(activity => activity.RelativePath), Is.EquivalentTo(remoteFiles.Select(file => file.RelativePath)));
                 Assert.That(state, Has.Count.EqualTo(3));
                 Assert.That(state.Select(entry => entry.PlaceholderHydrationState), Is.All.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+                Assert.That(startLog, Does.Contain("queue capacity 1"));
+                Assert.That(startLog, Does.Contain("placeholder concurrency"));
+                Assert.That(startLog, Does.Contain("placeholder batch size"));
+                Assert.That(startLog, Does.Contain("state batch size"));
+                Assert.That(startLog, Does.Contain("managed heap"));
                 Assert.That(completionLog, Does.Contain("3 files discovered"));
                 Assert.That(completionLog, Does.Contain("3 placeholders created or refreshed"));
                 Assert.That(completionLog, Does.Contain("placeholders/sec"));
+                Assert.That(completionLog, Does.Contain("state writes 3 file rows"));
+                Assert.That(completionLog, Does.Contain("file write batches 1"));
+                Assert.That(completionLog, Does.Contain("directory rows 0"));
+                Assert.That(completionLog, Does.Contain("managed heap start="));
+                Assert.That(completionLog, Does.Contain("completed="));
+                Assert.That(completionLog, Does.Contain("delta="));
+                Assert.That(completionLog, Does.Contain("queue capacity=1"));
+                Assert.That(completionLog, Does.Contain("placeholder concurrency="));
+                Assert.That(completionLog, Does.Contain("placeholder batch size="));
+                Assert.That(completionLog, Does.Contain("state batch size="));
                 Assert.That(completionLog, Does.Contain("activities retained 3/3"));
                 Assert.That(completionLog, Does.Contain("truncated=False"));
                 Assert.That(syncCompletionLog, Does.Contain("3 activities"));
