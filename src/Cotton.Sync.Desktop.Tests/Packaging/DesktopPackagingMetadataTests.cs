@@ -727,6 +727,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
                 Assert.That(workflow, Does.Contain("Autostart registry value was not installed correctly."));
                 Assert.That(workflow, Does.Contain("$expectedRunValue = \"`\"$installedExe`\" --start-minimized\""));
+                Assert.That(workflow, Does.Contain("Packaging/windows/smoke-autostart-launch.ps1"));
+                Assert.That(workflow, Does.Contain("-AppExecutable $installedExe"));
                 Assert.That(workflow, Does.Not.Contain("Set-ItemProperty -Path $runKey -Name \"Cotton Sync\""));
                 Assert.That(workflow, Does.Contain("Installed desktop executable remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Install directory was not empty after uninstall."));
@@ -737,6 +739,30 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Start Menu shortcut remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Start Menu uninstall shortcut remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Autostart registry value remained after uninstall."));
+            });
+        }
+
+        [Test]
+        public void WindowsAutostartLaunchSmokeScript_VerifiesRunCommandStaysHiddenToTray()
+        {
+            string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/smoke-autostart-launch.ps1"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(script, Does.Contain("[string]$AppExecutable"));
+                Assert.That(script, Does.Contain("[string]$RunValueName = \"Cotton Sync\""));
+                Assert.That(script, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
+                Assert.That(script, Does.Contain("$expectedRunValue = \"`\"$resolvedExecutable`\" --start-minimized\""));
+                Assert.That(script, Does.Contain("Autostart registry value was not installed correctly."));
+                Assert.That(script, Does.Contain("CottonAutostartWindowProbe"));
+                Assert.That(script, Does.Contain("GetVisibleWindowsForProcess"));
+                Assert.That(script, Does.Contain("GetForegroundProcessId"));
+                Assert.That(script, Does.Contain("Start-Process `"));
+                Assert.That(script, Does.Contain("-ArgumentList @(\"--start-minimized\")"));
+                Assert.That(script, Does.Contain("command line did not include --start-minimized"));
+                Assert.That(script, Does.Contain("created a visible top-level window"));
+                Assert.That(script, Does.Contain("became the foreground window"));
+                Assert.That(script, Does.Contain("Verified installed autostart launch stayed hidden to tray"));
             });
         }
 
@@ -817,6 +843,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
                 Assert.That(workflow, Does.Contain("Upgraded autostart registry value was not installed correctly."));
                 Assert.That(workflow, Does.Contain("$expectedRunValue = \"`\"$installedExe`\" --start-minimized\""));
+                Assert.That(workflow, Does.Contain("Packaging/windows/smoke-autostart-launch.ps1"));
+                Assert.That(workflow, Does.Contain("-AppExecutable $installedExe"));
                 Assert.That(workflow, Does.Not.Contain("Set-ItemProperty -Path $runKey -Name \"Cotton Sync\""));
                 Assert.That(workflow, Does.Contain("Upgraded desktop executable remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Upgraded Start Menu shortcut remained after uninstall."));
