@@ -706,6 +706,34 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public async Task ExportDiagnosticsAsync_ReportsLastManualUpdateCheckOutcome()
+        {
+            var updateService = new FakeUpdateService(CreateUpdateCheckResult(isUpdateAvailable: true));
+            using DesktopShellController controller = CreateController(updateService: updateService);
+
+            await controller.CheckForUpdateAsync();
+            string archivePath = await controller.ExportDiagnosticsAsync();
+
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
+            using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
+            JsonElement update = document.RootElement.GetProperty("update");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(update.GetProperty("lastCheckStatus").GetString(), Is.EqualTo("succeeded"));
+                Assert.That(update.GetProperty("lastCheckSource").GetString(), Is.EqualTo("manual"));
+                Assert.That(update.GetProperty("currentVersion").GetString(), Is.EqualTo("0.0.1"));
+                Assert.That(update.GetProperty("latestVersion").GetString(), Is.EqualTo("0.0.2"));
+                Assert.That(update.GetProperty("isUpdateAvailable").GetBoolean(), Is.True);
+                Assert.That(update.GetProperty("hasInstallerAsset").GetBoolean(), Is.True);
+                Assert.That(update.GetProperty("isInstallerReady").GetBoolean(), Is.False);
+                Assert.That(update.GetProperty("isUpdateCacheDirectoryPresent").GetBoolean(), Is.True);
+                Assert.That(update.GetProperty("hasPendingUpdate").GetBoolean(), Is.False);
+            });
+        }
+
+        [Test]
         public async Task DownloadUpdateAsync_ReturnsReadyInstallerPath()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
@@ -733,6 +761,64 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                         "Update 0.0.2 is ready. Click Update to install it now, or it will install automatically on next app start."));
                 Assert.That(pending?.Version, Is.EqualTo("0.0.2"));
                 Assert.That(pending?.InstallerPath, Is.EqualTo(installerPath));
+            });
+        }
+
+        [Test]
+        public async Task ExportDiagnosticsAsync_ReportsDownloadedUpdateCacheStateWithoutInstallerPath()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            string installerPath = Path.Combine(_tempDirectory, "CottonSync-Windows-Setup.exe");
+            var updateService = new FakeUpdateService(
+                CreateUpdateCheckResult(isUpdateAvailable: true),
+                CreateUpdateDownloadResult(installerPath));
+            using DesktopShellController controller = CreateController(
+                paths,
+                new SqliteSyncPairSettingsStore(paths.AppDatabasePath),
+                updateService: updateService);
+
+            await controller.DownloadUpdateAsync();
+            string archivePath = await controller.ExportDiagnosticsAsync();
+
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
+            using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
+            JsonElement update = document.RootElement.GetProperty("update");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(update.GetProperty("lastCheckStatus").GetString(), Is.EqualTo("succeeded"));
+                Assert.That(update.GetProperty("lastCheckSource").GetString(), Is.EqualTo("download"));
+                Assert.That(update.GetProperty("isInstallerReady").GetBoolean(), Is.True);
+                Assert.That(update.GetProperty("hasPendingUpdate").GetBoolean(), Is.True);
+                Assert.That(update.GetProperty("pendingVersion").GetString(), Is.EqualTo("0.0.2"));
+                Assert.That(update.GetProperty("pendingInstallerSizeBytes").GetInt64(), Is.EqualTo(1024));
+                Assert.That(diagnosticsJson, Does.Not.Contain(installerPath));
+            });
+        }
+
+        [Test]
+        public async Task ExportDiagnosticsAsync_ReportsFailedUpdateCheckOutcome()
+        {
+            var updateService = new FakeUpdateService(
+                CreateUpdateCheckResult(isUpdateAvailable: false),
+                checkException: new HttpRequestException("release manifest unavailable"));
+            using DesktopShellController controller = CreateController(updateService: updateService);
+
+            _ = Assert.ThrowsAsync<HttpRequestException>(() => controller.CheckForUpdateAsync());
+            string archivePath = await controller.ExportDiagnosticsAsync();
+
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
+            using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
+            JsonElement update = document.RootElement.GetProperty("update");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(update.GetProperty("lastCheckStatus").GetString(), Is.EqualTo("failed"));
+                Assert.That(update.GetProperty("lastCheckSource").GetString(), Is.EqualTo("manual"));
+                Assert.That(update.GetProperty("failureType").GetString(), Is.EqualTo(nameof(HttpRequestException)));
+                Assert.That(update.GetProperty("failureMessage").GetString(), Does.Contain("release manifest unavailable"));
             });
         }
 
@@ -982,13 +1068,16 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             private readonly DesktopUpdateCheckResult _checkResult;
             private readonly DesktopUpdateDownloadResult? _downloadResult;
+            private readonly Exception? _checkException;
 
             public FakeUpdateService(
                 DesktopUpdateCheckResult checkResult,
-                DesktopUpdateDownloadResult? downloadResult = null)
+                DesktopUpdateDownloadResult? downloadResult = null,
+                Exception? checkException = null)
             {
                 _checkResult = checkResult;
                 _downloadResult = downloadResult;
+                _checkException = checkException;
             }
 
             public int CheckCalls { get; private set; }
@@ -999,6 +1088,11 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 CheckCalls++;
+                if (_checkException is not null)
+                {
+                    return Task.FromException<DesktopUpdateCheckResult>(_checkException);
+                }
+
                 return Task.FromResult(_checkResult);
             }
 

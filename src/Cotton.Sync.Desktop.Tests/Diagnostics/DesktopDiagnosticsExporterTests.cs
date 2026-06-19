@@ -343,6 +343,52 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         }
 
         [Test]
+        public async Task ExportAsync_SerializesUpdateDiagnosticsWithoutInstallerPath()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            var exporter = new DesktopDiagnosticsExporter();
+            string installerPath = Path.Combine(paths.UpdateCacheDirectory, "0.0.2", "CottonSync-Windows-Setup.exe");
+            var update = new DesktopUpdateDiagnosticsSnapshot(
+                CurrentVersion: "0.0.1",
+                IsUpdateCacheDirectoryPresent: true,
+                HasPendingUpdate: true,
+                PendingVersion: "0.0.2",
+                PendingInstallerSizeBytes: 1024,
+                LastCheckAtUtc: DateTimeOffset.Parse("2026-06-18T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture),
+                LastCheckStatus: "succeeded",
+                LastCheckSource: "download",
+                LatestVersion: "0.0.2",
+                IsUpdateAvailable: true,
+                HasInstallerAsset: true,
+                IsInstallerReady: true,
+                ReleaseUrl: new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/v0.0.2"),
+                FailureType: "IOException",
+                FailureMessage: "Update cache failed under " + paths.UpdateCacheDirectory);
+
+            string archivePath = await exporter.ExportAsync(paths, CreateBundle(paths, update: update));
+
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
+            using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
+            JsonElement updateJson = document.RootElement.GetProperty("update");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(updateJson.GetProperty("currentVersion").GetString(), Is.EqualTo("0.0.1"));
+                Assert.That(updateJson.GetProperty("lastCheckStatus").GetString(), Is.EqualTo("succeeded"));
+                Assert.That(updateJson.GetProperty("lastCheckSource").GetString(), Is.EqualTo("download"));
+                Assert.That(updateJson.GetProperty("latestVersion").GetString(), Is.EqualTo("0.0.2"));
+                Assert.That(updateJson.GetProperty("isUpdateAvailable").GetBoolean(), Is.True);
+                Assert.That(updateJson.GetProperty("hasPendingUpdate").GetBoolean(), Is.True);
+                Assert.That(updateJson.GetProperty("pendingVersion").GetString(), Is.EqualTo("0.0.2"));
+                Assert.That(updateJson.GetProperty("pendingInstallerSizeBytes").GetInt64(), Is.EqualTo(1024));
+                Assert.That(updateJson.GetProperty("failureMessage").GetString(), Does.Contain("[update-cache]"));
+                Assert.That(diagnosticsJson, Does.Not.Contain(installerPath));
+                Assert.That(diagnosticsJson, Does.Not.Contain(paths.UpdateCacheDirectory));
+            });
+        }
+
+        [Test]
         public async Task ExportAsync_RemainsBoundedAfterLargeCloudFilesDiagnosticStorm()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
@@ -392,6 +438,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
             SyncStateStoreDiagnostics? syncState = null,
             DesktopRuntimeHealthSnapshot? runtimeHealth = null,
             DesktopNotificationDiagnosticsSnapshot? notification = null,
+            DesktopUpdateDiagnosticsSnapshot? update = null,
             IReadOnlyList<DesktopSelfTestItemSnapshot>? selfTestItems = null,
             string serverUrl = "https://app.cottoncloud.dev/",
             string accountName = "user@example.test",
@@ -441,6 +488,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                     IsInstalledAppIdentityVerified: false,
                     IdentityStatus: "unsupported",
                     Details: "Desktop notifications are not fully available."),
+                update ?? DesktopUpdateDiagnosticsSnapshot.NotChecked("1.0.0"),
                 selfTestItems ?? [
                     new DesktopSelfTestItemSnapshot("Server identity", true, "Cotton Cloud"),
                 ],

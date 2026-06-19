@@ -31,6 +31,7 @@ namespace Cotton.Sync.Desktop.Diagnostics
                 SelfTestItems = bundle.SelfTestItems
                     .Select(item => SanitizeSelfTestItem(item, replacements))
                     .ToArray(),
+                Update = SanitizeUpdate(bundle.Update, replacements),
                 CloudFilesEvents = bundle.CloudFilesEvents
                     .Select(item => SanitizeCloudFilesEvent(item, replacements))
                     .ToArray(),
@@ -115,6 +116,27 @@ namespace Cotton.Sync.Desktop.Diagnostics
             }
 
             return item with { Details = DesktopSecretRedactor.Redact(details) };
+        }
+
+        private static DesktopUpdateDiagnosticsSnapshot SanitizeUpdate(
+            DesktopUpdateDiagnosticsSnapshot update,
+            IReadOnlyList<KnownValueReplacement> replacements)
+        {
+            string? failureMessage = update.FailureMessage;
+            if (!string.IsNullOrWhiteSpace(failureMessage))
+            {
+                foreach (KnownValueReplacement replacement in replacements)
+                {
+                    failureMessage = failureMessage.Replace(
+                        replacement.Value,
+                        replacement.Placeholder,
+                        StringComparison.OrdinalIgnoreCase);
+                }
+
+                failureMessage = DesktopSecretRedactor.Redact(failureMessage);
+            }
+
+            return update with { FailureMessage = failureMessage };
         }
 
         private static string NormalizeAccountName(string accountName)
