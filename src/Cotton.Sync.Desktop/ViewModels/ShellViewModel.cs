@@ -29,8 +29,8 @@ namespace Cotton.Sync.Desktop.ViewModels
         private const int ServerProbeMaxAttempts = 3;
         private const string QueuedWorkIndicatorText = "Processing queued changes";
         private const string RemoteScanRowProgressLabel = "Checking cloud";
-        private const string PreparingOnlineOnlyFilesProgressLabel = "Preparing online-only files";
-        private const string CreatingOnlineOnlyFilesProgressLabel = "Making online-only files available";
+        private const string PreparingCloudFilesProgressLabel = VirtualFileUserFacingCopy.PreparingCloudFilesProgressLabel;
+        private const string CreatingCloudFilesProgressLabel = VirtualFileUserFacingCopy.CreatingCloudFilesProgressLabel;
         private static readonly TimeSpan TransferActivityCoalescingWindow = TimeSpan.FromMilliseconds(750);
         private static readonly TimeSpan VisibleTransferProgressUpdateInterval = TimeSpan.FromMilliseconds(100);
         private static readonly TimeSpan VisibleRunProgressUpdateInterval = TimeSpan.FromMilliseconds(100);
@@ -5582,7 +5582,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                     int readyCount = GetDisplayedRunProgressCount(progress);
                     if (readyCount <= 0)
                     {
-                        return PreparingOnlineOnlyFilesProgressLabel
+                        return PreparingCloudFilesProgressLabel
                             + " \u00B7 scanning cloud \u00B7 creating placeholders \u00B7 saving state";
                     }
 
@@ -5620,7 +5620,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 SyncRunProgressStage.ScanningLocal => CreateLocalScanProgressDetails(progress),
                 SyncRunProgressStage.ScanningRemote => CreateRemoteScanProgressDetails(progress),
                 SyncRunProgressStage.ReconcilingDirectories => "Preparing folders.",
-                SyncRunProgressStage.CreatingPlaceholders => PreparingOnlineOnlyFilesProgressLabel + ".",
+                SyncRunProgressStage.CreatingPlaceholders => PreparingCloudFilesProgressLabel + ".",
                 SyncRunProgressStage.Completed => "Sync pass completed.",
                 _ => "Preparing sync.",
             };
@@ -5744,7 +5744,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 SyncRunProgressStage.ScanningRemote => "Scanning Cotton Cloud",
                 SyncRunProgressStage.ReconcilingDirectories => "Preparing folders",
                 SyncRunProgressStage.ReconcilingFiles => "Checking files",
-                SyncRunProgressStage.CreatingPlaceholders => CreatingOnlineOnlyFilesProgressLabel,
+                SyncRunProgressStage.CreatingPlaceholders => CreatingCloudFilesProgressLabel,
                 SyncRunProgressStage.Completed => "Finishing sync",
                 _ => "Syncing",
             };
@@ -5755,7 +5755,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             return stage switch
             {
                 SyncRunProgressStage.ScanningRemote => RemoteScanRowProgressLabel,
-                SyncRunProgressStage.CreatingPlaceholders => PreparingOnlineOnlyFilesProgressLabel,
+                SyncRunProgressStage.CreatingPlaceholders => PreparingCloudFilesProgressLabel,
                 _ => GetRunStageLabel(stage),
             };
         }
@@ -5766,7 +5766,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             {
                 SyncRunProgressStage.ReconcilingDirectories => "Preparing folders",
                 SyncRunProgressStage.ReconcilingFiles => "Preparing file checks",
-                SyncRunProgressStage.CreatingPlaceholders => PreparingOnlineOnlyFilesProgressLabel,
+                SyncRunProgressStage.CreatingPlaceholders => PreparingCloudFilesProgressLabel,
                 _ => "Preparing sync",
             };
         }
@@ -5774,7 +5774,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private static string GetStartingRunProgressOperationLabel(SyncRunProgressStage stage)
         {
             return stage == SyncRunProgressStage.CreatingPlaceholders
-                ? PreparingOnlineOnlyFilesProgressLabel
+                ? PreparingCloudFilesProgressLabel
                 : GetStartingRunProgressLabel(stage);
         }
 
