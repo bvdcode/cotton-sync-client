@@ -1313,6 +1313,7 @@ namespace Cotton.Sync.Tests
                 Assert.That(startLog, Does.Contain("state batch size"));
                 Assert.That(startLog, Does.Contain("managed heap"));
                 Assert.That(completionLog, Does.Contain("3 files discovered"));
+                Assert.That(completionLog, Does.Contain("remote pages read=1"));
                 Assert.That(completionLog, Does.Contain("3 placeholders created or refreshed"));
                 Assert.That(completionLog, Does.Contain("placeholders/sec"));
                 Assert.That(completionLog, Does.Contain("state writes 3 file rows"));
@@ -4633,7 +4634,7 @@ namespace Cotton.Sync.Tests
                 {
                     RemoteFileSnapshot file = _files[index];
                     await sink.AddFileAsync(file, cancellationToken).ConfigureAwait(false);
-                    progress?.Report(new RemoteTreeScanProgress(index + 1, 0, file.RelativePath));
+                    progress?.Report(new RemoteTreeScanProgress(index + 1, 0, file.RelativePath, pagesScanned: 1));
                     if (index == 0)
                     {
                         try
@@ -4651,7 +4652,7 @@ namespace Cotton.Sync.Tests
                 }
 
                 StreamingCompleted = true;
-                progress?.Report(new RemoteTreeScanProgress(_files.Count, 0, currentPath: null));
+                progress?.Report(new RemoteTreeScanProgress(_files.Count, 0, currentPath: null, pagesScanned: 1));
                 return root;
             }
         }
@@ -4694,10 +4695,10 @@ namespace Cotton.Sync.Tests
                 {
                     RemoteFileSnapshot file = _files[index];
                     await sink.AddFileAsync(file, cancellationToken).ConfigureAwait(false);
-                    progress?.Report(new RemoteTreeScanProgress(index + 1, 0, file.RelativePath));
+                    progress?.Report(new RemoteTreeScanProgress(index + 1, 0, file.RelativePath, pagesScanned: 1));
                 }
 
-                progress?.Report(new RemoteTreeScanProgress(_files.Count, 0, currentPath: null));
+                progress?.Report(new RemoteTreeScanProgress(_files.Count, 0, currentPath: null, pagesScanned: 1));
                 return root;
             }
         }

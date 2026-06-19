@@ -13,13 +13,19 @@ namespace Cotton.Sync.Remote
         /// <summary>
         /// Initializes a new instance of the <see cref="RemoteTreeScanProgress" /> class.
         /// </summary>
-        public RemoteTreeScanProgress(int filesScanned, int directoriesScanned, string? currentPath)
+        public RemoteTreeScanProgress(
+            int filesScanned,
+            int directoriesScanned,
+            string? currentPath,
+            int pagesScanned = 0)
         {
             ArgumentOutOfRangeException.ThrowIfNegative(filesScanned);
             ArgumentOutOfRangeException.ThrowIfNegative(directoriesScanned);
+            ArgumentOutOfRangeException.ThrowIfNegative(pagesScanned);
             FilesScanned = filesScanned;
             DirectoriesScanned = directoriesScanned;
             CurrentPath = string.IsNullOrWhiteSpace(currentPath) ? string.Empty : SyncPath.Normalize(currentPath);
+            PagesScanned = pagesScanned;
         }
 
         /// <summary>
@@ -31,6 +37,11 @@ namespace Cotton.Sync.Remote
         /// Gets the number of remote directory entries discovered so far.
         /// </summary>
         public int DirectoriesScanned { get; }
+
+        /// <summary>
+        /// Gets the number of remote child pages loaded so far.
+        /// </summary>
+        public int PagesScanned { get; }
 
         /// <summary>
         /// Gets the most recent discovered remote path when available.
