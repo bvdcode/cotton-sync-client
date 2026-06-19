@@ -733,6 +733,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("-ExpectedIcon \"src/Cotton.Sync.Desktop/Assets/app.ico\""));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-diagnostics-export.ps1"));
                 Assert.That(workflow, Does.Contain("-ExpectedAppVersion \"${{ steps.gitversion.outputs.SemVer }}\""));
+                Assert.That(workflow, Does.Contain("Packaging/windows/smoke-update-discovery.ps1"));
+                Assert.That(workflow, Does.Contain("cotton-sync-update-discovery-data"));
                 Assert.That(workflow, Does.Contain("unins000.exe"));
                 Assert.That(workflow, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
                 Assert.That(workflow, Does.Contain("Autostart registry value was not installed correctly."));
@@ -749,6 +751,35 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Start Menu shortcut remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Start Menu uninstall shortcut remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Autostart registry value remained after uninstall."));
+            });
+        }
+
+        [Test]
+        public void WindowsUpdateDiscoverySmokeScript_VerifiesMockReleaseThroughInstalledExecutable()
+        {
+            string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/smoke-update-discovery.ps1"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(script, Does.Contain("[string]$AppExecutable"));
+                Assert.That(script, Does.Contain("[string]$DataDirectory"));
+                Assert.That(script, Does.Contain("[string]$ExpectedUpdateVersion = \"\""));
+                Assert.That(script, Does.Contain("Get-NextPatchVersion"));
+                Assert.That(script, Does.Contain("python"));
+                Assert.That(script, Does.Contain("http.server"));
+                Assert.That(script, Does.Contain("release-manifest.json"));
+                Assert.That(script, Does.Contain("CottonSync-Windows-Setup.exe"));
+                Assert.That(script, Does.Contain("--update-discovery-smoke"));
+                Assert.That(script, Does.Contain("--update-manifest-url"));
+                Assert.That(script, Does.Contain("--expected-update-version"));
+                Assert.That(script, Does.Contain("diagnostics.json"));
+                Assert.That(script, Does.Contain("lastCheckStatus"));
+                Assert.That(script, Does.Contain("lastCheckSource"));
+                Assert.That(script, Does.Contain("latestVersion"));
+                Assert.That(script, Does.Contain("hasPendingUpdate"));
+                Assert.That(script, Does.Contain("pendingInstallerSizeBytes"));
+                Assert.That(script, Does.Contain("Desktop update download completed"));
+                Assert.That(script, Does.Contain("Verified update discovery smoke"));
             });
         }
 

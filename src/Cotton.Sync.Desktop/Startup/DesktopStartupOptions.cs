@@ -18,8 +18,11 @@ namespace Cotton.Sync.Desktop.Startup
             bool cleanupCloudFiles,
             bool runWindowsVirtualFilesSmoke,
             bool runLiveSyncSmoke,
+            bool runUpdateDiscoverySmoke,
             bool printVersion,
             DesktopVisualSmokeScenario? visualSmokeScenario,
+            Uri? updateManifestUri,
+            string? expectedUpdateVersion,
             TimeSpan windowsVirtualFilesSmokeHoldAfterPlaceholder,
             string? windowsVirtualFilesSmokePhase,
             TimeSpan liveSyncSmokeApprovalHold,
@@ -40,8 +43,11 @@ namespace Cotton.Sync.Desktop.Startup
             CleanupCloudFiles = cleanupCloudFiles;
             RunWindowsVirtualFilesSmoke = runWindowsVirtualFilesSmoke;
             RunLiveSyncSmoke = runLiveSyncSmoke;
+            RunUpdateDiscoverySmoke = runUpdateDiscoverySmoke;
             PrintVersion = printVersion;
             VisualSmokeScenario = visualSmokeScenario;
+            UpdateManifestUri = updateManifestUri;
+            ExpectedUpdateVersion = expectedUpdateVersion;
             WindowsVirtualFilesSmokeHoldAfterPlaceholder = windowsVirtualFilesSmokeHoldAfterPlaceholder;
             WindowsVirtualFilesSmokePhase = windowsVirtualFilesSmokePhase;
             LiveSyncSmokeApprovalHold = liveSyncSmokeApprovalHold;
@@ -65,6 +71,9 @@ namespace Cotton.Sync.Desktop.Startup
             false,
             false,
             false,
+            false,
+            null,
+            null,
             null,
             TimeSpan.Zero,
             null,
@@ -96,9 +105,15 @@ namespace Cotton.Sync.Desktop.Startup
 
         public bool RunLiveSyncSmoke { get; }
 
+        public bool RunUpdateDiscoverySmoke { get; }
+
         public bool PrintVersion { get; }
 
         public DesktopVisualSmokeScenario? VisualSmokeScenario { get; }
+
+        public Uri? UpdateManifestUri { get; }
+
+        public string? ExpectedUpdateVersion { get; }
 
         public TimeSpan WindowsVirtualFilesSmokeHoldAfterPlaceholder { get; }
 
@@ -134,6 +149,10 @@ namespace Cotton.Sync.Desktop.Startup
             string? secondLocalRoot = ReadOption(args, "--second-local-root");
             string? remotePath = ReadOption(args, "--remote-path");
             string? syncMode = ReadOption(args, "--sync-mode") ?? ReadOption(args, "--materialization-mode");
+            string? updateManifestUri = ReadOption(args, "--update-manifest-url")
+                ?? ReadOption(args, "--update-manifest-uri");
+            string? expectedUpdateVersion = ReadOption(args, "--expected-update-version")
+                ?? ReadOption(args, "--expected-latest-version");
             (SyncPairMode parsedSyncMode, string? syncModeError) = ParseSyncMode(syncMode);
             bool startMinimizedToTray = HasFlag(args, "--start-minimized")
                 || HasFlag(args, "--minimized")
@@ -152,6 +171,8 @@ namespace Cotton.Sync.Desktop.Startup
                 || HasFlag(args, "--vfs-smoke");
             bool runLiveSyncSmoke = HasFlag(args, "--live-sync-smoke")
                 || HasFlag(args, "--desktop-live-sync-smoke");
+            bool runUpdateDiscoverySmoke = HasFlag(args, "--update-discovery-smoke")
+                || HasFlag(args, "--desktop-update-smoke");
             bool liveSyncSmokePreserveExistingLocalFiles =
                 HasFlag(args, "--live-sync-smoke-preserve-existing-local-files");
             bool printVersion = HasFlag(args, "--version")
@@ -168,8 +189,11 @@ namespace Cotton.Sync.Desktop.Startup
                 cleanupCloudFiles,
                 runWindowsVirtualFilesSmoke,
                 runLiveSyncSmoke,
+                runUpdateDiscoverySmoke,
                 printVersion,
                 ParseVisualSmokeScenario(visualSmokeScenario),
+                ParseAbsoluteUri(updateManifestUri),
+                NormalizeOptional(expectedUpdateVersion),
                 ParseNonNegativeSeconds(windowsVirtualFilesSmokeHoldAfterPlaceholder),
                 NormalizeOptional(windowsVirtualFilesSmokePhase),
                 ParseNonNegativeSeconds(liveSyncSmokeApprovalHold),
@@ -215,6 +239,14 @@ namespace Cotton.Sync.Desktop.Startup
         {
             string? normalized = value?.Trim();
             return string.IsNullOrEmpty(normalized) ? null : normalized;
+        }
+
+        private static Uri? ParseAbsoluteUri(string? value)
+        {
+            string? normalized = NormalizeOptional(value);
+            return normalized is not null && Uri.TryCreate(normalized, UriKind.Absolute, out Uri? uri)
+                ? uri
+                : null;
         }
 
         private static DesktopVisualSmokeScenario? ParseVisualSmokeScenario(string? value)

@@ -457,6 +457,9 @@ jobs:
             -AppExecutable $installedExe `
             -DataDirectory $dataDir `
             -ExpectedAppVersion "${{ steps.gitversion.outputs.SemVer }}"
+          & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-update-discovery.ps1" `
+            -AppExecutable $installedExe `
+            -DataDirectory (Join-Path $env:RUNNER_TEMP "cotton-sync-update-discovery-data")
 
           $uninstaller = Join-Path $installDir "unins000.exe"
           if (-not (Test-Path $uninstaller)) {
