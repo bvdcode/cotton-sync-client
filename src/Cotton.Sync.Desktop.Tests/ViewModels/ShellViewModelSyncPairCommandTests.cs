@@ -3382,7 +3382,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 controller.ReportActivity(new DesktopActivitySnapshot(
                     "PlaceholderCreated",
                     path,
-                    "Created placeholder " + path,
+                    "Made cloud file available " + path,
                     startedAtUtc.AddMilliseconds(index * 5),
                     syncPairId));
             }
@@ -3393,7 +3393,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.Activities, Has.Count.EqualTo(initialActivityCount + 1));
                 Assert.That(activity.Kind, Is.EqualTo("PlaceholderCreated"));
                 Assert.That(activity.Path, Is.EqualTo("Cloud/link-099.txt"));
-                Assert.That(activity.Details, Is.EqualTo("Created placeholder Cloud/link-099.txt"));
+                Assert.That(activity.Details, Is.EqualTo("Made cloud file available Cloud/link-099.txt"));
             });
         }
 
@@ -3414,7 +3414,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 controller.ReportActivity(new DesktopActivitySnapshot(
                     "PlaceholderCreated",
                     path,
-                    "Created placeholder " + path,
+                    "Made cloud file available " + path,
                     startedAtUtc.AddMilliseconds(index * 5),
                     syncPairId));
             }

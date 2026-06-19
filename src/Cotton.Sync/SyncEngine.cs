@@ -108,7 +108,7 @@ namespace Cotton.Sync
             if (initialVirtualFilesResult is not null)
             {
                 _logger.LogInformation(
-                    "Completed sync pass for pair {SyncPairId} with {ActivityCount} activities.",
+                    "Completed sync pass for pair {SyncPairId} with Windows virtual-files placeholder work: {ActivityCount} activities, 0 file content transfers.",
                     syncPair.SyncPairId,
                     initialVirtualFilesResult.TotalActivityCount);
                 return initialVirtualFilesResult;

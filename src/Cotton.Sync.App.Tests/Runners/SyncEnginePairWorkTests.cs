@@ -176,7 +176,8 @@ namespace Cotton.Sync.App.Tests.Runners
                 Assert.That(activity.SyncPairId, Is.EqualTo(syncPairId));
                 Assert.That(activity.Type, Is.EqualTo(SyncActivityKind.PlaceholderCreated));
                 Assert.That(activity.ItemPath, Is.EqualTo("Documents/cloud-only.txt"));
-                Assert.That(activity.Message, Does.Contain("Created placeholder Documents/cloud-only.txt"));
+                Assert.That(activity.Message, Does.Contain("Made cloud file available Documents/cloud-only.txt"));
+                Assert.That(activity.Message, Does.Not.Contain("placeholder"));
             });
         }
 

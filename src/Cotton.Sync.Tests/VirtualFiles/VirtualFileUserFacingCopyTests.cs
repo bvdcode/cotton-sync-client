@@ -32,6 +32,8 @@ namespace Cotton.Sync.Tests.VirtualFiles
             {
                 Assert.That(VirtualFileUserFacingCopy.CreatingCloudFilesProgressLabel, Is.EqualTo("Making cloud files available"));
                 Assert.That(VirtualFileUserFacingCopy.PreparingCloudFilesProgressLabel, Is.EqualTo("Preparing cloud files"));
+                Assert.That(VirtualFileUserFacingCopy.CloudFileAvailableActivityVerb, Is.EqualTo("Made cloud file available"));
+                Assert.That(VirtualFileUserFacingCopy.CloudFileAvailableActivityVerb, Does.Not.Contain("placeholder"));
                 Assert.That(VirtualFileUserFacingCopy.CloudFilesProgressUnit, Is.EqualTo("cloud files"));
                 Assert.That(VirtualFileUserFacingCopy.RemoteOnlyLocalChangeRequiresActionMessage, Does.Contain("online-only file"));
                 Assert.That(VirtualFileUserFacingCopy.RemoteOnlyLocalChangeRequiresActionMessage, Does.Not.Contain("placeholder"));
