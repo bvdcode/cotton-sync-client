@@ -45,6 +45,21 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             });
         }
 
+        [Test]
+        public void DesktopProject_PublishesWindowsShellHelperWithReleaseVersionMetadata()
+        {
+            string project = File.ReadAllText(GetDesktopProjectPath());
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(project, Does.Contain("CottonWindowsShellHelperVersionProperties"));
+                Assert.That(project, Does.Contain("-p:Version=&quot;$(Version)&quot;"));
+                Assert.That(project, Does.Contain("-p:AssemblyVersion=&quot;$(AssemblyVersion)&quot;"));
+                Assert.That(project, Does.Contain("-p:FileVersion=&quot;$(FileVersion)&quot;"));
+                Assert.That(project, Does.Contain("-p:InformationalVersion=&quot;$(Version)&quot;"));
+            });
+        }
+
         [TestCase("win-x64")]
         [TestCase("linux-x64")]
         public void PublishProfile_DefinesSelfContainedPortableArtifact(string runtimeIdentifier)
@@ -552,6 +567,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("runs-on: windows-latest"));
                 Assert.That(workflow, Does.Contain("/p:PublishProfile=win-x64"));
                 Assert.That(workflow, Does.Contain("-p:Version='${{ steps.gitversion.outputs.SemVer }}'"));
+                Assert.That(workflow, Does.Contain("-p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}'"));
+                Assert.That(workflow, Does.Contain("-p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}'"));
                 Assert.That(workflow, Does.Contain("Packaging/windows/verify-associated-icon.ps1"));
                 Assert.That(workflow, Does.Contain("-ExpectedIcon \"src/Cotton.Sync.Desktop/Assets/app.ico\""));
                 Assert.That(workflow, Does.Contain("Cotton.Sync.Desktop.exe --self-test --data-dir"));
@@ -983,6 +1000,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("cli-windows:"));
                 Assert.That(workflow, Does.Contain("Sync CLI Windows Package Smoke"));
                 Assert.That(workflow, Does.Contain("dotnet publish src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj"));
+                Assert.That(workflow, Does.Contain("-p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}'"));
+                Assert.That(workflow, Does.Contain("-p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}'"));
                 Assert.That(workflow, Does.Contain("Cotton.Sync.Cli.exe"));
                 Assert.That(workflow, Does.Contain("Packaging/windows/verify-version-metadata.ps1"));
                 Assert.That(workflow, Does.Contain("-Label \"CLI publish executable\""));
@@ -1072,8 +1091,14 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(versionScript, Does.Contain("dotnet gitversion /output json"));
                 Assert.That(versionScript, Does.Contain("$gitVersion.MajorMinorPatch"));
                 Assert.That(versionScript, Does.Contain("GitVersionSemVer"));
+                Assert.That(versionScript, Does.Contain("$assemblyVersion = \"$version.0\""));
+                Assert.That(versionScript, Does.Contain("$fileVersion = \"$version.0\""));
+                Assert.That(versionScript, Does.Contain("AssemblyVersion=$assemblyVersion"));
+                Assert.That(versionScript, Does.Contain("FileVersion=$fileVersion"));
                 Assert.That(workflow, Does.Not.Contain("    paths:"));
                 Assert.That(workflow, Does.Contain("run: ./.github/scripts/determine-version.ps1"));
+                Assert.That(workflow, Does.Contain("-p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}'"));
+                Assert.That(workflow, Does.Contain("-p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}'"));
                 Assert.That(toolManifest, Does.Contain("\"gitversion.tool\""));
                 Assert.That(versionScript, Does.Not.Contain("GITHUB_RUN_NUMBER"));
                 Assert.That(versionScript, Does.Not.Contain("version-run-number-offset"));

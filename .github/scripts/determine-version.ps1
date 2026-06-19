@@ -146,11 +146,15 @@ if ([string]::IsNullOrWhiteSpace($version)) {
 
 $releasePolicy = Get-ReleasePolicyVersion $version
 $version = $releasePolicy.Version
+$assemblyVersion = "$version.0"
+$fileVersion = "$version.0"
 
 if ($env:GITHUB_OUTPUT) {
     "SemVer=$version" >> $env:GITHUB_OUTPUT
     "semVer=$version" >> $env:GITHUB_OUTPUT
     "MajorMinorPatch=$version" >> $env:GITHUB_OUTPUT
+    "AssemblyVersion=$assemblyVersion" >> $env:GITHUB_OUTPUT
+    "FileVersion=$fileVersion" >> $env:GITHUB_OUTPUT
     "GitVersionSemVer=$($gitVersion.SemVer)" >> $env:GITHUB_OUTPUT
     "InformationalVersion=$($gitVersion.InformationalVersion)" >> $env:GITHUB_OUTPUT
     "Sha=$($gitVersion.Sha)" >> $env:GITHUB_OUTPUT
@@ -161,4 +165,6 @@ Write-Host "Release version policy: $($releasePolicy.Policy)"
 Write-Host "GitVersion SemVer: $($gitVersion.SemVer)"
 Write-Host "GitVersion MajorMinorPatch: $($gitVersion.MajorMinorPatch)"
 Write-Host "Release SemVer: $version"
+Write-Host "Release AssemblyVersion: $assemblyVersion"
+Write-Host "Release FileVersion: $fileVersion"
 Write-Host "GitVersion InformationalVersion: $($gitVersion.InformationalVersion)"

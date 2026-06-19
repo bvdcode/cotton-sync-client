@@ -95,7 +95,7 @@ jobs:
         run: dotnet restore src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj
 
       - name: Publish desktop Linux x64
-        run: dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj /p:PublishProfile=linux-x64 -p:Version='${{ steps.gitversion.outputs.SemVer }}' -p:InformationalVersion='${{ steps.gitversion.outputs.SemVer }}'
+        run: dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj /p:PublishProfile=linux-x64 -p:Version='${{ steps.gitversion.outputs.SemVer }}' -p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}' -p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}' -p:InformationalVersion='${{ steps.gitversion.outputs.SemVer }}'
 
       - name: Smoke desktop Linux self-test
         run: |
@@ -307,7 +307,7 @@ jobs:
         run: dotnet restore src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj
 
       - name: Publish desktop Windows x64
-        run: dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj /p:PublishProfile=win-x64 -p:Version='${{ steps.gitversion.outputs.SemVer }}' -p:InformationalVersion='${{ steps.gitversion.outputs.SemVer }}'
+        run: dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj /p:PublishProfile=win-x64 -p:Version='${{ steps.gitversion.outputs.SemVer }}' -p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}' -p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}' -p:InformationalVersion='${{ steps.gitversion.outputs.SemVer }}'
 
       - name: Smoke desktop Windows self-test
         timeout-minutes: 4
@@ -685,7 +685,7 @@ jobs:
         run: dotnet restore src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj
 
       - name: Publish sync CLI Windows x64
-        run: dotnet publish src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:PublishTrimmed=false -p:PublishReadyToRun=false -p:Version='${{ steps.gitversion.outputs.SemVer }}' -p:InformationalVersion='${{ steps.gitversion.outputs.SemVer }}' -o src/Cotton.Sync.Cli/bin/Release/net10.0/publish/win-x64
+        run: dotnet publish src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:PublishTrimmed=false -p:PublishReadyToRun=false -p:Version='${{ steps.gitversion.outputs.SemVer }}' -p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}' -p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}' -p:InformationalVersion='${{ steps.gitversion.outputs.SemVer }}' -o src/Cotton.Sync.Cli/bin/Release/net10.0/publish/win-x64
 
       - name: Smoke sync CLI Windows package
         shell: pwsh
