@@ -376,6 +376,43 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithScopedWindowsVirtualFilesRemoteCreateUsesPathLookupAndCreatesPlaceholder()
+        {
+            const string relativePath = "remote-created.txt";
+            NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote-content"), sizeBytes: 1024);
+            var scanner = new FakeLocalFileScanner();
+            var crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(remote));
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            var engine = new SyncEngine(
+                scanner,
+                crawler,
+                remoteFiles,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { Scope = SyncRunScope.ForLocalChangedPaths([relativePath]) });
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(scanner.ScanCalls, Is.Zero);
+                Assert.That(crawler.PathCrawlCalls, Is.EqualTo(1));
+                Assert.That(crawler.FullCrawlCalls, Is.Zero);
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[] { relativePath }));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.PlaceholderCreated }));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.RemoteFileId, Is.EqualTo(remote.Id));
+                Assert.That(entry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesPreservesRemoteOnlyPlaceholderStateAfterEngineRestart()
         {
             const string relativePath = "remote-only-restart.txt";
@@ -4242,7 +4279,11 @@ namespace Cotton.Sync.Tests
             return Convert.ToHexStringLower(SHA256.HashData(bytes));
         }
 
-        private class FakeLocalFileScanner : ILocalFileScanner, ILocalTreeScanner, ILocalFileMetadataPathLookupScanner
+        private class FakeLocalFileScanner :
+            ILocalFileScanner,
+            ILocalTreeScanner,
+            ILocalFileMetadataPathLookupScanner,
+            ILocalFileContentHasher
         {
             public FakeLocalFileScanner(params LocalFileSnapshot[] files)
             {
@@ -4298,6 +4339,13 @@ namespace Cotton.Sync.Tests
                 }
 
                 return Task.FromResult(snapshot);
+            }
+
+            public Task<string> ComputeContentHashAsync(
+                LocalFileSnapshot localFile,
+                CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(localFile.ContentHash);
             }
         }
 
