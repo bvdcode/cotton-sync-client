@@ -193,7 +193,7 @@ namespace Cotton.Sync.Cli
                     }
 
                     completedIterations++;
-                    totalActivities += pass.Result.Activities.Count + (secondPass?.Result.Activities.Count ?? 0);
+                    totalActivities += GetActivityCount(pass) + (secondPass is null ? 0 : GetActivityCount(secondPass));
                     peakWorkingSetBytes = Math.Max(peakWorkingSetBytes, GetWorkingSetBytes(process));
                     peakManagedMemoryBytes = Math.Max(peakManagedMemoryBytes, GC.GetTotalMemory(forceFullCollection: false));
                     await WriteIterationAsync(output, iteration, pass, secondPass, process, iterationElapsed).ConfigureAwait(false);
@@ -214,8 +214,8 @@ namespace Cotton.Sync.Cli
                         .ConfigureAwait(false);
                 peakWorkingSetBytes = Math.Max(peakWorkingSetBytes, GetWorkingSetBytes(process));
                 peakManagedMemoryBytes = Math.Max(peakManagedMemoryBytes, GC.GetTotalMemory(forceFullCollection: false));
-                finalConvergenceActivities = convergencePass.Result.Activities.Count
-                    + (secondConvergencePass?.Result.Activities.Count ?? 0);
+                finalConvergenceActivities = GetActivityCount(convergencePass)
+                    + (secondConvergencePass is null ? 0 : GetActivityCount(secondConvergencePass));
                 finalStateEntries = convergencePass.StateEntries.Count + (secondConvergencePass?.StateEntries.Count ?? 0);
             }
             catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
@@ -255,7 +255,7 @@ namespace Cotton.Sync.Cli
                 lastPass = await SyncCliRuntimeFactory
                     .RunSinglePassAsync(runtime, CreateSoakRunOptions(), cancellationToken)
                     .ConfigureAwait(false);
-                if (lastPass.Result.Activities.Count == 0 && !lastPass.Result.HasDeferredLocalPaths)
+                if (IsIdle(lastPass))
                 {
                     return lastPass;
                 }
@@ -430,7 +430,7 @@ namespace Cotton.Sync.Cli
                 await output
                     .WriteLineAsync(
                         "Iteration " + iteration.ToStringInvariant()
-                        + ": activities=" + pass.Result.Activities.Count.ToStringInvariant()
+                        + ": activities=" + GetActivityCount(pass).ToStringInvariant()
                         + ", deferredLocalPaths=" + pass.Result.DeferredLocalPaths.Count.ToStringInvariant()
                         + ", stateEntries=" + pass.StateEntries.Count.ToStringInvariant()
                         + metrics)
@@ -441,9 +441,9 @@ namespace Cotton.Sync.Cli
             await output
                 .WriteLineAsync(
                         "Iteration " + iteration.ToStringInvariant()
-                        + ": clientAActivities=" + pass.Result.Activities.Count.ToStringInvariant()
+                        + ": clientAActivities=" + GetActivityCount(pass).ToStringInvariant()
                         + ", clientADeferredLocalPaths=" + pass.Result.DeferredLocalPaths.Count.ToStringInvariant()
-                        + ", clientBActivities=" + secondPass.Result.Activities.Count.ToStringInvariant()
+                        + ", clientBActivities=" + GetActivityCount(secondPass).ToStringInvariant()
                         + ", clientBDeferredLocalPaths=" + secondPass.Result.DeferredLocalPaths.Count.ToStringInvariant()
                         + ", clientAStateEntries=" + pass.StateEntries.Count.ToStringInvariant()
                         + ", clientBStateEntries=" + secondPass.StateEntries.Count.ToStringInvariant()
@@ -532,6 +532,16 @@ namespace Cotton.Sync.Cli
         private static string FormatOptionalInt(int? value)
         {
             return value.HasValue ? value.Value.ToStringInvariant() : "not run";
+        }
+
+        private static bool IsIdle(SyncCliPassResult pass)
+        {
+            return GetActivityCount(pass) == 0 && !pass.Result.HasDeferredLocalPaths;
+        }
+
+        private static int GetActivityCount(SyncCliPassResult pass)
+        {
+            return pass.Result.TotalActivityCount;
         }
 
         private static double CalculateAverageIterationSeconds(TimeSpan totalIterationElapsed, int completedIterations)

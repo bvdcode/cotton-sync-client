@@ -393,14 +393,19 @@ namespace Cotton.Sync.Cli
             await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
         }
 
-        private static async Task WriteSyncOnceSuccessAsync(
+        internal static async Task WriteSyncOnceSuccessAsync(
             TextWriter output,
             SyncCliConnectionOptions options,
             SyncCliPassResult pass)
         {
             await output.WriteLineAsync("Cotton Sync one-shot run").ConfigureAwait(false);
             await output.WriteLineAsync("Sync pair: " + options.SyncPairId).ConfigureAwait(false);
-            await output.WriteLineAsync("Activities: " + pass.Result.Activities.Count.ToStringInvariant()).ConfigureAwait(false);
+            await output.WriteLineAsync("Activities: " + pass.Result.TotalActivityCount.ToStringInvariant()).ConfigureAwait(false);
+            if (pass.Result.IsActivityListTruncated)
+            {
+                await output.WriteLineAsync("Retained activities: " + pass.Result.Activities.Count.ToStringInvariant()).ConfigureAwait(false);
+            }
+
             foreach (SyncActivity activity in pass.Result.Activities)
             {
                 await output

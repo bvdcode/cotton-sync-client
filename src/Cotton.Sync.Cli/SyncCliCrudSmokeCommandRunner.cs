@@ -89,7 +89,7 @@ namespace Cotton.Sync.Cli
                     .ConfigureAwait(false);
                 SyncCliPassResult finalSecond = await RunFinalConvergenceAsync(secondRuntime, cancellationToken)
                     .ConfigureAwait(false);
-                int finalActivities = finalFirst.Result.Activities.Count + finalSecond.Result.Activities.Count;
+                int finalActivities = GetActivityCount(finalFirst) + GetActivityCount(finalSecond);
                 int finalStateEntries = finalFirst.StateEntries.Count + finalSecond.StateEntries.Count;
                 if (finalActivities != 0)
                 {
@@ -148,7 +148,7 @@ namespace Cotton.Sync.Cli
                 .ConfigureAwait(false);
             SyncCliPassResult second = await SyncCliRuntimeFactory.RunSinglePassAsync(secondRuntime, cancellationToken)
                 .ConfigureAwait(false);
-            int activities = first.Result.Activities.Count + second.Result.Activities.Count;
+            int activities = GetActivityCount(first) + GetActivityCount(second);
             await output.WriteLineAsync("PASS: Initial sync reached idle/up-to-date. activities=" + activities.ToStringInvariant())
                 .ConfigureAwait(false);
             return 0;
@@ -295,7 +295,7 @@ namespace Cotton.Sync.Cli
             for (int pass = 1; pass <= MaxFinalConvergencePasses; pass++)
             {
                 lastPass = await SyncCliRuntimeFactory.RunSinglePassAsync(runtime, cancellationToken).ConfigureAwait(false);
-                if (lastPass.Result.Activities.Count == 0 && !lastPass.Result.HasDeferredLocalPaths)
+                if (IsIdle(lastPass))
                 {
                     return lastPass;
                 }
@@ -503,6 +503,16 @@ namespace Cotton.Sync.Cli
                 .Replace('\r', ' ')
                 .Replace('\n', ' ')
                 .Trim();
+        }
+
+        private static bool IsIdle(SyncCliPassResult pass)
+        {
+            return GetActivityCount(pass) == 0 && !pass.Result.HasDeferredLocalPaths;
+        }
+
+        private static int GetActivityCount(SyncCliPassResult pass)
+        {
+            return pass.Result.TotalActivityCount;
         }
     }
 }
