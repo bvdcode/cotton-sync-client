@@ -101,6 +101,7 @@ namespace Cotton.Sync.Desktop.Updates
 
         public async Task<DesktopUpdateDownloadResult> DownloadInstallerAsync(
             DesktopUpdateCheckResult checkResult,
+            IProgress<DesktopUpdateDownloadProgress>? progress = null,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(checkResult);
@@ -158,6 +159,12 @@ namespace Cotton.Sync.Desktop.Updates
                         cancellationToken)
                     .ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
+                long? totalBytes = response.Content.Headers.ContentLength ?? asset.SizeBytes;
+                progress?.Report(new DesktopUpdateDownloadProgress(
+                    checkResult.LatestVersion.ToString(),
+                    asset.Name,
+                    0,
+                    totalBytes));
                 await using (Stream remote = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false))
                 await using (FileStream local = new(
                     tempPath,
@@ -167,7 +174,15 @@ namespace Cotton.Sync.Desktop.Updates
                     bufferSize: 1024 * 128,
                     useAsync: true))
                 {
-                    await remote.CopyToAsync(local, cancellationToken).ConfigureAwait(false);
+                    await CopyToAsync(
+                            remote,
+                            local,
+                            checkResult.LatestVersion.ToString(),
+                            asset.Name,
+                            totalBytes,
+                            progress,
+                            cancellationToken)
+                        .ConfigureAwait(false);
                 }
 
                 FileHashSnapshot hash = await HashFileAsync(tempPath, cancellationToken).ConfigureAwait(false);
@@ -266,6 +281,35 @@ namespace Cotton.Sync.Desktop.Updates
             double multiplier = Math.Pow(2, attempt - 1);
             TimeSpan delay = _retryBaseDelay * multiplier;
             await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+        }
+
+        private static async Task CopyToAsync(
+            Stream remote,
+            Stream local,
+            string version,
+            string assetName,
+            long? totalBytes,
+            IProgress<DesktopUpdateDownloadProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            byte[] buffer = new byte[1024 * 128];
+            long bytesDownloaded = 0;
+            while (true)
+            {
+                int bytesRead = await remote.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+                if (bytesRead == 0)
+                {
+                    break;
+                }
+
+                await local.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
+                bytesDownloaded += bytesRead;
+                progress?.Report(new DesktopUpdateDownloadProgress(
+                    version,
+                    assetName,
+                    bytesDownloaded,
+                    totalBytes));
+            }
         }
 
         private static bool ShouldRetry(HttpStatusCode statusCode)

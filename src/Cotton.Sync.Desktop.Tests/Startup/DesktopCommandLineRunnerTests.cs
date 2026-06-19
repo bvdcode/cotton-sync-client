@@ -489,6 +489,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
 
             public async Task<DesktopUpdateDownloadResult> DownloadInstallerAsync(
                 DesktopUpdateCheckResult checkResult,
+                IProgress<DesktopUpdateDownloadProgress>? progress = null,
                 CancellationToken cancellationToken = default)
             {
                 DownloadCalls++;

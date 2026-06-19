@@ -924,6 +924,7 @@ namespace Cotton.Sync.Desktop.Shell
 
         public async Task<DesktopUpdateStatusSnapshot> DownloadUpdateAsync(
             DesktopUpdateCheckSource source = DesktopUpdateCheckSource.Download,
+            IProgress<DesktopUpdateDownloadProgress>? progress = null,
             CancellationToken cancellationToken = default)
         {
             string sourceName = FormatUpdateCheckSource(source);
@@ -938,7 +939,7 @@ namespace Cotton.Sync.Desktop.Shell
                 }
 
                 DesktopUpdateDownloadResult download = await _updateService
-                    .DownloadInstallerAsync(check, cancellationToken)
+                    .DownloadInstallerAsync(check, progress, cancellationToken)
                     .ConfigureAwait(false);
                 new DesktopPendingUpdateStore(_paths.UpdateCacheDirectory).Save(new DesktopPendingUpdate(
                     check.LatestVersion.ToString(),

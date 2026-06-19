@@ -212,7 +212,10 @@ namespace Cotton.Sync.Desktop.Tests.Updates
                 DesktopUpdatePlatform.WindowsX64);
 
             DesktopUpdateCheckResult check = await service.CheckAsync();
-            DesktopUpdateDownloadResult download = await service.DownloadInstallerAsync(check);
+            var progressReports = new List<DesktopUpdateDownloadProgress>();
+            DesktopUpdateDownloadResult download = await service.DownloadInstallerAsync(
+                check,
+                new InlineProgress<DesktopUpdateDownloadProgress>(progressReports.Add));
 
             Assert.Multiple(() =>
             {
@@ -221,6 +224,11 @@ namespace Cotton.Sync.Desktop.Tests.Updates
                 Assert.That(File.ReadAllBytes(download.FilePath), Is.EqualTo(installerBytes));
                 Assert.That(download.Sha256, Is.EqualTo(Sha256(installerBytes)));
                 Assert.That(download.SizeBytes, Is.EqualTo(installerBytes.Length));
+                Assert.That(progressReports, Has.Count.GreaterThanOrEqualTo(2));
+                Assert.That(progressReports[0].BytesDownloaded, Is.EqualTo(0));
+                Assert.That(progressReports[0].TotalBytes, Is.EqualTo(installerBytes.Length));
+                Assert.That(progressReports[^1].BytesDownloaded, Is.EqualTo(installerBytes.Length));
+                Assert.That(progressReports[^1].TotalBytes, Is.EqualTo(installerBytes.Length));
             });
         }
 
@@ -336,6 +344,21 @@ namespace Cotton.Sync.Desktop.Tests.Updates
                 RequestMessage = request,
                 Content = new ByteArrayContent(body),
             };
+        }
+
+        private sealed class InlineProgress<T> : IProgress<T>
+        {
+            private readonly Action<T> _report;
+
+            public InlineProgress(Action<T> report)
+            {
+                _report = report;
+            }
+
+            public void Report(T value)
+            {
+                _report(value);
+            }
         }
 
         private sealed class StubHttpMessageHandler : HttpMessageHandler
