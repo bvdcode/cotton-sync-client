@@ -15,6 +15,7 @@ namespace Cotton.Sync.VirtualFiles
         public const string CreatingCloudFilesProgressLabel = "Making cloud files available";
         public const string PreparingCloudFilesProgressLabel = "Preparing cloud files";
         public const string CreatingCloudFilesCliStage = "making cloud files available";
+        public const string CloudFileAvailableActivityVerb = "Made cloud file available";
         public const string CloudFilesProgressUnit = "cloud files";
         public const string RemoteOnlyLocalChangeRequiresActionMessage =
             "An online-only file was deleted or moved locally. Restore it from Cotton Sync or delete/rename it from Cotton web before syncing.";

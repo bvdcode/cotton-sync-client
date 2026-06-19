@@ -1243,6 +1243,11 @@ namespace Cotton.Sync.Tests
                     "Completed initial streaming Windows virtual-files population",
                     StringComparison.Ordinal))
                 .Message;
+            string syncCompletionLog = logger.Entries
+                .Single(entry => entry.Message.Contains(
+                    "Completed sync pass for pair pair-a with Windows virtual-files placeholder work",
+                    StringComparison.Ordinal))
+                .Message;
             Assert.Multiple(() =>
             {
                 Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
@@ -1265,6 +1270,8 @@ namespace Cotton.Sync.Tests
                 Assert.That(completionLog, Does.Contain("placeholders/sec"));
                 Assert.That(completionLog, Does.Contain("activities retained 3/3"));
                 Assert.That(completionLog, Does.Contain("truncated=False"));
+                Assert.That(syncCompletionLog, Does.Contain("3 activities"));
+                Assert.That(syncCompletionLog, Does.Contain("0 file content transfers"));
             });
         }
 

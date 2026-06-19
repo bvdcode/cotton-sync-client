@@ -2,6 +2,7 @@
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.Activities;
+using Cotton.Sync.VirtualFiles;
 using CoreSyncActivity = Cotton.Sync.SyncActivity;
 using CoreSyncActivityKind = Cotton.Sync.SyncActivityKind;
 
@@ -46,7 +47,7 @@ namespace Cotton.Sync.App.Runners
             {
                 CoreSyncActivityKind.Uploaded => "Uploaded",
                 CoreSyncActivityKind.Downloaded => "Downloaded",
-                CoreSyncActivityKind.PlaceholderCreated => "Created placeholder",
+                CoreSyncActivityKind.PlaceholderCreated => VirtualFileUserFacingCopy.CloudFileAvailableActivityVerb,
                 CoreSyncActivityKind.Moved => "Moved",
                 CoreSyncActivityKind.DeletedLocal => "Deleted local copy",
                 CoreSyncActivityKind.DeletedRemote => "Deleted remote copy",
