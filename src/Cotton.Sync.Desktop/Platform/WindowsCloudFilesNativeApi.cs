@@ -202,7 +202,7 @@ namespace Cotton.Sync.Desktop.Platform
                 FileShareMode.Read | FileShareMode.Write | FileShareMode.Delete,
                 IntPtr.Zero,
                 FileCreationDisposition.OpenExisting,
-                FileFlagsAndAttributes.OpenReparsePoint,
+                FileFlagsAndAttributes.OpenReparsePoint | FileFlagsAndAttributes.BackupSemantics,
                 IntPtr.Zero);
             if (handle.IsInvalid)
             {
@@ -708,6 +708,7 @@ namespace Cotton.Sync.Desktop.Platform
         private enum FileFlagsAndAttributes : uint
         {
             OpenReparsePoint = 0x00200000,
+            BackupSemantics = 0x02000000,
         }
 
         [Flags]

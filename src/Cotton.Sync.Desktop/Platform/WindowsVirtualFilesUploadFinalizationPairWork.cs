@@ -71,11 +71,28 @@ namespace Cotton.Sync.Desktop.Platform
             using IDisposable subscription = _activityPublisher.Subscribe(collector);
             await runInnerAsync().ConfigureAwait(false);
 
-            foreach (string relativePath in collector.GetUploadedPaths())
+            var finalizedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string relativePath in collector.GetUploadedPaths().SelectMany(CreateFinalizationPaths))
             {
+                if (!finalizedPaths.Add(relativePath))
+                {
+                    continue;
+                }
+
                 cancellationToken.ThrowIfCancellationRequested();
                 _localChangeSuppression?.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, relativePath);
                 _cloudFiles.SetInSyncState(syncPair, relativePath);
+            }
+        }
+
+        private static IEnumerable<string> CreateFinalizationPaths(string relativePath)
+        {
+            yield return relativePath;
+
+            string[] segments = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            for (int length = 1; length < segments.Length; length++)
+            {
+                yield return string.Join("/", segments.Take(length));
             }
         }
 

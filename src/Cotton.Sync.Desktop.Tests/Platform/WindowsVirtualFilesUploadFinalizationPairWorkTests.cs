@@ -18,7 +18,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
             var activityPublisher = new InMemoryAppActivityPublisher();
-            var inner = new PublishingSyncPairWork(activityPublisher, "Docs/report.txt");
+            var inner = new PublishingSyncPairWork(activityPublisher, "Docs/Reports/report.txt");
             var cloudFiles = new RecordingCloudFilesAdapter();
             var suppression = new RecordingLocalChangeSuppression();
             var work = new WindowsVirtualFilesUploadFinalizationPairWork(
@@ -32,10 +32,17 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             Assert.Multiple(() =>
             {
                 Assert.That(inner.Requests, Has.Count.EqualTo(1));
-                Assert.That(cloudFiles.InSyncPaths, Is.EqualTo(new[] { "Docs/report.txt" }));
+                Assert.That(
+                    cloudFiles.InSyncPaths,
+                    Is.EqualTo(new[] { "Docs/Reports/report.txt", "Docs", "Docs/Reports" }));
                 Assert.That(
                     suppression.SuppressedWrites,
-                    Is.EqualTo(new[] { new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs/report.txt") }));
+                    Is.EqualTo(new[]
+                    {
+                        new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs/Reports/report.txt"),
+                        new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs"),
+                        new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs/Reports"),
+                    }));
             });
         }
 
