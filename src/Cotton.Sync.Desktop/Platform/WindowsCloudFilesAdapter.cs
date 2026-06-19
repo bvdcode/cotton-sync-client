@@ -323,7 +323,8 @@ namespace Cotton.Sync.Desktop.Platform
                 placeholderPath.BaseDirectoryPath,
                 placeholderPath.RelativeFileName);
             const string operation = "set-in-sync-state";
-            if (!File.Exists(fullPlaceholderPath) || !_isReparsePoint(fullPlaceholderPath))
+            if ((!File.Exists(fullPlaceholderPath) && !Directory.Exists(fullPlaceholderPath))
+                || !_isReparsePoint(fullPlaceholderPath))
             {
                 _diagnostics.Record(
                     operation,

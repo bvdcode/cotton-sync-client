@@ -515,6 +515,35 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void SetInSyncState_ForwardsDirectoryPlaceholderToNativeBoundary()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                diagnostics: diagnostics,
+                isReparsePoint: _ => true);
+            string root = Path.Combine(_tempDirectory, "root");
+            Directory.CreateDirectory(Path.Combine(root, "Projects"));
+            SyncPairSettings syncPair = CreateSyncPair(root);
+
+            adapter.SetInSyncState(syncPair, "Projects");
+
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    nativeApi.InSyncPaths,
+                    Is.EqualTo(new[] { Path.GetFullPath(Path.Combine(root, "Projects")) }));
+                Assert.That(diagnostic.Operation, Is.EqualTo("set-in-sync-state"));
+                Assert.That(diagnostic.Status, Is.EqualTo("completed"));
+                Assert.That(diagnostic.SyncPairId, Is.EqualTo(syncPair.Id.ToString()));
+                Assert.That(diagnostic.RelativePath, Is.EqualTo("Projects"));
+            });
+        }
+
+        [Test]
         public void TransferData_ForwardsToNativeBoundary()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
@@ -601,6 +630,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<WindowsCloudFilesNativePlaceholder> UpdatedPlaceholders { get; } = [];
 
+            public List<string> InSyncPaths { get; } = [];
+
             public List<PinStateCall> PinStates { get; } = [];
 
             public List<WindowsCloudFilesConnectionRequest> ConnectionRequests { get; } = [];
@@ -686,7 +717,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public void SetInSyncState(string filePath)
             {
-                throw new NotSupportedException();
+                InSyncPaths.Add(filePath);
             }
 
             public WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request)
