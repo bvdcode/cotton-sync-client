@@ -55,6 +55,8 @@ namespace Cotton.Sync.Desktop.Shell
         private readonly IDesktopUpdateService _updateService;
         private readonly IDisposable? _updateServiceLifetime;
         private readonly IDesktopUpdateInstaller _updateInstaller;
+        private DesktopUpdateDiagnosticsSnapshot _lastUpdateDiagnostics =
+            DesktopUpdateDiagnosticsSnapshot.NotChecked(DesktopAppVersion.Current);
         private IDisposable? _activitySubscription;
         private DesktopSyncApplicationHost? _host;
         private IDisposable? _runProgressSubscription;
@@ -868,6 +870,7 @@ namespace Cotton.Sync.Desktop.Shell
                 CreateRuntimeHealthSnapshot(),
                 DesktopNotificationDiagnosticsSnapshot.FromCapability(
                     DesktopNotificationServiceFactory.CreateSelfTestCapabilitySnapshot()),
+                CreateUpdateDiagnosticsSnapshot(),
                 selfTest.Items,
                 WindowsCloudFilesDiagnostics.Shared.Snapshot());
             return await _diagnosticsExporter.ExportAsync(_paths, bundle, cancellationToken).ConfigureAwait(false);
@@ -875,28 +878,65 @@ namespace Cotton.Sync.Desktop.Shell
 
         public async Task<DesktopUpdateStatusSnapshot> CheckForUpdateAsync(CancellationToken cancellationToken = default)
         {
-            DesktopUpdateCheckResult check = await _updateService.CheckAsync(cancellationToken).ConfigureAwait(false);
-            return ToUpdateStatus(check, installerPath: null);
+            const string source = "manual";
+            try
+            {
+                Trace.TraceInformation("Starting desktop update check: source={0}, currentVersion={1}.", source, DesktopAppVersion.Current);
+                DesktopUpdateCheckResult check = await _updateService.CheckAsync(cancellationToken).ConfigureAwait(false);
+                RecordUpdateCheckSuccess(source, check, installerPath: null);
+                Trace.TraceInformation(
+                    "Desktop update check completed: source={0}, currentVersion={1}, latestVersion={2}, updateAvailable={3}, installerAsset={4}.",
+                    source,
+                    check.CurrentVersion,
+                    check.LatestVersion,
+                    check.IsUpdateAvailable,
+                    check.InstallerAsset?.Name ?? "none");
+                return ToUpdateStatus(check, installerPath: null);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                RecordUpdateCheckFailure(source, exception);
+                Trace.TraceWarning("Desktop update check failed: source={0}, error={1}.", source, exception);
+                throw;
+            }
         }
 
         public async Task<DesktopUpdateStatusSnapshot> DownloadUpdateAsync(CancellationToken cancellationToken = default)
         {
-            DesktopUpdateCheckResult check = await _updateService.CheckAsync(cancellationToken).ConfigureAwait(false);
-            if (!check.IsUpdateAvailable || check.InstallerAsset is null)
+            const string source = "download";
+            try
             {
-                return ToUpdateStatus(check, installerPath: null);
-            }
+                Trace.TraceInformation("Starting desktop update download flow: currentVersion={0}.", DesktopAppVersion.Current);
+                DesktopUpdateCheckResult check = await _updateService.CheckAsync(cancellationToken).ConfigureAwait(false);
+                if (!check.IsUpdateAvailable || check.InstallerAsset is null)
+                {
+                    RecordUpdateCheckSuccess(source, check, installerPath: null);
+                    return ToUpdateStatus(check, installerPath: null);
+                }
 
-            DesktopUpdateDownloadResult download = await _updateService
-                .DownloadInstallerAsync(check, cancellationToken)
-                .ConfigureAwait(false);
-            new DesktopPendingUpdateStore(_paths.UpdateCacheDirectory).Save(new DesktopPendingUpdate(
-                check.LatestVersion.ToString(),
-                download.FilePath,
-                download.Sha256,
-                download.SizeBytes,
-                DateTime.UtcNow));
-            return ToUpdateStatus(check, download.FilePath);
+                DesktopUpdateDownloadResult download = await _updateService
+                    .DownloadInstallerAsync(check, cancellationToken)
+                    .ConfigureAwait(false);
+                new DesktopPendingUpdateStore(_paths.UpdateCacheDirectory).Save(new DesktopPendingUpdate(
+                    check.LatestVersion.ToString(),
+                    download.FilePath,
+                    download.Sha256,
+                    download.SizeBytes,
+                    DateTime.UtcNow));
+                RecordUpdateCheckSuccess(source, check, download.FilePath);
+                Trace.TraceInformation(
+                    "Desktop update download completed: latestVersion={0}, installerAsset={1}, sizeBytes={2}.",
+                    check.LatestVersion,
+                    download.InstallerAsset.Name,
+                    download.SizeBytes);
+                return ToUpdateStatus(check, download.FilePath);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                RecordUpdateCheckFailure(source, exception);
+                Trace.TraceWarning("Desktop update download flow failed: error={0}.", exception);
+                throw;
+            }
         }
 
         public Task InstallDownloadedUpdateAsync(
@@ -962,6 +1002,42 @@ namespace Cotton.Sync.Desktop.Shell
             var stateStore = new SqliteSyncStateStore(_paths.SyncStateDatabasePath);
             await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
             return await stateStore.GetDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        private DesktopUpdateDiagnosticsSnapshot CreateUpdateDiagnosticsSnapshot()
+        {
+            DesktopPendingUpdate? pendingUpdate =
+                new DesktopPendingUpdateStore(_paths.UpdateCacheDirectory).TryLoad();
+            return _lastUpdateDiagnostics with
+            {
+                IsUpdateCacheDirectoryPresent = Directory.Exists(_paths.UpdateCacheDirectory),
+                HasPendingUpdate = pendingUpdate is not null,
+                PendingVersion = pendingUpdate?.Version,
+                PendingInstallerSizeBytes = pendingUpdate?.SizeBytes,
+            };
+        }
+
+        private void RecordUpdateCheckSuccess(
+            string source,
+            DesktopUpdateCheckResult check,
+            string? installerPath)
+        {
+            _lastUpdateDiagnostics = DesktopUpdateDiagnosticsSnapshot.FromCheck(
+                source,
+                check,
+                installerPath,
+                DateTimeOffset.UtcNow);
+        }
+
+        private void RecordUpdateCheckFailure(
+            string source,
+            Exception exception)
+        {
+            _lastUpdateDiagnostics = DesktopUpdateDiagnosticsSnapshot.FromFailure(
+                source,
+                DesktopAppVersion.Current,
+                exception,
+                DateTimeOffset.UtcNow);
         }
 
         private static Task<string> CheckLocalRootAsync(
