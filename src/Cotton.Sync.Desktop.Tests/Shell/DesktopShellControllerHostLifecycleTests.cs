@@ -2,7 +2,9 @@
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Net;
+using System.Text.Json;
 using Cotton.Auth;
 using Cotton.Files;
 using Cotton.Nodes;
@@ -275,6 +277,43 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                     Assert.That(session.Email, Does.EndWith("@example.test"));
                     Assert.That(host.App.StartSyncCalls, Is.EqualTo(1));
                     Assert.That(host.AsyncResource.DisposeAsyncCalls, Is.Zero);
+                });
+            }
+            finally
+            {
+                host.App.StartSyncRelease.TrySetResult();
+            }
+        }
+
+        [Test]
+        public async Task ExportDiagnosticsAsync_ReportsZeroPairBackgroundLifecycle()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            Uri serverUrl = new("https://cotton.example.test/");
+            FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
+            host.App.StartSyncStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            host.App.StartSyncRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            using DesktopShellController controller = CreateController(paths, factory);
+
+            try
+            {
+                await controller.SignInWithBrowserAsync(serverUrl.AbsoluteUri);
+                await host.App.StartSyncStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+                JsonElement startingLifecycle = await ReadSyncLifecycleDiagnosticsAsync(controller);
+                Assert.Multiple(() =>
+                {
+                    Assert.That(startingLifecycle.GetProperty("isSignedIn").GetBoolean(), Is.True);
+                    Assert.That(startingLifecycle.GetProperty("syncCoreState").GetString(), Is.EqualTo("starting"));
+                    Assert.That(startingLifecycle.GetProperty("isBackgroundActive").GetBoolean(), Is.True);
+                    Assert.That(startingLifecycle.GetProperty("syncPairCount").GetInt32(), Is.Zero);
+                    Assert.That(startingLifecycle.GetProperty("enabledSyncPairCount").GetInt32(), Is.Zero);
+                    Assert.That(startingLifecycle.GetProperty("hasNoSyncPairs").GetBoolean(), Is.True);
+                    Assert.That(startingLifecycle.GetProperty("isZeroPairBackgroundActive").GetBoolean(), Is.True);
+                    Assert.That(
+                        startingLifecycle.GetProperty("status").GetString(),
+                        Is.EqualTo("zeroPairBackgroundActive"));
                 });
             }
             finally
@@ -873,6 +912,24 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 tokenStorageVerifier: tokenStorageVerifier,
                 savedSessionRestoreRetryBaseDelay: savedSessionRestoreRetryBaseDelay,
                 tokenStorageVerificationTimeout: tokenStorageVerificationTimeout);
+        }
+
+        private static async Task<JsonElement> ReadSyncLifecycleDiagnosticsAsync(DesktopShellController controller)
+        {
+            string archivePath = await controller.ExportDiagnosticsAsync();
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
+            using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
+            return document.RootElement.GetProperty("syncLifecycle").Clone();
+        }
+
+        private static string ReadEntry(ZipArchive archive, string entryName)
+        {
+            ZipArchiveEntry entry = archive.GetEntry(entryName) ?? throw new InvalidOperationException(
+                "Diagnostics archive entry is missing: " + entryName);
+            using Stream stream = entry.Open();
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
         }
 
         private static SyncPairSettings CreateSyncPair(bool isEnabled)

@@ -16,6 +16,7 @@ namespace Cotton.Sync.Desktop.Diagnostics
         IReadOnlyList<DesktopSyncPairSnapshot> SyncPairs,
         SyncStateStoreDiagnostics SyncState,
         DesktopRuntimeHealthSnapshot RuntimeHealth,
+        DesktopSyncLifecycleDiagnosticsSnapshot SyncLifecycle,
         DesktopNotificationDiagnosticsSnapshot Notification,
         DesktopUpdateDiagnosticsSnapshot Update,
         DesktopCloudFilesRegistrationDiagnosticsSnapshot CloudFilesRegistration,

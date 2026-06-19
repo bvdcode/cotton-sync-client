@@ -296,6 +296,44 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         }
 
         [Test]
+        public async Task ExportAsync_SerializesSyncLifecycleDiagnostics()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            var exporter = new DesktopDiagnosticsExporter();
+            var syncLifecycle = new DesktopSyncLifecycleDiagnosticsSnapshot(
+                IsSignedIn: true,
+                SyncCoreState: "running",
+                IsBackgroundActive: true,
+                SyncPairCount: 0,
+                EnabledSyncPairCount: 0,
+                HasNoSyncPairs: true,
+                IsZeroPairBackgroundActive: true,
+                Status: "zeroPairBackgroundActive",
+                Details: "Signed in with no configured sync pairs; sync background is active.");
+
+            string archivePath = await exporter.ExportAsync(
+                paths,
+                CreateBundle(paths, syncLifecycle: syncLifecycle));
+
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
+            using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
+            JsonElement lifecycle = document.RootElement.GetProperty("syncLifecycle");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(lifecycle.GetProperty("isSignedIn").GetBoolean(), Is.True);
+                Assert.That(lifecycle.GetProperty("syncCoreState").GetString(), Is.EqualTo("running"));
+                Assert.That(lifecycle.GetProperty("isBackgroundActive").GetBoolean(), Is.True);
+                Assert.That(lifecycle.GetProperty("syncPairCount").GetInt32(), Is.Zero);
+                Assert.That(lifecycle.GetProperty("enabledSyncPairCount").GetInt32(), Is.Zero);
+                Assert.That(lifecycle.GetProperty("hasNoSyncPairs").GetBoolean(), Is.True);
+                Assert.That(lifecycle.GetProperty("isZeroPairBackgroundActive").GetBoolean(), Is.True);
+                Assert.That(lifecycle.GetProperty("status").GetString(), Is.EqualTo("zeroPairBackgroundActive"));
+            });
+        }
+
+        [Test]
         public async Task ExportAsync_SerializesNotificationDiagnosticsAndSanitizesSelfTestDetails()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
@@ -488,6 +526,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
             IReadOnlyList<WindowsCloudFilesDiagnosticEvent>? cloudFilesEvents = null,
             SyncStateStoreDiagnostics? syncState = null,
             DesktopRuntimeHealthSnapshot? runtimeHealth = null,
+            DesktopSyncLifecycleDiagnosticsSnapshot? syncLifecycle = null,
             DesktopNotificationDiagnosticsSnapshot? notification = null,
             DesktopUpdateDiagnosticsSnapshot? update = null,
             DesktopCloudFilesRegistrationDiagnosticsSnapshot? cloudFilesRegistration = null,
@@ -529,6 +568,16 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                     PrivateMemoryBytes: 2048,
                     ThreadCount: 4,
                     HandleCount: 8),
+                syncLifecycle ?? new DesktopSyncLifecycleDiagnosticsSnapshot(
+                    IsSignedIn: true,
+                    SyncCoreState: "running",
+                    IsBackgroundActive: true,
+                    SyncPairCount: 1,
+                    EnabledSyncPairCount: 1,
+                    HasNoSyncPairs: false,
+                    IsZeroPairBackgroundActive: false,
+                    Status: "configuredPairs",
+                    Details: "Signed in with configured sync pairs."),
                 notification ?? new DesktopNotificationDiagnosticsSnapshot(
                     Platform: "Unsupported",
                     AdapterName: "Unsupported",
