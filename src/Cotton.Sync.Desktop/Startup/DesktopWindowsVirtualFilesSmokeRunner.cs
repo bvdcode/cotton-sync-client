@@ -916,11 +916,10 @@ namespace Cotton.Sync.Desktop.Startup
                     + rootPath)
                     .ConfigureAwait(false);
 
-                Directory.Delete(rootPath, recursive: true);
                 if (!Directory.Exists(rootPath))
                 {
                     await output.WriteLineAsync(
-                        FormatCheck(true, "Unregistered sync root could be removed from the filesystem cleanly.")
+                        FormatCheck(true, "Removing the virtual-files sync pair removed the local placeholder root.")
                         + " root="
                         + rootPath)
                         .ConfigureAwait(false);
@@ -929,7 +928,7 @@ namespace Cotton.Sync.Desktop.Startup
                 {
                     failures++;
                     await output.WriteLineAsync(
-                        FormatCheck(false, "Unregistered sync root still exists after filesystem cleanup.")
+                        FormatCheck(false, "Removing the virtual-files sync pair left the local placeholder root behind.")
                         + " root="
                         + rootPath)
                         .ConfigureAwait(false);

@@ -1564,7 +1564,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             : "Remove " + _pendingRemoveSyncPair.DisplayName + "?";
 
         public string RemoveSyncPairConfirmationMessage => _pendingRemoveSyncPair?.Mode == SyncPairMode.WindowsVirtualFiles
-            ? "Stops syncing this folder. Cloud files stay online; Windows may remove local File Explorer entries from this device."
+            ? "Stops syncing this folder. Cloud files stay online; the local placeholder folder is removed when it has no regular local files."
             : "Stops syncing this folder. Local files stay on this device; cloud files stay online.";
 
         public string RemoveSyncPairConfirmationPath => _pendingRemoveSyncPair?.LocalPath ?? string.Empty;

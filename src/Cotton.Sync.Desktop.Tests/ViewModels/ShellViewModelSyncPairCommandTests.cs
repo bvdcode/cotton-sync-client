@@ -149,7 +149,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Assert.Multiple(() =>
             {
                 Assert.That(viewModel.RemoveSyncPairConfirmationTitle, Is.EqualTo("Remove Desktop?"));
-                Assert.That(viewModel.RemoveSyncPairConfirmationMessage, Is.EqualTo("Stops syncing this folder. Cloud files stay online; Windows may remove local File Explorer entries from this device."));
+                Assert.That(viewModel.RemoveSyncPairConfirmationMessage, Is.EqualTo("Stops syncing this folder. Cloud files stay online; the local placeholder folder is removed when it has no regular local files."));
                 Assert.That(viewModel.RemoveSyncPairConfirmationPath, Does.EndWith("Desktop"));
             });
         }
