@@ -40,12 +40,15 @@ namespace Cotton.Sync.Desktop.ViewModels
         private static readonly TimeSpan MinimumRunTransferSampleDuration = TimeSpan.FromSeconds(1);
         private static readonly TimeSpan MinimumRunProgressEstimateDuration = TimeSpan.FromSeconds(1);
         private static readonly TimeSpan RunProgressEstimateSmoothingPeriod = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan DefaultPeriodicUpdateCheckInterval = TimeSpan.FromHours(6);
 
         private readonly IDesktopShellController _controller;
         private readonly DesktopFeatureFlags _featureFlags;
         private readonly ILocalFolderPicker _folderPicker;
         private readonly IDesktopNotificationService _notificationService;
         private readonly bool _checkForUpdatesOnStartup;
+        private readonly TimeSpan _periodicUpdateCheckInterval;
+        private readonly Func<TimeSpan, CancellationToken, Task> _updateDelayAsync;
         private readonly bool _notifyOnSessionRestore;
         private readonly IDesktopThemeService _themeService;
         private readonly IDesktopUiDispatcher _uiDispatcher;
@@ -89,6 +92,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private string _updateDetailsText = "Check GitHub release for updates.";
         private string _downloadedUpdateInstallerPath = string.Empty;
         private Task? _startupUpdateTask;
+        private Task? _periodicUpdateTask;
         private string _globalStatus = "Loading";
         private bool _hasCurrentRunProgress;
         private bool _hasCurrentTransfer;
@@ -142,6 +146,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private CancellationTokenSource? _serverProbeCancellation;
         private CancellationTokenSource? _browserSignInCancellation;
         private CancellationTokenSource? _startupUpdateCancellation;
+        private CancellationTokenSource? _periodicUpdateCancellation;
         private ConflictRowViewModel? _selectedConflict;
         private RemoteFolderRowViewModel? _selectedRemoteFolder;
         private SyncPairRowViewModel? _selectedSyncPair;
@@ -176,13 +181,18 @@ namespace Cotton.Sync.Desktop.ViewModels
             IDesktopUiDispatcher? uiDispatcher = null,
             DesktopFeatureFlags? featureFlags = null,
             bool checkForUpdatesOnStartup = true,
-            bool notifyOnSessionRestore = false)
+            bool notifyOnSessionRestore = false,
+            TimeSpan? periodicUpdateCheckInterval = null,
+            Func<TimeSpan, CancellationToken, Task>? updateDelayAsync = null)
         {
             _controller = controller ?? throw new ArgumentNullException(nameof(controller));
             _featureFlags = featureFlags ?? DesktopFeatureFlags.Default;
             _folderPicker = folderPicker ?? throw new ArgumentNullException(nameof(folderPicker));
             _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
             _checkForUpdatesOnStartup = checkForUpdatesOnStartup;
+            _periodicUpdateCheckInterval = periodicUpdateCheckInterval ?? DefaultPeriodicUpdateCheckInterval;
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_periodicUpdateCheckInterval, TimeSpan.Zero);
+            _updateDelayAsync = updateDelayAsync ?? Task.Delay;
             _notifyOnSessionRestore = notifyOnSessionRestore;
             _themeService = themeService ?? throw new ArgumentNullException(nameof(themeService));
             _uiDispatcher = uiDispatcher ?? new AvaloniaDesktopUiDispatcher();
@@ -397,6 +407,8 @@ namespace Cotton.Sync.Desktop.ViewModels
         public AsyncRelayCommand InstallUpdateCommand { get; }
 
         internal Task? StartupUpdateTask => _startupUpdateTask;
+
+        internal Task? PeriodicUpdateTask => _periodicUpdateTask;
 
         public string AccountName
         {
@@ -1636,6 +1648,9 @@ namespace Cotton.Sync.Desktop.ViewModels
             _startupUpdateCancellation?.Cancel();
             _startupUpdateCancellation?.Dispose();
             _startupUpdateCancellation = null;
+            _periodicUpdateCancellation?.Cancel();
+            _periodicUpdateCancellation?.Dispose();
+            _periodicUpdateCancellation = null;
         }
 
         public async Task InitializeAsync()
@@ -2754,7 +2769,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             await RunUpdateActionAsync(
                 "Downloading update",
-                () => _controller.DownloadUpdateAsync()).ConfigureAwait(true);
+                () => _controller.DownloadUpdateAsync(DesktopUpdateCheckSource.Download)).ConfigureAwait(true);
         }
 
         private void BeginStartupUpdateCheck()
@@ -2782,13 +2797,58 @@ namespace Cotton.Sync.Desktop.ViewModels
 
                 await RunUpdateActionAsync(
                         "Checking for updates",
-                        () => _controller.DownloadUpdateAsync(cancellationToken),
+                        () => _controller.DownloadUpdateAsync(DesktopUpdateCheckSource.Startup, cancellationToken),
                         updateGlobalStatusOnFailure: false,
                         notifyWhenInstallerReady: true)
                     .ConfigureAwait(true);
             }
             catch (OperationCanceledException)
             {
+            }
+            finally
+            {
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    BeginPeriodicUpdateChecks();
+                }
+            }
+        }
+
+        private void BeginPeriodicUpdateChecks()
+        {
+            _periodicUpdateCancellation?.Cancel();
+            _periodicUpdateCancellation?.Dispose();
+            _periodicUpdateCancellation = new CancellationTokenSource();
+            _periodicUpdateTask = RunPeriodicUpdateChecksAsync(_periodicUpdateCancellation.Token);
+        }
+
+        private async Task RunPeriodicUpdateChecksAsync(CancellationToken cancellationToken)
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    await _updateDelayAsync(_periodicUpdateCheckInterval, cancellationToken).ConfigureAwait(true);
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
+                    if (IsUpdateBusy || IsUpdateReady)
+                    {
+                        continue;
+                    }
+
+                    await RunUpdateActionAsync(
+                            "Checking for updates",
+                            () => _controller.CheckForUpdateAsync(DesktopUpdateCheckSource.Periodic, cancellationToken),
+                            updateGlobalStatusOnFailure: false)
+                        .ConfigureAwait(true);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
             }
         }
 

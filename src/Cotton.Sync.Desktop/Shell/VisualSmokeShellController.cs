@@ -296,7 +296,9 @@ namespace Cotton.Sync.Desktop.Shell
             return Task.FromResult(new DesktopSelfTestSnapshot(items));
         }
 
-        public Task<DesktopUpdateStatusSnapshot> CheckForUpdateAsync(CancellationToken cancellationToken = default)
+        public Task<DesktopUpdateStatusSnapshot> CheckForUpdateAsync(
+            DesktopUpdateCheckSource source = DesktopUpdateCheckSource.Manual,
+            CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(new DesktopUpdateStatusSnapshot(
@@ -309,10 +311,12 @@ namespace Cotton.Sync.Desktop.Shell
                 null));
         }
 
-        public Task<DesktopUpdateStatusSnapshot> DownloadUpdateAsync(CancellationToken cancellationToken = default)
+        public Task<DesktopUpdateStatusSnapshot> DownloadUpdateAsync(
+            DesktopUpdateCheckSource source = DesktopUpdateCheckSource.Download,
+            CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return CheckForUpdateAsync(cancellationToken);
+            return CheckForUpdateAsync(cancellationToken: cancellationToken);
         }
 
         public Task InstallDownloadedUpdateAsync(string installerPath, CancellationToken cancellationToken = default)
