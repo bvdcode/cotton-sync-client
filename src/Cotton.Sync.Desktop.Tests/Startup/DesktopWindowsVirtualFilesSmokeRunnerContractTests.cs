@@ -63,8 +63,15 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(runner, Does.Contain("new SqliteSyncStateStore(paths.SyncStateDatabasePath)"));
                 Assert.That(runner, Does.Contain("CreateDeletionSmokeApplication(syncPairs, stateStore, cloudFiles)"));
                 Assert.That(runner, Does.Contain("DeleteSyncPairAsync(syncPair.Id"));
+                Assert.That(runner, Does.Contain("StopSyncAsync(cancellationToken)"));
                 Assert.That(runner, Does.Contain("Deleting the large virtual-files pair compacted the sync-state database."));
                 Assert.That(runner, Does.Contain("Deleting the large virtual-files pair removed the local placeholder root."));
+                Assert.That(runner, Does.Contain("Large virtual-files pair cleanup runtime health captured."));
+                Assert.That(runner, Does.Contain("ForceFullCollection()"));
+                Assert.That(runner, Does.Contain("workingSetBytes="));
+                Assert.That(runner, Does.Contain("privateMemoryBytes="));
+                Assert.That(runner, Does.Contain("threadCount="));
+                Assert.That(runner, Does.Contain("handleCount="));
             });
         }
 
