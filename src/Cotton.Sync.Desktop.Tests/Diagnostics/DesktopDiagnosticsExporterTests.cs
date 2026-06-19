@@ -296,6 +296,53 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         }
 
         [Test]
+        public async Task ExportAsync_SerializesNotificationDiagnosticsAndSanitizesSelfTestDetails()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            var exporter = new DesktopDiagnosticsExporter();
+            var notification = new DesktopNotificationDiagnosticsSnapshot(
+                Platform: "Windows",
+                AdapterName: "Windows toast",
+                IsSupported: true,
+                IsDeliveryExecutableAvailable: true,
+                IsIconAvailable: true,
+                AppName: "Cotton Sync",
+                AppUserModelId: "Cotton.Sync.Desktop",
+                IsInstalledAppIdentityVerified: false,
+                IdentityStatus: "debug-identity-only",
+                Details: "PowerShell toast delivery helper is available, but installed Start Menu AppUserModelID identity is not verified.");
+            var selfTestItems = new[]
+            {
+                new DesktopSelfTestItemSnapshot(
+                    "Notification adapter",
+                    false,
+                    "adapter: Windows toast; icon: " + paths.DataDirectory,
+                    Skipped: true),
+            };
+
+            string archivePath = await exporter.ExportAsync(
+                paths,
+                CreateBundle(paths, notification: notification, selfTestItems: selfTestItems));
+
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
+            using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
+            JsonElement notificationJson = document.RootElement.GetProperty("notification");
+            JsonElement selfTest = document.RootElement.GetProperty("selfTestItems")[0];
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(notificationJson.GetProperty("platform").GetString(), Is.EqualTo("Windows"));
+                Assert.That(notificationJson.GetProperty("isDeliveryExecutableAvailable").GetBoolean(), Is.True);
+                Assert.That(notificationJson.GetProperty("isInstalledAppIdentityVerified").GetBoolean(), Is.False);
+                Assert.That(notificationJson.GetProperty("identityStatus").GetString(), Is.EqualTo("debug-identity-only"));
+                Assert.That(notificationJson.GetProperty("details").GetString(), Does.Contain("AppUserModelID identity is not verified"));
+                Assert.That(selfTest.GetProperty("details").GetString(), Does.Contain("[data-directory]"));
+                Assert.That(diagnosticsJson, Does.Not.Contain(paths.DataDirectory));
+            });
+        }
+
+        [Test]
         public async Task ExportAsync_RemainsBoundedAfterLargeCloudFilesDiagnosticStorm()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
@@ -344,6 +391,8 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
             IReadOnlyList<WindowsCloudFilesDiagnosticEvent>? cloudFilesEvents = null,
             SyncStateStoreDiagnostics? syncState = null,
             DesktopRuntimeHealthSnapshot? runtimeHealth = null,
+            DesktopNotificationDiagnosticsSnapshot? notification = null,
+            IReadOnlyList<DesktopSelfTestItemSnapshot>? selfTestItems = null,
             string serverUrl = "https://app.cottoncloud.dev/",
             string accountName = "user@example.test",
             string localPath = "/home/user/Documents",
@@ -381,7 +430,18 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                     PrivateMemoryBytes: 2048,
                     ThreadCount: 4,
                     HandleCount: 8),
-                [
+                notification ?? new DesktopNotificationDiagnosticsSnapshot(
+                    Platform: "Unsupported",
+                    AdapterName: "Unsupported",
+                    IsSupported: false,
+                    IsDeliveryExecutableAvailable: false,
+                    IsIconAvailable: false,
+                    AppName: "Cotton Sync",
+                    AppUserModelId: null,
+                    IsInstalledAppIdentityVerified: false,
+                    IdentityStatus: "unsupported",
+                    Details: "Desktop notifications are not fully available."),
+                selfTestItems ?? [
                     new DesktopSelfTestItemSnapshot("Server identity", true, "Cotton Cloud"),
                 ],
                 cloudFilesEvents ?? []);

@@ -28,6 +28,9 @@ namespace Cotton.Sync.Desktop.Diagnostics
                 SyncPairs = bundle.SyncPairs
                     .Select((syncPair, index) => SanitizeSyncPair(syncPair, index))
                     .ToArray(),
+                SelfTestItems = bundle.SelfTestItems
+                    .Select(item => SanitizeSelfTestItem(item, replacements))
+                    .ToArray(),
                 CloudFilesEvents = bundle.CloudFilesEvents
                     .Select(item => SanitizeCloudFilesEvent(item, replacements))
                     .ToArray(),
@@ -98,6 +101,22 @@ namespace Cotton.Sync.Desktop.Diagnostics
             };
         }
 
+        private static DesktopSelfTestItemSnapshot SanitizeSelfTestItem(
+            DesktopSelfTestItemSnapshot item,
+            IReadOnlyList<KnownValueReplacement> replacements)
+        {
+            string details = item.Details;
+            foreach (KnownValueReplacement replacement in replacements)
+            {
+                details = details.Replace(
+                    replacement.Value,
+                    replacement.Placeholder,
+                    StringComparison.OrdinalIgnoreCase);
+            }
+
+            return item with { Details = DesktopSecretRedactor.Redact(details) };
+        }
+
         private static string NormalizeAccountName(string accountName)
         {
             return string.Equals(accountName, "Signed out", StringComparison.OrdinalIgnoreCase)
@@ -118,6 +137,7 @@ namespace Cotton.Sync.Desktop.Diagnostics
                 new(paths.SingleInstanceLockPath, "[single-instance-lock]"),
                 new(paths.LogFilePath, "[log-file]"),
                 new(paths.UpdateCacheDirectory, "[update-cache]"),
+                new(AppContext.BaseDirectory, "[app-base-directory]"),
             };
             if (!string.IsNullOrWhiteSpace(bundle.ServerUrl))
             {

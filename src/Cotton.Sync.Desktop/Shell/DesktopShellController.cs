@@ -866,6 +866,8 @@ namespace Cotton.Sync.Desktop.Shell
                 await BuildSyncPairSnapshotsAsync(syncPairs, cancellationToken).ConfigureAwait(false),
                 syncStateDiagnostics,
                 CreateRuntimeHealthSnapshot(),
+                DesktopNotificationDiagnosticsSnapshot.FromCapability(
+                    DesktopNotificationServiceFactory.CreateSelfTestCapabilitySnapshot()),
                 selfTest.Items,
                 WindowsCloudFilesDiagnostics.Shared.Snapshot());
             return await _diagnosticsExporter.ExportAsync(_paths, bundle, cancellationToken).ConfigureAwait(false);
