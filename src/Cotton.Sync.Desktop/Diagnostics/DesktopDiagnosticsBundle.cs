@@ -18,6 +18,7 @@ namespace Cotton.Sync.Desktop.Diagnostics
         DesktopRuntimeHealthSnapshot RuntimeHealth,
         DesktopNotificationDiagnosticsSnapshot Notification,
         DesktopUpdateDiagnosticsSnapshot Update,
+        DesktopCloudFilesRegistrationDiagnosticsSnapshot CloudFilesRegistration,
         IReadOnlyList<DesktopSelfTestItemSnapshot> SelfTestItems,
         IReadOnlyList<WindowsCloudFilesDiagnosticEvent> CloudFilesEvents);
 }

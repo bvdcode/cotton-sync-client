@@ -37,6 +37,23 @@ namespace Cotton.Sync.Desktop.Platform
             return File.Exists(_helperPath) && Run("is-supported").ExitCode == 0;
         }
 
+        public bool IsRegistered(Guid syncPairId)
+        {
+            WindowsStorageProviderSyncRootCommandResult result = Run("is-registered", ToAccount(syncPairId));
+            if (result.ExitCode == 0)
+            {
+                return true;
+            }
+
+            if (result.ExitCode == 3)
+            {
+                return false;
+            }
+
+            ThrowIfFailed(result, "is-registered");
+            return false;
+        }
+
         public void Register(WindowsStorageProviderSyncRootRegistration registration)
         {
             ArgumentNullException.ThrowIfNull(registration);

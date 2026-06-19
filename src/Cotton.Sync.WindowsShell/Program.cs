@@ -27,7 +27,7 @@ namespace Cotton.Sync.WindowsShell
             {
                 if (args.Length == 0)
                 {
-                    Console.Error.WriteLine("Usage: Cotton.Sync.WindowsShell register <account> <root> <version> <icon-resource> | unregister <account> | unregister-all | is-supported");
+                    Console.Error.WriteLine("Usage: Cotton.Sync.WindowsShell register <account> <root> <version> <icon-resource> | unregister <account> | unregister-all | is-supported | is-registered <account>");
                     return 2;
                 }
 
@@ -37,6 +37,7 @@ namespace Cotton.Sync.WindowsShell
                     "unregister" when args.Length == 2 => Unregister(args[1]),
                     "unregister-all" when args.Length == 1 => UnregisterAll(),
                     "is-supported" => StorageProviderSyncRootManager.IsSupported() ? 0 : 1,
+                    "is-registered" when args.Length == 2 => IsRegistered(args[1]),
                     _ => 2,
                 };
             }
@@ -144,6 +145,17 @@ namespace Cotton.Sync.WindowsShell
             StorageProviderSyncRootManager.Unregister(syncRootId);
             Console.WriteLine("unregistered " + syncRootId);
             return 0;
+        }
+
+        private static int IsRegistered(string account)
+        {
+            string syncRootId = CreateSyncRootId(account);
+            bool isRegistered = StorageProviderSyncRootManager.IsSupported()
+                && StorageProviderSyncRootManager
+                    .GetCurrentSyncRoots()
+                    .Any(root => string.Equals(root.Id, syncRootId, StringComparison.Ordinal));
+            Console.WriteLine((isRegistered ? "registered " : "not registered ") + syncRootId);
+            return isRegistered ? 0 : 3;
         }
 
         private static int RemoveOrphanedShellNamespaceRoots(string syncRootIdPrefix)

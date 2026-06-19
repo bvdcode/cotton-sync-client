@@ -389,6 +389,57 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         }
 
         [Test]
+        public async Task ExportAsync_SerializesCloudFilesRegistrationDiagnosticsWithoutLocalPaths()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            var exporter = new DesktopDiagnosticsExporter();
+            const string localRoot = @"C:\Users\Person\Cotton\Virtual";
+            var cloudFilesRegistration = new DesktopCloudFilesRegistrationDiagnosticsSnapshot(
+                IsWindows: true,
+                IsStorageProviderHelperAvailable: true,
+                IsStorageProviderSupported: true,
+                VirtualFilesSyncPairCount: 1,
+                RegisteredSyncPairCount: 1,
+                MissingSyncPairCount: 0,
+                UnknownSyncPairCount: 0,
+                [
+                    new DesktopCloudFilesSyncPairRegistrationSnapshot(
+                        Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                        "Private virtual root",
+                        localRoot,
+                        IsEnabled: true,
+                        IsExpectedRegistered: true,
+                        IsRegistered: true,
+                        Status: "registered",
+                        Details: "Registered at " + localRoot),
+                ]);
+
+            string archivePath = await exporter.ExportAsync(
+                paths,
+                CreateBundle(paths, cloudFilesRegistration: cloudFilesRegistration));
+
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
+            using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
+            JsonElement registration = document.RootElement.GetProperty("cloudFilesRegistration");
+            JsonElement pair = registration.GetProperty("syncPairs")[0];
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(registration.GetProperty("virtualFilesSyncPairCount").GetInt32(), Is.EqualTo(1));
+                Assert.That(registration.GetProperty("registeredSyncPairCount").GetInt32(), Is.EqualTo(1));
+                Assert.That(pair.GetProperty("syncPairId").GetString(), Is.EqualTo(Guid.Empty.ToString()));
+                Assert.That(pair.GetProperty("displayName").GetString(), Is.EqualTo("[cloud-files-sync-pair-1-name]"));
+                Assert.That(pair.GetProperty("localRootPath").GetString(), Is.EqualTo("[cloud-files-sync-pair-1-local-root]"));
+                Assert.That(pair.GetProperty("status").GetString(), Is.EqualTo("registered"));
+                Assert.That(pair.GetProperty("details").GetString(), Does.Contain("[cloud-files-sync-pair-1-local-root]"));
+                Assert.That(diagnosticsJson, Does.Not.Contain(localRoot));
+                Assert.That(diagnosticsJson, Does.Not.Contain("Private virtual root"));
+                Assert.That(diagnosticsJson, Does.Not.Contain("11111111-1111-1111-1111-111111111111"));
+            });
+        }
+
+        [Test]
         public async Task ExportAsync_RemainsBoundedAfterLargeCloudFilesDiagnosticStorm()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
@@ -439,6 +490,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
             DesktopRuntimeHealthSnapshot? runtimeHealth = null,
             DesktopNotificationDiagnosticsSnapshot? notification = null,
             DesktopUpdateDiagnosticsSnapshot? update = null,
+            DesktopCloudFilesRegistrationDiagnosticsSnapshot? cloudFilesRegistration = null,
             IReadOnlyList<DesktopSelfTestItemSnapshot>? selfTestItems = null,
             string serverUrl = "https://app.cottoncloud.dev/",
             string accountName = "user@example.test",
@@ -489,6 +541,15 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                     IdentityStatus: "unsupported",
                     Details: "Desktop notifications are not fully available."),
                 update ?? DesktopUpdateDiagnosticsSnapshot.NotChecked("1.0.0"),
+                cloudFilesRegistration ?? new DesktopCloudFilesRegistrationDiagnosticsSnapshot(
+                    IsWindows: false,
+                    IsStorageProviderHelperAvailable: false,
+                    IsStorageProviderSupported: null,
+                    VirtualFilesSyncPairCount: 0,
+                    RegisteredSyncPairCount: 0,
+                    MissingSyncPairCount: 0,
+                    UnknownSyncPairCount: 0,
+                    []),
                 selfTestItems ?? [
                     new DesktopSelfTestItemSnapshot("Server identity", true, "Cotton Cloud"),
                 ],
