@@ -715,6 +715,7 @@ namespace Cotton.Sync
             int stateFileWriteBatches = 0;
             int stateDirectoryRowsWritten = 0;
             DateTime? lastPlaceholderProgressReportedAtUtc = null;
+            var remoteScanProgress = new RemoteTreeScanProgressCounter();
             ReportRunProgress(options, SyncRunProgressStage.CreatingPlaceholders, 0, null, null, startedAtUtc);
 
             using IDisposable? providerWriteBurst = _remoteFilePlaceholderPopulationObserver
@@ -730,6 +731,7 @@ namespace Cotton.Sync
                 startedAtUtc,
                 channel,
                 sink,
+                remoteScanProgress,
                 streamingCancellation.Token);
             Task consumer = ConsumeInitialWindowsVirtualFilesPopulationAsync(
                 syncPair,
@@ -798,10 +800,11 @@ namespace Cotton.Sync
                 : createdPlaceholders / stopwatch.Elapsed.TotalSeconds;
             long completedManagedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
             _logger.LogInformation(
-                "Completed initial streaming Windows virtual-files population for pair {SyncPairId} with {DirectoryCount} directories discovered, {FileCount} files discovered, {CompletedFileCount} file items completed, {CreatedPlaceholderCount} placeholders created or refreshed, {SkippedCurrentPlaceholderCount} current placeholders skipped, {SkippedUnavailablePlaceholderCount} placeholders skipped with user action in {ElapsedMilliseconds} ms at {CreatedPlaceholderRatePerSecond:F2} placeholders/sec; state writes {StateFileRowsWritten} file rows, file write batches {StateFileWriteBatchCount}, directory rows {StateDirectoryRowsWritten}; managed heap start={StartingManagedHeapBytes} bytes, completed={CompletedManagedHeapBytes} bytes, delta={ManagedHeapDeltaBytes} bytes; queue capacity={QueueCapacity}, placeholder concurrency={PlaceholderConcurrency}, placeholder batch size={PlaceholderBatchSize}, state batch size={StateBatchSize}; activities retained {RetainedActivityCount}/{TotalActivityCount}, truncated={ActivityListTruncated}.",
+                "Completed initial streaming Windows virtual-files population for pair {SyncPairId} with {DirectoryCount} directories discovered, {FileCount} files discovered, remote pages read={RemotePageCount}, {CompletedFileCount} file items completed, {CreatedPlaceholderCount} placeholders created or refreshed, {SkippedCurrentPlaceholderCount} current placeholders skipped, {SkippedUnavailablePlaceholderCount} placeholders skipped with user action in {ElapsedMilliseconds} ms at {CreatedPlaceholderRatePerSecond:F2} placeholders/sec; state writes {StateFileRowsWritten} file rows, file write batches {StateFileWriteBatchCount}, directory rows {StateDirectoryRowsWritten}; managed heap start={StartingManagedHeapBytes} bytes, completed={CompletedManagedHeapBytes} bytes, delta={ManagedHeapDeltaBytes} bytes; queue capacity={QueueCapacity}, placeholder concurrency={PlaceholderConcurrency}, placeholder batch size={PlaceholderBatchSize}, state batch size={StateBatchSize}; activities retained {RetainedActivityCount}/{TotalActivityCount}, truncated={ActivityListTruncated}.",
                 syncPair.SyncPairId,
                 Volatile.Read(ref discoveredDirectories),
                 Volatile.Read(ref discoveredFiles),
+                remoteScanProgress.PagesScanned,
                 completedFiles,
                 createdPlaceholders,
                 skippedCurrentPlaceholders,
@@ -1097,6 +1100,7 @@ namespace Cotton.Sync
             DateTime startedAtUtc,
             Channel<InitialVirtualFilesPopulationItem> channel,
             IRemoteTreeStreamSink sink,
+            IProgress<RemoteTreeScanProgress> progress,
             CancellationToken cancellationToken)
         {
             try
@@ -1105,7 +1109,7 @@ namespace Cotton.Sync
                     .CrawlStreamingAsync(
                         syncPair.RemoteRootNodeId,
                         sink,
-                        progress: null,
+                        progress,
                         cancellationToken)
                     .ConfigureAwait(false);
                 channel.Writer.TryComplete();
@@ -4181,6 +4185,28 @@ namespace Cotton.Sync
                 await _writer.WriteAsync(new InitialVirtualFilesFilePopulationItem(file), cancellationToken)
                     .ConfigureAwait(false);
                 _onFileDiscovered();
+            }
+        }
+
+        private sealed class RemoteTreeScanProgressCounter : IProgress<RemoteTreeScanProgress>
+        {
+            private int _pagesScanned;
+
+            public int PagesScanned => Volatile.Read(ref _pagesScanned);
+
+            public void Report(RemoteTreeScanProgress value)
+            {
+                ArgumentNullException.ThrowIfNull(value);
+                int current;
+                do
+                {
+                    current = Volatile.Read(ref _pagesScanned);
+                    if (value.PagesScanned <= current)
+                    {
+                        return;
+                    }
+                }
+                while (Interlocked.CompareExchange(ref _pagesScanned, value.PagesScanned, current) != current);
             }
         }
 

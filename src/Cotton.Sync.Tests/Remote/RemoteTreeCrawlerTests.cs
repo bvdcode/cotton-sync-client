@@ -35,8 +35,9 @@ namespace Cotton.Sync.Tests.Remote
                 Files = [File(docsId, "report.txt")],
             };
             var crawler = new RemoteTreeCrawler(client, pageSize: 2);
+            var progress = new RecordingProgress<RemoteTreeScanProgress>();
 
-            RemoteTreeSnapshot snapshot = await crawler.CrawlAsync(rootId);
+            RemoteTreeSnapshot snapshot = await crawler.CrawlAsync(rootId, progress);
 
             Assert.Multiple(() =>
             {
@@ -44,6 +45,7 @@ namespace Cotton.Sync.Tests.Remote
                 Assert.That(snapshot.Directories.Select(x => x.RelativePath), Is.EqualTo(new[] { "Docs" }));
                 Assert.That(snapshot.Files.Select(x => x.RelativePath), Is.EqualTo(new[] { "Docs/report.txt", "later.txt", "root.txt" }));
                 Assert.That(client.GetChildrenCalls, Is.EqualTo(new[] { (rootId, 1), (docsId, 1), (rootId, 2) }));
+                Assert.That(progress.Values[^1].PagesScanned, Is.EqualTo(3));
             });
         }
 
@@ -124,6 +126,7 @@ namespace Cotton.Sync.Tests.Remote
                 Assert.That(progress.Values, Has.Count.GreaterThanOrEqualTo(3));
                 Assert.That(progress.Values[^1].FilesScanned, Is.EqualTo(2));
                 Assert.That(progress.Values[^1].DirectoriesScanned, Is.EqualTo(1));
+                Assert.That(progress.Values[^1].PagesScanned, Is.EqualTo(2));
             });
         }
 
@@ -286,14 +289,16 @@ namespace Cotton.Sync.Tests.Remote
             };
             var crawler = new RemoteTreeCrawler(client, pageSize: 1, streamingConcurrency: 3);
             var sink = new RecordingStreamSink();
+            var progress = new RecordingProgress<RemoteTreeScanProgress>();
 
-            await crawler.CrawlStreamingAsync(rootId, sink, progress: null);
+            await crawler.CrawlStreamingAsync(rootId, sink, progress);
 
             Assert.Multiple(() =>
             {
                 Assert.That(sink.Directories.Select(directory => directory.RelativePath), Is.EquivalentTo(new[] { "Docs", "Photos", "Videos" }));
                 Assert.That(sink.Files.Select(file => file.RelativePath), Is.EquivalentTo(new[] { "Docs/report.txt", "Photos/photo.jpg", "Videos/clip.mp4" }));
                 Assert.That(client.MaxConcurrentGetChildrenCalls, Is.GreaterThan(1));
+                Assert.That(progress.Values[^1].PagesScanned, Is.EqualTo(4));
             });
         }
 

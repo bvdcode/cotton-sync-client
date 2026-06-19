@@ -123,7 +123,7 @@ namespace Cotton.Sync.Remote
                             if (TryAddDirectory(snapshot, directory))
                             {
                                 directoriesScanned++;
-                                ReportDirectoryScanProgress(progress, filesScanned, directoriesScanned, directory.RelativePath);
+                                ReportDirectoryScanProgress(progress, filesScanned, directoriesScanned, pagesScanned: 0, directory.RelativePath);
                             }
                         },
                         cancellationToken)
@@ -133,7 +133,7 @@ namespace Cotton.Sync.Remote
                     if (TryAddFile(snapshot, resolution.File))
                     {
                         filesScanned++;
-                        ReportScanProgress(progress, filesScanned, directoriesScanned, resolution.File.RelativePath);
+                        ReportScanProgress(progress, filesScanned, directoriesScanned, pagesScanned: 0, resolution.File.RelativePath);
                     }
 
                     continue;
@@ -183,7 +183,8 @@ namespace Cotton.Sync.Remote
             pending.Push(new RemoteCrawlFrame(root, rootRelativePath, Page: 1, Loaded: 0));
             int directoriesScanned = 0;
             int filesScanned = 0;
-            progress?.Report(new RemoteTreeScanProgress(filesScanned, directoriesScanned, currentPath: null));
+            int pagesScanned = 0;
+            progress?.Report(new RemoteTreeScanProgress(filesScanned, directoriesScanned, currentPath: null, pagesScanned: pagesScanned));
 
             while (pending.Count > 0)
             {
@@ -195,6 +196,7 @@ namespace Cotton.Sync.Remote
                     _pageSize,
                     depth: 0,
                     cancellationToken).ConfigureAwait(false);
+                pagesScanned++;
                 var childDirectories = new List<RemoteCrawlFrame>(children.Nodes.Count);
                 foreach (NodeDto childNode in children.Nodes)
                 {
@@ -210,7 +212,7 @@ namespace Cotton.Sync.Remote
                         Node = childNode,
                     });
                     directoriesScanned++;
-                    ReportDirectoryScanProgress(progress, filesScanned, directoriesScanned, relativePath);
+                    ReportDirectoryScanProgress(progress, filesScanned, directoriesScanned, pagesScanned, relativePath);
                     childDirectories.Add(new RemoteCrawlFrame(childNode, relativePath, Page: 1, Loaded: 0));
                 }
 
@@ -228,7 +230,7 @@ namespace Cotton.Sync.Remote
                         File = file,
                     });
                     filesScanned++;
-                    ReportScanProgress(progress, filesScanned, directoriesScanned, relativePath);
+                    ReportScanProgress(progress, filesScanned, directoriesScanned, pagesScanned, relativePath);
                 }
 
                 int count = children.Nodes.Count + children.Files.Count;
@@ -244,7 +246,7 @@ namespace Cotton.Sync.Remote
                 }
             }
 
-            progress?.Report(new RemoteTreeScanProgress(filesScanned, directoriesScanned, currentPath: null));
+            progress?.Report(new RemoteTreeScanProgress(filesScanned, directoriesScanned, currentPath: null, pagesScanned: pagesScanned));
             return root;
         }
 
@@ -265,7 +267,8 @@ namespace Cotton.Sync.Remote
             int pendingFrames = 0;
             int directoriesScanned = 0;
             int filesScanned = 0;
-            progress?.Report(new RemoteTreeScanProgress(filesScanned, directoriesScanned, currentPath: null));
+            int pagesScanned = 0;
+            progress?.Report(new RemoteTreeScanProgress(filesScanned, directoriesScanned, currentPath: null, pagesScanned: pagesScanned));
 
             async ValueTask EnqueueFrameAsync(RemoteCrawlFrame frame)
             {
@@ -299,8 +302,10 @@ namespace Cotton.Sync.Remote
                     progress,
                     () => Volatile.Read(ref filesScanned),
                     () => Volatile.Read(ref directoriesScanned),
+                    () => Volatile.Read(ref pagesScanned),
                     value => Interlocked.Add(ref filesScanned, value),
                     value => Interlocked.Add(ref directoriesScanned, value),
+                    value => Interlocked.Add(ref pagesScanned, value),
                     EnqueueFrameAsync,
                     CompleteFrame,
                     cancellationToken))
@@ -318,7 +323,8 @@ namespace Cotton.Sync.Remote
             progress?.Report(new RemoteTreeScanProgress(
                 Volatile.Read(ref filesScanned),
                 Volatile.Read(ref directoriesScanned),
-                currentPath: null));
+                currentPath: null,
+                pagesScanned: Volatile.Read(ref pagesScanned)));
             return root;
         }
 
@@ -328,8 +334,10 @@ namespace Cotton.Sync.Remote
             IProgress<RemoteTreeScanProgress>? progress,
             Func<int> getFilesScanned,
             Func<int> getDirectoriesScanned,
+            Func<int> getPagesScanned,
             Func<int, int> addFilesScanned,
             Func<int, int> addDirectoriesScanned,
+            Func<int, int> addPagesScanned,
             Func<RemoteCrawlFrame, ValueTask> enqueueFrameAsync,
             Action completeFrame,
             CancellationToken cancellationToken)
@@ -345,6 +353,7 @@ namespace Cotton.Sync.Remote
                         _pageSize,
                         depth: 0,
                         cancellationToken).ConfigureAwait(false);
+                    int pagesScanned = addPagesScanned(1);
                     var childDirectories = new List<RemoteCrawlFrame>(children.Nodes.Count);
                     foreach (NodeDto childNode in children.Nodes)
                     {
@@ -361,7 +370,7 @@ namespace Cotton.Sync.Remote
                         };
                         await sink.AddDirectoryAsync(directory, cancellationToken).ConfigureAwait(false);
                         int directoriesScanned = addDirectoriesScanned(1);
-                        ReportDirectoryScanProgress(progress, getFilesScanned(), directoriesScanned, relativePath);
+                        ReportDirectoryScanProgress(progress, getFilesScanned(), directoriesScanned, pagesScanned, relativePath);
                         childDirectories.Add(new RemoteCrawlFrame(childNode, relativePath, Page: 1, Loaded: 0));
                     }
 
@@ -383,7 +392,7 @@ namespace Cotton.Sync.Remote
                                 cancellationToken)
                             .ConfigureAwait(false);
                         int filesScanned = addFilesScanned(1);
-                        ReportScanProgress(progress, filesScanned, getDirectoriesScanned(), relativePath);
+                        ReportScanProgress(progress, filesScanned, getDirectoriesScanned(), getPagesScanned(), relativePath);
                     }
 
                     int count = children.Nodes.Count + children.Files.Count;
@@ -515,6 +524,7 @@ namespace Cotton.Sync.Remote
             IProgress<RemoteTreeScanProgress>? progress,
             int filesScanned,
             int directoriesScanned,
+            int pagesScanned,
             string currentPath)
         {
             if (progress is null)
@@ -524,7 +534,7 @@ namespace Cotton.Sync.Remote
 
             if (filesScanned == 1 || filesScanned % ProgressReportItemInterval == 0)
             {
-                progress.Report(new RemoteTreeScanProgress(filesScanned, directoriesScanned, currentPath));
+                progress.Report(new RemoteTreeScanProgress(filesScanned, directoriesScanned, currentPath, pagesScanned));
             }
         }
 
@@ -532,6 +542,7 @@ namespace Cotton.Sync.Remote
             IProgress<RemoteTreeScanProgress>? progress,
             int filesScanned,
             int directoriesScanned,
+            int pagesScanned,
             string currentPath)
         {
             if (progress is null)
@@ -541,7 +552,7 @@ namespace Cotton.Sync.Remote
 
             if (directoriesScanned == 1 || directoriesScanned % ProgressReportItemInterval == 0)
             {
-                progress.Report(new RemoteTreeScanProgress(filesScanned, directoriesScanned, currentPath));
+                progress.Report(new RemoteTreeScanProgress(filesScanned, directoriesScanned, currentPath, pagesScanned));
             }
         }
 
