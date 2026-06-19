@@ -18,6 +18,7 @@ namespace Cotton.Sync.Desktop.Tests.Updates
                 Assert.That(arguments, Does.Contain("/SUPPRESSMSGBOXES"));
                 Assert.That(arguments, Does.Contain("/NORESTART"));
                 Assert.That(arguments, Does.Contain("/CLOSEAPPLICATIONS"));
+                Assert.That(arguments, Does.Contain("/FORCECLOSEAPPLICATIONS"));
                 Assert.That(arguments, Does.Contain("/LaunchAfterUpdate=1"));
             });
         }
@@ -33,6 +34,7 @@ namespace Cotton.Sync.Desktop.Tests.Updates
                 Assert.That(arguments, Does.Contain("/SUPPRESSMSGBOXES"));
                 Assert.That(arguments, Does.Contain("/NORESTART"));
                 Assert.That(arguments, Does.Contain("/CLOSEAPPLICATIONS"));
+                Assert.That(arguments, Does.Contain("/FORCECLOSEAPPLICATIONS"));
                 Assert.That(arguments, Does.Not.Contain("/LaunchAfterUpdate=1"));
             });
         }
