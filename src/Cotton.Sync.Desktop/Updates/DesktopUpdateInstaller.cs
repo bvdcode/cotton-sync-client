@@ -7,6 +7,8 @@ namespace Cotton.Sync.Desktop.Updates
 {
     internal sealed class DesktopUpdateInstaller : IDesktopUpdateInstaller
     {
+        private static readonly TimeSpan EarlyFailureProbeTimeout = TimeSpan.FromSeconds(2);
+
         public void StartSilentInstall(
             string installerPath,
             bool launchAfterUpdate)
@@ -28,6 +30,15 @@ namespace Cotton.Sync.Desktop.Updates
             if (process is null)
             {
                 throw new InvalidOperationException("Cotton Sync update installer could not be started.");
+            }
+
+            if (process.WaitForExit((int)EarlyFailureProbeTimeout.TotalMilliseconds)
+                && process.ExitCode != 0)
+            {
+                throw new InvalidOperationException(
+                    "Cotton Sync update installer exited before installing the update. Exit code: "
+                    + process.ExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ".");
             }
         }
 
