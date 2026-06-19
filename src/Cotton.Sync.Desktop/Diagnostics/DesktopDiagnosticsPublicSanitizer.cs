@@ -32,6 +32,7 @@ namespace Cotton.Sync.Desktop.Diagnostics
                     .Select(item => SanitizeSelfTestItem(item, replacements))
                     .ToArray(),
                 Update = SanitizeUpdate(bundle.Update, replacements),
+                CloudFilesRegistration = SanitizeCloudFilesRegistration(bundle.CloudFilesRegistration, replacements),
                 CloudFilesEvents = bundle.CloudFilesEvents
                     .Select(item => SanitizeCloudFilesEvent(item, replacements))
                     .ToArray(),
@@ -139,6 +140,46 @@ namespace Cotton.Sync.Desktop.Diagnostics
             return update with { FailureMessage = failureMessage };
         }
 
+        private static DesktopCloudFilesRegistrationDiagnosticsSnapshot SanitizeCloudFilesRegistration(
+            DesktopCloudFilesRegistrationDiagnosticsSnapshot registration,
+            IReadOnlyList<KnownValueReplacement> replacements)
+        {
+            return registration with
+            {
+                SyncPairs = registration.SyncPairs
+                    .Select((pair, index) => SanitizeCloudFilesRegistrationPair(pair, index, replacements))
+                    .ToArray(),
+            };
+        }
+
+        private static DesktopCloudFilesSyncPairRegistrationSnapshot SanitizeCloudFilesRegistrationPair(
+            DesktopCloudFilesSyncPairRegistrationSnapshot pair,
+            int index,
+            IReadOnlyList<KnownValueReplacement> replacements)
+        {
+            int displayIndex = index + 1;
+            string details = pair.Details;
+            foreach (KnownValueReplacement replacement in replacements)
+            {
+                details = details.Replace(
+                    replacement.Value,
+                    replacement.Placeholder,
+                    StringComparison.OrdinalIgnoreCase);
+            }
+
+            return pair with
+            {
+                SyncPairId = Guid.Empty,
+                DisplayName = "[cloud-files-sync-pair-"
+                    + displayIndex.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + "-name]",
+                LocalRootPath = "[cloud-files-sync-pair-"
+                    + displayIndex.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + "-local-root]",
+                Details = DesktopSecretRedactor.Redact(details),
+            };
+        }
+
         private static string NormalizeAccountName(string accountName)
         {
             return string.Equals(accountName, "Signed out", StringComparison.OrdinalIgnoreCase)
@@ -186,6 +227,14 @@ namespace Cotton.Sync.Desktop.Diagnostics
             {
                 AddIfUseful(replacements, item.LocalRootPath, "[cloud-files-local-root]");
                 AddIfUseful(replacements, item.RelativePath, "[cloud-files-relative-path]");
+            }
+
+            for (int index = 0; index < bundle.CloudFilesRegistration.SyncPairs.Count; index++)
+            {
+                DesktopCloudFilesSyncPairRegistrationSnapshot pair = bundle.CloudFilesRegistration.SyncPairs[index];
+                int displayIndex = index + 1;
+                AddIfUseful(replacements, pair.DisplayName, "[cloud-files-sync-pair-" + displayIndex.ToString(System.Globalization.CultureInfo.InvariantCulture) + "-name]");
+                AddIfUseful(replacements, pair.LocalRootPath, "[cloud-files-sync-pair-" + displayIndex.ToString(System.Globalization.CultureInfo.InvariantCulture) + "-local-root]");
             }
 
             return replacements

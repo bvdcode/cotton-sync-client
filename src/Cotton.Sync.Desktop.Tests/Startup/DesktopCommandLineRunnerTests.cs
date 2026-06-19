@@ -394,6 +394,11 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 return true;
             }
 
+            public bool IsRegistered(Guid syncPairId)
+            {
+                throw new NotSupportedException();
+            }
+
             public void Register(WindowsStorageProviderSyncRootRegistration registration)
             {
                 throw new NotSupportedException();

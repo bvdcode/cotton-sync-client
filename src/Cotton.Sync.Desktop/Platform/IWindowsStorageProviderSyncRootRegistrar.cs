@@ -7,6 +7,8 @@ namespace Cotton.Sync.Desktop.Platform
     {
         bool IsSupported();
 
+        bool IsRegistered(Guid syncPairId);
+
         void Register(WindowsStorageProviderSyncRootRegistration registration);
 
         void Unregister(Guid syncPairId);

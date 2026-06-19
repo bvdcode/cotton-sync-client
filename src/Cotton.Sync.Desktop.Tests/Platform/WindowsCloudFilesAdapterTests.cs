@@ -741,6 +741,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 return true;
             }
 
+            public bool IsRegistered(Guid syncPairId)
+            {
+                return Registrations.Any(registration => registration.SyncPairId == syncPairId);
+            }
+
             public void Register(WindowsStorageProviderSyncRootRegistration registration)
             {
                 _operationLog.Add("storage-provider-register");
