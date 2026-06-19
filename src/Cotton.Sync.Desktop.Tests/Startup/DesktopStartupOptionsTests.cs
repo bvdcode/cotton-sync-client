@@ -89,6 +89,22 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 ]);
 
             Assert.That(options.ExportDiagnostics, Is.True);
+            Assert.That(options.ExportPrivateSupportDiagnostics, Is.False);
+        }
+
+        [Test]
+        public void Parse_LoadsPrivateSupportDiagnosticsFlagAsExplicitExportMode()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--export-diagnostics-private",
+                ]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(options.ExportDiagnostics, Is.True);
+                Assert.That(options.ExportPrivateSupportDiagnostics, Is.True);
+            });
         }
 
         [Test]

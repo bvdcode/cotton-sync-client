@@ -4,6 +4,7 @@
 using Cotton.Sync.App.Auth;
 using Cotton.Sync.App.Preferences;
 using Cotton.Sync.App.SyncPairs;
+using Cotton.Sync.Desktop.Diagnostics;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Startup;
 
@@ -326,6 +327,13 @@ namespace Cotton.Sync.Desktop.Shell
         }
 
         public Task<string> ExportDiagnosticsAsync(CancellationToken cancellationToken = default)
+        {
+            return ExportDiagnosticsAsync(DesktopDiagnosticsExportOptions.Public, cancellationToken);
+        }
+
+        public Task<string> ExportDiagnosticsAsync(
+            DesktopDiagnosticsExportOptions options,
+            CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(Path.Combine(Path.GetTempPath(), "cotton-sync-visual-smoke-diagnostics.zip"));

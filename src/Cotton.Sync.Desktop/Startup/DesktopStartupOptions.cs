@@ -14,6 +14,7 @@ namespace Cotton.Sync.Desktop.Startup
             bool startMinimizedToTray,
             bool runSelfTest,
             bool exportDiagnostics,
+            bool exportPrivateSupportDiagnostics,
             bool cleanupCloudFiles,
             bool runWindowsVirtualFilesSmoke,
             bool runLiveSyncSmoke,
@@ -35,6 +36,7 @@ namespace Cotton.Sync.Desktop.Startup
             StartMinimizedToTray = startMinimizedToTray;
             RunSelfTest = runSelfTest;
             ExportDiagnostics = exportDiagnostics;
+            ExportPrivateSupportDiagnostics = exportPrivateSupportDiagnostics;
             CleanupCloudFiles = cleanupCloudFiles;
             RunWindowsVirtualFilesSmoke = runWindowsVirtualFilesSmoke;
             RunLiveSyncSmoke = runLiveSyncSmoke;
@@ -55,6 +57,7 @@ namespace Cotton.Sync.Desktop.Startup
             null,
             null,
             null,
+            false,
             false,
             false,
             false,
@@ -84,6 +87,8 @@ namespace Cotton.Sync.Desktop.Startup
         public bool RunSelfTest { get; }
 
         public bool ExportDiagnostics { get; }
+
+        public bool ExportPrivateSupportDiagnostics { get; }
 
         public bool CleanupCloudFiles { get; }
 
@@ -135,8 +140,12 @@ namespace Cotton.Sync.Desktop.Startup
                 || HasFlag(args, "--tray");
             bool runSelfTest = HasFlag(args, "--self-test")
                 || HasFlag(args, "--smoke-test");
+            bool exportPrivateSupportDiagnostics = HasFlag(args, "--export-diagnostics-private")
+                || HasFlag(args, "--include-private-diagnostics")
+                || HasFlag(args, "--private-support-diagnostics");
             bool exportDiagnostics = HasFlag(args, "--export-diagnostics")
-                || HasFlag(args, "--diagnostics");
+                || HasFlag(args, "--diagnostics")
+                || exportPrivateSupportDiagnostics;
             bool cleanupCloudFiles = HasFlag(args, "--cleanup-cloud-files")
                 || HasFlag(args, "--cleanup-sync-roots");
             bool runWindowsVirtualFilesSmoke = HasFlag(args, "--windows-virtual-files-smoke")
@@ -155,6 +164,7 @@ namespace Cotton.Sync.Desktop.Startup
                 startMinimizedToTray,
                 runSelfTest,
                 exportDiagnostics,
+                exportPrivateSupportDiagnostics,
                 cleanupCloudFiles,
                 runWindowsVirtualFilesSmoke,
                 runLiveSyncSmoke,

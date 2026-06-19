@@ -251,6 +251,78 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         }
 
         [Test]
+        public async Task ExportAsync_PrivateSupportModeKeepsSupportContextAndStillRedactsSecrets()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            const string serverUrl = "https://private.cotton.example/";
+            const string accountName = "person@example.test";
+            const string localRoot = @"C:\Users\Person\Cotton\Sensitive";
+            const string remoteRoot = "/Private/Sensitive";
+            const string cloudRelativePath = "Private/file-name.txt";
+            File.WriteAllText(
+                paths.LogFilePath,
+                string.Join(
+                    Environment.NewLine,
+                    serverUrl,
+                    accountName,
+                    paths.DataDirectory,
+                    localRoot,
+                    remoteRoot,
+                    cloudRelativePath,
+                    "Authorization: Bearer access-token"));
+            var exporter = new DesktopDiagnosticsExporter();
+
+            string archivePath = await exporter.ExportAsync(
+                paths,
+                CreateBundle(
+                    paths,
+                    [
+                        new WindowsCloudFilesDiagnosticEvent(
+                            DateTimeOffset.Parse("2026-06-16T10:00:00Z", System.Globalization.CultureInfo.InvariantCulture),
+                            "create-placeholder",
+                            "failed",
+                            "11111111-1111-1111-1111-111111111111",
+                            localRoot,
+                            cloudRelativePath,
+                            "Failed under " + localRoot + " for " + cloudRelativePath,
+                            unchecked((int)0x8007017C)),
+                    ],
+                    serverUrl: serverUrl,
+                    accountName: accountName,
+                    localPath: localRoot,
+                    remotePath: remoteRoot),
+                DesktopDiagnosticsExportOptions.PrivateSupport);
+
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
+            string exportedLog = ReadEntry(archive, "logs/cotton-sync.log");
+            using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
+            JsonElement root = document.RootElement;
+            JsonElement syncPair = root.GetProperty("syncPairs")[0];
+            JsonElement cloudFilesEvent = root.GetProperty("cloudFilesEvents")[0];
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(Path.GetFileName(archivePath), Does.Contain("private-support"));
+                Assert.That(root.GetProperty("serverUrl").GetString(), Is.EqualTo(serverUrl));
+                Assert.That(root.GetProperty("accountName").GetString(), Is.EqualTo(accountName));
+                Assert.That(root.GetProperty("dataPaths").GetProperty("dataDirectory").GetString(), Is.EqualTo(paths.DataDirectory));
+                Assert.That(syncPair.GetProperty("localPath").GetString(), Is.EqualTo(localRoot));
+                Assert.That(syncPair.GetProperty("remotePath").GetString(), Is.EqualTo(remoteRoot));
+                Assert.That(cloudFilesEvent.GetProperty("localRootPath").GetString(), Is.EqualTo(localRoot));
+                Assert.That(cloudFilesEvent.GetProperty("relativePath").GetString(), Is.EqualTo(cloudRelativePath));
+                Assert.That(exportedLog, Does.Contain(serverUrl));
+                Assert.That(exportedLog, Does.Contain(accountName));
+                Assert.That(exportedLog, Does.Contain(paths.DataDirectory));
+                Assert.That(exportedLog, Does.Contain(localRoot));
+                Assert.That(exportedLog, Does.Contain(remoteRoot));
+                Assert.That(exportedLog, Does.Contain(cloudRelativePath));
+                Assert.That(exportedLog, Does.Contain("Bearer [redacted]"));
+                Assert.That(exportedLog, Does.Not.Contain("access-token"));
+            });
+        }
+
+        [Test]
         public async Task ExportAsync_SerializesStateAndRuntimeHealthMetrics()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);

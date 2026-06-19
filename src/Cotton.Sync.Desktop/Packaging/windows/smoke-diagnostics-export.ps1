@@ -81,10 +81,23 @@ try {
     }
 
     $expectedDataPaths = @{
-        dataDirectory = $DataDirectory
-        appDatabasePath = [System.IO.Path]::Combine($DataDirectory, "sync-app.db")
-        syncStateDatabasePath = [System.IO.Path]::Combine($DataDirectory, "sync-state.db")
-        tokenStorePath = [System.IO.Path]::Combine($DataDirectory, "tokens.json")
+        dataDirectory = "[data-directory]"
+        appDatabasePath = "[app-database]"
+        syncStateDatabasePath = "[sync-state-database]"
+        tokenStorePath = "[token-store]"
+    }
+    $privatePathValues = @(
+        $DataDirectory,
+        [System.IO.Path]::Combine($DataDirectory, "sync-app.db"),
+        [System.IO.Path]::Combine($DataDirectory, "sync-state.db"),
+        [System.IO.Path]::Combine($DataDirectory, "tokens.json")
+    )
+
+    foreach ($privatePathValue in $privatePathValues) {
+        $escapedPrivatePathValue = $privatePathValue.Replace("\", "\\")
+        if ($diagnosticsJson.Contains($privatePathValue) -or $diagnosticsJson.Contains($escapedPrivatePathValue)) {
+            throw "Public diagnostics JSON leaked private path value '$privatePathValue'."
+        }
     }
 
     foreach ($key in $expectedDataPaths.Keys) {

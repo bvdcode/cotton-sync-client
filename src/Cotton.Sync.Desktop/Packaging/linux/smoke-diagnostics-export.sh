@@ -55,11 +55,17 @@ import zipfile
 bundle_path = sys.argv[1]
 data_dir = sys.argv[2]
 expected = {
-    "dataDirectory": data_dir,
-    "appDatabasePath": os.path.join(data_dir, "sync-app.db"),
-    "syncStateDatabasePath": os.path.join(data_dir, "sync-state.db"),
-    "tokenStorePath": os.path.join(data_dir, "tokens.json"),
+    "dataDirectory": "[data-directory]",
+    "appDatabasePath": "[app-database]",
+    "syncStateDatabasePath": "[sync-state-database]",
+    "tokenStorePath": "[token-store]",
 }
+private_values = [
+    data_dir,
+    os.path.join(data_dir, "sync-app.db"),
+    os.path.join(data_dir, "sync-state.db"),
+    os.path.join(data_dir, "tokens.json"),
+]
 
 with zipfile.ZipFile(bundle_path) as archive:
     try:
@@ -67,7 +73,8 @@ with zipfile.ZipFile(bundle_path) as archive:
     except KeyError as exc:
         raise SystemExit("Diagnostics JSON entry was not found in the bundle.") from exc
 
-document = json.loads(diagnostics_json)
+diagnostics_text = diagnostics_json.decode("utf-8")
+document = json.loads(diagnostics_text)
 data_paths = document.get("dataPaths")
 if not isinstance(data_paths, dict):
     raise SystemExit("Diagnostics dataPaths metadata was not found.")
@@ -77,6 +84,12 @@ for key, expected_value in expected.items():
     if actual_value != expected_value:
         raise SystemExit(
             f"Diagnostics {key} was {actual_value!r}, expected {expected_value!r}."
+        )
+
+for private_value in private_values:
+    if private_value in diagnostics_text:
+        raise SystemExit(
+            f"Public diagnostics JSON leaked private path value: {private_value!r}."
         )
 
 print(f"Verified diagnostics bundle metadata: {bundle_path}")

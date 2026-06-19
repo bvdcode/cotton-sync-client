@@ -87,8 +87,12 @@ namespace Cotton.Sync.Desktop.Startup
 
             DesktopTraceLogging.Install(paths);
             await using DesktopShellController controller = DesktopShellController.CreateDefault(paths, startupOptions);
-            string bundlePath = await controller.ExportDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
+            DesktopDiagnosticsExportOptions exportOptions = startupOptions.ExportPrivateSupportDiagnostics
+                ? DesktopDiagnosticsExportOptions.PrivateSupport
+                : DesktopDiagnosticsExportOptions.Public;
+            string bundlePath = await controller.ExportDiagnosticsAsync(exportOptions, cancellationToken).ConfigureAwait(false);
             await output.WriteLineAsync("Cotton Sync Desktop diagnostics").ConfigureAwait(false);
+            await output.WriteLineAsync("Mode: " + exportOptions.DisplayName).ConfigureAwait(false);
             await output.WriteLineAsync("Bundle: " + bundlePath).ConfigureAwait(false);
             return 0;
         }
