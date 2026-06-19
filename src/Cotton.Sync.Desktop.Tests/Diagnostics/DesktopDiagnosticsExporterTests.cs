@@ -19,6 +19,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         [SetUp]
         public void SetUp()
         {
+            DesktopAuthDiagnosticsState.ResetForTests();
             _tempDirectory = Path.Combine(Path.GetTempPath(), "cotton-diagnostics-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_tempDirectory);
         }
@@ -323,6 +324,37 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         }
 
         [Test]
+        public async Task ExportAsync_SanitizesAuthFailureMessageInPublicBundle()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            const string serverUrl = "https://private.cotton.example/";
+            var exporter = new DesktopDiagnosticsExporter();
+            var auth = DesktopAuthDiagnosticsSnapshot.Initial with
+            {
+                LastSessionRestoreStatus = "failed",
+                LastSessionRestoreFailureType = "CottonApiException",
+                LastSessionRestoreFailureMessage = "Failed for " + serverUrl + " with refreshToken=secret-refresh",
+            };
+
+            string archivePath = await exporter.ExportAsync(paths, CreateBundle(paths, serverUrl: serverUrl, auth: auth));
+
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
+            using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
+            JsonElement authJson = document.RootElement.GetProperty("auth");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(authJson.GetProperty("lastSessionRestoreStatus").GetString(), Is.EqualTo("failed"));
+                Assert.That(authJson.GetProperty("lastSessionRestoreFailureType").GetString(), Is.EqualTo("CottonApiException"));
+                Assert.That(authJson.GetProperty("lastSessionRestoreFailureMessage").GetString(), Does.Contain("[server-url]"));
+                Assert.That(authJson.GetProperty("lastSessionRestoreFailureMessage").GetString(), Does.Contain("refreshToken=[redacted]"));
+                Assert.That(diagnosticsJson, Does.Not.Contain(serverUrl));
+                Assert.That(diagnosticsJson, Does.Not.Contain("secret-refresh"));
+            });
+        }
+
+        [Test]
         public async Task ExportAsync_SerializesStateAndRuntimeHealthMetrics()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
@@ -599,6 +631,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
             SyncStateStoreDiagnostics? syncState = null,
             DesktopRuntimeHealthSnapshot? runtimeHealth = null,
             DesktopSyncLifecycleDiagnosticsSnapshot? syncLifecycle = null,
+            DesktopAuthDiagnosticsSnapshot? auth = null,
             DesktopNotificationDiagnosticsSnapshot? notification = null,
             DesktopUpdateDiagnosticsSnapshot? update = null,
             DesktopCloudFilesRegistrationDiagnosticsSnapshot? cloudFilesRegistration = null,
@@ -650,6 +683,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                     IsZeroPairBackgroundActive: false,
                     Status: "configuredPairs",
                     Details: "Signed in with configured sync pairs."),
+                auth ?? DesktopAuthDiagnosticsSnapshot.Initial,
                 notification ?? new DesktopNotificationDiagnosticsSnapshot(
                     Platform: "Unsupported",
                     AdapterName: "Unsupported",

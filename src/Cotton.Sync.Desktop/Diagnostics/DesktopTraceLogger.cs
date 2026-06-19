@@ -69,6 +69,7 @@ namespace Cotton.Sync.Desktop.Diagnostics
                 && (message.Contains("401", StringComparison.Ordinal)
                     || message.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase)))
             {
+                DesktopAuthDiagnosticsState.RecordUnauthorizedChallenge();
                 return LogLevel.Information;
             }
 

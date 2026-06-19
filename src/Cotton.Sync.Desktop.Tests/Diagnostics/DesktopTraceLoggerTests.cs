@@ -9,6 +9,12 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
 {
     public class DesktopTraceLoggerTests
     {
+        [SetUp]
+        public void SetUp()
+        {
+            DesktopAuthDiagnosticsState.ResetForTests();
+        }
+
         [Test]
         public void Format_IncludesLevelCategoryEventAndException()
         {
@@ -115,6 +121,8 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                     Assert.That(listener.Output, Does.Contain("Information"));
                     Assert.That(listener.Output, Does.Not.Contain("Warning"));
                     Assert.That(listener.Output, Does.Contain("completed with status Unauthorized"));
+                    Assert.That(DesktopAuthDiagnosticsState.Snapshot().LastTokenRefreshStatus, Is.EqualTo("challengeObserved"));
+                    Assert.That(DesktopAuthDiagnosticsState.Snapshot().LastUnauthorizedChallengeAtUtc, Is.Not.Null);
                 });
             }
             finally

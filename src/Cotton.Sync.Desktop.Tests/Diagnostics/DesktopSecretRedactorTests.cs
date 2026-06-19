@@ -76,5 +76,18 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                 Assert.That(redacted, Does.Not.Contain("api-key"));
             });
         }
+
+        [Test]
+        public void Redact_QuerySecretInsideJsonStringKeepsJsonDelimiters()
+        {
+            string redacted = DesktopSecretRedactor.Redact(
+                """{"message":"restore failed with refreshToken=refresh-token","status":"failed"}""");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(redacted, Is.EqualTo("""{"message":"restore failed with refreshToken=[redacted]","status":"failed"}"""));
+                Assert.That(redacted, Does.Not.Contain("refresh-token"));
+            });
+        }
     }
 }

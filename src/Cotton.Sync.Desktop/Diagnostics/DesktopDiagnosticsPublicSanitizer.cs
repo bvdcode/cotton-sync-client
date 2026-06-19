@@ -31,6 +31,7 @@ namespace Cotton.Sync.Desktop.Diagnostics
                 SelfTestItems = bundle.SelfTestItems
                     .Select(item => SanitizeSelfTestItem(item, replacements))
                     .ToArray(),
+                Auth = SanitizeAuth(bundle.Auth, replacements),
                 Update = SanitizeUpdate(bundle.Update, replacements),
                 CloudFilesRegistration = SanitizeCloudFilesRegistration(bundle.CloudFilesRegistration, replacements),
                 CloudFilesEvents = bundle.CloudFilesEvents
@@ -138,6 +139,27 @@ namespace Cotton.Sync.Desktop.Diagnostics
             }
 
             return update with { FailureMessage = failureMessage };
+        }
+
+        private static DesktopAuthDiagnosticsSnapshot SanitizeAuth(
+            DesktopAuthDiagnosticsSnapshot auth,
+            IReadOnlyList<KnownValueReplacement> replacements)
+        {
+            string? failureMessage = auth.LastSessionRestoreFailureMessage;
+            if (!string.IsNullOrWhiteSpace(failureMessage))
+            {
+                foreach (KnownValueReplacement replacement in replacements)
+                {
+                    failureMessage = failureMessage.Replace(
+                        replacement.Value,
+                        replacement.Placeholder,
+                        StringComparison.OrdinalIgnoreCase);
+                }
+
+                failureMessage = DesktopSecretRedactor.Redact(failureMessage);
+            }
+
+            return auth with { LastSessionRestoreFailureMessage = failureMessage };
         }
 
         private static DesktopCloudFilesRegistrationDiagnosticsSnapshot SanitizeCloudFilesRegistration(

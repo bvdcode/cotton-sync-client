@@ -37,6 +37,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [SetUp]
         public void SetUp()
         {
+            DesktopAuthDiagnosticsState.ResetForTests();
             _tempDirectory = Path.Combine(Path.GetTempPath(), "cotton-shell-lifecycle-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_tempDirectory);
         }
@@ -375,6 +376,38 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(snapshot.IsSignedIn, Is.False);
                 Assert.That(host.TokenStore.ClearAsyncCalls, Is.EqualTo(1));
                 Assert.That(host.AsyncResource.DisposeAsyncCalls, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
+        public async Task ExportDiagnosticsAsync_ReportsRejectedSessionRestoreSeparatelyFromRefreshNoise()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            Uri serverUrl = new("https://cotton.example.test/");
+            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            await preferencesStore.InitializeAsync();
+            await preferencesStore.SaveAsync(new AppPreferences
+            {
+                RememberedServerUrl = serverUrl,
+            });
+            FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
+            host.App.RestoreSessionException = new CottonApiException(
+                HttpStatusCode.Unauthorized,
+                null,
+                "Cotton API request GET /api/v1/me failed with status 401 (Unauthorized).");
+            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            using DesktopShellController controller = CreateController(paths, factory);
+
+            await controller.LoadAsync();
+            JsonElement auth = await ReadDiagnosticsRootAsync(controller, "auth");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(auth.GetProperty("lastSessionRestoreStatus").GetString(), Is.EqualTo("rejected"));
+                Assert.That(auth.GetProperty("lastSessionRestoreFailureType").GetString(), Is.EqualTo(nameof(CottonApiException)));
+                Assert.That(auth.GetProperty("lastSessionRestoreAttempts").GetInt32(), Is.EqualTo(1));
+                Assert.That(auth.GetProperty("lastTokenRefreshStatus").GetString(), Is.EqualTo("notObserved"));
+                Assert.That(auth.GetProperty("lastSessionRestoreFailureMessage").GetString(), Does.Contain("Unauthorized"));
             });
         }
 
@@ -839,6 +872,31 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public async Task ExportDiagnosticsAsync_ReportsLastSessionRevocation()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            Uri serverUrl = new("https://cotton.example.test/");
+            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            await preferencesStore.InitializeAsync();
+            await preferencesStore.SaveAsync(new AppPreferences
+            {
+                RememberedServerUrl = serverUrl,
+            });
+            FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
+            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            using DesktopShellController controller = CreateController(paths, factory);
+            DateTime occurredAtUtc = new(2026, 6, 6, 12, 0, 0, DateTimeKind.Utc);
+
+            await controller.LoadAsync();
+            host.SessionRevocationPublisher.Publish(new SessionRevocationEvent(occurredAtUtc));
+            JsonElement auth = await ReadDiagnosticsRootAsync(controller, "auth");
+
+            Assert.That(
+                auth.GetProperty("lastSessionRevokedAtUtc").GetDateTimeOffset(),
+                Is.EqualTo(new DateTimeOffset(occurredAtUtc)));
+        }
+
+        [Test]
         public async Task LoadAsync_UsesRuntimeLastSuccessfulSyncWhenBaselineIsEmpty()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
@@ -916,11 +974,18 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
         private static async Task<JsonElement> ReadSyncLifecycleDiagnosticsAsync(DesktopShellController controller)
         {
+            return await ReadDiagnosticsRootAsync(controller, "syncLifecycle");
+        }
+
+        private static async Task<JsonElement> ReadDiagnosticsRootAsync(
+            DesktopShellController controller,
+            string propertyName)
+        {
             string archivePath = await controller.ExportDiagnosticsAsync();
             using ZipArchive archive = ZipFile.OpenRead(archivePath);
             string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
             using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
-            return document.RootElement.GetProperty("syncLifecycle").Clone();
+            return document.RootElement.GetProperty(propertyName).Clone();
         }
 
         private static string ReadEntry(ZipArchive archive, string entryName)

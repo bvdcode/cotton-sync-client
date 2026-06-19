@@ -26,6 +26,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [SetUp]
         public void SetUp()
         {
+            DesktopAuthDiagnosticsState.ResetForTests();
             _tempDirectory = Path.Combine(Path.GetTempPath(), "cotton-shell-self-test-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_tempDirectory);
         }

@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Cotton.Auth;
 using Cotton.Sdk.Auth;
+using Cotton.Sync.Desktop.Diagnostics;
 
 namespace Cotton.Sync.Desktop.Auth
 {
@@ -71,6 +72,7 @@ namespace Cotton.Sync.Desktop.Auth
             {
                 EnsureDirectoryExists();
                 StoredTokenEnvelope? previousEnvelope = await ReadEnvelopeAsync(cancellationToken).ConfigureAwait(false);
+                bool replacingExistingTokens = previousEnvelope is not null;
                 string tempPath = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
                 StoredTokenEnvelope? createdEnvelope = null;
                 bool committed = false;
@@ -88,6 +90,7 @@ namespace Cotton.Sync.Desktop.Auth
                     File.Move(tempPath, _path, overwrite: true);
                     RestrictFileAccess(_path);
                     committed = true;
+                    DesktopAuthDiagnosticsState.RecordTokenSave(replacingExistingTokens);
                     await DeleteProtectedPayloadAsync(previousEnvelope, cancellationToken).ConfigureAwait(false);
                 }
                 finally
