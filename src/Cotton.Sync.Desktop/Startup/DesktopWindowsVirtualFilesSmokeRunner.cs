@@ -14,6 +14,7 @@ using Cotton.Sync.App.Supervision;
 using Cotton.Sync.App.SyncApplication;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Composition;
+using Cotton.Sync.Desktop.Diagnostics;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Local;
 using Cotton.Sync.State;
@@ -842,6 +843,52 @@ namespace Cotton.Sync.Desktop.Startup
             return identity;
         }
 
+        private static DesktopRuntimeHealthSnapshot CreateRuntimeHealthSnapshot()
+        {
+            using Process process = Process.GetCurrentProcess();
+            process.Refresh();
+            return new DesktopRuntimeHealthSnapshot(
+                process.Id,
+                process.ProcessName,
+                process.WorkingSet64,
+                process.PrivateMemorySize64,
+                process.Threads.Count,
+                process.HandleCount);
+        }
+
+        private static void ForceFullCollection()
+        {
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+        }
+
+        private static string FormatRuntimeHealth(DesktopRuntimeHealthSnapshot runtimeHealth)
+        {
+            return "workingSetBytes="
+                + runtimeHealth.WorkingSetBytes.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ";privateMemoryBytes="
+                + FormatNullable(runtimeHealth.PrivateMemoryBytes)
+                + ";threadCount="
+                + FormatNullable(runtimeHealth.ThreadCount)
+                + ";handleCount="
+                + FormatNullable(runtimeHealth.HandleCount);
+        }
+
+        private static string FormatNullable(long? value)
+        {
+            return value.HasValue
+                ? value.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : "unavailable";
+        }
+
+        private static string FormatNullable(int? value)
+        {
+            return value.HasValue
+                ? value.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : "unavailable";
+        }
+
         private static async Task<int> RunTrayQuitDisconnectAsync(
             DesktopAppPaths paths,
             TextWriter output,
@@ -1203,6 +1250,7 @@ namespace Cotton.Sync.Desktop.Startup
 
                 SyncStateStoreDiagnostics beforeDiagnostics =
                     await stateStore.GetDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
+                DesktopRuntimeHealthSnapshot beforeDeleteRuntimeHealth = CreateRuntimeHealthSnapshot();
                 await output.WriteLineAsync(
                     FormatCheck(true, "Large virtual-files pair persisted placeholders before deletion.")
                     + " files="
@@ -1220,6 +1268,10 @@ namespace Cotton.Sync.Desktop.Startup
                 SyncApplicationService app = CreateDeletionSmokeApplication(syncPairs, stateStore, cloudFiles);
                 await app.StartSyncAsync(cancellationToken).ConfigureAwait(false);
                 await app.DeleteSyncPairAsync(syncPair.Id, cancellationToken).ConfigureAwait(false);
+                await app.StopSyncAsync(cancellationToken).ConfigureAwait(false);
+                DesktopRuntimeHealthSnapshot afterDeleteRuntimeHealth = CreateRuntimeHealthSnapshot();
+                ForceFullCollection();
+                DesktopRuntimeHealthSnapshot afterGcRuntimeHealth = CreateRuntimeHealthSnapshot();
 
                 SyncStateStoreDiagnostics afterDiagnostics =
                     await stateStore.GetDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
@@ -1233,6 +1285,16 @@ namespace Cotton.Sync.Desktop.Startup
                     + afterDiagnostics.FileSizeBytes.ToString(System.Globalization.CultureInfo.InvariantCulture)
                     + ", freelistBytes="
                     + afterDiagnostics.FreelistBytes.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Large virtual-files pair cleanup runtime health captured.")
+                    + " beforeDelete="
+                    + FormatRuntimeHealth(beforeDeleteRuntimeHealth)
+                    + ", afterDelete="
+                    + FormatRuntimeHealth(afterDeleteRuntimeHealth)
+                    + ", afterGc="
+                    + FormatRuntimeHealth(afterGcRuntimeHealth))
                     .ConfigureAwait(false);
 
                 failures += await VerifyPairDeletedAsync(syncPairs, stateStore, syncPair, output, cancellationToken)
