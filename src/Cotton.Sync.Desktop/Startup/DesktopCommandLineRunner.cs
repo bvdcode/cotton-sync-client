@@ -8,6 +8,7 @@ using Cotton.Sync.App.Platform;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Shell;
+using Cotton.Sync.Desktop.Updates;
 using Cotton.Sync.State;
 using System.Diagnostics;
 using System.Security.Cryptography;
@@ -197,6 +198,129 @@ namespace Cotton.Sync.Desktop.Startup
                 startupOptions,
                 output,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+
+        public static async Task<int> RunUpdateDiscoverySmokeAsync(
+            DesktopStartupOptions startupOptions,
+            TextWriter output,
+            CancellationToken cancellationToken = default)
+        {
+            return await RunUpdateDiscoverySmokeAsync(
+                DesktopStartupPathResolver.Resolve(startupOptions),
+                startupOptions,
+                output,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+
+        internal static async Task<int> RunUpdateDiscoverySmokeAsync(
+            DesktopAppPaths paths,
+            DesktopStartupOptions startupOptions,
+            TextWriter output,
+            IDesktopUpdateService? updateService = null,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(paths);
+            ArgumentNullException.ThrowIfNull(startupOptions);
+            ArgumentNullException.ThrowIfNull(output);
+
+            string? validationError = ValidateUpdateDiscoverySmokeOptions(startupOptions);
+            if (validationError is not null)
+            {
+                await output.WriteLineAsync("Cotton Sync Desktop update discovery smoke").ConfigureAwait(false);
+                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                await output.WriteLineAsync("Error: " + validationError).ConfigureAwait(false);
+                return 2;
+            }
+
+            Directory.CreateDirectory(paths.DataDirectory);
+            DesktopTraceLogging.Install(paths);
+            IDesktopUpdateService effectiveUpdateService = updateService ?? new DesktopUpdateService(
+                DesktopHttpClientFactory.Create(TimeSpan.FromSeconds(30)),
+                DesktopAppVersion.Current,
+                paths.UpdateCacheDirectory,
+                startupOptions.UpdateManifestUri,
+                DesktopUpdatePlatform.WindowsX64,
+                disposeHttpClient: true);
+            IDisposable? updateServiceLifetime = updateService is null ? effectiveUpdateService as IDisposable : null;
+
+            try
+            {
+                await using DesktopShellController controller = CreateUpdateSmokeController(
+                    paths,
+                    startupOptions,
+                    effectiveUpdateService);
+                await output.WriteLineAsync("Cotton Sync Desktop update discovery smoke").ConfigureAwait(false);
+                await output.WriteLineAsync("Current version: " + DesktopAppVersion.Current).ConfigureAwait(false);
+                await output.WriteLineAsync("Manifest: " + startupOptions.UpdateManifestUri).ConfigureAwait(false);
+
+                DesktopUpdateStatusSnapshot status = await controller
+                    .DownloadUpdateAsync(DesktopUpdateCheckSource.Download, cancellationToken)
+                    .ConfigureAwait(false);
+                DesktopPendingUpdate? pendingUpdate = new DesktopPendingUpdateStore(paths.UpdateCacheDirectory).TryLoad();
+                int failures = 0;
+                failures += await WriteCheckAsync(
+                    output,
+                    status.IsUpdateAvailable,
+                    "Installed version discovers a newer release",
+                    "current=" + status.CurrentVersion + ", latest=" + (status.LatestVersion ?? "<none>")).ConfigureAwait(false);
+                failures += await WriteCheckAsync(
+                    output,
+                    string.IsNullOrWhiteSpace(startupOptions.ExpectedUpdateVersion)
+                        || string.Equals(status.LatestVersion, startupOptions.ExpectedUpdateVersion, StringComparison.Ordinal),
+                    "Latest version matches expected release",
+                    "expected=" + (startupOptions.ExpectedUpdateVersion ?? "<not-set>")
+                        + ", latest=" + (status.LatestVersion ?? "<none>")).ConfigureAwait(false);
+                failures += await WriteCheckAsync(
+                    output,
+                    status.IsInstallerReady
+                        && !string.IsNullOrWhiteSpace(status.InstallerPath)
+                        && File.Exists(status.InstallerPath),
+                    "Update installer is downloaded into cache",
+                    "installerReady=" + status.IsInstallerReady).ConfigureAwait(false);
+                failures += await WriteCheckAsync(
+                    output,
+                    pendingUpdate is not null
+                        && string.Equals(pendingUpdate.Version, status.LatestVersion, StringComparison.Ordinal)
+                        && !string.IsNullOrWhiteSpace(pendingUpdate.InstallerPath)
+                        && File.Exists(pendingUpdate.InstallerPath)
+                        && pendingUpdate.SizeBytes > 0,
+                    "Pending update metadata is persisted",
+                    "pendingVersion=" + (pendingUpdate?.Version ?? "<none>")).ConfigureAwait(false);
+
+                string diagnosticsBundlePath = await controller
+                    .ExportDiagnosticsAsync(DesktopDiagnosticsExportOptions.Public, cancellationToken)
+                    .ConfigureAwait(false);
+                failures += await WriteCheckAsync(
+                    output,
+                    File.Exists(diagnosticsBundlePath),
+                    "Diagnostics bundle records update status",
+                    "bundle=" + diagnosticsBundlePath).ConfigureAwait(false);
+                failures += await WriteCheckAsync(
+                    output,
+                    File.Exists(paths.LogFilePath),
+                    "Update flow wrote a trace log",
+                    "log=" + paths.LogFilePath).ConfigureAwait(false);
+
+                await output.WriteLineAsync("Latest version: " + (status.LatestVersion ?? "<none>")).ConfigureAwait(false);
+                await output.WriteLineAsync("Installer ready: " + (status.IsInstallerReady ? "yes" : "no")).ConfigureAwait(false);
+                await output.WriteLineAsync("Bundle: " + diagnosticsBundlePath).ConfigureAwait(false);
+                await output.WriteLineAsync("Failures: " + failures.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+                return failures == 0 ? 0 : 1;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                await output.WriteLineAsync("Cotton Sync Desktop update discovery smoke").ConfigureAwait(false);
+                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                await output.WriteLineAsync("Error: " + exception.GetType().Name + ": " + CleanSingleLine(exception.Message))
+                    .ConfigureAwait(false);
+                return 1;
+            }
+            finally
+            {
+                updateServiceLifetime?.Dispose();
+            }
         }
 
         internal static async Task<int> RunWindowsVirtualFilesSmokeAsync(
@@ -424,6 +548,56 @@ namespace Cotton.Sync.Desktop.Startup
                 platformCommands,
                 new UnsupportedAutostartService(),
                 startupOptions);
+        }
+
+        private static DesktopShellController CreateUpdateSmokeController(
+            DesktopAppPaths paths,
+            DesktopStartupOptions startupOptions,
+            IDesktopUpdateService updateService)
+        {
+            var loggerFactory = new DesktopTraceLoggerFactory();
+            return new DesktopShellController(
+                paths,
+                new DesktopSyncApplicationFactory(paths, loggerFactory),
+                new SqliteAppPreferencesStore(paths.AppDatabasePath),
+                new SqliteSyncPairSettingsStore(paths.AppDatabasePath),
+                new ProcessPlatformCommandService(
+                    Microsoft.Extensions.Logging.LoggerFactoryExtensions
+                        .CreateLogger<ProcessPlatformCommandService>(loggerFactory)),
+                new UnsupportedAutostartService(),
+                startupOptions,
+                updateService: updateService);
+        }
+
+        private static string? ValidateUpdateDiscoverySmokeOptions(DesktopStartupOptions startupOptions)
+        {
+            if (startupOptions.DataDirectory is null)
+            {
+                return "--update-discovery-smoke requires an explicit --data-dir so test state never uses the real user profile.";
+            }
+
+            if (startupOptions.UpdateManifestUri is null)
+            {
+                return "--update-discovery-smoke requires an absolute --update-manifest-url.";
+            }
+
+            if (startupOptions.UpdateManifestUri.Scheme != Uri.UriSchemeHttp
+                && startupOptions.UpdateManifestUri.Scheme != Uri.UriSchemeHttps)
+            {
+                return "--update-manifest-url must use http or https.";
+            }
+
+            return null;
+        }
+
+        private static async Task<int> WriteCheckAsync(
+            TextWriter output,
+            bool passed,
+            string label,
+            string details)
+        {
+            await output.WriteLineAsync(FormatCheck(passed, label) + " " + details).ConfigureAwait(false);
+            return passed ? 0 : 1;
         }
 
         private static string? ValidateLiveSyncSmokeOptions(

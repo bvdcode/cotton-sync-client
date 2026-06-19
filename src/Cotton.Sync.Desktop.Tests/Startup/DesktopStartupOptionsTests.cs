@@ -436,6 +436,36 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void Parse_LoadsUpdateDiscoverySmokeOptions()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--update-discovery-smoke",
+                    "--update-manifest-url",
+                    "http://127.0.0.1:8080/release-manifest.json",
+                    "--expected-update-version",
+                    "0.1.1",
+                ]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(options.RunUpdateDiscoverySmoke, Is.True);
+                Assert.That(
+                    options.UpdateManifestUri,
+                    Is.EqualTo(new Uri("http://127.0.0.1:8080/release-manifest.json")));
+                Assert.That(options.ExpectedUpdateVersion, Is.EqualTo("0.1.1"));
+            });
+        }
+
+        [Test]
+        public void Parse_LoadsDesktopUpdateSmokeAlias()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(["--desktop-update-smoke"]);
+
+            Assert.That(options.RunUpdateDiscoverySmoke, Is.True);
+        }
+
+        [Test]
         public void Parse_DoesNotTreatNextFlagAsOptionValue()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(
