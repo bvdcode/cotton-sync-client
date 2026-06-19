@@ -7,6 +7,7 @@ using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Diagnostics;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Startup;
+using Cotton.Sync.Desktop.Updates;
 
 namespace Cotton.Sync.Desktop.Shell
 {
@@ -314,6 +315,7 @@ namespace Cotton.Sync.Desktop.Shell
 
         public Task<DesktopUpdateStatusSnapshot> DownloadUpdateAsync(
             DesktopUpdateCheckSource source = DesktopUpdateCheckSource.Download,
+            IProgress<DesktopUpdateDownloadProgress>? progress = null,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();

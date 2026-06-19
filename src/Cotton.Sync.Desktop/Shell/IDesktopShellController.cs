@@ -5,6 +5,7 @@ using Cotton.Sync.App.Auth;
 using Cotton.Sync.App.Preferences;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Diagnostics;
+using Cotton.Sync.Desktop.Updates;
 
 namespace Cotton.Sync.Desktop.Shell
 {
@@ -79,6 +80,7 @@ namespace Cotton.Sync.Desktop.Shell
 
         Task<DesktopUpdateStatusSnapshot> DownloadUpdateAsync(
             DesktopUpdateCheckSource source = DesktopUpdateCheckSource.Download,
+            IProgress<DesktopUpdateDownloadProgress>? progress = null,
             CancellationToken cancellationToken = default);
 
         Task InstallDownloadedUpdateAsync(string installerPath, CancellationToken cancellationToken = default);

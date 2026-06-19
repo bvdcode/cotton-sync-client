@@ -13,6 +13,7 @@ using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Shell;
 using Cotton.Sync.Desktop.Startup;
+using Cotton.Sync.Desktop.Updates;
 using Cotton.Sync.VirtualFiles;
 
 namespace Cotton.Sync.Desktop.ViewModels
@@ -2767,9 +2768,24 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private async Task DownloadUpdateAsync()
         {
+            var progress = new ActionProgress<DesktopUpdateDownloadProgress>(ApplyUpdateDownloadProgress);
             await RunUpdateActionAsync(
                 "Downloading update",
-                () => _controller.DownloadUpdateAsync(DesktopUpdateCheckSource.Download)).ConfigureAwait(true);
+                () => _controller.DownloadUpdateAsync(DesktopUpdateCheckSource.Download, progress)).ConfigureAwait(true);
+        }
+
+        private void ApplyUpdateDownloadProgress(DesktopUpdateDownloadProgress progress)
+        {
+            if (!_uiDispatcher.CheckAccess())
+            {
+                _uiDispatcher.Post(() => ApplyUpdateDownloadProgress(progress));
+                return;
+            }
+
+            UpdateStatusText = "Downloading update";
+            UpdateDetailsText = FormatUpdateDownloadProgress(progress);
+            GlobalStatus = "Downloading update";
+            OnPropertyChanged(nameof(HasUpdateDetails));
         }
 
         private void BeginStartupUpdateCheck()
@@ -2797,7 +2813,9 @@ namespace Cotton.Sync.Desktop.ViewModels
 
                 await RunUpdateActionAsync(
                         "Checking for updates",
-                        () => _controller.DownloadUpdateAsync(DesktopUpdateCheckSource.Startup, cancellationToken),
+                        () => _controller.DownloadUpdateAsync(
+                            DesktopUpdateCheckSource.Startup,
+                            cancellationToken: cancellationToken),
                         updateGlobalStatusOnFailure: false,
                         notifyWhenInstallerReady: true)
                     .ConfigureAwait(true);
@@ -5921,6 +5939,23 @@ namespace Cotton.Sync.Desktop.ViewModels
             return value.ToString(format, CultureInfo.CurrentCulture) + " " + units[unitIndex];
         }
 
+        private static string FormatUpdateDownloadProgress(DesktopUpdateDownloadProgress progress)
+        {
+            if (progress.TotalBytes is > 0)
+            {
+                double percent = Math.Clamp(progress.BytesDownloaded / (double)progress.TotalBytes.Value * 100d, 0d, 100d);
+                return "Downloading "
+                    + FormatBytes(progress.BytesDownloaded)
+                    + " / "
+                    + FormatBytes(progress.TotalBytes.Value)
+                    + " ("
+                    + percent.ToString("0", CultureInfo.CurrentCulture)
+                    + "%).";
+            }
+
+            return "Downloading " + FormatBytes(progress.BytesDownloaded) + ".";
+        }
+
         private static string FormatFileRate(double filesPerSecond)
         {
             double roundedValue = filesPerSecond >= 10
@@ -6200,6 +6235,21 @@ namespace Cotton.Sync.Desktop.ViewModels
 
             int lastSlash = normalized.LastIndexOf('/');
             return lastSlash <= 0 ? "/" : normalized[..lastSlash];
+        }
+
+        private sealed class ActionProgress<T> : IProgress<T>
+        {
+            private readonly Action<T> _report;
+
+            public ActionProgress(Action<T> report)
+            {
+                _report = report ?? throw new ArgumentNullException(nameof(report));
+            }
+
+            public void Report(T value)
+            {
+                _report(value);
+            }
         }
     }
 }

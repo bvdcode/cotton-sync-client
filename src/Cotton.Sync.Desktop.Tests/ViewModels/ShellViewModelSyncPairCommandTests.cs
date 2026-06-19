@@ -12,6 +12,7 @@ using Cotton.Sync.Desktop.Diagnostics;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Shell;
 using Cotton.Sync.Desktop.Startup;
+using Cotton.Sync.Desktop.Updates;
 using Cotton.Sync.Desktop.ViewModels;
 
 namespace Cotton.Sync.Desktop.Tests.ViewModels
@@ -5410,6 +5411,61 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task DownloadUpdateCommand_ShowsDownloadProgressUntilInstallerIsReady()
+        {
+            var downloadCompletion = new TaskCompletionSource<DesktopUpdateStatusSnapshot>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            {
+                UpdateCheckSnapshot = new DesktopUpdateStatusSnapshot(
+                    "0.0.1",
+                    "0.0.2",
+                    true,
+                    false,
+                    "Update 0.0.2 is available.",
+                    null,
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/v0.0.2")),
+                UpdateDownloadSnapshot = new DesktopUpdateStatusSnapshot(
+                    "0.0.1",
+                    "0.0.2",
+                    true,
+                    true,
+                    "Update 0.0.2 is ready. Click Update to install it now, or it will install automatically on next app start.",
+                    @"C:\Users\qa\AppData\Roaming\Cotton\Sync\updates\0.0.2\CottonSync-Windows-Setup.exe",
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/v0.0.2")),
+                UpdateDownloadCompletion = downloadCompletion,
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            await ExecuteAsync(viewModel.CheckForUpdatesCommand);
+
+            Assert.That(viewModel.DownloadUpdateCommand.CanExecute(null), Is.True);
+            viewModel.DownloadUpdateCommand.Execute(null);
+            await WaitForAsync(() => controller.DownloadProgressReports.Count == 2);
+            await WaitForAsync(() => viewModel.UpdateDetailsText.Contains("100%", StringComparison.Ordinal));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.DownloadUpdateCommand.IsRunning, Is.True);
+                Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Downloading update"));
+                Assert.That(viewModel.UpdateDetailsText, Does.Contain("1.0 KB / 1.0 KB"));
+                Assert.That(viewModel.UpdateDetailsText, Does.Contain("100%"));
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Downloading update"));
+                Assert.That(viewModel.CanCheckForUpdates, Is.False);
+            });
+
+            downloadCompletion.SetResult(controller.UpdateDownloadSnapshot!);
+            await WaitForAsync(() => !viewModel.DownloadUpdateCommand.IsRunning);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Update ready"));
+                Assert.That(viewModel.IsUpdateReady, Is.True);
+                Assert.That(viewModel.CanInstallUpdate, Is.True);
+            });
+        }
+
+        [Test]
         public async Task InitializeAsync_AutoDownloadsUpdateOnStartupWithoutBlockingSyncCommands()
         {
             var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
@@ -5873,6 +5929,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             public DesktopUpdateStatusSnapshot? UpdateDownloadSnapshot { get; set; }
 
+            public TaskCompletionSource<DesktopUpdateStatusSnapshot>? UpdateDownloadCompletion { get; set; }
+
             public Exception? UpdateCheckException { get; set; }
 
             public Exception? UpdateDownloadException { get; set; }
@@ -5884,6 +5942,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             public List<DesktopUpdateCheckSource> CheckForUpdateSources { get; } = [];
 
             public List<DesktopUpdateCheckSource> DownloadUpdateSources { get; } = [];
+
+            public List<DesktopUpdateDownloadProgress> DownloadProgressReports { get; } = [];
 
             public string? InstalledUpdatePath { get; private set; }
 
@@ -6263,6 +6323,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             public Task<DesktopUpdateStatusSnapshot> DownloadUpdateAsync(
                 DesktopUpdateCheckSource source = DesktopUpdateCheckSource.Download,
+                IProgress<DesktopUpdateDownloadProgress>? progress = null,
                 CancellationToken cancellationToken = default)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -6271,6 +6332,17 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 if (UpdateDownloadException is not null)
                 {
                     throw UpdateDownloadException;
+                }
+
+                var firstProgress = new DesktopUpdateDownloadProgress("0.0.2", "CottonSync-Windows-Setup.exe", 512, 1024);
+                var finalProgress = new DesktopUpdateDownloadProgress("0.0.2", "CottonSync-Windows-Setup.exe", 1024, 1024);
+                DownloadProgressReports.Add(firstProgress);
+                DownloadProgressReports.Add(finalProgress);
+                progress?.Report(firstProgress);
+                progress?.Report(finalProgress);
+                if (UpdateDownloadCompletion is not null)
+                {
+                    return UpdateDownloadCompletion.Task;
                 }
 
                 return Task.FromResult(UpdateDownloadSnapshot ?? UpdateCheckSnapshot);

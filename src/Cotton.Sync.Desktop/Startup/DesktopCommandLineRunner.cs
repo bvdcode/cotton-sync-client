@@ -254,7 +254,7 @@ namespace Cotton.Sync.Desktop.Startup
                 await output.WriteLineAsync("Manifest: " + startupOptions.UpdateManifestUri).ConfigureAwait(false);
 
                 DesktopUpdateStatusSnapshot status = await controller
-                    .DownloadUpdateAsync(DesktopUpdateCheckSource.Download, cancellationToken)
+                    .DownloadUpdateAsync(DesktopUpdateCheckSource.Download, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
                 DesktopPendingUpdate? pendingUpdate = new DesktopPendingUpdateStore(paths.UpdateCacheDirectory).TryLoad();
                 int failures = 0;

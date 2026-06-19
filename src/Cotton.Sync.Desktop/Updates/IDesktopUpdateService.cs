@@ -9,6 +9,7 @@ namespace Cotton.Sync.Desktop.Updates
 
         Task<DesktopUpdateDownloadResult> DownloadInstallerAsync(
             DesktopUpdateCheckResult checkResult,
+            IProgress<DesktopUpdateDownloadProgress>? progress = null,
             CancellationToken cancellationToken = default);
     }
 }
