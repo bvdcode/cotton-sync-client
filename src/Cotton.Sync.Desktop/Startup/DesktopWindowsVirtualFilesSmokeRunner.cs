@@ -27,6 +27,40 @@ namespace Cotton.Sync.Desktop.Startup
         private const int LargeHydrationChunkBytes = 1024 * 1024;
         private const string SmokeContentText = "Cotton Sync Windows virtual files smoke content\n";
 
+        internal static async Task<int> PrepareStartupEnvironmentAsync(
+            DesktopStartupOptions startupOptions,
+            TextWriter output,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(startupOptions);
+            ArgumentNullException.ThrowIfNull(output);
+
+            if (!OperatingSystem.IsWindows())
+            {
+                return 0;
+            }
+
+            string rootPath = ResolveSmokeRoot(startupOptions.LocalRoot);
+            string? rootError = ValidateSmokeRoot(rootPath);
+            if (rootError is not null)
+            {
+                await output.WriteLineAsync(FormatCheck(false, rootError)).ConfigureAwait(false);
+                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                return 2;
+            }
+
+            string? setupError = await PrepareSmokeRootEnvironmentAsync(rootPath, output, cancellationToken)
+                .ConfigureAwait(false);
+            if (setupError is not null)
+            {
+                await output.WriteLineAsync(FormatCheck(false, setupError)).ConfigureAwait(false);
+                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                return 2;
+            }
+
+            return 0;
+        }
+
         public static async Task<int> RunAsync(
             DesktopAppPaths paths,
             DesktopStartupOptions startupOptions,
@@ -55,6 +89,15 @@ namespace Cotton.Sync.Desktop.Startup
             if (rootError is not null)
             {
                 await output.WriteLineAsync(FormatCheck(false, rootError)).ConfigureAwait(false);
+                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                return 2;
+            }
+
+            string? setupError = await PrepareSmokeRootEnvironmentAsync(rootPath, output, cancellationToken)
+                .ConfigureAwait(false);
+            if (setupError is not null)
+            {
+                await output.WriteLineAsync(FormatCheck(false, setupError)).ConfigureAwait(false);
                 await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
                 return 2;
             }
@@ -1373,6 +1416,93 @@ namespace Cotton.Sync.Desktop.Startup
             return null;
         }
 
+        private static async Task<string?> PrepareSmokeRootEnvironmentAsync(
+            string rootPath,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            string? driveRoot = Path.GetPathRoot(rootPath);
+            if (string.IsNullOrWhiteSpace(driveRoot))
+            {
+                return "Windows virtual-files smoke root drive could not be resolved.";
+            }
+
+            if (Directory.Exists(driveRoot))
+            {
+                await output
+                    .WriteLineAsync(FormatCheck(true, "Isolated QA drive is available.") + " drive=" + driveRoot)
+                    .ConfigureAwait(false);
+                return null;
+            }
+
+            string driveName = driveRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (!string.Equals(driveName, "S:", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Windows virtual-files smoke drive is unavailable: " + driveName;
+            }
+
+            string backingDirectory = Path.Combine(
+                Path.GetPathRoot(Environment.SystemDirectory) ?? @"C:\",
+                "CottonSyncSmokeDrive");
+            try
+            {
+                Directory.CreateDirectory(backingDirectory);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                return "Windows virtual-files smoke could not prepare the isolated QA drive backing directory: "
+                    + CleanSingleLine(exception.Message);
+            }
+
+            SubstResult subst = await RunSubstAsync(driveName, backingDirectory, cancellationToken).ConfigureAwait(false);
+            if (subst.ExitCode != 0)
+            {
+                return "Windows virtual-files smoke could not create the isolated QA drive: "
+                    + CleanSingleLine(subst.Error.Length == 0 ? subst.Output : subst.Error);
+            }
+
+            if (!Directory.Exists(driveRoot))
+            {
+                return "Windows virtual-files smoke created the isolated QA drive mapping, but the drive is still unavailable.";
+            }
+
+            await output
+                .WriteLineAsync(FormatCheck(true, "Isolated QA drive prepared.") + " drive=" + driveRoot)
+                .ConfigureAwait(false);
+            return null;
+        }
+
+        private static async Task<SubstResult> RunSubstAsync(
+            string driveName,
+            string backingDirectory,
+            CancellationToken cancellationToken)
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = Path.Combine(Environment.SystemDirectory, "subst.exe"),
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            startInfo.ArgumentList.Add(driveName);
+            startInfo.ArgumentList.Add(backingDirectory);
+
+            using var process = new Process { StartInfo = startInfo };
+            if (!process.Start())
+            {
+                return new SubstResult(1, string.Empty, "subst.exe could not be started.");
+            }
+
+            Task<string> output = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            Task<string> error = process.StandardError.ReadToEndAsync(cancellationToken);
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            return new SubstResult(
+                process.ExitCode,
+                await output.ConfigureAwait(false),
+                await error.ConfigureAwait(false));
+        }
+
         private static void PrepareRoot(string rootPath)
         {
             if (Directory.Exists(rootPath))
@@ -2129,6 +2259,8 @@ namespace Cotton.Sync.Desktop.Startup
                 destination.Position = 0;
             }
         }
+
+        private sealed record SubstResult(int ExitCode, string Output, string Error);
 
         private sealed record FileContentHash(long Length, string Sha256);
 
