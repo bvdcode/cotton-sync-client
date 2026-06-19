@@ -661,7 +661,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
-        public async Task ExportDiagnosticsAsync_IncludesDataPathMetadata()
+        public async Task ExportDiagnosticsAsync_IncludesPublicSafeDataPathMetadata()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             using DesktopShellController controller = CreateController(paths, new SqliteSyncPairSettingsStore(paths.AppDatabasePath));
@@ -675,10 +675,14 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             Assert.Multiple(() =>
             {
-                Assert.That(dataPaths.GetProperty("dataDirectory").GetString(), Is.EqualTo(paths.DataDirectory));
-                Assert.That(dataPaths.GetProperty("appDatabasePath").GetString(), Is.EqualTo(paths.AppDatabasePath));
-                Assert.That(dataPaths.GetProperty("syncStateDatabasePath").GetString(), Is.EqualTo(paths.SyncStateDatabasePath));
-                Assert.That(dataPaths.GetProperty("tokenStorePath").GetString(), Is.EqualTo(paths.TokenStorePath));
+                Assert.That(dataPaths.GetProperty("dataDirectory").GetString(), Is.EqualTo("[data-directory]"));
+                Assert.That(dataPaths.GetProperty("appDatabasePath").GetString(), Is.EqualTo("[app-database]"));
+                Assert.That(dataPaths.GetProperty("syncStateDatabasePath").GetString(), Is.EqualTo("[sync-state-database]"));
+                Assert.That(dataPaths.GetProperty("tokenStorePath").GetString(), Is.EqualTo("[token-store]"));
+                Assert.That(diagnosticsJson, Does.Not.Contain(paths.DataDirectory));
+                Assert.That(diagnosticsJson, Does.Not.Contain(paths.AppDatabasePath));
+                Assert.That(diagnosticsJson, Does.Not.Contain(paths.SyncStateDatabasePath));
+                Assert.That(diagnosticsJson, Does.Not.Contain(paths.TokenStorePath));
             });
         }
 
