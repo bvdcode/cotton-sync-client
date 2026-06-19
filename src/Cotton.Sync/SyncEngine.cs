@@ -687,9 +687,15 @@ namespace Cotton.Sync
                 return null;
             }
 
+            long startingManagedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
             _logger.LogInformation(
-                "Starting initial streaming Windows virtual-files population for pair {SyncPairId}.",
-                syncPair.SyncPairId);
+                "Starting initial streaming Windows virtual-files population for pair {SyncPairId} with queue capacity {QueueCapacity}, placeholder concurrency {PlaceholderConcurrency}, placeholder batch size {PlaceholderBatchSize}, state batch size {StateBatchSize}, and managed heap {ManagedHeapBytes} bytes.",
+                syncPair.SyncPairId,
+                options.InitialVirtualFilesPopulationQueueCapacity,
+                options.InitialVirtualFilesPlaceholderConcurrency,
+                options.InitialVirtualFilesPlaceholderBatchSize,
+                options.InitialVirtualFilesStateBatchSize,
+                startingManagedHeapBytes);
             Stopwatch stopwatch = Stopwatch.StartNew();
             var result = new SyncRunResult();
             var channel = Channel.CreateBounded<InitialVirtualFilesPopulationItem>(
@@ -705,6 +711,9 @@ namespace Cotton.Sync
             int createdPlaceholders = 0;
             int skippedCurrentPlaceholders = 0;
             int skippedUnavailablePlaceholders = 0;
+            int stateFileRowsWritten = 0;
+            int stateFileWriteBatches = 0;
+            int stateDirectoryRowsWritten = 0;
             DateTime? lastPlaceholderProgressReportedAtUtc = null;
             ReportRunProgress(options, SyncRunProgressStage.CreatingPlaceholders, 0, null, null, startedAtUtc);
 
@@ -749,6 +758,15 @@ namespace Cotton.Sync
                         skippedCurrentPlaceholders++;
                     }
                 },
+                writtenRows =>
+                {
+                    if (writtenRows > 0)
+                    {
+                        stateFileRowsWritten += writtenRows;
+                        stateFileWriteBatches++;
+                    }
+                },
+                () => stateDirectoryRowsWritten++,
                 streamingCancellation.Token);
 
             Task firstCompleted = await Task.WhenAny(producer, consumer).ConfigureAwait(false);
@@ -778,8 +796,9 @@ namespace Cotton.Sync
             double createdPlaceholderRatePerSecond = stopwatch.Elapsed.TotalSeconds <= 0d
                 ? createdPlaceholders
                 : createdPlaceholders / stopwatch.Elapsed.TotalSeconds;
+            long completedManagedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
             _logger.LogInformation(
-                "Completed initial streaming Windows virtual-files population for pair {SyncPairId} with {DirectoryCount} directories discovered, {FileCount} files discovered, {CompletedFileCount} file items completed, {CreatedPlaceholderCount} placeholders created or refreshed, {SkippedCurrentPlaceholderCount} current placeholders skipped, {SkippedUnavailablePlaceholderCount} placeholders skipped with user action in {ElapsedMilliseconds} ms at {CreatedPlaceholderRatePerSecond:F2} placeholders/sec; activities retained {RetainedActivityCount}/{TotalActivityCount}, truncated={ActivityListTruncated}.",
+                "Completed initial streaming Windows virtual-files population for pair {SyncPairId} with {DirectoryCount} directories discovered, {FileCount} files discovered, {CompletedFileCount} file items completed, {CreatedPlaceholderCount} placeholders created or refreshed, {SkippedCurrentPlaceholderCount} current placeholders skipped, {SkippedUnavailablePlaceholderCount} placeholders skipped with user action in {ElapsedMilliseconds} ms at {CreatedPlaceholderRatePerSecond:F2} placeholders/sec; state writes {StateFileRowsWritten} file rows, file write batches {StateFileWriteBatchCount}, directory rows {StateDirectoryRowsWritten}; managed heap start={StartingManagedHeapBytes} bytes, completed={CompletedManagedHeapBytes} bytes, delta={ManagedHeapDeltaBytes} bytes; queue capacity={QueueCapacity}, placeholder concurrency={PlaceholderConcurrency}, placeholder batch size={PlaceholderBatchSize}, state batch size={StateBatchSize}; activities retained {RetainedActivityCount}/{TotalActivityCount}, truncated={ActivityListTruncated}.",
                 syncPair.SyncPairId,
                 Volatile.Read(ref discoveredDirectories),
                 Volatile.Read(ref discoveredFiles),
@@ -789,6 +808,16 @@ namespace Cotton.Sync
                 skippedUnavailablePlaceholders,
                 stopwatch.ElapsedMilliseconds,
                 createdPlaceholderRatePerSecond,
+                stateFileRowsWritten,
+                stateFileWriteBatches,
+                stateDirectoryRowsWritten,
+                startingManagedHeapBytes,
+                completedManagedHeapBytes,
+                completedManagedHeapBytes - startingManagedHeapBytes,
+                options.InitialVirtualFilesPopulationQueueCapacity,
+                options.InitialVirtualFilesPlaceholderConcurrency,
+                options.InitialVirtualFilesPlaceholderBatchSize,
+                options.InitialVirtualFilesStateBatchSize,
                 result.Activities.Count,
                 result.TotalActivityCount,
                 result.IsActivityListTruncated);
@@ -1101,6 +1130,8 @@ namespace Cotton.Sync
             Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
             Action<DateTime?> setLastPlaceholderProgressReportedAtUtc,
             Action<InitialVirtualFilesFileWorkResult> recordFileWorkResult,
+            Action<int> recordFileStateWrite,
+            Action recordDirectoryStateWrite,
             CancellationToken cancellationToken)
         {
             var pendingFileStates = new List<SyncStateEntry>(options.InitialVirtualFilesStateBatchSize);
@@ -1137,10 +1168,13 @@ namespace Cotton.Sync
                                     getLastPlaceholderProgressReportedAtUtc,
                                     setLastPlaceholderProgressReportedAtUtc,
                                     recordFileWorkResult,
+                                    recordFileStateWrite,
                                     waitForOne: false,
                                     cancellationToken)
                                 .ConfigureAwait(false);
-                            await FlushInitialVirtualFilesStateBatchAsync(pendingFileStates, cancellationToken).ConfigureAwait(false);
+                            int flushedFileRows =
+                                await FlushInitialVirtualFilesStateBatchAsync(pendingFileStates, cancellationToken).ConfigureAwait(false);
+                            recordFileStateWrite(flushedFileRows);
                             await CreateRemoteBackedLocalDirectoryAsync(
                                     syncPair,
                                     directoryItem.Directory.RelativePath,
@@ -1155,6 +1189,7 @@ namespace Cotton.Sync
                                         directoryItem.Directory.Node),
                                     cancellationToken)
                                 .ConfigureAwait(false);
+                            recordDirectoryStateWrite();
                             break;
 
                         case InitialVirtualFilesFilePopulationItem fileItem:
@@ -1189,6 +1224,7 @@ namespace Cotton.Sync
                                             getLastPlaceholderProgressReportedAtUtc,
                                             setLastPlaceholderProgressReportedAtUtc,
                                             recordFileWorkResult,
+                                            recordFileStateWrite,
                                             waitForOne: true,
                                             cancellationToken)
                                         .ConfigureAwait(false);
@@ -1210,6 +1246,7 @@ namespace Cotton.Sync
                                     getLastPlaceholderProgressReportedAtUtc,
                                     setLastPlaceholderProgressReportedAtUtc,
                                     recordFileWorkResult,
+                                    recordFileStateWrite,
                                     cancellationToken)
                                 .ConfigureAwait(false);
                             break;
@@ -1237,6 +1274,7 @@ namespace Cotton.Sync
                             getLastPlaceholderProgressReportedAtUtc,
                             setLastPlaceholderProgressReportedAtUtc,
                             recordFileWorkResult,
+                            recordFileStateWrite,
                             waitForOne: true,
                             cancellationToken)
                         .ConfigureAwait(false);
@@ -1244,7 +1282,9 @@ namespace Cotton.Sync
             }
             finally
             {
-                await FlushInitialVirtualFilesStateBatchAsync(pendingFileStates, cancellationToken).ConfigureAwait(false);
+                int flushedFileRows =
+                    await FlushInitialVirtualFilesStateBatchAsync(pendingFileStates, cancellationToken).ConfigureAwait(false);
+                recordFileStateWrite(flushedFileRows);
             }
         }
 
@@ -1261,6 +1301,7 @@ namespace Cotton.Sync
             Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
             Action<DateTime?> setLastPlaceholderProgressReportedAtUtc,
             Action<InitialVirtualFilesFileWorkResult> recordFileWorkResult,
+            Action<int> recordFileStateWrite,
             bool waitForOne,
             CancellationToken cancellationToken)
         {
@@ -1287,6 +1328,7 @@ namespace Cotton.Sync
                         getLastPlaceholderProgressReportedAtUtc,
                         setLastPlaceholderProgressReportedAtUtc,
                         recordFileWorkResult,
+                        recordFileStateWrite,
                         cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -1313,6 +1355,7 @@ namespace Cotton.Sync
                         getLastPlaceholderProgressReportedAtUtc,
                         setLastPlaceholderProgressReportedAtUtc,
                         recordFileWorkResult,
+                        recordFileStateWrite,
                         cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -1491,6 +1534,7 @@ namespace Cotton.Sync
             Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
             Action<DateTime?> setLastPlaceholderProgressReportedAtUtc,
             Action<InitialVirtualFilesFileWorkResult> recordFileWorkResult,
+            Action<int> recordFileStateWrite,
             CancellationToken cancellationToken)
         {
             foreach (InitialVirtualFilesFileWorkResult workResult in workResults)
@@ -1508,6 +1552,7 @@ namespace Cotton.Sync
                         getLastPlaceholderProgressReportedAtUtc,
                         setLastPlaceholderProgressReportedAtUtc,
                         recordFileWorkResult,
+                        recordFileStateWrite,
                         cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -1526,6 +1571,7 @@ namespace Cotton.Sync
             Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
             Action<DateTime?> setLastPlaceholderProgressReportedAtUtc,
             Action<InitialVirtualFilesFileWorkResult> recordFileWorkResult,
+            Action<int> recordFileStateWrite,
             CancellationToken cancellationToken)
         {
             recordFileWorkResult(workResult);
@@ -1535,7 +1581,9 @@ namespace Cotton.Sync
                 pendingFileStates.Add(workResult.State);
                 if (pendingFileStates.Count >= options.InitialVirtualFilesStateBatchSize)
                 {
-                    await FlushInitialVirtualFilesStateBatchAsync(pendingFileStates, cancellationToken).ConfigureAwait(false);
+                    int flushedFileRows =
+                        await FlushInitialVirtualFilesStateBatchAsync(pendingFileStates, cancellationToken).ConfigureAwait(false);
+                    recordFileStateWrite(flushedFileRows);
                 }
             }
 
@@ -1571,17 +1619,19 @@ namespace Cotton.Sync
                 .ConfigureAwait(false);
         }
 
-        private async Task FlushInitialVirtualFilesStateBatchAsync(
+        private async Task<int> FlushInitialVirtualFilesStateBatchAsync(
             List<SyncStateEntry> pendingFileStates,
             CancellationToken cancellationToken)
         {
             if (pendingFileStates.Count == 0)
             {
-                return;
+                return 0;
             }
 
+            int writtenRows = pendingFileStates.Count;
             await _stateStore.UpsertManyAsync(pendingFileStates, cancellationToken).ConfigureAwait(false);
             pendingFileStates.Clear();
+            return writtenRows;
         }
 
         private async Task<SyncStateEntry?> TryCreateRemoteOnlyFilePlaceholderStateAsync(
