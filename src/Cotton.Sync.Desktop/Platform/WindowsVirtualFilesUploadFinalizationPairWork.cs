@@ -77,7 +77,8 @@ namespace Cotton.Sync.Desktop.Platform
             await runInnerAsync().ConfigureAwait(false);
 
             var finalizedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string relativePath in collector.GetUploadedPaths())
+            IReadOnlyList<string> uploadedPaths = collector.GetUploadedPaths();
+            foreach (string relativePath in uploadedPaths)
             {
                 await FinalizeUploadedPathAsync(
                         syncPair,
@@ -85,6 +86,12 @@ namespace Cotton.Sync.Desktop.Platform
                         finalizedPaths,
                         cancellationToken)
                     .ConfigureAwait(false);
+            }
+
+            if (uploadedPaths.Count > 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _cloudFiles.SetSyncRootInSyncState(syncPair);
             }
         }
 
@@ -101,7 +108,7 @@ namespace Cotton.Sync.Desktop.Platform
                 _cloudFiles.SetInSyncState(syncPair, relativePath);
             }
 
-            foreach (string directoryPath in CreateAncestorDirectoryPaths(relativePath))
+            foreach (string directoryPath in CreateAncestorDirectoryPaths(relativePath).Reverse())
             {
                 if (!finalizedPaths.Add(directoryPath))
                 {

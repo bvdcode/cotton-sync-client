@@ -552,6 +552,40 @@ namespace Cotton.Sync.Desktop.Platform
                 "Windows Cloud Files placeholder was marked in sync.");
         }
 
+        public void SetSyncRootInSyncState(SyncPairSettings syncPair)
+        {
+            ArgumentNullException.ThrowIfNull(syncPair);
+            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
+            const string operation = "set-sync-root-in-sync-state";
+            try
+            {
+                ExecuteNativeOperationWithTransientPathRetry(
+                    () => _nativeApi.SetInSyncState(registration.LocalRootPath),
+                    operation,
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    null);
+            }
+            catch (Exception exception)
+            {
+                RecordFailure(
+                    operation,
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    null,
+                    exception);
+                throw;
+            }
+
+            _diagnostics.Record(
+                operation,
+                "completed",
+                syncPair.Id.ToString(),
+                registration.LocalRootPath,
+                null,
+                "Windows Cloud Files sync root was marked in sync.");
+        }
+
         private void EnsureNoReparsePointDescendant(string syncRootPath, string targetDirectoryPath)
         {
             string root = Path.GetFullPath(syncRootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);

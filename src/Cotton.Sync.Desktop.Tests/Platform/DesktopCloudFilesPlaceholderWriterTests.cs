@@ -224,6 +224,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     adapter.DirectoryPlaceholders.Select(static state => state.RelativePath),
                     Is.EqualTo(new[] { "Projects/Nested", "Projects" }));
                 Assert.That(
+                    adapter.SyncRootInSyncPairs.Select(static state => state.Id),
+                    Is.EqualTo(new[] { syncPairId }));
+                Assert.That(adapter.SyncRootInSyncPairs[0].LocalRootPath, Is.EqualTo(_tempDirectory));
+                Assert.That(
                     suppression.SuppressedWrites,
                     Is.EqualTo(new[]
                     {
@@ -358,6 +362,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<RemoteDirectoryMaterializationRequest> DirectoryPlaceholders { get; } = [];
 
+            public List<SyncPairSettings> SyncRootInSyncPairs { get; } = [];
+
             public Exception? Exception { get; set; }
 
             public Action<RemoteFilePlaceholderRequest>? OnCreate { get; set; }
@@ -414,6 +420,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public void SetInSyncState(SyncPairSettings syncPair, string relativePath)
             {
                 throw new NotSupportedException();
+            }
+
+            public void SetSyncRootInSyncState(SyncPairSettings syncPair)
+            {
+                SyncRootInSyncPairs.Add(syncPair);
             }
 
             public WindowsCloudFilesConnection ConnectSyncRoot(

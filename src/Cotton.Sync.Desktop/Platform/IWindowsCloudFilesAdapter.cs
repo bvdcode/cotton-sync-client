@@ -50,6 +50,11 @@ namespace Cotton.Sync.Desktop.Platform
 
         void SetInSyncState(SyncPairSettings syncPair, string relativePath);
 
+        void SetSyncRootInSyncState(SyncPairSettings syncPair)
+        {
+            ArgumentNullException.ThrowIfNull(syncPair);
+        }
+
         WindowsCloudFilesConnection ConnectSyncRoot(
             SyncPairSettings syncPair,
             IWindowsCloudFilesCallbackHandler callbackHandler);

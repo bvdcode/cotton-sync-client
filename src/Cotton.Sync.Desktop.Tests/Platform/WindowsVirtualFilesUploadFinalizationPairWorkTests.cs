@@ -42,21 +42,24 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     Is.EqualTo(new[] { "Docs/Reports/report.txt" }));
                 Assert.That(
                     cloudFiles.DirectoryPlaceholders.Select(static request => request.RelativePath),
-                    Is.EqualTo(new[] { "Docs", "Docs/Reports" }));
+                    Is.EqualTo(new[] { "Docs/Reports", "Docs" }));
                 Assert.That(
                     cloudFiles.DirectoryPlaceholders.Select(static request => request.RemoteDirectory.Id),
                     Is.EqualTo(new[]
                     {
-                        Guid.Parse("33333333-3333-3333-3333-333333333333"),
                         Guid.Parse("44444444-4444-4444-4444-444444444444"),
+                        Guid.Parse("33333333-3333-3333-3333-333333333333"),
                     }));
+                Assert.That(
+                    cloudFiles.SyncRootInSyncPairs.Select(static item => item.Id),
+                    Is.EqualTo(new[] { syncPair.Id }));
                 Assert.That(
                     suppression.SuppressedWrites,
                     Is.EqualTo(new[]
                     {
                         new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs/Reports/report.txt"),
-                        new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs"),
                         new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs/Reports"),
+                        new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs"),
                     }));
             });
         }
@@ -213,6 +216,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<RemoteDirectoryMaterializationRequest> DirectoryPlaceholders { get; } = [];
 
+            public List<SyncPairSettings> SyncRootInSyncPairs { get; } = [];
+
             public Exception? Exception { get; init; }
 
             public Exception? DirectoryException { get; init; }
@@ -248,6 +253,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 {
                     throw Exception;
                 }
+            }
+
+            public void SetSyncRootInSyncState(SyncPairSettings syncPair)
+            {
+                SyncRootInSyncPairs.Add(syncPair);
             }
 
             public WindowsCloudFilesConnection ConnectSyncRoot(
