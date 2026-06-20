@@ -295,6 +295,21 @@ namespace Cotton.Sync.Tests.Local
         }
 
         [Test]
+        public void IsCloudFilesOnlineOnlyAttributes_RecognizesRecallAndOfflineAttributes()
+        {
+            const FileAttributes recallOnOpen = (FileAttributes)0x00040000;
+            const FileAttributes recallOnDataAccess = (FileAttributes)0x00400000;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(LocalFileScanner.IsCloudFilesOnlineOnlyAttributes(recallOnOpen), Is.True);
+                Assert.That(LocalFileScanner.IsCloudFilesOnlineOnlyAttributes(recallOnDataAccess), Is.True);
+                Assert.That(LocalFileScanner.IsCloudFilesOnlineOnlyAttributes(FileAttributes.Offline), Is.True);
+                Assert.That(LocalFileScanner.IsCloudFilesOnlineOnlyAttributes(FileAttributes.ReparsePoint), Is.False);
+            });
+        }
+
+        [Test]
         public async Task ScanAsync_ThrowsForLockedFile()
         {
             WriteFile("keep.txt", "keep");

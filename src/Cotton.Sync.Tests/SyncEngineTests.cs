@@ -1996,6 +1996,41 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesUploadsMaterializedCloudFileOverRemoteOnlyBaseline()
+        {
+            const string relativePath = "remote-updated.txt";
+            Guid remoteFileId = Guid.NewGuid();
+            NodeFileManifestDto baselineRemote = RemoteFile(relativePath, HashText("old-content"), remoteFileId, sizeBytes: 1024);
+            NodeFileManifestDto currentRemote = RemoteFile(relativePath, HashText("old-content"), remoteFileId, sizeBytes: 1024);
+            LocalFileSnapshot local = LocalFile(relativePath, "local replacement");
+            local.IsCloudFilesPlaceholder = true;
+            local.IsCloudFilesOnlineOnlyPlaceholder = false;
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(local),
+                RemoteTree(currentRemote),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore);
+            await InsertPlaceholderBaselineAsync(stateStore, relativePath, baselineRemote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Uploads, Has.Count.EqualTo(1));
+                Assert.That(remoteFiles.Uploads[0].RelativePath, Is.EqualTo(relativePath));
+                Assert.That(remoteFiles.Uploads[0].ExistingRemoteFile?.Id, Is.EqualTo(remoteFileId));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteFileId, Is.EqualTo(remoteFileId));
+                Assert.That(entry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.None));
+                Assert.That(entry.PlaceholderIdentity, Is.Null);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesRefreshesDehydratedPlaceholderWhenRemoteChanges()
         {
             Guid remoteFileId = Guid.NewGuid();
@@ -4220,6 +4255,7 @@ namespace Cotton.Sync.Tests
                 SizeBytes = sizeBytes,
                 LastWriteUtc = new DateTime(2026, 6, 2, 13, 2, 0, DateTimeKind.Utc),
                 IsCloudFilesPlaceholder = true,
+                IsCloudFilesOnlineOnlyPlaceholder = true,
             };
         }
 

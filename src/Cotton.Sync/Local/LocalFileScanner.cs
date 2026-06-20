@@ -155,6 +155,8 @@ namespace Cotton.Sync.Local
                     var file = new FileInfo(fullPath);
                     FileAttributes attributes = file.Attributes;
                     bool isCloudFilesPlaceholder = IsCloudFilesPlaceholder(file, attributes);
+                    bool isCloudFilesOnlineOnlyPlaceholder =
+                        isCloudFilesPlaceholder && IsCloudFilesOnlineOnlyPlaceholder(attributes);
                     if ((attributes & FileAttributes.ReparsePoint) != 0
                         && !isCloudFilesPlaceholder)
                     {
@@ -168,6 +170,7 @@ namespace Cotton.Sync.Local
                                 normalizedPath,
                                 computeHash: false,
                                 isCloudFilesPlaceholder,
+                                isCloudFilesOnlineOnlyPlaceholder,
                                 cancellationToken)
                             .ConfigureAwait(false));
                     filesScanned++;
@@ -302,11 +305,14 @@ namespace Cotton.Sync.Local
                     {
                         FileAttributes attributes = ReadFileAttributes(file, relativePath);
                         bool isCloudFilesPlaceholder = IsCloudFilesPlaceholder(file, attributes);
+                        bool isCloudFilesOnlineOnlyPlaceholder =
+                            isCloudFilesPlaceholder && IsCloudFilesOnlineOnlyPlaceholder(attributes);
                         LocalFileSnapshot fileSnapshot = await CreateSnapshotAsync(
                                 file,
                                 relativePath,
                                 computeHashes,
                                 isCloudFilesPlaceholder,
+                                isCloudFilesOnlineOnlyPlaceholder,
                                 cancellationToken)
                             .ConfigureAwait(false);
                         addFile(fileSnapshot);
@@ -648,11 +654,12 @@ namespace Cotton.Sync.Local
             string relativePath,
             bool computeHash,
             bool isCloudFilesPlaceholder,
+            bool isCloudFilesOnlineOnlyPlaceholder,
             CancellationToken cancellationToken)
         {
             ValidatePlatformPermissions(file, relativePath);
             LocalFileMetadata before = ReadMetadata(file, relativePath);
-            string contentHash = computeHash && !isCloudFilesPlaceholder
+            string contentHash = computeHash && !isCloudFilesOnlineOnlyPlaceholder
                 ? await ComputeHashAsync(file.FullName, relativePath, progress: null, before.Length, cancellationToken)
                     .ConfigureAwait(false)
                 : string.Empty;
@@ -670,6 +677,7 @@ namespace Cotton.Sync.Local
                 SizeBytes = after.Length,
                 LastWriteUtc = after.LastWriteUtc,
                 IsCloudFilesPlaceholder = isCloudFilesPlaceholder,
+                IsCloudFilesOnlineOnlyPlaceholder = isCloudFilesOnlineOnlyPlaceholder,
             };
         }
 
@@ -694,6 +702,18 @@ namespace Cotton.Sync.Local
         {
             return (reparseTag & ReparseTagCloudFamilyMask) == ReparseTagCloudFamily
                 && (reparseTag & 0xFF) == ReparseTagCloudLowByte;
+        }
+
+        internal static bool IsCloudFilesOnlineOnlyAttributes(FileAttributes attributes)
+        {
+            return IsCloudFilesOnlineOnlyPlaceholder(attributes);
+        }
+
+        private static bool IsCloudFilesOnlineOnlyPlaceholder(FileAttributes attributes)
+        {
+            return HasRawAttribute(attributes, FileAttributeRecallOnOpen)
+                || HasRawAttribute(attributes, FileAttributeRecallOnDataAccess)
+                || (attributes & FileAttributes.Offline) != 0;
         }
 
         private static bool TryReadReparseTag(string fullPath, out uint reparseTag)

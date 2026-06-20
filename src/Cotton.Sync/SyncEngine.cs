@@ -1118,14 +1118,14 @@ namespace Cotton.Sync
 
         private static bool IsUntrackedVirtualFilesPlaceholderCompatibleWithInitialStreaming(LocalFileSnapshot local)
         {
-            return local.IsCloudFilesPlaceholder;
+            return local.IsCloudFilesOnlineOnlyPlaceholder;
         }
 
         private static bool IsResumeCompatibleVirtualFilesPlaceholder(
             LocalFileSnapshot local,
             InitialVirtualFilesPlaceholderBaseline baseline)
         {
-            return local.IsCloudFilesPlaceholder
+            return local.IsCloudFilesOnlineOnlyPlaceholder
                 && IsOnlineOnlyPlaceholderState(baseline)
                 && baseline.RemoteFileId.HasValue;
         }
@@ -2230,6 +2230,20 @@ namespace Cotton.Sync
                 return;
             }
 
+            if (local is not null
+                && remote is not null
+                && IsOnlineOnlyPlaceholderBaseline(syncPair, state))
+            {
+                if (!remoteChanged)
+                {
+                    await UploadAsync(syncPair, options, result, relativePath, local, remote.File, cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
+                await PreserveConflictAsync(syncPair, options, result, relativePath, local, remote.File, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
             if (local is not null && remote is not null && ContentMatches(local.ContentHash, remote.File.ContentHash))
             {
                 if (!BaselineMatchesCurrentFile(syncPair, relativePath, state, local, remote.File))
@@ -2396,7 +2410,7 @@ namespace Cotton.Sync
                     continue;
                 }
 
-                if (local.Value.IsCloudFilesPlaceholder)
+                if (local.Value.IsCloudFilesOnlineOnlyPlaceholder)
                 {
                     continue;
                 }
@@ -3708,7 +3722,7 @@ namespace Cotton.Sync
             LocalFileSnapshot local,
             SyncStateEntry state)
         {
-            return local.IsCloudFilesPlaceholder
+            return local.IsCloudFilesOnlineOnlyPlaceholder
                 && IsOnlineOnlyPlaceholderBaseline(syncPair, state);
         }
 
@@ -4112,7 +4126,7 @@ namespace Cotton.Sync
                 return;
             }
 
-            if (local.IsCloudFilesPlaceholder && IsOnlineOnlyPlaceholderState(state))
+            if (local.IsCloudFilesOnlineOnlyPlaceholder && IsOnlineOnlyPlaceholderState(state))
             {
                 local.ContentHash = !string.IsNullOrWhiteSpace(state.LocalContentHash)
                     ? state.LocalContentHash
