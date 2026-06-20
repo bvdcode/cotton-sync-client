@@ -15,6 +15,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
     public class WindowsCloudFilesAdapterTests
     {
         private const int HResultPathNotFound = unchecked((int)0x80070003);
+        private const uint FileFlagOpenReparsePoint = 0x00200000;
+        private const uint FileFlagBackupSemantics = 0x02000000;
         private string _tempDirectory = string.Empty;
 
         [SetUp]
@@ -31,6 +33,36 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 Directory.Delete(_tempDirectory, recursive: true);
             }
+        }
+
+        [Test]
+        public void CreateReparseTagOpenFlags_IncludesBackupSemanticsForDirectories()
+        {
+            string directoryPath = Path.Combine(_tempDirectory, "directory-placeholder");
+            Directory.CreateDirectory(directoryPath);
+
+            uint flags = WindowsCloudFilesAdapter.CreateReparseTagOpenFlags(directoryPath);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That((flags & FileFlagOpenReparsePoint), Is.EqualTo(FileFlagOpenReparsePoint));
+                Assert.That((flags & FileFlagBackupSemantics), Is.EqualTo(FileFlagBackupSemantics));
+            });
+        }
+
+        [Test]
+        public void CreateReparseTagOpenFlags_DoesNotIncludeBackupSemanticsForFiles()
+        {
+            string filePath = Path.Combine(_tempDirectory, "remote-only.txt");
+            File.WriteAllText(filePath, string.Empty);
+
+            uint flags = WindowsCloudFilesAdapter.CreateReparseTagOpenFlags(filePath);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That((flags & FileFlagOpenReparsePoint), Is.EqualTo(FileFlagOpenReparsePoint));
+                Assert.That((flags & FileFlagBackupSemantics), Is.EqualTo(0));
+            });
         }
 
         [Test]
