@@ -499,6 +499,7 @@ namespace Cotton.Sync.Desktop.Shell
             }
 
             await host.App.DeleteSyncPairAsync(syncPairId, cancellationToken).ConfigureAwait(false);
+            await UpdateSyncCoreStateAfterSyncPairDeletionAsync(host, cancellationToken).ConfigureAwait(false);
         }
 
         public async Task SignOutAsync(CancellationToken cancellationToken = default)
@@ -1538,6 +1539,24 @@ namespace Cotton.Sync.Desktop.Shell
         private DesktopSyncApplicationHost RequireHost()
         {
             return _host ?? throw new InvalidOperationException("Sign in before running sync commands.");
+        }
+
+        private async Task UpdateSyncCoreStateAfterSyncPairDeletionAsync(
+            DesktopSyncApplicationHost host,
+            CancellationToken cancellationToken)
+        {
+            if (!ReferenceEquals(_host, host))
+            {
+                return;
+            }
+
+            IReadOnlyList<SyncPairSettings> syncPairs = await host.App
+                .ListSyncPairsAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (syncPairs.Count == 0 && ReferenceEquals(_host, host))
+            {
+                _syncCoreState = SyncCoreStateStopped;
+            }
         }
 
         private DesktopSyncApplicationHost? DetachHost()

@@ -324,6 +324,39 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public async Task RemoveSyncPairAsync_MarksZeroPairBackgroundInactiveAfterLastPairDeletion()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            Uri serverUrl = new("https://cotton.example.test/");
+            var syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            await syncPairStore.InitializeAsync();
+            SyncPairSettings syncPair = CreateSyncPair(isEnabled: true);
+            await syncPairStore.UpsertAsync(syncPair);
+            FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
+            host.App.SyncPairStore = syncPairStore;
+            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            using DesktopShellController controller = CreateController(paths, factory, syncPairStore: syncPairStore);
+            await controller.SignInWithBrowserAsync(serverUrl.AbsoluteUri);
+
+            JsonElement beforeRemove = await ReadSyncLifecycleDiagnosticsAsync(controller);
+            await controller.RemoveSyncPairAsync(syncPair.Id);
+            JsonElement afterRemove = await ReadSyncLifecycleDiagnosticsAsync(controller);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(beforeRemove.GetProperty("status").GetString(), Is.EqualTo("configuredPairs"));
+                Assert.That(beforeRemove.GetProperty("syncPairCount").GetInt32(), Is.EqualTo(1));
+                Assert.That(beforeRemove.GetProperty("isBackgroundActive").GetBoolean(), Is.True);
+                Assert.That(afterRemove.GetProperty("status").GetString(), Is.EqualTo("zeroPairBackgroundInactive"));
+                Assert.That(afterRemove.GetProperty("syncPairCount").GetInt32(), Is.Zero);
+                Assert.That(afterRemove.GetProperty("syncCoreState").GetString(), Is.EqualTo("stopped"));
+                Assert.That(afterRemove.GetProperty("isBackgroundActive").GetBoolean(), Is.False);
+                Assert.That(host.App.DeleteSyncPairCalls, Is.EqualTo(1));
+                Assert.That(host.App.DeletedSyncPairId, Is.EqualTo(syncPair.Id));
+            });
+        }
+
+        [Test]
         public async Task LoadAsync_SkipsSessionRestoreWhenTokenStorageIsInsecure()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
@@ -1141,6 +1174,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             public IAppPreferencesStore? PreferencesStore { get; set; }
 
+            public ISyncPairSettingsStore? SyncPairStore { get; set; }
+
             public TaskCompletionSource? StartSyncStarted { get; set; }
 
             public TaskCompletionSource? StartSyncRelease { get; set; }
@@ -1199,30 +1234,52 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 await PreferencesStore.SaveAsync(preferences, cancellationToken);
             }
 
-            public Task<IReadOnlyList<SyncPairSettings>> ListSyncPairsAsync(CancellationToken cancellationToken = default)
+            public async Task<IReadOnlyList<SyncPairSettings>> ListSyncPairsAsync(CancellationToken cancellationToken = default)
             {
-                return Task.FromResult<IReadOnlyList<SyncPairSettings>>([]);
+                if (SyncPairStore is null)
+                {
+                    return [];
+                }
+
+                await SyncPairStore.InitializeAsync(cancellationToken);
+                return await SyncPairStore.ListAsync(cancellationToken);
             }
 
-            public Task<SyncPairSettings?> GetSyncPairAsync(Guid syncPairId, CancellationToken cancellationToken = default)
+            public async Task<SyncPairSettings?> GetSyncPairAsync(Guid syncPairId, CancellationToken cancellationToken = default)
             {
-                return Task.FromResult<SyncPairSettings?>(null);
+                if (SyncPairStore is null)
+                {
+                    return null;
+                }
+
+                await SyncPairStore.InitializeAsync(cancellationToken);
+                return await SyncPairStore.GetAsync(syncPairId, cancellationToken);
             }
 
-            public Task<SyncPairSaveResult> SaveSyncPairAsync(
+            public async Task<SyncPairSaveResult> SaveSyncPairAsync(
                 SyncPairSettings syncPair,
                 CancellationToken cancellationToken = default)
             {
                 SaveSyncPairCalls++;
                 SavedSyncPair = syncPair;
-                return Task.FromResult(SyncPairSaveResult.Saved(new SyncPairValidationResult([])));
+                if (SyncPairStore is not null)
+                {
+                    await SyncPairStore.InitializeAsync(cancellationToken);
+                    await SyncPairStore.UpsertAsync(syncPair, cancellationToken);
+                }
+
+                return SyncPairSaveResult.Saved(new SyncPairValidationResult([]));
             }
 
-            public Task DeleteSyncPairAsync(Guid syncPairId, CancellationToken cancellationToken = default)
+            public async Task DeleteSyncPairAsync(Guid syncPairId, CancellationToken cancellationToken = default)
             {
                 DeleteSyncPairCalls++;
                 DeletedSyncPairId = syncPairId;
-                return Task.CompletedTask;
+                if (SyncPairStore is not null)
+                {
+                    await SyncPairStore.InitializeAsync(cancellationToken);
+                    await SyncPairStore.DeleteAsync(syncPairId, cancellationToken);
+                }
             }
 
             public Task StartSyncAsync(CancellationToken cancellationToken = default)
