@@ -25,6 +25,7 @@ namespace Cotton.Sync.Desktop.Platform
         private const uint ReparseTagCloudLowByte = 0x1A;
         private const uint ReparseTagCloudFamilyMask = 0xF00000FF;
         private const uint ReparseTagCloudFamily = 0x9000001A;
+        private const uint FileFlagBackupSemantics = 0x02000000;
         private const int FileAttributeRecallOnOpen = 0x00040000;
         private const int FileAttributeRecallOnDataAccess = 0x00400000;
         private static readonly Guid ProviderGuid = Guid.Parse("6453b9dc-e042-4a73-a675-c5b2aa6c9607");
@@ -785,7 +786,7 @@ namespace Cotton.Sync.Desktop.Platform
                 FileShareRead | FileShareWrite | FileShareDelete,
                 IntPtr.Zero,
                 OpenExisting,
-                FileFlagOpenReparsePoint,
+                CreateReparseTagOpenFlags(fullPath),
                 IntPtr.Zero);
             if (handle.IsInvalid)
             {
@@ -809,6 +810,17 @@ namespace Cotton.Sync.Desktop.Platform
 
             reparseTag = BinaryPrimitives.ReadUInt32LittleEndian(buffer);
             return true;
+        }
+
+        internal static uint CreateReparseTagOpenFlags(string fullPath)
+        {
+            uint flags = FileFlagOpenReparsePoint;
+            if (Directory.Exists(fullPath))
+            {
+                flags |= FileFlagBackupSemantics;
+            }
+
+            return flags;
         }
 
         private static byte[] CreateSyncRootIdentity(Guid syncPairId, Guid remoteRootNodeId)
