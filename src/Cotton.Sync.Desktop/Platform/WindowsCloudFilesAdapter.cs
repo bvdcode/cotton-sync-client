@@ -2,6 +2,7 @@
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.SyncPairs;
+using Cotton.Nodes;
 using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
 using Microsoft.Win32.SafeHandles;
@@ -330,19 +331,27 @@ namespace Cotton.Sync.Desktop.Platform
                     throw new InvalidOperationException("Virtual-files directory placeholder path cannot replace a non-Cloud Files reparse point.");
                 }
 
-                ExecuteNativeOperationWithTransientPathRetry(
-                    () => _nativeApi.SetInSyncState(fullPlaceholderPath),
-                    "set-in-sync-state",
-                    request.SyncPairId,
-                    safety.FullPath,
-                    normalizedPath);
-                _diagnostics.Record(
-                    convertOperation,
-                    "already-placeholder",
-                    request.SyncPairId,
-                    safety.FullPath,
-                    normalizedPath,
-                    "Windows Cloud Files directory placeholder already existed and was marked in sync.");
+                try
+                {
+                    RepairExistingDirectoryPlaceholder(
+                        request,
+                        safety.FullPath,
+                        normalizedPath,
+                        placeholderPath,
+                        fullPlaceholderPath,
+                        directoryIdentity);
+                }
+                catch (Exception exception)
+                {
+                    RecordFailure(
+                        convertOperation,
+                        request.SyncPairId,
+                        safety.FullPath,
+                        normalizedPath,
+                        exception);
+                    throw;
+                }
+
                 return;
             }
 
@@ -389,6 +398,45 @@ namespace Cotton.Sync.Desktop.Platform
                 safety.FullPath,
                 normalizedPath,
                 "Windows Cloud Files directory placeholder was converted and marked in sync.");
+        }
+
+        private void RepairExistingDirectoryPlaceholder(
+            RemoteDirectoryMaterializationRequest request,
+            string localRootPath,
+            string normalizedPath,
+            PlaceholderPath placeholderPath,
+            string fullPlaceholderPath,
+            byte[] directoryIdentity)
+        {
+            WindowsCloudFilesNativePlaceholder directoryPlaceholder = CreateDirectoryNativePlaceholder(
+                placeholderPath,
+                directoryIdentity,
+                request.RemoteDirectory);
+            ExecuteNativeOperationWithTransientPathRetry(
+                () => _nativeApi.UpdatePlaceholder(directoryPlaceholder),
+                "update-directory-placeholder",
+                request.SyncPairId,
+                localRootPath,
+                normalizedPath);
+            ExecuteNativeOperationWithTransientPathRetry(
+                () => _nativeApi.SetPinState(fullPlaceholderPath, WindowsCloudFilesPinState.Unpinned),
+                "set-pin-state",
+                request.SyncPairId,
+                localRootPath,
+                normalizedPath);
+            ExecuteNativeOperationWithTransientPathRetry(
+                () => _nativeApi.SetInSyncState(fullPlaceholderPath),
+                "set-in-sync-state",
+                request.SyncPairId,
+                localRootPath,
+                normalizedPath);
+            _diagnostics.Record(
+                "convert-directory-placeholder",
+                "repaired-placeholder",
+                request.SyncPairId,
+                localRootPath,
+                normalizedPath,
+                "Windows Cloud Files directory placeholder already existed and was repaired.");
         }
 
         public void DehydratePlaceholder(SyncPairSettings syncPair, string relativePath)
@@ -782,6 +830,21 @@ namespace Cotton.Sync.Desktop.Platform
         private static byte[] CreateDirectoryIdentity(RemoteDirectoryMaterializationRequest request, string normalizedPath)
         {
             return WindowsCloudFilesDirectoryPlaceholderIdentity.Create(request, normalizedPath).ToBytes();
+        }
+
+        private static WindowsCloudFilesNativePlaceholder CreateDirectoryNativePlaceholder(
+            PlaceholderPath placeholderPath,
+            byte[] directoryIdentity,
+            NodeDto remoteDirectory)
+        {
+            return new WindowsCloudFilesNativePlaceholder(
+                placeholderPath.BaseDirectoryPath,
+                placeholderPath.RelativeFileName,
+                directoryIdentity,
+                0,
+                remoteDirectory.CreatedAt,
+                remoteDirectory.UpdatedAt,
+                IsDirectory: true);
         }
 
         private static string ResolveProviderVersion()

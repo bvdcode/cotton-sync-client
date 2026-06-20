@@ -189,7 +189,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
-        public void CreateDirectoryPlaceholder_MarksExistingCloudFilesDirectoryInSyncWithoutReconversion()
+        public void CreateDirectoryPlaceholder_RepairsExistingCloudFilesDirectoryPlaceholderWithoutReconversion()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
             var diagnostics = new WindowsCloudFilesDiagnostics();
@@ -206,11 +206,23 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             adapter.CreateDirectoryPlaceholder(CreateDirectoryRequest(root, "Projects"));
 
             IReadOnlyList<WindowsCloudFilesDiagnosticEvent> events = diagnostics.Snapshot();
+            WindowsCloudFilesDirectoryPlaceholderIdentity identity =
+                System.Text.Json.JsonSerializer.Deserialize<WindowsCloudFilesDirectoryPlaceholderIdentity>(
+                    nativeApi.UpdatedPlaceholders.Single().FileIdentity,
+                    new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
             Assert.Multiple(() =>
             {
                 Assert.That(nativeApi.ConvertedPlaceholders, Is.Empty);
+                Assert.That(nativeApi.UpdatedPlaceholders, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.UpdatedPlaceholders[0].BaseDirectoryPath, Is.EqualTo(Path.GetFullPath(root)));
+                Assert.That(nativeApi.UpdatedPlaceholders[0].RelativeFileName, Is.EqualTo("Projects"));
+                Assert.That(nativeApi.UpdatedPlaceholders[0].IsDirectory, Is.True);
+                Assert.That(nativeApi.PinStates.Select(static pin => pin.FilePath), Is.EqualTo(new[] { directoryPath }));
                 Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { directoryPath }));
-                Assert.That(events.Any(static item => item is { Operation: "convert-directory-placeholder", Status: "already-placeholder" }), Is.True);
+                Assert.That(nativeApi.CallLog, Is.EqualTo(new[] { "native-update", "native-set-pin-state", "native-set-in-sync-state" }));
+                Assert.That(identity.RelativePath, Is.EqualTo("Projects"));
+                Assert.That(identity.NodeId, Is.EqualTo(Guid.Parse("88888888-8888-8888-8888-888888888888")));
+                Assert.That(events.Any(static item => item is { Operation: "convert-directory-placeholder", Status: "repaired-placeholder" }), Is.True);
             });
         }
 
@@ -891,6 +903,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public void UpdatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder)
             {
+                CallLog.Add("native-update");
                 UpdateCalls++;
                 if (UpdateFailuresBeforeSuccess > 0)
                 {
