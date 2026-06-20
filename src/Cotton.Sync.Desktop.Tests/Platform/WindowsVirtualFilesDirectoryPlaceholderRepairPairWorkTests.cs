@@ -70,19 +70,32 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
             var inner = new RecordingSyncPairWork();
             var stateStore = new FakeSyncStateStore();
-            stateStore.UpsertDirectory(syncPair, "Docs", Guid.Parse("33333333-3333-3333-3333-333333333333"));
+            Guid docsNodeId = Guid.Parse("33333333-3333-3333-3333-333333333333");
+            Guid reportsNodeId = Guid.Parse("44444444-4444-4444-4444-444444444444");
+            Guid mediaNodeId = Guid.Parse("55555555-5555-5555-5555-555555555555");
+            Guid rawNodeId = Guid.Parse("66666666-6666-6666-6666-666666666666");
+            stateStore.UpsertDirectory(syncPair, "Docs", docsNodeId);
+            stateStore.UpsertDirectory(syncPair, "Docs/Reports", reportsNodeId);
+            stateStore.UpsertDirectory(syncPair, "Media", mediaNodeId);
+            stateStore.UpsertDirectory(syncPair, "Media/Raw", rawNodeId);
+            stateStore.UpsertDirectory(syncPair, "Unrelated", Guid.Parse("77777777-7777-7777-7777-777777777777"));
             var cloudFiles = new RecordingCloudFilesAdapter();
             var work = new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
                 inner,
                 stateStore,
                 cloudFiles);
 
-            await work.RunOnceAsync(syncPair, SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]));
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForLocalChangedPaths(["Docs/Reports/report.txt", "Media"]));
 
             Assert.Multiple(() =>
             {
                 Assert.That(inner.Requests, Has.Count.EqualTo(1));
-                Assert.That(cloudFiles.DirectoryPlaceholders, Is.Empty);
+                Assert.That(
+                    cloudFiles.DirectoryPlaceholders.Select(static request => request.RelativePath),
+                    Is.EqualTo(new[] { "Docs/Reports", "Media/Raw", "Docs", "Media" }));
+                Assert.That(
+                    cloudFiles.DirectoryPlaceholders.Select(static request => request.RemoteDirectory.Id),
+                    Is.EqualTo(new[] { reportsNodeId, rawNodeId, docsNodeId, mediaNodeId }));
             });
         }
 
@@ -271,6 +284,26 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 foreach (SyncStateEntry entry in _entries.Values
                              .Where(entry => entry.SyncPairId == syncPairId && entry.Kind == SyncEntryKind.Directory)
+                             .OrderBy(entry => SyncPath.ToKey(entry.RelativePath), StringComparer.OrdinalIgnoreCase))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    yield return entry;
+                    await Task.Yield();
+                }
+            }
+
+            public async IAsyncEnumerable<SyncStateEntry> LoadDirectoryEntriesByPathPrefixAsync(
+                string syncPairId,
+                string relativePathPrefix,
+                [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+            {
+                string prefixKey = SyncPath.ToKey(relativePathPrefix);
+                string childPrefix = prefixKey + "/";
+                foreach (SyncStateEntry entry in _entries.Values
+                             .Where(entry => entry.SyncPairId == syncPairId
+                                 && entry.Kind == SyncEntryKind.Directory
+                                 && (SyncPath.ToKey(entry.RelativePath).Equals(prefixKey, StringComparison.OrdinalIgnoreCase)
+                                     || SyncPath.ToKey(entry.RelativePath).StartsWith(childPrefix, StringComparison.OrdinalIgnoreCase)))
                              .OrderBy(entry => SyncPath.ToKey(entry.RelativePath), StringComparer.OrdinalIgnoreCase))
                 {
                     cancellationToken.ThrowIfCancellationRequested();

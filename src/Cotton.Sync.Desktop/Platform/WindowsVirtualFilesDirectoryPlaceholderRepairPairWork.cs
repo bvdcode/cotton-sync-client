@@ -48,14 +48,23 @@ namespace Cotton.Sync.Desktop.Platform
             ArgumentNullException.ThrowIfNull(syncPair);
             ArgumentNullException.ThrowIfNull(request);
             await _inner.RunOnceAsync(syncPair, request, cancellationToken).ConfigureAwait(false);
-            if (request.IsFull)
-            {
-                await RepairAfterFullWindowsVirtualFilesRunAsync(syncPair, cancellationToken).ConfigureAwait(false);
-            }
+            await RepairAfterWindowsVirtualFilesRunAsync(syncPair, request, cancellationToken).ConfigureAwait(false);
         }
 
         private async Task RepairAfterFullWindowsVirtualFilesRunAsync(
             SyncPairSettings syncPair,
+            CancellationToken cancellationToken)
+        {
+            await RepairAfterWindowsVirtualFilesRunAsync(
+                    syncPair,
+                    SyncRunRequest.Full,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        private async Task RepairAfterWindowsVirtualFilesRunAsync(
+            SyncPairSettings syncPair,
+            SyncRunRequest request,
             CancellationToken cancellationToken)
         {
             if (syncPair.Mode != SyncPairMode.WindowsVirtualFiles)
@@ -64,18 +73,9 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            var directories = new List<SyncStateEntry>();
-            await foreach (SyncStateEntry entry in _stateStore
-                               .LoadPairDirectoryEntriesAsync(syncPair.Id.ToString("D"), cancellationToken)
-                               .WithCancellation(cancellationToken)
-                               .ConfigureAwait(false))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (!string.IsNullOrWhiteSpace(entry.RelativePath) && entry.RemoteNodeId.HasValue)
-                {
-                    directories.Add(entry);
-                }
-            }
+            IReadOnlyList<SyncStateEntry> directories = request.IsFull
+                ? await LoadFullRepairDirectoriesAsync(syncPair, cancellationToken).ConfigureAwait(false)
+                : await LoadScopedRepairDirectoriesAsync(syncPair, request, cancellationToken).ConfigureAwait(false);
 
             if (directories.Count == 0)
             {
@@ -146,6 +146,109 @@ namespace Cotton.Sync.Desktop.Platform
                 null,
                 $"Remote-backed directory candidates={candidateCount}; repaired={repairedCount}; elapsed={elapsedMilliseconds} ms.",
                 hResult);
+        }
+
+        private async Task<IReadOnlyList<SyncStateEntry>> LoadFullRepairDirectoriesAsync(
+            SyncPairSettings syncPair,
+            CancellationToken cancellationToken)
+        {
+            var directories = new List<SyncStateEntry>();
+            await foreach (SyncStateEntry entry in _stateStore
+                               .LoadPairDirectoryEntriesAsync(syncPair.Id.ToString("D"), cancellationToken)
+                               .WithCancellation(cancellationToken)
+                               .ConfigureAwait(false))
+            {
+                AddRepairDirectory(directories, entry);
+            }
+
+            return directories;
+        }
+
+        private async Task<IReadOnlyList<SyncStateEntry>> LoadScopedRepairDirectoriesAsync(
+            SyncPairSettings syncPair,
+            SyncRunRequest request,
+            CancellationToken cancellationToken)
+        {
+            string syncPairId = syncPair.Id.ToString("D");
+            var directories = new List<SyncStateEntry>();
+            var requestedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var ancestorKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string path in request.LocalChangedPaths)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!TryNormalizePath(path, out string normalizedPath))
+                {
+                    continue;
+                }
+
+                requestedKeys.Add(normalizedPath);
+                foreach (string ancestor in CreateAncestorDirectoryPaths(normalizedPath))
+                {
+                    ancestorKeys.Add(ancestor);
+                }
+            }
+
+            await foreach (SyncStateEntry entry in _stateStore
+                               .LoadEntriesByPathKeysAsync(syncPairId, ancestorKeys, cancellationToken)
+                               .WithCancellation(cancellationToken)
+                               .ConfigureAwait(false))
+            {
+                AddRepairDirectory(directories, entry);
+            }
+
+            foreach (string requestedKey in requestedKeys.OrderBy(static path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                await foreach (SyncStateEntry entry in _stateStore
+                                   .LoadDirectoryEntriesByPathPrefixAsync(syncPairId, requestedKey, cancellationToken)
+                                   .WithCancellation(cancellationToken)
+                                   .ConfigureAwait(false))
+                {
+                    AddRepairDirectory(directories, entry);
+                }
+            }
+
+            return directories
+                .GroupBy(static entry => SyncPath.ToKey(entry.RelativePath), StringComparer.OrdinalIgnoreCase)
+                .Select(static group => group.First())
+                .ToArray();
+        }
+
+        private static void AddRepairDirectory(ICollection<SyncStateEntry> directories, SyncStateEntry entry)
+        {
+            if (!string.IsNullOrWhiteSpace(entry.RelativePath)
+                && entry.Kind == SyncEntryKind.Directory
+                && entry.RemoteNodeId.HasValue)
+            {
+                directories.Add(entry);
+            }
+        }
+
+        private static bool TryNormalizePath(string path, out string normalizedPath)
+        {
+            normalizedPath = string.Empty;
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            try
+            {
+                normalizedPath = SyncPath.Normalize(path);
+                return !string.IsNullOrWhiteSpace(normalizedPath) && normalizedPath != ".";
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+        }
+
+        private static IEnumerable<string> CreateAncestorDirectoryPaths(string relativePath)
+        {
+            string[] segments = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            for (int length = 1; length < segments.Length; length++)
+            {
+                yield return string.Join("/", segments.Take(length));
+            }
         }
 
         private static RemoteDirectoryMaterializationRequest CreateRequest(
