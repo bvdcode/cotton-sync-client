@@ -405,6 +405,21 @@ namespace Cotton.Sync.Tests.State
         }
 
         [Test]
+        public async Task InitializeAsync_CreatesDirectoryRepairLookupIndex()
+        {
+            string databasePath = DatabasePath();
+            var store = new SqliteSyncStateStore(databasePath);
+
+            await store.InitializeAsync();
+
+            string indexColumns = await ReadIndexColumnsAsync(
+                databasePath,
+                "IX_sync_entries_sync_pair_id_kind_relative_path_key");
+
+            Assert.That(indexColumns, Is.EqualTo("sync_pair_id,kind,relative_path_key"));
+        }
+
+        [Test]
         public async Task InitializeAsync_MigratesLocalSizeStateDatabaseToVirtualFileMetadata()
         {
             string databasePath = DatabasePath();
@@ -898,6 +913,36 @@ namespace Cotton.Sync.Tests.State
             command.CommandText = commandText;
             object? result = await command.ExecuteScalarAsync();
             return Convert.ToInt64(result, System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        private static async Task<string> ReadIndexColumnsAsync(string databasePath, string indexName)
+        {
+            var connectionString = new DbConnectionStringBuilder
+            {
+                ["Data Source"] = databasePath,
+                ["Pooling"] = false,
+            }.ToString();
+            DbContextOptions<SyncStateDbContext> options = new DbContextOptionsBuilder<SyncStateDbContext>()
+                .UseSqlite(connectionString)
+                .Options;
+            await using var context = new SyncStateDbContext(options);
+            await context.Database.OpenConnectionAsync();
+            try
+            {
+                DbConnection connection = context.Database.GetDbConnection();
+                await using DbCommand command = connection.CreateCommand();
+                command.CommandText = "SELECT group_concat(name, ',') FROM pragma_index_info($indexName) ORDER BY seqno;";
+                DbParameter parameter = command.CreateParameter();
+                parameter.ParameterName = "$indexName";
+                parameter.Value = indexName;
+                command.Parameters.Add(parameter);
+                object? result = await command.ExecuteScalarAsync();
+                return Convert.ToString(result, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+            }
+            finally
+            {
+                await context.Database.CloseConnectionAsync();
+            }
         }
 
         private sealed record SqlitePageUsage(long PageCount, long FreelistCount, long PageSize)

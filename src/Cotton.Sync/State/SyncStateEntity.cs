@@ -12,6 +12,7 @@ namespace Cotton.Sync.State
     /// </summary>
     [Table("sync_entries")]
     [Index(nameof(SyncPairId), nameof(RelativePathKey), IsUnique = true)]
+    [Index(nameof(SyncPairId), nameof(Kind), nameof(RelativePathKey))]
     [Index(nameof(RemoteFileId))]
     [Index(nameof(RemoteNodeId))]
     public class SyncStateEntity

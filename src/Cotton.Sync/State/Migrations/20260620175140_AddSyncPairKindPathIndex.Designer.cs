@@ -3,6 +3,7 @@ using System;
 using Cotton.Sync.State;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Cotton.Sync.State.Migrations
 {
     [DbContext(typeof(SyncStateDbContext))]
-    partial class SyncStateDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260620175140_AddSyncPairKindPathIndex")]
+    partial class AddSyncPairKindPathIndex
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.8");
