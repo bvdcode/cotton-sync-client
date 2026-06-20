@@ -17,6 +17,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         private const int HResultPathNotFound = unchecked((int)0x80070003);
         private const uint FileFlagOpenReparsePoint = 0x00200000;
         private const uint FileFlagBackupSemantics = 0x02000000;
+        private const uint CfPlaceholderCreateFlagDisableOnDemandPopulation = 0x00000001;
+        private const uint CfPlaceholderCreateFlagMarkInSync = 0x00000002;
+        private const uint CfUpdateFlagMarkInSync = 0x00000002;
+        private const uint CfUpdateFlagDisableOnDemandPopulation = 0x00000010;
+        private const uint CfUpdateFlagAllowPartial = 0x00000400;
         private string _tempDirectory = string.Empty;
 
         [SetUp]
@@ -33,6 +38,36 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 Directory.Delete(_tempDirectory, recursive: true);
             }
+        }
+
+        [Test]
+        public void CreatePlaceholderCreateFlags_ForDirectoryMarksFullyPopulated()
+        {
+            uint flags = InvokeNativeFlagFactory("CreatePlaceholderCreateFlags", isDirectory: true);
+
+            Assert.That(
+                flags,
+                Is.EqualTo(CfPlaceholderCreateFlagMarkInSync | CfPlaceholderCreateFlagDisableOnDemandPopulation));
+        }
+
+        [Test]
+        public void CreateUpdateFlags_ForDirectoryMarksFullyPopulated()
+        {
+            uint flags = InvokeNativeFlagFactory("CreateUpdateFlags", isDirectory: true);
+
+            Assert.That(
+                flags,
+                Is.EqualTo(CfUpdateFlagMarkInSync | CfUpdateFlagDisableOnDemandPopulation));
+        }
+
+        [Test]
+        public void CreateUpdateFlags_ForFileAllowsPartialUpdates()
+        {
+            uint flags = InvokeNativeFlagFactory("CreateUpdateFlags", isDirectory: false);
+
+            Assert.That(
+                flags,
+                Is.EqualTo(CfUpdateFlagMarkInSync | CfUpdateFlagAllowPartial));
         }
 
         [Test]
@@ -207,12 +242,16 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(nativeApi.ConvertedPlaceholders.Select(static item => item.FilePath), Is.EqualTo(new[] { directoryPath }));
                 Assert.That(nativeApi.ConvertedPlaceholders[0].IsDirectory, Is.True);
                 Assert.That(nativeApi.ConvertedPlaceholders[0].MarkInSync, Is.True);
+                Assert.That(nativeApi.UpdatedPlaceholders, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.UpdatedPlaceholders[0].BaseDirectoryPath, Is.EqualTo(Path.GetFullPath(Path.Combine(root, "Projects"))));
+                Assert.That(nativeApi.UpdatedPlaceholders[0].RelativeFileName, Is.EqualTo("Nested"));
+                Assert.That(nativeApi.UpdatedPlaceholders[0].IsDirectory, Is.True);
                 Assert.That(nativeApi.PinStates.Select(static pin => pin.FilePath), Is.EqualTo(new[] { directoryPath }));
                 Assert.That(nativeApi.PinStates[0].PinState, Is.EqualTo(WindowsCloudFilesPinState.Unpinned));
                 Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { directoryPath }));
                 Assert.That(
                     nativeApi.CallLog,
-                    Is.EqualTo(new[] { "native-convert", "native-set-pin-state", "native-set-in-sync-state" }));
+                    Is.EqualTo(new[] { "native-convert", "native-update", "native-set-pin-state", "native-set-in-sync-state" }));
                 Assert.That(identity.RelativePath, Is.EqualTo("Projects/Nested"));
                 Assert.That(identity.NodeId, Is.EqualTo(Guid.Parse("88888888-8888-8888-8888-888888888888")));
                 Assert.That(diagnostic.Operation, Is.EqualTo("convert-directory-placeholder"));
@@ -787,6 +826,18 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             adapter.TransferData(transfer);
 
             Assert.That(nativeApi.Transfers, Is.EqualTo(new[] { transfer }));
+        }
+
+        private static uint InvokeNativeFlagFactory(string methodName, bool isDirectory)
+        {
+            System.Reflection.MethodInfo? method = typeof(WindowsCloudFilesNativeApi).GetMethod(
+                methodName,
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+
+            object? result = method!.Invoke(null, [isDirectory]);
+            Assert.That(result, Is.Not.Null);
+            return Convert.ToUInt32(result);
         }
 
         private WindowsVirtualFilesRootSafetyPolicy CreatePolicy()

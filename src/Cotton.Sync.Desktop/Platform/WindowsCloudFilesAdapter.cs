@@ -368,6 +368,16 @@ namespace Cotton.Sync.Desktop.Platform
                     request.SyncPairId,
                     safety.FullPath,
                     normalizedPath);
+                WindowsCloudFilesNativePlaceholder directoryPlaceholder = CreateDirectoryNativePlaceholder(
+                    placeholderPath,
+                    directoryIdentity,
+                    request.RemoteDirectory);
+                ExecuteNativeOperationWithTransientPathRetry(
+                    () => _nativeApi.UpdatePlaceholder(directoryPlaceholder),
+                    "update-directory-placeholder",
+                    request.SyncPairId,
+                    safety.FullPath,
+                    normalizedPath);
                 ExecuteNativeOperationWithTransientPathRetry(
                     () => _nativeApi.SetPinState(fullPlaceholderPath, WindowsCloudFilesPinState.Unpinned),
                     "set-pin-state",
