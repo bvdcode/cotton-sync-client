@@ -973,6 +973,7 @@ namespace Cotton.Sync.Desktop.Shell
             try
             {
                 DesktopUpdateInstallResult result = _updateInstaller.StartSilentInstall(installerPath, launchAfterUpdate: true);
+                _lastUpdateDiagnostics = _lastUpdateDiagnostics.WithInstallLaunch(result, DateTimeOffset.UtcNow);
                 Trace.TraceInformation(
                     "Desktop update installer launch completed: processId={0}, exitedDuringStartupProbe={1}, exitCode={2}.",
                     result.ProcessId,
@@ -982,6 +983,7 @@ namespace Cotton.Sync.Desktop.Shell
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
+                _lastUpdateDiagnostics = _lastUpdateDiagnostics.WithInstallLaunchFailure(exception, DateTimeOffset.UtcNow);
                 Trace.TraceWarning("Desktop update installer launch failed: error={0}.", exception);
                 throw;
             }

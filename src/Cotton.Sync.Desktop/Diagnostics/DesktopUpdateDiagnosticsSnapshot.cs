@@ -20,7 +20,14 @@ namespace Cotton.Sync.Desktop.Diagnostics
         bool? IsInstallerReady,
         Uri? ReleaseUrl,
         string? FailureType,
-        string? FailureMessage)
+        string? FailureMessage,
+        DateTimeOffset? LastInstallLaunchAtUtc = null,
+        string LastInstallLaunchStatus = "not-started",
+        int? LastInstallProcessId = null,
+        bool? LastInstallExitedDuringStartupProbe = null,
+        int? LastInstallExitCode = null,
+        string? LastInstallFailureType = null,
+        string? LastInstallFailureMessage = null)
     {
         public static DesktopUpdateDiagnosticsSnapshot NotChecked(string currentVersion)
         {
@@ -93,6 +100,40 @@ namespace Cotton.Sync.Desktop.Diagnostics
                 ReleaseUrl: null,
                 exception.GetType().Name,
                 CleanFailureMessage(exception.Message));
+        }
+
+        public DesktopUpdateDiagnosticsSnapshot WithInstallLaunch(
+            DesktopUpdateInstallResult result,
+            DateTimeOffset launchedAtUtc)
+        {
+            ArgumentNullException.ThrowIfNull(result);
+            return this with
+            {
+                LastInstallLaunchAtUtc = launchedAtUtc,
+                LastInstallLaunchStatus = "launched",
+                LastInstallProcessId = result.ProcessId,
+                LastInstallExitedDuringStartupProbe = result.ExitedDuringStartupProbe,
+                LastInstallExitCode = result.ExitCode,
+                LastInstallFailureType = null,
+                LastInstallFailureMessage = null,
+            };
+        }
+
+        public DesktopUpdateDiagnosticsSnapshot WithInstallLaunchFailure(
+            Exception exception,
+            DateTimeOffset failedAtUtc)
+        {
+            ArgumentNullException.ThrowIfNull(exception);
+            return this with
+            {
+                LastInstallLaunchAtUtc = failedAtUtc,
+                LastInstallLaunchStatus = "failed",
+                LastInstallProcessId = null,
+                LastInstallExitedDuringStartupProbe = null,
+                LastInstallExitCode = null,
+                LastInstallFailureType = exception.GetType().Name,
+                LastInstallFailureMessage = CleanFailureMessage(exception.Message),
+            };
         }
 
         private static string? CleanFailureMessage(string? message)
