@@ -24,6 +24,28 @@ namespace Cotton.Sync.Desktop.Platform
 
         void UnregisterSyncRoot(SyncPairSettings syncPair);
 
+        void CreateDirectoryPlaceholder(RemoteDirectoryMaterializationRequest request)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            if (!Guid.TryParse(request.SyncPairId, out Guid syncPairId))
+            {
+                throw new ArgumentException("Virtual-files directory placeholder request contains an invalid sync pair id.", nameof(request));
+            }
+
+            SetInSyncState(
+                new SyncPairSettings
+                {
+                    Id = syncPairId,
+                    DisplayName = "Cotton Sync",
+                    LocalRootPath = request.LocalRootPath,
+                    RemoteDisplayPath = "/",
+                    RemoteRootNodeId = request.RemoteRootNodeId,
+                    Mode = SyncPairMode.WindowsVirtualFiles,
+                    IsEnabled = true,
+                },
+                request.RelativePath);
+        }
+
         void DehydratePlaceholder(SyncPairSettings syncPair, string relativePath);
 
         void SetInSyncState(SyncPairSettings syncPair, string relativePath);
