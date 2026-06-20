@@ -577,6 +577,62 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void SetInSyncState_ForwardsDirectoryWhenReparseHeuristicIsFalse()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                diagnostics: diagnostics,
+                isReparsePoint: _ => false);
+            string root = Path.Combine(_tempDirectory, "root");
+            Directory.CreateDirectory(Path.Combine(root, "Projects"));
+            SyncPairSettings syncPair = CreateSyncPair(root);
+
+            adapter.SetInSyncState(syncPair, "Projects");
+
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    nativeApi.InSyncPaths,
+                    Is.EqualTo(new[] { Path.GetFullPath(Path.Combine(root, "Projects")) }));
+                Assert.That(diagnostic.Operation, Is.EqualTo("set-in-sync-state"));
+                Assert.That(diagnostic.Status, Is.EqualTo("completed"));
+                Assert.That(diagnostic.RelativePath, Is.EqualTo("Projects"));
+            });
+        }
+
+        [Test]
+        public void SetInSyncState_SkipsNonPlaceholderFileWhenReparseHeuristicIsFalse()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                diagnostics: diagnostics,
+                isReparsePoint: _ => false);
+            string root = Path.Combine(_tempDirectory, "root");
+            string target = Path.Combine(root, "Projects", "local.txt");
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllText(target, "local");
+            SyncPairSettings syncPair = CreateSyncPair(root);
+
+            adapter.SetInSyncState(syncPair, "Projects/local.txt");
+
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.InSyncPaths, Is.Empty);
+                Assert.That(diagnostic.Operation, Is.EqualTo("set-in-sync-state"));
+                Assert.That(diagnostic.Status, Is.EqualTo("skipped"));
+                Assert.That(diagnostic.RelativePath, Is.EqualTo("Projects/local.txt"));
+            });
+        }
+
+        [Test]
         public void TransferData_ForwardsToNativeBoundary()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
