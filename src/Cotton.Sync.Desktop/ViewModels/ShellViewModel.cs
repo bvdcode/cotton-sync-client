@@ -2944,9 +2944,12 @@ namespace Cotton.Sync.Desktop.ViewModels
             GlobalStatus = "Installing update";
             try
             {
-                await _controller.InstallDownloadedUpdateAsync(installerPath).ConfigureAwait(true);
+                DesktopUpdateInstallResult result =
+                    await _controller.InstallDownloadedUpdateAsync(installerPath).ConfigureAwait(true);
                 UpdateStatusText = "Installing update";
-                UpdateDetailsText = "Cotton Sync will restart after the update is installed.";
+                UpdateDetailsText = result.ExitedDuringStartupProbe
+                    ? "Update installer launched and handed off to Windows. Cotton Sync will restart after the update is installed."
+                    : "Update installer launched. Cotton Sync will restart after the update is installed.";
                 GlobalStatus = "Installing update";
                 AddActivity("Update", installerPath, "Silent update installer started");
             }

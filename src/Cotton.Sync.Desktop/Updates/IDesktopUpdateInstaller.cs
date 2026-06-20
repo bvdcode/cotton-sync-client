@@ -5,7 +5,7 @@ namespace Cotton.Sync.Desktop.Updates
 {
     internal interface IDesktopUpdateInstaller
     {
-        void StartSilentInstall(
+        DesktopUpdateInstallResult StartSilentInstall(
             string installerPath,
             bool launchAfterUpdate);
     }
