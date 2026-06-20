@@ -74,6 +74,25 @@ namespace Cotton.Sync.State
         }
 
         /// <inheritdoc />
+        public async IAsyncEnumerable<SyncStateEntry> LoadPairDirectoryEntriesAsync(
+            string syncPairId,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
+            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+            await using SyncStateDbContext context = CreateContext();
+            IAsyncEnumerable<SyncStateEntity> entities = context.SyncEntries
+                .AsNoTracking()
+                .Where(entry => entry.SyncPairId == syncPairId && entry.Kind == SyncEntryKind.Directory)
+                .OrderBy(entry => entry.RelativePathKey)
+                .AsAsyncEnumerable();
+            await foreach (SyncStateEntity entity in entities.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                yield return ToModel(entity);
+            }
+        }
+
+        /// <inheritdoc />
         public async IAsyncEnumerable<SyncStateEntry> LoadEntriesByRemoteIdsAsync(
             string syncPairId,
             IEnumerable<Guid> remoteNodeIds,

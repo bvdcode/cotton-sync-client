@@ -78,7 +78,8 @@ namespace Cotton.Sync.Desktop.Tests.Composition
 
             object supervisor = GetPrivateFieldValue(host.App, "_supervisor");
             object runnerFactory = GetPrivateFieldValue(supervisor, "_runnerFactory");
-            object finalizationWork = GetPrivateFieldValue(runnerFactory, "_work");
+            object repairWork = GetPrivateFieldValue(runnerFactory, "_work");
+            object finalizationWork = GetPrivateFieldValue(repairWork, "_inner");
             object dehydrationWork = GetPrivateFieldValue(finalizationWork, "_inner");
             object remoteChangeAwareWork = GetPrivateFieldValue(dehydrationWork, "_inner");
             object syncEnginePairWork = GetPrivateFieldValue(remoteChangeAwareWork, "_inner");
@@ -99,12 +100,14 @@ namespace Cotton.Sync.Desktop.Tests.Composition
             object supervisor = GetPrivateFieldValue(host.App, "_supervisor");
             object runnerFactory = GetPrivateFieldValue(supervisor, "_runnerFactory");
             object pairWork = GetPrivateFieldValue(runnerFactory, "_work");
-            object dehydrationWork = GetPrivateFieldValue(pairWork, "_inner");
+            object finalizationWork = GetPrivateFieldValue(pairWork, "_inner");
+            object dehydrationWork = GetPrivateFieldValue(finalizationWork, "_inner");
             object remoteChangeAwareWork = GetPrivateFieldValue(dehydrationWork, "_inner");
 
             Assert.Multiple(() =>
             {
-                Assert.That(pairWork, Is.TypeOf<WindowsVirtualFilesUploadFinalizationPairWork>());
+                Assert.That(pairWork, Is.TypeOf<WindowsVirtualFilesDirectoryPlaceholderRepairPairWork>());
+                Assert.That(finalizationWork, Is.TypeOf<WindowsVirtualFilesUploadFinalizationPairWork>());
                 Assert.That(dehydrationWork, Is.TypeOf<WindowsVirtualFilesDehydrationPairWork>());
                 Assert.That(remoteChangeAwareWork.GetType().Name, Is.EqualTo("RemoteChangeAwareSyncPairWork"));
             });

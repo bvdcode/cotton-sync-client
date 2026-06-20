@@ -28,6 +28,26 @@ namespace Cotton.Sync.State
             CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Streams directory entries for a sync pair.
+        /// </summary>
+        async IAsyncEnumerable<SyncStateEntry> LoadPairDirectoryEntriesAsync(
+            string syncPairId,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
+            await foreach (SyncStateEntry entry in LoadPairEntriesAsync(syncPairId, cancellationToken)
+                               .WithCancellation(cancellationToken)
+                               .ConfigureAwait(false))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (entry.Kind == SyncEntryKind.Directory)
+                {
+                    yield return entry;
+                }
+            }
+        }
+
+        /// <summary>
         /// Streams directory entries matching remote folder identifiers and file entries matching remote file identifiers.
         /// </summary>
         async IAsyncEnumerable<SyncStateEntry> LoadEntriesByRemoteIdsAsync(
