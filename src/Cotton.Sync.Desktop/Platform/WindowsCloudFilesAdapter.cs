@@ -364,6 +364,12 @@ namespace Cotton.Sync.Desktop.Platform
                     request.SyncPairId,
                     safety.FullPath,
                     normalizedPath);
+                ExecuteNativeOperationWithTransientPathRetry(
+                    () => _nativeApi.SetInSyncState(fullPlaceholderPath),
+                    "set-in-sync-state",
+                    request.SyncPairId,
+                    safety.FullPath,
+                    normalizedPath);
             }
             catch (Exception exception)
             {
