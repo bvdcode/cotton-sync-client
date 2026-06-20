@@ -200,6 +200,40 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task AfterDirectoryTreePopulationAsync_MarksChildrenBeforeParentsInSync()
+        {
+            var adapter = new FakeCloudFilesAdapter();
+            var suppression = new RecordingLocalChangeSuppression();
+            var writer = new DesktopCloudFilesPlaceholderWriter(
+                cloudFilesAdapter: adapter,
+                localChangeSuppression: suppression,
+                getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
+            Guid syncPairId = Guid.Parse("77777777-7777-7777-7777-777777777777");
+            Guid remoteRootNodeId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+
+            await writer.AfterDirectoryTreePopulationAsync(
+            [
+                CreateDirectoryRequest(syncPairId, remoteRootNodeId, "Projects"),
+                CreateDirectoryRequest(syncPairId, remoteRootNodeId, "Projects/Nested"),
+                CreateDirectoryRequest(syncPairId, remoteRootNodeId, "Projects"),
+            ]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    adapter.InSyncStates.Select(static state => state.RelativePath),
+                    Is.EqualTo(new[] { "Projects/Nested", "Projects" }));
+                Assert.That(
+                    suppression.SuppressedWrites,
+                    Is.EqualTo(new[]
+                    {
+                        new SuppressedWrite(syncPairId, _tempDirectory, "Projects/Nested"),
+                        new SuppressedWrite(syncPairId, _tempDirectory, "Projects"),
+                    }));
+            });
+        }
+
+        [Test]
         public void CreatePlaceholderAsync_StopsBeforeAdapterWhenCanceled()
         {
             var adapter = new FakeCloudFilesAdapter();
@@ -236,6 +270,23 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(exception?.RelativePath, Is.EqualTo("remote-only.txt"));
                 Assert.That(exception?.Reason, Does.Contain("CfCreatePlaceholders"));
             });
+        }
+
+        private RemoteDirectoryMaterializationRequest CreateDirectoryRequest(
+            Guid syncPairId,
+            Guid remoteRootNodeId,
+            string relativePath)
+        {
+            return new RemoteDirectoryMaterializationRequest(
+                syncPairId.ToString("D"),
+                _tempDirectory,
+                remoteRootNodeId,
+                relativePath,
+                new NodeDto
+                {
+                    Id = Guid.NewGuid(),
+                    Name = Path.GetFileName(relativePath),
+                });
         }
 
         private static RemoteFilePlaceholderRequest CreateRequest(
