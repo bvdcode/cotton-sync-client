@@ -37,5 +37,10 @@ namespace Cotton.Sync.Local
         /// Gets or sets a value indicating whether this file is a Windows Cloud Files placeholder.
         /// </summary>
         public bool IsCloudFilesPlaceholder { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether this file is an online-only Windows Cloud Files placeholder.
+        /// </summary>
+        public bool IsCloudFilesOnlineOnlyPlaceholder { get; set; }
     }
 }
