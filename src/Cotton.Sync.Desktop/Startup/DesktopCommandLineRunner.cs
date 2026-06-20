@@ -203,11 +203,18 @@ namespace Cotton.Sync.Desktop.Startup
             ShellShareLinkTarget target = await targetResolver
                 .ResolveAsync(startupOptions.ShellShareLinkTargetPath, cancellationToken)
                 .ConfigureAwait(false);
+            bool targetResolved = target.Status == ShellShareLinkTargetStatus.Resolved;
 
             await output.WriteLineAsync("Cotton Sync Desktop shell share-link target").ConfigureAwait(false);
             await output.WriteLineAsync("Status: " + FormatShellShareLinkTargetStatus(target.Status))
                 .ConfigureAwait(false);
-            await output.WriteLineAsync("CanCreateShareLink: " + FormatBoolean(target.CanCreateShareLink))
+            await output.WriteLineAsync("TargetResolved: " + FormatBoolean(targetResolved))
+                .ConfigureAwait(false);
+            await output.WriteLineAsync("TargetHasRemoteIdentity: " + FormatBoolean(target.CanCreateShareLink))
+                .ConfigureAwait(false);
+            await output.WriteLineAsync("ShareLinkApi: unavailable")
+                .ConfigureAwait(false);
+            await output.WriteLineAsync("CanCreateShareLink: false")
                 .ConfigureAwait(false);
             await output.WriteLineAsync("TargetKind: " + FormatShellShareLinkTargetKind(target.Kind))
                 .ConfigureAwait(false);
@@ -217,9 +224,9 @@ namespace Cotton.Sync.Desktop.Startup
                 .ConfigureAwait(false);
             await output.WriteLineAsync("HasRemoteFileId: " + FormatBoolean(target.RemoteFileId.HasValue))
                 .ConfigureAwait(false);
-            await output.WriteLineAsync(target.CanCreateShareLink ? "Result: passed" : "Result: failed")
+            await output.WriteLineAsync(targetResolved ? "Result: passed" : "Result: failed")
                 .ConfigureAwait(false);
-            return target.CanCreateShareLink ? 0 : 1;
+            return targetResolved ? 0 : 1;
         }
 
         public static async Task<int> RunLiveSyncSmokeAsync(
