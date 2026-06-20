@@ -3219,6 +3219,26 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     LastSyncedAtUtc: new DateTime(2026, 6, 4, 8, 1, 1, DateTimeKind.Utc)),
             ]));
 
+            Assert.That(viewModel.HasNotifications, Is.False);
+
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.CreatingPlaceholders,
+                FilesCompleted: 100,
+                FilesTotal: 100,
+                CurrentPath: string.Empty,
+                StartedAtUtc: new DateTime(2026, 6, 4, 8, 0, 0, DateTimeKind.Utc),
+                IsCompleted: true,
+                OccurredAtUtc: new DateTime(2026, 6, 4, 8, 1, 2, DateTimeKind.Utc)));
+            controller.ReportStatus(new DesktopSyncStatusSnapshot(
+            [
+                new DesktopSyncPairStatusSnapshot(
+                    syncPairId,
+                    "Idle",
+                    null,
+                    LastSyncedAtUtc: new DateTime(2026, 6, 4, 8, 1, 3, DateTimeKind.Utc)),
+            ]));
+
             Assert.Multiple(() =>
             {
                 Assert.That(viewModel.HasNotifications, Is.True);
