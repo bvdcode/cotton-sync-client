@@ -5791,8 +5791,14 @@ namespace Cotton.Sync.Desktop.ViewModels
         private static bool IsIndeterminateRunProgress(DesktopRunProgressSnapshot progress)
         {
             return (!progress.FilesTotal.HasValue && !progress.IsCompleted)
-                || IsOpenEndedPlaceholderCreation(progress)
+                || IsIndeterminatePlaceholderCreation(progress)
                 || IsStartingCountedRunProgress(progress);
+        }
+
+        private static bool IsIndeterminatePlaceholderCreation(DesktopRunProgressSnapshot progress)
+        {
+            return IsOpenEndedPlaceholderCreation(progress)
+                && (progress.FilesTotal is not > 0 || progress.FilesCompleted <= 0);
         }
 
         private static bool IsOpenEndedPlaceholderCreation(DesktopRunProgressSnapshot progress)
