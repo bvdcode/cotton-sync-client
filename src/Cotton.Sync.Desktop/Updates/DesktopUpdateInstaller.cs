@@ -9,7 +9,7 @@ namespace Cotton.Sync.Desktop.Updates
     {
         private static readonly TimeSpan EarlyFailureProbeTimeout = TimeSpan.FromSeconds(2);
 
-        public void StartSilentInstall(
+        public DesktopUpdateInstallResult StartSilentInstall(
             string installerPath,
             bool launchAfterUpdate)
         {
@@ -32,14 +32,18 @@ namespace Cotton.Sync.Desktop.Updates
                 throw new InvalidOperationException("Cotton Sync update installer could not be started.");
             }
 
-            if (process.WaitForExit((int)EarlyFailureProbeTimeout.TotalMilliseconds)
-                && process.ExitCode != 0)
+            int processId = process.Id;
+            bool exitedDuringProbe = process.WaitForExit((int)EarlyFailureProbeTimeout.TotalMilliseconds);
+            int? exitCode = exitedDuringProbe ? process.ExitCode : null;
+            if (exitedDuringProbe && process.ExitCode != 0)
             {
                 throw new InvalidOperationException(
                     "Cotton Sync update installer exited before installing the update. Exit code: "
                     + process.ExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture)
                     + ".");
             }
+
+            return new DesktopUpdateInstallResult(processId, exitedDuringProbe, exitCode);
         }
 
         internal static string BuildSilentInstallArguments(bool launchAfterUpdate)

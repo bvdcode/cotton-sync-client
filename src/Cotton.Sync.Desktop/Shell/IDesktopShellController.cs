@@ -83,7 +83,7 @@ namespace Cotton.Sync.Desktop.Shell
             IProgress<DesktopUpdateDownloadProgress>? progress = null,
             CancellationToken cancellationToken = default);
 
-        Task InstallDownloadedUpdateAsync(string installerPath, CancellationToken cancellationToken = default);
+        Task<DesktopUpdateInstallResult> InstallDownloadedUpdateAsync(string installerPath, CancellationToken cancellationToken = default);
 
         Task<string> ExportDiagnosticsAsync(CancellationToken cancellationToken = default);
 

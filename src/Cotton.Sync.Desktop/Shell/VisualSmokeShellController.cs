@@ -322,10 +322,10 @@ namespace Cotton.Sync.Desktop.Shell
             return CheckForUpdateAsync(cancellationToken: cancellationToken);
         }
 
-        public Task InstallDownloadedUpdateAsync(string installerPath, CancellationToken cancellationToken = default)
+        public Task<DesktopUpdateInstallResult> InstallDownloadedUpdateAsync(string installerPath, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return Task.CompletedTask;
+            return Task.FromResult(new DesktopUpdateInstallResult(42, false, null));
         }
 
         public Task<string> ExportDiagnosticsAsync(CancellationToken cancellationToken = default)

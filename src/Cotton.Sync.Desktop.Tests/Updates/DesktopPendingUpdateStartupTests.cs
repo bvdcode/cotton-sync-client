@@ -151,12 +151,13 @@ namespace Cotton.Sync.Desktop.Tests.Updates
 
             public bool? LaunchAfterUpdate { get; private set; }
 
-            public void StartSilentInstall(
+            public DesktopUpdateInstallResult StartSilentInstall(
                 string installerPath,
                 bool launchAfterUpdate)
             {
                 InstallerPath = installerPath;
                 LaunchAfterUpdate = launchAfterUpdate;
+                return new DesktopUpdateInstallResult(42, false, null);
             }
         }
     }

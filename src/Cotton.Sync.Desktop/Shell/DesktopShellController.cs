@@ -964,13 +964,27 @@ namespace Cotton.Sync.Desktop.Shell
             }
         }
 
-        public Task InstallDownloadedUpdateAsync(
+        public Task<DesktopUpdateInstallResult> InstallDownloadedUpdateAsync(
             string installerPath,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            _updateInstaller.StartSilentInstall(installerPath, launchAfterUpdate: true);
-            return Task.CompletedTask;
+            Trace.TraceInformation("Starting desktop update installer launch.");
+            try
+            {
+                DesktopUpdateInstallResult result = _updateInstaller.StartSilentInstall(installerPath, launchAfterUpdate: true);
+                Trace.TraceInformation(
+                    "Desktop update installer launch completed: processId={0}, exitedDuringStartupProbe={1}, exitCode={2}.",
+                    result.ProcessId,
+                    result.ExitedDuringStartupProbe,
+                    result.ExitCode?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none");
+                return Task.FromResult(result);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                Trace.TraceWarning("Desktop update installer launch failed: error={0}.", exception);
+                throw;
+            }
         }
 
         public void Dispose()

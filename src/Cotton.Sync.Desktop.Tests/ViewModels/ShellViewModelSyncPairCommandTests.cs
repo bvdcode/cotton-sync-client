@@ -5744,6 +5744,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             {
                 Assert.That(controller.InstalledUpdatePath, Is.EqualTo(installerPath));
                 Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Installing update"));
+                Assert.That(viewModel.UpdateDetailsText, Is.EqualTo("Update installer launched. Cotton Sync will restart after the update is installed."));
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Installing update"));
             });
         }
@@ -6606,7 +6607,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 return Task.FromResult(UpdateDownloadSnapshot ?? UpdateCheckSnapshot);
             }
 
-            public Task InstallDownloadedUpdateAsync(string installerPath, CancellationToken cancellationToken = default)
+            public Task<DesktopUpdateInstallResult> InstallDownloadedUpdateAsync(string installerPath, CancellationToken cancellationToken = default)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 InstalledUpdatePath = installerPath;
@@ -6617,10 +6618,20 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
                 if (InstallUpdateCompletion is not null)
                 {
-                    return InstallUpdateCompletion.Task.WaitAsync(cancellationToken);
+                    return InstallUpdateCompletion.Task
+                        .WaitAsync(cancellationToken)
+                        .ContinueWith(
+                            static task =>
+                            {
+                                task.GetAwaiter().GetResult();
+                                return new DesktopUpdateInstallResult(42, false, null);
+                            },
+                            cancellationToken,
+                            TaskContinuationOptions.ExecuteSynchronously,
+                            TaskScheduler.Default);
                 }
 
-                return Task.CompletedTask;
+                return Task.FromResult(new DesktopUpdateInstallResult(42, false, null));
             }
 
             public Task<string> ExportDiagnosticsAsync(CancellationToken cancellationToken = default)
