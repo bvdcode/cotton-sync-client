@@ -130,7 +130,7 @@ namespace Cotton.Sync.App.Supervision
                 _operationGate.Release();
             }
 
-            await runner.SyncNowAsync(request, cancellationToken).ConfigureAwait(false);
+            await SyncRunnerAndPublishActiveStatusAsync(runner, request, cancellationToken).ConfigureAwait(false);
 
             _statusPublisher.Publish(CreateAppStatusSnapshot());
         }
@@ -223,7 +223,7 @@ namespace Cotton.Sync.App.Supervision
             _statusPublisher.Publish(status);
             if (resumedRunner is not null)
             {
-                await resumedRunner.SyncNowAsync(cancellationToken).ConfigureAwait(false);
+                await SyncRunnerAndPublishActiveStatusAsync(resumedRunner, cancellationToken).ConfigureAwait(false);
                 _statusPublisher.Publish(CreateAppStatusSnapshot());
             }
         }
@@ -283,7 +283,7 @@ namespace Cotton.Sync.App.Supervision
             {
                 try
                 {
-                    await runner.SyncNowAsync(cancellationToken).ConfigureAwait(false);
+                    await SyncRunnerAndPublishActiveStatusAsync(runner, cancellationToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -300,6 +300,33 @@ namespace Cotton.Sync.App.Supervision
             }
 
             return failures is null ? Array.Empty<Exception>() : failures;
+        }
+
+        private Task SyncRunnerAndPublishActiveStatusAsync(
+            ISyncPairRunner runner,
+            CancellationToken cancellationToken)
+        {
+            return SyncRunnerAndPublishActiveStatusAsync(runner, SyncRunRequest.Full, cancellationToken);
+        }
+
+        private async Task SyncRunnerAndPublishActiveStatusAsync(
+            ISyncPairRunner runner,
+            SyncRunRequest request,
+            CancellationToken cancellationToken)
+        {
+            Task syncTask;
+            try
+            {
+                syncTask = runner.SyncNowAsync(request, cancellationToken);
+            }
+            catch
+            {
+                _statusPublisher.Publish(CreateAppStatusSnapshot());
+                throw;
+            }
+
+            _statusPublisher.Publish(CreateAppStatusSnapshot());
+            await syncTask.ConfigureAwait(false);
         }
 
         private static void ThrowIfAnySyncFailures(IReadOnlyList<Exception> failures)

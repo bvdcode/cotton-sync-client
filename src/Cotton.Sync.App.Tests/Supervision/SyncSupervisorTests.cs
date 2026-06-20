@@ -190,6 +190,62 @@ namespace Cotton.Sync.App.Tests.Supervision
         }
 
         [Test]
+        public async Task SyncNowAsync_PublishesSyncingStatusWhileRunnerIsActive()
+        {
+            SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
+            var factory = new FakeSyncPairRunnerFactory();
+            var publisher = new InMemoryAppStatusPublisher();
+            var supervisor = new SyncSupervisor(
+                new FakeSyncPairSettingsStore([documents]),
+                factory,
+                publisher);
+            await supervisor.StartAsync();
+            FakeSyncPairRunner runner = factory.CreatedRunners[documents.Id];
+            runner.BlockSyncNow = true;
+
+            Task sync = supervisor.SyncNowAsync(documents.Id);
+            await runner.WaitForSyncNowAsync(TimeSpan.FromSeconds(2));
+            SyncPairRunState publishedWhileRunning = publisher.Current.SyncPairs.Single().State;
+
+            runner.ReleaseSyncNow();
+            await sync.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(publishedWhileRunning, Is.EqualTo(SyncPairRunState.Syncing));
+                Assert.That(publisher.Current.SyncPairs.Single().State, Is.EqualTo(SyncPairRunState.Idle));
+            });
+        }
+
+        [Test]
+        public async Task SyncAllAsync_PublishesSyncingStatusWhileRunnerIsActive()
+        {
+            SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
+            var factory = new FakeSyncPairRunnerFactory();
+            var publisher = new InMemoryAppStatusPublisher();
+            var supervisor = new SyncSupervisor(
+                new FakeSyncPairSettingsStore([documents]),
+                factory,
+                publisher);
+            await supervisor.StartAsync();
+            FakeSyncPairRunner runner = factory.CreatedRunners[documents.Id];
+            runner.BlockSyncNow = true;
+
+            Task sync = supervisor.SyncAllAsync();
+            await runner.WaitForSyncNowAsync(TimeSpan.FromSeconds(2));
+            SyncPairRunState publishedWhileRunning = publisher.Current.SyncPairs.Single().State;
+
+            runner.ReleaseSyncNow();
+            await sync.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(publishedWhileRunning, Is.EqualTo(SyncPairRunState.Syncing));
+                Assert.That(publisher.Current.SyncPairs.Single().State, Is.EqualTo(SyncPairRunState.Idle));
+            });
+        }
+
+        [Test]
         public async Task SyncAllAsync_ContinuesOtherRunnersAndPublishesStatusWhenRunnerFails()
         {
             SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
@@ -454,6 +510,7 @@ namespace Cotton.Sync.App.Tests.Supervision
             public async Task SyncNowAsync(CancellationToken cancellationToken = default)
             {
                 SyncNowCallCount++;
+                _state = SyncPairRunState.Syncing;
                 _syncNowStarted.TrySetResult();
                 if (SyncNowException is not null)
                 {
@@ -464,6 +521,11 @@ namespace Cotton.Sync.App.Tests.Supervision
                 if (BlockSyncNow)
                 {
                     await _syncNowRelease.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                if (_state == SyncPairRunState.Syncing)
+                {
+                    _state = SyncPairRunState.Idle;
                 }
             }
 
