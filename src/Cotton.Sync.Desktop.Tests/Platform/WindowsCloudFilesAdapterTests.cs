@@ -177,6 +177,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(nativeApi.ConvertedPlaceholders[0].MarkInSync, Is.True);
                 Assert.That(nativeApi.PinStates.Select(static pin => pin.FilePath), Is.EqualTo(new[] { directoryPath }));
                 Assert.That(nativeApi.PinStates[0].PinState, Is.EqualTo(WindowsCloudFilesPinState.Unpinned));
+                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { directoryPath }));
+                Assert.That(
+                    nativeApi.CallLog,
+                    Is.EqualTo(new[] { "native-convert", "native-set-pin-state", "native-set-in-sync-state" }));
                 Assert.That(identity.RelativePath, Is.EqualTo("Projects/Nested"));
                 Assert.That(identity.NodeId, Is.EqualTo(Guid.Parse("88888888-8888-8888-8888-888888888888")));
                 Assert.That(diagnostic.Operation, Is.EqualTo("convert-directory-placeholder"));
@@ -814,6 +818,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             public List<string>? OperationLog { get; init; }
 
+            public List<string> CallLog { get; } = [];
+
             public List<WindowsCloudFilesNativeSyncRootRegistration> Registrations { get; } = [];
 
             public List<WindowsCloudFilesNativePlaceholder> Placeholders { get; } = [];
@@ -897,11 +903,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public void ConvertToPlaceholder(string filePath, byte[] fileIdentity, bool isDirectory, bool markInSync)
             {
+                CallLog.Add("native-convert");
                 ConvertedPlaceholders.Add(new ConvertedPlaceholderCall(filePath, fileIdentity, isDirectory, markInSync));
             }
 
             public void SetPinState(string filePath, WindowsCloudFilesPinState pinState)
             {
+                CallLog.Add("native-set-pin-state");
                 PinStateCalls++;
                 if (PinStateFailuresBeforeSuccess > 0)
                 {
@@ -914,6 +922,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public void SetInSyncState(string filePath)
             {
+                CallLog.Add("native-set-in-sync-state");
                 InSyncPaths.Add(filePath);
             }
 
