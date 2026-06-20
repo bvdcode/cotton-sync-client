@@ -893,6 +893,63 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             });
         }
 
+        [Test]
+        public async Task ExportDiagnosticsAsync_ReportsUpdateInstallerLaunchOutcomeWithoutInstallerPath()
+        {
+            var updateInstaller = new FakeUpdateInstaller
+            {
+                Result = new DesktopUpdateInstallResult(1234, ExitedDuringStartupProbe: false, ExitCode: null),
+            };
+            using DesktopShellController controller = CreateController(updateInstaller: updateInstaller);
+            string installerPath = Path.Combine(_tempDirectory, "CottonSync-Windows-Setup.exe");
+
+            await controller.InstallDownloadedUpdateAsync(installerPath);
+            string archivePath = await controller.ExportDiagnosticsAsync();
+
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
+            using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
+            JsonElement update = document.RootElement.GetProperty("update");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(update.GetProperty("lastInstallLaunchStatus").GetString(), Is.EqualTo("launched"));
+                Assert.That(update.GetProperty("lastInstallProcessId").GetInt32(), Is.EqualTo(1234));
+                Assert.That(update.GetProperty("lastInstallExitedDuringStartupProbe").GetBoolean(), Is.False);
+                Assert.That(update.GetProperty("lastInstallExitCode").ValueKind, Is.EqualTo(JsonValueKind.Null));
+                Assert.That(update.GetProperty("lastInstallFailureType").ValueKind, Is.EqualTo(JsonValueKind.Null));
+                Assert.That(diagnosticsJson, Does.Not.Contain(installerPath));
+            });
+        }
+
+        [Test]
+        public async Task ExportDiagnosticsAsync_ReportsUpdateInstallerLaunchFailureWithoutInstallerPath()
+        {
+            string installerPath = Path.Combine(_tempDirectory, "CottonSync-Windows-Setup.exe");
+            var updateInstaller = new FakeUpdateInstaller
+            {
+                Exception = new InvalidOperationException("Installer failed at " + installerPath),
+            };
+            using DesktopShellController controller = CreateController(updateInstaller: updateInstaller);
+
+            _ = Assert.ThrowsAsync<InvalidOperationException>(() => controller.InstallDownloadedUpdateAsync(installerPath));
+            string archivePath = await controller.ExportDiagnosticsAsync();
+
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
+            using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
+            JsonElement update = document.RootElement.GetProperty("update");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(update.GetProperty("lastInstallLaunchStatus").GetString(), Is.EqualTo("failed"));
+                Assert.That(update.GetProperty("lastInstallFailureType").GetString(), Is.EqualTo(nameof(InvalidOperationException)));
+                Assert.That(update.GetProperty("lastInstallFailureMessage").GetString(), Does.Contain("Installer failed"));
+                Assert.That(update.GetProperty("lastInstallProcessId").ValueKind, Is.EqualTo(JsonValueKind.Null));
+                Assert.That(diagnosticsJson, Does.Not.Contain(installerPath));
+            });
+        }
+
         private DesktopShellController CreateController(
             Func<DesktopTokenStorageCapabilitySnapshot>? tokenStorageCapabilities = null,
             IDesktopUpdateService? updateService = null,
@@ -1168,13 +1225,22 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             public bool? LaunchAfterUpdate { get; private set; }
 
+            public DesktopUpdateInstallResult Result { get; set; } = new(42, false, null);
+
+            public Exception? Exception { get; set; }
+
             public DesktopUpdateInstallResult StartSilentInstall(
                 string installerPath,
                 bool launchAfterUpdate)
             {
                 InstallerPath = installerPath;
                 LaunchAfterUpdate = launchAfterUpdate;
-                return new DesktopUpdateInstallResult(42, false, null);
+                if (Exception is not null)
+                {
+                    throw Exception;
+                }
+
+                return Result;
             }
         }
     }
