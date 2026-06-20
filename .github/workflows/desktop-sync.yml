@@ -444,6 +444,9 @@ jobs:
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-shortcut-app-id.ps1" `
             -ShortcutPath $startMenuShortcut `
             -ExpectedAppUserModelId "Cotton.Sync.Desktop"
+          & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-notification-identity.ps1" `
+            -AppExecutable $installedExe `
+            -DataDirectory (Join-Path $env:RUNNER_TEMP "cotton-sync-notification-identity-data")
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-start-menu-launch.ps1" `
             -ShortcutPath $startMenuShortcut `
             -ExpectedExecutablePath $installedExe

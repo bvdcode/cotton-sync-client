@@ -608,6 +608,27 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         }
 
         [Test]
+        public void WindowsNotificationIdentitySmokeScript_VerifiesInstalledSenderIdentity()
+        {
+            string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/smoke-notification-identity.ps1"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(script, Does.Contain("[string]$AppExecutable"));
+                Assert.That(script, Does.Contain("[string]$DataDirectory"));
+                Assert.That(script, Does.Contain("--export-diagnostics"));
+                Assert.That(script, Does.Contain("diagnostics.json"));
+                Assert.That(script, Does.Contain("$diagnostics.notification"));
+                Assert.That(script, Does.Contain("isDeliveryExecutableAvailable"));
+                Assert.That(script, Does.Contain("isInstalledAppIdentityVerified"));
+                Assert.That(script, Does.Contain("installed-sender-identity"));
+                Assert.That(script, Does.Contain("Notification adapter"));
+                Assert.That(script, Does.Contain("Notification adapter self-test did not pass."));
+                Assert.That(script, Does.Contain("Notification adapter self-test was skipped."));
+            });
+        }
+
+        [Test]
         public void CiWorkflow_SmokesWindowsZipArchiveOnWindows()
         {
             string workflow = GetDesktopWorkflow();
@@ -742,6 +763,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Packaging/windows/verify-shortcut-app-id.ps1"));
                 Assert.That(workflow, Does.Contain("-ShortcutPath $startMenuShortcut"));
                 Assert.That(workflow, Does.Contain("-ExpectedAppUserModelId \"Cotton.Sync.Desktop\""));
+                Assert.That(workflow, Does.Contain("Packaging/windows/smoke-notification-identity.ps1"));
+                Assert.That(workflow, Does.Contain("-DataDirectory (Join-Path $env:RUNNER_TEMP \"cotton-sync-notification-identity-data\")"));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-start-menu-launch.ps1"));
                 Assert.That(workflow, Does.Contain("-ExpectedExecutablePath $installedExe"));
                 Assert.That(workflow, Does.Contain("Cotton.Sync.Desktop.exe\""));
@@ -789,6 +812,29 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(updateDiscoverySmokeIndex, Is.GreaterThanOrEqualTo(0));
                 Assert.That(uploadInstallerIndex, Is.GreaterThanOrEqualTo(0));
                 Assert.That(updateDiscoverySmokeIndex, Is.LessThan(uploadInstallerIndex));
+                Assert.That(
+                    normalizedWorkflow,
+                    Does.Match("(?s)\\n  release:\\n    name: Publish Sync Client Release\\n    runs-on: ubuntu-latest\\n    needs:\\n      - linux\\n      - windows\\n      - cli-windows\\n      - release-checksums"));
+            });
+        }
+
+        [Test]
+        public void CiWorkflow_GatesWindowsReleaseOnNotificationIdentitySmokeBeforePublishing()
+        {
+            string workflow = GetDesktopWorkflow();
+            string normalizedWorkflow = workflow.Replace("\r\n", "\n", StringComparison.Ordinal);
+            int notificationIdentitySmokeIndex = normalizedWorkflow.IndexOf(
+                "Packaging/windows/smoke-notification-identity.ps1",
+                StringComparison.Ordinal);
+            int uploadInstallerIndex = normalizedWorkflow.IndexOf(
+                "Upload desktop Windows installer artifact",
+                StringComparison.Ordinal);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(notificationIdentitySmokeIndex, Is.GreaterThanOrEqualTo(0));
+                Assert.That(uploadInstallerIndex, Is.GreaterThanOrEqualTo(0));
+                Assert.That(notificationIdentitySmokeIndex, Is.LessThan(uploadInstallerIndex));
                 Assert.That(
                     normalizedWorkflow,
                     Does.Match("(?s)\\n  release:\\n    name: Publish Sync Client Release\\n    runs-on: ubuntu-latest\\n    needs:\\n      - linux\\n      - windows\\n      - cli-windows\\n      - release-checksums"));
