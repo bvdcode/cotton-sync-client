@@ -2,6 +2,7 @@
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
 using Cotton.Files;
+using Cotton.Nodes;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.State;
@@ -145,6 +146,86 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     Path.GetFullPath(Path.Combine(root, "Other", "third.txt")),
                 }));
             });
+        }
+
+        [Test]
+        public void CreateDirectoryPlaceholder_ConvertsExistingDirectoryToCloudFilesPlaceholder()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                diagnostics: diagnostics,
+                isReparsePoint: _ => false);
+            string root = Path.Combine(_tempDirectory, "root");
+            string directoryPath = Path.GetFullPath(Path.Combine(root, "Projects", "Nested"));
+            Directory.CreateDirectory(directoryPath);
+
+            adapter.CreateDirectoryPlaceholder(CreateDirectoryRequest(root, "Projects/Nested"));
+
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single(static item => item.Status == "completed");
+            WindowsCloudFilesDirectoryPlaceholderIdentity identity =
+                System.Text.Json.JsonSerializer.Deserialize<WindowsCloudFilesDirectoryPlaceholderIdentity>(
+                    nativeApi.ConvertedPlaceholders.Single().FileIdentity,
+                    new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.Registrations, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.ConvertedPlaceholders.Select(static item => item.FilePath), Is.EqualTo(new[] { directoryPath }));
+                Assert.That(nativeApi.ConvertedPlaceholders[0].IsDirectory, Is.True);
+                Assert.That(nativeApi.ConvertedPlaceholders[0].MarkInSync, Is.True);
+                Assert.That(nativeApi.PinStates.Select(static pin => pin.FilePath), Is.EqualTo(new[] { directoryPath }));
+                Assert.That(nativeApi.PinStates[0].PinState, Is.EqualTo(WindowsCloudFilesPinState.Unpinned));
+                Assert.That(identity.RelativePath, Is.EqualTo("Projects/Nested"));
+                Assert.That(identity.NodeId, Is.EqualTo(Guid.Parse("88888888-8888-8888-8888-888888888888")));
+                Assert.That(diagnostic.Operation, Is.EqualTo("convert-directory-placeholder"));
+                Assert.That(diagnostic.RelativePath, Is.EqualTo("Projects/Nested"));
+            });
+        }
+
+        [Test]
+        public void CreateDirectoryPlaceholder_MarksExistingCloudFilesDirectoryInSyncWithoutReconversion()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            string root = Path.Combine(_tempDirectory, "root");
+            string directoryPath = Path.GetFullPath(Path.Combine(root, "Projects"));
+            Directory.CreateDirectory(directoryPath);
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                diagnostics: diagnostics,
+                isReparsePoint: path => string.Equals(Path.GetFullPath(path), directoryPath, StringComparison.OrdinalIgnoreCase),
+                isCloudFilesReparsePoint: path => string.Equals(Path.GetFullPath(path), directoryPath, StringComparison.OrdinalIgnoreCase));
+
+            adapter.CreateDirectoryPlaceholder(CreateDirectoryRequest(root, "Projects"));
+
+            IReadOnlyList<WindowsCloudFilesDiagnosticEvent> events = diagnostics.Snapshot();
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.ConvertedPlaceholders, Is.Empty);
+                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { directoryPath }));
+                Assert.That(events.Any(static item => item is { Operation: "convert-directory-placeholder", Status: "already-placeholder" }), Is.True);
+            });
+        }
+
+        [Test]
+        public void CreateFilePlaceholder_AllowsCloudFilesDirectoryPlaceholderAncestors()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            string root = Path.Combine(_tempDirectory, "root");
+            string parent = Path.GetFullPath(Path.Combine(root, "Projects"));
+            Directory.CreateDirectory(parent);
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                isReparsePoint: path => string.Equals(Path.GetFullPath(path), parent, StringComparison.OrdinalIgnoreCase),
+                isCloudFilesReparsePoint: path => string.Equals(Path.GetFullPath(path), parent, StringComparison.OrdinalIgnoreCase));
+
+            adapter.CreateFilePlaceholder(CreateRequest(root, "Projects/remote-only.txt"));
+
+            Assert.That(nativeApi.Placeholders.Select(static item => item.RelativeFileName), Is.EqualTo(new[] { "remote-only.txt" }));
         }
 
         [Test]
@@ -709,6 +790,26 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 });
         }
 
+        private static RemoteDirectoryMaterializationRequest CreateDirectoryRequest(
+            string localRootPath,
+            string relativePath,
+            string syncPairId = "11111111-1111-1111-1111-111111111111")
+        {
+            return new RemoteDirectoryMaterializationRequest(
+                syncPairId,
+                localRootPath,
+                Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                relativePath,
+                new NodeDto
+                {
+                    Id = Guid.Parse("88888888-8888-8888-8888-888888888888"),
+                    ParentId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                    Name = Path.GetFileName(relativePath),
+                    CreatedAt = new DateTime(2026, 06, 16, 10, 00, 00, DateTimeKind.Utc),
+                    UpdatedAt = new DateTime(2026, 06, 16, 10, 05, 00, DateTimeKind.Utc),
+                });
+        }
+
         private sealed class FakeCloudFilesNativeApi : IWindowsCloudFilesNativeApi
         {
             public List<string>? OperationLog { get; init; }
@@ -718,6 +819,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public List<WindowsCloudFilesNativePlaceholder> Placeholders { get; } = [];
 
             public List<WindowsCloudFilesNativePlaceholder> UpdatedPlaceholders { get; } = [];
+
+            public List<ConvertedPlaceholderCall> ConvertedPlaceholders { get; } = [];
 
             public List<string> InSyncPaths { get; } = [];
 
@@ -792,6 +895,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 UpdatedPlaceholders.Add(placeholder);
             }
 
+            public void ConvertToPlaceholder(string filePath, byte[] fileIdentity, bool isDirectory, bool markInSync)
+            {
+                ConvertedPlaceholders.Add(new ConvertedPlaceholderCall(filePath, fileIdentity, isDirectory, markInSync));
+            }
+
             public void SetPinState(string filePath, WindowsCloudFilesPinState pinState)
             {
                 PinStateCalls++;
@@ -839,6 +947,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
 
             public sealed record PinStateCall(string FilePath, WindowsCloudFilesPinState PinState);
+
+            public sealed record ConvertedPlaceholderCall(
+                string FilePath,
+                byte[] FileIdentity,
+                bool IsDirectory,
+                bool MarkInSync);
         }
 
         private sealed class FakeStorageProviderSyncRootRegistrar : IWindowsStorageProviderSyncRootRegistrar

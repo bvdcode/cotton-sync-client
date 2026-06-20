@@ -22,6 +22,11 @@ namespace Cotton.Sync.Desktop.Platform
 
         void UpdatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder);
 
+        void ConvertToPlaceholder(string filePath, byte[] fileIdentity, bool isDirectory, bool markInSync)
+        {
+            throw new NotSupportedException("Cloud Files placeholder conversion is not supported by this native API.");
+        }
+
         void SetPinState(string filePath, WindowsCloudFilesPinState pinState);
 
         void SetInSyncState(string filePath);

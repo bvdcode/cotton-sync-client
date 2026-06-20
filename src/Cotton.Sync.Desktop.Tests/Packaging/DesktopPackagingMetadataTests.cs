@@ -434,6 +434,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 AssertCloudFilesImport(nativeApiType, "CfConnectSyncRoot");
                 AssertCloudFilesImport(nativeApiType, "CfDisconnectSyncRoot");
                 AssertCloudFilesImport(nativeApiType, "CfSetPinState");
+                AssertCloudFilesImport(nativeApiType, "CfConvertToPlaceholder");
                 AssertCloudFilesImport(nativeApiType, "CfExecute");
                 AssertCloudFilesImport(nativeApiType, "CfOpenFileWithOplock");
                 AssertCloudFilesImport(nativeApiType, "CfDehydratePlaceholder");

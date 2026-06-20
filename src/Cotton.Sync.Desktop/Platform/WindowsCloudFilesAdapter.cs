@@ -4,7 +4,10 @@
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
+using Microsoft.Win32.SafeHandles;
+using System.Buffers.Binary;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace Cotton.Sync.Desktop.Platform
@@ -16,6 +19,13 @@ namespace Cotton.Sync.Desktop.Platform
 
         private const int HResultFileNotFound = unchecked((int)0x80070002);
         private const int HResultPathNotFound = unchecked((int)0x80070003);
+        private const int ReparseDataBufferSize = 16 * 1024;
+        private const uint FsctlGetReparsePoint = 0x000900A8;
+        private const uint ReparseTagCloudLowByte = 0x1A;
+        private const uint ReparseTagCloudFamilyMask = 0xF00000FF;
+        private const uint ReparseTagCloudFamily = 0x9000001A;
+        private const int FileAttributeRecallOnOpen = 0x00040000;
+        private const int FileAttributeRecallOnDataAccess = 0x00400000;
         private static readonly Guid ProviderGuid = Guid.Parse("6453b9dc-e042-4a73-a675-c5b2aa6c9607");
         private static readonly TimeSpan[] TransientPathRetryDelays =
         [
@@ -29,6 +39,7 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly IWindowsStorageProviderSyncRootRegistrar? _storageProviderRegistrar;
         private readonly IWindowsCloudFilesDiagnostics _diagnostics;
         private readonly Func<string, bool> _isReparsePoint;
+        private readonly Func<string, bool> _isCloudFilesReparsePoint;
         private readonly Action<TimeSpan> _transientRetryDelay;
         private readonly object _registrationGate = new();
         private readonly HashSet<string> _registeredRootPaths = new(StringComparer.OrdinalIgnoreCase);
@@ -39,6 +50,7 @@ namespace Cotton.Sync.Desktop.Platform
             IWindowsStorageProviderSyncRootRegistrar? storageProviderRegistrar = null,
             IWindowsCloudFilesDiagnostics? diagnostics = null,
             Func<string, bool>? isReparsePoint = null,
+            Func<string, bool>? isCloudFilesReparsePoint = null,
             Action<TimeSpan>? transientRetryDelay = null)
         {
             _rootSafety = rootSafety ?? new WindowsVirtualFilesRootSafetyPolicy();
@@ -46,6 +58,7 @@ namespace Cotton.Sync.Desktop.Platform
             _storageProviderRegistrar = storageProviderRegistrar ?? WindowsStorageProviderSyncRootRegistrar.TryCreateDefault();
             _diagnostics = diagnostics ?? WindowsCloudFilesDiagnostics.Shared;
             _isReparsePoint = isReparsePoint ?? IsReparsePoint;
+            _isCloudFilesReparsePoint = isCloudFilesReparsePoint ?? IsCloudFilesReparsePoint;
             _transientRetryDelay = transientRetryDelay ?? Thread.Sleep;
         }
 
@@ -287,6 +300,91 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
+        public void CreateDirectoryPlaceholder(RemoteDirectoryMaterializationRequest request)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            WindowsVirtualFilesRootSafetyResult safety = _rootSafety.Validate(request.LocalRootPath);
+            if (!safety.IsSafe)
+            {
+                throw new InvalidOperationException(safety.Details);
+            }
+
+            Guid syncPairId = ParseSyncPairId(request.SyncPairId);
+            string normalizedPath = SyncPath.Normalize(request.RelativePath);
+            PlaceholderPath placeholderPath = ResolvePlaceholderPath(safety.FullPath, normalizedPath);
+            EnsureNoReparsePointDescendant(safety.FullPath, placeholderPath.BaseDirectoryPath);
+            byte[] syncRootIdentity = CreateSyncRootIdentity(syncPairId, request.RemoteRootNodeId);
+            byte[] directoryIdentity = CreateDirectoryIdentity(request, normalizedPath);
+
+            EnsureSyncRootRegistered(request.SyncPairId, safety.FullPath, syncRootIdentity);
+            string fullPlaceholderPath = Path.Combine(
+                placeholderPath.BaseDirectoryPath,
+                placeholderPath.RelativeFileName);
+            Directory.CreateDirectory(fullPlaceholderPath);
+
+            const string convertOperation = "convert-directory-placeholder";
+            if (_isReparsePoint(fullPlaceholderPath))
+            {
+                if (!_isCloudFilesReparsePoint(fullPlaceholderPath))
+                {
+                    throw new InvalidOperationException("Virtual-files directory placeholder path cannot replace a non-Cloud Files reparse point.");
+                }
+
+                ExecuteNativeOperationWithTransientPathRetry(
+                    () => _nativeApi.SetInSyncState(fullPlaceholderPath),
+                    "set-in-sync-state",
+                    request.SyncPairId,
+                    safety.FullPath,
+                    normalizedPath);
+                _diagnostics.Record(
+                    convertOperation,
+                    "already-placeholder",
+                    request.SyncPairId,
+                    safety.FullPath,
+                    normalizedPath,
+                    "Windows Cloud Files directory placeholder already existed and was marked in sync.");
+                return;
+            }
+
+            try
+            {
+                ExecuteNativeOperationWithTransientPathRetry(
+                    () => _nativeApi.ConvertToPlaceholder(
+                        fullPlaceholderPath,
+                        directoryIdentity,
+                        isDirectory: true,
+                        markInSync: true),
+                    convertOperation,
+                    request.SyncPairId,
+                    safety.FullPath,
+                    normalizedPath);
+                ExecuteNativeOperationWithTransientPathRetry(
+                    () => _nativeApi.SetPinState(fullPlaceholderPath, WindowsCloudFilesPinState.Unpinned),
+                    "set-pin-state",
+                    request.SyncPairId,
+                    safety.FullPath,
+                    normalizedPath);
+            }
+            catch (Exception exception)
+            {
+                RecordFailure(
+                    convertOperation,
+                    request.SyncPairId,
+                    safety.FullPath,
+                    normalizedPath,
+                    exception);
+                throw;
+            }
+
+            _diagnostics.Record(
+                convertOperation,
+                "completed",
+                request.SyncPairId,
+                safety.FullPath,
+                normalizedPath,
+                "Windows Cloud Files directory placeholder was converted and marked in sync.");
+        }
+
         public void DehydratePlaceholder(SyncPairSettings syncPair, string relativePath)
         {
             ArgumentNullException.ThrowIfNull(syncPair);
@@ -413,7 +511,9 @@ namespace Cotton.Sync.Desktop.Platform
                 }
 
                 current = Path.Combine(current, segment);
-                if ((Directory.Exists(current) || File.Exists(current)) && _isReparsePoint(current))
+                if ((Directory.Exists(current) || File.Exists(current))
+                    && _isReparsePoint(current)
+                    && !_isCloudFilesReparsePoint(current))
                 {
                     throw new InvalidOperationException("Virtual-files placeholder path cannot traverse a reparse point.");
                 }
@@ -593,6 +693,70 @@ namespace Cotton.Sync.Desktop.Platform
             return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
         }
 
+        private static bool IsCloudFilesReparsePoint(string path)
+        {
+            FileAttributes attributes = File.GetAttributes(path);
+            if ((attributes & FileAttributes.ReparsePoint) == 0)
+            {
+                return false;
+            }
+
+            if (OperatingSystem.IsWindows() && TryReadReparseTag(path, out uint reparseTag))
+            {
+                return IsCloudFilesReparseTag(reparseTag);
+            }
+
+            return HasRawAttribute(attributes, FileAttributeRecallOnOpen)
+                || HasRawAttribute(attributes, FileAttributeRecallOnDataAccess)
+                || (attributes & FileAttributes.Offline) != 0;
+        }
+
+        private static bool IsCloudFilesReparseTag(uint reparseTag)
+        {
+            return (reparseTag & ReparseTagCloudFamilyMask) == ReparseTagCloudFamily
+                && (reparseTag & 0xFF) == ReparseTagCloudLowByte;
+        }
+
+        private static bool HasRawAttribute(FileAttributes attributes, int flag)
+        {
+            return (((int)attributes) & flag) == flag;
+        }
+
+        private static bool TryReadReparseTag(string fullPath, out uint reparseTag)
+        {
+            reparseTag = 0;
+            using SafeFileHandle handle = CreateFile(
+                fullPath,
+                0,
+                FileShareRead | FileShareWrite | FileShareDelete,
+                IntPtr.Zero,
+                OpenExisting,
+                FileFlagOpenReparsePoint,
+                IntPtr.Zero);
+            if (handle.IsInvalid)
+            {
+                return false;
+            }
+
+            byte[] buffer = new byte[ReparseDataBufferSize];
+            if (!DeviceIoControl(
+                    handle,
+                    FsctlGetReparsePoint,
+                    IntPtr.Zero,
+                    0,
+                    buffer,
+                    buffer.Length,
+                    out int bytesReturned,
+                    IntPtr.Zero)
+                || bytesReturned < sizeof(uint))
+            {
+                return false;
+            }
+
+            reparseTag = BinaryPrimitives.ReadUInt32LittleEndian(buffer);
+            return true;
+        }
+
         private static byte[] CreateSyncRootIdentity(Guid syncPairId, Guid remoteRootNodeId)
         {
             return JsonSerializer.SerializeToUtf8Bytes(new
@@ -607,6 +771,11 @@ namespace Cotton.Sync.Desktop.Platform
         private static byte[] CreateFileIdentity(RemoteFilePlaceholderRequest request, string normalizedPath)
         {
             return WindowsCloudFilesPlaceholderIdentity.Create(request, normalizedPath).ToBytes();
+        }
+
+        private static byte[] CreateDirectoryIdentity(RemoteDirectoryMaterializationRequest request, string normalizedPath)
+        {
+            return WindowsCloudFilesDirectoryPlaceholderIdentity.Create(request, normalizedPath).ToBytes();
         }
 
         private static string ResolveProviderVersion()
@@ -637,5 +806,32 @@ namespace Cotton.Sync.Desktop.Platform
             bool UpdateExistingPlaceholder,
             byte[] SyncRootIdentity,
             byte[] FileIdentity);
+
+        private const uint FileFlagOpenReparsePoint = 0x00200000;
+        private const uint FileShareRead = 0x00000001;
+        private const uint FileShareWrite = 0x00000002;
+        private const uint FileShareDelete = 0x00000004;
+        private const uint OpenExisting = 3;
+
+        [DllImport("kernel32.dll", EntryPoint = "CreateFileW", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
+        private static extern SafeFileHandle CreateFile(
+            string lpFileName,
+            uint dwDesiredAccess,
+            uint dwShareMode,
+            IntPtr lpSecurityAttributes,
+            uint dwCreationDisposition,
+            uint dwFlagsAndAttributes,
+            IntPtr hTemplateFile);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool DeviceIoControl(
+            SafeFileHandle hDevice,
+            uint dwIoControlCode,
+            IntPtr lpInBuffer,
+            int nInBufferSize,
+            byte[] lpOutBuffer,
+            int nOutBufferSize,
+            out int lpBytesReturned,
+            IntPtr lpOverlapped);
     }
 }

@@ -9,5 +9,6 @@ namespace Cotton.Sync.Desktop.Platform
         byte[] FileIdentity,
         long FileSizeBytes,
         DateTime CreatedAtUtc,
-        DateTime UpdatedAtUtc);
+        DateTime UpdatedAtUtc,
+        bool IsDirectory = false);
 }

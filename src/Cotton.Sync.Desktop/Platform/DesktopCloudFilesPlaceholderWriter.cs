@@ -169,7 +169,7 @@ namespace Cotton.Sync.Desktop.Platform
         {
             ArgumentNullException.ThrowIfNull(request);
             cancellationToken.ThrowIfCancellationRequested();
-            FinalizeDirectoryInSync(request, cancellationToken);
+            EnsureDirectoryPlaceholder(request, cancellationToken);
             return Task.CompletedTask;
         }
 
@@ -199,13 +199,13 @@ namespace Cotton.Sync.Desktop.Platform
                          .OrderByDescending(static request => GetDirectoryDepth(request.RelativePath))
                          .ThenBy(static request => request.RelativePath, StringComparer.OrdinalIgnoreCase))
             {
-                FinalizeDirectoryInSync(directory, cancellationToken);
+                EnsureDirectoryPlaceholder(directory, cancellationToken);
             }
 
             return Task.CompletedTask;
         }
 
-        private void FinalizeDirectoryInSync(
+        private void EnsureDirectoryPlaceholder(
             RemoteDirectoryMaterializationRequest request,
             CancellationToken cancellationToken)
         {
@@ -221,24 +221,13 @@ namespace Cotton.Sync.Desktop.Platform
             try
             {
                 SuppressProviderWrite(request.SyncPairId, request.LocalRootPath, request.RelativePath);
-                _cloudFilesAdapter.SetInSyncState(
-                    new SyncPairSettings
-                    {
-                        Id = syncPairId,
-                        DisplayName = "Cotton Sync",
-                        LocalRootPath = request.LocalRootPath,
-                        RemoteDisplayPath = "/",
-                        RemoteRootNodeId = request.RemoteRootNodeId,
-                        Mode = SyncPairMode.WindowsVirtualFiles,
-                        IsEnabled = true,
-                    },
-                    request.RelativePath);
+                _cloudFilesAdapter.CreateDirectoryPlaceholder(request);
             }
             catch (Exception exception) when (IsRecoverablePlaceholderFailure(exception))
             {
                 _logger.LogWarning(
                     exception,
-                    "Windows Cloud Files in-sync finalization failed for directory {RelativePath}.",
+                    "Windows Cloud Files directory placeholder finalization failed for {RelativePath}.",
                     request.RelativePath);
                 throw;
             }

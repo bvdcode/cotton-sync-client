@@ -82,10 +82,12 @@ namespace Cotton.Sync.Desktop.Platform
                     nativePlaceholders[index] = new CfPlaceholderCreateInfo
                     {
                         RelativeFileName = placeholder.RelativeFileName,
-                        FsMetadata = CfFsMetadata.CreateFile(
-                            placeholder.FileSizeBytes,
-                            placeholder.CreatedAtUtc,
-                            placeholder.UpdatedAtUtc),
+                        FsMetadata = placeholder.IsDirectory
+                            ? CfFsMetadata.CreateDirectory(placeholder.CreatedAtUtc, placeholder.UpdatedAtUtc)
+                            : CfFsMetadata.CreateFile(
+                                placeholder.FileSizeBytes,
+                                placeholder.CreatedAtUtc,
+                                placeholder.UpdatedAtUtc),
                         FileIdentity = pinnedIdentities[index].Pointer,
                         FileIdentityLength = pinnedIdentities[index].Length,
                         Flags = CfPlaceholderCreateFlags.MarkInSync,
@@ -130,13 +132,21 @@ namespace Cotton.Sync.Desktop.Platform
             PinnedBuffer fileIdentity = PinnedBuffer.Pin(placeholder.FileIdentity);
             try
             {
+                FileFlagsAndAttributes flags = FileFlagsAndAttributes.OpenReparsePoint;
+                if (placeholder.IsDirectory)
+                {
+                    flags |= FileFlagsAndAttributes.BackupSemantics;
+                }
+
                 using SafeFileHandle handle = CreateFile(
                     WindowsNativePath.ToWin32FilePath(filePath),
-                    FileDesiredAccess.WriteData,
+                    placeholder.IsDirectory
+                        ? FileDesiredAccess.WriteAttributes
+                        : FileDesiredAccess.WriteData,
                     FileShareMode.Read | FileShareMode.Write | FileShareMode.Delete,
                     IntPtr.Zero,
                     FileCreationDisposition.OpenExisting,
-                    FileFlagsAndAttributes.OpenReparsePoint,
+                    flags,
                     IntPtr.Zero);
                 if (handle.IsInvalid)
                 {
@@ -145,10 +155,12 @@ namespace Cotton.Sync.Desktop.Platform
                         HResultFromWin32(Marshal.GetLastWin32Error()));
                 }
 
-                CfFsMetadata metadata = CfFsMetadata.CreateFile(
-                    placeholder.FileSizeBytes,
-                    placeholder.CreatedAtUtc,
-                    placeholder.UpdatedAtUtc);
+                CfFsMetadata metadata = placeholder.IsDirectory
+                    ? CfFsMetadata.CreateDirectory(placeholder.CreatedAtUtc, placeholder.UpdatedAtUtc)
+                    : CfFsMetadata.CreateFile(
+                        placeholder.FileSizeBytes,
+                        placeholder.CreatedAtUtc,
+                        placeholder.UpdatedAtUtc);
                 int result = CfUpdatePlaceholder(
                     handle.DangerousGetHandle(),
                     ref metadata,
@@ -167,16 +179,68 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
+        public void ConvertToPlaceholder(string filePath, byte[] fileIdentity, bool isDirectory, bool markInSync)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+            ArgumentNullException.ThrowIfNull(fileIdentity);
+            FileFlagsAndAttributes flags = FileFlagsAndAttributes.OpenReparsePoint;
+            if (isDirectory)
+            {
+                flags |= FileFlagsAndAttributes.BackupSemantics;
+            }
+
+            using SafeFileHandle handle = CreateFile(
+                WindowsNativePath.ToWin32FilePath(filePath),
+                FileDesiredAccess.WriteData | FileDesiredAccess.WriteAttributes,
+                FileShareMode.Read | FileShareMode.Write | FileShareMode.Delete,
+                IntPtr.Zero,
+                FileCreationDisposition.OpenExisting,
+                flags,
+                IntPtr.Zero);
+            if (handle.IsInvalid)
+            {
+                throw new WindowsCloudFilesNativeException(
+                    nameof(CreateFile),
+                    HResultFromWin32(Marshal.GetLastWin32Error()));
+            }
+
+            PinnedBuffer identity = PinnedBuffer.Pin(fileIdentity);
+            try
+            {
+                CfConvertFlags convertFlags = markInSync
+                    ? CfConvertFlags.MarkInSync
+                    : CfConvertFlags.None;
+                int result = CfConvertToPlaceholder(
+                    handle.DangerousGetHandle(),
+                    identity.Pointer,
+                    identity.Length,
+                    convertFlags,
+                    IntPtr.Zero,
+                    IntPtr.Zero);
+                ThrowIfFailed(result, nameof(CfConvertToPlaceholder));
+            }
+            finally
+            {
+                identity.Dispose();
+            }
+        }
+
         public void SetPinState(string filePath, WindowsCloudFilesPinState pinState)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+            FileFlagsAndAttributes flags = FileFlagsAndAttributes.OpenReparsePoint;
+            if (Directory.Exists(filePath))
+            {
+                flags |= FileFlagsAndAttributes.BackupSemantics;
+            }
+
             using SafeFileHandle handle = CreateFile(
                 WindowsNativePath.ToWin32FilePath(filePath),
                 FileDesiredAccess.ReadData,
                 FileShareMode.Read | FileShareMode.Write | FileShareMode.Delete,
                 IntPtr.Zero,
                 FileCreationDisposition.OpenExisting,
-                FileFlagsAndAttributes.OpenReparsePoint,
+                flags,
                 IntPtr.Zero);
             if (handle.IsInvalid)
             {
@@ -412,6 +476,15 @@ namespace Cotton.Sync.Desktop.Platform
         private static extern int CfDisconnectSyncRoot(long ConnectionKey);
 
         [DllImport("CldApi.dll", ExactSpelling = true)]
+        private static extern int CfConvertToPlaceholder(
+            IntPtr FileHandle,
+            IntPtr FileIdentity,
+            uint FileIdentityLength,
+            CfConvertFlags ConvertFlags,
+            IntPtr ConvertUsn,
+            IntPtr Overlapped);
+
+        [DllImport("CldApi.dll", ExactSpelling = true)]
         private static extern int CfSetPinState(
             IntPtr FileHandle,
             CfPinState PinState,
@@ -594,6 +667,22 @@ namespace Cotton.Sync.Desktop.Platform
                     fileSize);
             }
 
+            public static CfFsMetadata CreateDirectory(DateTime createdAtUtc, DateTime updatedAtUtc)
+            {
+                long createdAtFileTime = ToFileTimeUtc(createdAtUtc);
+                long updatedAtFileTime = ToFileTimeUtc(updatedAtUtc);
+                return new CfFsMetadata(
+                    new FileBasicInfo
+                    {
+                        CreationTime = createdAtFileTime,
+                        LastAccessTime = updatedAtFileTime,
+                        LastWriteTime = updatedAtFileTime,
+                        ChangeTime = updatedAtFileTime,
+                        FileAttributes = (uint)FileAttributes.Directory,
+                    },
+                    0);
+            }
+
             private static long ToFileTimeUtc(DateTime value)
             {
                 DateTime utc = value.Kind == DateTimeKind.Utc ? value : value.ToUniversalTime();
@@ -665,6 +754,13 @@ namespace Cotton.Sync.Desktop.Platform
         private enum CfPlaceholderCreateFlags : uint
         {
             MarkInSync = 0x00000002,
+        }
+
+        [Flags]
+        private enum CfConvertFlags : uint
+        {
+            None = 0x00000000,
+            MarkInSync = 0x00000001,
         }
 
         [Flags]
