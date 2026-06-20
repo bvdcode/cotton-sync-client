@@ -306,6 +306,39 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesRepeatPassAndHydratedStateAvoidsFullLocalScan()
+        {
+            VirtualPlaceholderRepeatPassSmokeResult smoke =
+                await VerifyVirtualPlaceholderRepeatPassAvoidsFullLocalScanAsync(
+                    "performance-vfs-repeat-hydrated-100k",
+                    fileCount: 100_000,
+                    relativePathFactory: index => "HugeTree/"
+                        + (index / 1_000).ToString("D3", System.Globalization.CultureInfo.InvariantCulture)
+                        + "/file-"
+                        + index.ToString("D6", System.Globalization.CultureInfo.InvariantCulture)
+                        + ".bin",
+                    smokeTarget: TimeSpan.FromSeconds(15),
+                    stateEntryCustomizer: (entry, index) =>
+                    {
+                        if (index == 50_000)
+                        {
+                            entry.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
+                        }
+
+                        return entry;
+                    });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(smoke.Elapsed, Is.LessThan(TimeSpan.FromSeconds(15)));
+                Assert.That(smoke.LocalFullScanCalls, Is.Zero);
+                Assert.That(smoke.PlaceholderWrites, Is.Zero);
+                Assert.That(smoke.StateEntriesLoaded, Is.EqualTo(100_000));
+                Assert.That(smoke.StreamingCrawlCalls, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesCreatesPlaceholdersConcurrentlyWithinConfiguredLimit()
         {
             const int fileCount = 64;
@@ -851,7 +884,8 @@ namespace Cotton.Sync.Tests
             string syncPairId,
             int fileCount,
             Func<int, string> relativePathFactory,
-            TimeSpan smokeTarget)
+            TimeSpan smokeTarget,
+            Func<SyncStateEntry, int, SyncStateEntry>? stateEntryCustomizer = null)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
             ArgumentNullException.ThrowIfNull(relativePathFactory);
@@ -868,7 +902,8 @@ namespace Cotton.Sync.Tests
                     RelativePath = relativePath,
                     File = remoteFile,
                 });
-                baselineEntries.Add(CreateRemoteOnlyPlaceholderState(syncPairId, relativePath, remoteFile));
+                SyncStateEntry baselineEntry = CreateRemoteOnlyPlaceholderState(syncPairId, relativePath, remoteFile);
+                baselineEntries.Add(stateEntryCustomizer?.Invoke(baselineEntry, index) ?? baselineEntry);
             }
 
             var localScanner = new FailOnFullScanLocalFileScanner();
