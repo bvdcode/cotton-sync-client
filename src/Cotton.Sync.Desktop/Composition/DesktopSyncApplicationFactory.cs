@@ -115,7 +115,8 @@ namespace Cotton.Sync.Desktop.Composition
                     localChangeSuppression),
                 stateStore,
                 cloudFilesAdapter,
-                localChangeSuppression);
+                localChangeSuppression,
+                runProgressPublisher: runProgressPublisher);
             var runnerFactory = new SyncPairRunnerFactory(pairWork, loggerFactory: _loggerFactory);
             var statusPublisher = new InMemoryAppStatusPublisher();
             var supervisor = new SyncSupervisor(syncPairStore, runnerFactory, statusPublisher);

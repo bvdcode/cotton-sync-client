@@ -2,6 +2,7 @@
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.LocalChanges;
+using Cotton.Sync.App.Progress;
 using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.Status;
 using Cotton.Sync.App.SyncPairs;
@@ -27,12 +28,14 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             var cloudFiles = new RecordingCloudFilesAdapter();
             var suppression = new RecordingLocalChangeSuppression();
             var diagnostics = new WindowsCloudFilesDiagnostics();
+            var progressPublisher = new RecordingRunProgressPublisher();
             var work = new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
                 inner,
                 stateStore,
                 cloudFiles,
                 suppression,
-                diagnostics);
+                diagnostics,
+                progressPublisher);
 
             await work.RunOnceAsync(syncPair, SyncRunRequest.Full);
 
@@ -61,6 +64,21 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(repairEvent.RelativePath, Is.Null);
                 Assert.That(repairEvent.Details, Does.Contain("candidates=2"));
                 Assert.That(repairEvent.Details, Does.Contain("repaired=2"));
+                Assert.That(
+                    progressPublisher.Progress.Select(static progress => new
+                    {
+                        progress.Stage,
+                        progress.FilesCompleted,
+                        progress.FilesTotal,
+                        progress.IsCompleted,
+                    }),
+                    Is.EqualTo(new[]
+                    {
+                        new { Stage = SyncRunProgressStage.FinalizingCloudFiles, FilesCompleted = 0, FilesTotal = (int?)2, IsCompleted = false },
+                        new { Stage = SyncRunProgressStage.FinalizingCloudFiles, FilesCompleted = 1, FilesTotal = (int?)2, IsCompleted = false },
+                        new { Stage = SyncRunProgressStage.FinalizingCloudFiles, FilesCompleted = 2, FilesTotal = (int?)2, IsCompleted = false },
+                        new { Stage = SyncRunProgressStage.FinalizingCloudFiles, FilesCompleted = 2, FilesTotal = (int?)2, IsCompleted = true },
+                    }));
             });
         }
 
@@ -151,6 +169,21 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         private sealed record SuppressedWrite(Guid SyncPairId, string LocalRootPath, string RelativePath);
+
+        private sealed class RecordingRunProgressPublisher : IAppRunProgressPublisher
+        {
+            public List<AppRunProgress> Progress { get; } = [];
+
+            public IDisposable Subscribe(IObserver<AppRunProgress> observer)
+            {
+                throw new NotSupportedException();
+            }
+
+            public void Publish(AppRunProgress progress)
+            {
+                Progress.Add(progress);
+            }
+        }
 
         private sealed class RecordingSyncPairWork : ISyncPairWork
         {

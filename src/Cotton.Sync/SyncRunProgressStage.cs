@@ -42,5 +42,10 @@ namespace Cotton.Sync
         /// The sync engine is creating remote-only virtual-file placeholders.
         /// </summary>
         CreatingPlaceholders = 6,
+
+        /// <summary>
+        /// The sync engine is finalizing Windows Cloud Files shell status.
+        /// </summary>
+        FinalizingCloudFiles = 7,
     }
 }
