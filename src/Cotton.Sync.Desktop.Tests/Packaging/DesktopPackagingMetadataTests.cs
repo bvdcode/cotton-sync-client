@@ -773,6 +773,29 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         }
 
         [Test]
+        public void CiWorkflow_GatesWindowsReleaseOnUpdateDiscoverySmokeBeforePublishing()
+        {
+            string workflow = GetDesktopWorkflow();
+            string normalizedWorkflow = workflow.Replace("\r\n", "\n", StringComparison.Ordinal);
+            int updateDiscoverySmokeIndex = normalizedWorkflow.IndexOf(
+                "Packaging/windows/smoke-update-discovery.ps1",
+                StringComparison.Ordinal);
+            int uploadInstallerIndex = normalizedWorkflow.IndexOf(
+                "Upload desktop Windows installer artifact",
+                StringComparison.Ordinal);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(updateDiscoverySmokeIndex, Is.GreaterThanOrEqualTo(0));
+                Assert.That(uploadInstallerIndex, Is.GreaterThanOrEqualTo(0));
+                Assert.That(updateDiscoverySmokeIndex, Is.LessThan(uploadInstallerIndex));
+                Assert.That(
+                    normalizedWorkflow,
+                    Does.Match("(?s)\\n  release:\\n    name: Publish Sync Client Release\\n    runs-on: ubuntu-latest\\n    needs:\\n      - linux\\n      - windows\\n      - cli-windows\\n      - release-checksums"));
+            });
+        }
+
+        [Test]
         public void WindowsUpdateDiscoverySmokeScript_VerifiesMockReleaseThroughInstalledExecutable()
         {
             string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/smoke-update-discovery.ps1"));
