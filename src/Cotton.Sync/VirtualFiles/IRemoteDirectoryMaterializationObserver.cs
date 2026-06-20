@@ -14,5 +14,12 @@ namespace Cotton.Sync.VirtualFiles
         Task BeforeCreateDirectoryAsync(
             RemoteDirectoryMaterializationRequest request,
             CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Runs after the sync engine creates a local directory that represents a remote directory.
+        /// </summary>
+        Task AfterCreateDirectoryAsync(
+            RemoteDirectoryMaterializationRequest request,
+            CancellationToken cancellationToken = default);
     }
 }
