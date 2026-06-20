@@ -59,6 +59,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private readonly DesktopNotificationTracker _notificationTracker = new();
         private readonly Dictionary<Guid, DesktopRunProgressSnapshot> _runProgressByPair = [];
         private readonly Dictionary<Guid, DateTime> _runProgressAppliedAtUtcByPair = [];
+        private readonly HashSet<Guid> _suppressedInitialSyncCompleteUntilRunProgressCompleted = [];
         private readonly Dictionary<Guid, DesktopTransferProgressSnapshot> _transferProgressByPair = [];
         private readonly Dictionary<Guid, long> _runCompletedTransferBytesByPair = [];
         private readonly Dictionary<RunTransferProgressKey, long> _runCompletedTransferBytesByKey = [];
@@ -4117,6 +4118,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             {
                 _runProgressByPair.Remove(progress.SyncPairId);
                 _runProgressAppliedAtUtcByPair.Remove(progress.SyncPairId);
+                _suppressedInitialSyncCompleteUntilRunProgressCompleted.Remove(progress.SyncPairId);
                 if (!HasCurrentTransfer || _transferSyncPairId != progress.SyncPairId)
                 {
                     ClearSyncPairProgress(syncPair);
@@ -4247,7 +4249,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private HashSet<Guid> GetInitialSyncCompleteNotificationSuppressionIds()
         {
-            var syncPairIds = new HashSet<Guid>();
+            var syncPairIds = new HashSet<Guid>(_suppressedInitialSyncCompleteUntilRunProgressCompleted);
             foreach (DesktopRunProgressSnapshot progress in _runProgressByPair.Values)
             {
                 if (progress.Stage != SyncRunProgressStage.CreatingPlaceholders
@@ -4261,6 +4263,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 if (syncPair?.Mode == SyncPairMode.WindowsVirtualFiles)
                 {
                     syncPairIds.Add(progress.SyncPairId);
+                    _suppressedInitialSyncCompleteUntilRunProgressCompleted.Add(progress.SyncPairId);
                 }
             }
 
