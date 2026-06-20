@@ -449,6 +449,39 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void UnregisterSyncRoot_UnregistersStorageProviderWhenNativeRootIsAlreadyMissing()
+        {
+            var operations = new List<string>();
+            var nativeApi = new FakeCloudFilesNativeApi
+            {
+                OperationLog = operations,
+                UnregisterException = new WindowsCloudFilesNativeException("CfUnregisterSyncRoot", HResultPathNotFound),
+            };
+            var storageProvider = new FakeStorageProviderSyncRootRegistrar(operations);
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                storageProviderRegistrar: storageProvider,
+                diagnostics: diagnostics);
+            SyncPairSettings syncPair = CreateSyncPair(Path.Combine(_tempDirectory, "root"));
+
+            adapter.UnregisterSyncRoot(syncPair);
+            IReadOnlyList<WindowsCloudFilesDiagnosticEvent> events = diagnostics.Snapshot();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    operations,
+                    Is.EqualTo(new[] { "native-unregister", "storage-provider-unregister" }));
+                Assert.That(storageProvider.UnregisteredSyncPairIds, Is.EqualTo(new[] { syncPair.Id }));
+                Assert.That(events.Select(static item => item.Operation), Is.EqualTo(new[] { "unregister-sync-root", "unregister-sync-root" }));
+                Assert.That(events.Select(static item => item.Status), Is.EqualTo(new[] { "skipped", "completed" }));
+                Assert.That(events[0].HResult, Is.EqualTo(HResultPathNotFound));
+            });
+        }
+
+        [Test]
         public void UnregisterSyncRoot_RejectsUnsafeRootBeforeNativeBoundary()
         {
             var nativeApi = new FakeCloudFilesNativeApi();

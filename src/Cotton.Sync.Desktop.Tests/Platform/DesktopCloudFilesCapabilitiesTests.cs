@@ -108,6 +108,40 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void CreateSelfTestCapability_ReusesStableSyncPairIdentityForCleanup()
+        {
+            var adapter = new FakeCloudFilesAdapter();
+            string firstProbeRoot = CreateProbeRoot();
+            string secondProbeRoot = CreateProbeRoot();
+
+            DesktopCloudFilesCapabilities.CreateSelfTestCapability(
+                new SyncPairModeCapabilitySnapshot(
+                    true,
+                    "Windows Cloud Files API is available."),
+                adapter,
+                () => firstProbeRoot);
+            DesktopCloudFilesCapabilities.CreateSelfTestCapability(
+                new SyncPairModeCapabilitySnapshot(
+                    true,
+                    "Windows Cloud Files API is available."),
+                adapter,
+                () => secondProbeRoot);
+
+            Guid[] connectedIds = adapter.ConnectedSyncPairs.Select(static pair => pair.Id).ToArray();
+            Guid[] unregisteredIds = adapter.UnregisteredSyncPairs.Select(static pair => pair.Id).ToArray();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(connectedIds, Has.Length.EqualTo(2));
+                Assert.That(connectedIds.Distinct().Count(), Is.EqualTo(1));
+                Assert.That(unregisteredIds, Is.EqualTo(connectedIds));
+                Assert.That(adapter.ConnectedSyncPairs.Select(static pair => pair.LocalRootPath), Is.EqualTo(new[] { firstProbeRoot, secondProbeRoot }));
+                Assert.That(Directory.Exists(firstProbeRoot), Is.False);
+                Assert.That(Directory.Exists(secondProbeRoot), Is.False);
+            });
+        }
+
+        [Test]
         public void CreateSelfTestCapability_FailsWhenConnectBoundaryFailsAndStillCleansUp()
         {
             var adapter = new FakeCloudFilesAdapter

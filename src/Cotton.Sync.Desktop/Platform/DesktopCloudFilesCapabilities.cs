@@ -9,6 +9,8 @@ namespace Cotton.Sync.Desktop.Platform
     {
         private static readonly Guid SelfTestRemoteRootNodeId =
             Guid.Parse("f8c8b2b5-39f4-4d60-a4c3-09e7c01bde12");
+        private static readonly Guid SelfTestSyncPairId =
+            Guid.Parse("728a21a6-4ed6-40a8-8942-d95d5d49d9ff");
 
         public static SyncPairModeCapabilitySnapshot CreateSyncPairModeCapabilities()
         {
@@ -75,7 +77,7 @@ namespace Cotton.Sync.Desktop.Platform
             string probeRoot = (createProbeRoot ?? CreateProbeRoot)();
             var syncPair = new SyncPairSettings
             {
-                Id = Guid.NewGuid(),
+                Id = SelfTestSyncPairId,
                 DisplayName = "Cotton Sync self-test",
                 LocalRootPath = probeRoot,
                 RemoteDisplayPath = "/",
