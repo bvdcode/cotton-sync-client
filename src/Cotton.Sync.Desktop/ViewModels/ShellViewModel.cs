@@ -4221,13 +4221,15 @@ namespace Cotton.Sync.Desktop.ViewModels
                 row.LastError = pairStatus.LastError;
                 bool isActiveStatus = IsActiveSyncStatus(pairStatus);
                 bool hasFreshDetailedProgress = HasFreshDetailedProgress(pairStatus.Id);
-                if (!isActiveStatus || !hasFreshDetailedProgress)
+                bool keepProgressDuringCompletionSuppression =
+                    suppressedInitialSyncCompletePairIds.Contains(pairStatus.Id) && hasFreshDetailedProgress;
+                if ((!isActiveStatus && !keepProgressDuringCompletionSuppression) || !hasFreshDetailedProgress)
                 {
                     row.CurrentOperation = pairStatus.CurrentOperation ?? string.Empty;
                 }
 
-                hasActiveSyncStatus |= isActiveStatus;
-                if (isActiveStatus)
+                hasActiveSyncStatus |= isActiveStatus || keepProgressDuringCompletionSuppression;
+                if (isActiveStatus || keepProgressDuringCompletionSuppression)
                 {
                     EnsureSyncPairProgress(row);
                 }
@@ -4310,7 +4312,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             var syncPairIds = new HashSet<Guid>(_suppressedInitialSyncCompleteUntilRunProgressCompleted);
             foreach (DesktopRunProgressSnapshot progress in _runProgressByPair.Values)
             {
-                if (progress.Stage != SyncRunProgressStage.CreatingPlaceholders
+                if (!ShouldSuppressInitialSyncCompleteForRunProgress(progress.Stage)
                     || progress.IsCompleted
                     || !HasFreshDetailedProgress(progress.SyncPairId))
                 {
@@ -4326,6 +4328,12 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
 
             return syncPairIds;
+        }
+
+        private static bool ShouldSuppressInitialSyncCompleteForRunProgress(SyncRunProgressStage stage)
+        {
+            return stage is SyncRunProgressStage.CreatingPlaceholders
+                or SyncRunProgressStage.FinalizingCloudFiles;
         }
 
         private bool HasFreshDetailedProgress(Guid syncPairId)
@@ -5651,6 +5659,8 @@ namespace Cotton.Sync.Desktop.ViewModels
 
             string aggregateUnitName = progressValues.All(static progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders)
                 ? VirtualFileUserFacingCopy.CloudFilesProgressUnit
+                : progressValues.All(static progress => progress.Stage == SyncRunProgressStage.FinalizingCloudFiles)
+                    ? "folders"
                 : "files";
             return completedFiles.ToString(CultureInfo.CurrentCulture)
                 + " of "
@@ -5754,6 +5764,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 SyncRunProgressStage.ScanningRemote => CreateRemoteScanProgressDetails(progress),
                 SyncRunProgressStage.ReconcilingDirectories => "Preparing folders.",
                 SyncRunProgressStage.CreatingPlaceholders => PreparingCloudFilesProgressLabel + ".",
+                SyncRunProgressStage.FinalizingCloudFiles => "Finalizing cloud file status.",
                 SyncRunProgressStage.Completed => "Sync pass completed.",
                 _ => "Preparing sync.",
             };
@@ -5785,7 +5796,8 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             return stage == SyncRunProgressStage.ReconcilingDirectories
                 || stage == SyncRunProgressStage.ReconcilingFiles
-                || stage == SyncRunProgressStage.CreatingPlaceholders;
+                || stage == SyncRunProgressStage.CreatingPlaceholders
+                || stage == SyncRunProgressStage.FinalizingCloudFiles;
         }
 
         private static bool IsIndeterminateRunProgress(DesktopRunProgressSnapshot progress)
@@ -5850,6 +5862,11 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return VirtualFileUserFacingCopy.CloudFilesProgressUnit;
             }
 
+            if (stage == SyncRunProgressStage.FinalizingCloudFiles)
+            {
+                return singular ? "folder" : "folders";
+            }
+
             return singular ? "file" : "files";
         }
 
@@ -5884,6 +5901,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 SyncRunProgressStage.ReconcilingDirectories => "Preparing folders",
                 SyncRunProgressStage.ReconcilingFiles => "Checking files",
                 SyncRunProgressStage.CreatingPlaceholders => CreatingCloudFilesProgressLabel,
+                SyncRunProgressStage.FinalizingCloudFiles => "Finalizing cloud file status",
                 SyncRunProgressStage.Completed => "Finishing sync",
                 _ => "Syncing",
             };
@@ -5906,6 +5924,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 SyncRunProgressStage.ReconcilingDirectories => "Preparing folders",
                 SyncRunProgressStage.ReconcilingFiles => "Preparing file checks",
                 SyncRunProgressStage.CreatingPlaceholders => PreparingCloudFilesProgressLabel,
+                SyncRunProgressStage.FinalizingCloudFiles => "Finalizing cloud file status",
                 _ => "Preparing sync",
             };
         }

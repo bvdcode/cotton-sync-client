@@ -3,6 +3,7 @@
 
 using Cotton.Nodes;
 using Cotton.Sync.App.LocalChanges;
+using Cotton.Sync.App.Progress;
 using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.State;
@@ -18,19 +19,22 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly IWindowsCloudFilesAdapter _cloudFiles;
         private readonly ILocalChangeSuppression? _localChangeSuppression;
         private readonly IWindowsCloudFilesDiagnostics _diagnostics;
+        private readonly IAppRunProgressPublisher? _runProgressPublisher;
 
         public WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
             ISyncPairWork inner,
             ISyncStateStore stateStore,
             IWindowsCloudFilesAdapter cloudFiles,
             ILocalChangeSuppression? localChangeSuppression = null,
-            IWindowsCloudFilesDiagnostics? diagnostics = null)
+            IWindowsCloudFilesDiagnostics? diagnostics = null,
+            IAppRunProgressPublisher? runProgressPublisher = null)
         {
             _inner = inner ?? throw new ArgumentNullException(nameof(inner));
             _stateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
             _cloudFiles = cloudFiles ?? throw new ArgumentNullException(nameof(cloudFiles));
             _localChangeSuppression = localChangeSuppression;
             _diagnostics = diagnostics ?? WindowsCloudFilesDiagnostics.Shared;
+            _runProgressPublisher = runProgressPublisher;
         }
 
         public async Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
@@ -90,6 +94,8 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             int repairedCount = 0;
+            DateTime startedAtUtc = DateTime.UtcNow;
+            PublishRepairProgress(syncPair.Id, startedAtUtc, repairedCount, directories.Count, isCompleted: false);
             try
             {
                 using IDisposable? burst = _localChangeSuppression?.SuppressProviderWriteBurst(
@@ -106,6 +112,7 @@ namespace Cotton.Sync.Desktop.Platform
                         directory.RelativePath);
                     _cloudFiles.CreateDirectoryPlaceholder(CreateRequest(syncPair, directory));
                     repairedCount++;
+                    PublishRepairProgress(syncPair.Id, startedAtUtc, repairedCount, directories.Count, isCompleted: false);
                 }
             }
             catch (Exception exception)
@@ -122,12 +129,31 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             stopwatch.Stop();
+            PublishRepairProgress(syncPair.Id, startedAtUtc, repairedCount, directories.Count, isCompleted: true);
             RecordRepairSummary(
                 syncPair,
                 status: "completed",
                 candidateCount: directories.Count,
                 repairedCount: repairedCount,
                 elapsedMilliseconds: stopwatch.ElapsedMilliseconds);
+        }
+
+        private void PublishRepairProgress(
+            Guid syncPairId,
+            DateTime startedAtUtc,
+            int repairedCount,
+            int totalCount,
+            bool isCompleted)
+        {
+            _runProgressPublisher?.Publish(new AppRunProgress(
+                syncPairId,
+                SyncRunProgressStage.FinalizingCloudFiles,
+                repairedCount,
+                totalCount,
+                string.Empty,
+                startedAtUtc,
+                isCompleted,
+                DateTime.UtcNow));
         }
 
         private void RecordRepairSummary(
