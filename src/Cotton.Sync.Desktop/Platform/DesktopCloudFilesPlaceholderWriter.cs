@@ -3,6 +3,7 @@
 
 using Cotton.Sync.App.LocalChanges;
 using Cotton.Sync.App.SyncPairs;
+using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -12,7 +13,8 @@ namespace Cotton.Sync.Desktop.Platform
     internal sealed class DesktopCloudFilesPlaceholderWriter :
         IRemoteFilePlaceholderBatchWriter,
         IRemoteFilePlaceholderPopulationObserver,
-        IRemoteDirectoryMaterializationObserver
+        IRemoteDirectoryMaterializationObserver,
+        IRemoteDirectoryTreePopulationObserver
     {
         private readonly Func<SyncPairModeCapabilitySnapshot> _getCapabilities;
         private readonly WindowsVirtualFilesRootSafetyPolicy _rootSafety;
@@ -167,16 +169,58 @@ namespace Cotton.Sync.Desktop.Platform
         {
             ArgumentNullException.ThrowIfNull(request);
             cancellationToken.ThrowIfCancellationRequested();
+            FinalizeDirectoryInSync(request, cancellationToken);
+            return Task.CompletedTask;
+        }
+
+        public Task AfterDirectoryTreePopulationAsync(
+            IReadOnlyList<RemoteDirectoryMaterializationRequest> directories,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(directories);
+            if (directories.Count == 0)
+            {
+                return Task.CompletedTask;
+            }
+
+            var uniqueDirectories = new Dictionary<string, RemoteDirectoryMaterializationRequest>(
+                StringComparer.OrdinalIgnoreCase);
+            foreach (RemoteDirectoryMaterializationRequest directory in directories)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                string normalizedPath = SyncPath.Normalize(directory.RelativePath);
+                uniqueDirectories[SyncPath.ToKey(normalizedPath)] = directory with
+                {
+                    RelativePath = normalizedPath,
+                };
+            }
+
+            foreach (RemoteDirectoryMaterializationRequest directory in uniqueDirectories.Values
+                         .OrderByDescending(static request => GetDirectoryDepth(request.RelativePath))
+                         .ThenBy(static request => request.RelativePath, StringComparer.OrdinalIgnoreCase))
+            {
+                FinalizeDirectoryInSync(directory, cancellationToken);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        private void FinalizeDirectoryInSync(
+            RemoteDirectoryMaterializationRequest request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             if (!Guid.TryParse(request.SyncPairId, out Guid syncPairId))
             {
                 _logger.LogDebug(
                     "Skipping Cloud Files in-sync finalization for provider-created directory {RelativePath} because sync pair id is not a GUID.",
                     request.RelativePath);
-                return Task.CompletedTask;
+                return;
             }
 
             try
             {
+                SuppressProviderWrite(request.SyncPairId, request.LocalRootPath, request.RelativePath);
                 _cloudFilesAdapter.SetInSyncState(
                     new SyncPairSettings
                     {
@@ -198,8 +242,20 @@ namespace Cotton.Sync.Desktop.Platform
                     request.RelativePath);
                 throw;
             }
+        }
 
-            return Task.CompletedTask;
+        private static int GetDirectoryDepth(string relativePath)
+        {
+            int depth = 1;
+            foreach (char character in relativePath)
+            {
+                if (character == '/')
+                {
+                    depth++;
+                }
+            }
+
+            return depth;
         }
 
         private async Task<IReadOnlyList<RemoteFilePlaceholderBatchResult>> CreatePlaceholdersIndividuallyAfterBatchFailureAsync(

@@ -1754,6 +1754,57 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesFinalizesDirectoryTreeAfterPlaceholderPopulation()
+        {
+            RemoteDirectorySnapshot parentDirectory = RemoteDirectory("Temp");
+            RemoteDirectorySnapshot nestedDirectory = RemoteDirectory("Temp/Images");
+            NodeFileManifestDto firstRemote = RemoteFile(
+                "Temp/Images/photo.heic",
+                HashText("photo"),
+                sizeBytes: 1024);
+            NodeFileManifestDto secondRemote = RemoteFile(
+                "Temp/video.mp4",
+                HashText("video"),
+                sizeBytes: 2048);
+            RemoteTreeSnapshot remoteTree = RemoteTree(firstRemote, secondRemote);
+            remoteTree.Directories.Add(parentDirectory);
+            remoteTree.Directories.Add(nestedDirectory);
+            var remoteCrawler = new StreamingRemoteTreeCrawler(
+                _remoteRootNodeId,
+                remoteTree.Files,
+                remoteTree.Directories);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            var engine = new SyncEngine(
+                new FakeLocalFileScanner(),
+                remoteCrawler,
+                remoteFiles,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            IReadOnlyList<RemoteDirectoryMaterializationRequest> completedTree =
+                placeholderWriter.CompletedDirectoryTreeRequests.Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    placeholderWriter.CompletedDirectoryRequests.Select(static request => request.RelativePath),
+                    Is.EqualTo(new[] { "Temp", "Temp/Images" }));
+                Assert.That(
+                    completedTree.Select(static request => request.RelativePath),
+                    Is.EquivalentTo(new[] { "Temp", "Temp/Images" }));
+                Assert.That(
+                    placeholderWriter.PlaceholderCountWhenDirectoryTreeCompleted,
+                    Is.EqualTo(new[] { 2 }));
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
+                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesPopulatesLargeRemoteTreeIncrementally()
         {
             const int fileCount = 1_000;
@@ -4755,11 +4806,16 @@ namespace Cotton.Sync.Tests
         {
             private readonly Guid _rootNodeId;
             private readonly IReadOnlyList<RemoteFileSnapshot> _files;
+            private readonly IReadOnlyList<RemoteDirectorySnapshot> _directories;
 
-            public StreamingRemoteTreeCrawler(Guid rootNodeId, IReadOnlyList<RemoteFileSnapshot> files)
+            public StreamingRemoteTreeCrawler(
+                Guid rootNodeId,
+                IReadOnlyList<RemoteFileSnapshot> files,
+                IReadOnlyList<RemoteDirectorySnapshot>? directories = null)
             {
                 _rootNodeId = rootNodeId;
                 _files = files;
+                _directories = directories ?? [];
             }
 
             public int SnapshotCrawlCalls { get; private set; }
@@ -4784,15 +4840,34 @@ namespace Cotton.Sync.Tests
                     Id = _rootNodeId,
                     Name = "root",
                 };
-                progress?.Report(new RemoteTreeScanProgress(0, 0, currentPath: null));
+                progress?.Report(new RemoteTreeScanProgress(0, _directories.Count, currentPath: null));
+                for (int index = 0; index < _directories.Count; index++)
+                {
+                    RemoteDirectorySnapshot directory = _directories[index];
+                    await sink.AddDirectoryAsync(directory, cancellationToken).ConfigureAwait(false);
+                    progress?.Report(new RemoteTreeScanProgress(
+                        index + 1,
+                        _directories.Count,
+                        directory.RelativePath,
+                        pagesScanned: 1));
+                }
+
                 for (int index = 0; index < _files.Count; index++)
                 {
                     RemoteFileSnapshot file = _files[index];
                     await sink.AddFileAsync(file, cancellationToken).ConfigureAwait(false);
-                    progress?.Report(new RemoteTreeScanProgress(index + 1, 0, file.RelativePath, pagesScanned: 1));
+                    progress?.Report(new RemoteTreeScanProgress(
+                        _directories.Count + index + 1,
+                        _directories.Count,
+                        file.RelativePath,
+                        pagesScanned: 1));
                 }
 
-                progress?.Report(new RemoteTreeScanProgress(_files.Count, 0, currentPath: null, pagesScanned: 1));
+                progress?.Report(new RemoteTreeScanProgress(
+                    _directories.Count + _files.Count,
+                    _directories.Count,
+                    currentPath: null,
+                    pagesScanned: 1));
                 return root;
             }
         }
@@ -4948,7 +5023,8 @@ namespace Cotton.Sync.Tests
         private class FakeRemoteFilePlaceholderWriter :
             IRemoteFilePlaceholderWriter,
             IRemoteFilePlaceholderPopulationObserver,
-            IRemoteDirectoryMaterializationObserver
+            IRemoteDirectoryMaterializationObserver,
+            IRemoteDirectoryTreePopulationObserver
         {
             private readonly object _requestsLock = new();
 
@@ -4960,7 +5036,11 @@ namespace Cotton.Sync.Tests
 
             public List<RemoteDirectoryMaterializationRequest> CompletedDirectoryRequests { get; } = [];
 
+            public List<IReadOnlyList<RemoteDirectoryMaterializationRequest>> CompletedDirectoryTreeRequests { get; } = [];
+
             public List<bool> DirectoryExistsWhenCompleted { get; } = [];
+
+            public List<int> PlaceholderCountWhenDirectoryTreeCompleted { get; } = [];
 
             public string? UnavailableReason { get; set; }
 
@@ -4990,6 +5070,19 @@ namespace Cotton.Sync.Tests
                 DirectoryExistsWhenCompleted.Add(Directory.Exists(Path.Combine(
                     request.LocalRootPath,
                     request.RelativePath.Replace('/', Path.DirectorySeparatorChar))));
+                return Task.CompletedTask;
+            }
+
+            public Task AfterDirectoryTreePopulationAsync(
+                IReadOnlyList<RemoteDirectoryMaterializationRequest> directories,
+                CancellationToken cancellationToken = default)
+            {
+                CompletedDirectoryTreeRequests.Add(directories.ToArray());
+                lock (_requestsLock)
+                {
+                    PlaceholderCountWhenDirectoryTreeCompleted.Add(Requests.Count);
+                }
+
                 return Task.CompletedTask;
             }
 

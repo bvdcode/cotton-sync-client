@@ -44,6 +44,7 @@ namespace Cotton.Sync
         private readonly IRemoteFilePlaceholderWriter? _remoteFilePlaceholderWriter;
         private readonly IRemoteFilePlaceholderPopulationObserver? _remoteFilePlaceholderPopulationObserver;
         private readonly IRemoteDirectoryMaterializationObserver? _remoteDirectoryMaterializationObserver;
+        private readonly IRemoteDirectoryTreePopulationObserver? _remoteDirectoryTreePopulationObserver;
         private readonly ILogger<SyncEngine> _logger;
 
         /// <summary>
@@ -79,6 +80,8 @@ namespace Cotton.Sync
                 remoteFilePlaceholderWriter as IRemoteFilePlaceholderPopulationObserver;
             _remoteDirectoryMaterializationObserver =
                 remoteFilePlaceholderWriter as IRemoteDirectoryMaterializationObserver;
+            _remoteDirectoryTreePopulationObserver =
+                remoteFilePlaceholderWriter as IRemoteDirectoryTreePopulationObserver;
             _logger = logger ?? NullLogger<SyncEngine>.Instance;
         }
 
@@ -1181,6 +1184,10 @@ namespace Cotton.Sync
             var pendingFileBatch = new List<RemoteFileSnapshot>(placeholderBatchSize);
             var pendingFileTasks = new List<Task<IReadOnlyList<InitialVirtualFilesFileWorkResult>>>(
                 options.InitialVirtualFilesPlaceholderConcurrency);
+            Dictionary<string, RemoteDirectoryMaterializationRequest>? directoryTreeFinalizationRequests =
+                _remoteDirectoryTreePopulationObserver is null
+                    ? null
+                    : new Dictionary<string, RemoteDirectoryMaterializationRequest>(PathComparer);
             try
             {
                 await foreach (InitialVirtualFilesPopulationItem item in reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
@@ -1221,6 +1228,17 @@ namespace Cotton.Sync
                                     directoryItem.Directory.Node,
                                     cancellationToken)
                                 .ConfigureAwait(false);
+                            if (directoryTreeFinalizationRequests is not null)
+                            {
+                                RemoteDirectoryMaterializationRequest finalizationRequest =
+                                    CreateRemoteDirectoryMaterializationRequest(
+                                        syncPair,
+                                        directoryItem.Directory.RelativePath,
+                                        directoryItem.Directory.Node);
+                                directoryTreeFinalizationRequests[SyncPath.ToKey(finalizationRequest.RelativePath)] =
+                                    finalizationRequest;
+                            }
+
                             await _stateStore
                                 .UpsertAsync(
                                     BuildDirectoryBaseline(
@@ -1313,6 +1331,19 @@ namespace Cotton.Sync
                             recordFileWorkResult,
                             recordFileStateWrite,
                             waitForOne: true,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                int finalFlushedFileRows =
+                    await FlushInitialVirtualFilesStateBatchAsync(pendingFileStates, cancellationToken).ConfigureAwait(false);
+                recordFileStateWrite(finalFlushedFileRows);
+                if (directoryTreeFinalizationRequests is { Count: > 0 }
+                    && _remoteDirectoryTreePopulationObserver is not null)
+                {
+                    await _remoteDirectoryTreePopulationObserver
+                        .AfterDirectoryTreePopulationAsync(
+                            directoryTreeFinalizationRequests.Values.ToArray(),
                             cancellationToken)
                         .ConfigureAwait(false);
                 }
@@ -1986,11 +2017,9 @@ namespace Cotton.Sync
             if (syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
                 && _remoteDirectoryMaterializationObserver is not null)
             {
-                materializationRequest = new RemoteDirectoryMaterializationRequest(
-                    syncPair.SyncPairId,
-                    syncPair.LocalRootPath,
-                    syncPair.RemoteRootNodeId,
-                    SyncPath.Normalize(relativePath),
+                materializationRequest = CreateRemoteDirectoryMaterializationRequest(
+                    syncPair,
+                    relativePath,
                     remoteDirectory);
                 await _remoteDirectoryMaterializationObserver
                     .BeforeCreateDirectoryAsync(materializationRequest, cancellationToken)
@@ -2005,6 +2034,19 @@ namespace Cotton.Sync
                     .AfterCreateDirectoryAsync(materializationRequest, cancellationToken)
                     .ConfigureAwait(false);
             }
+        }
+
+        private static RemoteDirectoryMaterializationRequest CreateRemoteDirectoryMaterializationRequest(
+            SyncPair syncPair,
+            string relativePath,
+            NodeDto remoteDirectory)
+        {
+            return new RemoteDirectoryMaterializationRequest(
+                syncPair.SyncPairId,
+                syncPair.LocalRootPath,
+                syncPair.RemoteRootNodeId,
+                SyncPath.Normalize(relativePath),
+                remoteDirectory);
         }
 
         private static bool TryGetRemoteDirectoryNodeId(
