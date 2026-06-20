@@ -868,6 +868,9 @@ namespace Cotton.Sync
             Stopwatch stopwatch = Stopwatch.StartNew();
             int entriesSeen = 0;
             int directoryEntries = 0;
+            int fileEntries = 0;
+            int onlineOnlyFileEntries = 0;
+            int materializedFileEntries = 0;
             var fileBaselineByPath = new Dictionary<string, InitialVirtualFilesPlaceholderBaseline>(PathComparer);
             await foreach (SyncStateEntry entry in _stateStore
                                .LoadPairEntriesAsync(syncPair.SyncPairId, cancellationToken)
@@ -893,9 +896,19 @@ namespace Cotton.Sync
                         directoryEntries++;
                         break;
                     case SyncEntryKind.File:
-                        if (!IsOnlineOnlyPlaceholderState(entry))
+                        if (!HasRemoteFileBaseline(entry))
                         {
                             return null;
+                        }
+
+                        fileEntries++;
+                        if (IsOnlineOnlyPlaceholderState(entry))
+                        {
+                            onlineOnlyFileEntries++;
+                        }
+                        else
+                        {
+                            materializedFileEntries++;
                         }
 
                         fileBaselineByPath[SyncPath.ToKey(entry.RelativePath)] =
@@ -913,10 +926,12 @@ namespace Cotton.Sync
             }
 
             _logger.LogInformation(
-                "Loaded Windows virtual-files state-first resume plan for pair {SyncPairId} with {DirectoryStateCount} directories and {FileStateCount} files in {ElapsedMilliseconds} ms without scanning the local placeholder tree.",
+                "Loaded Windows virtual-files state-first resume plan for pair {SyncPairId} with {DirectoryStateCount} directories and {FileStateCount} files ({OnlineOnlyFileStateCount} online-only, {MaterializedFileStateCount} materialized) in {ElapsedMilliseconds} ms without scanning the local placeholder tree.",
                 syncPair.SyncPairId,
                 directoryEntries,
-                fileBaselineByPath.Count,
+                fileEntries,
+                onlineOnlyFileEntries,
+                materializedFileEntries,
                 stopwatch.ElapsedMilliseconds);
             return new InitialVirtualFilesStreamingPlan(
                 SkipCurrentPlaceholders: true,
@@ -1202,10 +1217,7 @@ namespace Cotton.Sync
                             break;
 
                         case InitialVirtualFilesFilePopulationItem fileItem:
-                            if (!IsStreamingRemoteOnlyPlaceholderAlreadyCurrent(
-                                        syncPair,
-                                        fileItem.File,
-                                        streamingPlan))
+                            if (!IsStreamingVirtualFilesBaselineAlreadyCurrent(fileItem.File, streamingPlan))
                             {
                                 pendingFileBatch.Add(fileItem.File);
                                 if (pendingFileBatch.Count >= placeholderBatchSize)
@@ -1740,8 +1752,7 @@ namespace Cotton.Sync
             }
         }
 
-        private static bool IsStreamingRemoteOnlyPlaceholderAlreadyCurrent(
-            SyncPair syncPair,
+        private static bool IsStreamingVirtualFilesBaselineAlreadyCurrent(
             RemoteFileSnapshot remote,
             InitialVirtualFilesStreamingPlan streamingPlan)
         {
@@ -1754,7 +1765,7 @@ namespace Cotton.Sync
             return streamingPlan.CurrentPlaceholderBaselineByPath.TryGetValue(
                     key,
                     out InitialVirtualFilesPlaceholderBaseline baseline)
-                && IsOnlineOnlyPlaceholderBaseline(syncPair, baseline)
+                && HasRemoteFileBaseline(baseline)
                 && RemoteMatchesBaseline(remote.File, baseline);
         }
 
@@ -3693,11 +3704,26 @@ namespace Cotton.Sync
                 && state.PlaceholderIdentity is { Length: > 0 };
         }
 
+        private static bool HasRemoteFileBaseline(SyncStateEntry state)
+        {
+            return state.Kind == SyncEntryKind.File
+                && (!string.IsNullOrWhiteSpace(state.RemoteContentHash)
+                    || !string.IsNullOrWhiteSpace(state.RemoteETag)
+                    || state.RemoteFileId.HasValue);
+        }
+
         private static bool IsOnlineOnlyPlaceholderState(InitialVirtualFilesPlaceholderBaseline baseline)
         {
             return (baseline.PlaceholderHydrationState == SyncPlaceholderHydrationState.RemoteOnly
                     || baseline.PlaceholderHydrationState == SyncPlaceholderHydrationState.Dehydrated)
                 && baseline.HasPlaceholderIdentity;
+        }
+
+        private static bool HasRemoteFileBaseline(InitialVirtualFilesPlaceholderBaseline baseline)
+        {
+            return !string.IsNullOrWhiteSpace(baseline.RemoteContentHash)
+                || !string.IsNullOrWhiteSpace(baseline.RemoteETag)
+                || baseline.RemoteFileId.HasValue;
         }
 
         private static bool ContentMatches(string? left, string? right)
