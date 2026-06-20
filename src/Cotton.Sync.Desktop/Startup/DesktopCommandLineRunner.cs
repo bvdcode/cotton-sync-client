@@ -5,6 +5,7 @@ using Cotton.Sync.Desktop.Composition;
 using Cotton.Sync.Desktop.Diagnostics;
 using Cotton.Sync.App.Preferences;
 using Cotton.Sync.App.Platform;
+using Cotton.Sync.App.ShellIntegration;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Shell;
@@ -174,6 +175,51 @@ namespace Cotton.Sync.Desktop.Startup
                 .ConfigureAwait(false);
             await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
             return failures == 0 ? 0 : 1;
+        }
+
+        internal static async Task<int> RunShellShareLinkTargetAsync(
+            DesktopAppPaths paths,
+            DesktopStartupOptions startupOptions,
+            TextWriter output,
+            IShellShareLinkTargetResolver? resolver = null,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(paths);
+            ArgumentNullException.ThrowIfNull(startupOptions);
+            ArgumentNullException.ThrowIfNull(output);
+            if (string.IsNullOrWhiteSpace(startupOptions.ShellShareLinkTargetPath))
+            {
+                await output.WriteLineAsync("--resolve-shell-share-link-target requires a local file or folder path.")
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                return 2;
+            }
+
+            DesktopTraceLogging.Install(paths);
+            IShellShareLinkTargetResolver targetResolver = resolver
+                ?? new ShellShareLinkTargetResolver(
+                    new SqliteSyncPairSettingsStore(paths.AppDatabasePath),
+                    new SqliteSyncStateStore(paths.SyncStateDatabasePath));
+            ShellShareLinkTarget target = await targetResolver
+                .ResolveAsync(startupOptions.ShellShareLinkTargetPath, cancellationToken)
+                .ConfigureAwait(false);
+
+            await output.WriteLineAsync("Cotton Sync Desktop shell share-link target").ConfigureAwait(false);
+            await output.WriteLineAsync("Status: " + FormatShellShareLinkTargetStatus(target.Status))
+                .ConfigureAwait(false);
+            await output.WriteLineAsync("CanCreateShareLink: " + FormatBoolean(target.CanCreateShareLink))
+                .ConfigureAwait(false);
+            await output.WriteLineAsync("TargetKind: " + FormatShellShareLinkTargetKind(target.Kind))
+                .ConfigureAwait(false);
+            await output.WriteLineAsync("HasSyncPair: " + FormatBoolean(target.SyncPairId.HasValue))
+                .ConfigureAwait(false);
+            await output.WriteLineAsync("HasRemoteNodeId: " + FormatBoolean(target.RemoteNodeId.HasValue))
+                .ConfigureAwait(false);
+            await output.WriteLineAsync("HasRemoteFileId: " + FormatBoolean(target.RemoteFileId.HasValue))
+                .ConfigureAwait(false);
+            await output.WriteLineAsync(target.CanCreateShareLink ? "Result: passed" : "Result: failed")
+                .ConfigureAwait(false);
+            return target.CanCreateShareLink ? 0 : 1;
         }
 
         public static async Task<int> RunLiveSyncSmokeAsync(
@@ -531,6 +577,36 @@ namespace Cotton.Sync.Desktop.Startup
         {
             string status = item.Skipped ? "SKIP" : item.Passed ? "OK" : "FAIL";
             return "[" + status + "] " + item.Name + " - " + item.Details;
+        }
+
+        private static string FormatShellShareLinkTargetStatus(ShellShareLinkTargetStatus status)
+        {
+            return status switch
+            {
+                ShellShareLinkTargetStatus.Resolved => "resolved",
+                ShellShareLinkTargetStatus.OutsideSyncRoot => "outside-sync-root",
+                ShellShareLinkTargetStatus.SyncPairDisabled => "sync-pair-disabled",
+                ShellShareLinkTargetStatus.IgnoredPath => "ignored-path",
+                ShellShareLinkTargetStatus.MissingBaseline => "missing-baseline",
+                ShellShareLinkTargetStatus.MissingRemoteIdentity => "missing-remote-identity",
+                _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unknown shell share-link target status."),
+            };
+        }
+
+        private static string FormatShellShareLinkTargetKind(ShellShareLinkTargetKind kind)
+        {
+            return kind switch
+            {
+                ShellShareLinkTargetKind.Unknown => "unknown",
+                ShellShareLinkTargetKind.File => "file",
+                ShellShareLinkTargetKind.Directory => "directory",
+                _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown shell share-link target kind."),
+            };
+        }
+
+        private static string FormatBoolean(bool value)
+        {
+            return value ? "true" : "false";
         }
 
         private static DesktopShellController CreateLiveSmokeController(
