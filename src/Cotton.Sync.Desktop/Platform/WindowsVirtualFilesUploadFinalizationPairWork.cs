@@ -5,7 +5,9 @@ using Cotton.Sync.App.Activities;
 using Cotton.Sync.App.LocalChanges;
 using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.SyncPairs;
+using Cotton.Nodes;
 using Cotton.Sync.State;
+using Cotton.Sync.VirtualFiles;
 
 namespace Cotton.Sync.Desktop.Platform
 {
@@ -13,17 +15,20 @@ namespace Cotton.Sync.Desktop.Platform
     {
         private readonly ISyncPairWork _inner;
         private readonly IAppActivityPublisher _activityPublisher;
+        private readonly ISyncStateStore _stateStore;
         private readonly IWindowsCloudFilesAdapter _cloudFiles;
         private readonly ILocalChangeSuppression? _localChangeSuppression;
 
         public WindowsVirtualFilesUploadFinalizationPairWork(
             ISyncPairWork inner,
             IAppActivityPublisher activityPublisher,
+            ISyncStateStore stateStore,
             IWindowsCloudFilesAdapter cloudFiles,
             ILocalChangeSuppression? localChangeSuppression = null)
         {
             _inner = inner ?? throw new ArgumentNullException(nameof(inner));
             _activityPublisher = activityPublisher ?? throw new ArgumentNullException(nameof(activityPublisher));
+            _stateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
             _cloudFiles = cloudFiles ?? throw new ArgumentNullException(nameof(cloudFiles));
             _localChangeSuppression = localChangeSuppression;
         }
@@ -72,23 +77,65 @@ namespace Cotton.Sync.Desktop.Platform
             await runInnerAsync().ConfigureAwait(false);
 
             var finalizedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string relativePath in collector.GetUploadedPaths().SelectMany(CreateFinalizationPaths))
+            foreach (string relativePath in collector.GetUploadedPaths())
             {
-                if (!finalizedPaths.Add(relativePath))
+                await FinalizeUploadedPathAsync(
+                        syncPair,
+                        relativePath,
+                        finalizedPaths,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        private async Task FinalizeUploadedPathAsync(
+            SyncPairSettings syncPair,
+            string relativePath,
+            HashSet<string> finalizedPaths,
+            CancellationToken cancellationToken)
+        {
+            if (finalizedPaths.Add(relativePath))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _localChangeSuppression?.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, relativePath);
+                _cloudFiles.SetInSyncState(syncPair, relativePath);
+            }
+
+            foreach (string directoryPath in CreateAncestorDirectoryPaths(relativePath))
+            {
+                if (!finalizedPaths.Add(directoryPath))
                 {
                     continue;
                 }
 
                 cancellationToken.ThrowIfCancellationRequested();
-                _localChangeSuppression?.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, relativePath);
-                _cloudFiles.SetInSyncState(syncPair, relativePath);
+                _localChangeSuppression?.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, directoryPath);
+                SyncStateEntry? directoryState = await _stateStore
+                    .GetAsync(syncPair.Id.ToString("D"), directoryPath, cancellationToken)
+                    .ConfigureAwait(false);
+                if (directoryState is { Kind: SyncEntryKind.Directory, RemoteNodeId: Guid remoteNodeId })
+                {
+                    _cloudFiles.CreateDirectoryPlaceholder(new RemoteDirectoryMaterializationRequest(
+                        syncPair.Id.ToString("D"),
+                        syncPair.LocalRootPath,
+                        syncPair.RemoteRootNodeId,
+                        directoryPath,
+                        new NodeDto
+                        {
+                            Id = remoteNodeId,
+                            Name = directoryPath.Split('/')[^1],
+                            CreatedAt = directoryState.SyncedAtUtc,
+                            UpdatedAt = directoryState.SyncedAtUtc,
+                        }));
+                    continue;
+                }
+
+                _cloudFiles.SetInSyncState(syncPair, directoryPath);
             }
         }
 
-        private static IEnumerable<string> CreateFinalizationPaths(string relativePath)
+        private static IEnumerable<string> CreateAncestorDirectoryPaths(string relativePath)
         {
-            yield return relativePath;
-
             string[] segments = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
             for (int length = 1; length < segments.Length; length++)
             {

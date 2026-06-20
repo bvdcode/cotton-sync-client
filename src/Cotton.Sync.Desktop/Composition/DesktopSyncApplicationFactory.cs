@@ -109,6 +109,7 @@ namespace Cotton.Sync.Desktop.Composition
                     new LocalFileScanner(),
                     localChangeSuppression: localChangeSuppression),
                 activityPublisher,
+                stateStore,
                 cloudFilesAdapter,
                 localChangeSuppression);
             var runnerFactory = new SyncPairRunnerFactory(pairWork, loggerFactory: _loggerFactory);
