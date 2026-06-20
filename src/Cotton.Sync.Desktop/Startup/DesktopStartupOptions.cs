@@ -20,6 +20,7 @@ namespace Cotton.Sync.Desktop.Startup
             bool runLiveSyncSmoke,
             bool runUpdateDiscoverySmoke,
             bool printVersion,
+            string? shellShareLinkTargetPath,
             DesktopVisualSmokeScenario? visualSmokeScenario,
             Uri? updateManifestUri,
             string? expectedUpdateVersion,
@@ -45,6 +46,7 @@ namespace Cotton.Sync.Desktop.Startup
             RunLiveSyncSmoke = runLiveSyncSmoke;
             RunUpdateDiscoverySmoke = runUpdateDiscoverySmoke;
             PrintVersion = printVersion;
+            ShellShareLinkTargetPath = shellShareLinkTargetPath;
             VisualSmokeScenario = visualSmokeScenario;
             UpdateManifestUri = updateManifestUri;
             ExpectedUpdateVersion = expectedUpdateVersion;
@@ -72,6 +74,7 @@ namespace Cotton.Sync.Desktop.Startup
             false,
             false,
             false,
+            null,
             null,
             null,
             null,
@@ -108,6 +111,8 @@ namespace Cotton.Sync.Desktop.Startup
         public bool RunUpdateDiscoverySmoke { get; }
 
         public bool PrintVersion { get; }
+
+        public string? ShellShareLinkTargetPath { get; }
 
         public DesktopVisualSmokeScenario? VisualSmokeScenario { get; }
 
@@ -153,6 +158,8 @@ namespace Cotton.Sync.Desktop.Startup
                 ?? ReadOption(args, "--update-manifest-uri");
             string? expectedUpdateVersion = ReadOption(args, "--expected-update-version")
                 ?? ReadOption(args, "--expected-latest-version");
+            string? shellShareLinkTargetPath = ReadOption(args, "--resolve-shell-share-link-target")
+                ?? ReadOption(args, "--shell-share-link-target");
             (SyncPairMode parsedSyncMode, string? syncModeError) = ParseSyncMode(syncMode);
             bool startMinimizedToTray = HasFlag(args, "--start-minimized")
                 || HasFlag(args, "--minimized")
@@ -191,6 +198,7 @@ namespace Cotton.Sync.Desktop.Startup
                 runLiveSyncSmoke,
                 runUpdateDiscoverySmoke,
                 printVersion,
+                NormalizeOptional(shellShareLinkTargetPath),
                 ParseVisualSmokeScenario(visualSmokeScenario),
                 ParseAbsoluteUri(updateManifestUri),
                 NormalizeOptional(expectedUpdateVersion),

@@ -7,6 +7,7 @@ using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Startup;
 using Cotton.Sync.Desktop.Updates;
+using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
 
 namespace Cotton.Sync.Desktop.Tests.Startup
@@ -190,6 +191,77 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(output.ToString(), Does.Contain("Failed orphaned storage-provider cleanup"));
                 Assert.That(output.ToString(), Does.Contain("Failures: 1"));
                 Assert.That(output.ToString(), Does.Contain("Result: failed"));
+            });
+        }
+
+        [Test]
+        public async Task RunShellShareLinkTargetAsync_ResolvesSyncedFileWithoutPrintingLocalPath()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(Path.Combine(_tempDirectory, "state"));
+            string localRoot = Path.Combine(_tempDirectory, "cloud");
+            string selectedPath = Path.Combine(localRoot, "Docs", "report.pdf");
+            var pairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            await pairStore.InitializeAsync();
+            SyncPairSettings syncPair = CreateSyncPair("Cloud", SyncPairMode.WindowsVirtualFiles, localRoot);
+            await pairStore.UpsertAsync(syncPair);
+            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            await stateStore.InitializeAsync();
+            await stateStore.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = syncPair.Id.ToString("D"),
+                RelativePath = "Docs/report.pdf",
+                Kind = SyncEntryKind.File,
+                RemoteNodeId = Guid.NewGuid(),
+                RemoteFileId = Guid.NewGuid(),
+                SyncedAtUtc = new DateTime(2026, 06, 20, 12, 00, 00, DateTimeKind.Utc),
+            });
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                ["--data-dir", paths.DataDirectory, "--resolve-shell-share-link-target", selectedPath]);
+            using var output = new StringWriter();
+
+            int exitCode = await DesktopCommandLineRunner.RunShellShareLinkTargetAsync(paths, options, output);
+
+            string report = output.ToString();
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(0));
+                Assert.That(report, Does.Contain("Cotton Sync Desktop shell share-link target"));
+                Assert.That(report, Does.Contain("Status: resolved"));
+                Assert.That(report, Does.Contain("CanCreateShareLink: true"));
+                Assert.That(report, Does.Contain("TargetKind: file"));
+                Assert.That(report, Does.Contain("HasSyncPair: true"));
+                Assert.That(report, Does.Contain("HasRemoteFileId: true"));
+                Assert.That(report, Does.Contain("Result: passed"));
+                Assert.That(report, Does.Not.Contain(localRoot));
+                Assert.That(report, Does.Not.Contain("report.pdf"));
+            });
+        }
+
+        [Test]
+        public async Task RunShellShareLinkTargetAsync_ReturnsFailureForLocalOnlyPath()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(Path.Combine(_tempDirectory, "state"));
+            string localRoot = Path.Combine(_tempDirectory, "cloud");
+            string selectedPath = Path.Combine(localRoot, "local-only.txt");
+            var pairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            await pairStore.InitializeAsync();
+            await pairStore.UpsertAsync(CreateSyncPair("Cloud", SyncPairMode.WindowsVirtualFiles, localRoot));
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                ["--data-dir", paths.DataDirectory, "--resolve-shell-share-link-target", selectedPath]);
+            using var output = new StringWriter();
+
+            int exitCode = await DesktopCommandLineRunner.RunShellShareLinkTargetAsync(paths, options, output);
+
+            string report = output.ToString();
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(1));
+                Assert.That(report, Does.Contain("Status: missing-baseline"));
+                Assert.That(report, Does.Contain("CanCreateShareLink: false"));
+                Assert.That(report, Does.Contain("TargetKind: unknown"));
+                Assert.That(report, Does.Contain("Result: failed"));
+                Assert.That(report, Does.Not.Contain(localRoot));
+                Assert.That(report, Does.Not.Contain("local-only.txt"));
             });
         }
 
