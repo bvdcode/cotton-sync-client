@@ -237,6 +237,17 @@ namespace Cotton.Sync.Desktop.Platform
             {
                 _nativeApi.UnregisterSyncRoot(registration.LocalRootPath);
             }
+            catch (WindowsCloudFilesNativeException exception) when (IsMissingSyncRoot(exception))
+            {
+                _diagnostics.Record(
+                    "unregister-sync-root",
+                    "skipped",
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    null,
+                    "Windows Cloud Files sync root was already absent.",
+                    exception.HResult);
+            }
             catch (Exception exception)
             {
                 failure = exception;
@@ -536,6 +547,12 @@ namespace Cotton.Sync.Desktop.Platform
         private static bool IsTransientPathOpenFailure(WindowsCloudFilesNativeException exception)
         {
             return exception.Operation == "CreateFile"
+                && (exception.HResult == HResultFileNotFound || exception.HResult == HResultPathNotFound);
+        }
+
+        private static bool IsMissingSyncRoot(WindowsCloudFilesNativeException exception)
+        {
+            return exception.Operation == "CfUnregisterSyncRoot"
                 && (exception.HResult == HResultFileNotFound || exception.HResult == HResultPathNotFound);
         }
 
