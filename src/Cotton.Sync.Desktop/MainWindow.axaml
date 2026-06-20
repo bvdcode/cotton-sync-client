@@ -1486,6 +1486,12 @@
                                    FontSize="12"
                                    TextWrapping="Wrap"
                                    IsVisible="{Binding HasUpdateDetails}" />
+                        <ProgressBar Height="4"
+                                     Minimum="0"
+                                     Maximum="100"
+                                     Value="{Binding UpdateDownloadProgressValue}"
+                                     IsIndeterminate="{Binding IsUpdateDownloadProgressIndeterminate}"
+                                     IsVisible="{Binding IsUpdateDownloadProgressVisible}" />
                       </StackPanel>
                       <StackPanel Grid.Column="1"
                                   Spacing="6">
