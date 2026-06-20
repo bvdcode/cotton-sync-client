@@ -1578,6 +1578,52 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesLogsStateFirstFallbackWithoutRelativePath()
+        {
+            string privateRelativePath = "Private/Family/video_2026_06_17.mp4";
+            var scanner = new FakeLocalFileScanner();
+            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
+                _remoteRootNodeId,
+                [],
+                snapshotCrawlResult: EmptyRemoteTree());
+            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            await stateStore.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = privateRelativePath,
+                Kind = SyncEntryKind.File,
+                PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated,
+                PlaceholderIdentity = [1, 2, 3],
+            });
+            var logger = new RecordingLogger<SyncEngine>();
+            var engine = new SyncEngine(
+                scanner,
+                remoteCrawler,
+                remoteFileSynchronizer,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter,
+                logger: logger);
+
+            await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { InitialVirtualFilesPopulationQueueCapacity = 1 });
+
+            (LogLevel level, string message) = logger.Entries.Single(entry =>
+                entry.Message.Contains("Skipping Windows virtual-files state-first resume plan", StringComparison.Ordinal));
+            Assert.Multiple(() =>
+            {
+                Assert.That(level, Is.EqualTo(LogLevel.Information));
+                Assert.That(message, Does.Contain("file state is missing a remote baseline"));
+                Assert.That(message, Does.Contain("Entries seen=1"));
+                Assert.That(message, Does.Contain("files=1"));
+                Assert.That(message, Does.Not.Contain(privateRelativePath));
+                Assert.That(message, Does.Not.Contain("video_2026_06_17"));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesResumesStreamingWhenUntrackedCloudFilesPlaceholderExists()
         {
             string relativePath = "Desktop/orphaned-placeholder.txt";
