@@ -90,7 +90,7 @@ namespace Cotton.Sync.Desktop.Platform
                                 placeholder.UpdatedAtUtc),
                         FileIdentity = pinnedIdentities[index].Pointer,
                         FileIdentityLength = pinnedIdentities[index].Length,
-                        Flags = CfPlaceholderCreateFlags.MarkInSync,
+                        Flags = CreatePlaceholderCreateFlags(placeholder.IsDirectory),
                         Result = Succeeded,
                         CreateUsn = 0,
                     };
@@ -168,7 +168,7 @@ namespace Cotton.Sync.Desktop.Platform
                     fileIdentity.Length,
                     IntPtr.Zero,
                     0,
-                    CfUpdateFlags.MarkInSync | CfUpdateFlags.AllowPartial,
+                    CreateUpdateFlags(placeholder.IsDirectory),
                     IntPtr.Zero,
                     IntPtr.Zero);
                 ThrowIfFailed(result, nameof(CfUpdatePlaceholder));
@@ -753,6 +753,7 @@ namespace Cotton.Sync.Desktop.Platform
         [Flags]
         private enum CfPlaceholderCreateFlags : uint
         {
+            DisableOnDemandPopulation = 0x00000001,
             MarkInSync = 0x00000002,
         }
 
@@ -818,6 +819,7 @@ namespace Cotton.Sync.Desktop.Platform
         {
             MarkInSync = 0x00000002,
             Dehydrate = 0x00000004,
+            DisableOnDemandPopulation = 0x00000010,
             AllowPartial = 0x00000400,
         }
 
@@ -840,6 +842,25 @@ namespace Cotton.Sync.Desktop.Platform
         {
             NotInSync = 0,
             InSync = 1,
+        }
+
+        private static CfPlaceholderCreateFlags CreatePlaceholderCreateFlags(bool isDirectory)
+        {
+            CfPlaceholderCreateFlags flags = CfPlaceholderCreateFlags.MarkInSync;
+            if (isDirectory)
+            {
+                flags |= CfPlaceholderCreateFlags.DisableOnDemandPopulation;
+            }
+
+            return flags;
+        }
+
+        private static CfUpdateFlags CreateUpdateFlags(bool isDirectory)
+        {
+            CfUpdateFlags flags = CfUpdateFlags.MarkInSync;
+            return isDirectory
+                ? flags | CfUpdateFlags.DisableOnDemandPopulation
+                : flags | CfUpdateFlags.AllowPartial;
         }
 
         [Flags]
