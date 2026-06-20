@@ -872,6 +872,22 @@ namespace Cotton.Sync
             int onlineOnlyFileEntries = 0;
             int materializedFileEntries = 0;
             var fileBaselineByPath = new Dictionary<string, InitialVirtualFilesPlaceholderBaseline>(PathComparer);
+            InitialVirtualFilesStreamingPlan? FallBackToLocalTreeInspection(string reason)
+            {
+                stopwatch.Stop();
+                _logger.LogInformation(
+                    "Skipping Windows virtual-files state-first resume plan for pair {SyncPairId}: {Reason}. Entries seen={EntryStateCount}, directories={DirectoryStateCount}, files={FileStateCount}, online-only files={OnlineOnlyFileStateCount}, materialized files={MaterializedFileStateCount}, elapsed={ElapsedMilliseconds} ms.",
+                    syncPair.SyncPairId,
+                    reason,
+                    entriesSeen,
+                    directoryEntries,
+                    fileEntries,
+                    onlineOnlyFileEntries,
+                    materializedFileEntries,
+                    stopwatch.ElapsedMilliseconds);
+                return null;
+            }
+
             await foreach (SyncStateEntry entry in _stateStore
                                .LoadPairEntriesAsync(syncPair.SyncPairId, cancellationToken)
                                .WithCancellation(cancellationToken)
@@ -890,18 +906,18 @@ namespace Cotton.Sync
                     case SyncEntryKind.Directory:
                         if (entry.RemoteNodeId is null)
                         {
-                            return null;
+                            return FallBackToLocalTreeInspection("directory state is missing a remote folder id");
                         }
 
                         directoryEntries++;
                         break;
                     case SyncEntryKind.File:
+                        fileEntries++;
                         if (!HasRemoteFileBaseline(entry))
                         {
-                            return null;
+                            return FallBackToLocalTreeInspection("file state is missing a remote baseline");
                         }
 
-                        fileEntries++;
                         if (IsOnlineOnlyPlaceholderState(entry))
                         {
                             onlineOnlyFileEntries++;
@@ -922,7 +938,7 @@ namespace Cotton.Sync
             stopwatch.Stop();
             if (entriesSeen == 0)
             {
-                return null;
+                return FallBackToLocalTreeInspection("no persisted state entries");
             }
 
             _logger.LogInformation(
