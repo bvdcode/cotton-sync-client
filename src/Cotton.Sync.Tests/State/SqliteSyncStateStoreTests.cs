@@ -133,6 +133,64 @@ namespace Cotton.Sync.Tests.State
         }
 
         [Test]
+        public async Task LoadDirectoryEntriesByPathPrefixAsync_StreamsOnlyMatchingDirectorySubtree()
+        {
+            var store = CreateStore();
+            await store.InitializeAsync();
+            Guid parentNodeId = Guid.NewGuid();
+            Guid childNodeId = Guid.NewGuid();
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "Docs",
+                Kind = SyncEntryKind.Directory,
+                RemoteNodeId = parentNodeId,
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "Docs/Archive",
+                Kind = SyncEntryKind.Directory,
+                RemoteNodeId = childNodeId,
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "Docs/report.txt",
+                Kind = SyncEntryKind.File,
+                RemoteNodeId = parentNodeId,
+                RemoteFileId = Guid.NewGuid(),
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "Downloads",
+                Kind = SyncEntryKind.Directory,
+                RemoteNodeId = Guid.NewGuid(),
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-b",
+                RelativePath = "Docs/Archive",
+                Kind = SyncEntryKind.Directory,
+                RemoteNodeId = Guid.NewGuid(),
+            });
+
+            var entries = new List<SyncStateEntry>();
+            await foreach (SyncStateEntry entry in store.LoadDirectoryEntriesByPathPrefixAsync("pair-a", "docs"))
+            {
+                entries.Add(entry);
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(entries.Select(entry => entry.RelativePath), Is.EqualTo(new[] { "Docs", "Docs/Archive" }));
+                Assert.That(entries.Select(entry => entry.Kind), Is.All.EqualTo(SyncEntryKind.Directory));
+                Assert.That(entries.Select(entry => entry.RemoteNodeId), Is.EqualTo(new[] { parentNodeId, childNodeId }));
+            });
+        }
+
+        [Test]
         public async Task LoadEntriesByPathKeysAsync_LoadsOnlyRequestedKeysInPathOrder()
         {
             var store = CreateStore();

@@ -48,6 +48,32 @@ namespace Cotton.Sync.State
         }
 
         /// <summary>
+        /// Streams directory entries at or below a relative path prefix for a sync pair.
+        /// </summary>
+        async IAsyncEnumerable<SyncStateEntry> LoadDirectoryEntriesByPathPrefixAsync(
+            string syncPairId,
+            string relativePathPrefix,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
+            ArgumentException.ThrowIfNullOrWhiteSpace(relativePathPrefix);
+            string prefixKey = SyncPath.ToKey(relativePathPrefix);
+            string childPrefix = prefixKey + "/";
+            await foreach (SyncStateEntry entry in LoadPairDirectoryEntriesAsync(syncPairId, cancellationToken)
+                               .WithCancellation(cancellationToken)
+                               .ConfigureAwait(false))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                string entryKey = SyncPath.ToKey(entry.RelativePath);
+                if (string.Equals(entryKey, prefixKey, StringComparison.OrdinalIgnoreCase)
+                    || entryKey.StartsWith(childPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return entry;
+                }
+            }
+        }
+
+        /// <summary>
         /// Streams directory entries matching remote folder identifiers and file entries matching remote file identifiers.
         /// </summary>
         async IAsyncEnumerable<SyncStateEntry> LoadEntriesByRemoteIdsAsync(
