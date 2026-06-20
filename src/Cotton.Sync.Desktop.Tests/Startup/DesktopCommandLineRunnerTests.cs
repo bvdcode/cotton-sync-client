@@ -227,7 +227,10 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(exitCode, Is.EqualTo(0));
                 Assert.That(report, Does.Contain("Cotton Sync Desktop shell share-link target"));
                 Assert.That(report, Does.Contain("Status: resolved"));
-                Assert.That(report, Does.Contain("CanCreateShareLink: true"));
+                Assert.That(report, Does.Contain("TargetResolved: true"));
+                Assert.That(report, Does.Contain("TargetHasRemoteIdentity: true"));
+                Assert.That(report, Does.Contain("ShareLinkApi: unavailable"));
+                Assert.That(report, Does.Contain("CanCreateShareLink: false"));
                 Assert.That(report, Does.Contain("TargetKind: file"));
                 Assert.That(report, Does.Contain("HasSyncPair: true"));
                 Assert.That(report, Does.Contain("HasRemoteFileId: true"));
@@ -257,6 +260,9 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             {
                 Assert.That(exitCode, Is.EqualTo(1));
                 Assert.That(report, Does.Contain("Status: missing-baseline"));
+                Assert.That(report, Does.Contain("TargetResolved: false"));
+                Assert.That(report, Does.Contain("TargetHasRemoteIdentity: false"));
+                Assert.That(report, Does.Contain("ShareLinkApi: unavailable"));
                 Assert.That(report, Does.Contain("CanCreateShareLink: false"));
                 Assert.That(report, Does.Contain("TargetKind: unknown"));
                 Assert.That(report, Does.Contain("Result: failed"));
