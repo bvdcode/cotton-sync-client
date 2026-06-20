@@ -334,8 +334,21 @@ namespace Cotton.Sync.Desktop.Platform
                 placeholderPath.BaseDirectoryPath,
                 placeholderPath.RelativeFileName);
             const string operation = "set-in-sync-state";
-            if ((!File.Exists(fullPlaceholderPath) && !Directory.Exists(fullPlaceholderPath))
-                || !_isReparsePoint(fullPlaceholderPath))
+            bool isFile = File.Exists(fullPlaceholderPath);
+            bool isDirectory = Directory.Exists(fullPlaceholderPath);
+            if (!isFile && !isDirectory)
+            {
+                _diagnostics.Record(
+                    operation,
+                    "skipped",
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    normalizedPath,
+                    "Windows Cloud Files in-sync state was skipped for a missing placeholder.");
+                return;
+            }
+
+            if (isFile && !_isReparsePoint(fullPlaceholderPath))
             {
                 _diagnostics.Record(
                     operation,
