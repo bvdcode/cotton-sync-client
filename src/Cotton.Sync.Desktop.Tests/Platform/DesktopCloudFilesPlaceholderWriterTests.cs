@@ -172,6 +172,34 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task AfterCreateDirectoryAsync_MarksDirectoryInSyncThroughAdapter()
+        {
+            var adapter = new FakeCloudFilesAdapter();
+            var writer = new DesktopCloudFilesPlaceholderWriter(
+                cloudFilesAdapter: adapter,
+                getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
+            Guid syncPairId = Guid.Parse("77777777-7777-7777-7777-777777777777");
+            Guid remoteRootNodeId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+
+            await writer.AfterCreateDirectoryAsync(new RemoteDirectoryMaterializationRequest(
+                syncPairId.ToString("D"),
+                _tempDirectory,
+                remoteRootNodeId,
+                "Projects/Nested",
+                new NodeDto { Id = Guid.Parse("22222222-2222-2222-2222-222222222222"), Name = "Nested" }));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(adapter.InSyncStates, Has.Count.EqualTo(1));
+                Assert.That(adapter.InSyncStates[0].SyncPair.Id, Is.EqualTo(syncPairId));
+                Assert.That(adapter.InSyncStates[0].SyncPair.LocalRootPath, Is.EqualTo(_tempDirectory));
+                Assert.That(adapter.InSyncStates[0].SyncPair.RemoteRootNodeId, Is.EqualTo(remoteRootNodeId));
+                Assert.That(adapter.InSyncStates[0].SyncPair.Mode, Is.EqualTo(SyncPairMode.WindowsVirtualFiles));
+                Assert.That(adapter.InSyncStates[0].RelativePath, Is.EqualTo("Projects/Nested"));
+            });
+        }
+
+        [Test]
         public void CreatePlaceholderAsync_StopsBeforeAdapterWhenCanceled()
         {
             var adapter = new FakeCloudFilesAdapter();
@@ -277,6 +305,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<IReadOnlyList<RemoteFilePlaceholderRequest>> BatchRequests { get; } = [];
 
+            public List<InSyncStateCall> InSyncStates { get; } = [];
+
             public Exception? Exception { get; set; }
 
             public Action<RemoteFilePlaceholderRequest>? OnCreate { get; set; }
@@ -323,7 +353,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public void SetInSyncState(SyncPairSettings syncPair, string relativePath)
             {
-                throw new NotSupportedException();
+                InSyncStates.Add(new InSyncStateCall(syncPair, relativePath));
             }
 
             public WindowsCloudFilesConnection ConnectSyncRoot(
@@ -337,6 +367,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 throw new NotSupportedException();
             }
+
+            public sealed record InSyncStateCall(SyncPairSettings SyncPair, string RelativePath);
         }
     }
 }

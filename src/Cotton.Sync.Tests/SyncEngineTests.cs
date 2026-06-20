@@ -1690,6 +1690,8 @@ namespace Cotton.Sync.Tests
                 Assert.That(File.Exists(Path.Combine(_root, "Projects", "remote-only.txt")), Is.False);
                 Assert.That(remoteFiles.DownloadCalls, Is.Empty);
                 Assert.That(placeholderWriter.DirectoryRequests.Select(request => request.RelativePath), Is.EqualTo(new[] { "Projects" }));
+                Assert.That(placeholderWriter.CompletedDirectoryRequests.Select(request => request.RelativePath), Is.EqualTo(new[] { "Projects" }));
+                Assert.That(placeholderWriter.DirectoryExistsWhenCompleted, Is.EqualTo(new[] { true }));
                 Assert.That(placeholderWriter.Requests, Has.Count.EqualTo(1));
                 Assert.That(placeholderWriter.Requests[0].RelativePath, Is.EqualTo("Projects/remote-only.txt"));
                 Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[]
@@ -4874,6 +4876,10 @@ namespace Cotton.Sync.Tests
 
             public List<RemoteDirectoryMaterializationRequest> DirectoryRequests { get; } = [];
 
+            public List<RemoteDirectoryMaterializationRequest> CompletedDirectoryRequests { get; } = [];
+
+            public List<bool> DirectoryExistsWhenCompleted { get; } = [];
+
             public string? UnavailableReason { get; set; }
 
             public int BeginPopulationCalls { get; private set; }
@@ -4891,6 +4897,17 @@ namespace Cotton.Sync.Tests
                 CancellationToken cancellationToken = default)
             {
                 DirectoryRequests.Add(request);
+                return Task.CompletedTask;
+            }
+
+            public Task AfterCreateDirectoryAsync(
+                RemoteDirectoryMaterializationRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                CompletedDirectoryRequests.Add(request);
+                DirectoryExistsWhenCompleted.Add(Directory.Exists(Path.Combine(
+                    request.LocalRootPath,
+                    request.RelativePath.Replace('/', Path.DirectorySeparatorChar))));
                 return Task.CompletedTask;
             }
 

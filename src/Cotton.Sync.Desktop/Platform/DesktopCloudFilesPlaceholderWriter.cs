@@ -161,6 +161,47 @@ namespace Cotton.Sync.Desktop.Platform
             return Task.CompletedTask;
         }
 
+        public Task AfterCreateDirectoryAsync(
+            RemoteDirectoryMaterializationRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!Guid.TryParse(request.SyncPairId, out Guid syncPairId))
+            {
+                _logger.LogDebug(
+                    "Skipping Cloud Files in-sync finalization for provider-created directory {RelativePath} because sync pair id is not a GUID.",
+                    request.RelativePath);
+                return Task.CompletedTask;
+            }
+
+            try
+            {
+                _cloudFilesAdapter.SetInSyncState(
+                    new SyncPairSettings
+                    {
+                        Id = syncPairId,
+                        DisplayName = "Cotton Sync",
+                        LocalRootPath = request.LocalRootPath,
+                        RemoteDisplayPath = "/",
+                        RemoteRootNodeId = request.RemoteRootNodeId,
+                        Mode = SyncPairMode.WindowsVirtualFiles,
+                        IsEnabled = true,
+                    },
+                    request.RelativePath);
+            }
+            catch (Exception exception) when (IsRecoverablePlaceholderFailure(exception))
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Windows Cloud Files in-sync finalization failed for directory {RelativePath}.",
+                    request.RelativePath);
+                throw;
+            }
+
+            return Task.CompletedTask;
+        }
+
         private async Task<IReadOnlyList<RemoteFilePlaceholderBatchResult>> CreatePlaceholdersIndividuallyAfterBatchFailureAsync(
             IReadOnlyList<RemoteFilePlaceholderRequest> requests,
             CancellationToken cancellationToken)

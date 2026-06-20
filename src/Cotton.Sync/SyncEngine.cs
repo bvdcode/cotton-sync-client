@@ -1955,23 +1955,29 @@ namespace Cotton.Sync
             NodeDto remoteDirectory,
             CancellationToken cancellationToken)
         {
+            RemoteDirectoryMaterializationRequest? materializationRequest = null;
             if (syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
                 && _remoteDirectoryMaterializationObserver is not null)
             {
+                materializationRequest = new RemoteDirectoryMaterializationRequest(
+                    syncPair.SyncPairId,
+                    syncPair.LocalRootPath,
+                    syncPair.RemoteRootNodeId,
+                    SyncPath.Normalize(relativePath),
+                    remoteDirectory);
                 await _remoteDirectoryMaterializationObserver
-                    .BeforeCreateDirectoryAsync(
-                        new RemoteDirectoryMaterializationRequest(
-                            syncPair.SyncPairId,
-                            syncPair.LocalRootPath,
-                            syncPair.RemoteRootNodeId,
-                            SyncPath.Normalize(relativePath),
-                            remoteDirectory),
-                        cancellationToken)
+                    .BeforeCreateDirectoryAsync(materializationRequest, cancellationToken)
                     .ConfigureAwait(false);
             }
 
             await _localWriter.CreateDirectoryAsync(syncPair.LocalRootPath, relativePath, cancellationToken)
                 .ConfigureAwait(false);
+            if (materializationRequest is not null)
+            {
+                await _remoteDirectoryMaterializationObserver!
+                    .AfterCreateDirectoryAsync(materializationRequest, cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
 
         private static bool TryGetRemoteDirectoryNodeId(
