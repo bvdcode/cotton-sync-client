@@ -26,14 +26,17 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             stateStore.UpsertFile(syncPair, "Docs/Reports/report.txt", reportsNodeId);
             var cloudFiles = new RecordingCloudFilesAdapter();
             var suppression = new RecordingLocalChangeSuppression();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
             var work = new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
                 inner,
                 stateStore,
                 cloudFiles,
-                suppression);
+                suppression,
+                diagnostics);
 
             await work.RunOnceAsync(syncPair, SyncRunRequest.Full);
 
+            WindowsCloudFilesDiagnosticEvent repairEvent = diagnostics.Snapshot().Single();
             Assert.Multiple(() =>
             {
                 Assert.That(inner.Requests, Has.Count.EqualTo(1));
@@ -53,6 +56,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                         new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs/Reports"),
                         new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs"),
                     }));
+                Assert.That(repairEvent.Operation, Is.EqualTo("repair-directory-placeholders"));
+                Assert.That(repairEvent.Status, Is.EqualTo("completed"));
+                Assert.That(repairEvent.RelativePath, Is.Null);
+                Assert.That(repairEvent.Details, Does.Contain("candidates=2"));
+                Assert.That(repairEvent.Details, Does.Contain("repaired=2"));
             });
         }
 
@@ -88,10 +96,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 DirectoryException = new InvalidOperationException("Cloud Files directory repair failed."),
             };
+            var diagnostics = new WindowsCloudFilesDiagnostics();
             var work = new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
                 new RecordingSyncPairWork(),
                 stateStore,
-                cloudFiles);
+                cloudFiles,
+                diagnostics: diagnostics);
             var runner = new SyncPairRunner(
                 syncPair,
                 work,
@@ -109,6 +119,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Error));
                 Assert.That(runner.Status.LastSuccessfulSyncAtUtc, Is.Null);
                 Assert.That(cloudFiles.DirectoryPlaceholders.Select(static request => request.RelativePath), Is.EqualTo(new[] { "Docs" }));
+                Assert.That(diagnostics.Snapshot().Single().Status, Is.EqualTo("failed"));
             });
         }
 
