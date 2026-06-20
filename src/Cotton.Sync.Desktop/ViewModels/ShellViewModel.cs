@@ -93,6 +93,9 @@ namespace Cotton.Sync.Desktop.ViewModels
         private string _updateStatusText = "Not checked";
         private string _updateDetailsText = "Check GitHub release for updates.";
         private string _downloadedUpdateInstallerPath = string.Empty;
+        private bool _isUpdateDownloadProgressVisible;
+        private bool _isUpdateDownloadProgressIndeterminate;
+        private double _updateDownloadProgressValue;
         private Task? _startupUpdateTask;
         private Task? _periodicUpdateTask;
         private string _globalStatus = "Loading";
@@ -445,6 +448,24 @@ namespace Cotton.Sync.Desktop.ViewModels
         }
 
         public bool HasUpdateDetails => !string.IsNullOrWhiteSpace(UpdateDetailsText);
+
+        public bool IsUpdateDownloadProgressVisible
+        {
+            get => _isUpdateDownloadProgressVisible;
+            private set => SetProperty(ref _isUpdateDownloadProgressVisible, value);
+        }
+
+        public bool IsUpdateDownloadProgressIndeterminate
+        {
+            get => _isUpdateDownloadProgressIndeterminate;
+            private set => SetProperty(ref _isUpdateDownloadProgressIndeterminate, value);
+        }
+
+        public double UpdateDownloadProgressValue
+        {
+            get => _updateDownloadProgressValue;
+            private set => SetProperty(ref _updateDownloadProgressValue, value);
+        }
 
         public bool IsUpdateAvailable
         {
@@ -2770,6 +2791,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private async Task DownloadUpdateAsync()
         {
             var progress = new ActionProgress<DesktopUpdateDownloadProgress>(ApplyUpdateDownloadProgress);
+            ShowPreparingUpdateDownloadProgress();
             UpdateDetailsText = "Preparing update download.";
             await RunUpdateActionAsync(
                 "Downloading update",
@@ -2788,7 +2810,36 @@ namespace Cotton.Sync.Desktop.ViewModels
             UpdateStatusText = "Downloading update";
             UpdateDetailsText = FormatUpdateDownloadProgress(progress);
             GlobalStatus = "Downloading update";
+            IsUpdateDownloadProgressVisible = true;
+            if (progress.TotalBytes is > 0)
+            {
+                IsUpdateDownloadProgressIndeterminate = false;
+                UpdateDownloadProgressValue = Math.Clamp(
+                    progress.BytesDownloaded / (double)progress.TotalBytes.Value * 100d,
+                    0d,
+                    100d);
+            }
+            else
+            {
+                IsUpdateDownloadProgressIndeterminate = true;
+                UpdateDownloadProgressValue = 0d;
+            }
+
             OnPropertyChanged(nameof(HasUpdateDetails));
+        }
+
+        private void ShowPreparingUpdateDownloadProgress()
+        {
+            IsUpdateDownloadProgressVisible = true;
+            IsUpdateDownloadProgressIndeterminate = true;
+            UpdateDownloadProgressValue = 0d;
+        }
+
+        private void ClearUpdateDownloadProgress()
+        {
+            IsUpdateDownloadProgressVisible = false;
+            IsUpdateDownloadProgressIndeterminate = false;
+            UpdateDownloadProgressValue = 0d;
         }
 
         private void BeginStartupUpdateCheck()
@@ -2815,6 +2866,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 }
 
                 var progress = new ActionProgress<DesktopUpdateDownloadProgress>(ApplyUpdateDownloadProgress);
+                ShowPreparingUpdateDownloadProgress();
                 UpdateDetailsText = "Preparing update download.";
                 await RunUpdateActionAsync(
                         "Downloading update",
@@ -2888,6 +2940,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             IsUpdateBusy = true;
             UpdateStatusText = "Installing update";
             UpdateDetailsText = "Starting the update installer.";
+            ClearUpdateDownloadProgress();
             GlobalStatus = "Installing update";
             try
             {
@@ -2941,6 +2994,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 string message = ResolveUpdateFailureMessage(exception);
                 UpdateStatusText = "Update failed";
                 UpdateDetailsText = message;
+                ClearUpdateDownloadProgress();
                 if (updateGlobalStatusOnFailure)
                 {
                     GlobalStatus = "Update failed";
@@ -2963,6 +3017,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             _downloadedUpdateInstallerPath = status.InstallerPath ?? string.Empty;
             IsUpdateAvailable = status.IsUpdateAvailable;
             IsUpdateReady = status.IsInstallerReady;
+            ClearUpdateDownloadProgress();
             UpdateStatusText = status.IsInstallerReady
                 ? "Update ready"
                 : status.IsUpdateAvailable ? "Update available" : "Up to date";

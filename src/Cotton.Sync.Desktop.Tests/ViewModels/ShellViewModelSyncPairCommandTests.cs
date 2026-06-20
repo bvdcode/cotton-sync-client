@@ -5523,6 +5523,9 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Downloading update"));
                 Assert.That(viewModel.UpdateDetailsText, Does.Contain("1.0 KB / 1.0 KB"));
                 Assert.That(viewModel.UpdateDetailsText, Does.Contain("100%"));
+                Assert.That(viewModel.IsUpdateDownloadProgressVisible, Is.True);
+                Assert.That(viewModel.IsUpdateDownloadProgressIndeterminate, Is.False);
+                Assert.That(viewModel.UpdateDownloadProgressValue, Is.EqualTo(100d));
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Downloading update"));
                 Assert.That(viewModel.CanCheckForUpdates, Is.False);
             });
@@ -5535,6 +5538,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Update ready"));
                 Assert.That(viewModel.IsUpdateReady, Is.True);
                 Assert.That(viewModel.CanInstallUpdate, Is.True);
+                Assert.That(viewModel.IsUpdateDownloadProgressVisible, Is.False);
             });
         }
 
@@ -5575,12 +5579,16 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             {
                 Assert.That(viewModel.DownloadUpdateCommand.IsRunning, Is.True);
                 Assert.That(viewModel.UpdateDetailsText, Is.EqualTo("Preparing update download."));
+                Assert.That(viewModel.IsUpdateDownloadProgressVisible, Is.True);
+                Assert.That(viewModel.IsUpdateDownloadProgressIndeterminate, Is.True);
+                Assert.That(viewModel.UpdateDownloadProgressValue, Is.EqualTo(0d));
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Downloading update"));
                 Assert.That(viewModel.CanCheckForUpdates, Is.False);
             });
 
             downloadCompletion.SetResult(controller.UpdateDownloadSnapshot!);
             await WaitForAsync(() => !viewModel.DownloadUpdateCommand.IsRunning);
+            Assert.That(viewModel.IsUpdateDownloadProgressVisible, Is.False);
         }
 
         [Test]
