@@ -83,10 +83,27 @@ namespace Cotton.Sync.Desktop.Platform
 
             if (directories.Count == 0)
             {
+                try
+                {
+                    _cloudFiles.SetSyncRootInSyncState(syncPair);
+                }
+                catch (Exception exception)
+                {
+                    stopwatch.Stop();
+                    RecordRepairSummary(
+                        syncPair,
+                        status: "failed",
+                        candidateCount: 0,
+                        repairedCount: 0,
+                        elapsedMilliseconds: stopwatch.ElapsedMilliseconds,
+                        hResult: exception is WindowsCloudFilesNativeException nativeException ? nativeException.HResult : null);
+                    throw;
+                }
+
                 stopwatch.Stop();
                 RecordRepairSummary(
                     syncPair,
-                    status: "skipped-empty-state",
+                    status: "completed-root-only",
                     candidateCount: 0,
                     repairedCount: 0,
                     stopwatch.ElapsedMilliseconds);
@@ -114,6 +131,8 @@ namespace Cotton.Sync.Desktop.Platform
                     repairedCount++;
                     PublishRepairProgress(syncPair.Id, startedAtUtc, repairedCount, directories.Count, isCompleted: false);
                 }
+
+                _cloudFiles.SetSyncRootInSyncState(syncPair);
             }
             catch (Exception exception)
             {

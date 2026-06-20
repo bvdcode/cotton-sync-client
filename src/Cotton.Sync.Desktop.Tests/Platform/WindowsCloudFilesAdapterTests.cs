@@ -801,6 +801,32 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void SetSyncRootInSyncState_ForwardsRootToNativeBoundary()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                diagnostics: diagnostics);
+            string root = Path.Combine(_tempDirectory, "root");
+            Directory.CreateDirectory(root);
+            SyncPairSettings syncPair = CreateSyncPair(root);
+
+            adapter.SetSyncRootInSyncState(syncPair);
+
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { Path.GetFullPath(root) }));
+                Assert.That(diagnostic.Operation, Is.EqualTo("set-sync-root-in-sync-state"));
+                Assert.That(diagnostic.Status, Is.EqualTo("completed"));
+                Assert.That(diagnostic.SyncPairId, Is.EqualTo(syncPair.Id.ToString()));
+                Assert.That(diagnostic.RelativePath, Is.Null);
+            });
+        }
+
+        [Test]
         public void TransferData_ForwardsToNativeBoundary()
         {
             var nativeApi = new FakeCloudFilesNativeApi();

@@ -202,6 +202,11 @@ namespace Cotton.Sync.Desktop.Platform
                 EnsureDirectoryPlaceholder(directory, cancellationToken);
             }
 
+            if (TryCreateSyncPairSettings(uniqueDirectories.Values.First(), out SyncPairSettings syncPair))
+            {
+                _cloudFilesAdapter.SetSyncRootInSyncState(syncPair);
+            }
+
             return Task.CompletedTask;
         }
 
@@ -231,6 +236,31 @@ namespace Cotton.Sync.Desktop.Platform
                     request.RelativePath);
                 throw;
             }
+        }
+
+        private bool TryCreateSyncPairSettings(
+            RemoteDirectoryMaterializationRequest request,
+            out SyncPairSettings syncPair)
+        {
+            if (!Guid.TryParse(request.SyncPairId, out Guid syncPairId))
+            {
+                _logger.LogDebug(
+                    "Skipping Cloud Files sync-root finalization because sync pair id is not a GUID.");
+                syncPair = null!;
+                return false;
+            }
+
+            syncPair = new SyncPairSettings
+            {
+                Id = syncPairId,
+                DisplayName = "Cotton Sync",
+                LocalRootPath = request.LocalRootPath,
+                RemoteDisplayPath = "/",
+                RemoteRootNodeId = request.RemoteRootNodeId,
+                Mode = SyncPairMode.WindowsVirtualFiles,
+                IsEnabled = true,
+            };
+            return true;
         }
 
         private static int GetDirectoryDepth(string relativePath)
