@@ -33,6 +33,7 @@
 AppId={{B671C18E-1E77-437C-AB9B-5C5C9D877E18}
 AppName=Cotton Sync
 AppVersion={#AppVersion}
+AppVerName=Cotton Sync
 AppPublisher=Belov
 AppPublisherURL=https://cottoncloud.dev
 AppSupportURL=https://cottoncloud.dev
@@ -45,6 +46,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}
 OutputBaseFilename={#OutputBaseFilename}
 SetupIconFile={#IconFile}
+UninstallDisplayName=Cotton Sync
 UninstallDisplayIcon={app}\Cotton.Sync.Desktop.exe
 CloseApplications=force
 RestartApplications=no
