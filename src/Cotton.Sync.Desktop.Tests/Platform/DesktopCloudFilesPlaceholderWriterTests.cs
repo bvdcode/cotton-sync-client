@@ -153,22 +153,31 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task BeforeCreateDirectoryAsync_SuppressesLocalWatcherEventsForDirectoryPath()
         {
+            var adapter = new FakeCloudFilesAdapter();
             var suppression = new RecordingLocalChangeSuppression();
             var writer = new DesktopCloudFilesPlaceholderWriter(
+                cloudFilesAdapter: adapter,
                 localChangeSuppression: suppression,
                 getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
             Guid syncPairId = Guid.Parse("77777777-7777-7777-7777-777777777777");
+            Guid remoteRootNodeId = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
             await writer.BeforeCreateDirectoryAsync(new RemoteDirectoryMaterializationRequest(
                 syncPairId.ToString("D"),
                 _tempDirectory,
-                Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                remoteRootNodeId,
                 "Projects/Nested",
                 new NodeDto { Id = Guid.Parse("22222222-2222-2222-2222-222222222222"), Name = "Nested" }));
 
-            Assert.That(
-                suppression.SuppressedWrites,
-                Is.EqualTo(new[] { new SuppressedWrite(syncPairId, _tempDirectory, "Projects/Nested") }));
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    suppression.SuppressedWrites,
+                    Is.EqualTo(new[] { new SuppressedWrite(syncPairId, _tempDirectory, "Projects/Nested") }));
+                Assert.That(adapter.DirectoryPlaceholders, Has.Count.EqualTo(1));
+                Assert.That(adapter.DirectoryPlaceholders[0].RemoteRootNodeId, Is.EqualTo(remoteRootNodeId));
+                Assert.That(adapter.DirectoryPlaceholders[0].RelativePath, Is.EqualTo("Projects/Nested"));
+            });
         }
 
         [Test]

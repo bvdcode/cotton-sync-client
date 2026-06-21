@@ -159,7 +159,7 @@ namespace Cotton.Sync.Desktop.Platform
         {
             ArgumentNullException.ThrowIfNull(request);
             cancellationToken.ThrowIfCancellationRequested();
-            SuppressProviderWrite(request.SyncPairId, request.LocalRootPath, request.RelativePath);
+            EnsureDirectoryPlaceholder(request, cancellationToken);
             return Task.CompletedTask;
         }
 

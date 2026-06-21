@@ -216,7 +216,49 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
-        public void CreateDirectoryPlaceholder_ConvertsExistingDirectoryToCloudFilesPlaceholder()
+        public void CreateDirectoryPlaceholder_CreatesRemoteDirectoryPlaceholderWithoutConversion()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                diagnostics: diagnostics,
+                isReparsePoint: _ => false);
+            string root = Path.Combine(_tempDirectory, "root");
+            string directoryPath = Path.GetFullPath(Path.Combine(root, "Projects", "Nested"));
+
+            adapter.CreateDirectoryPlaceholder(CreateDirectoryRequest(root, "Projects/Nested"));
+
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single(static item => item.Status == "completed");
+            WindowsCloudFilesDirectoryPlaceholderIdentity identity =
+                System.Text.Json.JsonSerializer.Deserialize<WindowsCloudFilesDirectoryPlaceholderIdentity>(
+                    nativeApi.Placeholders.Single().FileIdentity,
+                    new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.Registrations, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.ConvertedPlaceholders, Is.Empty);
+                Assert.That(nativeApi.UpdatedPlaceholders, Is.Empty);
+                Assert.That(nativeApi.Placeholders, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.Placeholders[0].BaseDirectoryPath, Is.EqualTo(Path.GetFullPath(Path.Combine(root, "Projects"))));
+                Assert.That(nativeApi.Placeholders[0].RelativeFileName, Is.EqualTo("Nested"));
+                Assert.That(nativeApi.Placeholders[0].IsDirectory, Is.True);
+                Assert.That(nativeApi.PinStates.Select(static pin => pin.FilePath), Is.EqualTo(new[] { directoryPath }));
+                Assert.That(nativeApi.PinStates[0].PinState, Is.EqualTo(WindowsCloudFilesPinState.Unpinned));
+                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { directoryPath }));
+                Assert.That(
+                    nativeApi.CallLog,
+                    Is.EqualTo(new[] { "native-set-pin-state", "native-set-in-sync-state" }));
+                Assert.That(identity.RelativePath, Is.EqualTo("Projects/Nested"));
+                Assert.That(identity.NodeId, Is.EqualTo(Guid.Parse("88888888-8888-8888-8888-888888888888")));
+                Assert.That(diagnostic.Operation, Is.EqualTo("create-directory-placeholder"));
+                Assert.That(diagnostic.RelativePath, Is.EqualTo("Projects/Nested"));
+            });
+        }
+
+        [Test]
+        public void CreateDirectoryPlaceholder_ConvertsNonEmptyExistingDirectoryToCloudFilesPlaceholder()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
             var diagnostics = new WindowsCloudFilesDiagnostics();
@@ -228,6 +270,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             string root = Path.Combine(_tempDirectory, "root");
             string directoryPath = Path.GetFullPath(Path.Combine(root, "Projects", "Nested"));
             Directory.CreateDirectory(directoryPath);
+            File.WriteAllText(Path.Combine(directoryPath, "local.txt"), "local");
 
             adapter.CreateDirectoryPlaceholder(CreateDirectoryRequest(root, "Projects/Nested"));
 
@@ -892,7 +935,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
-        public void SetSyncRootInSyncState_FailsWhenRootStillReportsPartialState()
+        public void SetSyncRootInSyncState_AllowsRootAggregatePartialState()
         {
             var nativeApi = new FakeCloudFilesNativeApi
             {
@@ -910,17 +953,14 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             Directory.CreateDirectory(root);
             SyncPairSettings syncPair = CreateSyncPair(root);
 
-            InvalidOperationException? exception = Assert.Throws<InvalidOperationException>(
-                () => adapter.SetSyncRootInSyncState(syncPair));
+            adapter.SetSyncRootInSyncState(syncPair);
 
             WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
             Assert.Multiple(() =>
             {
-                Assert.That(exception?.Message, Does.Contain("fully populated state"));
-                Assert.That(exception?.Message, Does.Contain("Partial"));
                 Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { Path.GetFullPath(root) }));
                 Assert.That(diagnostic.Operation, Is.EqualTo("set-sync-root-in-sync-state"));
-                Assert.That(diagnostic.Status, Is.EqualTo("failed"));
+                Assert.That(diagnostic.Status, Is.EqualTo("completed"));
                 Assert.That(diagnostic.RelativePath, Is.Null);
             });
         }

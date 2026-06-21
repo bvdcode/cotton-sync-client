@@ -55,6 +55,12 @@ namespace Cotton.Sync.Desktop.Platform
             ArgumentNullException.ThrowIfNull(syncPair);
         }
 
+        WindowsCloudFilesPlaceholderState GetPlaceholderState(SyncPairSettings syncPair, string? relativePath = null)
+        {
+            ArgumentNullException.ThrowIfNull(syncPair);
+            throw new NotSupportedException("Cloud Files placeholder state inspection is not supported by this adapter.");
+        }
+
         WindowsCloudFilesConnection ConnectSyncRoot(
             SyncPairSettings syncPair,
             IWindowsCloudFilesCallbackHandler callbackHandler);
