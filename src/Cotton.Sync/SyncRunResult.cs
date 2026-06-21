@@ -77,6 +77,17 @@ namespace Cotton.Sync
         }
 
         /// <summary>
+        /// Records a root-level condition that needs user review.
+        /// </summary>
+        public void RecordActionRequired(string message)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(message);
+
+            _requiresUserAction = true;
+            _actionRequiredMessage ??= message.Trim();
+        }
+
+        /// <summary>
         /// Records a local path that should be retried after a quiet interval.
         /// </summary>
         public void RecordDeferredLocalPath(string relativePath)

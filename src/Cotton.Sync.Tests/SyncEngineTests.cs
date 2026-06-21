@@ -1544,7 +1544,7 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
-        public async Task RunOnceAsync_WithWindowsVirtualFilesDoesNotResumeStreamingWhenLocalFileHasNoBaseline()
+        public async Task RunOnceAsync_WithInitialWindowsVirtualFilesReportsLocalFilesAsActionRequired()
         {
             LocalFileSnapshot local = LocalFile("Desktop/local.txt", "local-content");
             var scanner = new FakeLocalFileScanner(local);
@@ -1570,10 +1570,13 @@ namespace Cotton.Sync.Tests
             Assert.Multiple(() =>
             {
                 Assert.That(remoteCrawler.StreamingCrawlCalls, Is.Zero);
-                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.EqualTo(1));
-                Assert.That(remoteFileSynchronizer.Uploads.Select(upload => upload.LocalFile.RelativePath), Is.EqualTo(new[] { "Desktop/local.txt" }));
+                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
+                Assert.That(remoteFileSynchronizer.Uploads, Is.Empty);
                 Assert.That(placeholderWriter.Requests, Is.Empty);
-                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+                Assert.That(result.RequiresUserAction, Is.True);
+                Assert.That(result.ActionRequiredMessage, Is.EqualTo(
+                    "Virtual files setup found local files in the selected folder. Move them out or choose a clean folder before trying again."));
+                Assert.That(result.Activities, Is.Empty);
             });
         }
 
