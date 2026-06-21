@@ -1610,7 +1610,51 @@ namespace Cotton.Sync.Tests
                 Assert.That(placeholderWriter.Requests, Is.Empty);
                 Assert.That(result.RequiresUserAction, Is.True);
                 Assert.That(result.ActionRequiredMessage, Is.EqualTo(
-                    "Virtual files setup found local files in the selected folder. Move them out or choose a clean folder before trying again."));
+                    "Virtual files setup found local content in the selected folder. Move it out or choose a clean folder before trying again."));
+                Assert.That(result.Activities, Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithInitialWindowsVirtualFilesReportsPreservedDirectoryTreeAsActionRequired()
+        {
+            var scanner = new FakeLocalFileScanner
+            {
+                Directories =
+                {
+                    LocalDirectory("Projects"),
+                    LocalDirectory("Projects/Archive"),
+                },
+            };
+            var remoteTree = EmptyRemoteTree();
+            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
+                _remoteRootNodeId,
+                [],
+                snapshotCrawlResult: remoteTree);
+            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            var engine = new SyncEngine(
+                scanner,
+                remoteCrawler,
+                remoteFileSynchronizer,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { InitialVirtualFilesPopulationQueueCapacity = 1 });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.Zero);
+                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
+                Assert.That(remoteFileSynchronizer.Uploads, Is.Empty);
+                Assert.That(placeholderWriter.Requests, Is.Empty);
+                Assert.That(placeholderWriter.DirectoryRequests, Is.Empty);
+                Assert.That(result.RequiresUserAction, Is.True);
+                Assert.That(result.ActionRequiredMessage, Is.EqualTo(
+                    "Virtual files setup found local content in the selected folder. Move it out or choose a clean folder before trying again."));
                 Assert.That(result.Activities, Is.Empty);
             });
         }
