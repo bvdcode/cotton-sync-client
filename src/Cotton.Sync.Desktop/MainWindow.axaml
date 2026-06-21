@@ -1613,6 +1613,19 @@
                     <Border Padding="8"
                             CornerRadius="6"
                             Background="{DynamicResource CottonSurfaceMutedBrush}"
+                            IsVisible="{Binding IsExportingDiagnostics}">
+                      <StackPanel Spacing="4">
+                        <ProgressBar Height="3"
+                                     IsIndeterminate="True" />
+                        <TextBlock Text="{Binding DiagnosticsExportProgressMessage}"
+                                   Classes="secondary"
+                                   FontSize="11"
+                                   TextWrapping="Wrap" />
+                      </StackPanel>
+                    </Border>
+                    <Border Padding="8"
+                            CornerRadius="6"
+                            Background="{DynamicResource CottonSurfaceMutedBrush}"
                             IsVisible="{Binding HasLastDiagnosticsBundlePath}">
                       <Grid ColumnDefinitions="*,Auto"
                             ColumnSpacing="6">

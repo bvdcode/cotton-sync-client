@@ -865,9 +865,16 @@ namespace Cotton.Sync.Desktop.Shell
             await _syncPairStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
             AppPreferences preferences = await _preferencesStore.GetAsync(cancellationToken).ConfigureAwait(false);
             IReadOnlyList<SyncPairSettings> syncPairs = await _syncPairStore.ListAsync(cancellationToken).ConfigureAwait(false);
-            DesktopSelfTestSnapshot selfTest = await RunSelfTestAsync(cancellationToken).ConfigureAwait(false);
             SyncStateStoreDiagnostics syncStateDiagnostics = await CreateSyncStateDiagnosticsAsync(cancellationToken)
                 .ConfigureAwait(false);
+            DesktopCloudFilesRegistrationDiagnosticsSnapshot cloudFilesRegistration =
+                DesktopCloudFilesRegistrationDiagnosticsSnapshot.Create(syncPairs);
+            IReadOnlyList<DesktopSelfTestItemSnapshot> diagnosticsItems =
+                await CreateDiagnosticsExportItemsAsync(
+                    syncPairs,
+                    syncStateDiagnostics,
+                    cloudFilesRegistration,
+                    cancellationToken).ConfigureAwait(false);
             var bundle = new DesktopDiagnosticsBundle(
                 DateTimeOffset.UtcNow,
                 DesktopAppVersion.Current,
@@ -882,10 +889,71 @@ namespace Cotton.Sync.Desktop.Shell
                 DesktopNotificationDiagnosticsSnapshot.FromCapability(
                     DesktopNotificationServiceFactory.CreateSelfTestCapabilitySnapshot()),
                 CreateUpdateDiagnosticsSnapshot(),
-                DesktopCloudFilesRegistrationDiagnosticsSnapshot.Create(syncPairs),
-                selfTest.Items,
+                cloudFilesRegistration,
+                diagnosticsItems,
                 WindowsCloudFilesDiagnostics.Shared.Snapshot());
             return await _diagnosticsExporter.ExportAsync(_paths, bundle, options, cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task<IReadOnlyList<DesktopSelfTestItemSnapshot>> CreateDiagnosticsExportItemsAsync(
+            IReadOnlyList<SyncPairSettings> syncPairs,
+            SyncStateStoreDiagnostics syncStateDiagnostics,
+            DesktopCloudFilesRegistrationDiagnosticsSnapshot cloudFilesRegistration,
+            CancellationToken cancellationToken)
+        {
+            var items = new List<DesktopSelfTestItemSnapshot>
+            {
+                new(
+                    "Diagnostics export",
+                    true,
+                    "Captured current diagnostics only; self-test probes were not run."),
+                new(
+                    "Sync pair database",
+                    true,
+                    syncPairs.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + " sync pair(s)"),
+                CreateSyncStateDiagnosticsItem(syncStateDiagnostics),
+            };
+
+            await AddSelfTestCheckAsync(
+                items,
+                "Authentication state",
+                () => CheckAuthenticationStateAsync(cancellationToken)).ConfigureAwait(false);
+
+            DesktopTokenStorageCapabilitySnapshot tokenStorage = DesktopTokenStorageCapabilities.CreateSnapshot();
+            items.Add(new DesktopSelfTestItemSnapshot(
+                "Token storage",
+                tokenStorage.IsReleaseSecure,
+                tokenStorage.IsReleaseSecure
+                    ? tokenStorage.Details
+                    : tokenStorage.Details + " (not release secure)"));
+
+            DesktopPlatformCapabilitySnapshot platformCapabilities = DesktopPlatformCapabilities.CreateSnapshot();
+            items.Add(new DesktopSelfTestItemSnapshot(
+                "Desktop platform",
+                true,
+                platformCapabilities.OperatingSystemName
+                    + "; session: "
+                    + platformCapabilities.DesktopSession
+                    + "; desktop: "
+                    + platformCapabilities.CurrentDesktop));
+            items.Add(new DesktopSelfTestItemSnapshot(
+                "Tray lifecycle",
+                true,
+                platformCapabilities.TrayLifecycleDetails));
+            items.Add(new DesktopSelfTestItemSnapshot(
+                "Windows virtual files",
+                platformCapabilities.IsWindowsVirtualFilesSupported,
+                "Read-only capability check: "
+                    + platformCapabilities.WindowsVirtualFilesDetails
+                    + " Full Cloud Files connection self-test was not run during diagnostics export.",
+                Skipped: !platformCapabilities.IsWindowsVirtualFilesSupported));
+            items.Add(new DesktopSelfTestItemSnapshot(
+                "Cloud Files registration",
+                cloudFilesRegistration.MissingSyncPairCount == 0 && cloudFilesRegistration.UnknownSyncPairCount == 0,
+                CreateCloudFilesRegistrationDetails(cloudFilesRegistration),
+                Skipped: cloudFilesRegistration.VirtualFilesSyncPairCount == 0));
+
+            return items;
         }
 
         public async Task<DesktopUpdateStatusSnapshot> CheckForUpdateAsync(
@@ -1100,6 +1168,38 @@ namespace Cotton.Sync.Desktop.Shell
                 _paths.AppDatabasePath,
                 _paths.SyncStateDatabasePath,
                 _paths.TokenStorePath);
+        }
+
+        private static DesktopSelfTestItemSnapshot CreateSyncStateDiagnosticsItem(
+            SyncStateStoreDiagnostics diagnostics)
+        {
+            try
+            {
+                return new DesktopSelfTestItemSnapshot(
+                    "Sync state database",
+                    true,
+                    CreateSyncStateDatabaseDetails(diagnostics));
+            }
+            catch (Exception exception) when (exception is InvalidOperationException)
+            {
+                return new DesktopSelfTestItemSnapshot(
+                    "Sync state database",
+                    false,
+                    DesktopActionRequiredMessageResolver.FromException(exception));
+            }
+        }
+
+        private static string CreateCloudFilesRegistrationDetails(
+            DesktopCloudFilesRegistrationDiagnosticsSnapshot diagnostics)
+        {
+            return "virtual pairs="
+                + diagnostics.VirtualFilesSyncPairCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", registered="
+                + diagnostics.RegisteredSyncPairCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", missing="
+                + diagnostics.MissingSyncPairCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", unknown="
+                + diagnostics.UnknownSyncPairCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
         private static string CreateSyncStateDatabaseDetails(SyncStateStoreDiagnostics diagnostics)
