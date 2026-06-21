@@ -142,6 +142,16 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void CreateProbeRoot_ReturnsStableDefaultProbeRootForStorageProviderCleanup()
+        {
+            string expectedProbeRoot = Path.Combine(
+                Path.GetTempPath(),
+                "cotton-cloud-files-self-test");
+
+            Assert.That(DesktopCloudFilesCapabilities.CreateProbeRoot(), Is.EqualTo(expectedProbeRoot));
+        }
+
+        [Test]
         public void CreateSelfTestCapability_FailsWhenConnectBoundaryFailsAndStillCleansUp()
         {
             var adapter = new FakeCloudFilesAdapter
