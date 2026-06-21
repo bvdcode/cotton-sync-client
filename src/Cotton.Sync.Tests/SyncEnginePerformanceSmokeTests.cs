@@ -1232,6 +1232,7 @@ namespace Cotton.Sync.Tests
                 string rootPath,
                 IReadOnlyCollection<string> relativePaths,
                 IProgress<LocalTreeScanProgress>? progress,
+                bool includeDirectoryDescendants,
                 CancellationToken cancellationToken = default)
             {
                 PathLookupCalls++;
