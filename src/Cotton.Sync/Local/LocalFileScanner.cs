@@ -123,6 +123,7 @@ namespace Cotton.Sync.Local
             string rootPath,
             IReadOnlyCollection<string> relativePaths,
             IProgress<LocalTreeScanProgress>? progress,
+            bool includeDirectoryDescendants,
             CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
@@ -196,7 +197,7 @@ namespace Cotton.Sync.Local
                 });
                 directoriesScanned++;
                 ReportDirectoryScanProgress(progress, filesScanned, directoriesScanned, normalizedPath);
-                if (!targetKeys.Contains(SyncPath.ToKey(normalizedPath)))
+                if (!includeDirectoryDescendants || !targetKeys.Contains(SyncPath.ToKey(normalizedPath)))
                 {
                     continue;
                 }

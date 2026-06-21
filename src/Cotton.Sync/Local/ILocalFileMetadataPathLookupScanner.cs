@@ -9,12 +9,13 @@ namespace Cotton.Sync.Local
     public interface ILocalFileMetadataPathLookupScanner
     {
         /// <summary>
-        /// Scans selected relative paths and any local descendants under directory paths.
+        /// Scans selected relative paths, their ancestors, and optionally local descendants under directory target paths.
         /// </summary>
         Task<LocalTreeLookupSnapshot> ScanPathMetadataLookupsAsync(
             string rootPath,
             IReadOnlyCollection<string> relativePaths,
             IProgress<LocalTreeScanProgress>? progress,
+            bool includeDirectoryDescendants,
             CancellationToken cancellationToken = default);
     }
 }

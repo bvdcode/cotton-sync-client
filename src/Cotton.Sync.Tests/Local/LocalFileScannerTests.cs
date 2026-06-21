@@ -135,6 +135,48 @@ namespace Cotton.Sync.Tests.Local
         }
 
         [Test]
+        public async Task ScanPathMetadataLookupsAsync_WhenDirectoryDescendantsDisabled_DoesNotScanTargetSubtree()
+        {
+            Directory.CreateDirectory(FullPath(Path.Combine("LargeTree", "Child")));
+            WriteFile(Path.Combine("LargeTree", "Child", "placeholder.txt"), "content");
+            var scanner = new LocalFileScanner();
+
+            LocalTreeLookupSnapshot tree = await scanner.ScanPathMetadataLookupsAsync(
+                _root,
+                ["LargeTree"],
+                progress: null,
+                includeDirectoryDescendants: false);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(tree.DirectoriesByPath.Keys, Is.EqualTo(new[] { "LARGETREE" }));
+                Assert.That(tree.FilesByPath, Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task ScanPathMetadataLookupsAsync_WhenDirectoryDescendantsEnabled_ScansTargetSubtree()
+        {
+            Directory.CreateDirectory(FullPath(Path.Combine("LargeTree", "Child")));
+            WriteFile(Path.Combine("LargeTree", "Child", "file.txt"), "content");
+            var scanner = new LocalFileScanner();
+
+            LocalTreeLookupSnapshot tree = await scanner.ScanPathMetadataLookupsAsync(
+                _root,
+                ["LargeTree"],
+                progress: null,
+                includeDirectoryDescendants: true);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    tree.DirectoriesByPath.Keys,
+                    Is.EqualTo(new[] { "LARGETREE", "LARGETREE/CHILD" }));
+                Assert.That(tree.FilesByPath.Keys, Is.EqualTo(new[] { "LARGETREE/CHILD/FILE.TXT" }));
+            });
+        }
+
+        [Test]
         public async Task ScanTreeMetadataAsync_ReportsScanProgressAsFilesAreDiscovered()
         {
             WriteFile("alpha.txt", "alpha");

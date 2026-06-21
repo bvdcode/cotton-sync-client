@@ -413,6 +413,7 @@ namespace Cotton.Sync
                     syncPair.LocalRootPath,
                     scopedPaths,
                     new LocalTreeScanProgressReporter(options, startedAtUtc),
+                    ShouldIncludeScopedDirectoryDescendants(syncPair),
                     cancellationToken)
                 .ConfigureAwait(false);
             ReportRunProgress(options, SyncRunProgressStage.ScanningRemote, 0, scopedPaths.Count, null, startedAtUtc);
@@ -4165,6 +4166,11 @@ namespace Cotton.Sync
             }
 
             return paths;
+        }
+
+        private static bool ShouldIncludeScopedDirectoryDescendants(SyncPair syncPair)
+        {
+            return syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles;
         }
 
         private static IEnumerable<string> BuildScopedPathKeys(IEnumerable<string> relativePaths)

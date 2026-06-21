@@ -413,6 +413,41 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithScopedWindowsVirtualFilesFolderChangeDoesNotExpandLocalDirectoryTarget()
+        {
+            const string relativePath = "LargeTree";
+            RemoteDirectorySnapshot remoteDirectory = RemoteDirectory(relativePath);
+            RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
+            remoteTree.Directories.Add(remoteDirectory);
+            var scanner = new FakeLocalFileScanner();
+            scanner.Directories.Add(new LocalDirectorySnapshot
+            {
+                RelativePath = relativePath,
+                FullPath = Path.Combine(_root, relativePath),
+            });
+            scanner.Files.Add(LocalFile("LargeTree/Child/placeholder.txt", "placeholder-content"));
+            var crawler = new PathOnlyRemoteTreeCrawler(remoteTree);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            var engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { Scope = SyncRunScope.ForLocalChangedPaths([relativePath]) });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(scanner.ScanCalls, Is.Zero);
+                Assert.That(scanner.PathLookupCalls, Is.EqualTo(1));
+                Assert.That(scanner.LastIncludeDirectoryDescendants, Is.False);
+                Assert.That(crawler.PathCrawlCalls, Is.EqualTo(1));
+                Assert.That(crawler.FullCrawlCalls, Is.Zero);
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(result.RequiresUserAction, Is.False);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesPreservesRemoteOnlyPlaceholderStateAfterEngineRestart()
         {
             const string relativePath = "remote-only-restart.txt";
@@ -4573,6 +4608,10 @@ namespace Cotton.Sync.Tests
 
             public int ScanCalls { get; private set; }
 
+            public int PathLookupCalls { get; private set; }
+
+            public bool? LastIncludeDirectoryDescendants { get; private set; }
+
             public Task<IReadOnlyList<LocalFileSnapshot>> ScanAsync(string rootPath, CancellationToken cancellationToken = default)
             {
                 ScanCalls++;
@@ -4593,15 +4632,19 @@ namespace Cotton.Sync.Tests
                 string rootPath,
                 IReadOnlyCollection<string> relativePaths,
                 IProgress<LocalTreeScanProgress>? progress,
+                bool includeDirectoryDescendants,
                 CancellationToken cancellationToken = default)
             {
+                PathLookupCalls++;
+                LastIncludeDirectoryDescendants = includeDirectoryDescendants;
                 var snapshot = new LocalTreeLookupSnapshot();
-                var requested = new HashSet<string>(
-                    relativePaths.Select(path => SyncPath.ToKey(path)),
+                var requested = relativePaths.Select(SyncPath.Normalize).ToArray();
+                var requestedKeys = new HashSet<string>(
+                    requested.Select(SyncPath.ToKey),
                     StringComparer.OrdinalIgnoreCase);
                 foreach (LocalDirectorySnapshot directory in Directories)
                 {
-                    if (requested.Contains(SyncPath.ToKey(directory.RelativePath)))
+                    if (ContainsRequestedPath(directory.RelativePath, requestedKeys, requested, includeDirectoryDescendants))
                     {
                         snapshot.DirectoriesByPath[SyncPath.ToKey(directory.RelativePath)] = directory;
                     }
@@ -4609,13 +4652,32 @@ namespace Cotton.Sync.Tests
 
                 foreach (LocalFileSnapshot file in Files)
                 {
-                    if (requested.Contains(SyncPath.ToKey(file.RelativePath)))
+                    if (ContainsRequestedPath(file.RelativePath, requestedKeys, requested, includeDirectoryDescendants))
                     {
                         snapshot.FilesByPath[SyncPath.ToKey(file.RelativePath)] = file;
                     }
                 }
 
                 return Task.FromResult(snapshot);
+            }
+
+            private static bool ContainsRequestedPath(
+                string relativePath,
+                IReadOnlySet<string> requestedKeys,
+                IReadOnlyCollection<string> requestedPaths,
+                bool includeDirectoryDescendants)
+            {
+                string key = SyncPath.ToKey(relativePath);
+                return requestedKeys.Contains(key)
+                    || includeDirectoryDescendants && requestedPaths.Any(path => IsDescendantPath(relativePath, path));
+            }
+
+            private static bool IsDescendantPath(string relativePath, string parentPath)
+            {
+                string normalizedPath = SyncPath.Normalize(relativePath);
+                string normalizedParent = SyncPath.Normalize(parentPath).TrimEnd('/');
+                return normalizedPath.Length > normalizedParent.Length
+                    && normalizedPath.StartsWith(normalizedParent + "/", StringComparison.OrdinalIgnoreCase);
             }
 
             public Task<string> ComputeContentHashAsync(
