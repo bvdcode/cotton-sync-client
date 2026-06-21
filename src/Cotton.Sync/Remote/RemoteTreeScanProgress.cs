@@ -17,15 +17,24 @@ namespace Cotton.Sync.Remote
             int filesScanned,
             int directoriesScanned,
             string? currentPath,
-            int pagesScanned = 0)
+            int pagesScanned = 0,
+            TimeSpan pageReadLatencyTotal = default,
+            TimeSpan pageReadLatencyMax = default,
+            TimeSpan lastPageReadLatency = default)
         {
             ArgumentOutOfRangeException.ThrowIfNegative(filesScanned);
             ArgumentOutOfRangeException.ThrowIfNegative(directoriesScanned);
             ArgumentOutOfRangeException.ThrowIfNegative(pagesScanned);
+            ArgumentOutOfRangeException.ThrowIfNegative(pageReadLatencyTotal.Ticks);
+            ArgumentOutOfRangeException.ThrowIfNegative(pageReadLatencyMax.Ticks);
+            ArgumentOutOfRangeException.ThrowIfNegative(lastPageReadLatency.Ticks);
             FilesScanned = filesScanned;
             DirectoriesScanned = directoriesScanned;
             CurrentPath = string.IsNullOrWhiteSpace(currentPath) ? string.Empty : SyncPath.Normalize(currentPath);
             PagesScanned = pagesScanned;
+            PageReadLatencyTotal = pageReadLatencyTotal;
+            PageReadLatencyMax = pageReadLatencyMax;
+            LastPageReadLatency = lastPageReadLatency;
         }
 
         /// <summary>
@@ -42,6 +51,21 @@ namespace Cotton.Sync.Remote
         /// Gets the number of remote child pages loaded so far.
         /// </summary>
         public int PagesScanned { get; }
+
+        /// <summary>
+        /// Gets the cumulative latency spent reading remote child pages.
+        /// </summary>
+        public TimeSpan PageReadLatencyTotal { get; }
+
+        /// <summary>
+        /// Gets the slowest observed remote child page read latency.
+        /// </summary>
+        public TimeSpan PageReadLatencyMax { get; }
+
+        /// <summary>
+        /// Gets the most recent remote child page read latency.
+        /// </summary>
+        public TimeSpan LastPageReadLatency { get; }
 
         /// <summary>
         /// Gets the most recent discovered remote path when available.

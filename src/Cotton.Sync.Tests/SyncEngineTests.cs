@@ -1349,6 +1349,10 @@ namespace Cotton.Sync.Tests
                 Assert.That(startLog, Does.Contain("managed heap"));
                 Assert.That(completionLog, Does.Contain("3 files discovered"));
                 Assert.That(completionLog, Does.Contain("remote pages read=1"));
+                Assert.That(completionLog, Does.Contain("remote page latency total="));
+                Assert.That(completionLog, Does.Contain("avg="));
+                Assert.That(completionLog, Does.Contain("max="));
+                Assert.That(completionLog, Does.Contain("last="));
                 Assert.That(completionLog, Does.Contain("3 placeholders created or refreshed"));
                 Assert.That(completionLog, Does.Contain("placeholders/sec"));
                 Assert.That(completionLog, Does.Contain("state writes 3 file rows"));

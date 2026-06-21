@@ -299,6 +299,9 @@ namespace Cotton.Sync.Tests.Remote
                 Assert.That(sink.Files.Select(file => file.RelativePath), Is.EquivalentTo(new[] { "Docs/report.txt", "Photos/photo.jpg", "Videos/clip.mp4" }));
                 Assert.That(client.MaxConcurrentGetChildrenCalls, Is.GreaterThan(1));
                 Assert.That(progress.Values[^1].PagesScanned, Is.EqualTo(4));
+                Assert.That(progress.Values[^1].PageReadLatencyTotal, Is.GreaterThan(TimeSpan.Zero));
+                Assert.That(progress.Values[^1].PageReadLatencyMax, Is.GreaterThan(TimeSpan.Zero));
+                Assert.That(progress.Values[^1].LastPageReadLatency, Is.GreaterThan(TimeSpan.Zero));
             });
         }
 

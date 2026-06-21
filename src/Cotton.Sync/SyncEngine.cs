@@ -848,13 +848,21 @@ namespace Cotton.Sync
             double createdPlaceholderRatePerSecond = stopwatch.Elapsed.TotalSeconds <= 0d
                 ? createdPlaceholders
                 : createdPlaceholders / stopwatch.Elapsed.TotalSeconds;
+            int remotePageCount = remoteScanProgress.PagesScanned;
+            double remotePageAverageLatencyMilliseconds = remotePageCount <= 0
+                ? 0d
+                : remoteScanProgress.PageReadLatencyTotal.TotalMilliseconds / remotePageCount;
             long completedManagedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
             _logger.LogInformation(
-                "Completed initial streaming Windows virtual-files population for pair {SyncPairId} with {DirectoryCount} directories discovered, {FileCount} files discovered, remote pages read={RemotePageCount}, {CompletedFileCount} file items completed, {CreatedPlaceholderCount} placeholders created or refreshed, {SkippedCurrentPlaceholderCount} current placeholders skipped, {SkippedUnavailablePlaceholderCount} placeholders skipped with user action in {ElapsedMilliseconds} ms at {CreatedPlaceholderRatePerSecond:F2} placeholders/sec; state writes {StateFileRowsWritten} file rows, file write batches {StateFileWriteBatchCount}, directory rows {StateDirectoryRowsWritten}; managed heap start={StartingManagedHeapBytes} bytes, completed={CompletedManagedHeapBytes} bytes, delta={ManagedHeapDeltaBytes} bytes; queue capacity={QueueCapacity}, placeholder concurrency={PlaceholderConcurrency}, placeholder batch size={PlaceholderBatchSize}, state batch size={StateBatchSize}; activities retained {RetainedActivityCount}/{TotalActivityCount}, truncated={ActivityListTruncated}.",
+                "Completed initial streaming Windows virtual-files population for pair {SyncPairId} with {DirectoryCount} directories discovered, {FileCount} files discovered, remote pages read={RemotePageCount}, remote page latency total={RemotePageLatencyTotalMilliseconds:F0} ms, avg={RemotePageLatencyAverageMilliseconds:F2} ms, max={RemotePageLatencyMaxMilliseconds:F0} ms, last={RemotePageLatencyLastMilliseconds:F0} ms, {CompletedFileCount} file items completed, {CreatedPlaceholderCount} placeholders created or refreshed, {SkippedCurrentPlaceholderCount} current placeholders skipped, {SkippedUnavailablePlaceholderCount} placeholders skipped with user action in {ElapsedMilliseconds} ms at {CreatedPlaceholderRatePerSecond:F2} placeholders/sec; state writes {StateFileRowsWritten} file rows, file write batches {StateFileWriteBatchCount}, directory rows {StateDirectoryRowsWritten}; managed heap start={StartingManagedHeapBytes} bytes, completed={CompletedManagedHeapBytes} bytes, delta={ManagedHeapDeltaBytes} bytes; queue capacity={QueueCapacity}, placeholder concurrency={PlaceholderConcurrency}, placeholder batch size={PlaceholderBatchSize}, state batch size={StateBatchSize}; activities retained {RetainedActivityCount}/{TotalActivityCount}, truncated={ActivityListTruncated}.",
                 syncPair.SyncPairId,
                 Volatile.Read(ref discoveredDirectories),
                 Volatile.Read(ref discoveredFiles),
-                remoteScanProgress.PagesScanned,
+                remotePageCount,
+                remoteScanProgress.PageReadLatencyTotal.TotalMilliseconds,
+                remotePageAverageLatencyMilliseconds,
+                remoteScanProgress.PageReadLatencyMax.TotalMilliseconds,
+                remoteScanProgress.LastPageReadLatency.TotalMilliseconds,
                 completedFiles,
                 createdPlaceholders,
                 skippedCurrentPlaceholders,
@@ -4532,8 +4540,17 @@ namespace Cotton.Sync
         private sealed class RemoteTreeScanProgressCounter : IProgress<RemoteTreeScanProgress>
         {
             private int _pagesScanned;
+            private long _pageReadLatencyTotalTicks;
+            private long _pageReadLatencyMaxTicks;
+            private long _lastPageReadLatencyTicks;
 
             public int PagesScanned => Volatile.Read(ref _pagesScanned);
+
+            public TimeSpan PageReadLatencyTotal => TimeSpan.FromTicks(Volatile.Read(ref _pageReadLatencyTotalTicks));
+
+            public TimeSpan PageReadLatencyMax => TimeSpan.FromTicks(Volatile.Read(ref _pageReadLatencyMaxTicks));
+
+            public TimeSpan LastPageReadLatency => TimeSpan.FromTicks(Volatile.Read(ref _lastPageReadLatencyTicks));
 
             public void Report(RemoteTreeScanProgress value)
             {
@@ -4548,6 +4565,10 @@ namespace Cotton.Sync
                     }
                 }
                 while (Interlocked.CompareExchange(ref _pagesScanned, value.PagesScanned, current) != current);
+
+                Volatile.Write(ref _pageReadLatencyTotalTicks, value.PageReadLatencyTotal.Ticks);
+                Volatile.Write(ref _pageReadLatencyMaxTicks, value.PageReadLatencyMax.Ticks);
+                Volatile.Write(ref _lastPageReadLatencyTicks, value.LastPageReadLatency.Ticks);
             }
         }
 
