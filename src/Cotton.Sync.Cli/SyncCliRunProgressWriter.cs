@@ -118,7 +118,7 @@ namespace Cotton.Sync.Cli
             return stage switch
             {
                 SyncRunProgressStage.ReconcilingDirectories => "folders",
-                SyncRunProgressStage.CreatingPlaceholders => VirtualFileUserFacingCopy.CloudFilesProgressUnit,
+                SyncRunProgressStage.CreatingPlaceholders => VirtualFileUserFacingCopy.CloudItemsProgressUnit,
                 SyncRunProgressStage.FinalizingCloudFiles => "folders",
                 _ => "files",
             };

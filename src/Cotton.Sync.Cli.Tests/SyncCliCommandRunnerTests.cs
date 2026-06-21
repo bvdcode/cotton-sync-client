@@ -1037,7 +1037,7 @@ namespace Cotton.Sync.Cli.Tests
             Assert.Multiple(() =>
             {
                 Assert.That(text, Does.Contain("Progress: reconciling files 125/10000 files"));
-                Assert.That(text, Does.Contain("Progress: making cloud files available 50/1000 cloud files"));
+                Assert.That(text, Does.Contain("Progress: making cloud files available 50/1000 cloud items"));
                 Assert.That(text, Does.Contain("2.500 KiB/195.312 KiB"));
                 Assert.That(text, Does.Contain("current: phase511-10k-small-upload/file-00125.txt"));
                 Assert.That(text, Does.Contain("current: remote-only.txt"));

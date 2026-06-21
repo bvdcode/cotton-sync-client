@@ -711,6 +711,7 @@ namespace Cotton.Sync
             int discoveredFiles = 0;
             int discoveredDirectories = 0;
             int completedFiles = 0;
+            int completedDirectories = 0;
             int createdPlaceholders = 0;
             int skippedCurrentPlaceholders = 0;
             int skippedUnavailablePlaceholders = 0;
@@ -723,7 +724,8 @@ namespace Cotton.Sync
                 remoteScanProgress,
                 options,
                 startedAtUtc,
-                () => Volatile.Read(ref completedFiles));
+                () => Volatile.Read(ref completedFiles),
+                () => Volatile.Read(ref completedDirectories));
             ReportRunProgress(options, SyncRunProgressStage.CreatingPlaceholders, 0, null, null, startedAtUtc);
 
             using IDisposable? providerWriteBurst = _remoteFilePlaceholderPopulationObserver
@@ -752,6 +754,7 @@ namespace Cotton.Sync
                 () => Volatile.Read(ref discoveredDirectories),
                 () => Volatile.Read(ref completedFiles),
                 value => Volatile.Write(ref completedFiles, value),
+                () => Volatile.Read(ref completedDirectories),
                 () => lastPlaceholderProgressReportedAtUtc,
                 value => lastPlaceholderProgressReportedAtUtc = value,
                 workResult =>
@@ -777,7 +780,11 @@ namespace Cotton.Sync
                         stateFileWriteBatches++;
                     }
                 },
-                () => stateDirectoryRowsWritten++,
+                () =>
+                {
+                    stateDirectoryRowsWritten++;
+                    return Interlocked.Increment(ref completedDirectories);
+                },
                 streamingCancellation.Token);
 
             Task firstCompleted = await Task.WhenAny(producer, consumer).ConfigureAwait(false);
@@ -789,18 +796,23 @@ namespace Cotton.Sync
 
             await Task.WhenAll(producer, consumer).ConfigureAwait(false);
             stopwatch.Stop();
+            int completedItems = GetInitialVirtualFilesItemCount(completedFiles, Volatile.Read(ref completedDirectories));
+            int discoveredItems = GetInitialVirtualFilesItemCount(
+                Volatile.Read(ref discoveredFiles),
+                Volatile.Read(ref discoveredDirectories));
+            int totalItems = Math.Max(completedItems, discoveredItems);
             ReportRunProgress(
                 options,
                 SyncRunProgressStage.CreatingPlaceholders,
-                completedFiles,
-                completedFiles,
+                completedItems,
+                totalItems,
                 null,
                 startedAtUtc);
             ReportRunProgress(
                 options,
                 SyncRunProgressStage.Completed,
-                completedFiles,
-                completedFiles,
+                completedItems,
+                totalItems,
                 null,
                 startedAtUtc,
                 isCompleted: true);
@@ -1172,11 +1184,12 @@ namespace Cotton.Sync
             Func<int> getDiscoveredDirectories,
             Func<int> getCompletedFiles,
             Action<int> setCompletedFiles,
+            Func<int> getCompletedDirectories,
             Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
             Action<DateTime?> setLastPlaceholderProgressReportedAtUtc,
             Action<InitialVirtualFilesFileWorkResult> recordFileWorkResult,
             Action<int> recordFileStateWrite,
-            Action recordDirectoryStateWrite,
+            Func<int> recordDirectoryStateWrite,
             CancellationToken cancellationToken)
         {
             var pendingFileStates = new List<SyncStateEntry>(options.InitialVirtualFilesStateBatchSize);
@@ -1212,8 +1225,10 @@ namespace Cotton.Sync
                                     result,
                                     startedAtUtc,
                                     getDiscoveredFiles,
+                                    getDiscoveredDirectories,
                                     getCompletedFiles,
                                     setCompletedFiles,
+                                    getCompletedDirectories,
                                     getLastPlaceholderProgressReportedAtUtc,
                                     setLastPlaceholderProgressReportedAtUtc,
                                     recordFileWorkResult,
@@ -1249,7 +1264,17 @@ namespace Cotton.Sync
                                         directoryItem.Directory.Node),
                                     cancellationToken)
                                 .ConfigureAwait(false);
-                            recordDirectoryStateWrite();
+                            int completedDirectories = recordDirectoryStateWrite();
+                            ReportStreamingVirtualFilesProgress(
+                                options,
+                                getCompletedFiles(),
+                                getDiscoveredFiles(),
+                                completedDirectories,
+                                getDiscoveredDirectories(),
+                                directoryItem.Directory.RelativePath,
+                                startedAtUtc,
+                                getLastPlaceholderProgressReportedAtUtc(),
+                                setLastPlaceholderProgressReportedAtUtc);
                             break;
 
                         case InitialVirtualFilesFilePopulationItem fileItem:
@@ -1276,8 +1301,10 @@ namespace Cotton.Sync
                                             result,
                                             startedAtUtc,
                                             getDiscoveredFiles,
+                                            getDiscoveredDirectories,
                                             getCompletedFiles,
                                             setCompletedFiles,
+                                            getCompletedDirectories,
                                             getLastPlaceholderProgressReportedAtUtc,
                                             setLastPlaceholderProgressReportedAtUtc,
                                             recordFileWorkResult,
@@ -1298,8 +1325,10 @@ namespace Cotton.Sync
                                     result,
                                     startedAtUtc,
                                     getDiscoveredFiles,
+                                    getDiscoveredDirectories,
                                     getCompletedFiles,
                                     setCompletedFiles,
+                                    getCompletedDirectories,
                                     getLastPlaceholderProgressReportedAtUtc,
                                     setLastPlaceholderProgressReportedAtUtc,
                                     recordFileWorkResult,
@@ -1326,8 +1355,10 @@ namespace Cotton.Sync
                             result,
                             startedAtUtc,
                             getDiscoveredFiles,
+                            getDiscoveredDirectories,
                             getCompletedFiles,
                             setCompletedFiles,
+                            getCompletedDirectories,
                             getLastPlaceholderProgressReportedAtUtc,
                             setLastPlaceholderProgressReportedAtUtc,
                             recordFileWorkResult,
@@ -1376,8 +1407,10 @@ namespace Cotton.Sync
             SyncRunResult result,
             DateTime startedAtUtc,
             Func<int> getDiscoveredFiles,
+            Func<int> getDiscoveredDirectories,
             Func<int> getCompletedFiles,
             Action<int> setCompletedFiles,
+            Func<int> getCompletedDirectories,
             Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
             Action<DateTime?> setLastPlaceholderProgressReportedAtUtc,
             Action<InitialVirtualFilesFileWorkResult> recordFileWorkResult,
@@ -1403,8 +1436,10 @@ namespace Cotton.Sync
                         result,
                         startedAtUtc,
                         getDiscoveredFiles,
+                        getDiscoveredDirectories,
                         getCompletedFiles,
                         setCompletedFiles,
+                        getCompletedDirectories,
                         getLastPlaceholderProgressReportedAtUtc,
                         setLastPlaceholderProgressReportedAtUtc,
                         recordFileWorkResult,
@@ -1430,8 +1465,10 @@ namespace Cotton.Sync
                         result,
                         startedAtUtc,
                         getDiscoveredFiles,
+                        getDiscoveredDirectories,
                         getCompletedFiles,
                         setCompletedFiles,
+                        getCompletedDirectories,
                         getLastPlaceholderProgressReportedAtUtc,
                         setLastPlaceholderProgressReportedAtUtc,
                         recordFileWorkResult,
@@ -1609,8 +1646,10 @@ namespace Cotton.Sync
             SyncRunResult result,
             DateTime startedAtUtc,
             Func<int> getDiscoveredFiles,
+            Func<int> getDiscoveredDirectories,
             Func<int> getCompletedFiles,
             Action<int> setCompletedFiles,
+            Func<int> getCompletedDirectories,
             Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
             Action<DateTime?> setLastPlaceholderProgressReportedAtUtc,
             Action<InitialVirtualFilesFileWorkResult> recordFileWorkResult,
@@ -1627,8 +1666,10 @@ namespace Cotton.Sync
                         result,
                         startedAtUtc,
                         getDiscoveredFiles,
+                        getDiscoveredDirectories,
                         getCompletedFiles,
                         setCompletedFiles,
+                        getCompletedDirectories,
                         getLastPlaceholderProgressReportedAtUtc,
                         setLastPlaceholderProgressReportedAtUtc,
                         recordFileWorkResult,
@@ -1646,8 +1687,10 @@ namespace Cotton.Sync
             SyncRunResult result,
             DateTime startedAtUtc,
             Func<int> getDiscoveredFiles,
+            Func<int> getDiscoveredDirectories,
             Func<int> getCompletedFiles,
             Action<int> setCompletedFiles,
+            Func<int> getCompletedDirectories,
             Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
             Action<DateTime?> setLastPlaceholderProgressReportedAtUtc,
             Action<InitialVirtualFilesFileWorkResult> recordFileWorkResult,
@@ -1669,10 +1712,12 @@ namespace Cotton.Sync
 
             int completedFiles = getCompletedFiles() + 1;
             setCompletedFiles(completedFiles);
-            bool reportedProgress = ReportStreamingPlaceholderProgress(
+            bool reportedProgress = ReportStreamingVirtualFilesProgress(
                 options,
                 completedFiles,
                 getDiscoveredFiles(),
+                getCompletedDirectories(),
+                getDiscoveredDirectories(),
                 workResult.RelativePath,
                 startedAtUtc,
                 getLastPlaceholderProgressReportedAtUtc(),
@@ -1693,8 +1738,10 @@ namespace Cotton.Sync
 
             await YieldAfterLargeBatchAsync(
                     options,
-                    completedFiles,
-                    Math.Max(completedFiles, getDiscoveredFiles()),
+                    GetInitialVirtualFilesItemCount(completedFiles, getCompletedDirectories()),
+                    Math.Max(
+                        GetInitialVirtualFilesItemCount(completedFiles, getCompletedDirectories()),
+                        GetInitialVirtualFilesItemCount(getDiscoveredFiles(), getDiscoveredDirectories())),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -1828,18 +1875,22 @@ namespace Cotton.Sync
                 && RemoteMatchesBaseline(remote.File, baseline);
         }
 
-        private static bool ReportStreamingPlaceholderProgress(
+        private static bool ReportStreamingVirtualFilesProgress(
             SyncRunOptions options,
             int filesCompleted,
             int filesDiscovered,
+            int directoriesCompleted,
+            int directoriesDiscovered,
             string relativePath,
             DateTime startedAtUtc,
             DateTime? lastReportedAtUtc,
             Action<DateTime?> setLastReportedAtUtc)
         {
-            int filesTotal = Math.Max(filesCompleted, filesDiscovered);
+            int itemsCompleted = GetInitialVirtualFilesItemCount(filesCompleted, directoriesCompleted);
+            int itemsDiscovered = GetInitialVirtualFilesItemCount(filesDiscovered, directoriesDiscovered);
+            int itemsTotal = Math.Max(itemsCompleted, itemsDiscovered);
             DateTime occurredAtUtc = DateTime.UtcNow;
-            if (!ShouldReportItemRunProgress(filesCompleted, filesTotal, lastReportedAtUtc, occurredAtUtc))
+            if (!ShouldReportItemRunProgress(itemsCompleted, itemsTotal, lastReportedAtUtc, occurredAtUtc))
             {
                 return false;
             }
@@ -1848,11 +1899,16 @@ namespace Cotton.Sync
             ReportRunProgress(
                 options,
                 SyncRunProgressStage.CreatingPlaceholders,
-                filesCompleted,
-                filesTotal,
+                itemsCompleted,
+                itemsTotal,
                 relativePath,
                 startedAtUtc);
             return true;
+        }
+
+        private static int GetInitialVirtualFilesItemCount(int fileCount, int directoryCount)
+        {
+            return checked(fileCount + directoryCount);
         }
 
         private async Task ReconcileDirectoriesWithoutBaselineAsync(
@@ -4337,35 +4393,39 @@ namespace Cotton.Sync
             private readonly SyncRunOptions _options;
             private readonly DateTime _startedAtUtc;
             private readonly Func<int> _getCompletedFiles;
+            private readonly Func<int> _getCompletedDirectories;
 
             public InitialVirtualFilesRemoteProgressReporter(
                 IProgress<RemoteTreeScanProgress> inner,
                 SyncRunOptions options,
                 DateTime startedAtUtc,
-                Func<int> getCompletedFiles)
+                Func<int> getCompletedFiles,
+                Func<int> getCompletedDirectories)
             {
                 _inner = inner;
                 _options = options;
                 _startedAtUtc = startedAtUtc;
                 _getCompletedFiles = getCompletedFiles;
+                _getCompletedDirectories = getCompletedDirectories;
             }
 
             public void Report(RemoteTreeScanProgress value)
             {
                 ArgumentNullException.ThrowIfNull(value);
                 _inner.Report(value);
-                if (value.FilesScanned == 0)
+                int itemsDiscovered = GetInitialVirtualFilesItemCount(value.FilesScanned, value.DirectoriesScanned);
+                if (itemsDiscovered == 0)
                 {
                     return;
                 }
 
-                int filesCompleted = _getCompletedFiles();
-                int filesTotal = Math.Max(filesCompleted, value.FilesScanned);
+                int itemsCompleted = GetInitialVirtualFilesItemCount(_getCompletedFiles(), _getCompletedDirectories());
+                int itemsTotal = Math.Max(itemsCompleted, itemsDiscovered);
                 ReportRunProgress(
                     _options,
                     SyncRunProgressStage.CreatingPlaceholders,
-                    filesCompleted,
-                    filesTotal,
+                    itemsCompleted,
+                    itemsTotal,
                     value.CurrentPath,
                     _startedAtUtc);
             }

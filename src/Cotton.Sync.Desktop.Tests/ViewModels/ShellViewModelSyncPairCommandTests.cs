@@ -1614,8 +1614,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.HasCurrentRunProgress, Is.True);
                 Assert.That(viewModel.IsCurrentRunProgressIndeterminate, Is.False);
                 Assert.That(viewModel.CurrentRunProgressValue, Is.EqualTo(30).Within(0.01));
-                Assert.That(viewModel.CurrentRunProgressDetails, Is.EqualTo("Making cloud files available \u00B7 3 files ready \u00B7 scanning cloud \u00B7 saving state"));
-                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Making cloud files available \u00B7 3 files ready \u00B7 scanning cloud \u00B7 saving state"));
+                Assert.That(viewModel.CurrentRunProgressDetails, Is.EqualTo("Making cloud files available \u00B7 3 cloud items ready \u00B7 scanning cloud \u00B7 saving state"));
+                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Making cloud files available \u00B7 3 cloud items ready \u00B7 scanning cloud \u00B7 saving state"));
                 Assert.That(row.CurrentOperation, Is.EqualTo("Preparing cloud files"));
                 Assert.That(row.HasCurrentOperation, Is.True);
                 Assert.That(row.HasCurrentProgress, Is.True);
@@ -2811,9 +2811,9 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Assert.Multiple(() =>
             {
                 Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.False);
-                Assert.That(viewModel.CurrentWorkProgressHeaderRateDetails, Is.EqualTo("10 files/s"));
+                Assert.That(viewModel.CurrentWorkProgressHeaderRateDetails, Is.EqualTo("10 cloud items/s"));
                 Assert.That(viewModel.CurrentWorkProgressHeaderRateDetails, Does.Not.Contain("left"));
-                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Making cloud files available \u00B7 100 files ready \u00B7 scanning cloud \u00B7 saving state"));
+                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Making cloud files available \u00B7 100 cloud items ready \u00B7 scanning cloud \u00B7 saving state"));
                 Assert.That(viewModel.CurrentWorkProgressDetails, Does.Not.Contain("of 1100"));
             });
         }
@@ -2858,8 +2858,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             {
                 Assert.That(firstOperation, Is.EqualTo("Preparing cloud files"));
                 Assert.That(row.CurrentOperation, Is.EqualTo(firstOperation));
-                Assert.That(firstDetails, Is.EqualTo("Making cloud files available \u00B7 120 files ready \u00B7 scanning cloud \u00B7 saving state"));
-                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Making cloud files available \u00B7 260 files ready \u00B7 scanning cloud \u00B7 saving state"));
+                Assert.That(firstDetails, Is.EqualTo("Making cloud files available \u00B7 120 cloud items ready \u00B7 scanning cloud \u00B7 saving state"));
+                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Making cloud files available \u00B7 260 cloud items ready \u00B7 scanning cloud \u00B7 saving state"));
                 Assert.That(viewModel.CurrentWorkProgressSecondaryDetails, Is.Empty);
                 Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.False);
             });
