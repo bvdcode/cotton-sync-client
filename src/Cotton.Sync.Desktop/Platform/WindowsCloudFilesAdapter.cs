@@ -597,6 +597,15 @@ namespace Cotton.Sync.Desktop.Platform
                     + state
                     + ".");
             }
+
+            if (Directory.Exists(filePath)
+                && state.HasFlag(WindowsCloudFilesPlaceholderState.Partial))
+            {
+                throw new InvalidOperationException(
+                    "Windows Cloud Files directory did not report fully populated state after the native update. State: "
+                    + state
+                    + ".");
+            }
         }
 
         private void EnsureNoReparsePointDescendant(string syncRootPath, string targetDirectoryPath)
