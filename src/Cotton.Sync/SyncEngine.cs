@@ -25,7 +25,7 @@ namespace Cotton.Sync
         private const int RunProgressDetailedItemLimit = 50_000;
         private const int RunProgressSparseItemInterval = 100;
         private const string InitialVirtualFilesLocalRootRequiresReviewMessage =
-            "Virtual files setup found local files in the selected folder. Move them out or choose a clean folder before trying again.";
+            "Virtual files setup found local content in the selected folder. Move it out or choose a clean folder before trying again.";
         private static readonly TimeSpan RunProgressReportTimeInterval = TimeSpan.FromMilliseconds(250);
         private static readonly TimeSpan CloudFilesMetadataTimestampTolerance = TimeSpan.FromSeconds(2);
         private static readonly StringComparer PathComparer = StringComparer.OrdinalIgnoreCase;
@@ -1117,6 +1117,13 @@ namespace Cotton.Sync
                     return InitialVirtualFilesStreamingPlanDecision.ActionRequired(
                         InitialVirtualFilesLocalRootRequiresReviewMessage);
                 }
+
+                if (!directoryStateByPath.ContainsKey(directoryKey)
+                    && !HasAdoptablePlaceholderDescendant(directoryKey, adoptableUntrackedPlaceholderByPath.Keys))
+                {
+                    return InitialVirtualFilesStreamingPlanDecision.ActionRequired(
+                        InitialVirtualFilesLocalRootRequiresReviewMessage);
+                }
             }
 
             return InitialVirtualFilesStreamingPlanDecision.FromPlan(
@@ -1196,6 +1203,15 @@ namespace Cotton.Sync
         private static bool IsUntrackedVirtualFilesPlaceholderCompatibleWithInitialStreaming(LocalFileSnapshot local)
         {
             return local.IsCloudFilesOnlineOnlyPlaceholder;
+        }
+
+        private static bool HasAdoptablePlaceholderDescendant(
+            string directoryKey,
+            IEnumerable<string> adoptablePlaceholderPathKeys)
+        {
+            string directoryPrefix = directoryKey.TrimEnd('/') + "/";
+            return adoptablePlaceholderPathKeys.Any(pathKey =>
+                pathKey.StartsWith(directoryPrefix, StringComparison.OrdinalIgnoreCase));
         }
 
         private static bool IsResumeCompatibleVirtualFilesPlaceholder(
