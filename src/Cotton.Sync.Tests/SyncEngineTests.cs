@@ -1835,6 +1835,9 @@ namespace Cotton.Sync.Tests
                 placeholderWriter.CompletedDirectoryTreeRequests.Single();
             SyncRunProgress finalizingProgress = runProgress.Values.Single(progress =>
                 progress.Stage == SyncRunProgressStage.FinalizingCloudFiles);
+            List<SyncRunProgress> placeholderProgress = runProgress.Values
+                .Where(progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders)
+                .ToList();
             Assert.Multiple(() =>
             {
                 Assert.That(
@@ -1849,6 +1852,12 @@ namespace Cotton.Sync.Tests
                 Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
                 Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
                 Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(placeholderProgress, Is.Not.Empty);
+                Assert.That(placeholderProgress.Last().FilesCompleted, Is.EqualTo(4));
+                Assert.That(placeholderProgress.Last().FilesTotal, Is.EqualTo(4));
+                Assert.That(placeholderProgress.Any(progress =>
+                    progress.FilesTotal == 3
+                    && progress.CurrentPath == "Temp/Images/photo.heic"), Is.True);
                 Assert.That(finalizingProgress.FilesCompleted, Is.EqualTo(2));
                 Assert.That(finalizingProgress.FilesTotal, Is.EqualTo(2));
                 Assert.That(finalizingProgress.IsCompleted, Is.False);
@@ -4894,14 +4903,14 @@ namespace Cotton.Sync.Tests
                     Id = _rootNodeId,
                     Name = "root",
                 };
-                progress?.Report(new RemoteTreeScanProgress(0, _directories.Count, currentPath: null));
+                progress?.Report(new RemoteTreeScanProgress(0, 0, currentPath: null));
                 for (int index = 0; index < _directories.Count; index++)
                 {
                     RemoteDirectorySnapshot directory = _directories[index];
                     await sink.AddDirectoryAsync(directory, cancellationToken).ConfigureAwait(false);
                     progress?.Report(new RemoteTreeScanProgress(
+                        0,
                         index + 1,
-                        _directories.Count,
                         directory.RelativePath,
                         pagesScanned: 1));
                 }
@@ -4911,14 +4920,14 @@ namespace Cotton.Sync.Tests
                     RemoteFileSnapshot file = _files[index];
                     await sink.AddFileAsync(file, cancellationToken).ConfigureAwait(false);
                     progress?.Report(new RemoteTreeScanProgress(
-                        _directories.Count + index + 1,
+                        index + 1,
                         _directories.Count,
                         file.RelativePath,
                         pagesScanned: 1));
                 }
 
                 progress?.Report(new RemoteTreeScanProgress(
-                    _directories.Count + _files.Count,
+                    _files.Count,
                     _directories.Count,
                     currentPath: null,
                     pagesScanned: 1));

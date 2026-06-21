@@ -5031,7 +5031,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
             if (!hasByteRate && _currentRunProgressFilesPerSecond is > 0)
             {
-                parts.Add(FormatFileRate(_currentRunProgressFilesPerSecond.Value));
+                parts.Add(FormatCurrentRunProgressRate(_currentRunProgressFilesPerSecond.Value));
             }
 
             if (!hasByteEstimate && _currentRunProgressEstimatedTimeRemaining.HasValue)
@@ -5040,6 +5040,18 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
 
             return string.Join(" · ", parts);
+        }
+
+        private string FormatCurrentRunProgressRate(double unitsPerSecond)
+        {
+            List<DesktopRunProgressSnapshot> progressValues = GetOrderedRunProgressSnapshots();
+            if (progressValues.Count > 0
+                && progressValues.All(static progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders))
+            {
+                return FormatCloudItemRate(unitsPerSecond);
+            }
+
+            return FormatFileRate(unitsPerSecond);
         }
 
         private void ClearRunTransferMetrics()
@@ -5793,7 +5805,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                     }
 
                     return readyCount.ToString(CultureInfo.CurrentCulture)
-                        + (readyCount == 1 ? " file ready" : " files ready")
+                        + (readyCount == 1 ? " cloud item ready" : " cloud items ready")
                         + " \u00B7 scanning cloud \u00B7 saving state";
                 }
 
@@ -5922,7 +5934,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
             if (stage == SyncRunProgressStage.CreatingPlaceholders)
             {
-                return VirtualFileUserFacingCopy.CloudFilesProgressUnit;
+                return VirtualFileUserFacingCopy.CloudItemsProgressUnit;
             }
 
             if (stage == SyncRunProgressStage.FinalizingCloudFiles)
@@ -6161,13 +6173,23 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private static string FormatFileRate(double filesPerSecond)
         {
-            double roundedValue = filesPerSecond >= 10
-                ? Math.Round(filesPerSecond)
-                : Math.Round(filesPerSecond, 1);
+            return FormatUnitRate(filesPerSecond, " file/s", " files/s");
+        }
+
+        private static string FormatCloudItemRate(double itemsPerSecond)
+        {
+            return FormatUnitRate(itemsPerSecond, " cloud item/s", " cloud items/s");
+        }
+
+        private static string FormatUnitRate(double unitsPerSecond, string singularUnit, string pluralUnit)
+        {
+            double roundedValue = unitsPerSecond >= 10
+                ? Math.Round(unitsPerSecond)
+                : Math.Round(unitsPerSecond, 1);
             string format = roundedValue >= 10 || Math.Abs(roundedValue - Math.Round(roundedValue)) < 0.05
                 ? "0"
                 : "0.0";
-            string unit = Math.Abs(roundedValue - 1) < 0.05 ? " file/s" : " files/s";
+            string unit = Math.Abs(roundedValue - 1) < 0.05 ? singularUnit : pluralUnit;
             return roundedValue.ToString(format, CultureInfo.CurrentCulture) + unit;
         }
 
