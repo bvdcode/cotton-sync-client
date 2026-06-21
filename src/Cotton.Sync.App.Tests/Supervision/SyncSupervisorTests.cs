@@ -5,6 +5,8 @@ using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.Status;
 using Cotton.Sync.App.Supervision;
 using Cotton.Sync.App.SyncPairs;
+using Cotton.Sync.App.Tests.TestSupport;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 
 namespace Cotton.Sync.App.Tests.Supervision
@@ -218,6 +220,43 @@ namespace Cotton.Sync.App.Tests.Supervision
         }
 
         [Test]
+        public async Task SyncNowAsync_RepublishesActiveStatusWhileRunnerRemainsActive()
+        {
+            SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
+            var factory = new FakeSyncPairRunnerFactory();
+            var publisher = new InMemoryAppStatusPublisher();
+            var statusObserver = new RecordingObserver<SyncAppStatus>();
+            using IDisposable subscription = publisher.Subscribe(statusObserver);
+            var supervisor = new SyncSupervisor(
+                new FakeSyncPairSettingsStore([documents]),
+                factory,
+                publisher,
+                activeStatusPublishInterval: TimeSpan.FromMilliseconds(20));
+            await supervisor.StartAsync();
+            FakeSyncPairRunner runner = factory.CreatedRunners[documents.Id];
+            runner.BlockSyncNow = true;
+
+            Task sync = supervisor.SyncNowAsync(documents.Id);
+            await runner.WaitForSyncNowAsync(TimeSpan.FromSeconds(2));
+            await WaitForStatusCountAsync(
+                statusObserver,
+                status => status.SyncPairs.SingleOrDefault()?.State == SyncPairRunState.Syncing,
+                minimumCount: 2,
+                timeout: TimeSpan.FromSeconds(2));
+
+            runner.ReleaseSyncNow();
+            await sync.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    statusObserver.Values.Count(status => status.SyncPairs.SingleOrDefault()?.State == SyncPairRunState.Syncing),
+                    Is.GreaterThanOrEqualTo(2));
+                Assert.That(publisher.Current.SyncPairs.Single().State, Is.EqualTo(SyncPairRunState.Idle));
+            });
+        }
+
+        [Test]
         public async Task SyncAllAsync_PublishesSyncingStatusWhileRunnerIsActive()
         {
             SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
@@ -365,6 +404,26 @@ namespace Cotton.Sync.App.Tests.Supervision
             GC.Collect();
             GC.WaitForPendingFinalizers();
             GC.Collect();
+        }
+
+        private static async Task WaitForStatusCountAsync(
+            RecordingObserver<SyncAppStatus> observer,
+            Func<SyncAppStatus, bool> predicate,
+            int minimumCount,
+            TimeSpan timeout)
+        {
+            DateTime deadlineUtc = DateTime.UtcNow + timeout;
+            while (DateTime.UtcNow < deadlineUtc)
+            {
+                if (observer.Values.Count(predicate) >= minimumCount)
+                {
+                    return;
+                }
+
+                await Task.Delay(10);
+            }
+
+            Assert.Fail("Timed out waiting for status count " + minimumCount.ToString(CultureInfo.InvariantCulture) + ".");
         }
 
         private static SyncPairSettings CreatePair(string displayName, bool isEnabled)

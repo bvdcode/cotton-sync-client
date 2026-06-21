@@ -16,8 +16,10 @@ namespace Cotton.Sync.App.Supervision
     /// </summary>
     public class SyncSupervisor : ISyncSupervisor
     {
+        private static readonly TimeSpan DefaultActiveStatusPublishInterval = TimeSpan.FromSeconds(5);
         private readonly SemaphoreSlim _operationGate = new(1, 1);
         private readonly ConcurrentDictionary<Guid, ISyncPairRunner> _runners = [];
+        private readonly TimeSpan _activeStatusPublishInterval;
         private readonly ILogger<SyncSupervisor> _logger;
         private readonly ISyncPairRunnerFactory _runnerFactory;
         private readonly IAppStatusPublisher _statusPublisher;
@@ -30,11 +32,14 @@ namespace Cotton.Sync.App.Supervision
             ISyncPairSettingsStore syncPairs,
             ISyncPairRunnerFactory runnerFactory,
             IAppStatusPublisher statusPublisher,
+            TimeSpan? activeStatusPublishInterval = null,
             ILogger<SyncSupervisor>? logger = null)
         {
             _syncPairs = syncPairs ?? throw new ArgumentNullException(nameof(syncPairs));
             _runnerFactory = runnerFactory ?? throw new ArgumentNullException(nameof(runnerFactory));
             _statusPublisher = statusPublisher ?? throw new ArgumentNullException(nameof(statusPublisher));
+            _activeStatusPublishInterval = activeStatusPublishInterval ?? DefaultActiveStatusPublishInterval;
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_activeStatusPublishInterval, TimeSpan.Zero);
             _logger = logger ?? NullLogger<SyncSupervisor>.Instance;
         }
 
@@ -325,8 +330,47 @@ namespace Cotton.Sync.App.Supervision
                 throw;
             }
 
-            _statusPublisher.Publish(CreateAppStatusSnapshot());
+            await PublishActiveStatusUntilSyncCompletesAsync(syncTask, cancellationToken).ConfigureAwait(false);
             await syncTask.ConfigureAwait(false);
+        }
+
+        private async Task PublishActiveStatusUntilSyncCompletesAsync(
+            Task syncTask,
+            CancellationToken cancellationToken)
+        {
+            _statusPublisher.Publish(CreateAppStatusSnapshot());
+            while (!syncTask.IsCompleted)
+            {
+                Task delayTask = Task.Delay(_activeStatusPublishInterval, cancellationToken);
+                Task completedTask;
+                try
+                {
+                    completedTask = await Task.WhenAny(syncTask, delayTask).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                if (completedTask == syncTask)
+                {
+                    return;
+                }
+
+                try
+                {
+                    await delayTask.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                if (!syncTask.IsCompleted)
+                {
+                    _statusPublisher.Publish(CreateAppStatusSnapshot());
+                }
+            }
         }
 
         private static void ThrowIfAnySyncFailures(IReadOnlyList<Exception> failures)
