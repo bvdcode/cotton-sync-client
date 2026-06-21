@@ -227,6 +227,91 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesScopesRemoteFileDeleteWithoutExistingState()
+        {
+            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            var inner = new FakeSyncPairWork();
+            Guid remoteFileId = Guid.NewGuid();
+            var stateStore = new FakeSyncStateStore();
+            var batch = new RemoteChangeFeedBatch(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 12,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes:
+                [
+                    new SyncChangeDto
+                    {
+                        Id = 11,
+                        Kind = SyncChangeKind.FileDeleted,
+                        LayoutId = Guid.NewGuid(),
+                        ItemId = remoteFileId,
+                        ParentNodeId = syncPair.RemoteRootNodeId,
+                        Name = "deleted.txt",
+                        CreatedAt = DateTime.UtcNow,
+                    },
+                ]);
+            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+
+            await work.RunOnceAsync(syncPair);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.False);
+                Assert.That(inner.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { "deleted.txt" }));
+                Assert.That(stateStore.LoadPairEntriesCallCount, Is.Zero);
+                Assert.That(stateStore.RemoteIdLookupCallCount, Is.EqualTo(1));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesScopesRemoteFolderDeleteWithoutExistingState()
+        {
+            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            var inner = new FakeSyncPairWork();
+            var stateStore = new FakeSyncStateStore();
+            var batch = new RemoteChangeFeedBatch(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 12,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes:
+                [
+                    new SyncChangeDto
+                    {
+                        Id = 11,
+                        Kind = SyncChangeKind.FolderDeleted,
+                        LayoutId = Guid.NewGuid(),
+                        ItemId = Guid.NewGuid(),
+                        ParentNodeId = syncPair.RemoteRootNodeId,
+                        Name = "DeletedFolder",
+                        CreatedAt = DateTime.UtcNow,
+                    },
+                ]);
+            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+
+            await work.RunOnceAsync(syncPair);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.False);
+                Assert.That(inner.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { "DeletedFolder" }));
+                Assert.That(stateStore.LoadPairEntriesCallCount, Is.Zero);
+                Assert.That(stateStore.RemoteIdLookupCallCount, Is.EqualTo(1));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesKeepsFullRunWhenRemotePathCannotBeResolved()
         {
             var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);

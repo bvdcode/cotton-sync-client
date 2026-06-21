@@ -151,7 +151,7 @@ namespace Cotton.Sync.App.Runners
             bool hasOldPath = TryAddExistingFilePath(stateIndex, change, paths);
             if (change.Action == RemoteChangeAction.Deleted)
             {
-                return hasOldPath;
+                return hasOldPath || TryAddCurrentNamedPath(syncPair, stateIndex, change, paths);
             }
 
             if (!TryAddCurrentNamedPath(syncPair, stateIndex, change, paths))
@@ -173,7 +173,7 @@ namespace Cotton.Sync.App.Runners
             bool hasOldPath = TryAddExistingFolderPath(syncPair, stateIndex, change, paths);
             if (change.Action == RemoteChangeAction.Deleted)
             {
-                return hasOldPath;
+                return hasOldPath || TryAddCurrentNamedPath(syncPair, stateIndex, change, paths);
             }
 
             if (!TryAddCurrentNamedPath(syncPair, stateIndex, change, paths))
