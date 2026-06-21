@@ -95,6 +95,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private string _downloadedUpdateInstallerPath = string.Empty;
         private bool _isUpdateDownloadProgressVisible;
         private bool _isUpdateDownloadProgressIndeterminate;
+        private bool _isUpdateInstallHandoffActive;
         private double _updateDownloadProgressValue;
         private Task? _startupUpdateTask;
         private Task? _periodicUpdateTask;
@@ -508,13 +509,25 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
         }
 
-        public bool CanCheckForUpdates => !IsUpdateBusy;
+        public bool IsUpdateInstallHandoffActive
+        {
+            get => _isUpdateInstallHandoffActive;
+            private set
+            {
+                if (SetProperty(ref _isUpdateInstallHandoffActive, value))
+                {
+                    RaiseUpdateCommandStates();
+                }
+            }
+        }
 
-        public bool CanDownloadUpdate => IsUpdateAvailable && !IsUpdateReady && !IsUpdateBusy;
+        public bool CanCheckForUpdates => !IsUpdateBusy && !IsUpdateInstallHandoffActive;
 
-        public bool IsUpdateDownloadVisible => IsUpdateAvailable && !IsUpdateReady;
+        public bool CanDownloadUpdate => IsUpdateAvailable && !IsUpdateReady && !IsUpdateBusy && !IsUpdateInstallHandoffActive;
 
-        public bool CanInstallUpdate => IsUpdateReady && !IsUpdateBusy;
+        public bool IsUpdateDownloadVisible => IsUpdateAvailable && !IsUpdateReady && !IsUpdateInstallHandoffActive;
+
+        public bool CanInstallUpdate => IsUpdateReady && !IsUpdateBusy && !IsUpdateInstallHandoffActive;
 
         public string DeviceName
         {
@@ -2996,6 +3009,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             {
                 DesktopUpdateInstallResult result =
                     await _controller.InstallDownloadedUpdateAsync(installerPath).ConfigureAwait(true);
+                IsUpdateInstallHandoffActive = true;
                 UpdateStatusText = "Installing update";
                 UpdateDetailsText = result.ExitedDuringStartupProbe
                     ? "Update installer launched and handed off to Windows. Cotton Sync will restart after the update is installed."
@@ -3006,6 +3020,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 string message = ResolveUpdateFailureMessage(exception);
+                IsUpdateInstallHandoffActive = false;
                 UpdateStatusText = "Update failed";
                 UpdateDetailsText = message;
                 GlobalStatus = "Update failed";
@@ -3026,6 +3041,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             string previousGlobalStatus = GlobalStatus;
             IsUpdateBusy = true;
+            IsUpdateInstallHandoffActive = false;
             UpdateStatusText = busyStatus;
             if (updateGlobalStatusOnStart)
             {
@@ -3068,6 +3084,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private void ApplyUpdateStatus(DesktopUpdateStatusSnapshot status)
         {
             _downloadedUpdateInstallerPath = status.InstallerPath ?? string.Empty;
+            IsUpdateInstallHandoffActive = false;
             IsUpdateAvailable = status.IsUpdateAvailable;
             IsUpdateReady = status.IsInstallerReady;
             ClearUpdateDownloadProgress();
