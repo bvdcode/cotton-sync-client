@@ -195,7 +195,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
-        public async Task RunShellShareLinkTargetAsync_ResolvesSyncedFileWithoutPrintingLocalPath()
+        public async Task RunShellShareLinkTargetAsync_ResolvesSyncedFileButFailsWhenShareLinkApiIsUnavailableWithoutPrintingLocalPath()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(Path.Combine(_tempDirectory, "state"));
             string localRoot = Path.Combine(_tempDirectory, "cloud");
@@ -224,17 +224,18 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             string report = output.ToString();
             Assert.Multiple(() =>
             {
-                Assert.That(exitCode, Is.EqualTo(0));
+                Assert.That(exitCode, Is.EqualTo(1));
                 Assert.That(report, Does.Contain("Cotton Sync Desktop shell share-link target"));
                 Assert.That(report, Does.Contain("Status: resolved"));
                 Assert.That(report, Does.Contain("TargetResolved: true"));
                 Assert.That(report, Does.Contain("TargetHasRemoteIdentity: true"));
                 Assert.That(report, Does.Contain("ShareLinkApi: unavailable"));
                 Assert.That(report, Does.Contain("CanCreateShareLink: false"));
+                Assert.That(report, Does.Contain("FailureReason: share-link-api-unavailable"));
                 Assert.That(report, Does.Contain("TargetKind: file"));
                 Assert.That(report, Does.Contain("HasSyncPair: true"));
                 Assert.That(report, Does.Contain("HasRemoteFileId: true"));
-                Assert.That(report, Does.Contain("Result: passed"));
+                Assert.That(report, Does.Contain("Result: failed"));
                 Assert.That(report, Does.Not.Contain(localRoot));
                 Assert.That(report, Does.Not.Contain("report.pdf"));
             });

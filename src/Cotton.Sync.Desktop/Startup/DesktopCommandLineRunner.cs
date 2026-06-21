@@ -204,6 +204,8 @@ namespace Cotton.Sync.Desktop.Startup
                 .ResolveAsync(startupOptions.ShellShareLinkTargetPath, cancellationToken)
                 .ConfigureAwait(false);
             bool targetResolved = target.Status == ShellShareLinkTargetStatus.Resolved;
+            bool isShareLinkApiAvailable = false;
+            bool canCreateShareLink = target.CanCreateShareLink && isShareLinkApiAvailable;
 
             await output.WriteLineAsync("Cotton Sync Desktop shell share-link target").ConfigureAwait(false);
             await output.WriteLineAsync("Status: " + FormatShellShareLinkTargetStatus(target.Status))
@@ -214,8 +216,14 @@ namespace Cotton.Sync.Desktop.Startup
                 .ConfigureAwait(false);
             await output.WriteLineAsync("ShareLinkApi: unavailable")
                 .ConfigureAwait(false);
-            await output.WriteLineAsync("CanCreateShareLink: false")
+            await output.WriteLineAsync("CanCreateShareLink: " + FormatBoolean(canCreateShareLink))
                 .ConfigureAwait(false);
+            if (targetResolved && !canCreateShareLink)
+            {
+                await output.WriteLineAsync("FailureReason: share-link-api-unavailable")
+                    .ConfigureAwait(false);
+            }
+
             await output.WriteLineAsync("TargetKind: " + FormatShellShareLinkTargetKind(target.Kind))
                 .ConfigureAwait(false);
             await output.WriteLineAsync("HasSyncPair: " + FormatBoolean(target.SyncPairId.HasValue))
@@ -224,9 +232,9 @@ namespace Cotton.Sync.Desktop.Startup
                 .ConfigureAwait(false);
             await output.WriteLineAsync("HasRemoteFileId: " + FormatBoolean(target.RemoteFileId.HasValue))
                 .ConfigureAwait(false);
-            await output.WriteLineAsync(targetResolved ? "Result: passed" : "Result: failed")
+            await output.WriteLineAsync(canCreateShareLink ? "Result: passed" : "Result: failed")
                 .ConfigureAwait(false);
-            return targetResolved ? 0 : 1;
+            return canCreateShareLink ? 0 : 1;
         }
 
         public static async Task<int> RunLiveSyncSmokeAsync(
