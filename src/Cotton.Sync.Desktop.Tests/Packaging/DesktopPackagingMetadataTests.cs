@@ -642,6 +642,27 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         }
 
         [Test]
+        public void WindowsCloudFilesSelfTestTruthfulnessSmokeScript_CrossChecksSelfTestAgainstVfsSmoke()
+        {
+            string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/smoke-cloud-files-self-test-truthfulness.ps1"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(script, Does.Contain("[string]$AppExecutable"));
+                Assert.That(script, Does.Contain("[string]$DataDirectory"));
+                Assert.That(script, Does.Contain("[string]$VfsSmokeDataDirectory = \"\""));
+                Assert.That(script, Does.Contain("[string]$LocalRoot = \"S:\\CottonSyncVfsQa\\root\""));
+                Assert.That(script, Does.Contain("--self-test"));
+                Assert.That(script, Does.Contain("--windows-virtual-files-smoke"));
+                Assert.That(script, Does.Contain("--local-root"));
+                Assert.That(script, Does.Contain("'^\\[(OK|SKIP|FAIL)\\] Windows virtual files - '"));
+                Assert.That(script, Does.Contain("Windows virtual files self-test reported OK even though the VFS smoke failed."));
+                Assert.That(script, Does.Contain("Windows virtual files self-test reported '$windowsVirtualFilesStatus' even though the VFS smoke passed."));
+                Assert.That(script, Does.Contain("Verified Cloud Files self-test truthfulness"));
+            });
+        }
+
+        [Test]
         public void CiWorkflow_SmokesWindowsZipArchiveOnWindows()
         {
             string workflow = GetDesktopWorkflow();
@@ -783,6 +804,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-start-menu-launch.ps1"));
                 Assert.That(workflow, Does.Contain("-ExpectedExecutablePath $installedExe"));
                 Assert.That(workflow, Does.Contain("Cotton.Sync.Desktop.exe\""));
+                Assert.That(workflow, Does.Contain("Packaging/windows/smoke-cloud-files-self-test-truthfulness.ps1"));
+                Assert.That(workflow, Does.Contain("cotton-sync-vfs-self-test-truthfulness-data"));
                 Assert.That(workflow, Does.Contain("--self-test --data-dir"));
                 Assert.That(workflow, Does.Contain("-PublishDirectory $installDir"));
                 Assert.That(workflow, Does.Contain("-AppExecutable $installedExe"));
@@ -850,6 +873,29 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(notificationIdentitySmokeIndex, Is.GreaterThanOrEqualTo(0));
                 Assert.That(uploadInstallerIndex, Is.GreaterThanOrEqualTo(0));
                 Assert.That(notificationIdentitySmokeIndex, Is.LessThan(uploadInstallerIndex));
+                Assert.That(
+                    normalizedWorkflow,
+                    Does.Match("(?s)\\n  release:\\n    name: Publish Sync Client Release\\n    runs-on: ubuntu-latest\\n    needs:\\n      - linux\\n      - windows\\n      - cli-windows\\n      - release-checksums"));
+            });
+        }
+
+        [Test]
+        public void CiWorkflow_GatesWindowsReleaseOnCloudFilesSelfTestTruthfulnessBeforePublishing()
+        {
+            string workflow = GetDesktopWorkflow();
+            string normalizedWorkflow = workflow.Replace("\r\n", "\n", StringComparison.Ordinal);
+            int cloudFilesTruthfulnessSmokeIndex = normalizedWorkflow.IndexOf(
+                "Packaging/windows/smoke-cloud-files-self-test-truthfulness.ps1",
+                StringComparison.Ordinal);
+            int uploadInstallerIndex = normalizedWorkflow.IndexOf(
+                "Upload desktop Windows installer artifact",
+                StringComparison.Ordinal);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(cloudFilesTruthfulnessSmokeIndex, Is.GreaterThanOrEqualTo(0));
+                Assert.That(uploadInstallerIndex, Is.GreaterThanOrEqualTo(0));
+                Assert.That(cloudFilesTruthfulnessSmokeIndex, Is.LessThan(uploadInstallerIndex));
                 Assert.That(
                     normalizedWorkflow,
                     Does.Match("(?s)\\n  release:\\n    name: Publish Sync Client Release\\n    runs-on: ubuntu-latest\\n    needs:\\n      - linux\\n      - windows\\n      - cli-windows\\n      - release-checksums"));
