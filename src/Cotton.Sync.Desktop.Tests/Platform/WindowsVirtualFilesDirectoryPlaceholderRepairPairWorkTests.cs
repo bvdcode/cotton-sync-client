@@ -124,6 +124,49 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesRootOnlyRepairPublishesFinalizingProgress()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            var inner = new RecordingSyncPairWork();
+            var stateStore = new FakeSyncStateStore();
+            var cloudFiles = new RecordingCloudFilesAdapter();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var progressPublisher = new RecordingRunProgressPublisher();
+            var work = new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
+                inner,
+                stateStore,
+                cloudFiles,
+                diagnostics: diagnostics,
+                runProgressPublisher: progressPublisher);
+
+            await work.RunOnceAsync(syncPair, SyncRunRequest.Full);
+
+            WindowsCloudFilesDiagnosticEvent repairEvent = diagnostics.Snapshot().Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Has.Count.EqualTo(1));
+                Assert.That(cloudFiles.DirectoryPlaceholders, Is.Empty);
+                Assert.That(
+                    cloudFiles.SyncRootInSyncPairs.Select(static item => item.Id),
+                    Is.EqualTo(new[] { syncPair.Id }));
+                Assert.That(repairEvent.Status, Is.EqualTo("completed-root-only"));
+                Assert.That(
+                    progressPublisher.Progress.Select(static progress => new
+                    {
+                        progress.Stage,
+                        progress.FilesCompleted,
+                        progress.FilesTotal,
+                        progress.IsCompleted,
+                    }),
+                    Is.EqualTo(new[]
+                    {
+                        new { Stage = SyncRunProgressStage.FinalizingCloudFiles, FilesCompleted = 0, FilesTotal = (int?)1, IsCompleted = false },
+                        new { Stage = SyncRunProgressStage.FinalizingCloudFiles, FilesCompleted = 1, FilesTotal = (int?)1, IsCompleted = true },
+                    }));
+            });
+        }
+
+        [Test]
         public async Task SyncPairRunner_WhenDirectoryRepairFailsDoesNotReportIdleSuccess()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);

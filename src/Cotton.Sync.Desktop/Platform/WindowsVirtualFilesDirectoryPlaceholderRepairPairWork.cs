@@ -83,6 +83,8 @@ namespace Cotton.Sync.Desktop.Platform
 
             if (directories.Count == 0)
             {
+                DateTime rootRepairStartedAtUtc = DateTime.UtcNow;
+                PublishRepairProgress(syncPair.Id, rootRepairStartedAtUtc, repairedCount: 0, totalCount: 1, isCompleted: false);
                 try
                 {
                     _cloudFiles.SetSyncRootInSyncState(syncPair);
@@ -101,6 +103,7 @@ namespace Cotton.Sync.Desktop.Platform
                 }
 
                 stopwatch.Stop();
+                PublishRepairProgress(syncPair.Id, rootRepairStartedAtUtc, repairedCount: 1, totalCount: 1, isCompleted: true);
                 RecordRepairSummary(
                     syncPair,
                     status: "completed-root-only",
