@@ -3,6 +3,7 @@
 
 using Cotton.Sync.App.Activities;
 using Cotton.Sync.App.LocalChanges;
+using Cotton.Sync.App.Progress;
 using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.Status;
 using Cotton.Sync.App.SyncPairs;
@@ -62,6 +63,43 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                         new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs"),
                     }));
             });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesUploadedActivityPublishesFinalizingProgress()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            var activityPublisher = new InMemoryAppActivityPublisher();
+            var inner = new PublishingSyncPairWork(activityPublisher, "Docs/Reports/report.txt");
+            var stateStore = new FakeSyncStateStore();
+            stateStore.UpsertDirectory(syncPair, "Docs", Guid.Parse("33333333-3333-3333-3333-333333333333"));
+            stateStore.UpsertDirectory(syncPair, "Docs/Reports", Guid.Parse("44444444-4444-4444-4444-444444444444"));
+            var progressPublisher = new RecordingRunProgressPublisher();
+            var work = new WindowsVirtualFilesUploadFinalizationPairWork(
+                inner,
+                activityPublisher,
+                stateStore,
+                new RecordingCloudFilesAdapter(),
+                runProgressPublisher: progressPublisher);
+
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]));
+
+            Assert.That(
+                progressPublisher.Progress.Select(static progress => new
+                {
+                    progress.Stage,
+                    progress.FilesCompleted,
+                    progress.FilesTotal,
+                    progress.IsCompleted,
+                }),
+                Is.EqualTo(new[]
+                {
+                    new { Stage = SyncRunProgressStage.FinalizingCloudFiles, FilesCompleted = 0, FilesTotal = (int?)4, IsCompleted = false },
+                    new { Stage = SyncRunProgressStage.FinalizingCloudFiles, FilesCompleted = 1, FilesTotal = (int?)4, IsCompleted = false },
+                    new { Stage = SyncRunProgressStage.FinalizingCloudFiles, FilesCompleted = 2, FilesTotal = (int?)4, IsCompleted = false },
+                    new { Stage = SyncRunProgressStage.FinalizingCloudFiles, FilesCompleted = 3, FilesTotal = (int?)4, IsCompleted = false },
+                    new { Stage = SyncRunProgressStage.FinalizingCloudFiles, FilesCompleted = 4, FilesTotal = (int?)4, IsCompleted = true },
+                }));
         }
 
         [Test]
@@ -207,6 +245,21 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     "Uploaded " + _uploadedPath,
                     DateTime.UtcNow));
                 return Task.CompletedTask;
+            }
+        }
+
+        private class RecordingRunProgressPublisher : IAppRunProgressPublisher
+        {
+            public List<AppRunProgress> Progress { get; } = [];
+
+            public IDisposable Subscribe(IObserver<AppRunProgress> observer)
+            {
+                throw new NotSupportedException();
+            }
+
+            public void Publish(AppRunProgress progress)
+            {
+                Progress.Add(progress);
             }
         }
 
