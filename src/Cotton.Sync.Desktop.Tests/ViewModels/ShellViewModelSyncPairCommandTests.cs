@@ -3834,6 +3834,46 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task ExportDiagnosticsCommand_ShowsProgressWithoutBlockingGlobalControls()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(
+                CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")))
+            {
+                ExportDiagnosticsPath = "/home/vadim/.local/share/Cotton Sync/diagnostics/cotton-sync-diagnostics.zip",
+                ExportDiagnosticsStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
+                ExportDiagnosticsCompletion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously),
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            viewModel.ExportDiagnosticsCommand.Execute(null);
+            await controller.ExportDiagnosticsStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.IsExportingDiagnostics, Is.True);
+                Assert.That(viewModel.IsBusy, Is.False);
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Exporting diagnostics"));
+                Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Collecting logs and diagnostic state."));
+                Assert.That(viewModel.DiagnosticsExportProgressMessage, Is.EqualTo("Collecting logs and diagnostic state."));
+                Assert.That(viewModel.ExportDiagnosticsCommand.CanExecute(null), Is.False);
+                Assert.That(viewModel.SyncNowCommand.CanExecute(null), Is.True);
+                Assert.That(viewModel.OpenDataFolderCommand.CanExecute(null), Is.True);
+            });
+
+            controller.ExportDiagnosticsCompletion.SetResult(controller.ExportDiagnosticsPath);
+            await WaitForAsync(() => !viewModel.ExportDiagnosticsCommand.IsRunning);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.IsExportingDiagnostics, Is.False);
+                Assert.That(viewModel.HasLastDiagnosticsBundlePath, Is.True);
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Diagnostics exported"));
+            });
+        }
+
+        [Test]
         public async Task ExportDiagnosticsCommand_ReportsFailureAsActionRequired()
         {
             var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
@@ -6357,6 +6397,10 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             public Exception? ExportDiagnosticsException { get; set; }
 
+            public TaskCompletionSource? ExportDiagnosticsStarted { get; set; }
+
+            public TaskCompletionSource<string>? ExportDiagnosticsCompletion { get; set; }
+
             public TaskCompletionSource? RemoveSyncPairStarted { get; set; }
 
             public TaskCompletionSource? RemoveSyncPairCompletion { get; set; }
@@ -6760,9 +6804,15 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 ExportDiagnosticsCalls++;
+                ExportDiagnosticsStarted?.TrySetResult();
                 if (ExportDiagnosticsException is not null)
                 {
                     throw ExportDiagnosticsException;
+                }
+
+                if (ExportDiagnosticsCompletion is not null)
+                {
+                    return ExportDiagnosticsCompletion.Task.WaitAsync(cancellationToken);
                 }
 
                 return Task.FromResult(ExportDiagnosticsPath);

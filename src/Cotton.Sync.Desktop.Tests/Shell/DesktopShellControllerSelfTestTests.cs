@@ -275,7 +275,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
-        public async Task ExportDiagnosticsAsync_RecordsServerProbeTimeoutWithoutThrowing()
+        public async Task ExportDiagnosticsAsync_DoesNotRunSelfTestServerProbe()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             await using var server = new SlowServerInfoEndpoint(TimeSpan.FromSeconds(5));
@@ -295,19 +295,22 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             using ZipArchive archive = ZipFile.OpenRead(archivePath);
             string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
             using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
-            JsonElement serverIdentity = document.RootElement
+            JsonElement[] selfTestItems = document.RootElement
                 .GetProperty("selfTestItems")
                 .EnumerateArray()
-                .Single(item => string.Equals(
-                    item.GetProperty("name").GetString(),
-                    "Server identity",
-                    StringComparison.Ordinal));
+                .ToArray();
+            JsonElement diagnosticsExport = selfTestItems.Single(item => string.Equals(
+                item.GetProperty("name").GetString(),
+                "Diagnostics export",
+                StringComparison.Ordinal));
             Assert.Multiple(() =>
             {
-                Assert.That(serverIdentity.GetProperty("passed").GetBoolean(), Is.False);
+                Assert.That(server.ReceivedRequest, Is.False);
+                Assert.That(selfTestItems.Select(static item => item.GetProperty("name").GetString()), Does.Not.Contain("Server identity"));
+                Assert.That(diagnosticsExport.GetProperty("passed").GetBoolean(), Is.True);
                 Assert.That(
-                    serverIdentity.GetProperty("details").GetString(),
-                    Is.EqualTo("Cotton server check timed out after 0.05 seconds."));
+                    diagnosticsExport.GetProperty("details").GetString(),
+                    Is.EqualTo("Captured current diagnostics only; self-test probes were not run."));
             });
         }
 
@@ -1091,6 +1094,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             public Uri BaseAddress { get; }
 
+            public bool ReceivedRequest { get; private set; }
+
             public async ValueTask DisposeAsync()
             {
                 _cancellation.Cancel();
@@ -1110,6 +1115,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             {
                 HttpListenerContext context = await _listener.GetContextAsync().WaitAsync(_cancellation.Token)
                     .ConfigureAwait(false);
+                ReceivedRequest = true;
                 await Task.Delay(_delay, _cancellation.Token).ConfigureAwait(false);
                 byte[] payload = Encoding.UTF8.GetBytes("{\"product\":\"Cotton Cloud\",\"instanceIdHash\":\"test\"}");
                 context.Response.ContentType = "application/json";

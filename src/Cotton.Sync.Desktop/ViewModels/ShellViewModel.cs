@@ -134,6 +134,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private bool _isUpdateAvailable;
         private bool _isUpdateBusy;
         private bool _isUpdateReady;
+        private bool _isExportingDiagnostics;
         private bool _isRemovingSyncPair;
         private bool _isLoadingSnapshot = true;
         private bool _isStartWithOperatingSystemSupported = true;
@@ -290,7 +291,10 @@ namespace Cotton.Sync.Desktop.ViewModels
             OpenWebCommand = new AsyncRelayCommand(OpenWebAsync, () => IsSignedIn, HandleCommandError);
             ToggleActivityCommand = new AsyncRelayCommand(ToggleActivityAsync, () => IsSignedIn, HandleCommandError);
             SelfTestCommand = new AsyncRelayCommand(SelfTestAsync, () => !IsBusy, HandleCommandError);
-            ExportDiagnosticsCommand = new AsyncRelayCommand(ExportDiagnosticsAsync, () => !IsBusy, HandleCommandError);
+            ExportDiagnosticsCommand = new AsyncRelayCommand(
+                ExportDiagnosticsAsync,
+                () => !IsExportingDiagnostics,
+                HandleCommandError);
             CheckForUpdatesCommand = new AsyncRelayCommand(
                 CheckForUpdatesAsync,
                 () => CanCheckForUpdates,
@@ -309,7 +313,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 HandleCommandError);
             OpenDiagnosticsBundleFolderCommand = new AsyncRelayCommand(
                 OpenDiagnosticsBundleFolderAsync,
-                () => HasLastDiagnosticsBundlePath && !IsBusy,
+                () => HasLastDiagnosticsBundlePath && !IsExportingDiagnostics,
                 HandleCommandError);
             UseRemoteFolderCommand = new AsyncRelayCommand(UseRemoteFolderAsync, CanUseRemoteFolder, HandleCommandError);
         }
@@ -827,6 +831,28 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
         }
 
+        public bool IsExportingDiagnostics
+        {
+            get => _isExportingDiagnostics;
+            private set
+            {
+                if (SetProperty(ref _isExportingDiagnostics, value))
+                {
+                    ExportDiagnosticsCommand.RaiseCanExecuteChanged();
+                    OpenDiagnosticsBundleFolderCommand.RaiseCanExecuteChanged();
+                    OnPropertyChanged(nameof(IsStatusCardVisible));
+                    OnPropertyChanged(nameof(HasDashboardNotifications));
+                    OnPropertyChanged(nameof(HeaderStatusText));
+                    OnPropertyChanged(nameof(StatusCardTitle));
+                    OnPropertyChanged(nameof(StatusCardDetailText));
+                    OnPropertyChanged(nameof(HasStatusCardDetail));
+                    RefreshCurrentProgressText();
+                }
+            }
+        }
+
+        public string DiagnosticsExportProgressMessage => "Collecting logs and diagnostic state.";
+
         public bool IsBrowserSignInPending
         {
             get => _isBrowserSignInPending;
@@ -923,7 +949,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             && !HasActionRequired
             && !HasConflicts
             && !HasCurrentWorkProgress
-            && !HasHealthySyncedIdleState;
+            && (IsExportingDiagnostics || !HasHealthySyncedIdleState);
 
         public bool IsDashboardChromeVisible => !IsAddSyncPairWizardVisible && !IsSettingsVisible;
 
@@ -3115,7 +3141,8 @@ namespace Cotton.Sync.Desktop.ViewModels
         private async Task ExportDiagnosticsAsync()
         {
             bool preserveActionRequired = HasActionRequired;
-            IsBusy = true;
+            IsExportingDiagnostics = true;
+            GlobalStatus = "Exporting diagnostics";
             try
             {
                 string bundlePath = await _controller.ExportDiagnosticsAsync().ConfigureAwait(true);
@@ -3130,7 +3157,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
             finally
             {
-                IsBusy = false;
+                IsExportingDiagnostics = false;
             }
         }
 
@@ -4757,6 +4784,12 @@ namespace Cotton.Sync.Desktop.ViewModels
             if (!IsSignedIn)
             {
                 CurrentProgressText = "Sign in to start sync.";
+                return;
+            }
+
+            if (IsExportingDiagnostics)
+            {
+                CurrentProgressText = DiagnosticsExportProgressMessage;
                 return;
             }
 
