@@ -732,7 +732,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(update.GetProperty("isUpdateAvailable").GetBoolean(), Is.True);
                 Assert.That(update.GetProperty("hasInstallerAsset").GetBoolean(), Is.True);
                 Assert.That(update.GetProperty("isInstallerReady").GetBoolean(), Is.False);
-                Assert.That(update.GetProperty("isUpdateCacheDirectoryPresent").GetBoolean(), Is.True);
+                Assert.That(update.GetProperty("isUpdateCacheDirectoryPresent").GetBoolean(), Is.False);
                 Assert.That(update.GetProperty("hasPendingUpdate").GetBoolean(), Is.False);
             });
         }
