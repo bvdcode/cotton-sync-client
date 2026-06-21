@@ -147,6 +147,38 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task HandleFetchDataAsync_RecordsFailureWhenFullHydrationDoesNotReportInSync()
+        {
+            byte[] content = Encoding.UTF8.GetBytes("0123456789abcdef");
+            var provider = new FakeContentProvider(content);
+            var nativeApi = new FakeCloudFilesNativeApi
+            {
+                InSyncStateAfterSet = WindowsCloudFilesPlaceholderState.Placeholder,
+            };
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var coordinator = new WindowsCloudFilesHydrationCoordinator(
+                provider,
+                nativeApi,
+                _tempDirectory,
+                diagnostics);
+            WindowsCloudFilesFetchDataRequest request = CreateFetchRequest(content, offset: 0, length: content.Length);
+
+            await coordinator.HandleFetchDataAsync(request);
+
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.Transfers, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.Transfers[0].CompletionStatus, Is.EqualTo(WindowsCloudFilesTransferData.StatusSuccess));
+                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { request.NormalizedPath }));
+                Assert.That(diagnostic.Operation, Is.EqualTo("hydrate-in-sync"));
+                Assert.That(diagnostic.Status, Is.EqualTo("failed"));
+                Assert.That(diagnostic.RelativePath, Is.EqualTo("remote-only.txt"));
+                Assert.That(diagnostic.Details, Does.Contain("did not report in-sync state"));
+            });
+        }
+
+        [Test]
         public async Task HandleFetchDataAsync_ReportsHydrationDownloadProgress()
         {
             byte[] content = Encoding.UTF8.GetBytes("0123456789abcdef");
@@ -958,6 +990,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<string> InSyncPaths { get; } = [];
 
+            public WindowsCloudFilesPlaceholderState InSyncStateAfterSet { get; set; } =
+                WindowsCloudFilesPlaceholderState.Placeholder | WindowsCloudFilesPlaceholderState.InSync;
+
             public void RegisterSyncRoot(WindowsCloudFilesNativeSyncRootRegistration registration)
             {
             }
@@ -987,7 +1022,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public WindowsCloudFilesPlaceholderState GetPlaceholderState(string filePath)
             {
                 return InSyncPaths.Contains(filePath, StringComparer.OrdinalIgnoreCase)
-                    ? WindowsCloudFilesPlaceholderState.Placeholder | WindowsCloudFilesPlaceholderState.InSync
+                    ? InSyncStateAfterSet
                     : WindowsCloudFilesPlaceholderState.None;
             }
 

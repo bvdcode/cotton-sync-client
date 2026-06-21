@@ -316,6 +316,12 @@ namespace Cotton.Sync.Desktop.Platform
             try
             {
                 _nativeApi.SetInSyncState(request.NormalizedPath);
+                WindowsCloudFilesPlaceholderState state = _nativeApi.GetPlaceholderState(request.NormalizedPath);
+                if (!state.HasFlag(WindowsCloudFilesPlaceholderState.InSync))
+                {
+                    throw new InvalidOperationException(
+                        "Windows Cloud Files placeholder did not report in-sync state after hydration.");
+                }
             }
             catch (Exception exception)
             {
