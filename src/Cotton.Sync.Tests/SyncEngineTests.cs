@@ -1663,6 +1663,49 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesStreamsWhenUntrackedDirectoriesAndPlaceholdersRemain()
+        {
+            string relativePath = "Desktop/orphaned-placeholder.txt";
+            RemoteDirectorySnapshot remoteDirectory = RemoteDirectory("Desktop");
+            NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote"), sizeBytes: 12);
+            var remoteCrawler = new StreamingRemoteTreeCrawler(
+                _remoteRootNodeId,
+                [new RemoteFileSnapshot { RelativePath = relativePath, File = remote }],
+                [remoteDirectory]);
+            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            var scanner = new FakeLocalFileScanner(CloudFilesPlaceholderLocal(relativePath, remote.SizeBytes));
+            scanner.Directories.Add(LocalDirectory("Desktop"));
+            var engine = new SyncEngine(
+                scanner,
+                remoteCrawler,
+                remoteFileSynchronizer,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { InitialVirtualFilesPopulationQueueCapacity = 1 });
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
+                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
+                Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
+                Assert.That(remoteFileSynchronizer.Uploads, Is.Empty);
+                Assert.That(placeholderWriter.DirectoryRequests.Select(request => request.RelativePath), Is.EqualTo(new[] { "Desktop" }));
+                Assert.That(
+                    placeholderWriter.CompletedDirectoryTreeRequests.Single().Select(request => request.RelativePath),
+                    Is.EqualTo(new[] { "Desktop" }));
+                Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[] { relativePath }));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.PlaceholderCreated }));
+                Assert.That(state.Select(entry => entry.RelativePath), Is.EquivalentTo(new[] { "Desktop", relativePath }));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesStreamingPublishesDiscoveryAsPlaceholderProgress()
         {
             List<RemoteFileSnapshot> remoteFiles =

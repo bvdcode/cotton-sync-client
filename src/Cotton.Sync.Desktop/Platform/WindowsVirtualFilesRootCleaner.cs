@@ -7,6 +7,7 @@ namespace Cotton.Sync.Desktop.Platform
 {
     internal sealed class WindowsVirtualFilesRootCleaner : IWindowsVirtualFilesRootCleaner
     {
+        private const int FileAttributeRecallOnOpen = 0x00040000;
         private const int FileAttributeUnpinned = 0x00100000;
         private const int FileAttributeRecallOnDataAccess = 0x00400000;
 
@@ -98,8 +99,10 @@ namespace Cotton.Sync.Desktop.Platform
 
         internal static bool IsSafeCloudFilesPlaceholder(FileAttributes attributes)
         {
-            return HasRawAttribute(attributes, FileAttributeRecallOnDataAccess)
-                && HasRawAttribute(attributes, FileAttributeUnpinned);
+            return HasRawAttribute(attributes, FileAttributeUnpinned)
+                && (HasRawAttribute(attributes, FileAttributeRecallOnOpen)
+                    || HasRawAttribute(attributes, FileAttributeRecallOnDataAccess)
+                    || (attributes & FileAttributes.Offline) != 0);
         }
 
         private static string? InspectForRemoval(string rootPath)
