@@ -159,9 +159,7 @@ namespace Cotton.Sync.App.Runners
                 return false;
             }
 
-            return change.Action is RemoteChangeAction.Renamed or RemoteChangeAction.Moved
-                ? hasOldPath
-                : true;
+            return true;
         }
 
         private static bool TryAddFolderChangePaths(
@@ -181,9 +179,7 @@ namespace Cotton.Sync.App.Runners
                 return false;
             }
 
-            return change.Action is RemoteChangeAction.Renamed or RemoteChangeAction.Moved
-                ? hasOldPath
-                : true;
+            return true;
         }
 
         private static bool TryAddExistingFilePath(
