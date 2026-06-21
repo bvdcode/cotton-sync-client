@@ -28,6 +28,7 @@ namespace Cotton.Sync.App.LocalChanges
         private readonly HashSet<PendingLocalSyncRequest> _pendingRequests = [];
         private readonly Dictionary<Guid, ILocalSyncRootWatcher> _watchers = [];
         private readonly Dictionary<Guid, string> _localRootPaths = [];
+        private readonly Dictionary<Guid, SyncPairMode> _syncPairModes = [];
         private CancellationTokenSource? _lifetime;
 
         internal int PendingRequestCount
@@ -94,6 +95,7 @@ namespace Cotton.Sync.App.LocalChanges
                         watcher.Changed += OnLocalChange;
                         _watchers[syncPair.Id] = watcher;
                         _localRootPaths[syncPair.Id] = syncPair.LocalRootPath;
+                        _syncPairModes[syncPair.Id] = syncPair.Mode;
                         await watcher.StartAsync(cancellationToken).ConfigureAwait(false);
                     }
                 }
@@ -154,6 +156,7 @@ namespace Cotton.Sync.App.LocalChanges
 
             _watchers.Clear();
             _localRootPaths.Clear();
+            _syncPairModes.Clear();
         }
 
         private void OnLocalChange(object? sender, LocalSyncRootChange change)
@@ -173,14 +176,14 @@ namespace Cotton.Sync.App.LocalChanges
             {
                 if (_pendingSyncs.TryGetValue(change.SyncPairId, out PendingLocalSyncRequest? pendingSync))
                 {
-                    RecordChange(pendingSync, change);
+                    RecordChange(change.SyncPairId, pendingSync, change);
                     return;
                 }
 
                 var next = new PendingLocalSyncRequest(
                     CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token),
                     change.FullPath);
-                RecordChange(next, change);
+                RecordChange(change.SyncPairId, next, change);
                 _pendingSyncs.Add(change.SyncPairId, next);
                 _pendingRequests.Add(next);
                 next.Runner = RunDebouncedSyncAsync(change.SyncPairId, next);
@@ -311,14 +314,23 @@ namespace Cotton.Sync.App.LocalChanges
             return SyncRunRequest.ForLocalChangedPaths(relativePaths);
         }
 
-        private static void RecordChange(PendingLocalSyncRequest pendingSync, LocalSyncRootChange change)
+        private void RecordChange(Guid syncPairId, PendingLocalSyncRequest pendingSync, LocalSyncRootChange change)
         {
             bool requiresFullSync = RequiresFullSync(change);
-            pendingSync.RecordChange(change.FullPath, requiresFullSync);
+            int maxScopedChangedPaths = GetMaxScopedChangedPaths(syncPairId);
+            pendingSync.RecordChange(change.FullPath, requiresFullSync, maxScopedChangedPaths);
             if (!requiresFullSync && !string.IsNullOrWhiteSpace(change.OldFullPath))
             {
-                pendingSync.RecordChange(change.OldFullPath, requiresFullSync: false);
+                pendingSync.RecordChange(change.OldFullPath, requiresFullSync: false, maxScopedChangedPaths);
             }
+        }
+
+        private int GetMaxScopedChangedPaths(Guid syncPairId)
+        {
+            return _syncPairModes.TryGetValue(syncPairId, out SyncPairMode mode)
+                && mode == SyncPairMode.WindowsVirtualFiles
+                ? PendingLocalSyncRequest.MaxWindowsVirtualFilesScopedChangedPaths
+                : PendingLocalSyncRequest.MaxScopedChangedPaths;
         }
 
         private static bool RequiresFullSync(LocalSyncRootChange change)

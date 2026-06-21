@@ -6,6 +6,7 @@ namespace Cotton.Sync.App.LocalChanges
     internal class PendingLocalSyncRequest
     {
         public const int MaxScopedChangedPaths = 1024;
+        public const int MaxWindowsVirtualFilesScopedChangedPaths = 65_536;
 
         public PendingLocalSyncRequest(CancellationTokenSource cancellation, string changedPath)
         {
@@ -26,7 +27,10 @@ namespace Cotton.Sync.App.LocalChanges
 
         public Task? Runner { get; set; }
 
-        public void RecordChange(string changedPath, bool requiresFullSync)
+        public void RecordChange(
+            string changedPath,
+            bool requiresFullSync,
+            int maxScopedChangedPaths = MaxScopedChangedPaths)
         {
             ChangedPath = changedPath;
             if (requiresFullSync || RequiresFullSync)
@@ -37,7 +41,7 @@ namespace Cotton.Sync.App.LocalChanges
                 return;
             }
 
-            if (!ChangedPaths.Contains(changedPath) && ChangedPaths.Count >= MaxScopedChangedPaths)
+            if (!ChangedPaths.Contains(changedPath) && ChangedPaths.Count >= maxScopedChangedPaths)
             {
                 RequiresFullSync = true;
                 ChangedPaths.Clear();
