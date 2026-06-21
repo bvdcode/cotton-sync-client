@@ -250,6 +250,39 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task WindowsVirtualFilesLocalChangeStorm_AboveDefaultScopedLimitRequestsScopedSync()
+        {
+            int changeCount = PendingLocalSyncRequest.MaxScopedChangedPaths + 2_000;
+            SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            var watcherFactory = new FakeWatcherFactory();
+            var supervisor = new FakeSyncSupervisor();
+            var coordinator = new LocalChangeSyncCoordinator(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval);
+            await coordinator.StartAsync();
+
+            for (int index = 0; index < changeCount; index++)
+            {
+                watcherFactory.CreatedWatchers[syncPair.Id].Raise($"/home/user/Cotton/storm/file-{index}.txt");
+            }
+
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(1));
+                Assert.That(supervisor.LastRequest?.IsFull, Is.False);
+                Assert.That(supervisor.LastRequest?.LocalChangedPaths, Has.Count.EqualTo(changeCount));
+                Assert.That(supervisor.LastRequest?.LocalChangedPaths, Does.Contain("storm/file-0.txt"));
+                Assert.That(supervisor.LastRequest?.LocalChangedPaths, Does.Contain($"storm/file-{changeCount - 1}.txt"));
+            });
+        }
+
+        [Test]
         public async Task ProviderSuppressedFileChange_DoesNotRequestSync()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
@@ -546,7 +579,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             });
         }
 
-        private static SyncPairSettings CreatePair(bool isEnabled)
+        private static SyncPairSettings CreatePair(bool isEnabled, SyncPairMode mode = SyncPairMode.FullMirror)
         {
             return new SyncPairSettings
             {
@@ -556,7 +589,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 RemoteRootNodeId = Guid.NewGuid(),
                 RemoteDisplayPath = "/Documents",
                 IsEnabled = isEnabled,
-                Mode = SyncPairMode.FullMirror,
+                Mode = mode,
             };
         }
 
