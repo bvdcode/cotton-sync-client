@@ -75,6 +75,29 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             });
         }
 
+        [Test]
+        public void RunAsync_ExposesSteadyStateRepeatPhaseWithLocalScanGuard()
+        {
+            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(runner, Does.Contain("\"steady-state-repeat\""));
+                Assert.That(runner, Does.Contain("RunSteadyStateRepeatAsync("));
+                Assert.That(runner, Does.Contain("new SqliteSyncStateStore(paths.SyncStateDatabasePath)"));
+                Assert.That(runner, Does.Contain("new GuardLocalScanner()"));
+                Assert.That(runner, Does.Contain("new LargeStateFirstRemoteCrawler("));
+                Assert.That(runner, Does.Contain("new NoTransferRemoteFileSynchronizer()"));
+                Assert.That(runner, Does.Contain("Steady-state repeat pass avoided local placeholder-tree scanning."));
+                Assert.That(runner, Does.Contain("Steady-state repeat smoke must not scan the local placeholder tree."));
+                Assert.That(runner, Does.Contain("fullLocalScans="));
+                Assert.That(runner, Does.Contain("metadataTreeScans="));
+                Assert.That(runner, Does.Contain("pathLookups="));
+                Assert.That(runner, Does.Contain("streamingCrawls="));
+                Assert.That(runner, Does.Contain("transfers="));
+            });
+        }
+
         private static string GetDesktopFilePath(string relativePath)
         {
             string directory = TestContext.CurrentContext.TestDirectory;
