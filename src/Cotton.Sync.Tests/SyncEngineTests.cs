@@ -1819,6 +1819,7 @@ namespace Cotton.Sync.Tests
             var remoteFiles = new FakeRemoteFileSynchronizer();
             var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
             var stateStore = new SqliteSyncStateStore(_databasePath);
+            var runProgress = new RecordingProgress<SyncRunProgress>();
             var engine = new SyncEngine(
                 new FakeLocalFileScanner(),
                 remoteCrawler,
@@ -1826,10 +1827,14 @@ namespace Cotton.Sync.Tests
                 stateStore,
                 remoteFilePlaceholderWriter: placeholderWriter);
 
-            await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+            await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { RunProgress = runProgress });
 
             IReadOnlyList<RemoteDirectoryMaterializationRequest> completedTree =
                 placeholderWriter.CompletedDirectoryTreeRequests.Single();
+            SyncRunProgress finalizingProgress = runProgress.Values.Single(progress =>
+                progress.Stage == SyncRunProgressStage.FinalizingCloudFiles);
             Assert.Multiple(() =>
             {
                 Assert.That(
@@ -1844,6 +1849,12 @@ namespace Cotton.Sync.Tests
                 Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
                 Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
                 Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(finalizingProgress.FilesCompleted, Is.EqualTo(2));
+                Assert.That(finalizingProgress.FilesTotal, Is.EqualTo(2));
+                Assert.That(finalizingProgress.IsCompleted, Is.False);
+                Assert.That(
+                    runProgress.Values.FindIndex(progress => progress.Stage == SyncRunProgressStage.FinalizingCloudFiles),
+                    Is.LessThan(runProgress.Values.FindIndex(progress => progress.Stage == SyncRunProgressStage.Completed)));
             });
         }
 

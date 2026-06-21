@@ -749,6 +749,7 @@ namespace Cotton.Sync
                 startedAtUtc,
                 streamingPlan,
                 () => Volatile.Read(ref discoveredFiles),
+                () => Volatile.Read(ref discoveredDirectories),
                 () => Volatile.Read(ref completedFiles),
                 value => Volatile.Write(ref completedFiles, value),
                 () => lastPlaceholderProgressReportedAtUtc,
@@ -1168,6 +1169,7 @@ namespace Cotton.Sync
             DateTime startedAtUtc,
             InitialVirtualFilesStreamingPlan streamingPlan,
             Func<int> getDiscoveredFiles,
+            Func<int> getDiscoveredDirectories,
             Func<int> getCompletedFiles,
             Action<int> setCompletedFiles,
             Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
@@ -1341,6 +1343,16 @@ namespace Cotton.Sync
                 if (directoryTreeFinalizationRequests is { Count: > 0 }
                     && _remoteDirectoryTreePopulationObserver is not null)
                 {
+                    int directoriesDiscovered = Math.Max(
+                        directoryTreeFinalizationRequests.Count,
+                        getDiscoveredDirectories());
+                    ReportRunProgress(
+                        options,
+                        SyncRunProgressStage.FinalizingCloudFiles,
+                        directoryTreeFinalizationRequests.Count,
+                        directoriesDiscovered,
+                        null,
+                        startedAtUtc);
                     await _remoteDirectoryTreePopulationObserver
                         .AfterDirectoryTreePopulationAsync(
                             directoryTreeFinalizationRequests.Values.ToArray(),
