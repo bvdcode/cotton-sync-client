@@ -11,6 +11,7 @@ namespace Cotton.Sync.Desktop.Platform
             Guid.Parse("f8c8b2b5-39f4-4d60-a4c3-09e7c01bde12");
         private static readonly Guid SelfTestSyncPairId =
             Guid.Parse("728a21a6-4ed6-40a8-8942-d95d5d49d9ff");
+        private const string SelfTestProbeRootName = "cotton-cloud-files-self-test";
 
         public static SyncPairModeCapabilitySnapshot CreateSyncPairModeCapabilities()
         {
@@ -156,11 +157,11 @@ namespace Cotton.Sync.Desktop.Platform
                 "Windows Cloud Files API, StorageProvider sync-root registration, CfConnectSyncRoot, and cleanup are available.");
         }
 
-        private static string CreateProbeRoot()
+        internal static string CreateProbeRoot()
         {
             return Path.Combine(
                 Path.GetTempPath(),
-                "cotton-cloud-files-self-test-" + Guid.NewGuid().ToString("N"));
+                SelfTestProbeRootName);
         }
 
         private static string CleanSingleLine(string value)
