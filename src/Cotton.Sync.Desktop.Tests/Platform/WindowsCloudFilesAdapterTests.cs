@@ -773,6 +773,40 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void SetInSyncState_FailsWhenDirectoryStillReportsPartialState()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi
+            {
+                InSyncStateAfterSet = WindowsCloudFilesPlaceholderState.InSync | WindowsCloudFilesPlaceholderState.Partial,
+            };
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                diagnostics: diagnostics,
+                isReparsePoint: _ => true);
+            string root = Path.Combine(_tempDirectory, "root");
+            Directory.CreateDirectory(Path.Combine(root, "Projects"));
+            SyncPairSettings syncPair = CreateSyncPair(root);
+
+            InvalidOperationException? exception = Assert.Throws<InvalidOperationException>(
+                () => adapter.SetInSyncState(syncPair, "Projects"));
+
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception?.Message, Does.Contain("fully populated state"));
+                Assert.That(exception?.Message, Does.Contain("Partial"));
+                Assert.That(
+                    nativeApi.InSyncPaths,
+                    Is.EqualTo(new[] { Path.GetFullPath(Path.Combine(root, "Projects")) }));
+                Assert.That(diagnostic.Operation, Is.EqualTo("set-in-sync-state"));
+                Assert.That(diagnostic.Status, Is.EqualTo("failed"));
+                Assert.That(diagnostic.RelativePath, Is.EqualTo("Projects"));
+            });
+        }
+
+        [Test]
         public void SetInSyncState_SkipsNonPlaceholderFileWhenReparseHeuristicIsFalse()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
@@ -850,6 +884,40 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 Assert.That(exception?.Message, Does.Contain("did not report in-sync state"));
                 Assert.That(exception?.Message, Does.Contain("SyncRoot"));
+                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { Path.GetFullPath(root) }));
+                Assert.That(diagnostic.Operation, Is.EqualTo("set-sync-root-in-sync-state"));
+                Assert.That(diagnostic.Status, Is.EqualTo("failed"));
+                Assert.That(diagnostic.RelativePath, Is.Null);
+            });
+        }
+
+        [Test]
+        public void SetSyncRootInSyncState_FailsWhenRootStillReportsPartialState()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi
+            {
+                InSyncStateAfterSet =
+                    WindowsCloudFilesPlaceholderState.SyncRoot
+                    | WindowsCloudFilesPlaceholderState.InSync
+                    | WindowsCloudFilesPlaceholderState.Partial,
+            };
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                diagnostics: diagnostics);
+            string root = Path.Combine(_tempDirectory, "root");
+            Directory.CreateDirectory(root);
+            SyncPairSettings syncPair = CreateSyncPair(root);
+
+            InvalidOperationException? exception = Assert.Throws<InvalidOperationException>(
+                () => adapter.SetSyncRootInSyncState(syncPair));
+
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception?.Message, Does.Contain("fully populated state"));
+                Assert.That(exception?.Message, Does.Contain("Partial"));
                 Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { Path.GetFullPath(root) }));
                 Assert.That(diagnostic.Operation, Is.EqualTo("set-sync-root-in-sync-state"));
                 Assert.That(diagnostic.Status, Is.EqualTo("failed"));
