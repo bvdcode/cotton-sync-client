@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
+using Cotton.Sdk;
 using Cotton.Sync.Desktop.Composition;
 using Cotton.Sync.Desktop.Diagnostics;
 using Cotton.Sync.App.Preferences;
 using Cotton.Sync.App.Platform;
 using Cotton.Sync.App.ShellIntegration;
 using Cotton.Sync.App.SyncPairs;
+using Cotton.Sync.Desktop.Auth;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Shell;
 using Cotton.Sync.Desktop.Updates;
@@ -182,6 +184,7 @@ namespace Cotton.Sync.Desktop.Startup
             DesktopStartupOptions startupOptions,
             TextWriter output,
             IShellShareLinkTargetResolver? resolver = null,
+            IDesktopShellShareLinkClient? shareLinkClient = null,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(paths);
@@ -204,8 +207,11 @@ namespace Cotton.Sync.Desktop.Startup
                 .ResolveAsync(startupOptions.ShellShareLinkTargetPath, cancellationToken)
                 .ConfigureAwait(false);
             bool targetResolved = target.Status == ShellShareLinkTargetStatus.Resolved;
-            bool isShareLinkApiAvailable = false;
-            bool canCreateShareLink = target.CanCreateShareLink && isShareLinkApiAvailable;
+            DesktopShellShareLinkResult shareLinkResult = target.CanCreateShareLink
+                ? await CreateShellShareLinkAsync(paths, startupOptions, target, shareLinkClient, cancellationToken)
+                    .ConfigureAwait(false)
+                : DesktopShellShareLinkResult.Unavailable("target-not-shareable");
+            bool canCreateShareLink = target.CanCreateShareLink && shareLinkResult.IsCreated;
 
             await output.WriteLineAsync("Cotton Sync Desktop shell share-link target").ConfigureAwait(false);
             await output.WriteLineAsync("Status: " + FormatShellShareLinkTargetStatus(target.Status))
@@ -214,13 +220,21 @@ namespace Cotton.Sync.Desktop.Startup
                 .ConfigureAwait(false);
             await output.WriteLineAsync("TargetHasRemoteIdentity: " + FormatBoolean(target.CanCreateShareLink))
                 .ConfigureAwait(false);
-            await output.WriteLineAsync("ShareLinkApi: unavailable")
+            await output.WriteLineAsync("ShareLinkApi: " + (shareLinkResult.IsApiAvailable ? "available" : "unavailable"))
                 .ConfigureAwait(false);
             await output.WriteLineAsync("CanCreateShareLink: " + FormatBoolean(canCreateShareLink))
                 .ConfigureAwait(false);
-            if (targetResolved && !canCreateShareLink)
+            await output.WriteLineAsync("ShareLinkCreated: " + FormatBoolean(shareLinkResult.IsCreated))
+                .ConfigureAwait(false);
+            if (shareLinkResult.IsCreated && !string.IsNullOrWhiteSpace(shareLinkResult.ShareLink))
             {
-                await output.WriteLineAsync("FailureReason: share-link-api-unavailable")
+                await output.WriteLineAsync("ShareLink: " + CleanSingleLine(shareLinkResult.ShareLink))
+                    .ConfigureAwait(false);
+            }
+
+            if (targetResolved && !canCreateShareLink && !string.IsNullOrWhiteSpace(shareLinkResult.FailureReason))
+            {
+                await output.WriteLineAsync("FailureReason: " + shareLinkResult.FailureReason)
                     .ConfigureAwait(false);
             }
 
@@ -235,6 +249,62 @@ namespace Cotton.Sync.Desktop.Startup
             await output.WriteLineAsync(canCreateShareLink ? "Result: passed" : "Result: failed")
                 .ConfigureAwait(false);
             return canCreateShareLink ? 0 : 1;
+        }
+
+        private static async Task<DesktopShellShareLinkResult> CreateShellShareLinkAsync(
+            DesktopAppPaths paths,
+            DesktopStartupOptions startupOptions,
+            ShellShareLinkTarget target,
+            IDesktopShellShareLinkClient? shareLinkClient,
+            CancellationToken cancellationToken)
+        {
+            if (shareLinkClient is not null)
+            {
+                return await shareLinkClient.CreateShareLinkAsync(target, cancellationToken).ConfigureAwait(false);
+            }
+
+            Uri? serverUrl = await ResolveShellShareLinkServerUrlAsync(paths, startupOptions, cancellationToken)
+                .ConfigureAwait(false);
+            if (serverUrl is null)
+            {
+                return DesktopShellShareLinkResult.Unavailable("server-url-missing");
+            }
+
+            using HttpClient httpClient = DesktopHttpClientFactory.Create(TimeSpan.FromSeconds(30));
+            var tokenStore = new FileCottonTokenStore(paths.TokenStorePath);
+            var sdkOptions = new CottonSdkOptions
+            {
+                BaseAddress = serverUrl,
+                UserAgent = DesktopDeviceIdentity.CreateUserAgent(),
+                DeviceName = DesktopDeviceIdentity.CreateDeviceName(),
+            };
+            await using var cottonClient = new CottonCloudClient(
+                httpClient,
+                tokenStore,
+                sdkOptions,
+                new DesktopTraceLoggerFactory());
+            var client = new DesktopShellShareLinkClient(
+                httpClient,
+                tokenStore,
+                cottonClient.Auth,
+                serverUrl);
+            return await client.CreateShareLinkAsync(target, cancellationToken).ConfigureAwait(false);
+        }
+
+        private static async Task<Uri?> ResolveShellShareLinkServerUrlAsync(
+            DesktopAppPaths paths,
+            DesktopStartupOptions startupOptions,
+            CancellationToken cancellationToken)
+        {
+            if (startupOptions.ServerUrl is not null)
+            {
+                return startupOptions.ServerUrl;
+            }
+
+            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            await preferencesStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            AppPreferences preferences = await preferencesStore.GetAsync(cancellationToken).ConfigureAwait(false);
+            return preferences.RememberedServerUrl;
         }
 
         public static async Task<int> RunLiveSyncSmokeAsync(
