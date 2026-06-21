@@ -60,6 +60,19 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             });
         }
 
+        [Test]
+        public void WindowsShellHelper_SingleUnregisterCleansOrphanedShellNamespaceRoot()
+        {
+            string program = File.ReadAllText(GetWindowsShellProgramPath());
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(program, Does.Contain("RemoveOrphanedShellNamespaceRoot(syncRootId)"));
+                Assert.That(program, Does.Contain("\"unregister shell-namespace=\""));
+                Assert.That(program, Does.Contain("StorageProviderSyncRootManager.IsSupported()"));
+            });
+        }
+
         [TestCase("win-x64")]
         [TestCase("linux-x64")]
         public void PublishProfile_DefinesSelfContainedPortableArtifact(string runtimeIdentifier)
@@ -1217,6 +1230,14 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 "src",
                 "Cotton.Sync.WindowsShell",
                 "Cotton.Sync.WindowsShell.csproj"));
+        }
+
+        private static string GetWindowsShellProgramPath()
+        {
+            return GetRepositoryFilePath(Path.Combine(
+                "src",
+                "Cotton.Sync.WindowsShell",
+                "Program.cs"));
         }
 
         private static string GetPublishProfilePath(string runtimeIdentifier)

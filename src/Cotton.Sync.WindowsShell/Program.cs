@@ -133,17 +133,25 @@ namespace Cotton.Sync.WindowsShell
         private static int Unregister(string account)
         {
             string syncRootId = CreateSyncRootId(account);
-            bool isRegistered = StorageProviderSyncRootManager
+            bool isRegistered = StorageProviderSyncRootManager.IsSupported()
+                && StorageProviderSyncRootManager
                 .GetCurrentSyncRoots()
                 .Any(root => string.Equals(root.Id, syncRootId, StringComparison.Ordinal));
-            if (!isRegistered)
+
+            if (isRegistered)
+            {
+                StorageProviderSyncRootManager.Unregister(syncRootId);
+                Console.WriteLine("unregistered " + syncRootId);
+            }
+            else
             {
                 Console.WriteLine("not registered " + syncRootId);
-                return 0;
             }
 
-            StorageProviderSyncRootManager.Unregister(syncRootId);
-            Console.WriteLine("unregistered " + syncRootId);
+            int shellRootsRemoved = RemoveOrphanedShellNamespaceRoot(syncRootId);
+            Console.WriteLine(
+                "unregister shell-namespace="
+                + shellRootsRemoved.ToString(System.Globalization.CultureInfo.InvariantCulture));
             return 0;
         }
 
@@ -160,6 +168,18 @@ namespace Cotton.Sync.WindowsShell
 
         private static int RemoveOrphanedShellNamespaceRoots(string syncRootIdPrefix)
         {
+            return RemoveShellNamespaceRoots(
+                syncRootId => syncRootId.StartsWith(syncRootIdPrefix, StringComparison.Ordinal));
+        }
+
+        private static int RemoveOrphanedShellNamespaceRoot(string syncRootId)
+        {
+            return RemoveShellNamespaceRoots(
+                currentSyncRootId => string.Equals(currentSyncRootId, syncRootId, StringComparison.Ordinal));
+        }
+
+        private static int RemoveShellNamespaceRoots(Func<string, bool> matchesSyncRootId)
+        {
             using RegistryKey? namespaceKey = Registry.CurrentUser.OpenSubKey(ShellNamespaceRegistryPath, writable: true);
             if (namespaceKey is null)
             {
@@ -171,7 +191,7 @@ namespace Cotton.Sync.WindowsShell
             {
                 using RegistryKey? syncRootKey = namespaceKey.OpenSubKey(subKeyName);
                 if (syncRootKey?.GetValue(null) is not string syncRootId
-                    || !syncRootId.StartsWith(syncRootIdPrefix, StringComparison.Ordinal))
+                    || !matchesSyncRootId(syncRootId))
                 {
                     continue;
                 }
