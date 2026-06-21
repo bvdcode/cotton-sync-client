@@ -941,7 +941,7 @@
                             BorderThickness="1"
                             IsVisible="{Binding IsRemoveSyncPairConfirmationVisible}">
                       <Grid ColumnDefinitions="*,Auto,Auto"
-                            RowDefinitions="Auto,Auto,Auto"
+                            RowDefinitions="Auto,Auto,Auto,Auto"
                             ColumnSpacing="6"
                             RowSpacing="2">
                         <TextBlock Text="{Binding RemoveSyncPairConfirmationTitle}"
@@ -969,6 +969,18 @@
                                    Classes="secondary"
                                    FontSize="11"
                                    TextTrimming="CharacterEllipsis" />
+                        <StackPanel Grid.Row="3"
+                                    Grid.ColumnSpan="3"
+                                    Margin="0,4,0,0"
+                                    Spacing="4"
+                                    IsVisible="{Binding IsRemovingSyncPair}">
+                          <ProgressBar Height="3"
+                                       IsIndeterminate="True" />
+                          <TextBlock Text="{Binding RemoveSyncPairProgressMessage}"
+                                     Classes="secondary"
+                                     FontSize="11"
+                                     TextWrapping="Wrap" />
+                        </StackPanel>
                       </Grid>
                     </Border>
                   </Grid>

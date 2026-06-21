@@ -107,6 +107,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsRemoveSyncPairConfirmationVisible, Is.True);
                 Assert.That(viewModel.RemoveSyncPairConfirmationTitle, Is.EqualTo("Remove Documents?"));
                 Assert.That(viewModel.RemoveSyncPairConfirmationMessage, Is.EqualTo("Stops syncing this folder. Local files stay on this device; cloud files stay online."));
+                Assert.That(viewModel.RemoveSyncPairConfirmationPath, Does.Contain("Local folder:"));
                 Assert.That(viewModel.RemoveSyncPairConfirmationPath, Does.EndWith("Documents"));
                 Assert.That(viewModel.ConfirmRemoveSelectedSyncPairCommand.CanExecute(null), Is.True);
                 Assert.That(viewModel.RemoveSelectedSyncPairCommand.CanExecute(null), Is.False);
@@ -152,7 +153,47 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             {
                 Assert.That(viewModel.RemoveSyncPairConfirmationTitle, Is.EqualTo("Remove Desktop?"));
                 Assert.That(viewModel.RemoveSyncPairConfirmationMessage, Is.EqualTo("Stops syncing this folder. Cloud files stay online; the local placeholder folder is removed when it has no regular local files."));
+                Assert.That(viewModel.RemoveSyncPairConfirmationPath, Does.Contain("Local folder:"));
                 Assert.That(viewModel.RemoveSyncPairConfirmationPath, Does.EndWith("Desktop"));
+            });
+        }
+
+        [Test]
+        public async Task ConfirmRemoveSelectedSyncPairCommand_ShowsProgressWhileVirtualFilesRootIsRemoved()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(
+                CreateSignedInSnapshot(CreatePair(syncPairId, "Desktop", "Idle", mode: SyncPairMode.WindowsVirtualFiles)))
+            {
+                RemoveSyncPairStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
+                RemoveSyncPairCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            await ExecuteAsync(viewModel.RemoveSelectedSyncPairCommand);
+
+            viewModel.ConfirmRemoveSelectedSyncPairCommand.Execute(null);
+            await controller.RemoveSyncPairStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.IsRemovingSyncPair, Is.True);
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Removing sync folder"));
+                Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Removing Cloud Files sync root and cleaning local placeholder folder."));
+                Assert.That(viewModel.RemoveSyncPairProgressMessage, Is.EqualTo("Removing Cloud Files sync root and cleaning local placeholder folder."));
+                Assert.That(viewModel.IsRemoveSyncPairConfirmationVisible, Is.True);
+                Assert.That(viewModel.ConfirmRemoveSelectedSyncPairCommand.CanExecute(null), Is.False);
+                Assert.That(viewModel.CancelRemoveSyncPairCommand.CanExecute(null), Is.False);
+            });
+
+            controller.RemoveSyncPairCompletion.SetResult();
+            await WaitForAsync(() => !viewModel.ConfirmRemoveSelectedSyncPairCommand.IsRunning);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.IsRemovingSyncPair, Is.False);
+                Assert.That(viewModel.IsRemoveSyncPairConfirmationVisible, Is.False);
+                Assert.That(viewModel.SyncPairs, Is.Empty);
             });
         }
 
@@ -6316,6 +6357,10 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             public Exception? ExportDiagnosticsException { get; set; }
 
+            public TaskCompletionSource? RemoveSyncPairStarted { get; set; }
+
+            public TaskCompletionSource? RemoveSyncPairCompletion { get; set; }
+
             public string? OpenedFolderPath { get; private set; }
 
             public Exception? SignInException { get; set; }
@@ -6407,11 +6452,15 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 });
             }
 
-            public Task RemoveSyncPairAsync(Guid syncPairId, CancellationToken cancellationToken = default)
+            public async Task RemoveSyncPairAsync(Guid syncPairId, CancellationToken cancellationToken = default)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 RemovedSyncPairId = syncPairId;
-                return Task.CompletedTask;
+                RemoveSyncPairStarted?.TrySetResult();
+                if (RemoveSyncPairCompletion is not null)
+                {
+                    await RemoveSyncPairCompletion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                }
             }
 
             public Task RenameSyncPairAsync(
