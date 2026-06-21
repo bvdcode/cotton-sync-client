@@ -4613,6 +4613,59 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task UseRemoteFolderCommand_ShowsSetupProgressWithoutGlobalBusyWhileAddPairIsPending()
+        {
+            Guid existingPairId = Guid.NewGuid();
+            var addPairCompletion = new TaskCompletionSource<SyncPairSettings>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(
+                CreatePlatformCapabilities(windowsVirtualFilesSupported: true),
+                CreatePair(existingPairId, "Documents", "Idle")))
+            {
+                AddSyncPairCompletion = addPairCompletion,
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            viewModel.LocalFolderPath = @"C:\Users\QA\Cloud";
+            await ExecuteAsync(viewModel.ShowAddSyncPairCommand);
+            viewModel.RemoteFolderPath = "/";
+            viewModel.IsWindowsVirtualFilesSyncModeSelected = true;
+
+            Task commandTask = ExecuteAsync(viewModel.UseRemoteFolderCommand);
+            await WaitForAsync(() => controller.AddedSyncPairRequest is not null && viewModel.IsAddingSyncPair);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.IsBusy, Is.False);
+                Assert.That(viewModel.IsAddSyncPairSetupProgressVisible, Is.True);
+                Assert.That(viewModel.AddSyncPairSetupProgressMessage, Is.EqualTo("Preparing virtual files"));
+                Assert.That(viewModel.UseRemoteFolderCommand.CanExecute(null), Is.False);
+                Assert.That(viewModel.SyncNowCommand.CanExecute(null), Is.True);
+            });
+
+            addPairCompletion.SetResult(new SyncPairSettings
+            {
+                Id = Guid.NewGuid(),
+                DisplayName = "Cloud",
+                LocalRootPath = @"C:\Users\QA\Cloud",
+                RemoteRootNodeId = Guid.NewGuid(),
+                RemoteDisplayPath = "/",
+                IsEnabled = true,
+                Mode = SyncPairMode.WindowsVirtualFiles,
+                CreatedAtUtc = DateTime.UtcNow,
+                UpdatedAtUtc = DateTime.UtcNow,
+            });
+            await commandTask;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.IsAddingSyncPair, Is.False);
+                Assert.That(viewModel.IsAddSyncPairSetupProgressVisible, Is.False);
+                Assert.That(viewModel.IsAddSyncPairWizardVisible, Is.False);
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Sync requested"));
+            });
+        }
+
+        [Test]
         public async Task ChangeSelectedSyncPairRemoteFolderCommand_OpensCloudPickerForSelectedPair()
         {
             Guid syncPairId = Guid.NewGuid();
@@ -6411,6 +6464,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             public TaskCompletionSource? RemoveSyncPairCompletion { get; set; }
 
+            public TaskCompletionSource<SyncPairSettings>? AddSyncPairCompletion { get; set; }
+
             public string? OpenedFolderPath { get; private set; }
 
             public Exception? SignInException { get; set; }
@@ -6647,18 +6702,20 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 AddedSyncPairRequest = request;
-                return Task.FromResult(new SyncPairSettings
-                {
-                    Id = Guid.NewGuid(),
-                    DisplayName = Path.GetFileName(request.LocalFolderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
-                    LocalRootPath = request.LocalFolderPath,
-                    RemoteRootNodeId = Guid.NewGuid(),
-                    RemoteDisplayPath = request.RemoteFolderPath,
-                    IsEnabled = true,
-                    Mode = request.Mode,
-                    CreatedAtUtc = DateTime.UtcNow,
-                    UpdatedAtUtc = DateTime.UtcNow,
-                });
+                Task<SyncPairSettings> addTask = AddSyncPairCompletion?.Task
+                    ?? Task.FromResult(new SyncPairSettings
+                    {
+                        Id = Guid.NewGuid(),
+                        DisplayName = Path.GetFileName(request.LocalFolderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
+                        LocalRootPath = request.LocalFolderPath,
+                        RemoteRootNodeId = Guid.NewGuid(),
+                        RemoteDisplayPath = request.RemoteFolderPath,
+                        IsEnabled = true,
+                        Mode = request.Mode,
+                        CreatedAtUtc = DateTime.UtcNow,
+                        UpdatedAtUtc = DateTime.UtcNow,
+                    });
+                return addTask.WaitAsync(cancellationToken);
             }
 
             public async Task SyncAllAsync(CancellationToken cancellationToken = default)
