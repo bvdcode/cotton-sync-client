@@ -137,6 +137,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private bool _isUpdateReady;
         private bool _isExportingDiagnostics;
         private bool _isRemovingSyncPair;
+        private bool _isAddingSyncPair;
         private bool _isLoadingSnapshot = true;
         private bool _isStartWithOperatingSystemSupported = true;
         private bool _isTrayLifecycleSupported;
@@ -227,8 +228,14 @@ namespace Cotton.Sync.Desktop.ViewModels
             ChangeServerCommand = new AsyncRelayCommand(ChangeServerAsync, () => !IsBusy, HandleCommandError);
             AddSyncPairCommand = new AsyncRelayCommand(AddSyncPairAsync, CanAddSyncPair, HandleCommandError);
             BrowseLocalFolderCommand = new AsyncRelayCommand(BrowseLocalFolderAsync, CanBrowseLocalFolder, HandleCommandError);
-            CancelAddSyncPairCommand = new AsyncRelayCommand(CancelAddSyncPairAsync, () => !IsBusy, HandleCommandError);
-            CancelCreateRemoteFolderCommand = new AsyncRelayCommand(CancelCreateRemoteFolderAsync, () => !IsBusy, HandleCommandError);
+            CancelAddSyncPairCommand = new AsyncRelayCommand(
+                CancelAddSyncPairAsync,
+                () => !IsBusy && !IsAddingSyncPair,
+                HandleCommandError);
+            CancelCreateRemoteFolderCommand = new AsyncRelayCommand(
+                CancelCreateRemoteFolderAsync,
+                () => !IsBusy && !IsAddingSyncPair,
+                HandleCommandError);
             CreateRemoteFolderCommand = new AsyncRelayCommand(CreateRemoteFolderAsync, CanCreateRemoteFolder, HandleCommandError);
             OpenRemoteFolderCommand = new AsyncRelayCommand(OpenRemoteFolderAsync, CanOpenRemoteFolder, HandleCommandError);
             RemoteFolderUpCommand = new AsyncRelayCommand(RemoteFolderUpAsync, CanGoUpRemoteFolder, HandleCommandError);
@@ -866,6 +873,27 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public string DiagnosticsExportProgressMessage => "Collecting logs and diagnostic state.";
 
+        public bool IsAddingSyncPair
+        {
+            get => _isAddingSyncPair;
+            private set
+            {
+                if (SetProperty(ref _isAddingSyncPair, value))
+                {
+                    OnPropertyChanged(nameof(IsAddSyncPairSetupProgressVisible));
+                    OnPropertyChanged(nameof(AddSyncPairSetupProgressMessage));
+                    RaiseAddSyncPairFlowCommandStates();
+                }
+            }
+        }
+
+        public bool IsAddSyncPairSetupProgressVisible =>
+            IsAddingSyncPair && IsAddSyncPairWizardVisible && !IsEditingSelectedSyncPairRemoteFolder;
+
+        public string AddSyncPairSetupProgressMessage => SelectedSyncMode == SyncPairMode.WindowsVirtualFiles
+            ? "Preparing virtual files"
+            : "Adding sync folder";
+
         public bool IsBrowserSignInPending
         {
             get => _isBrowserSignInPending;
@@ -1326,6 +1354,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                     OnPropertyChanged(nameof(IsFullMirrorSyncModeSelected));
                     OnPropertyChanged(nameof(IsWindowsVirtualFilesSyncModeSelected));
                     OnPropertyChanged(nameof(SelectedSyncModeLabel));
+                    OnPropertyChanged(nameof(AddSyncPairSetupProgressMessage));
                 }
             }
         }
@@ -2192,7 +2221,9 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private async Task AddSyncPairAsync()
         {
-            IsBusy = true;
+            IsAddingSyncPair = true;
+            GlobalStatus = "Adding sync folder";
+            RefreshCurrentProgressText();
             try
             {
                 SyncPairSettings syncPair = await _controller.AddSyncPairAsync(
@@ -2216,7 +2247,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
             finally
             {
-                IsBusy = false;
+                IsAddingSyncPair = false;
             }
         }
 
@@ -2282,6 +2313,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private bool CanGoUpRemoteFolder()
         {
             return !IsBusy
+                && !IsAddingSyncPair
                 && CanUseAddSyncPairFlow
                 && IsAddSyncPairWizardVisible
                 && RemoteBrowserPath != "/";
@@ -3295,6 +3327,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private bool CanAddSyncPair()
         {
             return !IsBusy
+                && !IsAddingSyncPair
                 && CanUseAddSyncPairFlow
                 && IsSignedIn
                 && !IsEditingSelectedSyncPairRemoteFolder
@@ -3304,7 +3337,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private bool CanBrowseLocalFolder()
         {
-            return !IsBusy && CanUseAddSyncPairFlow && !IsEditingSelectedSyncPairRemoteFolder;
+            return !IsBusy && !IsAddingSyncPair && CanUseAddSyncPairFlow && !IsEditingSelectedSyncPairRemoteFolder;
         }
 
         private bool CanUseRemoteFolder()
@@ -3317,6 +3350,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private bool CanChangeSelectedSyncPairRemoteFolder()
         {
             return !IsBusy
+                && !IsAddingSyncPair
                 && CanUseAddSyncPairFlow
                 && IsSignedIn
                 && SelectedSyncPair is not null
@@ -3327,6 +3361,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private bool CanOpenRemoteFolder()
         {
             return !IsBusy
+                && !IsAddingSyncPair
                 && CanUseAddSyncPairFlow
                 && SelectedRemoteFolder is not null;
         }
@@ -3335,12 +3370,14 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             return IsSignedIn
                 && !IsBusy
+                && !IsAddingSyncPair
                 && CanUseAddSyncPairFlow;
         }
 
         private bool CanShowCreateRemoteFolder()
         {
             return !IsBusy
+                && !IsAddingSyncPair
                 && CanUseAddSyncPairFlow
                 && IsAddSyncPairCloudStepVisible;
         }
@@ -3395,6 +3432,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private bool CanCreateRemoteFolder()
         {
             return !IsBusy
+                && !IsAddingSyncPair
                 && CanUseAddSyncPairFlow
                 && IsSignedIn
                 && IsAddSyncPairCloudStepVisible
@@ -4725,6 +4763,8 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             AddSyncPairCommand.RaiseCanExecuteChanged();
             BrowseLocalFolderCommand.RaiseCanExecuteChanged();
+            CancelAddSyncPairCommand.RaiseCanExecuteChanged();
+            CancelCreateRemoteFolderCommand.RaiseCanExecuteChanged();
             CreateRemoteFolderCommand.RaiseCanExecuteChanged();
             OpenRemoteFolderCommand.RaiseCanExecuteChanged();
             RemoteFolderUpCommand.RaiseCanExecuteChanged();
@@ -4760,6 +4800,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             OnPropertyChanged(nameof(IsAddSyncPairLocalStepVisible));
             OnPropertyChanged(nameof(IsAddSyncPairCloudStepVisible));
             OnPropertyChanged(nameof(IsCreateRemoteFolderVisible));
+            OnPropertyChanged(nameof(IsAddSyncPairSetupProgressVisible));
             OnPropertyChanged(nameof(AddSyncPairWizardTitle));
             OnPropertyChanged(nameof(AddSyncPairWizardSubtitle));
             OnPropertyChanged(nameof(IsAddSyncPairLocalSummaryVisible));

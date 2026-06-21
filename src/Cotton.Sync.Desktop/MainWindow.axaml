@@ -1341,8 +1341,10 @@
             </ScrollViewer>
 
             <Grid Grid.Row="3"
+                  RowDefinitions="Auto,Auto"
                   ColumnDefinitions="*,Auto"
                   ColumnSpacing="8"
+                  RowSpacing="6"
                   IsVisible="{Binding IsAddSyncPairCloudStepVisible}">
               <StackPanel Orientation="Horizontal"
                           Spacing="6"
@@ -1366,6 +1368,21 @@
                       Classes="primary"
                       ToolTip.Tip="{Binding RemoteFolderWizardPrimaryActionToolTip}"
                       Command="{Binding UseRemoteFolderCommand}" />
+
+              <StackPanel Grid.Row="1"
+                          Grid.ColumnSpan="2"
+                          Orientation="Horizontal"
+                          Spacing="8"
+                          IsVisible="{Binding IsAddSyncPairSetupProgressVisible}">
+                <ProgressBar Width="96"
+                             Height="3"
+                             IsIndeterminate="True"
+                             VerticalAlignment="Center" />
+                <TextBlock Text="{Binding AddSyncPairSetupProgressMessage}"
+                           Classes="secondary"
+                           FontSize="12"
+                           VerticalAlignment="Center" />
+              </StackPanel>
             </Grid>
           </Grid>
         </Border>
