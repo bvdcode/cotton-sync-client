@@ -160,6 +160,73 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesScopesNestedCreatesFromSameRemoteBatch()
+        {
+            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            var inner = new FakeSyncPairWork();
+            var stateStore = new FakeSyncStateStore();
+            Guid parentFolderId = Guid.NewGuid();
+            Guid childFolderId = Guid.NewGuid();
+            Guid fileId = Guid.NewGuid();
+            var batch = new RemoteChangeFeedBatch(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 14,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes:
+                [
+                    new SyncChangeDto
+                    {
+                        Id = 11,
+                        Kind = SyncChangeKind.FolderCreated,
+                        LayoutId = Guid.NewGuid(),
+                        ItemId = parentFolderId,
+                        ParentNodeId = syncPair.RemoteRootNodeId,
+                        Name = "Parent",
+                        CreatedAt = DateTime.UtcNow,
+                    },
+                    new SyncChangeDto
+                    {
+                        Id = 12,
+                        Kind = SyncChangeKind.FolderCreated,
+                        LayoutId = Guid.NewGuid(),
+                        ItemId = childFolderId,
+                        ParentNodeId = parentFolderId,
+                        Name = "Child",
+                        CreatedAt = DateTime.UtcNow,
+                    },
+                    new SyncChangeDto
+                    {
+                        Id = 13,
+                        Kind = SyncChangeKind.FileCreated,
+                        LayoutId = Guid.NewGuid(),
+                        ItemId = fileId,
+                        ParentNodeId = childFolderId,
+                        Name = "remote.txt",
+                        CreatedAt = DateTime.UtcNow,
+                    },
+                ]);
+            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+
+            await work.RunOnceAsync(syncPair);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.False);
+                Assert.That(
+                    inner.LastRequest?.LocalChangedPaths,
+                    Is.EquivalentTo(new[] { "Parent", "Parent/Child", "Parent/Child/remote.txt" }));
+                Assert.That(stateStore.LoadPairEntriesCallCount, Is.Zero);
+                Assert.That(stateStore.RemoteIdLookupCallCount, Is.EqualTo(1));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesKeepsFullRunWhenRemotePathCannotBeResolved()
         {
             var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);

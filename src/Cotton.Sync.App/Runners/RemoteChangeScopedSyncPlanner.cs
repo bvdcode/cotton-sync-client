@@ -80,7 +80,52 @@ namespace Cotton.Sync.App.Runners
                 index.Add(entry);
             }
 
+            AddCreatedFolderPaths(syncPair, snapshot.Changes, index);
             return index;
+        }
+
+        private static void AddCreatedFolderPaths(
+            SyncPairSettings syncPair,
+            IReadOnlyList<RemoteChangeImpact> changes,
+            RemoteChangeStateIndex stateIndex)
+        {
+            bool added;
+            do
+            {
+                added = false;
+                foreach (RemoteChangeImpact change in changes)
+                {
+                    if (!TryAddCreatedFolderPath(syncPair, stateIndex, change))
+                    {
+                        continue;
+                    }
+
+                    added = true;
+                }
+            }
+            while (added);
+        }
+
+        private static bool TryAddCreatedFolderPath(
+            SyncPairSettings syncPair,
+            RemoteChangeStateIndex stateIndex,
+            RemoteChangeImpact change)
+        {
+            if (change.TargetKind != RemoteChangeTargetKind.Folder
+                || change.Action is not (RemoteChangeAction.Created or RemoteChangeAction.Restored)
+                || !change.NodeId.HasValue
+                || change.NodeId.Value == syncPair.RemoteRootNodeId
+                || !change.ParentNodeId.HasValue
+                || stateIndex.TryGetNodePath(change.NodeId.Value, out _)
+                || !stateIndex.TryGetNodePath(change.ParentNodeId.Value, out string? parentPath)
+                || parentPath is null
+                || !TryCombinePath(parentPath, change.Name, out string? relativePath))
+            {
+                return false;
+            }
+
+            stateIndex.AddDirectory(change.NodeId.Value, relativePath);
+            return true;
         }
 
         private static bool TryAddChangePaths(
@@ -253,7 +298,7 @@ namespace Cotton.Sync.App.Runners
                 ArgumentNullException.ThrowIfNull(entry);
                 if (entry.Kind == SyncEntryKind.Directory && entry.RemoteNodeId.HasValue)
                 {
-                    _nodePathById[entry.RemoteNodeId.Value] = SyncPath.Normalize(entry.RelativePath);
+                    AddDirectory(entry.RemoteNodeId.Value, entry.RelativePath);
                     return;
                 }
 
@@ -261,6 +306,11 @@ namespace Cotton.Sync.App.Runners
                 {
                     _filePathById[entry.RemoteFileId.Value] = SyncPath.Normalize(entry.RelativePath);
                 }
+            }
+
+            public void AddDirectory(Guid nodeId, string relativePath)
+            {
+                _nodePathById[nodeId] = SyncPath.Normalize(relativePath);
             }
 
             public bool TryGetNodePath(Guid nodeId, out string? relativePath)
