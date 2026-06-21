@@ -5728,6 +5728,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.UpdateDownloadProgressValue, Is.EqualTo(100d));
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Downloading update"));
                 Assert.That(viewModel.CanCheckForUpdates, Is.False);
+                Assert.That(viewModel.CanDownloadUpdate, Is.False);
+                Assert.That(viewModel.IsUpdateDownloadVisible, Is.False);
             });
 
             downloadCompletion.SetResult(controller.UpdateDownloadSnapshot!);
@@ -5784,6 +5786,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.UpdateDownloadProgressValue, Is.EqualTo(0d));
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Downloading update"));
                 Assert.That(viewModel.CanCheckForUpdates, Is.False);
+                Assert.That(viewModel.CanDownloadUpdate, Is.False);
+                Assert.That(viewModel.IsUpdateDownloadVisible, Is.False);
             });
 
             downloadCompletion.SetResult(controller.UpdateDownloadSnapshot!);

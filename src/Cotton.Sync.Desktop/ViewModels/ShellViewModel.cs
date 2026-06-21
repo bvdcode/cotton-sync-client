@@ -532,7 +532,10 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public bool CanDownloadUpdate => IsUpdateAvailable && !IsUpdateReady && !IsUpdateBusy && !IsUpdateInstallHandoffActive;
 
-        public bool IsUpdateDownloadVisible => IsUpdateAvailable && !IsUpdateReady && !IsUpdateInstallHandoffActive;
+        public bool IsUpdateDownloadVisible => IsUpdateAvailable
+            && !IsUpdateReady
+            && !IsUpdateBusy
+            && !IsUpdateInstallHandoffActive;
 
         public bool CanInstallUpdate => IsUpdateReady && !IsUpdateBusy && !IsUpdateInstallHandoffActive;
 
