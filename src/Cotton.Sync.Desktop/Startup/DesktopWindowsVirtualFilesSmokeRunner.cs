@@ -867,11 +867,13 @@ namespace Cotton.Sync.Desktop.Startup
                 var scanner = new GuardLocalScanner();
                 var crawler = new LargeStateFirstRemoteCrawler(syncPair.RemoteRootNodeId, remoteFiles);
                 var noTransfers = new NoTransferRemoteFileSynchronizer();
+                var placeholderWriter = new GuardRemoteFilePlaceholderWriter();
                 var engine = new SyncEngine(
                     scanner,
                     crawler,
                     noTransfers,
-                    stateStore);
+                    stateStore,
+                    remoteFilePlaceholderWriter: placeholderWriter);
                 var syncPairCore = new SyncPair
                 {
                     SyncPairId = syncPair.Id.ToString("D"),
@@ -892,6 +894,7 @@ namespace Cotton.Sync.Desktop.Startup
                     && crawler.StreamingCrawlCalls == 1
                     && crawler.SnapshotCrawlCalls == 0
                     && noTransfers.TransferCalls == 0
+                    && placeholderWriter.PlaceholderWriteCalls == 0
                     && syncTimer.Elapsed <= TimeSpan.FromSeconds(30);
                 if (passed)
                 {
@@ -910,7 +913,9 @@ namespace Cotton.Sync.Desktop.Startup
                         + ", pathLookups="
                         + scanner.PathLookupCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
                         + ", transfers="
-                        + noTransfers.TransferCalls.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        + noTransfers.TransferCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", placeholderWrites="
+                        + placeholderWriter.PlaceholderWriteCalls.ToString(System.Globalization.CultureInfo.InvariantCulture))
                         .ConfigureAwait(false);
                 }
                 else
@@ -933,7 +938,9 @@ namespace Cotton.Sync.Desktop.Startup
                         + ", pathLookups="
                         + scanner.PathLookupCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
                         + ", transfers="
-                        + noTransfers.TransferCalls.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        + noTransfers.TransferCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", placeholderWrites="
+                        + placeholderWriter.PlaceholderWriteCalls.ToString(System.Globalization.CultureInfo.InvariantCulture))
                         .ConfigureAwait(false);
                 }
             }
@@ -2778,6 +2785,55 @@ namespace Cotton.Sync.Desktop.Startup
                 CancellationToken cancellationToken = default)
             {
                 throw new InvalidOperationException("Steady-state repeat smoke must not hash local placeholder content.");
+            }
+        }
+
+        private sealed class GuardRemoteFilePlaceholderWriter :
+            IRemoteFilePlaceholderWriter,
+            IRemoteFilePlaceholderPopulationObserver
+        {
+            private int _beginPopulationCalls;
+            private int _endPopulationCalls;
+            private int _placeholderWriteCalls;
+
+            public int BeginPopulationCalls => Volatile.Read(ref _beginPopulationCalls);
+
+            public int EndPopulationCalls => Volatile.Read(ref _endPopulationCalls);
+
+            public int PlaceholderWriteCalls => Volatile.Read(ref _placeholderWriteCalls);
+
+            public IDisposable BeginPopulation(string syncPairId, string localRootPath)
+            {
+                Interlocked.Increment(ref _beginPopulationCalls);
+                return new PopulationLease(this);
+            }
+
+            public Task<RemoteFilePlaceholderResult> CreatePlaceholderAsync(
+                RemoteFilePlaceholderRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                Interlocked.Increment(ref _placeholderWriteCalls);
+                throw new InvalidOperationException(
+                    "Steady-state repeat smoke must not create or refresh placeholders.");
+            }
+
+            private sealed class PopulationLease : IDisposable
+            {
+                private GuardRemoteFilePlaceholderWriter? _owner;
+
+                public PopulationLease(GuardRemoteFilePlaceholderWriter owner)
+                {
+                    _owner = owner;
+                }
+
+                public void Dispose()
+                {
+                    GuardRemoteFilePlaceholderWriter? owner = Interlocked.Exchange(ref _owner, null);
+                    if (owner is not null)
+                    {
+                        Interlocked.Increment(ref owner._endPopulationCalls);
+                    }
+                }
             }
         }
 
