@@ -6,6 +6,7 @@ using Cotton.Nodes;
 using Cotton.Sdk.Nodes;
 using Cotton.Sync;
 using Cotton.Sync.State;
+using System.Diagnostics;
 using System.Threading.Channels;
 
 namespace Cotton.Sync.Remote
@@ -123,7 +124,12 @@ namespace Cotton.Sync.Remote
                             if (TryAddDirectory(snapshot, directory))
                             {
                                 directoriesScanned++;
-                                ReportDirectoryScanProgress(progress, filesScanned, directoriesScanned, pagesScanned: 0, directory.RelativePath);
+                                ReportDirectoryScanProgress(
+                                    progress,
+                                    filesScanned,
+                                    directoriesScanned,
+                                    RemoteTreePageReadMetrics.Empty,
+                                    directory.RelativePath);
                             }
                         },
                         cancellationToken)
@@ -133,7 +139,12 @@ namespace Cotton.Sync.Remote
                     if (TryAddFile(snapshot, resolution.File))
                     {
                         filesScanned++;
-                        ReportScanProgress(progress, filesScanned, directoriesScanned, pagesScanned: 0, resolution.File.RelativePath);
+                        ReportScanProgress(
+                            progress,
+                            filesScanned,
+                            directoriesScanned,
+                            RemoteTreePageReadMetrics.Empty,
+                            resolution.File.RelativePath);
                     }
 
                     continue;
@@ -184,19 +195,33 @@ namespace Cotton.Sync.Remote
             int directoriesScanned = 0;
             int filesScanned = 0;
             int pagesScanned = 0;
-            progress?.Report(new RemoteTreeScanProgress(filesScanned, directoriesScanned, currentPath: null, pagesScanned: pagesScanned));
+            TimeSpan pageReadLatencyTotal = TimeSpan.Zero;
+            TimeSpan pageReadLatencyMax = TimeSpan.Zero;
+            TimeSpan lastPageReadLatency = TimeSpan.Zero;
+            progress?.Report(new RemoteTreeScanProgress(
+                filesScanned,
+                directoriesScanned,
+                currentPath: null,
+                pagesScanned: pagesScanned,
+                pageReadLatencyTotal: pageReadLatencyTotal,
+                pageReadLatencyMax: pageReadLatencyMax,
+                lastPageReadLatency: lastPageReadLatency));
 
             while (pending.Count > 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 RemoteCrawlFrame frame = pending.Pop();
-                NodeContentDto children = await _nodes.GetChildrenAsync(
-                    frame.Node.Id,
-                    frame.Page,
-                    _pageSize,
-                    depth: 0,
-                    cancellationToken).ConfigureAwait(false);
+                RemoteTreePageReadResult pageRead = await ReadChildrenPageAsync(frame, cancellationToken).ConfigureAwait(false);
+                NodeContentDto children = pageRead.Children;
                 pagesScanned++;
+                lastPageReadLatency = pageRead.Elapsed;
+                pageReadLatencyTotal += pageRead.Elapsed;
+                pageReadLatencyMax = Max(pageReadLatencyMax, pageRead.Elapsed);
+                RemoteTreePageReadMetrics pageMetrics = new(
+                    pagesScanned,
+                    pageReadLatencyTotal,
+                    pageReadLatencyMax,
+                    lastPageReadLatency);
                 var childDirectories = new List<RemoteCrawlFrame>(children.Nodes.Count);
                 foreach (NodeDto childNode in children.Nodes)
                 {
@@ -212,7 +237,7 @@ namespace Cotton.Sync.Remote
                         Node = childNode,
                     });
                     directoriesScanned++;
-                    ReportDirectoryScanProgress(progress, filesScanned, directoriesScanned, pagesScanned, relativePath);
+                    ReportDirectoryScanProgress(progress, filesScanned, directoriesScanned, pageMetrics, relativePath);
                     childDirectories.Add(new RemoteCrawlFrame(childNode, relativePath, Page: 1, Loaded: 0));
                 }
 
@@ -230,7 +255,7 @@ namespace Cotton.Sync.Remote
                         File = file,
                     });
                     filesScanned++;
-                    ReportScanProgress(progress, filesScanned, directoriesScanned, pagesScanned, relativePath);
+                    ReportScanProgress(progress, filesScanned, directoriesScanned, pageMetrics, relativePath);
                 }
 
                 int count = children.Nodes.Count + children.Files.Count;
@@ -246,7 +271,14 @@ namespace Cotton.Sync.Remote
                 }
             }
 
-            progress?.Report(new RemoteTreeScanProgress(filesScanned, directoriesScanned, currentPath: null, pagesScanned: pagesScanned));
+            progress?.Report(new RemoteTreeScanProgress(
+                filesScanned,
+                directoriesScanned,
+                currentPath: null,
+                pagesScanned: pagesScanned,
+                pageReadLatencyTotal: pageReadLatencyTotal,
+                pageReadLatencyMax: pageReadLatencyMax,
+                lastPageReadLatency: lastPageReadLatency));
             return root;
         }
 
@@ -268,6 +300,9 @@ namespace Cotton.Sync.Remote
             int directoriesScanned = 0;
             int filesScanned = 0;
             int pagesScanned = 0;
+            long pageReadLatencyTotalTicks = 0;
+            long pageReadLatencyMaxTicks = 0;
+            long lastPageReadLatencyTicks = 0;
             progress?.Report(new RemoteTreeScanProgress(filesScanned, directoriesScanned, currentPath: null, pagesScanned: pagesScanned));
 
             async ValueTask EnqueueFrameAsync(RemoteCrawlFrame frame)
@@ -303,9 +338,15 @@ namespace Cotton.Sync.Remote
                     () => Volatile.Read(ref filesScanned),
                     () => Volatile.Read(ref directoriesScanned),
                     () => Volatile.Read(ref pagesScanned),
+                    () => Volatile.Read(ref pageReadLatencyTotalTicks),
+                    () => Volatile.Read(ref pageReadLatencyMaxTicks),
+                    () => Volatile.Read(ref lastPageReadLatencyTicks),
                     value => Interlocked.Add(ref filesScanned, value),
                     value => Interlocked.Add(ref directoriesScanned, value),
                     value => Interlocked.Add(ref pagesScanned, value),
+                    value => Interlocked.Add(ref pageReadLatencyTotalTicks, value),
+                    value => UpdateMax(ref pageReadLatencyMaxTicks, value),
+                    value => Interlocked.Exchange(ref lastPageReadLatencyTicks, value),
                     EnqueueFrameAsync,
                     CompleteFrame,
                     cancellationToken))
@@ -324,7 +365,10 @@ namespace Cotton.Sync.Remote
                 Volatile.Read(ref filesScanned),
                 Volatile.Read(ref directoriesScanned),
                 currentPath: null,
-                pagesScanned: Volatile.Read(ref pagesScanned)));
+                pagesScanned: Volatile.Read(ref pagesScanned),
+                pageReadLatencyTotal: TimeSpan.FromTicks(Volatile.Read(ref pageReadLatencyTotalTicks)),
+                pageReadLatencyMax: TimeSpan.FromTicks(Volatile.Read(ref pageReadLatencyMaxTicks)),
+                lastPageReadLatency: TimeSpan.FromTicks(Volatile.Read(ref lastPageReadLatencyTicks))));
             return root;
         }
 
@@ -335,9 +379,15 @@ namespace Cotton.Sync.Remote
             Func<int> getFilesScanned,
             Func<int> getDirectoriesScanned,
             Func<int> getPagesScanned,
+            Func<long> getPageReadLatencyTotalTicks,
+            Func<long> getPageReadLatencyMaxTicks,
+            Func<long> getLastPageReadLatencyTicks,
             Func<int, int> addFilesScanned,
             Func<int, int> addDirectoriesScanned,
             Func<int, int> addPagesScanned,
+            Func<long, long> addPageReadLatencyTicks,
+            Func<long, long> updatePageReadLatencyMaxTicks,
+            Func<long, long> setLastPageReadLatencyTicks,
             Func<RemoteCrawlFrame, ValueTask> enqueueFrameAsync,
             Action completeFrame,
             CancellationToken cancellationToken)
@@ -347,13 +397,17 @@ namespace Cotton.Sync.Remote
                 try
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    NodeContentDto children = await _nodes.GetChildrenAsync(
-                        frame.Node.Id,
-                        frame.Page,
-                        _pageSize,
-                        depth: 0,
-                        cancellationToken).ConfigureAwait(false);
+                    RemoteTreePageReadResult pageRead = await ReadChildrenPageAsync(frame, cancellationToken).ConfigureAwait(false);
+                    NodeContentDto children = pageRead.Children;
                     int pagesScanned = addPagesScanned(1);
+                    long lastPageReadLatencyTicks = setLastPageReadLatencyTicks(pageRead.Elapsed.Ticks);
+                    long pageReadLatencyTotalTicks = addPageReadLatencyTicks(pageRead.Elapsed.Ticks);
+                    long pageReadLatencyMaxTicks = updatePageReadLatencyMaxTicks(pageRead.Elapsed.Ticks);
+                    RemoteTreePageReadMetrics pageMetrics = new(
+                        pagesScanned,
+                        TimeSpan.FromTicks(pageReadLatencyTotalTicks),
+                        TimeSpan.FromTicks(pageReadLatencyMaxTicks),
+                        TimeSpan.FromTicks(lastPageReadLatencyTicks));
                     var childDirectories = new List<RemoteCrawlFrame>(children.Nodes.Count);
                     foreach (NodeDto childNode in children.Nodes)
                     {
@@ -370,7 +424,7 @@ namespace Cotton.Sync.Remote
                         };
                         await sink.AddDirectoryAsync(directory, cancellationToken).ConfigureAwait(false);
                         int directoriesScanned = addDirectoriesScanned(1);
-                        ReportDirectoryScanProgress(progress, getFilesScanned(), directoriesScanned, pagesScanned, relativePath);
+                        ReportDirectoryScanProgress(progress, getFilesScanned(), directoriesScanned, pageMetrics, relativePath);
                         childDirectories.Add(new RemoteCrawlFrame(childNode, relativePath, Page: 1, Loaded: 0));
                     }
 
@@ -392,7 +446,16 @@ namespace Cotton.Sync.Remote
                                 cancellationToken)
                             .ConfigureAwait(false);
                         int filesScanned = addFilesScanned(1);
-                        ReportScanProgress(progress, filesScanned, getDirectoriesScanned(), getPagesScanned(), relativePath);
+                        ReportScanProgress(
+                            progress,
+                            filesScanned,
+                            getDirectoriesScanned(),
+                            new RemoteTreePageReadMetrics(
+                                getPagesScanned(),
+                                TimeSpan.FromTicks(getPageReadLatencyTotalTicks()),
+                                TimeSpan.FromTicks(getPageReadLatencyMaxTicks()),
+                                TimeSpan.FromTicks(getLastPageReadLatencyTicks())),
+                            relativePath);
                     }
 
                     int count = children.Nodes.Count + children.Files.Count;
@@ -524,7 +587,7 @@ namespace Cotton.Sync.Remote
             IProgress<RemoteTreeScanProgress>? progress,
             int filesScanned,
             int directoriesScanned,
-            int pagesScanned,
+            RemoteTreePageReadMetrics pageMetrics,
             string currentPath)
         {
             if (progress is null)
@@ -534,7 +597,14 @@ namespace Cotton.Sync.Remote
 
             if (filesScanned == 1 || filesScanned % ProgressReportItemInterval == 0)
             {
-                progress.Report(new RemoteTreeScanProgress(filesScanned, directoriesScanned, currentPath, pagesScanned));
+                progress.Report(new RemoteTreeScanProgress(
+                    filesScanned,
+                    directoriesScanned,
+                    currentPath,
+                    pageMetrics.PagesScanned,
+                    pageMetrics.PageReadLatencyTotal,
+                    pageMetrics.PageReadLatencyMax,
+                    pageMetrics.LastPageReadLatency));
             }
         }
 
@@ -542,7 +612,7 @@ namespace Cotton.Sync.Remote
             IProgress<RemoteTreeScanProgress>? progress,
             int filesScanned,
             int directoriesScanned,
-            int pagesScanned,
+            RemoteTreePageReadMetrics pageMetrics,
             string currentPath)
         {
             if (progress is null)
@@ -552,8 +622,51 @@ namespace Cotton.Sync.Remote
 
             if (directoriesScanned == 1 || directoriesScanned % ProgressReportItemInterval == 0)
             {
-                progress.Report(new RemoteTreeScanProgress(filesScanned, directoriesScanned, currentPath, pagesScanned));
+                progress.Report(new RemoteTreeScanProgress(
+                    filesScanned,
+                    directoriesScanned,
+                    currentPath,
+                    pageMetrics.PagesScanned,
+                    pageMetrics.PageReadLatencyTotal,
+                    pageMetrics.PageReadLatencyMax,
+                    pageMetrics.LastPageReadLatency));
             }
+        }
+
+        private async Task<RemoteTreePageReadResult> ReadChildrenPageAsync(
+            RemoteCrawlFrame frame,
+            CancellationToken cancellationToken)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            NodeContentDto children = await _nodes.GetChildrenAsync(
+                frame.Node.Id,
+                frame.Page,
+                _pageSize,
+                depth: 0,
+                cancellationToken).ConfigureAwait(false);
+            stopwatch.Stop();
+            return new RemoteTreePageReadResult(children, stopwatch.Elapsed);
+        }
+
+        private static TimeSpan Max(TimeSpan left, TimeSpan right)
+        {
+            return left >= right ? left : right;
+        }
+
+        private static long UpdateMax(ref long target, long value)
+        {
+            long current;
+            do
+            {
+                current = Volatile.Read(ref target);
+                if (value <= current)
+                {
+                    return current;
+                }
+            }
+            while (Interlocked.CompareExchange(ref target, value, current) != current);
+
+            return value;
         }
 
         private static string Combine(string parentPath, string name)
@@ -565,6 +678,19 @@ namespace Cotton.Sync.Remote
         }
 
         private readonly record struct RemoteCrawlFrame(NodeDto Node, string ParentPath, int Page, int Loaded);
+
+        private readonly record struct RemoteTreePageReadMetrics(
+            int PagesScanned,
+            TimeSpan PageReadLatencyTotal,
+            TimeSpan PageReadLatencyMax,
+            TimeSpan LastPageReadLatency)
+        {
+            public static RemoteTreePageReadMetrics Empty { get; } = new(0, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero);
+        }
+
+        private readonly record struct RemoteTreePageReadResult(
+            NodeContentDto Children,
+            TimeSpan Elapsed);
 
         private sealed record RemotePathResolution(RemoteDirectorySnapshot? Directory, RemoteFileSnapshot? File)
         {
