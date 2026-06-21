@@ -173,11 +173,70 @@ namespace Cotton.Sync.Desktop.Tests.Composition
             Assert.That(handler.SslOptions.RemoteCertificateValidationCallback, Is.Null);
         }
 
+        [Test]
+        public void DesktopHttpClientFactory_ObservesAlreadyFaultedConnectCleanup()
+        {
+            var connectTask = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            connectTask.SetException(new SocketException((int)SocketError.OperationAborted));
+
+            Assert.That(IsTaskExceptionObserved(connectTask.Task), Is.False);
+
+            DesktopHttpClientFactory.ObserveConnectCleanupFailure(connectTask.Task);
+
+            Assert.That(IsTaskExceptionObserved(connectTask.Task), Is.True);
+        }
+
+        [Test]
+        public async Task DesktopHttpClientFactory_ObservesLaterFaultedConnectCleanup()
+        {
+            var connectTask = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            DesktopHttpClientFactory.ObserveConnectCleanupFailure(connectTask.Task);
+            connectTask.SetException(new SocketException((int)SocketError.OperationAborted));
+
+            await WaitForTaskExceptionObservationAsync(connectTask.Task);
+        }
+
         private static object GetPrivateFieldValue(object instance, string fieldName)
         {
             FieldInfo? field = instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(field, Is.Not.Null, fieldName);
             return field!.GetValue(instance) ?? throw new InvalidOperationException(fieldName);
+        }
+
+        private static async Task WaitForTaskExceptionObservationAsync(Task task)
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (!IsTaskExceptionObserved(task))
+            {
+                await Task.Delay(10, timeout.Token);
+            }
+        }
+
+        private static bool IsTaskExceptionObserved(Task task)
+        {
+            FieldInfo? contingentPropertiesField = typeof(Task).GetField(
+                "m_contingentProperties",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            object? contingentProperties = contingentPropertiesField?.GetValue(task);
+            if (contingentProperties is null)
+            {
+                return true;
+            }
+
+            FieldInfo? exceptionHolderField = contingentProperties.GetType().GetField(
+                "m_exceptionsHolder",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            object? exceptionHolder = exceptionHolderField?.GetValue(contingentProperties);
+            if (exceptionHolder is null)
+            {
+                return true;
+            }
+
+            FieldInfo? isHandledField = exceptionHolder.GetType().GetField(
+                "m_isHandled",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            return isHandledField is null || (bool)isHandledField.GetValue(exceptionHolder)!;
         }
     }
 }

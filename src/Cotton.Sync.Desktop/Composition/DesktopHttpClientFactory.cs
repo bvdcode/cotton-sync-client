@@ -118,6 +118,27 @@ namespace Cotton.Sync.Desktop.Composition
             return completedAttempt;
         }
 
+        internal static void ObserveConnectCleanupFailure(Task connectTask)
+        {
+            ArgumentNullException.ThrowIfNull(connectTask);
+            if (connectTask.IsFaulted)
+            {
+                _ = connectTask.Exception;
+                return;
+            }
+
+            if (connectTask.IsCompleted)
+            {
+                return;
+            }
+
+            _ = connectTask.ContinueWith(
+                static task => _ = task.Exception,
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
+                TaskScheduler.Default);
+        }
+
         private sealed class ConnectAttempt : IDisposable
         {
             private bool _completed;
@@ -146,6 +167,7 @@ namespace Cotton.Sync.Desktop.Composition
                 if (!_completed)
                 {
                     Socket.Dispose();
+                    ObserveConnectCleanupFailure(ConnectTask);
                 }
             }
         }
