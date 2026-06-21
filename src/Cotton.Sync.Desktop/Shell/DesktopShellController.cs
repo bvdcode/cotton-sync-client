@@ -351,16 +351,8 @@ namespace Cotton.Sync.Desktop.Shell
                 throw new SyncPairValidationException(result.Validation.Errors);
             }
 
-            try
-            {
-                await host.App.SyncNowAsync(syncPair.Id, cancellationToken).ConfigureAwait(false);
-                return syncPair;
-            }
-            catch (Exception)
-            {
-                await RollBackAddedSyncPairAsync(host, syncPair.Id, cancellationToken).ConfigureAwait(false);
-                throw;
-            }
+            StartInitialSyncInBackground(host, syncPair.Id, syncPair.LocalRootPath);
+            return syncPair;
         }
 
         public async Task SetSyncPairEnabledAsync(
@@ -1389,23 +1381,6 @@ namespace Cotton.Sync.Desktop.Shell
             }
         }
 
-        private static async Task RollBackAddedSyncPairAsync(
-            DesktopSyncApplicationHost host,
-            Guid syncPairId,
-            CancellationToken cancellationToken)
-        {
-            try
-            {
-                await host.App.StopSyncAsync(cancellationToken).ConfigureAwait(false);
-                await host.App.DeleteSyncPairAsync(syncPairId, cancellationToken).ConfigureAwait(false);
-                await host.App.StartSyncAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                Trace.TraceWarning("Failed to roll back newly added Cotton Sync folder {0}: {1}", syncPairId, exception);
-            }
-        }
-
         private async Task SaveSyncPairSettingsAsync(
             SyncPairSettings syncPair,
             CancellationToken cancellationToken)
@@ -1873,6 +1848,41 @@ namespace Cotton.Sync.Desktop.Shell
                         new DesktopActivitySnapshot(
                             "Error",
                             string.Empty,
+                            DesktopActionRequiredMessageResolver.FromException(exception),
+                            DateTime.UtcNow));
+                }
+            });
+        }
+
+        private void StartInitialSyncInBackground(DesktopSyncApplicationHost host, Guid syncPairId, string localPath)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    if (!ReferenceEquals(_host, host))
+                    {
+                        return;
+                    }
+
+                    await host.App.SyncNowAsync(syncPairId, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    Trace.TraceWarning(
+                        "Failed to request initial sync for newly added Cotton Sync folder {0}: {1}",
+                        syncPairId,
+                        exception);
+                    if (!ReferenceEquals(_host, host))
+                    {
+                        return;
+                    }
+
+                    ActivityReported?.Invoke(
+                        this,
+                        new DesktopActivitySnapshot(
+                            "Error",
+                            localPath,
                             DesktopActionRequiredMessageResolver.FromException(exception),
                             DateTime.UtcNow));
                 }

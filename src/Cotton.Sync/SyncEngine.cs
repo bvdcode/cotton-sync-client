@@ -1022,15 +1022,6 @@ namespace Cotton.Sync
                 directoryStateByPath.Count,
                 fileBaselineByPath.Count,
                 stopwatch.ElapsedMilliseconds);
-            foreach (string directoryKey in localDirectoriesByPath.Keys)
-            {
-                if (!directoryStateByPath.TryGetValue(directoryKey, out Guid? remoteNodeId)
-                    || remoteNodeId is null)
-                {
-                    return null;
-                }
-            }
-
             foreach ((string fileKey, LocalFileSnapshot local) in localFilesByPath)
             {
                 if (fileBaselineByPath.TryGetValue(fileKey, out InitialVirtualFilesPlaceholderBaseline baseline)
@@ -1045,6 +1036,15 @@ namespace Cotton.Sync
                 }
 
                 return null;
+            }
+
+            foreach (string directoryKey in localDirectoriesByPath.Keys)
+            {
+                if (directoryStateByPath.TryGetValue(directoryKey, out Guid? remoteNodeId)
+                    && remoteNodeId is null)
+                {
+                    return null;
+                }
             }
 
             return new InitialVirtualFilesStreamingPlan(

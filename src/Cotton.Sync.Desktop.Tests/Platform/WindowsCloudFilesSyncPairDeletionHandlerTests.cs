@@ -10,6 +10,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
     [Platform(Include = "Win")]
     public class WindowsCloudFilesSyncPairDeletionHandlerTests
     {
+        private const int FileAttributeRecallOnOpen = 0x00040000;
         private const int FileAttributeUnpinned = 0x00100000;
         private const int FileAttributeRecallOnDataAccess = 0x00400000;
 
@@ -135,14 +136,24 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             FileAttributes onlineOnlyAttributes = FileAttributes.Archive
                 | (FileAttributes)FileAttributeUnpinned
                 | (FileAttributes)FileAttributeRecallOnDataAccess;
+            FileAttributes recallOnOpenAttributes = FileAttributes.Archive
+                | (FileAttributes)FileAttributeUnpinned
+                | (FileAttributes)FileAttributeRecallOnOpen;
+            FileAttributes offlineAttributes = FileAttributes.Archive
+                | (FileAttributes)FileAttributeUnpinned
+                | FileAttributes.Offline;
 
             bool safe = WindowsVirtualFilesRootCleaner.IsSafeCloudFilesPlaceholder(onlineOnlyAttributes);
+            bool recallOnOpenSafe = WindowsVirtualFilesRootCleaner.IsSafeCloudFilesPlaceholder(recallOnOpenAttributes);
+            bool offlineSafe = WindowsVirtualFilesRootCleaner.IsSafeCloudFilesPlaceholder(offlineAttributes);
             bool regularFileSafe = WindowsVirtualFilesRootCleaner.IsSafeCloudFilesPlaceholder(FileAttributes.Archive);
             bool reparsePointSafe = WindowsVirtualFilesRootCleaner.IsSafeCloudFilesPlaceholder(FileAttributes.ReparsePoint);
 
             Assert.Multiple(() =>
             {
                 Assert.That(safe, Is.True);
+                Assert.That(recallOnOpenSafe, Is.True);
+                Assert.That(offlineSafe, Is.True);
                 Assert.That(regularFileSafe, Is.False);
                 Assert.That(reparsePointSafe, Is.False);
             });

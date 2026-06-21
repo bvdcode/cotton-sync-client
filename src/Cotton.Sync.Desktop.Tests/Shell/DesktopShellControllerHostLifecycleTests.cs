@@ -287,6 +287,44 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public async Task AddSyncPairAsync_ReturnsBeforeInitialSyncCompletes()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            Uri serverUrl = new("https://cotton.example.test/");
+            FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
+            host.App.SyncNowStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            host.App.SyncNowRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            using DesktopShellController controller = CreateController(paths, factory);
+
+            try
+            {
+                await controller.SignInWithBrowserAsync(serverUrl.AbsoluteUri);
+
+                Task<SyncPairSettings> addTask = controller.AddSyncPairAsync(
+                    new DesktopSyncPairRequest(
+                        Path.Combine(_tempDirectory, "Cloud"),
+                        "/Cloud",
+                        SyncPairMode.WindowsVirtualFiles));
+                SyncPairSettings syncPair = await addTask.WaitAsync(TimeSpan.FromSeconds(2));
+                await host.App.SyncNowStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(syncPair.RemoteDisplayPath, Is.EqualTo("/Cloud"));
+                    Assert.That(syncPair.Mode, Is.EqualTo(SyncPairMode.WindowsVirtualFiles));
+                    Assert.That(host.App.SaveSyncPairCalls, Is.EqualTo(1));
+                    Assert.That(host.App.SyncNowCalls, Is.EqualTo(1));
+                    Assert.That(host.App.DeleteSyncPairCalls, Is.Zero);
+                });
+            }
+            finally
+            {
+                host.App.SyncNowRelease.TrySetResult();
+            }
+        }
+
+        [Test]
         public async Task ExportDiagnosticsAsync_ReportsZeroPairBackgroundLifecycle()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
@@ -620,7 +658,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
-        public async Task AddSyncPairAsync_RollsBackSavedPairWhenInitialSyncFails()
+        public async Task AddSyncPairAsync_ReportsInitialSyncFailureWithoutRollingBackSavedPair()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
@@ -630,24 +668,35 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             using DesktopShellController controller = CreateController(paths, factory);
             string localPath = Path.Combine(_tempDirectory, "Downloads");
             Directory.CreateDirectory(localPath);
+            var activityReported = new TaskCompletionSource<DesktopActivitySnapshot>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            controller.ActivityReported += (_, activity) =>
+            {
+                if (activity.Kind == "Error")
+                {
+                    activityReported.TrySetResult(activity);
+                }
+            };
 
             await controller.SignInAsync(new DesktopSignInRequest(
                 serverUrl.AbsoluteUri,
                 "desktop@example.test",
                 "password",
                 null));
-            InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(
-                async () => await controller.AddSyncPairAsync(new DesktopSyncPairRequest(localPath, "/Downloads")));
+            SyncPairSettings syncPair =
+                await controller.AddSyncPairAsync(new DesktopSyncPairRequest(localPath, "/Downloads"));
+            DesktopActivitySnapshot activity =
+                await activityReported.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
             Assert.Multiple(() =>
             {
-                Assert.That(exception?.Message, Is.EqualTo("Sync changes API is unavailable."));
+                Assert.That(syncPair.RemoteDisplayPath, Is.EqualTo("/Downloads"));
+                Assert.That(activity.Path, Is.EqualTo(localPath));
+                Assert.That(activity.Details, Does.Contain("Sync changes API is unavailable."));
                 Assert.That(host.App.SaveSyncPairCalls, Is.EqualTo(1));
                 Assert.That(host.App.SyncNowCalls, Is.EqualTo(1));
-                Assert.That(host.App.StopSyncCalls, Is.EqualTo(1));
-                Assert.That(host.App.DeleteSyncPairCalls, Is.EqualTo(1));
-                Assert.That(host.App.DeletedSyncPairId, Is.EqualTo(host.App.SavedSyncPair?.Id));
-                Assert.That(host.App.StartSyncCalls, Is.EqualTo(2));
+                Assert.That(host.App.StopSyncCalls, Is.Zero);
+                Assert.That(host.App.DeleteSyncPairCalls, Is.Zero);
             });
         }
 
@@ -1180,6 +1229,10 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             public TaskCompletionSource? StartSyncRelease { get; set; }
 
+            public TaskCompletionSource? SyncNowStarted { get; set; }
+
+            public TaskCompletionSource? SyncNowRelease { get; set; }
+
             public async Task<AuthSession> SignInAsync(
                 PasswordSignInRequest request,
                 CancellationToken cancellationToken = default)
@@ -1297,12 +1350,13 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             public Task SyncNowAsync(Guid syncPairId, CancellationToken cancellationToken = default)
             {
                 SyncNowCalls++;
+                SyncNowStarted?.TrySetResult();
                 if (SyncNowException is not null)
                 {
                     throw SyncNowException;
                 }
 
-                return Task.CompletedTask;
+                return SyncNowRelease?.Task ?? Task.CompletedTask;
             }
 
             public Task PauseAllAsync(CancellationToken cancellationToken = default)
