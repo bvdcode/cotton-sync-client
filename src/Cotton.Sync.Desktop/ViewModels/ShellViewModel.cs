@@ -134,6 +134,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private bool _isUpdateAvailable;
         private bool _isUpdateBusy;
         private bool _isUpdateReady;
+        private bool _isRemovingSyncPair;
         private bool _isLoadingSnapshot = true;
         private bool _isStartWithOperatingSystemSupported = true;
         private bool _isTrayLifecycleSupported;
@@ -1602,7 +1603,25 @@ namespace Cotton.Sync.Desktop.ViewModels
             ? "Stops syncing this folder. Cloud files stay online; the local placeholder folder is removed when it has no regular local files."
             : "Stops syncing this folder. Local files stay on this device; cloud files stay online.";
 
-        public string RemoveSyncPairConfirmationPath => _pendingRemoveSyncPair?.LocalPath ?? string.Empty;
+        public string RemoveSyncPairConfirmationPath => _pendingRemoveSyncPair is null
+            ? string.Empty
+            : "Local folder: " + _pendingRemoveSyncPair.LocalPath;
+
+        public bool IsRemovingSyncPair
+        {
+            get => _isRemovingSyncPair;
+            private set
+            {
+                if (SetProperty(ref _isRemovingSyncPair, value))
+                {
+                    OnPropertyChanged(nameof(RemoveSyncPairProgressMessage));
+                }
+            }
+        }
+
+        public string RemoveSyncPairProgressMessage => _pendingRemoveSyncPair?.Mode == SyncPairMode.WindowsVirtualFiles
+            ? "Removing Cloud Files sync root and cleaning local placeholder folder."
+            : "Removing sync folder.";
 
         public string SelectedSyncPairEditableDisplayName
         {
@@ -2531,6 +2550,9 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
 
             IsBusy = true;
+            IsRemovingSyncPair = true;
+            GlobalStatus = "Removing sync folder";
+            RefreshCurrentProgressText();
             try
             {
                 await _controller.RemoveSyncPairAsync(selected.Id).ConfigureAwait(true);
@@ -2549,6 +2571,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
             finally
             {
+                IsRemovingSyncPair = false;
                 IsBusy = false;
             }
         }
@@ -2565,6 +2588,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             OnPropertyChanged(nameof(RemoveSyncPairConfirmationTitle));
             OnPropertyChanged(nameof(RemoveSyncPairConfirmationMessage));
             OnPropertyChanged(nameof(RemoveSyncPairConfirmationPath));
+            OnPropertyChanged(nameof(RemoveSyncPairProgressMessage));
             RemoveSelectedSyncPairCommand.RaiseCanExecuteChanged();
             ConfirmRemoveSelectedSyncPairCommand.RaiseCanExecuteChanged();
             CancelRemoveSyncPairCommand.RaiseCanExecuteChanged();
@@ -4745,6 +4769,12 @@ namespace Cotton.Sync.Desktop.ViewModels
             if (HasActionRequired)
             {
                 CurrentProgressText = "Fix the issue below to continue syncing.";
+                return;
+            }
+
+            if (IsRemovingSyncPair)
+            {
+                CurrentProgressText = RemoveSyncPairProgressMessage;
                 return;
             }
 
