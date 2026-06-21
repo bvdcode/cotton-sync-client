@@ -283,6 +283,48 @@ namespace Cotton.Sync.Desktop.Platform
             ThrowIfFailed(result, nameof(CfSetInSyncState));
         }
 
+        public WindowsCloudFilesPlaceholderState GetPlaceholderState(string filePath)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+            using SafeFileHandle handle = CreateFile(
+                WindowsNativePath.ToWin32FilePath(filePath),
+                FileDesiredAccess.ReadAttributes,
+                FileShareMode.Read | FileShareMode.Write | FileShareMode.Delete,
+                IntPtr.Zero,
+                FileCreationDisposition.OpenExisting,
+                FileFlagsAndAttributes.OpenReparsePoint | FileFlagsAndAttributes.BackupSemantics,
+                IntPtr.Zero);
+            if (handle.IsInvalid)
+            {
+                throw new WindowsCloudFilesNativeException(
+                    nameof(CreateFile),
+                    HResultFromWin32(Marshal.GetLastWin32Error()));
+            }
+
+            if (!GetFileInformationByHandleEx(
+                    handle,
+                    FileInfoByHandleClass.FileAttributeTagInfo,
+                    out FileAttributeTagInfo attributeTagInfo,
+                    (uint)Marshal.SizeOf<FileAttributeTagInfo>()))
+            {
+                throw new WindowsCloudFilesNativeException(
+                    nameof(GetFileInformationByHandleEx),
+                    HResultFromWin32(Marshal.GetLastWin32Error()));
+            }
+
+            WindowsCloudFilesPlaceholderState state = CfGetPlaceholderStateFromFileInfo(
+                ref attributeTagInfo,
+                FileInfoByHandleClass.FileAttributeTagInfo);
+            if (state == WindowsCloudFilesPlaceholderState.Invalid)
+            {
+                throw new WindowsCloudFilesNativeException(
+                    nameof(CfGetPlaceholderStateFromFileInfo),
+                    HResultFromWin32(Marshal.GetLastWin32Error()));
+            }
+
+            return state;
+        }
+
         public WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request)
         {
             ArgumentNullException.ThrowIfNull(request);
@@ -446,6 +488,13 @@ namespace Cotton.Sync.Desktop.Platform
             FileFlagsAndAttributes dwFlagsAndAttributes,
             IntPtr hTemplateFile);
 
+        [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
+        private static extern bool GetFileInformationByHandleEx(
+            SafeFileHandle hFile,
+            FileInfoByHandleClass fileInformationClass,
+            out FileAttributeTagInfo lpFileInformation,
+            uint dwBufferSize);
+
         [DllImport("CldApi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
         private static extern int CfRegisterSyncRoot(
             string SyncRootPath,
@@ -497,6 +546,11 @@ namespace Cotton.Sync.Desktop.Platform
             CfInSyncState InSyncState,
             CfSetInSyncFlags InSyncFlags,
             IntPtr InSyncUsn);
+
+        [DllImport("CldApi.dll", ExactSpelling = true)]
+        private static extern WindowsCloudFilesPlaceholderState CfGetPlaceholderStateFromFileInfo(
+            ref FileAttributeTagInfo infoBuffer,
+            FileInfoByHandleClass infoClass);
 
         [DllImport("CldApi.dll", ExactSpelling = true)]
         private static extern int CfExecute(
@@ -705,6 +759,14 @@ namespace Cotton.Sync.Desktop.Platform
             public uint FileAttributes;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct FileAttributeTagInfo
+        {
+            public uint FileAttributes;
+
+            public uint ReparseTag;
+        }
+
         [Flags]
         private enum CfRegisterFlags : uint
         {
@@ -785,7 +847,13 @@ namespace Cotton.Sync.Desktop.Platform
         {
             ReadData = 0x00000001,
             WriteData = 0x00000002,
+            ReadAttributes = 0x00000080,
             WriteAttributes = 0x00000100,
+        }
+
+        private enum FileInfoByHandleClass
+        {
+            FileAttributeTagInfo = 9,
         }
 
         [Flags]

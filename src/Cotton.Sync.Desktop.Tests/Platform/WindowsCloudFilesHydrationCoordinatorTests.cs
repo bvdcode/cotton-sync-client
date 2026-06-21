@@ -984,6 +984,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 InSyncPaths.Add(filePath);
             }
 
+            public WindowsCloudFilesPlaceholderState GetPlaceholderState(string filePath)
+            {
+                return InSyncPaths.Contains(filePath, StringComparer.OrdinalIgnoreCase)
+                    ? WindowsCloudFilesPlaceholderState.Placeholder | WindowsCloudFilesPlaceholderState.InSync
+                    : WindowsCloudFilesPlaceholderState.None;
+            }
+
             public WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request)
             {
                 return new WindowsCloudFilesConnection(

@@ -2558,6 +2558,11 @@ namespace Cotton.Sync.Desktop.Startup
                 throw new NotSupportedException();
             }
 
+            public WindowsCloudFilesPlaceholderState GetPlaceholderState(string filePath)
+            {
+                throw new NotSupportedException();
+            }
+
             public WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request)
             {
                 throw new NotSupportedException();
