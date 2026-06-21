@@ -1624,7 +1624,7 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
-        public async Task RunOnceAsync_WithWindowsVirtualFilesResumesStreamingWhenUntrackedCloudFilesPlaceholderExists()
+        public async Task RunOnceAsync_WithWindowsVirtualFilesAdoptsCurrentUntrackedCloudFilesPlaceholder()
         {
             string relativePath = "Desktop/orphaned-placeholder.txt";
             NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote"), sizeBytes: 12);
@@ -1634,7 +1634,53 @@ namespace Cotton.Sync.Tests
             var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
             var placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
             var stateStore = new SqliteSyncStateStore(_databasePath);
-            var scanner = new FakeLocalFileScanner(CloudFilesPlaceholderLocal(relativePath, remote.SizeBytes));
+            LocalFileSnapshot local = CloudFilesPlaceholderLocal(relativePath, remote.SizeBytes);
+            local.LastWriteUtc = remote.UpdatedAt;
+            var scanner = new FakeLocalFileScanner(local);
+            var engine = new SyncEngine(
+                scanner,
+                remoteCrawler,
+                remoteFileSynchronizer,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { InitialVirtualFilesPopulationQueueCapacity = 1 });
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
+                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
+                Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
+                Assert.That(placeholderWriter.Requests, Is.Empty);
+                Assert.That(result.TotalActivityCount, Is.Zero);
+                Assert.That(result.Activities, Is.Empty);
+                Assert.That(state, Has.Count.EqualTo(1));
+                Assert.That(state[0].RelativePath, Is.EqualTo(relativePath));
+                Assert.That(state[0].RemoteFileId, Is.EqualTo(remote.Id));
+                Assert.That(state[0].RemoteContentHash, Is.EqualTo(remote.ContentHash));
+                Assert.That(state[0].RemoteSizeBytes, Is.EqualTo(remote.SizeBytes));
+                Assert.That(state[0].PlaceholderIdentity, Is.Null);
+                Assert.That(state[0].PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesRefreshesUntrackedCloudFilesPlaceholderWhenRemoteMetadataDiffers()
+        {
+            string relativePath = "Desktop/orphaned-placeholder.txt";
+            NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote"), sizeBytes: 12);
+            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
+                _remoteRootNodeId,
+                [new RemoteFileSnapshot { RelativePath = relativePath, File = remote }]);
+            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            var stateStore = new SqliteSyncStateStore(_databasePath);
+            LocalFileSnapshot local = CloudFilesPlaceholderLocal(relativePath, remote.SizeBytes);
+            local.LastWriteUtc = remote.UpdatedAt.AddMinutes(-5);
+            var scanner = new FakeLocalFileScanner(local);
             var engine = new SyncEngine(
                 scanner,
                 remoteCrawler,
@@ -1655,9 +1701,8 @@ namespace Cotton.Sync.Tests
                 Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[] { relativePath }));
                 Assert.That(result.TotalActivityCount, Is.EqualTo(1));
                 Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.PlaceholderCreated }));
-                Assert.That(result.Activities.Select(activity => activity.RelativePath), Is.EqualTo(new[] { relativePath }));
                 Assert.That(state, Has.Count.EqualTo(1));
-                Assert.That(state[0].RelativePath, Is.EqualTo(relativePath));
+                Assert.That(state[0].PlaceholderIdentity, Is.EqualTo(placeholderWriter.PlaceholderIdentity));
                 Assert.That(state[0].PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
             });
         }

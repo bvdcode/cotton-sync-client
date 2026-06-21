@@ -25,6 +25,7 @@ namespace Cotton.Sync
         private const int RunProgressDetailedItemLimit = 50_000;
         private const int RunProgressSparseItemInterval = 100;
         private static readonly TimeSpan RunProgressReportTimeInterval = TimeSpan.FromMilliseconds(250);
+        private static readonly TimeSpan CloudFilesMetadataTimestampTolerance = TimeSpan.FromSeconds(2);
         private static readonly StringComparer PathComparer = StringComparer.OrdinalIgnoreCase;
         private readonly ILocalFileScanner _localScanner;
         private readonly ILocalFileContentHasher? _localContentHasher;
@@ -967,7 +968,8 @@ namespace Cotton.Sync
                 stopwatch.ElapsedMilliseconds);
             return new InitialVirtualFilesStreamingPlan(
                 SkipCurrentPlaceholders: true,
-                CurrentPlaceholderBaselineByPath: fileBaselineByPath);
+                CurrentPlaceholderBaselineByPath: fileBaselineByPath,
+                AdoptableUntrackedPlaceholderByPath: new Dictionary<string, LocalFileSnapshot>(PathComparer));
         }
 
         private async Task<InitialVirtualFilesStreamingPlan?> InspectLocalTreeForInitialWindowsVirtualFilesStreamingAsync(
@@ -1018,7 +1020,8 @@ namespace Cotton.Sync
             {
                 return new InitialVirtualFilesStreamingPlan(
                     SkipCurrentPlaceholders: false,
-                    CurrentPlaceholderBaselineByPath: new Dictionary<string, InitialVirtualFilesPlaceholderBaseline>(PathComparer));
+                    CurrentPlaceholderBaselineByPath: new Dictionary<string, InitialVirtualFilesPlaceholderBaseline>(PathComparer),
+                    AdoptableUntrackedPlaceholderByPath: new Dictionary<string, LocalFileSnapshot>(PathComparer));
             }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -1035,6 +1038,7 @@ namespace Cotton.Sync
                 directoryStateByPath.Count,
                 fileBaselineByPath.Count,
                 stopwatch.ElapsedMilliseconds);
+            var adoptableUntrackedPlaceholderByPath = new Dictionary<string, LocalFileSnapshot>(PathComparer);
             foreach ((string fileKey, LocalFileSnapshot local) in localFilesByPath)
             {
                 if (fileBaselineByPath.TryGetValue(fileKey, out InitialVirtualFilesPlaceholderBaseline baseline)
@@ -1045,6 +1049,7 @@ namespace Cotton.Sync
 
                 if (IsUntrackedVirtualFilesPlaceholderCompatibleWithInitialStreaming(local))
                 {
+                    adoptableUntrackedPlaceholderByPath[fileKey] = local;
                     continue;
                 }
 
@@ -1062,7 +1067,8 @@ namespace Cotton.Sync
 
             return new InitialVirtualFilesStreamingPlan(
                 SkipCurrentPlaceholders: true,
-                CurrentPlaceholderBaselineByPath: fileBaselineByPath);
+                CurrentPlaceholderBaselineByPath: fileBaselineByPath,
+                AdoptableUntrackedPlaceholderByPath: adoptableUntrackedPlaceholderByPath);
         }
 
         private async Task<(
@@ -1278,7 +1284,9 @@ namespace Cotton.Sync
                             break;
 
                         case InitialVirtualFilesFilePopulationItem fileItem:
-                            if (!IsStreamingVirtualFilesBaselineAlreadyCurrent(fileItem.File, streamingPlan))
+                            InitialVirtualFilesFileWorkResult? currentPlaceholderWorkResult =
+                                TryCreateCurrentInitialVirtualFilesFileWorkResult(syncPair, fileItem.File, streamingPlan);
+                            if (currentPlaceholderWorkResult is null)
                             {
                                 pendingFileBatch.Add(fileItem.File);
                                 if (pendingFileBatch.Count >= placeholderBatchSize)
@@ -1318,7 +1326,7 @@ namespace Cotton.Sync
                             }
 
                             await CompleteInitialVirtualFilesFileWorkAsync(
-                                    new InitialVirtualFilesFileWorkResult(fileItem.File.RelativePath, null, SyncActivityKind.Skipped, null, false, ReportActivity: false),
+                                    currentPlaceholderWorkResult,
                                     pendingFileStates,
                                     syncPair,
                                     options,
@@ -1858,21 +1866,55 @@ namespace Cotton.Sync
             }
         }
 
-        private static bool IsStreamingVirtualFilesBaselineAlreadyCurrent(
+        private static InitialVirtualFilesFileWorkResult? TryCreateCurrentInitialVirtualFilesFileWorkResult(
+            SyncPair syncPair,
             RemoteFileSnapshot remote,
             InitialVirtualFilesStreamingPlan streamingPlan)
         {
             if (!streamingPlan.SkipCurrentPlaceholders)
             {
-                return false;
+                return null;
             }
 
             string key = SyncPath.ToKey(remote.RelativePath);
-            return streamingPlan.CurrentPlaceholderBaselineByPath.TryGetValue(
+            if (streamingPlan.CurrentPlaceholderBaselineByPath.TryGetValue(
                     key,
                     out InitialVirtualFilesPlaceholderBaseline baseline)
                 && HasRemoteFileBaseline(baseline)
-                && RemoteMatchesBaseline(remote.File, baseline);
+                && RemoteMatchesBaseline(remote.File, baseline))
+            {
+                return new InitialVirtualFilesFileWorkResult(
+                    remote.RelativePath,
+                    State: null,
+                    SyncActivityKind.Skipped,
+                    Details: null,
+                    RequiresUserAction: false,
+                    ReportActivity: false);
+            }
+
+            if (streamingPlan.AdoptableUntrackedPlaceholderByPath.TryGetValue(key, out LocalFileSnapshot? local)
+                && local is not null
+                && CanAdoptUntrackedVirtualFilesPlaceholder(local, remote.File))
+            {
+                return new InitialVirtualFilesFileWorkResult(
+                    remote.RelativePath,
+                    BuildAdoptedOnlineOnlyPlaceholderBaseline(syncPair, remote.RelativePath, remote.File),
+                    SyncActivityKind.Skipped,
+                    Details: null,
+                    RequiresUserAction: false,
+                    ReportActivity: false);
+            }
+
+            return null;
+        }
+
+        private static bool CanAdoptUntrackedVirtualFilesPlaceholder(
+            LocalFileSnapshot local,
+            NodeFileManifestDto remoteFile)
+        {
+            return local.IsCloudFilesOnlineOnlyPlaceholder
+                && local.SizeBytes == remoteFile.SizeBytes
+                && DateTimesMatchWithinCloudFilesMetadataTolerance(local.LastWriteUtc, remoteFile.UpdatedAt);
         }
 
         private static bool ReportStreamingVirtualFilesProgress(
@@ -3050,6 +3092,26 @@ namespace Cotton.Sync
             };
         }
 
+        private static SyncStateEntry BuildAdoptedOnlineOnlyPlaceholderBaseline(
+            SyncPair syncPair,
+            string relativePath,
+            NodeFileManifestDto remoteFile)
+        {
+            return new SyncStateEntry
+            {
+                SyncPairId = syncPair.SyncPairId,
+                RelativePath = SyncPath.Normalize(relativePath),
+                Kind = SyncEntryKind.File,
+                RemoteSizeBytes = remoteFile.SizeBytes,
+                RemoteFileId = remoteFile.Id,
+                RemoteNodeId = remoteFile.NodeId,
+                RemoteContentHash = remoteFile.ContentHash,
+                RemoteETag = remoteFile.ETag,
+                PlaceholderHydrationState = SyncPlaceholderHydrationState.RemoteOnly,
+                SyncedAtUtc = DateTime.UtcNow,
+            };
+        }
+
         private static SyncStateEntry BuildDirectoryBaseline(
             SyncPair syncPair,
             string relativePath,
@@ -3140,6 +3202,12 @@ namespace Cotton.Sync
         private static bool NullableUtcEquals(DateTime? left, DateTime? right)
         {
             return left?.ToUniversalTime() == right?.ToUniversalTime();
+        }
+
+        private static bool DateTimesMatchWithinCloudFilesMetadataTolerance(DateTime left, DateTime right)
+        {
+            TimeSpan difference = left.ToUniversalTime() - right.ToUniversalTime();
+            return difference.Duration() <= CloudFilesMetadataTimestampTolerance;
         }
 
         private static void ValidateOptions(SyncRunOptions options)
@@ -4283,7 +4351,8 @@ namespace Cotton.Sync
 
         private sealed record InitialVirtualFilesStreamingPlan(
             bool SkipCurrentPlaceholders,
-            IReadOnlyDictionary<string, InitialVirtualFilesPlaceholderBaseline> CurrentPlaceholderBaselineByPath);
+            IReadOnlyDictionary<string, InitialVirtualFilesPlaceholderBaseline> CurrentPlaceholderBaselineByPath,
+            IReadOnlyDictionary<string, LocalFileSnapshot> AdoptableUntrackedPlaceholderByPath);
 
         private readonly record struct InitialVirtualFilesPlaceholderBaseline(
             Guid? RemoteFileId,
