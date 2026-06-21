@@ -385,7 +385,7 @@ namespace Cotton.Sync.Desktop.Platform
                     safety.FullPath,
                     normalizedPath);
                 ExecuteNativeOperationWithTransientPathRetry(
-                    () => _nativeApi.SetInSyncState(fullPlaceholderPath),
+                    () => SetAndVerifyInSyncState(fullPlaceholderPath),
                     "set-in-sync-state",
                     request.SyncPairId,
                     safety.FullPath,
@@ -436,7 +436,7 @@ namespace Cotton.Sync.Desktop.Platform
                 localRootPath,
                 normalizedPath);
             ExecuteNativeOperationWithTransientPathRetry(
-                () => _nativeApi.SetInSyncState(fullPlaceholderPath),
+                () => SetAndVerifyInSyncState(fullPlaceholderPath),
                 "set-in-sync-state",
                 request.SyncPairId,
                 localRootPath,
@@ -526,7 +526,7 @@ namespace Cotton.Sync.Desktop.Platform
             try
             {
                 ExecuteNativeOperationWithTransientPathRetry(
-                    () => _nativeApi.SetInSyncState(fullPlaceholderPath),
+                    () => SetAndVerifyInSyncState(fullPlaceholderPath),
                     operation,
                     syncPair.Id.ToString(),
                     registration.LocalRootPath,
@@ -560,7 +560,7 @@ namespace Cotton.Sync.Desktop.Platform
             try
             {
                 ExecuteNativeOperationWithTransientPathRetry(
-                    () => _nativeApi.SetInSyncState(registration.LocalRootPath),
+                    () => SetAndVerifyInSyncState(registration.LocalRootPath),
                     operation,
                     syncPair.Id.ToString(),
                     registration.LocalRootPath,
@@ -584,6 +584,17 @@ namespace Cotton.Sync.Desktop.Platform
                 registration.LocalRootPath,
                 null,
                 "Windows Cloud Files sync root was marked in sync.");
+        }
+
+        private void SetAndVerifyInSyncState(string filePath)
+        {
+            _nativeApi.SetInSyncState(filePath);
+            WindowsCloudFilesPlaceholderState state = _nativeApi.GetPlaceholderState(filePath);
+            if (!state.HasFlag(WindowsCloudFilesPlaceholderState.InSync))
+            {
+                throw new InvalidOperationException(
+                    "Windows Cloud Files placeholder did not report in-sync state after the native update.");
+            }
         }
 
         private void EnsureNoReparsePointDescendant(string syncRootPath, string targetDirectoryPath)

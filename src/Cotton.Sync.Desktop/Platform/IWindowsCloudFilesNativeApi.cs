@@ -31,6 +31,8 @@ namespace Cotton.Sync.Desktop.Platform
 
         void SetInSyncState(string filePath);
 
+        WindowsCloudFilesPlaceholderState GetPlaceholderState(string filePath);
+
         WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request);
 
         void DisconnectSyncRoot(WindowsCloudFilesConnectionKey connectionKey);

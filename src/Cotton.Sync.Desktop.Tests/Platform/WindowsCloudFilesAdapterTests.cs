@@ -827,6 +827,36 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void SetSyncRootInSyncState_FailsWhenNativeStateDoesNotReportInSync()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi
+            {
+                InSyncStateAfterSet = WindowsCloudFilesPlaceholderState.SyncRoot,
+            };
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                diagnostics: diagnostics);
+            string root = Path.Combine(_tempDirectory, "root");
+            Directory.CreateDirectory(root);
+            SyncPairSettings syncPair = CreateSyncPair(root);
+
+            InvalidOperationException? exception = Assert.Throws<InvalidOperationException>(
+                () => adapter.SetSyncRootInSyncState(syncPair));
+
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception?.Message, Does.Contain("did not report in-sync state"));
+                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { Path.GetFullPath(root) }));
+                Assert.That(diagnostic.Operation, Is.EqualTo("set-sync-root-in-sync-state"));
+                Assert.That(diagnostic.Status, Is.EqualTo("failed"));
+                Assert.That(diagnostic.RelativePath, Is.Null);
+            });
+        }
+
+        [Test]
         public void TransferData_ForwardsToNativeBoundary()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
@@ -951,6 +981,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<string> InSyncPaths { get; } = [];
 
+            public WindowsCloudFilesPlaceholderState InSyncStateAfterSet { get; set; } =
+                WindowsCloudFilesPlaceholderState.Placeholder | WindowsCloudFilesPlaceholderState.InSync;
+
             public List<PinStateCall> PinStates { get; } = [];
 
             public List<WindowsCloudFilesConnectionRequest> ConnectionRequests { get; } = [];
@@ -1046,6 +1079,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 CallLog.Add("native-set-in-sync-state");
                 InSyncPaths.Add(filePath);
+            }
+
+            public WindowsCloudFilesPlaceholderState GetPlaceholderState(string filePath)
+            {
+                return InSyncPaths.Contains(filePath, StringComparer.OrdinalIgnoreCase)
+                    ? InSyncStateAfterSet
+                    : WindowsCloudFilesPlaceholderState.None;
             }
 
             public WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request)
