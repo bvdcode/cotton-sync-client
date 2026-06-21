@@ -102,6 +102,23 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             });
         }
 
+        [Test]
+        public void RunAsync_LargeTreePhaseVerifiesCloudFilesDirectoryStatusFinalization()
+        {
+            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(runner, Does.Contain("CreateDirectoryPlaceholder(CreateDirectoryRequest(syncPair, LargeTreeDirectoryName))"));
+                Assert.That(runner, Does.Contain("SetSyncRootInSyncState(syncPair)"));
+                Assert.That(runner, Does.Contain("VerifyCloudFilesInSyncStateAsync("));
+                Assert.That(runner, Does.Contain("Large-tree Cloud Files sync root status was marked in sync."));
+                Assert.That(runner, Does.Contain("Large-tree Cloud Files directory status was finalized."));
+                Assert.That(runner, Does.Contain("WindowsCloudFilesPlaceholderState.InSync"));
+                Assert.That(runner, Does.Contain("WindowsCloudFilesPlaceholderState.Partial"));
+            });
+        }
+
         private static string GetDesktopFilePath(string relativePath)
         {
             string directory = TestContext.CurrentContext.TestDirectory;

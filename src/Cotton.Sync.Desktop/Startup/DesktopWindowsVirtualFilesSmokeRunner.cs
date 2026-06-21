@@ -1858,11 +1858,20 @@ namespace Cotton.Sync.Desktop.Startup
             {
                 TryUnregisterExistingRoot(cloudFiles, syncPair, output);
                 PrepareRoot(rootPath);
-                Directory.CreateDirectory(largeTreePath);
                 await output.WriteLineAsync(
                     FormatCheck(true, "Isolated QA root prepared for large-tree Explorer smoke.")
                     + " root="
                     + rootPath)
+                    .ConfigureAwait(false);
+                connection = cloudFiles.ConnectSyncRoot(syncPair, new NoopCloudFilesCallbackHandler());
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Cloud Files sync root connected for large-tree Explorer smoke.")
+                    + " root="
+                    + connection.LocalRootPath)
+                    .ConfigureAwait(false);
+                cloudFiles.CreateDirectoryPlaceholder(CreateDirectoryRequest(syncPair, LargeTreeDirectoryName));
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Large-tree top-level directory placeholder was initialized."))
                     .ConfigureAwait(false);
 
                 var createTimer = Stopwatch.StartNew();
@@ -1900,11 +1909,22 @@ namespace Cotton.Sync.Desktop.Startup
                     + createTimer.ElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture))
                     .ConfigureAwait(false);
 
-                connection = cloudFiles.ConnectSyncRoot(syncPair, new NoopCloudFilesCallbackHandler());
-                await output.WriteLineAsync(
-                    FormatCheck(true, "Cloud Files sync root connected for large-tree Explorer smoke.")
-                    + " root="
-                    + connection.LocalRootPath)
+                cloudFiles.CreateDirectoryPlaceholder(CreateDirectoryRequest(syncPair, LargeTreeDirectoryName));
+                cloudFiles.SetSyncRootInSyncState(syncPair);
+                failures += await VerifyCloudFilesInSyncStateAsync(
+                        output,
+                        cloudFiles,
+                        syncPair,
+                        relativePath: null,
+                        "Large-tree Cloud Files sync root status was marked in sync.",
+                        allowPartialDirectory: true)
+                    .ConfigureAwait(false);
+                failures += await VerifyCloudFilesInSyncStateAsync(
+                        output,
+                        cloudFiles,
+                        syncPair,
+                        LargeTreeDirectoryName,
+                        "Large-tree Cloud Files directory status was finalized.")
                     .ConfigureAwait(false);
 
                 var enumerationTimer = Stopwatch.StartNew();
@@ -2181,6 +2201,57 @@ namespace Cotton.Sync.Desktop.Startup
                     UpdatedAt = DateTime.UtcNow,
                     Metadata = new Dictionary<string, string> { ["relativePath"] = relativePath },
                 });
+        }
+
+        private static RemoteDirectoryMaterializationRequest CreateDirectoryRequest(
+            SyncPairSettings syncPair,
+            string relativePath)
+        {
+            string normalizedPath = SyncPath.Normalize(relativePath);
+            return new RemoteDirectoryMaterializationRequest(
+                syncPair.Id.ToString("D"),
+                syncPair.LocalRootPath,
+                syncPair.RemoteRootNodeId,
+                normalizedPath,
+                new NodeDto
+                {
+                    Id = Guid.Parse("88888888-8888-8888-8888-888888888888"),
+                    ParentId = syncPair.RemoteRootNodeId,
+                    Name = normalizedPath.Split('/')[^1],
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                });
+        }
+
+        private static async Task<int> VerifyCloudFilesInSyncStateAsync(
+            TextWriter output,
+            IWindowsCloudFilesAdapter cloudFiles,
+            SyncPairSettings syncPair,
+            string? relativePath,
+            string label,
+            bool allowPartialDirectory = false)
+        {
+            try
+            {
+                WindowsCloudFilesPlaceholderState state = cloudFiles.GetPlaceholderState(syncPair, relativePath);
+                bool passed = state.HasFlag(WindowsCloudFilesPlaceholderState.InSync)
+                    && (allowPartialDirectory || !state.HasFlag(WindowsCloudFilesPlaceholderState.Partial));
+                await output.WriteLineAsync(
+                        FormatCheck(passed, label)
+                        + " state="
+                        + state)
+                    .ConfigureAwait(false);
+                return passed ? 0 : 1;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                await output.WriteLineAsync(
+                        FormatCheck(false, label)
+                        + " "
+                        + CleanSingleLine(exception.Message))
+                    .ConfigureAwait(false);
+                return 1;
+            }
         }
 
         private static string FormatCheck(bool passed, string label)
