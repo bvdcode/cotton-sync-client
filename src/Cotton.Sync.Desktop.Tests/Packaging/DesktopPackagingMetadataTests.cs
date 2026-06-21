@@ -1166,6 +1166,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)"));
                 Assert.That(workflow, Does.Contain("github.ref != 'refs/heads/main'"));
                 Assert.That(workflow, Does.Contain("Pushes to main and v* tags produce and publish release assets automatically."));
+                Assert.That(workflow, Does.Contain("fetch-depth: 0"));
                 Assert.That(workflow, Does.Contain("Normalize desktop release asset names"));
                 Assert.That(workflow, Does.Contain("release-assets/CottonSync-CLI-Windows.zip"));
                 Assert.That(workflow, Does.Contain("release-assets/CottonSync-Windows-Setup.exe"));
@@ -1186,6 +1187,12 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("\"url\": f\"{release_download_url}/{path.name}\""));
                 Assert.That(workflow, Does.Contain("ncipollo/release-action@v1"));
                 Assert.That(workflow, Does.Contain("name: Cotton Sync Client ${{ needs.linux.outputs.Version }}"));
+                Assert.That(workflow, Does.Contain("Generate release notes"));
+                Assert.That(workflow, Does.Contain("git log --no-merges --pretty=format:'- %s (`%h`)'"));
+                Assert.That(workflow, Does.Contain("git log --no-merges --max-count=50 --pretty=format:'- %s (`%h`)'"));
+                Assert.That(workflow, Does.Contain("[Full changelog](${changelog_url})"));
+                Assert.That(workflow, Does.Contain("bodyFile: release-notes.md"));
+                Assert.That(workflow, Does.Not.Contain("Cotton Sync client release."));
                 Assert.That(workflow, Does.Contain("artifacts: \"release-assets/*\""));
                 Assert.That(workflow, Does.Contain("artifactErrorsFailBuild: true"));
                 Assert.That(workflow, Does.Contain("allowUpdates: true"));

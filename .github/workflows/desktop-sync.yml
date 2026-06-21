@@ -841,6 +841,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: check repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
       - name: Download desktop Linux artifact
         uses: actions/download-artifact@v4
         with:
@@ -977,18 +982,59 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Generate release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.linux.outputs.Version }}"
+          tag="${{ steps.release_metadata.outputs.tag }}"
+          previous_tag="$(git tag --merged "$GITHUB_SHA" --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | awk -v current="$tag" '$0 != current { print; exit }')"
+          changes_file="$(mktemp)"
+
+          if [ -n "$previous_tag" ]; then
+            git log --no-merges --pretty=format:'- %s (`%h`)' "$previous_tag..$GITHUB_SHA" > "$changes_file"
+            changelog_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/${previous_tag}...${tag}"
+          else
+            git log --no-merges --max-count=50 --pretty=format:'- %s (`%h`)' "$GITHUB_SHA" > "$changes_file"
+            changelog_url=""
+          fi
+
+          {
+            echo "## Cotton Sync Client ${version}"
+            echo
+            echo "- Version: \`${version}\`"
+            echo "- Branch: \`${GITHUB_REF_NAME}\`"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo
+            echo "## Changes"
+            echo
+            if [ -s "$changes_file" ]; then
+              cat "$changes_file"
+              echo
+            else
+              echo "- Release packaging refresh."
+            fi
+
+            if [ -n "$changelog_url" ]; then
+              echo
+              echo "[Full changelog](${changelog_url})"
+            fi
+
+            echo
+            echo "## Assets"
+            echo
+            find release-assets -maxdepth 1 -type f -exec basename {} \; | sort | sed 's/^/- `/;s/$/`/'
+          } > release-notes.md
+
+          cat release-notes.md
+
       - name: Publish GitHub Release
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ steps.release_metadata.outputs.tag }}
           commit: ${{ github.sha }}
           name: Cotton Sync Client ${{ needs.linux.outputs.Version }}
-          body: |
-            Cotton Sync client release.
-
-            Version: `${{ needs.linux.outputs.Version }}`
-            Branch: `${{ github.ref_name }}`
-            Commit: `${{ github.sha }}`
+          bodyFile: release-notes.md
           artifacts: "release-assets/*"
           artifactErrorsFailBuild: true
           allowUpdates: true
