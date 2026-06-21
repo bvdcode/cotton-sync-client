@@ -593,7 +593,9 @@ namespace Cotton.Sync.Desktop.Platform
             if (!state.HasFlag(WindowsCloudFilesPlaceholderState.InSync))
             {
                 throw new InvalidOperationException(
-                    "Windows Cloud Files placeholder did not report in-sync state after the native update.");
+                    "Windows Cloud Files placeholder did not report in-sync state after the native update. State: "
+                    + state
+                    + ".");
             }
         }
 

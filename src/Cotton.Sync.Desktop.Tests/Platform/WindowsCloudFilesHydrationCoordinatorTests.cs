@@ -175,6 +175,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(diagnostic.Status, Is.EqualTo("failed"));
                 Assert.That(diagnostic.RelativePath, Is.EqualTo("remote-only.txt"));
                 Assert.That(diagnostic.Details, Does.Contain("did not report in-sync state"));
+                Assert.That(diagnostic.Details, Does.Contain("Placeholder"));
             });
         }
 
