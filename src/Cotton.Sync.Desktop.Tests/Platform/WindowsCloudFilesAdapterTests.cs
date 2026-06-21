@@ -849,6 +849,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             Assert.Multiple(() =>
             {
                 Assert.That(exception?.Message, Does.Contain("did not report in-sync state"));
+                Assert.That(exception?.Message, Does.Contain("SyncRoot"));
                 Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { Path.GetFullPath(root) }));
                 Assert.That(diagnostic.Operation, Is.EqualTo("set-sync-root-in-sync-state"));
                 Assert.That(diagnostic.Status, Is.EqualTo("failed"));
