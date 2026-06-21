@@ -2,6 +2,7 @@
 // Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
 using Cotton.Files;
+using Cotton.Nodes;
 using Cotton.Sync.App.Auth;
 using Cotton.Sync.App.Continuous;
 using Cotton.Sync.App.LocalChanges;
@@ -17,6 +18,7 @@ using Cotton.Sync.Desktop.Composition;
 using Cotton.Sync.Desktop.Diagnostics;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Local;
+using Cotton.Sync.Remote;
 using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
 using System.Diagnostics;
@@ -117,6 +119,7 @@ namespace Cotton.Sync.Desktop.Startup
             string phase = (startupOptions.WindowsVirtualFilesSmokePhase ?? string.Empty).Trim().ToLowerInvariant();
             bool leaveRegistered = string.Equals(phase, "leave-registered", StringComparison.Ordinal);
             bool reconnectExisting = string.Equals(phase, "reconnect-existing", StringComparison.Ordinal);
+            bool steadyStateRepeat = string.Equals(phase, "steady-state-repeat", StringComparison.Ordinal);
             bool largeTree = string.Equals(phase, "large-tree", StringComparison.Ordinal);
             bool largeHydration = string.Equals(phase, "large-hydration-progress", StringComparison.Ordinal);
             bool removePairCleanup = string.Equals(phase, "remove-pair-cleanup", StringComparison.Ordinal);
@@ -127,6 +130,7 @@ namespace Cotton.Sync.Desktop.Startup
             if (!string.IsNullOrEmpty(phase)
                 && !leaveRegistered
                 && !reconnectExisting
+                && !steadyStateRepeat
                 && !largeTree
                 && !largeHydration
                 && !removePairCleanup
@@ -147,6 +151,18 @@ namespace Cotton.Sync.Desktop.Startup
             IWindowsCloudFilesAdapter cloudFiles = cloudFilesAdapter
                 ?? new WindowsCloudFilesAdapter(nativeApi: nativeApi, diagnostics: diagnostics);
             SyncPairSettings syncPair = CreateSyncPair(rootPath);
+            if (steadyStateRepeat)
+            {
+                return await RunSteadyStateRepeatAsync(
+                    paths,
+                    output,
+                    cloudFiles,
+                    syncPair,
+                    diagnostics,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             if (largeTree)
             {
                 return await RunLargeTreeAsync(
@@ -769,6 +785,186 @@ namespace Cotton.Sync.Desktop.Startup
             };
         }
 
+        private static async Task<int> RunSteadyStateRepeatAsync(
+            DesktopAppPaths paths,
+            TextWriter output,
+            IWindowsCloudFilesAdapter cloudFiles,
+            SyncPairSettings syncPair,
+            WindowsCloudFilesDiagnostics diagnostics,
+            CancellationToken cancellationToken)
+        {
+            string rootPath = syncPair.LocalRootPath;
+            string largeTreePath = Path.Combine(rootPath, LargeTreeDirectoryName);
+            byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
+            string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
+            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            var remoteFiles = new List<RemoteFileSnapshot>(LargeTreePlaceholderCount);
+            int failures = 0;
+
+            try
+            {
+                TryUnregisterExistingRoot(cloudFiles, syncPair, output);
+                PrepareRoot(rootPath);
+                Directory.CreateDirectory(largeTreePath);
+                await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+                await stateStore.DeletePairAsync(syncPair.Id.ToString("D"), cancellationToken).ConfigureAwait(false);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Isolated QA root prepared for steady-state repeat smoke.")
+                    + " root="
+                    + rootPath)
+                    .ConfigureAwait(false);
+
+                var createdEntries = new List<SyncStateEntry>(LargeTreePlaceholderCount);
+                var createTimer = Stopwatch.StartNew();
+                for (int index = 0; index < LargeTreePlaceholderCount; index++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    string relativePath = LargeTreeDirectoryName
+                        + "/file-"
+                        + index.ToString("D5", System.Globalization.CultureInfo.InvariantCulture)
+                        + ".txt";
+                    RemoteFilePlaceholderRequest request = CreatePlaceholderRequest(
+                        syncPair,
+                        relativePath,
+                        expectedContent.LongLength,
+                        expectedHash);
+                    ApplyLargeSmokeRemoteIdentity(request.RemoteFile, index);
+                    RemoteFilePlaceholderResult placeholder = cloudFiles.CreateFilePlaceholder(request);
+                    SyncStateEntry stateEntry = CreatePlaceholderState(syncPair, request, placeholder);
+                    createdEntries.Add(stateEntry);
+                    remoteFiles.Add(new RemoteFileSnapshot
+                    {
+                        RelativePath = relativePath,
+                        File = request.RemoteFile,
+                    });
+
+                    if ((index + 1) % 1_000 == 0)
+                    {
+                        await output.WriteLineAsync(
+                            "Progress: created "
+                            + (index + 1).ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                            + " / "
+                            + LargeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                            + " placeholders.")
+                            .ConfigureAwait(false);
+                    }
+                }
+
+                foreach (SyncStateEntry[] batch in createdEntries.Chunk(LargeCleanupStateWriteBatchSize))
+                {
+                    await stateStore.UpsertManyAsync(batch, cancellationToken).ConfigureAwait(false);
+                }
+
+                createTimer.Stop();
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Steady-state repeat smoke persisted placeholder baseline.")
+                    + " files="
+                    + LargeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                    + ", elapsedMs="
+                    + createTimer.ElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+
+                var scanner = new GuardLocalScanner();
+                var crawler = new LargeStateFirstRemoteCrawler(syncPair.RemoteRootNodeId, remoteFiles);
+                var noTransfers = new NoTransferRemoteFileSynchronizer();
+                var engine = new SyncEngine(
+                    scanner,
+                    crawler,
+                    noTransfers,
+                    stateStore);
+                var syncPairCore = new SyncPair
+                {
+                    SyncPairId = syncPair.Id.ToString("D"),
+                    LocalRootPath = syncPair.LocalRootPath,
+                    RemoteRootNodeId = syncPair.RemoteRootNodeId,
+                    MaterializationMode = SyncPairMaterializationMode.WindowsVirtualFiles,
+                };
+                var syncTimer = Stopwatch.StartNew();
+                SyncRunResult result = await engine
+                    .RunOnceAsync(syncPairCore, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                syncTimer.Stop();
+
+                bool passed = !result.RequiresUserAction
+                    && scanner.FullScanCalls == 0
+                    && scanner.MetadataTreeScanCalls == 0
+                    && scanner.PathLookupCalls == 0
+                    && crawler.StreamingCrawlCalls == 1
+                    && crawler.SnapshotCrawlCalls == 0
+                    && noTransfers.TransferCalls == 0
+                    && syncTimer.Elapsed <= TimeSpan.FromSeconds(30);
+                if (passed)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Steady-state repeat pass avoided local placeholder-tree scanning.")
+                        + " files="
+                        + LargeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                        + ", syncElapsedMs="
+                        + syncTimer.ElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", streamingCrawls="
+                        + crawler.StreamingCrawlCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", fullLocalScans="
+                        + scanner.FullScanCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", metadataTreeScans="
+                        + scanner.MetadataTreeScanCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", pathLookups="
+                        + scanner.PathLookupCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", transfers="
+                        + noTransfers.TransferCalls.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Steady-state repeat pass did not stay on the state-first fast path.")
+                        + " requiresAction="
+                        + result.RequiresUserAction.ToString()
+                        + ", syncElapsedMs="
+                        + syncTimer.ElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", streamingCrawls="
+                        + crawler.StreamingCrawlCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", snapshotCrawls="
+                        + crawler.SnapshotCrawlCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", fullLocalScans="
+                        + scanner.FullScanCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", metadataTreeScans="
+                        + scanner.MetadataTreeScanCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", pathLookups="
+                        + scanner.PathLookupCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", transfers="
+                        + noTransfers.TransferCalls.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                failures++;
+                await output.WriteLineAsync(
+                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
+            }
+
+            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
+            {
+                await output.WriteLineAsync(
+                    "Diagnostic: "
+                    + item.Operation
+                    + " "
+                    + item.Status
+                    + " "
+                    + CleanSingleLine(item.Details))
+                    .ConfigureAwait(false);
+            }
+
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
         private static async Task<int> VerifyPairDeletedAsync(
             ISyncPairSettingsStore syncPairs,
             ISyncStateStore stateStore,
@@ -841,6 +1037,23 @@ namespace Cotton.Sync.Desktop.Startup
             }
 
             return identity;
+        }
+
+        private static void ApplyLargeSmokeRemoteIdentity(NodeFileManifestDto remoteFile, int index)
+        {
+            remoteFile.Id = CreateLargeSmokeGuid(0x33, index);
+            remoteFile.FileManifestId = CreateLargeSmokeGuid(0x55, index);
+            remoteFile.OriginalNodeFileId = remoteFile.Id;
+            remoteFile.ETag = "vfs-smoke-etag-" + index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        private static Guid CreateLargeSmokeGuid(byte marker, int index)
+        {
+            byte[] bytes = new byte[16];
+            bytes[0] = marker;
+            byte[] indexBytes = BitConverter.GetBytes(index);
+            Array.Copy(indexBytes, 0, bytes, 12, indexBytes.Length);
+            return new Guid(bytes);
         }
 
         private static DesktopRuntimeHealthSnapshot CreateRuntimeHealthSnapshot()
@@ -2499,6 +2712,175 @@ namespace Cotton.Sync.Desktop.Startup
             public void NotifyDehydrateCompleted(WindowsCloudFilesDehydrateCompletionNotification notification)
             {
                 _inner.NotifyDehydrateCompleted(notification);
+            }
+        }
+
+        private sealed class GuardLocalScanner :
+            ILocalFileScanner,
+            ILocalTreeScanner,
+            ILocalFileMetadataTreeScanner,
+            ILocalFileMetadataTreeLookupScanner,
+            ILocalFileMetadataPathLookupScanner,
+            ILocalFileContentHasher
+        {
+            public int FullScanCalls { get; private set; }
+
+            public int MetadataTreeScanCalls { get; private set; }
+
+            public int PathLookupCalls { get; private set; }
+
+            public Task<IReadOnlyList<LocalFileSnapshot>> ScanAsync(
+                string rootPath,
+                CancellationToken cancellationToken = default)
+            {
+                FullScanCalls++;
+                throw new InvalidOperationException("Steady-state repeat smoke must not enumerate local placeholders.");
+            }
+
+            public Task<LocalTreeSnapshot> ScanTreeAsync(
+                string rootPath,
+                CancellationToken cancellationToken = default)
+            {
+                FullScanCalls++;
+                throw new InvalidOperationException("Steady-state repeat smoke must not scan the local placeholder tree.");
+            }
+
+            public Task<LocalTreeSnapshot> ScanTreeMetadataAsync(
+                string rootPath,
+                CancellationToken cancellationToken = default)
+            {
+                MetadataTreeScanCalls++;
+                throw new InvalidOperationException("Steady-state repeat smoke must not scan local tree metadata.");
+            }
+
+            public Task<LocalTreeLookupSnapshot> ScanTreeMetadataLookupsAsync(
+                string rootPath,
+                IProgress<LocalTreeScanProgress>? progress,
+                CancellationToken cancellationToken = default)
+            {
+                MetadataTreeScanCalls++;
+                throw new InvalidOperationException("Steady-state repeat smoke must not build local tree lookups.");
+            }
+
+            public Task<LocalTreeLookupSnapshot> ScanPathMetadataLookupsAsync(
+                string rootPath,
+                IReadOnlyCollection<string> relativePaths,
+                IProgress<LocalTreeScanProgress>? progress,
+                bool includeDirectoryDescendants,
+                CancellationToken cancellationToken = default)
+            {
+                PathLookupCalls++;
+                throw new InvalidOperationException("Steady-state repeat smoke must not perform local path lookups.");
+            }
+
+            public Task<string> ComputeContentHashAsync(
+                LocalFileSnapshot localFile,
+                CancellationToken cancellationToken = default)
+            {
+                throw new InvalidOperationException("Steady-state repeat smoke must not hash local placeholder content.");
+            }
+        }
+
+        private sealed class LargeStateFirstRemoteCrawler : IRemoteTreeStreamingCrawler
+        {
+            private readonly Guid _rootNodeId;
+            private readonly IReadOnlyList<RemoteFileSnapshot> _files;
+
+            public LargeStateFirstRemoteCrawler(Guid rootNodeId, IReadOnlyList<RemoteFileSnapshot> files)
+            {
+                _rootNodeId = rootNodeId;
+                _files = files;
+            }
+
+            public int SnapshotCrawlCalls { get; private set; }
+
+            public int StreamingCrawlCalls { get; private set; }
+
+            public Task<RemoteTreeSnapshot> CrawlAsync(Guid rootNodeId, CancellationToken cancellationToken = default)
+            {
+                SnapshotCrawlCalls++;
+                throw new InvalidOperationException("Steady-state repeat smoke must use streaming remote discovery.");
+            }
+
+            public async Task<NodeDto> CrawlStreamingAsync(
+                Guid rootNodeId,
+                IRemoteTreeStreamSink sink,
+                IProgress<RemoteTreeScanProgress>? progress,
+                CancellationToken cancellationToken = default)
+            {
+                StreamingCrawlCalls++;
+                var root = new NodeDto
+                {
+                    Id = _rootNodeId,
+                    Name = "root",
+                };
+                progress?.Report(new RemoteTreeScanProgress(0, 0, currentPath: null, pagesScanned: 0));
+                for (int index = 0; index < _files.Count; index++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    RemoteFileSnapshot file = _files[index];
+                    await sink.AddFileAsync(file, cancellationToken).ConfigureAwait(false);
+                    if ((index + 1) % 1_000 == 0 || index == _files.Count - 1)
+                    {
+                        progress?.Report(new RemoteTreeScanProgress(
+                            index + 1,
+                            0,
+                            file.RelativePath,
+                            pagesScanned: (index / 1_000) + 1));
+                    }
+                }
+
+                progress?.Report(new RemoteTreeScanProgress(
+                    _files.Count,
+                    0,
+                    currentPath: null,
+                    pagesScanned: Math.Max(1, (_files.Count + 999) / 1_000)));
+                return root;
+            }
+        }
+
+        private sealed class NoTransferRemoteFileSynchronizer : IRemoteFileSynchronizer
+        {
+            public int TransferCalls { get; private set; }
+
+            public Task<NodeFileManifestDto> UploadFileAsync(
+                Guid rootNodeId,
+                string relativePath,
+                LocalFileSnapshot localFile,
+                NodeFileManifestDto? existingRemoteFile = null,
+                CancellationToken cancellationToken = default)
+            {
+                TransferCalls++;
+                throw new InvalidOperationException("Steady-state repeat smoke must not upload files.");
+            }
+
+            public Task DownloadFileAsync(
+                Guid nodeFileId,
+                Stream destination,
+                CancellationToken cancellationToken = default)
+            {
+                TransferCalls++;
+                throw new InvalidOperationException("Steady-state repeat smoke must not download files.");
+            }
+
+            public Task<NodeFileManifestDto> MoveFileAsync(
+                Guid rootNodeId,
+                string relativePath,
+                NodeFileManifestDto existingRemoteFile,
+                CancellationToken cancellationToken = default)
+            {
+                TransferCalls++;
+                throw new InvalidOperationException("Steady-state repeat smoke must not move remote files.");
+            }
+
+            public Task DeleteFileAsync(
+                Guid nodeFileId,
+                bool skipTrash = false,
+                string? expectedETag = null,
+                CancellationToken cancellationToken = default)
+            {
+                TransferCalls++;
+                throw new InvalidOperationException("Steady-state repeat smoke must not delete remote files.");
             }
         }
 
