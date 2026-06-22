@@ -96,6 +96,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private bool _isUpdateDownloadProgressVisible;
         private bool _isUpdateDownloadProgressIndeterminate;
         private bool _isUpdateInstallHandoffActive;
+        private bool _isUpdateInstallProgressVisible;
         private double _updateDownloadProgressValue;
         private Task? _startupUpdateTask;
         private Task? _periodicUpdateTask;
@@ -528,6 +529,12 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
         }
 
+        public bool IsUpdateInstallProgressVisible
+        {
+            get => _isUpdateInstallProgressVisible;
+            private set => SetProperty(ref _isUpdateInstallProgressVisible, value);
+        }
+
         public bool CanCheckForUpdates => !IsUpdateBusy && !IsUpdateInstallHandoffActive;
 
         public bool CanDownloadUpdate => IsUpdateAvailable && !IsUpdateReady && !IsUpdateBusy && !IsUpdateInstallHandoffActive;
@@ -538,6 +545,8 @@ namespace Cotton.Sync.Desktop.ViewModels
             && !IsUpdateInstallHandoffActive;
 
         public bool CanInstallUpdate => IsUpdateReady && !IsUpdateBusy && !IsUpdateInstallHandoffActive;
+
+        public bool IsUpdateInstallVisible => CanInstallUpdate;
 
         public string DeviceName
         {
@@ -3039,6 +3048,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             UpdateStatusText = "Installing update";
             UpdateDetailsText = "Starting the update installer.";
             ClearUpdateDownloadProgress();
+            IsUpdateInstallProgressVisible = true;
             GlobalStatus = "Installing update";
             try
             {
@@ -3056,6 +3066,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             {
                 string message = ResolveUpdateFailureMessage(exception);
                 IsUpdateInstallHandoffActive = false;
+                IsUpdateInstallProgressVisible = false;
                 UpdateStatusText = "Update failed";
                 UpdateDetailsText = message;
                 GlobalStatus = "Update failed";
@@ -3122,6 +3133,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             IsUpdateInstallHandoffActive = false;
             IsUpdateAvailable = status.IsUpdateAvailable;
             IsUpdateReady = status.IsInstallerReady;
+            IsUpdateInstallProgressVisible = false;
             ClearUpdateDownloadProgress();
             UpdateStatusText = status.IsInstallerReady
                 ? "Update ready"
@@ -4725,6 +4737,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             OnPropertyChanged(nameof(CanDownloadUpdate));
             OnPropertyChanged(nameof(IsUpdateDownloadVisible));
             OnPropertyChanged(nameof(CanInstallUpdate));
+            OnPropertyChanged(nameof(IsUpdateInstallVisible));
         }
 
         private void RaiseSyncStateProperties()

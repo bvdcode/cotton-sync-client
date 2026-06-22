@@ -5951,7 +5951,9 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.UpdateDetailsText, Is.EqualTo("Update installer launched. Cotton Sync will restart after the update is installed."));
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Installing update"));
                 Assert.That(viewModel.IsUpdateInstallHandoffActive, Is.True);
+                Assert.That(viewModel.IsUpdateInstallProgressVisible, Is.True);
                 Assert.That(viewModel.CanInstallUpdate, Is.False);
+                Assert.That(viewModel.IsUpdateInstallVisible, Is.False);
                 Assert.That(viewModel.InstallUpdateCommand.CanExecute(null), Is.False);
                 Assert.That(viewModel.CanCheckForUpdates, Is.False);
             });
@@ -5996,7 +5998,9 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.InstallUpdateCommand.IsRunning, Is.True);
                 Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Installing update"));
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Installing update"));
+                Assert.That(viewModel.IsUpdateInstallProgressVisible, Is.True);
                 Assert.That(viewModel.CanInstallUpdate, Is.False);
+                Assert.That(viewModel.IsUpdateInstallVisible, Is.False);
             });
 
             installCompletion.SetResult();
@@ -6041,7 +6045,9 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.UpdateDetailsText, Is.EqualTo("Cotton Sync update installer could not be started."));
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Update failed"));
                 Assert.That(viewModel.IsUpdateInstallHandoffActive, Is.False);
+                Assert.That(viewModel.IsUpdateInstallProgressVisible, Is.False);
                 Assert.That(viewModel.CanInstallUpdate, Is.True);
+                Assert.That(viewModel.IsUpdateInstallVisible, Is.True);
                 Assert.That(viewModel.InstallUpdateCommand.CanExecute(null), Is.True);
             });
         }

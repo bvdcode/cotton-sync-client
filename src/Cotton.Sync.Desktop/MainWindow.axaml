@@ -1521,6 +1521,11 @@
                                      Value="{Binding UpdateDownloadProgressValue}"
                                      IsIndeterminate="{Binding IsUpdateDownloadProgressIndeterminate}"
                                      IsVisible="{Binding IsUpdateDownloadProgressVisible}" />
+                        <ProgressBar Height="4"
+                                     Minimum="0"
+                                     Maximum="100"
+                                     IsIndeterminate="True"
+                                     IsVisible="{Binding IsUpdateInstallProgressVisible}" />
                       </StackPanel>
                       <StackPanel Grid.Column="1"
                                   Spacing="6">
@@ -1537,7 +1542,7 @@
                                 Classes="compact"
                                 ToolTip.Tip="Update and restart Cotton Sync"
                                 Command="{Binding InstallUpdateCommand}"
-                                IsVisible="{Binding IsUpdateReady}" />
+                                IsVisible="{Binding IsUpdateInstallVisible}" />
                       </StackPanel>
                     </Grid>
                   </StackPanel>
