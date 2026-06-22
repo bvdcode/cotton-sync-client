@@ -43,12 +43,13 @@ namespace Cotton.Sync.Desktop.Composition
                 foreach (IPAddress address in orderedAddresses)
                 {
                     attempts.Add(StartConnectAttempt(address, context.DnsEndPoint.Port, cancellationToken));
-                    Task<ConnectAttempt> completedAttempt = WaitForCompletedConnectAsync(attempts, cancellationToken);
-                    Task delay = Task.Delay(ConnectFallbackDelay, cancellationToken);
-                    Task completed = await Task.WhenAny(completedAttempt, delay).ConfigureAwait(false);
-                    if (completed == completedAttempt)
+                    ConnectAttempt? attempt = await WaitForCompletedConnectOrFallbackDelayAsync(
+                            attempts,
+                            ConnectFallbackDelay,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    if (attempt is not null)
                     {
-                        ConnectAttempt attempt = completedAttempt.Result;
                         if (attempt.ConnectTask.IsCompletedSuccessfully)
                         {
                             return attempt.CreateStream();
@@ -113,6 +114,31 @@ namespace Cotton.Sync.Desktop.Composition
             Task completedTask = await Task.WhenAny(attempts.Select(static attempt => attempt.ConnectTask))
                 .WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
+            return RemoveCompletedAttempt(attempts, completedTask);
+        }
+
+        internal static async Task<ConnectAttempt?> WaitForCompletedConnectOrFallbackDelayAsync(
+            List<ConnectAttempt> attempts,
+            TimeSpan fallbackDelay,
+            CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(attempts);
+            ArgumentOutOfRangeException.ThrowIfLessThan(fallbackDelay, TimeSpan.Zero);
+            Task<Task> completedConnectTask = Task.WhenAny(attempts.Select(static attempt => attempt.ConnectTask));
+            Task fallbackDelayTask = Task.Delay(fallbackDelay, cancellationToken);
+            Task completedTask = await Task.WhenAny(completedConnectTask, fallbackDelayTask).ConfigureAwait(false);
+            if (completedTask == fallbackDelayTask)
+            {
+                await fallbackDelayTask.ConfigureAwait(false);
+                return null;
+            }
+
+            Task completedConnect = await completedConnectTask.ConfigureAwait(false);
+            return RemoveCompletedAttempt(attempts, completedConnect);
+        }
+
+        private static ConnectAttempt RemoveCompletedAttempt(List<ConnectAttempt> attempts, Task completedTask)
+        {
             ConnectAttempt completedAttempt = attempts.Single(attempt => ReferenceEquals(attempt.ConnectTask, completedTask));
             attempts.Remove(completedAttempt);
             return completedAttempt;
@@ -139,7 +165,7 @@ namespace Cotton.Sync.Desktop.Composition
                 TaskScheduler.Default);
         }
 
-        private sealed class ConnectAttempt : IDisposable
+        internal class ConnectAttempt : IDisposable
         {
             private bool _completed;
 
