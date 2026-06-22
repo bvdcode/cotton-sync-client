@@ -67,6 +67,12 @@ Name: "{userdesktop}\Cotton Sync"; Filename: "{app}\Cotton.Sync.Desktop.exe"; Ic
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Cotton Sync"; ValueData: """{app}\Cotton.Sync.Desktop.exe"" --start-minimized"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\*\shell\CottonSyncCopyShareLink"; ValueType: string; ValueName: ""; ValueData: "Copy Cotton Cloud share link"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\*\shell\CottonSyncCopyShareLink"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\Cotton.Sync.Desktop.exe"
+Root: HKCU; Subkey: "Software\Classes\*\shell\CottonSyncCopyShareLink\command"; ValueType: string; ValueName: ""; ValueData: """{app}\Cotton.Sync.Desktop.exe"" --copy-shell-share-link ""%1"""
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\CottonSyncCopyShareLink"; ValueType: string; ValueName: ""; ValueData: "Copy Cotton Cloud share link"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\CottonSyncCopyShareLink"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\Cotton.Sync.Desktop.exe"
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\CottonSyncCopyShareLink\command"; ValueType: string; ValueName: ""; ValueData: """{app}\Cotton.Sync.Desktop.exe"" --copy-shell-share-link ""%1"""
 
 [Run]
 Filename: "{app}\Cotton.Sync.Desktop.exe"; Description: "Launch Cotton Sync"; Flags: nowait postinstall; Check: ShouldLaunchAfterInstall

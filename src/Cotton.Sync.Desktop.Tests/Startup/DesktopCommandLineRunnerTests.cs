@@ -251,6 +251,104 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public async Task RunShellShareLinkCopyAsync_CopiesShareLinkAndShowsNotificationWithoutPrintingLocalPath()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(Path.Combine(_tempDirectory, "state"));
+            string localRoot = Path.Combine(_tempDirectory, "cloud");
+            string selectedPath = Path.Combine(localRoot, "Docs", "report.pdf");
+            Uri shareLink = new("https://cloud.example/s/generated-token");
+            SqliteSyncPairSettingsStore pairStore = new(paths.AppDatabasePath);
+            await pairStore.InitializeAsync();
+            SyncPairSettings syncPair = CreateSyncPair("Cloud", SyncPairMode.WindowsVirtualFiles, localRoot);
+            await pairStore.UpsertAsync(syncPair);
+            SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath);
+            await stateStore.InitializeAsync();
+            await stateStore.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = syncPair.Id.ToString("D"),
+                RelativePath = "Docs/report.pdf",
+                Kind = SyncEntryKind.File,
+                RemoteNodeId = Guid.NewGuid(),
+                RemoteFileId = Guid.NewGuid(),
+                SyncedAtUtc = new DateTime(2026, 06, 20, 12, 00, 00, DateTimeKind.Utc),
+            });
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                ["--data-dir", paths.DataDirectory, "--copy-shell-share-link", selectedPath]);
+            using StringWriter output = new();
+            FakeDesktopClipboardService clipboard = new();
+            FakeDesktopNotificationService notifications = new();
+
+            int exitCode = await DesktopCommandLineRunner.RunShellShareLinkCopyAsync(
+                paths,
+                options,
+                output,
+                shareLinkClient: new FakeDesktopShellShareLinkClient(
+                    DesktopShellShareLinkResult.Created(shareLink)),
+                clipboardService: clipboard,
+                notificationService: notifications);
+
+            string report = output.ToString();
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(0));
+                Assert.That(clipboard.CopiedText, Is.EqualTo(shareLink.AbsoluteUri));
+                Assert.That(notifications.Messages, Has.Count.EqualTo(1));
+                Assert.That(notifications.Messages[0].Title, Is.EqualTo("Cotton Sync"));
+                Assert.That(notifications.Messages[0].Message, Is.EqualTo("Share link copied to clipboard."));
+                Assert.That(report, Does.Contain("Cotton Sync Desktop copy share link"));
+                Assert.That(report, Does.Contain("Status: resolved"));
+                Assert.That(report, Does.Contain("ShareLinkApi: available"));
+                Assert.That(report, Does.Contain("ShareLinkCreated: true"));
+                Assert.That(report, Does.Contain("ShareLinkCopied: true"));
+                Assert.That(report, Does.Contain("Result: passed"));
+                Assert.That(report, Does.Not.Contain(localRoot));
+                Assert.That(report, Does.Not.Contain("report.pdf"));
+                Assert.That(report, Does.Not.Contain("ShareLink:"));
+            });
+        }
+
+        [Test]
+        public async Task RunShellShareLinkCopyAsync_RejectsLocalOnlyPathWithoutCopying()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(Path.Combine(_tempDirectory, "state"));
+            string localRoot = Path.Combine(_tempDirectory, "cloud");
+            string selectedPath = Path.Combine(localRoot, "local-only.txt");
+            SqliteSyncPairSettingsStore pairStore = new(paths.AppDatabasePath);
+            await pairStore.InitializeAsync();
+            await pairStore.UpsertAsync(CreateSyncPair("Cloud", SyncPairMode.WindowsVirtualFiles, localRoot));
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                ["--data-dir", paths.DataDirectory, "--copy-shell-share-link", selectedPath]);
+            using StringWriter output = new();
+            FakeDesktopClipboardService clipboard = new();
+            FakeDesktopNotificationService notifications = new();
+
+            int exitCode = await DesktopCommandLineRunner.RunShellShareLinkCopyAsync(
+                paths,
+                options,
+                output,
+                clipboardService: clipboard,
+                notificationService: notifications);
+
+            string report = output.ToString();
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(1));
+                Assert.That(clipboard.CopiedText, Is.Null);
+                Assert.That(notifications.Messages, Has.Count.EqualTo(1));
+                Assert.That(notifications.Messages[0].Title, Is.EqualTo("Cotton Sync"));
+                Assert.That(notifications.Messages[0].Message, Is.EqualTo("This item is not synced yet."));
+                Assert.That(report, Does.Contain("Status: missing-baseline"));
+                Assert.That(report, Does.Contain("ShareLinkApi: unavailable"));
+                Assert.That(report, Does.Contain("ShareLinkCreated: false"));
+                Assert.That(report, Does.Contain("ShareLinkCopied: false"));
+                Assert.That(report, Does.Contain("FailureReason: target-missing-baseline"));
+                Assert.That(report, Does.Contain("Result: failed"));
+                Assert.That(report, Does.Not.Contain(localRoot));
+                Assert.That(report, Does.Not.Contain("local-only.txt"));
+            });
+        }
+
+        [Test]
         public async Task RunShellShareLinkTargetAsync_ReturnsFailureForLocalOnlyPath()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(Path.Combine(_tempDirectory, "state"));
@@ -651,6 +749,29 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 CancellationToken cancellationToken = default)
             {
                 return Task.FromResult(_result);
+            }
+        }
+
+        private class FakeDesktopClipboardService : IDesktopClipboardService
+        {
+            public string? CopiedText { get; private set; }
+
+            public Task CopyTextAsync(string text, CancellationToken cancellationToken = default)
+            {
+                CopiedText = text;
+                return Task.CompletedTask;
+            }
+        }
+
+        private class FakeDesktopNotificationService : IDesktopNotificationService
+        {
+            public bool IsSupported => true;
+
+            public List<(string Title, string Message)> Messages { get; } = [];
+
+            public void Show(string title, string message)
+            {
+                Messages.Add((title, message));
             }
         }
 
