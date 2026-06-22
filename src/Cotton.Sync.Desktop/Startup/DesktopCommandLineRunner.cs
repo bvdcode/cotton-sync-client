@@ -199,18 +199,15 @@ namespace Cotton.Sync.Desktop.Startup
             }
 
             DesktopTraceLogging.Install(paths);
-            IShellShareLinkTargetResolver targetResolver = resolver
-                ?? new ShellShareLinkTargetResolver(
-                    new SqliteSyncPairSettingsStore(paths.AppDatabasePath),
-                    new SqliteSyncStateStore(paths.SyncStateDatabasePath));
-            ShellShareLinkTarget target = await targetResolver
-                .ResolveAsync(startupOptions.ShellShareLinkTargetPath, cancellationToken)
-                .ConfigureAwait(false);
+            (ShellShareLinkTarget target, DesktopShellShareLinkResult shareLinkResult) =
+                await ResolveShellShareLinkAsync(
+                    paths,
+                    startupOptions,
+                    startupOptions.ShellShareLinkTargetPath,
+                    resolver,
+                    shareLinkClient,
+                    cancellationToken).ConfigureAwait(false);
             bool targetResolved = target.Status == ShellShareLinkTargetStatus.Resolved;
-            DesktopShellShareLinkResult shareLinkResult = target.CanCreateShareLink
-                ? await CreateShellShareLinkAsync(paths, startupOptions, target, shareLinkClient, cancellationToken)
-                    .ConfigureAwait(false)
-                : DesktopShellShareLinkResult.Unavailable("target-not-shareable");
             bool canCreateShareLink = target.CanCreateShareLink && shareLinkResult.IsCreated;
 
             await output.WriteLineAsync("Cotton Sync Desktop shell share-link target").ConfigureAwait(false);
@@ -251,6 +248,110 @@ namespace Cotton.Sync.Desktop.Startup
             return canCreateShareLink ? 0 : 1;
         }
 
+        internal static async Task<int> RunShellShareLinkCopyAsync(
+            DesktopAppPaths paths,
+            DesktopStartupOptions startupOptions,
+            TextWriter output,
+            IShellShareLinkTargetResolver? resolver = null,
+            IDesktopShellShareLinkClient? shareLinkClient = null,
+            IDesktopClipboardService? clipboardService = null,
+            IDesktopNotificationService? notificationService = null,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(paths);
+            ArgumentNullException.ThrowIfNull(startupOptions);
+            ArgumentNullException.ThrowIfNull(output);
+            if (string.IsNullOrWhiteSpace(startupOptions.ShellCopyShareLinkTargetPath))
+            {
+                await output.WriteLineAsync("--copy-shell-share-link requires a local file or folder path.")
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                return 2;
+            }
+
+            DesktopTraceLogging.Install(paths);
+            (ShellShareLinkTarget target, DesktopShellShareLinkResult shareLinkResult) =
+                await ResolveShellShareLinkAsync(
+                    paths,
+                    startupOptions,
+                    startupOptions.ShellCopyShareLinkTargetPath,
+                    resolver,
+                    shareLinkClient,
+                    cancellationToken).ConfigureAwait(false);
+            bool copied = false;
+            string? failureReason = null;
+            if (!target.CanCreateShareLink)
+            {
+                failureReason = "target-" + FormatShellShareLinkTargetStatus(target.Status);
+            }
+            else if (!shareLinkResult.IsCreated || string.IsNullOrWhiteSpace(shareLinkResult.ShareLink))
+            {
+                failureReason = string.IsNullOrWhiteSpace(shareLinkResult.FailureReason)
+                    ? "share-link-unavailable"
+                    : shareLinkResult.FailureReason;
+            }
+            else
+            {
+                IDesktopClipboardService effectiveClipboardService =
+                    clipboardService ?? DesktopClipboardServiceFactory.CreateDefault();
+                try
+                {
+                    await effectiveClipboardService.CopyTextAsync(shareLinkResult.ShareLink, cancellationToken)
+                        .ConfigureAwait(false);
+                    copied = true;
+                }
+                catch (Exception exception) when (IsExpectedClipboardFailure(exception))
+                {
+                    Trace.TraceWarning("Failed to copy shell share link to clipboard: {0}", exception);
+                    failureReason = "clipboard-unavailable";
+                }
+            }
+
+            IDesktopNotificationService effectiveNotificationService =
+                notificationService ?? DesktopNotificationServiceFactory.CreateDefault();
+            ShowShellShareLinkCopyNotification(effectiveNotificationService, copied, failureReason);
+
+            await output.WriteLineAsync("Cotton Sync Desktop copy share link").ConfigureAwait(false);
+            await output.WriteLineAsync("Status: " + FormatShellShareLinkTargetStatus(target.Status))
+                .ConfigureAwait(false);
+            await output.WriteLineAsync("ShareLinkApi: " + (shareLinkResult.IsApiAvailable ? "available" : "unavailable"))
+                .ConfigureAwait(false);
+            await output.WriteLineAsync("ShareLinkCreated: " + FormatBoolean(shareLinkResult.IsCreated))
+                .ConfigureAwait(false);
+            await output.WriteLineAsync("ShareLinkCopied: " + FormatBoolean(copied))
+                .ConfigureAwait(false);
+            if (!copied && !string.IsNullOrWhiteSpace(failureReason))
+            {
+                await output.WriteLineAsync("FailureReason: " + CleanSingleLine(failureReason))
+                    .ConfigureAwait(false);
+            }
+
+            await output.WriteLineAsync(copied ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return copied ? 0 : 1;
+        }
+
+        private static async Task<(ShellShareLinkTarget Target, DesktopShellShareLinkResult ShareLinkResult)>
+            ResolveShellShareLinkAsync(
+                DesktopAppPaths paths,
+                DesktopStartupOptions startupOptions,
+                string selectedPath,
+                IShellShareLinkTargetResolver? resolver,
+                IDesktopShellShareLinkClient? shareLinkClient,
+                CancellationToken cancellationToken)
+        {
+            IShellShareLinkTargetResolver targetResolver = resolver
+                ?? new ShellShareLinkTargetResolver(
+                    new SqliteSyncPairSettingsStore(paths.AppDatabasePath),
+                    new SqliteSyncStateStore(paths.SyncStateDatabasePath));
+            ShellShareLinkTarget target = await targetResolver.ResolveAsync(selectedPath, cancellationToken)
+                .ConfigureAwait(false);
+            DesktopShellShareLinkResult shareLinkResult = target.CanCreateShareLink
+                ? await CreateShellShareLinkAsync(paths, startupOptions, target, shareLinkClient, cancellationToken)
+                    .ConfigureAwait(false)
+                : DesktopShellShareLinkResult.Unavailable("target-not-shareable");
+            return (target, shareLinkResult);
+        }
+
         private static async Task<DesktopShellShareLinkResult> CreateShellShareLinkAsync(
             DesktopAppPaths paths,
             DesktopStartupOptions startupOptions,
@@ -289,6 +390,41 @@ namespace Cotton.Sync.Desktop.Startup
                 cottonClient.Auth,
                 serverUrl);
             return await client.CreateShareLinkAsync(target, cancellationToken).ConfigureAwait(false);
+        }
+
+        private static void ShowShellShareLinkCopyNotification(
+            IDesktopNotificationService notificationService,
+            bool copied,
+            string? failureReason)
+        {
+            string message = copied
+                ? "Share link copied to clipboard."
+                : FormatShellShareLinkFailureMessage(failureReason);
+            notificationService.Show("Cotton Sync", message);
+        }
+
+        private static string FormatShellShareLinkFailureMessage(string? failureReason)
+        {
+            return failureReason switch
+            {
+                "target-missing-baseline" => "This item is not synced yet.",
+                "target-missing-remote-identity" => "This item is not ready for sharing yet.",
+                "target-ignored-path" => "This item is not available for sharing.",
+                "target-outside-sync-root" => "Select an item inside a synced folder.",
+                "target-sync-pair-disabled" => "Enable this synced folder and try again.",
+                "server-url-missing" or "token-missing" or "refresh-failed" => "Sign in to Cotton Sync and try again.",
+                "clipboard-unavailable" => "The share link was created, but the clipboard is unavailable.",
+                _ => "Share link could not be copied.",
+            };
+        }
+
+        private static bool IsExpectedClipboardFailure(Exception exception)
+        {
+            return exception is IOException
+                or InvalidOperationException
+                or NotSupportedException
+                or ObjectDisposedException
+                or OperationCanceledException;
         }
 
         private static async Task<Uri?> ResolveShellShareLinkServerUrlAsync(

@@ -166,6 +166,18 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void Parse_LoadsShellCopyShareLinkTargetPath()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--copy-shell-share-link",
+                    @"C:\Cloud\Docs\report.pdf",
+                ]);
+
+            Assert.That(options.ShellCopyShareLinkTargetPath, Is.EqualTo(@"C:\Cloud\Docs\report.pdf"));
+        }
+
+        [Test]
         public void Parse_LoadsVisualSmokeScenario()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(
