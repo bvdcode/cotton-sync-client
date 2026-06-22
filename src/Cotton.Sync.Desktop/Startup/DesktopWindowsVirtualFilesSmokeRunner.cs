@@ -824,6 +824,7 @@ namespace Cotton.Sync.Desktop.Startup
             var transferProgressPublisher = new InMemoryAppTransferProgressPublisher();
             var runProgressPublisher = new InMemoryAppRunProgressPublisher();
             var localChangeSuppression = new LocalChangeSuppression();
+            WindowsCloudFilesConnection? connection = null;
             int failures = 0;
 
             try
@@ -836,6 +837,12 @@ namespace Cotton.Sync.Desktop.Startup
                     FormatCheck(true, "Isolated QA root prepared for cloud-only replacement upload smoke.")
                     + " root="
                     + rootPath)
+                    .ConfigureAwait(false);
+                connection = cloudFiles.ConnectSyncRoot(syncPair, new NoopCloudFilesCallbackHandler());
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Cloud Files sync root connected for cloud-only replacement upload smoke.")
+                    + " root="
+                    + connection.LocalRootPath)
                     .ConfigureAwait(false);
 
                 cloudFiles.CreateDirectoryPlaceholder(CreateDirectoryRequest(syncPair, ReplaceCloudOnlyDirectoryName));
@@ -998,6 +1005,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             finally
             {
+                connection?.Dispose();
                 failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
             }
 

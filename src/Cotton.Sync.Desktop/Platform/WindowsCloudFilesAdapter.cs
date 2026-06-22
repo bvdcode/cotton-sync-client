@@ -679,7 +679,8 @@ namespace Cotton.Sync.Desktop.Platform
 
             if (fileState.RemoteFileId is not Guid remoteFileId
                 || fileState.RemoteNodeId is not Guid remoteNodeId
-                || fileState.RemoteFileManifestId is not Guid remoteFileManifestId)
+                || fileState.RemoteFileManifestId is not Guid remoteFileManifestId
+                || string.IsNullOrWhiteSpace(fileState.RemoteContentHash))
             {
                 throw new InvalidOperationException(
                     "Uploaded Cloud Files placeholder finalization requires remote file identity in sync state.");
@@ -705,7 +706,7 @@ namespace Cotton.Sync.Desktop.Platform
                         OriginalNodeFileId = fileState.RemoteOriginalNodeFileId ?? remoteFileId,
                         SizeBytes = sizeBytes,
                         ContentHash = fileState.RemoteContentHash,
-                        ETag = fileState.RemoteETag,
+                        ETag = fileState.RemoteETag ?? string.Empty,
                         CreatedAt = fileState.SyncedAtUtc.ToUniversalTime(),
                         UpdatedAt = updatedAtUtc,
                         Name = Path.GetFileName(normalizedPath),
