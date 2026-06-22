@@ -763,11 +763,7 @@ namespace Cotton.Sync.Desktop.Shell
 
             DesktopNotificationCapabilitySnapshot notificationCapabilities =
                 DesktopNotificationServiceFactory.CreateSelfTestCapabilitySnapshot();
-            items.Add(new DesktopSelfTestItemSnapshot(
-                "Notification adapter",
-                notificationCapabilities.SelfTestPassed,
-                notificationCapabilities.Details,
-                Skipped: notificationCapabilities.SelfTestSkipped));
+            items.Add(CreateNotificationSelfTestItem(notificationCapabilities));
 
             await AddSelfTestCheckAsync(
                 items,
@@ -869,11 +865,14 @@ namespace Cotton.Sync.Desktop.Shell
                 .ConfigureAwait(false);
             DesktopCloudFilesRegistrationDiagnosticsSnapshot cloudFilesRegistration =
                 DesktopCloudFilesRegistrationDiagnosticsSnapshot.Create(syncPairs);
+            DesktopNotificationCapabilitySnapshot notificationCapabilities =
+                DesktopNotificationServiceFactory.CreateSelfTestCapabilitySnapshot();
             IReadOnlyList<DesktopSelfTestItemSnapshot> diagnosticsItems =
                 await CreateDiagnosticsExportItemsAsync(
                     syncPairs,
                     syncStateDiagnostics,
                     cloudFilesRegistration,
+                    notificationCapabilities,
                     cancellationToken).ConfigureAwait(false);
             var bundle = new DesktopDiagnosticsBundle(
                 DateTimeOffset.UtcNow,
@@ -886,8 +885,7 @@ namespace Cotton.Sync.Desktop.Shell
                 CreateRuntimeHealthSnapshot(),
                 CreateSyncLifecycleDiagnosticsSnapshot(syncPairs),
                 CreateAuthDiagnosticsSnapshot(),
-                DesktopNotificationDiagnosticsSnapshot.FromCapability(
-                    DesktopNotificationServiceFactory.CreateSelfTestCapabilitySnapshot()),
+                DesktopNotificationDiagnosticsSnapshot.FromCapability(notificationCapabilities),
                 CreateUpdateDiagnosticsSnapshot(),
                 cloudFilesRegistration,
                 diagnosticsItems,
@@ -899,6 +897,7 @@ namespace Cotton.Sync.Desktop.Shell
             IReadOnlyList<SyncPairSettings> syncPairs,
             SyncStateStoreDiagnostics syncStateDiagnostics,
             DesktopCloudFilesRegistrationDiagnosticsSnapshot cloudFilesRegistration,
+            DesktopNotificationCapabilitySnapshot notificationCapabilities,
             CancellationToken cancellationToken)
         {
             var items = new List<DesktopSelfTestItemSnapshot>
@@ -906,7 +905,7 @@ namespace Cotton.Sync.Desktop.Shell
                 new(
                     "Diagnostics export",
                     true,
-                    "Captured current diagnostics only; self-test probes were not run."),
+                    "Captured current diagnostics and read-only capability checks; self-test probes were not run."),
                 new(
                     "Sync pair database",
                     true,
@@ -947,6 +946,7 @@ namespace Cotton.Sync.Desktop.Shell
                     + platformCapabilities.WindowsVirtualFilesDetails
                     + " Full Cloud Files connection self-test was not run during diagnostics export.",
                 Skipped: !platformCapabilities.IsWindowsVirtualFilesSupported));
+            items.Add(CreateNotificationSelfTestItem(notificationCapabilities));
             items.Add(new DesktopSelfTestItemSnapshot(
                 "Cloud Files registration",
                 cloudFilesRegistration.MissingSyncPairCount == 0 && cloudFilesRegistration.UnknownSyncPairCount == 0,
@@ -1168,6 +1168,17 @@ namespace Cotton.Sync.Desktop.Shell
                 _paths.AppDatabasePath,
                 _paths.SyncStateDatabasePath,
                 _paths.TokenStorePath);
+        }
+
+        private static DesktopSelfTestItemSnapshot CreateNotificationSelfTestItem(
+            DesktopNotificationCapabilitySnapshot notificationCapabilities)
+        {
+            ArgumentNullException.ThrowIfNull(notificationCapabilities);
+            return new DesktopSelfTestItemSnapshot(
+                "Notification adapter",
+                notificationCapabilities.SelfTestPassed,
+                notificationCapabilities.Details,
+                Skipped: notificationCapabilities.SelfTestSkipped);
         }
 
         private static DesktopSelfTestItemSnapshot CreateSyncStateDiagnosticsItem(

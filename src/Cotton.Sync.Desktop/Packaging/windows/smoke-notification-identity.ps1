@@ -91,19 +91,19 @@ try {
         throw "Notification identity status was '$($notification.identityStatus)', expected 'installed-sender-identity'."
     }
 
-    $notificationSelfTest = @($diagnostics.selfTestItems) |
+    $notificationDiagnosticsItem = @($diagnostics.selfTestItems) |
         Where-Object { $_.name -eq "Notification adapter" } |
         Select-Object -First 1
-    if ($null -eq $notificationSelfTest) {
-        throw "Notification adapter self-test item was not found."
+    if ($null -eq $notificationDiagnosticsItem) {
+        throw "Notification adapter diagnostics item was not found."
     }
 
-    if ($notificationSelfTest.passed -ne $true) {
-        throw "Notification adapter self-test did not pass."
+    if ($notificationDiagnosticsItem.passed -ne $true) {
+        throw "Notification adapter diagnostics item did not pass."
     }
 
-    if ($notificationSelfTest.skipped -eq $true) {
-        throw "Notification adapter self-test was skipped."
+    if ($notificationDiagnosticsItem.skipped -eq $true) {
+        throw "Notification adapter diagnostics item was skipped."
     }
 }
 finally {
