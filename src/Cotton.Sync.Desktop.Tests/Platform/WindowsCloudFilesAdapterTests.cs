@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
+﻿// SPDX-License-Identifier: MIT
+// Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Files;
 using Cotton.Nodes;
@@ -464,6 +464,87 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(nativeApi.UnregisteredRoots, Is.EqualTo(new[] { Path.GetFullPath(root) }));
                 Assert.That(nativeApi.Registrations, Has.Count.EqualTo(2));
                 Assert.That(nativeApi.Placeholders, Has.Count.EqualTo(2));
+            });
+        }
+
+        [Test]
+        public void FinalizeUploadedFilePlaceholder_ConvertsRegularUploadedFileAndMarksInSync()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            string root = Path.Combine(_tempDirectory, "root");
+            string target = Path.GetFullPath(Path.Combine(root, "Projects", "report.txt"));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllText(target, "uploaded content");
+            SyncPairSettings syncPair = CreateSyncPair(root);
+            SyncStateEntry state = CreateUploadedFileState(syncPair, "Projects/report.txt");
+
+            adapter.FinalizeUploadedFilePlaceholder(syncPair, state);
+
+            ConvertedPlaceholderCall converted = nativeApi.ConvertedPlaceholders.Single();
+            WindowsCloudFilesPlaceholderIdentity identity =
+                WindowsCloudFilesPlaceholderIdentity.Parse(converted.FileIdentity);
+            Assert.Multiple(() =>
+            {
+                Assert.That(converted.FilePath, Is.EqualTo(target));
+                Assert.That(converted.IsDirectory, Is.False);
+                Assert.That(converted.MarkInSync, Is.True);
+                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { target }));
+                Assert.That(identity.RelativePath, Is.EqualTo("Projects/report.txt"));
+                Assert.That(identity.NodeFileId, Is.EqualTo(state.RemoteFileId));
+                Assert.That(identity.NodeId, Is.EqualTo(state.RemoteNodeId));
+                Assert.That(identity.FileManifestId, Is.EqualTo(state.RemoteFileManifestId));
+                Assert.That(identity.OriginalNodeFileId, Is.EqualTo(state.RemoteOriginalNodeFileId));
+                Assert.That(identity.SizeBytes, Is.EqualTo(state.RemoteSizeBytes));
+                Assert.That(identity.ContentHash, Is.EqualTo(state.RemoteContentHash));
+                Assert.That(identity.ETag, Is.EqualTo(state.RemoteETag));
+            });
+        }
+
+        [Test]
+        public void FinalizeUploadedFilePlaceholder_WhenPathIsAlreadyPlaceholderMarksInSyncWithoutConversion()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            string root = Path.Combine(_tempDirectory, "root");
+            string target = Path.GetFullPath(Path.Combine(root, "Projects", "report.txt"));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllText(target, "uploaded content");
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                isReparsePoint: path => string.Equals(Path.GetFullPath(path), target, StringComparison.OrdinalIgnoreCase));
+            SyncPairSettings syncPair = CreateSyncPair(root);
+
+            adapter.FinalizeUploadedFilePlaceholder(syncPair, CreateUploadedFileState(syncPair, "Projects/report.txt"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.ConvertedPlaceholders, Is.Empty);
+                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { target }));
+            });
+        }
+
+        [Test]
+        public void FinalizeUploadedFilePlaceholder_RejectsMissingRemoteIdentityBeforeNativeCalls()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            string root = Path.Combine(_tempDirectory, "root");
+            string target = Path.GetFullPath(Path.Combine(root, "Projects", "report.txt"));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllText(target, "uploaded content");
+            SyncPairSettings syncPair = CreateSyncPair(root);
+            SyncStateEntry state = CreateUploadedFileState(syncPair, "Projects/report.txt");
+            state.RemoteFileManifestId = null;
+
+            InvalidOperationException? exception =
+                Assert.Throws<InvalidOperationException>(() => adapter.FinalizeUploadedFilePlaceholder(syncPair, state));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception?.Message, Does.Contain("remote file identity"));
+                Assert.That(nativeApi.ConvertedPlaceholders, Is.Empty);
+                Assert.That(nativeApi.InSyncPaths, Is.Empty);
             });
         }
 
@@ -1052,6 +1133,27 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     UpdatedAt = new DateTime(2026, 06, 16, 10, 05, 00, DateTimeKind.Utc),
                     Metadata = new Dictionary<string, string> { ["relativePath"] = relativePath },
                 });
+        }
+
+        private static SyncStateEntry CreateUploadedFileState(SyncPairSettings syncPair, string relativePath)
+        {
+            return new SyncStateEntry
+            {
+                SyncPairId = syncPair.Id.ToString("D"),
+                RelativePath = relativePath,
+                Kind = SyncEntryKind.File,
+                LocalContentHash = "uploaded-hash",
+                LocalLastWriteUtc = new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc),
+                LocalSizeBytes = 16,
+                RemoteSizeBytes = 16,
+                RemoteNodeId = Guid.Parse("44444444-4444-4444-4444-444444444444"),
+                RemoteFileId = Guid.Parse("33333333-3333-3333-3333-333333333333"),
+                RemoteFileManifestId = Guid.Parse("55555555-5555-5555-5555-555555555555"),
+                RemoteOriginalNodeFileId = Guid.Parse("66666666-6666-6666-6666-666666666666"),
+                RemoteContentHash = "uploaded-hash",
+                RemoteETag = "uploaded-etag",
+                SyncedAtUtc = new DateTime(2026, 06, 16, 10, 06, 30, DateTimeKind.Utc),
+            };
         }
 
         private static RemoteDirectoryMaterializationRequest CreateDirectoryRequest(

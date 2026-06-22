@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
+﻿// SPDX-License-Identifier: MIT
+// Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 namespace Cotton.Sync.Desktop.Tests.Startup
 {
@@ -116,6 +116,25 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(runner, Does.Contain("Large-tree Cloud Files directory status was finalized."));
                 Assert.That(runner, Does.Contain("WindowsCloudFilesPlaceholderState.InSync"));
                 Assert.That(runner, Does.Contain("WindowsCloudFilesPlaceholderState.Partial"));
+            });
+        }
+
+        [Test]
+        public void RunAsync_ReplaceCloudOnlyUploadPhaseVerifiesNativeCloudFilesStatus()
+        {
+            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(runner, Does.Contain("\"replace-cloud-only-upload\""));
+                Assert.That(runner, Does.Contain("RunReplaceCloudOnlyUploadAsync("));
+                Assert.That(runner, Does.Contain("Cloud-only placeholder was replaced by a regular local file before sync."));
+                Assert.That(runner, Does.Contain("new WindowsVirtualFilesUploadFinalizationPairWork("));
+                Assert.That(runner, Does.Contain("new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork("));
+                Assert.That(runner, Does.Contain("Cloud-only replacement uploaded and persisted remote identity."));
+                Assert.That(runner, Does.Contain("Uploaded replacement file Cloud Files status was finalized."));
+                Assert.That(runner, Does.Contain("Uploaded replacement parent directory Cloud Files status was finalized."));
+                Assert.That(runner, Does.Contain("Uploaded replacement sync root Cloud Files status was finalized."));
             });
         }
 

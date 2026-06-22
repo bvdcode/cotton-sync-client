@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
+﻿// SPDX-License-Identifier: MIT
+// Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.Activities;
 using Cotton.Sync.App.LocalChanges;
@@ -22,6 +22,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             var activityPublisher = new InMemoryAppActivityPublisher();
             var inner = new PublishingSyncPairWork(activityPublisher, "Docs/Reports/report.txt");
             var stateStore = new FakeSyncStateStore();
+            stateStore.UpsertFile(syncPair, "Docs/Reports/report.txt");
             stateStore.UpsertDirectory(syncPair, "Docs", Guid.Parse("33333333-3333-3333-3333-333333333333"));
             stateStore.UpsertDirectory(syncPair, "Docs/Reports", Guid.Parse("44444444-4444-4444-4444-444444444444"));
             var cloudFiles = new RecordingCloudFilesAdapter();
@@ -72,6 +73,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             var activityPublisher = new InMemoryAppActivityPublisher();
             var inner = new PublishingSyncPairWork(activityPublisher, "Docs/Reports/report.txt");
             var stateStore = new FakeSyncStateStore();
+            stateStore.UpsertFile(syncPair, "Docs/Reports/report.txt");
             stateStore.UpsertDirectory(syncPair, "Docs", Guid.Parse("33333333-3333-3333-3333-333333333333"));
             stateStore.UpsertDirectory(syncPair, "Docs/Reports", Guid.Parse("44444444-4444-4444-4444-444444444444"));
             var progressPublisher = new RecordingRunProgressPublisher();
@@ -134,10 +136,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 Exception = new InvalidOperationException("Cloud Files status was not finalized."),
             };
+            var stateStore = new FakeSyncStateStore();
+            stateStore.UpsertFile(syncPair, "Docs/report.txt");
             var work = new WindowsVirtualFilesUploadFinalizationPairWork(
                 inner,
                 activityPublisher,
-                new FakeSyncStateStore(),
+                stateStore,
                 cloudFiles);
             var runner = new SyncPairRunner(
                 syncPair,
@@ -166,6 +170,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             var activityPublisher = new InMemoryAppActivityPublisher();
             var inner = new PublishingSyncPairWork(activityPublisher, "Docs/report.txt");
             var stateStore = new FakeSyncStateStore();
+            stateStore.UpsertFile(syncPair, "Docs/report.txt");
             stateStore.UpsertDirectory(syncPair, "Docs", Guid.Parse("33333333-3333-3333-3333-333333333333"));
             var cloudFiles = new RecordingCloudFilesAdapter
             {
@@ -338,6 +343,24 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     RelativePath = relativePath,
                     Kind = SyncEntryKind.Directory,
                     RemoteNodeId = remoteNodeId,
+                    SyncedAtUtc = new DateTime(2026, 06, 16, 10, 00, 00, DateTimeKind.Utc),
+                };
+            }
+
+            public void UpsertFile(SyncPairSettings syncPair, string relativePath)
+            {
+                _entries[CreateKey(syncPair.Id.ToString("D"), relativePath)] = new SyncStateEntry
+                {
+                    SyncPairId = syncPair.Id.ToString("D"),
+                    RelativePath = relativePath,
+                    Kind = SyncEntryKind.File,
+                    RemoteNodeId = Guid.Parse("55555555-5555-5555-5555-555555555555"),
+                    RemoteFileId = Guid.Parse("66666666-6666-6666-6666-666666666666"),
+                    RemoteFileManifestId = Guid.Parse("77777777-7777-7777-7777-777777777777"),
+                    RemoteOriginalNodeFileId = Guid.Parse("88888888-8888-8888-8888-888888888888"),
+                    RemoteContentHash = "uploaded-content-hash",
+                    RemoteETag = "uploaded-etag",
+                    RemoteSizeBytes = 123,
                     SyncedAtUtc = new DateTime(2026, 06, 16, 10, 00, 00, DateTimeKind.Utc),
                 };
             }

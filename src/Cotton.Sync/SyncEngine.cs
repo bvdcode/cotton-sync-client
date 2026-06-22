@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
+﻿// SPDX-License-Identifier: MIT
+// Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Diagnostics;
 using System.Net;
@@ -3133,6 +3133,8 @@ namespace Cotton.Sync
                 RemoteSizeBytes = remoteFile?.SizeBytes,
                 RemoteFileId = remoteFile?.Id,
                 RemoteNodeId = remoteFile?.NodeId,
+                RemoteFileManifestId = remoteFile?.FileManifestId,
+                RemoteOriginalNodeFileId = remoteFile?.OriginalNodeFileId,
                 RemoteContentHash = remoteFile?.ContentHash,
                 RemoteETag = remoteFile?.ETag,
                 SyncedAtUtc = DateTime.UtcNow,
@@ -3163,6 +3165,8 @@ namespace Cotton.Sync
                 RemoteSizeBytes = remoteFile.SizeBytes,
                 RemoteFileId = remoteFile.Id,
                 RemoteNodeId = remoteFile.NodeId,
+                RemoteFileManifestId = remoteFile.FileManifestId,
+                RemoteOriginalNodeFileId = remoteFile.OriginalNodeFileId,
                 RemoteContentHash = remoteFile.ContentHash,
                 RemoteETag = remoteFile.ETag,
                 PlaceholderIdentity = placeholder.PlaceholderIdentity,
@@ -3184,6 +3188,8 @@ namespace Cotton.Sync
                 RemoteSizeBytes = remoteFile.SizeBytes,
                 RemoteFileId = remoteFile.Id,
                 RemoteNodeId = remoteFile.NodeId,
+                RemoteFileManifestId = remoteFile.FileManifestId,
+                RemoteOriginalNodeFileId = remoteFile.OriginalNodeFileId,
                 RemoteContentHash = remoteFile.ContentHash,
                 RemoteETag = remoteFile.ETag,
                 PlaceholderHydrationState = SyncPlaceholderHydrationState.RemoteOnly,

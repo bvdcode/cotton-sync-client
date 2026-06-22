@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
+﻿// SPDX-License-Identifier: MIT
+// Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.Activities;
 using Cotton.Sync.App.LocalChanges;
@@ -128,7 +128,18 @@ namespace Cotton.Sync.Desktop.Platform
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 _localChangeSuppression?.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, relativePath);
-                _cloudFiles.SetInSyncState(syncPair, relativePath);
+                SyncStateEntry? fileState = await _stateStore
+                    .GetAsync(syncPair.Id.ToString("D"), relativePath, cancellationToken)
+                    .ConfigureAwait(false);
+                if (fileState is not { Kind: SyncEntryKind.File })
+                {
+                    throw new InvalidOperationException(
+                        "Uploaded Cloud Files finalization requires synced file state for "
+                        + relativePath
+                        + ".");
+                }
+
+                _cloudFiles.FinalizeUploadedFilePlaceholder(syncPair, fileState);
                 recordFinalizedPath();
             }
 
