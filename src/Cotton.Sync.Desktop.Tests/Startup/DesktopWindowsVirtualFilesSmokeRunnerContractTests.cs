@@ -128,6 +128,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             {
                 Assert.That(runner, Does.Contain("\"replace-cloud-only-upload\""));
                 Assert.That(runner, Does.Contain("RunReplaceCloudOnlyUploadAsync("));
+                Assert.That(runner, Does.Contain("Cloud Files sync root connected for cloud-only replacement upload smoke."));
                 Assert.That(runner, Does.Contain("Cloud-only placeholder was replaced by a regular local file before sync."));
                 Assert.That(runner, Does.Contain("new WindowsVirtualFilesUploadFinalizationPairWork("));
                 Assert.That(runner, Does.Contain("new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork("));

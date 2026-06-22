@@ -481,7 +481,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             adapter.FinalizeUploadedFilePlaceholder(syncPair, state);
 
-            ConvertedPlaceholderCall converted = nativeApi.ConvertedPlaceholders.Single();
+            var converted = nativeApi.ConvertedPlaceholders.Single();
             WindowsCloudFilesPlaceholderIdentity identity =
                 WindowsCloudFilesPlaceholderIdentity.Parse(converted.FileIdentity);
             Assert.Multiple(() =>
