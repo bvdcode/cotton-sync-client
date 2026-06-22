@@ -1,7 +1,8 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
+﻿// SPDX-License-Identifier: MIT
+// Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.SyncPairs;
+using Cotton.Files;
 using Cotton.Nodes;
 using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
@@ -645,6 +646,109 @@ namespace Cotton.Sync.Desktop.Platform
                 registration.LocalRootPath,
                 normalizedPath,
                 "Windows Cloud Files placeholder was marked in sync.");
+        }
+
+        public void FinalizeUploadedFilePlaceholder(SyncPairSettings syncPair, SyncStateEntry fileState)
+        {
+            ArgumentNullException.ThrowIfNull(syncPair);
+            ArgumentNullException.ThrowIfNull(fileState);
+            if (fileState.Kind != SyncEntryKind.File)
+            {
+                throw new InvalidOperationException("Uploaded Cloud Files finalization requires a file state entry.");
+            }
+
+            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
+            string normalizedPath = SyncPath.Normalize(fileState.RelativePath);
+            PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
+            EnsureNoReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
+            string fullPlaceholderPath = Path.Combine(
+                placeholderPath.BaseDirectoryPath,
+                placeholderPath.RelativeFileName);
+            if (!File.Exists(fullPlaceholderPath))
+            {
+                throw new FileNotFoundException(
+                    "Uploaded Cloud Files placeholder finalization requires the uploaded local file.",
+                    fullPlaceholderPath);
+            }
+
+            if (_isReparsePoint(fullPlaceholderPath))
+            {
+                SetInSyncState(syncPair, normalizedPath);
+                return;
+            }
+
+            if (fileState.RemoteFileId is not Guid remoteFileId
+                || fileState.RemoteNodeId is not Guid remoteNodeId
+                || fileState.RemoteFileManifestId is not Guid remoteFileManifestId)
+            {
+                throw new InvalidOperationException(
+                    "Uploaded Cloud Files placeholder finalization requires remote file identity in sync state.");
+            }
+
+            const string operation = "finalize-uploaded-file-placeholder";
+            long sizeBytes = fileState.RemoteSizeBytes
+                ?? fileState.LocalSizeBytes
+                ?? new FileInfo(fullPlaceholderPath).Length;
+            DateTime updatedAtUtc = fileState.LocalLastWriteUtc?.ToUniversalTime()
+                ?? fileState.SyncedAtUtc.ToUniversalTime();
+            byte[] fileIdentity = CreateFileIdentity(
+                new RemoteFilePlaceholderRequest(
+                    syncPair.Id.ToString("D"),
+                    registration.LocalRootPath,
+                    syncPair.RemoteRootNodeId,
+                    normalizedPath,
+                    new NodeFileManifestDto
+                    {
+                        Id = remoteFileId,
+                        NodeId = remoteNodeId,
+                        FileManifestId = remoteFileManifestId,
+                        OriginalNodeFileId = fileState.RemoteOriginalNodeFileId ?? remoteFileId,
+                        SizeBytes = sizeBytes,
+                        ContentHash = fileState.RemoteContentHash,
+                        ETag = fileState.RemoteETag,
+                        CreatedAt = fileState.SyncedAtUtc.ToUniversalTime(),
+                        UpdatedAt = updatedAtUtc,
+                        Name = Path.GetFileName(normalizedPath),
+                    }),
+                normalizedPath);
+
+            try
+            {
+                ExecuteNativeOperationWithTransientPathRetry(
+                    () => _nativeApi.ConvertToPlaceholder(
+                        fullPlaceholderPath,
+                        fileIdentity,
+                        isDirectory: false,
+                        markInSync: true),
+                    operation,
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    normalizedPath);
+                ExecuteNativeOperationWithTransientPathRetry(
+                    () => SetAndVerifyInSyncState(fullPlaceholderPath),
+                    "set-in-sync-state",
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    normalizedPath);
+            }
+            catch (Exception exception)
+            {
+                RecordFailure(
+                    operation,
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    normalizedPath,
+                    exception);
+                throw;
+            }
+
+            _diagnostics.Record(
+                operation,
+                "completed",
+                syncPair.Id.ToString(),
+                registration.LocalRootPath,
+                normalizedPath,
+                "Uploaded local file was converted to a Cloud Files placeholder and marked in sync.");
         }
 
         public void SetSyncRootInSyncState(SyncPairSettings syncPair)

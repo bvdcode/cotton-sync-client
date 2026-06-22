@@ -1,8 +1,9 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
+﻿// SPDX-License-Identifier: MIT
+// Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.VirtualFiles;
 using Cotton.Sync.App.SyncPairs;
+using Cotton.Sync.State;
 
 namespace Cotton.Sync.Desktop.Platform
 {
@@ -49,6 +50,13 @@ namespace Cotton.Sync.Desktop.Platform
         void DehydratePlaceholder(SyncPairSettings syncPair, string relativePath);
 
         void SetInSyncState(SyncPairSettings syncPair, string relativePath);
+
+        void FinalizeUploadedFilePlaceholder(SyncPairSettings syncPair, SyncStateEntry fileState)
+        {
+            ArgumentNullException.ThrowIfNull(syncPair);
+            ArgumentNullException.ThrowIfNull(fileState);
+            SetInSyncState(syncPair, fileState.RelativePath);
+        }
 
         void SetSyncRootInSyncState(SyncPairSettings syncPair)
         {

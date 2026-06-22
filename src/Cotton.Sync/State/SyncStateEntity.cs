@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
+﻿// SPDX-License-Identifier: MIT
+// Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -90,6 +90,18 @@ namespace Cotton.Sync.State
         /// </summary>
         [Column("remote_file_id")]
         public Guid? RemoteFileId { get; set; }
+
+        /// <summary>
+        /// Gets or sets the remote file-manifest identifier for file entries.
+        /// </summary>
+        [Column("remote_file_manifest_id")]
+        public Guid? RemoteFileManifestId { get; set; }
+
+        /// <summary>
+        /// Gets or sets the original remote file identifier for file entries.
+        /// </summary>
+        [Column("remote_original_node_file_id")]
+        public Guid? RemoteOriginalNodeFileId { get; set; }
 
         /// <summary>
         /// Gets or sets the last synced remote content hash.

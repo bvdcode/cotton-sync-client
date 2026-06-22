@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
+﻿// SPDX-License-Identifier: MIT
+// Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Collections.Concurrent;
 using System.Data.Common;
@@ -623,6 +623,8 @@ namespace Cotton.Sync.State
             entity.RemoteSizeBytes = entry.RemoteSizeBytes;
             entity.RemoteNodeId = entry.RemoteNodeId;
             entity.RemoteFileId = entry.RemoteFileId;
+            entity.RemoteFileManifestId = entry.RemoteFileManifestId;
+            entity.RemoteOriginalNodeFileId = entry.RemoteOriginalNodeFileId;
             entity.RemoteContentHash = NormalizeNullable(entry.RemoteContentHash);
             entity.RemoteETag = NormalizeNullable(entry.RemoteETag);
             entity.PlaceholderIdentity = Clone(entry.PlaceholderIdentity);
@@ -643,6 +645,8 @@ namespace Cotton.Sync.State
                 RemoteSizeBytes = entity.RemoteSizeBytes,
                 RemoteNodeId = entity.RemoteNodeId,
                 RemoteFileId = entity.RemoteFileId,
+                RemoteFileManifestId = entity.RemoteFileManifestId,
+                RemoteOriginalNodeFileId = entity.RemoteOriginalNodeFileId,
                 RemoteContentHash = entity.RemoteContentHash,
                 RemoteETag = entity.RemoteETag,
                 PlaceholderIdentity = Clone(entity.PlaceholderIdentity),
