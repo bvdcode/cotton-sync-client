@@ -1,8 +1,9 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
-using System.Diagnostics;
-using System.Text;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
+using Microsoft.CSharp.RuntimeBinder;
 
 namespace Cotton.Sync.Desktop.Platform
 {
@@ -186,7 +187,7 @@ namespace Cotton.Sync.Desktop.Platform
                     continue;
                 }
 
-                if (TryReadShortcutAppUserModelId(powerShellPath, shortcutPath, out string? appUserModelId)
+                if (TryReadShortcutAppUserModelId(shortcutPath, out string? appUserModelId)
                     && string.Equals(appUserModelId, DesktopAppIdentity.AppUserModelId, StringComparison.Ordinal))
                 {
                     return true;
@@ -211,90 +212,91 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
-        private static bool TryReadShortcutAppUserModelId(
-            string powerShellPath,
+        internal static bool TryReadShortcutAppUserModelId(
             string shortcutPath,
             out string? appUserModelId)
         {
             appUserModelId = null;
+            if (!OperatingSystem.IsWindows() || !File.Exists(shortcutPath))
+            {
+                return false;
+            }
+
+            TaskCompletionSource<string?> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Thread inspectionThread = new(() =>
+            {
+                try
+                {
+                    if (!OperatingSystem.IsWindows())
+                    {
+                        completion.TrySetResult(null);
+                        return;
+                    }
+
+                    completion.TrySetResult(ReadShortcutAppUserModelId(shortcutPath));
+                }
+                catch (Exception exception)
+                {
+                    completion.TrySetException(exception);
+                }
+            });
+            inspectionThread.SetApartmentState(ApartmentState.STA);
+            inspectionThread.IsBackground = true;
+            inspectionThread.Start();
+
             try
             {
-                using Process process = Process.Start(CreateShortcutInspectionStartInfo(powerShellPath, shortcutPath))
-                    ?? throw new InvalidOperationException("PowerShell could not be started.");
-                string output = process.StandardOutput.ReadToEnd();
-                _ = process.StandardError.ReadToEnd();
-                if (!process.WaitForExit(WindowsShortcutInspectionTimeoutMilliseconds))
-                {
-                    try
-                    {
-                        process.Kill(entireProcessTree: true);
-                    }
-                    catch (InvalidOperationException)
-                    {
-                    }
-
-                    return false;
-                }
-
-                if (process.ExitCode != 0)
+                if (!completion.Task.Wait(WindowsShortcutInspectionTimeoutMilliseconds))
                 {
                     return false;
                 }
 
-                appUserModelId = output.Trim();
+                appUserModelId = completion.Task.GetAwaiter().GetResult();
                 return !string.IsNullOrWhiteSpace(appUserModelId);
             }
-            catch (Exception exception) when (exception is IOException or InvalidOperationException or ObjectDisposedException)
+            catch (Exception exception) when (exception is IOException
+                or InvalidOperationException
+                or ObjectDisposedException
+                or COMException
+                or RuntimeBinderException)
             {
                 return false;
             }
         }
 
-        private static ProcessStartInfo CreateShortcutInspectionStartInfo(
-            string powerShellPath,
-            string shortcutPath)
+        [SupportedOSPlatform("windows")]
+        private static string? ReadShortcutAppUserModelId(string shortcutPath)
         {
-            var startInfo = new ProcessStartInfo
+            string fullShortcutPath = Path.GetFullPath(shortcutPath);
+            string? folderPath = Path.GetDirectoryName(fullShortcutPath);
+            string shortcutFileName = Path.GetFileName(fullShortcutPath);
+            if (string.IsNullOrWhiteSpace(folderPath) || string.IsNullOrWhiteSpace(shortcutFileName))
             {
-                FileName = powerShellPath,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            startInfo.ArgumentList.Add("-NoProfile");
-            startInfo.ArgumentList.Add("-NonInteractive");
-            startInfo.ArgumentList.Add("-ExecutionPolicy");
-            startInfo.ArgumentList.Add("Bypass");
-            startInfo.ArgumentList.Add("-EncodedCommand");
-            startInfo.ArgumentList.Add(Convert.ToBase64String(Encoding.Unicode.GetBytes(CreateShortcutInspectionCommand(shortcutPath))));
-            return startInfo;
-        }
+                return null;
+            }
 
-        private static string CreateShortcutInspectionCommand(string shortcutPath)
-        {
-            string shortcutLiteral = ToPowerShellSingleQuotedLiteral(shortcutPath);
-            return string.Join(
-                Environment.NewLine,
-                [
-                    "$ErrorActionPreference = 'Stop'",
-                    "$shortcut = " + shortcutLiteral,
-                    "$folderPath = Split-Path -Parent -LiteralPath $shortcut",
-                    "$shortcutFileName = Split-Path -Leaf -LiteralPath $shortcut",
-                    "$shell = New-Object -ComObject Shell.Application",
-                    "$folder = $shell.Namespace($folderPath)",
-                    "if ($null -eq $folder) { exit 2 }",
-                    "$shortcutItem = $folder.ParseName($shortcutFileName)",
-                    "if ($null -eq $shortcutItem) { exit 3 }",
-                    "$appUserModelId = [string]$shortcutItem.ExtendedProperty('System.AppUserModel.ID')",
-                    "if ([string]::IsNullOrWhiteSpace($appUserModelId)) { exit 4 }",
-                    "[Console]::Out.Write($appUserModelId)",
-                ]);
-        }
+            Type? shellType = Type.GetTypeFromProgID("Shell.Application");
+            if (shellType is null)
+            {
+                return null;
+            }
 
-        private static string ToPowerShellSingleQuotedLiteral(string value)
-        {
-            return "'" + value.Replace("'", "''", StringComparison.Ordinal) + "'";
+            dynamic shell = Activator.CreateInstance(shellType)
+                ?? throw new InvalidOperationException("Shell.Application COM object could not be created.");
+            dynamic folder = shell.Namespace(folderPath);
+            if (folder is null)
+            {
+                return null;
+            }
+
+            dynamic shortcutItem = folder.ParseName(shortcutFileName);
+            if (shortcutItem is null)
+            {
+                return null;
+            }
+
+            string appUserModelId = (string)shortcutItem.ExtendedProperty("System.AppUserModel.ID");
+            return string.IsNullOrWhiteSpace(appUserModelId) ? null : appUserModelId.Trim();
         }
     }
 }

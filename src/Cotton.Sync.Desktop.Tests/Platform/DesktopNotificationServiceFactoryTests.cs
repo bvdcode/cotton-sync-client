@@ -207,6 +207,22 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void TryReadShortcutAppUserModelId_ReturnsFalseWhenShortcutIsMissing()
+        {
+            string missingShortcutPath = Path.Combine(_tempDirectory, "Cotton Sync.lnk");
+
+            bool result = DesktopNotificationServiceFactory.TryReadShortcutAppUserModelId(
+                missingShortcutPath,
+                out string? appUserModelId);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result, Is.False);
+                Assert.That(appUserModelId, Is.Null);
+            });
+        }
+
+        [Test]
         public void CreateForPlatform_ReturnsUnsupportedWhenPlatformExecutableIsMissing()
         {
             IDesktopNotificationService service = DesktopNotificationServiceFactory.CreateForPlatform(
