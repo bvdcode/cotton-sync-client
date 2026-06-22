@@ -303,6 +303,10 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 item.GetProperty("name").GetString(),
                 "Diagnostics export",
                 StringComparison.Ordinal));
+            JsonElement notificationAdapter = selfTestItems.Single(item => string.Equals(
+                item.GetProperty("name").GetString(),
+                "Notification adapter",
+                StringComparison.Ordinal));
             Assert.Multiple(() =>
             {
                 Assert.That(server.ReceivedRequest, Is.False);
@@ -310,7 +314,11 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(diagnosticsExport.GetProperty("passed").GetBoolean(), Is.True);
                 Assert.That(
                     diagnosticsExport.GetProperty("details").GetString(),
-                    Is.EqualTo("Captured current diagnostics only; self-test probes were not run."));
+                    Is.EqualTo("Captured current diagnostics and read-only capability checks; self-test probes were not run."));
+                Assert.That(notificationAdapter.GetProperty("details").GetString(), Does.Contain("adapter: "));
+                Assert.That(notificationAdapter.GetProperty("details").GetString(), Does.Contain("app name: Cotton Sync"));
+                Assert.That(notificationAdapter.GetProperty("passed").ValueKind, Is.AnyOf(JsonValueKind.True, JsonValueKind.False));
+                Assert.That(notificationAdapter.GetProperty("skipped").ValueKind, Is.AnyOf(JsonValueKind.True, JsonValueKind.False));
             });
         }
 

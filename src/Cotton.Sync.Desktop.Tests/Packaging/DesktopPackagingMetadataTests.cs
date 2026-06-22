@@ -636,8 +636,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("isInstalledAppIdentityVerified"));
                 Assert.That(script, Does.Contain("installed-sender-identity"));
                 Assert.That(script, Does.Contain("Notification adapter"));
-                Assert.That(script, Does.Contain("Notification adapter self-test did not pass."));
-                Assert.That(script, Does.Contain("Notification adapter self-test was skipped."));
+                Assert.That(script, Does.Contain("Notification adapter diagnostics item did not pass."));
+                Assert.That(script, Does.Contain("Notification adapter diagnostics item was skipped."));
             });
         }
 
