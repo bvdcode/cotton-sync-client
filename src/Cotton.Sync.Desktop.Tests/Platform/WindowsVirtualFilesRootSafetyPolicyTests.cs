@@ -68,20 +68,20 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             WindowsVirtualFilesRootSafetyPolicy policy = CreatePolicy();
 
-            WindowsVirtualFilesRootSafetyResult result = policy.Validate(@"C:\Users\Vadim\Desktop");
+            WindowsVirtualFilesRootSafetyResult result = policy.Validate(@"C:\Users\Example\Desktop");
 
             Assert.Multiple(() =>
             {
                 Assert.That(result.IsSafe, Is.True);
                 Assert.That(result.Issue, Is.EqualTo(WindowsVirtualFilesRootSafetyIssue.None));
-                Assert.That(result.FullPath, Is.EqualTo(@"C:\Users\Vadim\Desktop"));
+                Assert.That(result.FullPath, Is.EqualTo(@"C:\Users\Example\Desktop"));
             });
         }
 
         [TestCase("", (int)WindowsVirtualFilesRootSafetyIssue.EmptyPath)]
         [TestCase("CottonSyncVfsQa", (int)WindowsVirtualFilesRootSafetyIssue.RelativePath)]
         [TestCase(@"C:\", (int)WindowsVirtualFilesRootSafetyIssue.DriveRoot)]
-        [TestCase(@"C:\Users\Vadim", (int)WindowsVirtualFilesRootSafetyIssue.UserProfileRoot)]
+        [TestCase(@"C:\Users\Example", (int)WindowsVirtualFilesRootSafetyIssue.UserProfileRoot)]
         [TestCase(@"C:\Windows", (int)WindowsVirtualFilesRootSafetyIssue.WindowsRoot)]
         [TestCase(@"C:\Program Files", (int)WindowsVirtualFilesRootSafetyIssue.ProgramFilesRoot)]
         [TestCase(@"C:\Program Files (x86)", (int)WindowsVirtualFilesRootSafetyIssue.ProgramFilesRoot)]
@@ -177,7 +177,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             return folder switch
             {
-                Environment.SpecialFolder.UserProfile => @"C:\Users\Vadim",
+                Environment.SpecialFolder.UserProfile => @"C:\Users\Example",
                 Environment.SpecialFolder.Windows => @"C:\Windows",
                 Environment.SpecialFolder.ProgramFiles => @"C:\Program Files",
                 Environment.SpecialFolder.ProgramFilesX86 => @"C:\Program Files (x86)",

@@ -97,8 +97,8 @@ namespace Cotton.Sync.App.Tests.SyncPairs
         [Test]
         public void Validate_RejectsNestedWindowsRootsIgnoringCase()
         {
-            SyncPairSettings first = CreatePair(@"C:\Users\Vadim\Cotton");
-            SyncPairSettings second = CreatePair(@"c:/users/vadim/cotton/Work");
+            SyncPairSettings first = CreatePair(@"C:\Users\Example\Cotton");
+            SyncPairSettings second = CreatePair(@"c:/users/example/cotton/Work");
 
             SyncPairValidationResult result = _validator.Validate([first, second]);
 

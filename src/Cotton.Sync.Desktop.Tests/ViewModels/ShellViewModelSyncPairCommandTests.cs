@@ -4199,7 +4199,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
         [TestCase("/home/user/Downloads", "/home/user/Downloads", "This folder is already syncing.")]
         [TestCase("/home/user/Downloads", "/home/user/Downloads/Work", "Sync folders cannot be inside each other.")]
-        [TestCase(@"C:\Users\Vadim\Downloads", @"c:\users\vadim\downloads\Work", "Sync folders cannot be inside each other.")]
+        [TestCase(@"C:\Users\Example\Downloads", @"c:\users\example\downloads\Work", "Sync folders cannot be inside each other.")]
         public async Task BrowseLocalFolderCommand_RejectsExistingOrNestedSyncRootBeforeCloudStep(
             string existingLocalPath,
             string selectedLocalPath,

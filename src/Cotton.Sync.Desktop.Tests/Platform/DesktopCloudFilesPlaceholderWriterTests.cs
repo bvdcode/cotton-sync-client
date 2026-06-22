@@ -53,13 +53,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             var writer = new DesktopCloudFilesPlaceholderWriter(
                 new WindowsVirtualFilesRootSafetyPolicy(
-                    folder => folder == Environment.SpecialFolder.UserProfile ? @"C:\Users\Vadim" : string.Empty,
+                    folder => folder == Environment.SpecialFolder.UserProfile ? @"C:\Users\Example" : string.Empty,
                     () => _tempDirectory),
                 getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
 
             RemoteFilePlaceholderUnavailableException? exception =
                 Assert.ThrowsAsync<RemoteFilePlaceholderUnavailableException>(
-                    () => writer.CreatePlaceholderAsync(CreateRequest(@"C:\Users\Vadim")));
+                    () => writer.CreatePlaceholderAsync(CreateRequest(@"C:\Users\Example")));
 
             Assert.Multiple(() =>
             {
