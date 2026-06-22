@@ -197,6 +197,35 @@ namespace Cotton.Sync.Desktop.Tests.Composition
             await WaitForTaskExceptionObservationAsync(connectTask.Task);
         }
 
+        [Test]
+        public async Task DesktopHttpClientFactory_FallbackDelayKeepsPendingConnectAttemptOwnedUntilCleanup()
+        {
+            TaskCompletionSource connectTask = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Socket socket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            DesktopHttpClientFactory.ConnectAttempt attempt =
+                new(IPAddress.Loopback, socket, connectTask.Task);
+            List<DesktopHttpClientFactory.ConnectAttempt> attempts = [attempt];
+
+            DesktopHttpClientFactory.ConnectAttempt? completedAttempt =
+                await DesktopHttpClientFactory.WaitForCompletedConnectOrFallbackDelayAsync(
+                        attempts,
+                        TimeSpan.Zero,
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(completedAttempt, Is.Null);
+                Assert.That(attempts, Is.EqualTo(new[] { attempt }));
+            });
+
+            connectTask.SetException(new SocketException((int)SocketError.OperationAborted));
+            Assert.That(IsTaskExceptionObserved(connectTask.Task), Is.False);
+
+            attempt.Dispose();
+            await WaitForTaskExceptionObservationAsync(connectTask.Task);
+        }
+
         private static object GetPrivateFieldValue(object instance, string fieldName)
         {
             FieldInfo? field = instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
