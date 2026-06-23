@@ -1360,6 +1360,7 @@ namespace Cotton.Sync.Tests
                 Assert.That(completionLog, Does.Contain("directory rows 0"));
                 Assert.That(completionLog, Does.Contain("managed heap start="));
                 Assert.That(completionLog, Does.Contain("completed="));
+                Assert.That(completionLog, Does.Contain("peak="));
                 Assert.That(completionLog, Does.Contain("delta="));
                 Assert.That(completionLog, Does.Contain("queue capacity=1"));
                 Assert.That(completionLog, Does.Contain("placeholder concurrency="));
