@@ -64,7 +64,7 @@ function Write-CommandOutput {
 }
 
 $selfTestResult = Invoke-CottonDesktopCommand `
-    -Arguments @("--self-test", "--data-dir", $DataDirectory) `
+    -Arguments @("--self-test", "--data-dir", $DataDirectory, "--local-root", $LocalRoot) `
     -StdoutPath (Join-Path $DataDirectory "cloud-files-self-test.stdout.log") `
     -StderrPath (Join-Path $DataDirectory "cloud-files-self-test.stderr.log")
 

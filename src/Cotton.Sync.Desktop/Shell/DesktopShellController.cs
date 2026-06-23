@@ -753,8 +753,9 @@ namespace Cotton.Sync.Desktop.Shell
                 true,
                 platformCapabilities.TrayLifecycleDetails));
 
+            Func<string>? cloudFilesProbeRootFactory = CreateCloudFilesSelfTestProbeRootFactory();
             DesktopCloudFilesSelfTestCapabilitySnapshot modeCapabilities =
-                DesktopCloudFilesCapabilities.CreateSelfTestCapability();
+                DesktopCloudFilesCapabilities.CreateSelfTestCapability(createProbeRoot: cloudFilesProbeRootFactory);
             items.Add(new DesktopSelfTestItemSnapshot(
                 "Windows virtual files",
                 modeCapabilities.Passed,
@@ -844,6 +845,19 @@ namespace Cotton.Sync.Desktop.Shell
             }
 
             return new DesktopSelfTestSnapshot(items);
+        }
+
+        private Func<string>? CreateCloudFilesSelfTestProbeRootFactory()
+        {
+            if (string.IsNullOrWhiteSpace(_startupOptions.LocalRoot))
+            {
+                return null;
+            }
+
+            string parentRoot = Path.GetFullPath(_startupOptions.LocalRoot.Trim());
+            return () => Path.Combine(
+                parentRoot,
+                ".cotton-cloud-files-self-test-" + Guid.NewGuid().ToString("N"));
         }
 
         public async Task<string> ExportDiagnosticsAsync(CancellationToken cancellationToken = default)
