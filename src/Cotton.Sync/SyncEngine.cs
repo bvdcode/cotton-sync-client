@@ -26,6 +26,7 @@ namespace Cotton.Sync
         private const int RunProgressSparseItemInterval = 100;
         private const string InitialVirtualFilesLocalRootRequiresReviewMessage =
             "Virtual files setup found local content in the selected folder. Move it out or choose a clean folder before trying again.";
+        private static readonly TimeSpan InitialVirtualFilesHeartbeatLogInterval = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan RunProgressReportTimeInterval = TimeSpan.FromMilliseconds(250);
         private static readonly TimeSpan CloudFilesMetadataTimestampTolerance = TimeSpan.FromSeconds(2);
         private static readonly StringComparer PathComparer = StringComparer.OrdinalIgnoreCase;
@@ -747,6 +748,7 @@ namespace Cotton.Sync
             int stateFileRowsWritten = 0;
             int stateFileWriteBatches = 0;
             int stateDirectoryRowsWritten = 0;
+            long peakManagedHeapBytes = startingManagedHeapBytes;
             DateTime? lastPlaceholderProgressReportedAtUtc = null;
             var remoteScanProgress = new RemoteTreeScanProgressCounter();
             var initialVirtualFilesProgress = new InitialVirtualFilesRemoteProgressReporter(
@@ -805,25 +807,51 @@ namespace Cotton.Sync
                 {
                     if (writtenRows > 0)
                     {
-                        stateFileRowsWritten += writtenRows;
-                        stateFileWriteBatches++;
+                        Interlocked.Add(ref stateFileRowsWritten, writtenRows);
+                        Interlocked.Increment(ref stateFileWriteBatches);
                     }
                 },
                 () =>
                 {
-                    stateDirectoryRowsWritten++;
+                    Interlocked.Increment(ref stateDirectoryRowsWritten);
                     return Interlocked.Increment(ref completedDirectories);
                 },
                 streamingCancellation.Token);
-
-            Task firstCompleted = await Task.WhenAny(producer, consumer).ConfigureAwait(false);
-            if (firstCompleted.IsFaulted || firstCompleted.IsCanceled)
+            using var heartbeatCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            Task heartbeat = LogInitialVirtualFilesPopulationHeartbeatAsync(
+                syncPair,
+                options,
+                stopwatch,
+                remoteScanProgress,
+                () => Volatile.Read(ref discoveredFiles),
+                () => Volatile.Read(ref discoveredDirectories),
+                () => Volatile.Read(ref completedFiles),
+                () => Volatile.Read(ref completedDirectories),
+                () => Volatile.Read(ref createdPlaceholders),
+                () => Volatile.Read(ref skippedCurrentPlaceholders),
+                () => Volatile.Read(ref skippedUnavailablePlaceholders),
+                () => Volatile.Read(ref stateFileRowsWritten),
+                () => Volatile.Read(ref stateFileWriteBatches),
+                () => Volatile.Read(ref stateDirectoryRowsWritten),
+                value => UpdateMax(ref peakManagedHeapBytes, value),
+                heartbeatCancellation.Token);
+            try
             {
-                await streamingCancellation.CancelAsync().ConfigureAwait(false);
-                channel.Writer.TryComplete(firstCompleted.Exception);
+                Task firstCompleted = await Task.WhenAny(producer, consumer).ConfigureAwait(false);
+                if (firstCompleted.IsFaulted || firstCompleted.IsCanceled)
+                {
+                    await streamingCancellation.CancelAsync().ConfigureAwait(false);
+                    channel.Writer.TryComplete(firstCompleted.Exception);
+                }
+
+                await Task.WhenAll(producer, consumer).ConfigureAwait(false);
+            }
+            finally
+            {
+                await heartbeatCancellation.CancelAsync().ConfigureAwait(false);
+                await IgnoreExpectedHeartbeatCancellationAsync(heartbeat, heartbeatCancellation.Token).ConfigureAwait(false);
             }
 
-            await Task.WhenAll(producer, consumer).ConfigureAwait(false);
             stopwatch.Stop();
             int completedItems = GetInitialVirtualFilesItemCount(completedFiles, Volatile.Read(ref completedDirectories));
             int discoveredItems = GetInitialVirtualFilesItemCount(
@@ -853,8 +881,9 @@ namespace Cotton.Sync
                 ? 0d
                 : remoteScanProgress.PageReadLatencyTotal.TotalMilliseconds / remotePageCount;
             long completedManagedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
+            UpdateMax(ref peakManagedHeapBytes, completedManagedHeapBytes);
             _logger.LogInformation(
-                "Completed initial streaming Windows virtual-files population for pair {SyncPairId} with {DirectoryCount} directories discovered, {FileCount} files discovered, remote pages read={RemotePageCount}, remote page latency total={RemotePageLatencyTotalMilliseconds:F0} ms, avg={RemotePageLatencyAverageMilliseconds:F2} ms, max={RemotePageLatencyMaxMilliseconds:F0} ms, last={RemotePageLatencyLastMilliseconds:F0} ms, {CompletedFileCount} file items completed, {CreatedPlaceholderCount} placeholders created or refreshed, {SkippedCurrentPlaceholderCount} current placeholders skipped, {SkippedUnavailablePlaceholderCount} placeholders skipped with user action in {ElapsedMilliseconds} ms at {CreatedPlaceholderRatePerSecond:F2} placeholders/sec; state writes {StateFileRowsWritten} file rows, file write batches {StateFileWriteBatchCount}, directory rows {StateDirectoryRowsWritten}; managed heap start={StartingManagedHeapBytes} bytes, completed={CompletedManagedHeapBytes} bytes, delta={ManagedHeapDeltaBytes} bytes; queue capacity={QueueCapacity}, placeholder concurrency={PlaceholderConcurrency}, placeholder batch size={PlaceholderBatchSize}, state batch size={StateBatchSize}; activities retained {RetainedActivityCount}/{TotalActivityCount}, truncated={ActivityListTruncated}.",
+                "Completed initial streaming Windows virtual-files population for pair {SyncPairId} with {DirectoryCount} directories discovered, {FileCount} files discovered, remote pages read={RemotePageCount}, remote page latency total={RemotePageLatencyTotalMilliseconds:F0} ms, avg={RemotePageLatencyAverageMilliseconds:F2} ms, max={RemotePageLatencyMaxMilliseconds:F0} ms, last={RemotePageLatencyLastMilliseconds:F0} ms, {CompletedFileCount} file items completed, {CreatedPlaceholderCount} placeholders created or refreshed, {SkippedCurrentPlaceholderCount} current placeholders skipped, {SkippedUnavailablePlaceholderCount} placeholders skipped with user action in {ElapsedMilliseconds} ms at {CreatedPlaceholderRatePerSecond:F2} placeholders/sec; state writes {StateFileRowsWritten} file rows, file write batches {StateFileWriteBatchCount}, directory rows {StateDirectoryRowsWritten}; managed heap start={StartingManagedHeapBytes} bytes, completed={CompletedManagedHeapBytes} bytes, peak={PeakManagedHeapBytes} bytes, delta={ManagedHeapDeltaBytes} bytes; queue capacity={QueueCapacity}, placeholder concurrency={PlaceholderConcurrency}, placeholder batch size={PlaceholderBatchSize}, state batch size={StateBatchSize}; activities retained {RetainedActivityCount}/{TotalActivityCount}, truncated={ActivityListTruncated}.",
                 syncPair.SyncPairId,
                 Volatile.Read(ref discoveredDirectories),
                 Volatile.Read(ref discoveredFiles),
@@ -874,6 +903,7 @@ namespace Cotton.Sync
                 stateDirectoryRowsWritten,
                 startingManagedHeapBytes,
                 completedManagedHeapBytes,
+                Volatile.Read(ref peakManagedHeapBytes),
                 completedManagedHeapBytes - startingManagedHeapBytes,
                 options.InitialVirtualFilesPopulationQueueCapacity,
                 options.InitialVirtualFilesPlaceholderConcurrency,
@@ -4541,6 +4571,91 @@ namespace Cotton.Sync
                     .ConfigureAwait(false);
                 _onFileDiscovered();
             }
+        }
+
+        private async Task LogInitialVirtualFilesPopulationHeartbeatAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            Stopwatch stopwatch,
+            RemoteTreeScanProgressCounter remoteScanProgress,
+            Func<int> getDiscoveredFiles,
+            Func<int> getDiscoveredDirectories,
+            Func<int> getCompletedFiles,
+            Func<int> getCompletedDirectories,
+            Func<int> getCreatedPlaceholders,
+            Func<int> getSkippedCurrentPlaceholders,
+            Func<int> getSkippedUnavailablePlaceholders,
+            Func<int> getStateFileRowsWritten,
+            Func<int> getStateFileWriteBatches,
+            Func<int> getStateDirectoryRowsWritten,
+            Action<long> recordManagedHeapSample,
+            CancellationToken cancellationToken)
+        {
+            using var timer = new PeriodicTimer(InitialVirtualFilesHeartbeatLogInterval);
+            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
+            {
+                int createdPlaceholders = getCreatedPlaceholders();
+                double elapsedSeconds = Math.Max(stopwatch.Elapsed.TotalSeconds, 0.001d);
+                double createdPlaceholderRatePerSecond = createdPlaceholders / elapsedSeconds;
+                int remotePageCount = remoteScanProgress.PagesScanned;
+                double remotePageAverageLatencyMilliseconds = remotePageCount <= 0
+                    ? 0d
+                    : remoteScanProgress.PageReadLatencyTotal.TotalMilliseconds / remotePageCount;
+                long managedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
+                recordManagedHeapSample(managedHeapBytes);
+                _logger.LogInformation(
+                    "Initial streaming Windows virtual-files population heartbeat for pair {SyncPairId}: elapsed={ElapsedMilliseconds} ms; discovered directories={DirectoryCount}, files={FileCount}; completed directories={CompletedDirectoryCount}, files={CompletedFileCount}; remote pages read={RemotePageCount}, remote page latency total={RemotePageLatencyTotalMilliseconds:F0} ms, avg={RemotePageLatencyAverageMilliseconds:F2} ms, max={RemotePageLatencyMaxMilliseconds:F0} ms, last={RemotePageLatencyLastMilliseconds:F0} ms; placeholders created or refreshed={CreatedPlaceholderCount}, current skipped={SkippedCurrentPlaceholderCount}, user-action skipped={SkippedUnavailablePlaceholderCount}, rate={CreatedPlaceholderRatePerSecond:F2} placeholders/sec; state writes file rows={StateFileRowsWritten}, file batches={StateFileWriteBatchCount}, directory rows={StateDirectoryRowsWritten}; managed heap={ManagedHeapBytes} bytes; queue capacity={QueueCapacity}, placeholder concurrency={PlaceholderConcurrency}, placeholder batch size={PlaceholderBatchSize}, state batch size={StateBatchSize}.",
+                    syncPair.SyncPairId,
+                    stopwatch.ElapsedMilliseconds,
+                    getDiscoveredDirectories(),
+                    getDiscoveredFiles(),
+                    getCompletedDirectories(),
+                    getCompletedFiles(),
+                    remotePageCount,
+                    remoteScanProgress.PageReadLatencyTotal.TotalMilliseconds,
+                    remotePageAverageLatencyMilliseconds,
+                    remoteScanProgress.PageReadLatencyMax.TotalMilliseconds,
+                    remoteScanProgress.LastPageReadLatency.TotalMilliseconds,
+                    createdPlaceholders,
+                    getSkippedCurrentPlaceholders(),
+                    getSkippedUnavailablePlaceholders(),
+                    createdPlaceholderRatePerSecond,
+                    getStateFileRowsWritten(),
+                    getStateFileWriteBatches(),
+                    getStateDirectoryRowsWritten(),
+                    managedHeapBytes,
+                    options.InitialVirtualFilesPopulationQueueCapacity,
+                    options.InitialVirtualFilesPlaceholderConcurrency,
+                    options.InitialVirtualFilesPlaceholderBatchSize,
+                    options.InitialVirtualFilesStateBatchSize);
+            }
+        }
+
+        private static async Task IgnoreExpectedHeartbeatCancellationAsync(
+            Task heartbeat,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                await heartbeat.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+        }
+
+        private static void UpdateMax(ref long target, long value)
+        {
+            long current;
+            do
+            {
+                current = Volatile.Read(ref target);
+                if (value <= current)
+                {
+                    return;
+                }
+            }
+            while (Interlocked.CompareExchange(ref target, value, current) != current);
         }
 
         private sealed class RemoteTreeScanProgressCounter : IProgress<RemoteTreeScanProgress>
