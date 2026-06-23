@@ -114,6 +114,9 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(runner, Does.Contain("VerifyCloudFilesInSyncStateAsync("));
                 Assert.That(runner, Does.Contain("Large-tree Cloud Files sync root status was marked in sync."));
                 Assert.That(runner, Does.Contain("Large-tree Cloud Files directory status was finalized."));
+                Assert.That(runner, Does.Contain("VerifyExplorerShellSettledStatusAsync("));
+                Assert.That(runner, Does.Contain("Explorer shell status settled for "));
+                Assert.That(runner, Does.Contain("IsActiveExplorerShellStatus("));
                 Assert.That(runner, Does.Contain("WindowsCloudFilesPlaceholderState.InSync"));
                 Assert.That(runner, Does.Contain("WindowsCloudFilesPlaceholderState.Partial"));
             });
