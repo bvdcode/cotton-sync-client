@@ -2179,6 +2179,24 @@ namespace Cotton.Sync.Desktop.Startup
                         LargeTreeDirectoryName,
                         "Large-tree Cloud Files directory status was finalized.")
                     .ConfigureAwait(false);
+                failures += await VerifyExplorerShellSettledStatusAsync(
+                        output,
+                        largeTreePath,
+                        "large-tree directory",
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                failures += await VerifyExplorerShellSettledStatusAsync(
+                        output,
+                        Path.Combine(largeTreePath, "file-00000.txt"),
+                        "large-tree first placeholder",
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                failures += await VerifyExplorerShellSettledStatusAsync(
+                        output,
+                        Path.Combine(largeTreePath, "file-09999.txt"),
+                        "large-tree last placeholder",
+                        cancellationToken)
+                    .ConfigureAwait(false);
 
                 var enumerationTimer = Stopwatch.StartNew();
                 int enumeratedFiles = Directory.EnumerateFiles(largeTreePath, "*.txt", SearchOption.TopDirectoryOnly).Count();
@@ -2776,6 +2794,128 @@ namespace Cotton.Sync.Desktop.Startup
             return File.Exists(filePath) && predicate(File.GetAttributes(filePath));
         }
 
+        private static async Task<int> VerifyExplorerShellSettledStatusAsync(
+            TextWriter output,
+            string itemPath,
+            string label,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                ShellItemStatusSnapshot status = await ReadExplorerShellStatusAsync(itemPath, cancellationToken)
+                    .ConfigureAwait(false);
+                bool hasAvailability = status.Columns.Any(static column =>
+                    column.Index is 298 or 305 && !string.IsNullOrWhiteSpace(column.Value));
+                bool hasActiveStatus = status.Columns.Any(static column => IsActiveExplorerShellStatus(column.Value));
+                if (hasAvailability && !hasActiveStatus)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Explorer shell status settled for " + label + ".")
+                        + " "
+                        + status.Format())
+                        .ConfigureAwait(false);
+                    return 0;
+                }
+
+                await output.WriteLineAsync(
+                    FormatCheck(false, "Explorer shell status is active or unreadable for " + label + ".")
+                    + " "
+                    + status.Format())
+                    .ConfigureAwait(false);
+                return 1;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                await output.WriteLineAsync(
+                    FormatCheck(false, "Explorer shell status could not be read for " + label + ".")
+                    + " "
+                    + CleanSingleLine(exception.Message))
+                    .ConfigureAwait(false);
+                return 1;
+            }
+        }
+
+        private static async Task<ShellItemStatusSnapshot> ReadExplorerShellStatusAsync(
+            string itemPath,
+            CancellationToken cancellationToken)
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                return new ShellItemStatusSnapshot([]);
+            }
+
+            string output = await RunPowerShellFileReadAsync(
+                "$ErrorActionPreference='Stop'; "
+                + "$target=$env:COTTON_SYNC_EXTERNAL_READ_PATH; "
+                + "$parent=[System.IO.Path]::GetDirectoryName($target); "
+                + "$name=[System.IO.Path]::GetFileName($target); "
+                + "$shell=New-Object -ComObject Shell.Application; "
+                + "$folder=$shell.Namespace($parent); "
+                + "if ($null -eq $folder) { throw 'Shell namespace was not available.' }; "
+                + "$item=$folder.ParseName($name); "
+                + "if ($null -eq $item) { throw 'Shell item was not available.' }; "
+                + "$indexes=@(148,149,298,305); "
+                + "foreach($index in $indexes) { "
+                + "$header=[string]$folder.GetDetailsOf($null,$index); "
+                + "$value=[string]$folder.GetDetailsOf($item,$index); "
+                + "$headerBytes=[System.Text.Encoding]::UTF8.GetBytes($header); "
+                + "$valueBytes=[System.Text.Encoding]::UTF8.GetBytes($value); "
+                + "$headerEncoded=[Convert]::ToBase64String($headerBytes); "
+                + "$valueEncoded=[Convert]::ToBase64String($valueBytes); "
+                + "'{0}|{1}|{2}' -f $index,$headerEncoded,$valueEncoded "
+                + "}",
+                itemPath,
+                cancellationToken)
+                .ConfigureAwait(false);
+
+            List<ShellStatusColumn> columns = [];
+            string[] lines = output.Split(
+                ["\r\n", "\n"],
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (string line in lines)
+            {
+                string[] parts = line.Split('|', 3);
+                if (parts.Length != 3
+                    || !int.TryParse(
+                        parts[0],
+                        System.Globalization.NumberStyles.None,
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        out int index))
+                {
+                    throw new InvalidOperationException("Explorer shell status helper returned an invalid row.");
+                }
+
+                columns.Add(new ShellStatusColumn(
+                    index,
+                    DecodeBase64Utf8(parts[1]),
+                    DecodeBase64Utf8(parts[2])));
+            }
+
+            return new ShellItemStatusSnapshot(columns);
+        }
+
+        private static string DecodeBase64Utf8(string value)
+        {
+            return Encoding.UTF8.GetString(Convert.FromBase64String(value));
+        }
+
+        private static bool IsActiveExplorerShellStatus(string value)
+        {
+            return ContainsShellStatusTerm(value, "sync")
+                || ContainsShellStatusTerm(value, "pending")
+                || ContainsShellStatusTerm(value, "error")
+                || ContainsShellStatusTerm(value, "processing")
+                || ContainsShellStatusTerm(value, "updating")
+                || ContainsShellStatusTerm(value, "\u0441\u0438\u043d\u0445")
+                || ContainsShellStatusTerm(value, "\u043e\u0436\u0438\u0434")
+                || ContainsShellStatusTerm(value, "\u043e\u0448\u0438\u0431");
+        }
+
+        private static bool ContainsShellStatusTerm(string value, string term)
+        {
+            return value.Contains(term, StringComparison.OrdinalIgnoreCase);
+        }
+
         private static Task<ShellVerbInvocationResult> InvokeExplorerFreeUpSpaceAsync(
             string filePath,
             CancellationToken cancellationToken)
@@ -2881,6 +3021,24 @@ namespace Cotton.Sync.Desktop.Startup
             bool Invoked,
             string? InvokedVerbName,
             IReadOnlyList<string> AvailableVerbNames);
+
+        private record ShellStatusColumn(
+            int Index,
+            string Name,
+            string Value);
+
+        private record ShellItemStatusSnapshot(IReadOnlyList<ShellStatusColumn> Columns)
+        {
+            public string Format()
+            {
+                return string.Join(
+                    ";",
+                    Columns.Select(static column =>
+                        column.Index.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + "="
+                        + (string.IsNullOrWhiteSpace(column.Value) ? "<empty>" : CleanSingleLine(column.Value))));
+            }
+        }
 
         private sealed class RecordingTransferProgress : IProgress<SyncTransferProgress>
         {
