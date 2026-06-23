@@ -3,6 +3,7 @@
 
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Platform;
+using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
 
 namespace Cotton.Sync.Desktop.Tests.Platform
@@ -100,6 +101,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(snapshot.Passed, Is.True);
                 Assert.That(snapshot.Skipped, Is.False);
                 Assert.That(snapshot.Details, Does.Contain("CfConnectSyncRoot"));
+                Assert.That(snapshot.Details, Does.Contain("placeholder creation"));
+                Assert.That(adapter.PlaceholderRequests, Has.Count.EqualTo(1));
                 Assert.That(adapter.ConnectedSyncPairs, Has.Count.EqualTo(1));
                 Assert.That(adapter.UnregisteredSyncPairs, Has.Count.EqualTo(1));
                 Assert.That(adapter.DisconnectedKeys, Is.EqualTo(new[] { new WindowsCloudFilesConnectionKey(42) }));
@@ -132,6 +135,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             Assert.Multiple(() =>
             {
+                Assert.That(adapter.PlaceholderRequests, Has.Count.EqualTo(2));
                 Assert.That(connectedIds, Has.Length.EqualTo(2));
                 Assert.That(connectedIds.Distinct().Count(), Is.EqualTo(1));
                 Assert.That(unregisteredIds, Is.EqualTo(connectedIds));
@@ -176,6 +180,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(snapshot.Skipped, Is.False);
                 Assert.That(snapshot.Details, Does.Contain("CfConnectSyncRoot"));
                 Assert.That(snapshot.Details, Does.Contain("0x80070090"));
+                Assert.That(adapter.PlaceholderRequests, Has.Count.EqualTo(1));
                 Assert.That(adapter.ConnectedSyncPairs, Has.Count.EqualTo(1));
                 Assert.That(adapter.UnregisteredSyncPairs, Has.Count.EqualTo(1));
                 Assert.That(Directory.Exists(probeRoot), Is.False);
@@ -197,11 +202,16 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<WindowsCloudFilesConnectionKey> DisconnectedKeys { get; } = [];
 
+            public List<RemoteFilePlaceholderRequest> PlaceholderRequests { get; } = [];
+
             public Exception? ConnectException { get; init; }
 
             public RemoteFilePlaceholderResult CreateFilePlaceholder(RemoteFilePlaceholderRequest request)
             {
-                throw new NotSupportedException();
+                PlaceholderRequests.Add(request);
+                return new RemoteFilePlaceholderResult(
+                    [1, 2, 3],
+                    SyncPlaceholderHydrationState.RemoteOnly);
             }
 
             public void UnregisterSyncRoot(SyncPairSettings syncPair)

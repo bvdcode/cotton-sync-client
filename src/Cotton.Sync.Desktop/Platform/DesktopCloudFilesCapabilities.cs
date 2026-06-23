@@ -1,7 +1,9 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using Cotton.Files;
 using Cotton.Sync.App.SyncPairs;
+using Cotton.Sync.VirtualFiles;
 
 namespace Cotton.Sync.Desktop.Platform
 {
@@ -12,6 +14,7 @@ namespace Cotton.Sync.Desktop.Platform
         private static readonly Guid SelfTestSyncPairId =
             Guid.Parse("728a21a6-4ed6-40a8-8942-d95d5d49d9ff");
         private const string SelfTestProbeRootName = "cotton-cloud-files-self-test";
+        private const string SelfTestPlaceholderPath = "cloud-files-self-test-placeholder.txt";
 
         public static SyncPairModeCapabilitySnapshot CreateSyncPairModeCapabilities()
         {
@@ -93,6 +96,7 @@ namespace Cotton.Sync.Desktop.Platform
             try
             {
                 Directory.CreateDirectory(probeRoot);
+                cloudFiles.CreateFilePlaceholder(CreateSelfTestPlaceholderRequest(syncPair));
                 connection = cloudFiles.ConnectSyncRoot(syncPair, NoopWindowsCloudFilesCallbackHandler.Instance);
             }
             catch (Exception exception)
@@ -138,7 +142,7 @@ namespace Cotton.Sync.Desktop.Platform
                     false,
                     false,
                     "Windows Cloud Files API and StorageProvider sync-root registration are available, but "
-                    + "CfConnectSyncRoot could not be verified: "
+                    + "placeholder creation and CfConnectSyncRoot could not be verified: "
                     + CleanSingleLine(failure.Message));
             }
 
@@ -154,7 +158,7 @@ namespace Cotton.Sync.Desktop.Platform
             return new DesktopCloudFilesSelfTestCapabilitySnapshot(
                 true,
                 false,
-                "Windows Cloud Files API, StorageProvider sync-root registration, CfConnectSyncRoot, and cleanup are available.");
+                "Windows Cloud Files API, StorageProvider sync-root registration, placeholder creation, CfConnectSyncRoot, and cleanup are available.");
         }
 
         internal static string CreateProbeRoot()
@@ -170,6 +174,31 @@ namespace Cotton.Sync.Desktop.Platform
                 .Replace('\r', ' ')
                 .Replace('\n', ' ')
                 .Trim();
+        }
+
+        private static RemoteFilePlaceholderRequest CreateSelfTestPlaceholderRequest(SyncPairSettings syncPair)
+        {
+            return new RemoteFilePlaceholderRequest(
+                syncPair.Id.ToString("D"),
+                syncPair.LocalRootPath,
+                syncPair.RemoteRootNodeId,
+                SelfTestPlaceholderPath,
+                new NodeFileManifestDto
+                {
+                    Id = Guid.Parse("5e59d0ba-8d71-4cf1-9f00-d784cde8277c"),
+                    NodeId = Guid.Parse("75cfa944-e2d4-48a6-a275-29a4710a92cb"),
+                    FileManifestId = Guid.Parse("415f589e-8e5d-48df-8b34-677b63339cc8"),
+                    OriginalNodeFileId = Guid.Parse("50b7c79d-8803-4c32-a2dc-e3c8a0921762"),
+                    OwnerId = Guid.Parse("82195040-4dbe-44b0-8408-d5d337377db3"),
+                    Name = SelfTestPlaceholderPath,
+                    ContentType = "text/plain",
+                    SizeBytes = 1,
+                    ContentHash = "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+                    ETag = "cloud-files-self-test",
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                    Metadata = new Dictionary<string, string> { ["relativePath"] = SelfTestPlaceholderPath },
+                });
         }
 
         private sealed class NoopWindowsCloudFilesCallbackHandler : IWindowsCloudFilesCallbackHandler
