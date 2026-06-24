@@ -21,6 +21,7 @@ namespace Cotton.Sync.Desktop.Startup
             bool runUpdateDiscoverySmoke,
             bool runUpdateInstallSmoke,
             bool runShellShareLinkSmoke,
+            bool runSocketCleanupSmoke,
             bool printVersion,
             string? shellShareLinkTargetPath,
             string? shellCopyShareLinkTargetPath,
@@ -52,6 +53,7 @@ namespace Cotton.Sync.Desktop.Startup
             RunUpdateDiscoverySmoke = runUpdateDiscoverySmoke;
             RunUpdateInstallSmoke = runUpdateInstallSmoke;
             RunShellShareLinkSmoke = runShellShareLinkSmoke;
+            RunSocketCleanupSmoke = runSocketCleanupSmoke;
             PrintVersion = printVersion;
             ShellShareLinkTargetPath = shellShareLinkTargetPath;
             ShellCopyShareLinkTargetPath = shellCopyShareLinkTargetPath;
@@ -75,6 +77,7 @@ namespace Cotton.Sync.Desktop.Startup
             null,
             null,
             null,
+            false,
             false,
             false,
             false,
@@ -128,6 +131,8 @@ namespace Cotton.Sync.Desktop.Startup
         public bool RunUpdateInstallSmoke { get; }
 
         public bool RunShellShareLinkSmoke { get; }
+
+        public bool RunSocketCleanupSmoke { get; }
 
         public bool PrintVersion { get; }
 
@@ -215,6 +220,8 @@ namespace Cotton.Sync.Desktop.Startup
                 || HasFlag(args, "--desktop-update-install-smoke");
             bool runShellShareLinkSmoke = HasFlag(args, "--shell-share-link-smoke")
                 || HasFlag(args, "--desktop-shell-share-link-smoke");
+            bool runSocketCleanupSmoke = HasFlag(args, "--socket-cleanup-smoke")
+                || HasFlag(args, "--desktop-socket-cleanup-smoke");
             bool liveSyncSmokePreserveExistingLocalFiles =
                 HasFlag(args, "--live-sync-smoke-preserve-existing-local-files");
             bool printVersion = HasFlag(args, "--version")
@@ -234,6 +241,7 @@ namespace Cotton.Sync.Desktop.Startup
                 runUpdateDiscoverySmoke,
                 runUpdateInstallSmoke,
                 runShellShareLinkSmoke,
+                runSocketCleanupSmoke,
                 printVersion,
                 NormalizeOptional(shellShareLinkTargetPath),
                 NormalizeOptional(shellCopyShareLinkTargetPath),
