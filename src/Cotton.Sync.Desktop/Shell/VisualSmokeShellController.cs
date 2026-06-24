@@ -418,6 +418,7 @@ namespace Cotton.Sync.Desktop.Shell
                 DesktopVisualSmokeScenario.Progress => "Syncing",
                 DesktopVisualSmokeScenario.ManySmallDownload => "Syncing",
                 DesktopVisualSmokeScenario.HighPressureStarting => "Syncing",
+                DesktopVisualSmokeScenario.VirtualFilesSeeding => "Syncing",
                 _ => "Idle",
             };
         }

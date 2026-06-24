@@ -117,7 +117,9 @@ function Test-VisualState {
     param(
         [string]$Scenario,
         [string]$ExpectedStatus,
-        [string]$ExpectedDetailsPattern
+        [string]$ExpectedDetailsPattern,
+        [bool]$RequireSettingsActions = $true,
+        [string[]]$UnexpectedNames = @("Download", "Update")
     )
 
     $dataDirectory = Join-Path $root $Scenario
@@ -133,13 +135,16 @@ function Test-VisualState {
         $elements = Get-AutomationDescendants -Root $window
         $names = Get-AutomationNames -Elements $elements
 
-        Assert-NamePresent -Names $names -ExpectedName "Settings" -Scenario $Scenario
-        Assert-NamePresent -Names $names -ExpectedName "Updates" -Scenario $Scenario
+        if ($RequireSettingsActions) {
+            Assert-NamePresent -Names $names -ExpectedName "Settings" -Scenario $Scenario
+            Assert-NamePresent -Names $names -ExpectedName "Updates" -Scenario $Scenario
+        }
         Assert-NamePresent -Names $names -ExpectedName $ExpectedStatus -Scenario $Scenario
         Assert-NameMatches -Names $names -Pattern $ExpectedDetailsPattern -Scenario $Scenario
         Assert-ProgressBarPresent -Elements $elements -Scenario $Scenario
-        Assert-NameMissing -Names $names -UnexpectedName "Download" -Scenario $Scenario
-        Assert-NameMissing -Names $names -UnexpectedName "Update" -Scenario $Scenario
+        foreach ($unexpectedName in $UnexpectedNames) {
+            Assert-NameMissing -Names $names -UnexpectedName $unexpectedName -Scenario $Scenario
+        }
     } finally {
         if (-not $process.HasExited) {
             $process.CloseMainWindow() | Out-Null
@@ -161,4 +166,11 @@ Test-VisualState `
     -ExpectedStatus "Installing update" `
     -ExpectedDetailsPattern "^Starting the update installer\.$"
 
-Write-Host "Verified installed update visual states."
+Test-VisualState `
+    -Scenario "virtual-files-seeding" `
+    -ExpectedStatus "Syncing" `
+    -ExpectedDetailsPattern "^Making cloud files available .+ 118054 of 500000 cloud items$" `
+    -RequireSettingsActions $false `
+    -UnexpectedNames @("Download", "Update", "Processing queued changes")
+
+Write-Host "Verified installed update and VFS visual states."

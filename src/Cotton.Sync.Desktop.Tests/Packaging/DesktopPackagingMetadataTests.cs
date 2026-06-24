@@ -1306,12 +1306,17 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("--visual-smoke"));
                 Assert.That(script, Does.Contain("update-download-progress"));
                 Assert.That(script, Does.Contain("update-install-progress"));
+                Assert.That(script, Does.Contain("virtual-files-seeding"));
                 Assert.That(script, Does.Contain("Downloading update"));
                 Assert.That(script, Does.Contain("Installing update"));
+                Assert.That(script, Does.Contain("Making cloud files available"));
+                Assert.That(script, Does.Contain("Processing queued changes"));
+                Assert.That(script, Does.Contain("[bool]$RequireSettingsActions"));
+                Assert.That(script, Does.Contain("-RequireSettingsActions $false"));
                 Assert.That(script, Does.Contain("ControlType]::ProgressBar"));
-                Assert.That(script, Does.Contain("UnexpectedName \"Download\""));
-                Assert.That(script, Does.Contain("UnexpectedName \"Update\""));
-                Assert.That(script, Does.Contain("Verified installed update visual states."));
+                Assert.That(script, Does.Contain("[string[]]$UnexpectedNames"));
+                Assert.That(script, Does.Contain("Assert-NameMissing -Names $names -UnexpectedName $unexpectedName"));
+                Assert.That(script, Does.Contain("Verified installed update and VFS visual states."));
             });
         }
 
