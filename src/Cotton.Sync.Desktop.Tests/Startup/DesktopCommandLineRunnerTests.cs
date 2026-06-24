@@ -348,6 +348,60 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             });
         }
 
+        [TestCase("auth-token-missing")]
+        [TestCase("auth-refresh-failed")]
+        public async Task RunShellShareLinkCopyAsync_ShowsSignInMessageWhenAuthIsUnavailable(
+            string failureReason)
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(Path.Combine(_tempDirectory, "state"));
+            string localRoot = Path.Combine(_tempDirectory, "cloud");
+            string selectedPath = Path.Combine(localRoot, "Docs", "report.pdf");
+            SqliteSyncPairSettingsStore pairStore = new(paths.AppDatabasePath);
+            await pairStore.InitializeAsync();
+            SyncPairSettings syncPair = CreateSyncPair("Cloud", SyncPairMode.WindowsVirtualFiles, localRoot);
+            await pairStore.UpsertAsync(syncPair);
+            SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath);
+            await stateStore.InitializeAsync();
+            await stateStore.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = syncPair.Id.ToString("D"),
+                RelativePath = "Docs/report.pdf",
+                Kind = SyncEntryKind.File,
+                RemoteNodeId = Guid.NewGuid(),
+                RemoteFileId = Guid.NewGuid(),
+                SyncedAtUtc = new DateTime(2026, 06, 20, 12, 00, 00, DateTimeKind.Utc),
+            });
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                ["--data-dir", paths.DataDirectory, "--copy-shell-share-link", selectedPath]);
+            using StringWriter output = new();
+            FakeDesktopClipboardService clipboard = new();
+            FakeDesktopNotificationService notifications = new();
+
+            int exitCode = await DesktopCommandLineRunner.RunShellShareLinkCopyAsync(
+                paths,
+                options,
+                output,
+                shareLinkClient: new FakeDesktopShellShareLinkClient(
+                    DesktopShellShareLinkResult.Failed(failureReason)),
+                clipboardService: clipboard,
+                notificationService: notifications);
+
+            string report = output.ToString();
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(1));
+                Assert.That(clipboard.CopiedText, Is.Null);
+                Assert.That(notifications.Messages, Has.Count.EqualTo(1));
+                Assert.That(notifications.Messages[0].Message, Is.EqualTo("Sign in to Cotton Sync and try again."));
+                Assert.That(report, Does.Contain("Status: resolved"));
+                Assert.That(report, Does.Contain("ShareLinkCopied: false"));
+                Assert.That(report, Does.Contain("FailureReason: " + failureReason));
+                Assert.That(report, Does.Contain("Result: failed"));
+                Assert.That(report, Does.Not.Contain(localRoot));
+                Assert.That(report, Does.Not.Contain("report.pdf"));
+            });
+        }
+
         [Test]
         public async Task RunShellShareLinkTargetAsync_ReturnsFailureForLocalOnlyPath()
         {

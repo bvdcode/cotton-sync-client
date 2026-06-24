@@ -412,7 +412,11 @@ namespace Cotton.Sync.Desktop.Startup
                 "target-ignored-path" => "This item is not available for sharing.",
                 "target-outside-sync-root" => "Select an item inside a synced folder.",
                 "target-sync-pair-disabled" => "Enable this synced folder and try again.",
-                "server-url-missing" or "token-missing" or "refresh-failed" => "Sign in to Cotton Sync and try again.",
+                "server-url-missing"
+                    or "token-missing"
+                    or "refresh-failed"
+                    or "auth-token-missing"
+                    or "auth-refresh-failed" => "Sign in to Cotton Sync and try again.",
                 "clipboard-unavailable" => "The share link was created, but the clipboard is unavailable.",
                 _ => "Share link could not be copied.",
             };
