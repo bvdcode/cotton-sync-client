@@ -309,6 +309,7 @@ Assert-Contains -Content $runnerLog -Expected "RunnerFinishedAt:" -Label "run-vf
 Assert-Contains -Content $runnerLog -Expected "TaskUnregistered: True" -Label "run-vfs-logon-evidence-capture.log"
 
 $taskRegisteredAt = Read-EvidenceTimestamp -Content $runnerLog -Label "TaskRegisteredAt:"
+$runnerStartedAt = Read-EvidenceTimestamp -Content $runnerLog -Label "RunnerStartedAt:"
 $latestInteractiveLogonAt = Read-EvidenceTimestamp -Content $runnerLog -Label "LatestInteractiveLogonAt:"
 if ($latestInteractiveLogonAt -le $taskRegisteredAt) {
     throw "VFS logon evidence was not captured after a newer interactive Windows logon."
@@ -326,6 +327,10 @@ catch {
 
 if ($runningInstalledProcessCreatedAt -lt $latestInteractiveLogonAt) {
     throw "processes.txt matched a Cotton Sync process that was created before the latest interactive Windows logon."
+}
+
+if ($runningInstalledProcessCreatedAt -gt $runnerStartedAt) {
+    throw "processes.txt matched a Cotton Sync process that was created after the post-logon capture runner started."
 }
 
 Write-Host "Verified VFS logon evidence bundle: $resolvedEvidenceDirectory"
