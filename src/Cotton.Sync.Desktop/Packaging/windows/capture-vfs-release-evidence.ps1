@@ -172,6 +172,133 @@ function Capture-Screenshot {
     }
 }
 
+function Initialize-WindowProbe {
+    if ("CottonReleaseEvidenceWindowProbe" -as [type]) {
+        return
+    }
+
+    Add-Type -TypeDefinition @"
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class CottonReleaseEvidenceWindowProbe
+{
+    public sealed class WindowSnapshot
+    {
+        public IntPtr Handle { get; set; }
+        public string Title { get; set; }
+    }
+
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+
+    public static WindowSnapshot[] GetVisibleWindowsForProcess(int targetProcessId)
+    {
+        var windows = new List<WindowSnapshot>();
+        EnumWindows((hWnd, lParam) =>
+        {
+            if (!IsWindowVisible(hWnd))
+            {
+                return true;
+            }
+
+            uint processId;
+            GetWindowThreadProcessId(hWnd, out processId);
+            if (processId != targetProcessId)
+            {
+                return true;
+            }
+
+            var title = new StringBuilder(512);
+            GetWindowText(hWnd, title, title.Capacity);
+            windows.Add(new WindowSnapshot { Handle = hWnd, Title = title.ToString() });
+            return true;
+        }, IntPtr.Zero);
+        return windows.ToArray();
+    }
+
+    public static int GetForegroundProcessId()
+    {
+        IntPtr foreground = GetForegroundWindow();
+        if (foreground == IntPtr.Zero)
+        {
+            return 0;
+        }
+
+        uint processId;
+        GetWindowThreadProcessId(foreground, out processId);
+        return (int)processId;
+    }
+}
+"@
+}
+
+function Capture-ProcessWindows {
+    Initialize-WindowProbe
+    $foregroundProcessId = [CottonReleaseEvidenceWindowProbe]::GetForegroundProcessId()
+    foreach ($process in Get-CottonProcess) {
+        $windows = @([CottonReleaseEvidenceWindowProbe]::GetVisibleWindowsForProcess([int]$process.ProcessId))
+        [pscustomobject]@{
+            ProcessId = $process.ProcessId
+            IsForeground = ([int]$process.ProcessId -eq $foregroundProcessId)
+            VisibleWindowCount = $windows.Count
+            VisibleWindowTitles = (($windows | ForEach-Object { $_.Title }) -join " | ")
+        }
+    }
+}
+
+function Capture-CloudFilesExplorerRegistrations {
+    $patterns = @(
+        "Cotton.Sync.Desktop",
+        "Cotton Cloud",
+        "Cotton Sync"
+    )
+    $roots = @(
+        "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\SyncRootManager",
+        "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace",
+        "HKCU\Software\Classes\CLSID",
+        "HKCU\Software\Classes\WOW6432Node\CLSID"
+    )
+    $matches = New-Object System.Collections.Generic.List[string]
+    foreach ($root in $roots) {
+        foreach ($pattern in $patterns) {
+            foreach ($mode in @("/d", "/k")) {
+                $output = & reg.exe query $root /s /f $pattern $mode 2>$null
+                if ($LASTEXITCODE -ne 0) {
+                    continue
+                }
+
+                foreach ($line in $output) {
+                    if (-not [string]::IsNullOrWhiteSpace($line)) {
+                        $matches.Add($root + " :: " + $pattern + " :: " + $line)
+                    }
+                }
+            }
+        }
+    }
+
+    "MatchCount: $($matches.Count)"
+    foreach ($match in $matches) {
+        Redact-Text $match
+    }
+}
+
 function Run-InstalledAppCommand {
     param(
         [string]$Name,
@@ -253,6 +380,14 @@ Invoke-Capture "Cotton processes" "processes.txt" {
     Get-CottonProcess |
         Select-Object ProcessId, ExecutablePath, CommandLine, CreationDate |
         Format-List
+}
+
+Invoke-Capture "Cotton process windows" "process-windows.txt" {
+    Capture-ProcessWindows | Format-List
+}
+
+Invoke-Capture "Cloud Files Explorer registrations" "registry-cloud-files-explorer.txt" {
+    Capture-CloudFilesExplorerRegistrations
 }
 
 Invoke-Capture "Local root entries" "local-root-entries.csv" {
