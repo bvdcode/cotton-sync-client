@@ -825,6 +825,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("cotton-sync-update-visual-states-data"));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-update-install-handoff.ps1"));
                 Assert.That(workflow, Does.Contain("cotton-sync-update-install-data"));
+                Assert.That(workflow, Does.Contain("Packaging/windows/smoke-shell-share-link-copy.ps1"));
+                Assert.That(workflow, Does.Contain("cotton-sync-shell-share-link-data"));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-shell-share-link-verb.ps1"));
                 Assert.That(workflow, Does.Contain("-ExpectedExecutablePath $installedExe"));
                 Assert.That(workflow, Does.Contain("-ExpectAbsent"));
@@ -891,6 +893,26 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         }
 
         [Test]
+        public void CiWorkflow_GatesWindowsReleaseOnShellShareLinkCopySmokeBeforePublishing()
+        {
+            string workflow = GetDesktopWorkflow();
+            string normalizedWorkflow = workflow.Replace("\r\n", "\n", StringComparison.Ordinal);
+            int shellShareLinkCopySmokeIndex = normalizedWorkflow.IndexOf(
+                "Packaging/windows/smoke-shell-share-link-copy.ps1",
+                StringComparison.Ordinal);
+            int uploadInstallerIndex = normalizedWorkflow.IndexOf(
+                "Upload desktop Windows installer artifact",
+                StringComparison.Ordinal);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(shellShareLinkCopySmokeIndex, Is.GreaterThanOrEqualTo(0));
+                Assert.That(uploadInstallerIndex, Is.GreaterThanOrEqualTo(0));
+                Assert.That(shellShareLinkCopySmokeIndex, Is.LessThan(uploadInstallerIndex));
+            });
+        }
+
+        [Test]
         public void CiWorkflow_GatesWindowsReleaseOnNotificationIdentitySmokeBeforePublishing()
         {
             string workflow = GetDesktopWorkflow();
@@ -951,6 +973,22 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("--copy-shell-share-link"));
                 Assert.That(script, Does.Contain("Verified installed shell share-link verbs."));
                 Assert.That(script, Does.Contain("Verified installed shell share-link verbs were removed."));
+            });
+        }
+
+        [Test]
+        public void WindowsShellShareLinkCopySmokeScript_VerifiesInstalledCopyFlow()
+        {
+            string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/smoke-shell-share-link-copy.ps1"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(script, Does.Contain("[string]$AppExecutable"));
+                Assert.That(script, Does.Contain("[string]$DataDirectory"));
+                Assert.That(script, Does.Contain("--shell-share-link-smoke"));
+                Assert.That(script, Does.Contain("--data-dir"));
+                Assert.That(script, Does.Contain("Result: passed"));
+                Assert.That(script, Does.Contain("Verified installed shell share-link copy flow."));
             });
         }
 
