@@ -67,6 +67,47 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesUploadedDirectoryActivityFinalizesDirectoryPlaceholder()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            var activityPublisher = new InMemoryAppActivityPublisher();
+            var inner = new PublishingSyncPairWork(activityPublisher, "Docs");
+            var stateStore = new FakeSyncStateStore();
+            Guid remoteNodeId = Guid.Parse("33333333-3333-3333-3333-333333333333");
+            stateStore.UpsertDirectory(syncPair, "Docs", remoteNodeId);
+            var cloudFiles = new RecordingCloudFilesAdapter();
+            var suppression = new RecordingLocalChangeSuppression();
+            var work = new WindowsVirtualFilesUploadFinalizationPairWork(
+                inner,
+                activityPublisher,
+                stateStore,
+                cloudFiles,
+                suppression);
+
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForLocalChangedPaths(["Docs"]));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(cloudFiles.InSyncPaths, Is.Empty);
+                Assert.That(
+                    cloudFiles.DirectoryPlaceholders.Select(static request => request.RelativePath),
+                    Is.EqualTo(new[] { "Docs" }));
+                Assert.That(
+                    cloudFiles.DirectoryPlaceholders.Select(static request => request.RemoteDirectory.Id),
+                    Is.EqualTo(new[] { remoteNodeId }));
+                Assert.That(
+                    cloudFiles.SyncRootInSyncPairs.Select(static item => item.Id),
+                    Is.EqualTo(new[] { syncPair.Id }));
+                Assert.That(
+                    suppression.SuppressedWrites,
+                    Is.EqualTo(new[]
+                    {
+                        new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs"),
+                    }));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesUploadedActivityPublishesFinalizingProgress()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);

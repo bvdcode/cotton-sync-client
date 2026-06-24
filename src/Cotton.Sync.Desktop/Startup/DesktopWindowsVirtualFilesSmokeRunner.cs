@@ -36,6 +36,11 @@ namespace Cotton.Sync.Desktop.Startup
         private const string AllowedSmokeRoot = @"S:\CottonSyncVfsQa";
         private const string RelativePlaceholderPath = "remote-only-smoke.txt";
         private const string LargeTreeDirectoryName = "large-tree";
+        private const string NonEmptyPreservationDirectoryName = "pre-existing";
+        private const string NonEmptyPreservationRootFilePath = NonEmptyPreservationDirectoryName + "/root-local.txt";
+        private const string NonEmptyPreservationNestedFilePath = NonEmptyPreservationDirectoryName + "/nested/local-nested.txt";
+        private const string NonEmptyPreservationRemoteOnlyDirectoryName = "remote-only";
+        private const string NonEmptyPreservationRemoteOnlyFilePath = NonEmptyPreservationRemoteOnlyDirectoryName + "/cloud-only.txt";
         private const string ReplaceCloudOnlyDirectoryName = "replace-cloud-only";
         private const string ReplaceCloudOnlyRelativePath = ReplaceCloudOnlyDirectoryName + "/replace-smoke.txt";
         private const int DefaultLargeTreePlaceholderCount = 10_000;
@@ -127,6 +132,7 @@ namespace Cotton.Sync.Desktop.Startup
             bool initialStreamingLogging = string.Equals(phase, "initial-streaming-logging", StringComparison.Ordinal);
             bool steadyStateRepeat = string.Equals(phase, "steady-state-repeat", StringComparison.Ordinal);
             bool largeTree = string.Equals(phase, "large-tree", StringComparison.Ordinal);
+            bool nonEmptyPreservation = string.Equals(phase, "non-empty-preservation", StringComparison.Ordinal);
             bool largeHydration = string.Equals(phase, "large-hydration-progress", StringComparison.Ordinal);
             bool removePairCleanup = string.Equals(phase, "remove-pair-cleanup", StringComparison.Ordinal);
             bool largeRemovePairCleanup = string.Equals(phase, "large-remove-pair-cleanup", StringComparison.Ordinal);
@@ -140,6 +146,7 @@ namespace Cotton.Sync.Desktop.Startup
                 && !initialStreamingLogging
                 && !steadyStateRepeat
                 && !largeTree
+                && !nonEmptyPreservation
                 && !largeHydration
                 && !removePairCleanup
                 && !largeRemovePairCleanup
@@ -195,6 +202,18 @@ namespace Cotton.Sync.Desktop.Startup
                     cloudFiles,
                     syncPair,
                     largeTreePlaceholderCount,
+                    diagnostics,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (nonEmptyPreservation)
+            {
+                return await RunNonEmptyPreservationAsync(
+                    paths,
+                    output,
+                    cloudFiles,
+                    syncPair,
                     diagnostics,
                     cancellationToken)
                     .ConfigureAwait(false);
@@ -772,6 +791,245 @@ namespace Cotton.Sync.Desktop.Startup
                         + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
                         .ConfigureAwait(false);
                 }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                failures++;
+                await output.WriteLineAsync(
+                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                connection?.Dispose();
+                failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
+            }
+
+            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
+            {
+                await output.WriteLineAsync(
+                    "Diagnostic: "
+                    + item.Operation
+                    + " "
+                    + item.Status
+                    + " "
+                    + CleanSingleLine(item.Details))
+                    .ConfigureAwait(false);
+            }
+
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> RunNonEmptyPreservationAsync(
+            DesktopAppPaths paths,
+            TextWriter output,
+            IWindowsCloudFilesAdapter cloudFiles,
+            SyncPairSettings syncPair,
+            WindowsCloudFilesDiagnostics diagnostics,
+            CancellationToken cancellationToken)
+        {
+            string rootPath = syncPair.LocalRootPath;
+            string rootLocalFilePath = Path.Combine(
+                rootPath,
+                NonEmptyPreservationRootFilePath.Replace('/', Path.DirectorySeparatorChar));
+            string nestedLocalFilePath = Path.Combine(
+                rootPath,
+                NonEmptyPreservationNestedFilePath.Replace('/', Path.DirectorySeparatorChar));
+            string remoteOnlyFilePath = Path.Combine(
+                rootPath,
+                NonEmptyPreservationRemoteOnlyFilePath.Replace('/', Path.DirectorySeparatorChar));
+            byte[] rootLocalContent = Encoding.UTF8.GetBytes("Cotton Sync pre-existing root file\n");
+            byte[] nestedLocalContent = Encoding.UTF8.GetBytes("Cotton Sync pre-existing nested file\n");
+            byte[] remoteOnlyContent = Encoding.UTF8.GetBytes("Cotton Sync remote-only content\n");
+            string rootLocalHash = Convert.ToHexStringLower(SHA256.HashData(rootLocalContent));
+            string nestedLocalHash = Convert.ToHexStringLower(SHA256.HashData(nestedLocalContent));
+            string remoteOnlyHash = Convert.ToHexStringLower(SHA256.HashData(remoteOnlyContent));
+            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            var activityPublisher = new InMemoryAppActivityPublisher();
+            var transferProgressPublisher = new InMemoryAppTransferProgressPublisher();
+            var runProgressPublisher = new InMemoryAppRunProgressPublisher();
+            var localChangeSuppression = new LocalChangeSuppression();
+            WindowsCloudFilesConnection? connection = null;
+            int failures = 0;
+
+            try
+            {
+                TryUnregisterExistingRoot(cloudFiles, syncPair, output);
+                PrepareRoot(rootPath);
+                Directory.CreateDirectory(Path.GetDirectoryName(rootLocalFilePath)!);
+                Directory.CreateDirectory(Path.GetDirectoryName(nestedLocalFilePath)!);
+                await File.WriteAllBytesAsync(rootLocalFilePath, rootLocalContent, cancellationToken)
+                    .ConfigureAwait(false);
+                await File.WriteAllBytesAsync(nestedLocalFilePath, nestedLocalContent, cancellationToken)
+                    .ConfigureAwait(false);
+                DateTime oldLocalWriteTime = DateTime.UtcNow - TimeSpan.FromSeconds(10);
+                File.SetLastWriteTimeUtc(rootLocalFilePath, oldLocalWriteTime);
+                File.SetLastWriteTimeUtc(nestedLocalFilePath, oldLocalWriteTime);
+                await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+                await stateStore.DeletePairAsync(syncPair.Id.ToString("D"), cancellationToken).ConfigureAwait(false);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Isolated non-empty QA root prepared.")
+                    + " root="
+                    + rootPath)
+                    .ConfigureAwait(false);
+
+                connection = cloudFiles.ConnectSyncRoot(syncPair, new NoopCloudFilesCallbackHandler());
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Cloud Files sync root connected for non-empty preservation smoke.")
+                    + " root="
+                    + connection.LocalRootPath)
+                    .ConfigureAwait(false);
+
+                RemoteFilePlaceholderRequest remoteOnlyRequest = CreatePlaceholderRequest(
+                    syncPair,
+                    NonEmptyPreservationRemoteOnlyFilePath,
+                    remoteOnlyContent.LongLength,
+                    remoteOnlyHash);
+                var remoteTree = new RemoteTreeSnapshot
+                {
+                    RootNode = new NodeDto
+                    {
+                        Id = syncPair.RemoteRootNodeId,
+                        Name = "root",
+                    },
+                    Directories =
+                    {
+                        new RemoteDirectorySnapshot
+                        {
+                            RelativePath = NonEmptyPreservationRemoteOnlyDirectoryName,
+                            Node = CreateDirectoryRequest(syncPair, NonEmptyPreservationRemoteOnlyDirectoryName).RemoteDirectory,
+                        },
+                    },
+                    Files =
+                    {
+                        new RemoteFileSnapshot
+                        {
+                            RelativePath = NonEmptyPreservationRemoteOnlyFilePath,
+                            File = remoteOnlyRequest.RemoteFile,
+                        },
+                    },
+                };
+                var crawler = new SinglePathRemoteTreeCrawler(remoteTree);
+                var remoteFiles = new RecordingUploadRemoteFileSynchronizer();
+                var remoteDirectories = new RecordingRemoteDirectorySynchronizer(syncPair.RemoteRootNodeId);
+                var placeholderWriter = new DesktopCloudFilesPlaceholderWriter(
+                    cloudFilesAdapter: cloudFiles,
+                    getCapabilities: static () => new SyncPairModeCapabilitySnapshot(true, "Windows Cloud Files API is available."),
+                    localChangeSuppression: localChangeSuppression);
+                var syncEngine = new SyncEngine(
+                    new LocalFileScanner(),
+                    crawler,
+                    remoteFiles,
+                    stateStore,
+                    remoteDirectories: remoteDirectories,
+                    remoteFilePlaceholderWriter: placeholderWriter);
+                ISyncPairWork pairWork = new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
+                    new WindowsVirtualFilesUploadFinalizationPairWork(
+                        new SyncEnginePairWork(
+                            syncEngine,
+                            activityPublisher,
+                            transferProgressPublisher,
+                            runProgressPublisher),
+                        activityPublisher,
+                        stateStore,
+                        cloudFiles,
+                        localChangeSuppression,
+                        runProgressPublisher),
+                    stateStore,
+                    cloudFiles,
+                    localChangeSuppression,
+                    diagnostics,
+                    runProgressPublisher);
+
+                await pairWork.RunOnceAsync(syncPair, cancellationToken).ConfigureAwait(false);
+
+                FileContentHash rootAfter = await ReadFileHashThroughExternalProcessAsync(rootLocalFilePath, cancellationToken)
+                    .ConfigureAwait(false);
+                FileContentHash nestedAfter = await ReadFileHashThroughExternalProcessAsync(nestedLocalFilePath, cancellationToken)
+                    .ConfigureAwait(false);
+                failures += await WritePassFailAsync(
+                        output,
+                        string.Equals(rootAfter.Sha256, rootLocalHash, StringComparison.OrdinalIgnoreCase)
+                        && rootAfter.Length == rootLocalContent.LongLength,
+                        "Pre-existing root file survived with identical content.",
+                        " sha256="
+                        + rootAfter.Sha256)
+                    .ConfigureAwait(false);
+                failures += await WritePassFailAsync(
+                        output,
+                        string.Equals(nestedAfter.Sha256, nestedLocalHash, StringComparison.OrdinalIgnoreCase)
+                        && nestedAfter.Length == nestedLocalContent.LongLength,
+                        "Pre-existing nested file survived with identical content.",
+                        " sha256="
+                        + nestedAfter.Sha256)
+                    .ConfigureAwait(false);
+
+                SyncStateEntry? rootFileState = await stateStore
+                    .GetAsync(syncPair.Id.ToString("D"), NonEmptyPreservationRootFilePath, cancellationToken)
+                    .ConfigureAwait(false);
+                SyncStateEntry? nestedFileState = await stateStore
+                    .GetAsync(syncPair.Id.ToString("D"), NonEmptyPreservationNestedFilePath, cancellationToken)
+                    .ConfigureAwait(false);
+                SyncStateEntry? remoteOnlyState = await stateStore
+                    .GetAsync(syncPair.Id.ToString("D"), NonEmptyPreservationRemoteOnlyFilePath, cancellationToken)
+                    .ConfigureAwait(false);
+                bool uploadedLocalFiles = remoteFiles.Uploads.Count == 2
+                    && remoteFiles.Uploads.Any(upload =>
+                        string.Equals(upload.RelativePath, NonEmptyPreservationRootFilePath, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(upload.Returned.ContentHash, rootLocalHash, StringComparison.OrdinalIgnoreCase))
+                    && remoteFiles.Uploads.Any(upload =>
+                        string.Equals(upload.RelativePath, NonEmptyPreservationNestedFilePath, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(upload.Returned.ContentHash, nestedLocalHash, StringComparison.OrdinalIgnoreCase))
+                    && rootFileState is { Kind: SyncEntryKind.File }
+                    && nestedFileState is { Kind: SyncEntryKind.File };
+                failures += await WritePassFailAsync(
+                        output,
+                        uploadedLocalFiles,
+                        "Pre-existing local files uploaded and received sync baselines.",
+                        " uploads="
+                        + remoteFiles.Uploads.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", uploaded="
+                        + string.Join(
+                            ";",
+                            remoteFiles.Uploads.Select(static upload => upload.RelativePath + ":" + upload.Returned.ContentHash))
+                        + ", rootState="
+                        + FormatStateSummary(rootFileState)
+                        + ", nestedState="
+                        + FormatStateSummary(nestedFileState))
+                    .ConfigureAwait(false);
+                failures += await WritePassFailAsync(
+                        output,
+                        remoteDirectories.Creates.Count >= 2,
+                        "Pre-existing local directory tree received remote directory baselines.",
+                        " directoriesCreated="
+                        + remoteDirectories.Creates.Count.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+                failures += await WritePassFailAsync(
+                        output,
+                        File.Exists(remoteOnlyFilePath)
+                        && remoteOnlyState is { Kind: SyncEntryKind.File }
+                        && IsRemoteOnlyPlaceholderState(remoteOnlyState.PlaceholderHydrationState),
+                        "Remote-only file became an online-only placeholder.",
+                        " state="
+                        + FormatStateSummary(remoteOnlyState)
+                        + ", path="
+                        + NonEmptyPreservationRemoteOnlyFilePath)
+                    .ConfigureAwait(false);
+                failures += await VerifyCloudFilesInSyncStateAsync(
+                        output,
+                        cloudFiles,
+                        syncPair,
+                        NonEmptyPreservationRemoteOnlyFilePath,
+                        "Remote-only placeholder Cloud Files status was finalized.",
+                        allowPartialDirectory: true)
+                    .ConfigureAwait(false);
+                failures += await VerifyExplorerShellSettledStatusAsync(
+                        output,
+                        remoteOnlyFilePath,
+                        "non-empty preservation remote-only placeholder",
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -2800,6 +3058,36 @@ namespace Cotton.Sync.Desktop.Startup
             return (passed ? "PASS: " : "FAIL: ") + label;
         }
 
+        private static async Task<int> WritePassFailAsync(
+            TextWriter output,
+            bool passed,
+            string label,
+            string details)
+        {
+            await output.WriteLineAsync(FormatCheck(passed, label) + details).ConfigureAwait(false);
+            return passed ? 0 : 1;
+        }
+
+        private static bool IsRemoteOnlyPlaceholderState(SyncPlaceholderHydrationState state)
+        {
+            return state is SyncPlaceholderHydrationState.RemoteOnly
+                or SyncPlaceholderHydrationState.Dehydrated;
+        }
+
+        private static string FormatStateSummary(SyncStateEntry? state)
+        {
+            if (state is null)
+            {
+                return "missing";
+            }
+
+            return state.Kind
+                + "/"
+                + state.PlaceholderHydrationState
+                + "/"
+                + (state.RemoteContentHash ?? "no-hash");
+        }
+
         private static string NormalizeFullPath(string path)
         {
             string fullPath = Path.GetFullPath(path);
@@ -3610,6 +3898,65 @@ namespace Cotton.Sync.Desktop.Startup
                 LocalFileSnapshot LocalFile,
                 NodeFileManifestDto? ExistingRemoteFile,
                 NodeFileManifestDto Returned);
+        }
+
+        private class RecordingRemoteDirectorySynchronizer : IRemoteDirectorySynchronizer
+        {
+            private readonly Dictionary<(Guid ParentNodeId, string Name), NodeDto> _children = [];
+
+            public RecordingRemoteDirectorySynchronizer(Guid rootNodeId)
+            {
+                RootNodeId = rootNodeId;
+            }
+
+            public Guid RootNodeId { get; }
+
+            public List<CreateDirectoryCall> Creates { get; } = [];
+
+            public Task<NodeDto?> FindChildDirectoryAsync(
+                Guid parentNodeId,
+                string name,
+                CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _children.TryGetValue((parentNodeId, name), out NodeDto? node);
+                return Task.FromResult(node);
+            }
+
+            public Task<NodeDto> CreateDirectoryAsync(
+                Guid parentNodeId,
+                string name,
+                CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (_children.TryGetValue((parentNodeId, name), out NodeDto? existing))
+                {
+                    return Task.FromResult(existing);
+                }
+
+                var node = new NodeDto
+                {
+                    Id = Guid.CreateVersion7(),
+                    ParentId = parentNodeId,
+                    Name = name,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                };
+                _children[(parentNodeId, name)] = node;
+                Creates.Add(new CreateDirectoryCall(parentNodeId, name, node));
+                return Task.FromResult(node);
+            }
+
+            public Task DeleteDirectoryAsync(
+                Guid nodeId,
+                bool skipTrash = false,
+                CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                throw new InvalidOperationException("Non-empty preservation smoke must not delete remote directories.");
+            }
+
+            public record CreateDirectoryCall(Guid ParentNodeId, string Name, NodeDto ReturnedNode);
         }
 
         private sealed class GuardLocalScanner :

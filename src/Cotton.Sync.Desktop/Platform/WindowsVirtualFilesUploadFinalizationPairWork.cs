@@ -128,19 +128,26 @@ namespace Cotton.Sync.Desktop.Platform
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 _localChangeSuppression?.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, relativePath);
-                SyncStateEntry? fileState = await _stateStore
+                SyncStateEntry? state = await _stateStore
                     .GetAsync(syncPair.Id.ToString("D"), relativePath, cancellationToken)
                     .ConfigureAwait(false);
-                if (fileState is not { Kind: SyncEntryKind.File })
+                if (state is { Kind: SyncEntryKind.File })
+                {
+                    _cloudFiles.FinalizeUploadedFilePlaceholder(syncPair, state);
+                    recordFinalizedPath();
+                }
+                else if (state is { Kind: SyncEntryKind.Directory })
+                {
+                    FinalizeDirectoryPlaceholder(syncPair, relativePath, state);
+                    recordFinalizedPath();
+                }
+                else
                 {
                     throw new InvalidOperationException(
-                        "Uploaded Cloud Files finalization requires synced file state for "
+                        "Uploaded Cloud Files finalization requires synced file or directory state for "
                         + relativePath
                         + ".");
                 }
-
-                _cloudFiles.FinalizeUploadedFilePlaceholder(syncPair, fileState);
-                recordFinalizedPath();
             }
 
             foreach (string directoryPath in CreateAncestorDirectoryPaths(relativePath).Reverse())
@@ -155,20 +162,9 @@ namespace Cotton.Sync.Desktop.Platform
                 SyncStateEntry? directoryState = await _stateStore
                     .GetAsync(syncPair.Id.ToString("D"), directoryPath, cancellationToken)
                     .ConfigureAwait(false);
-                if (directoryState is { Kind: SyncEntryKind.Directory, RemoteNodeId: Guid remoteNodeId })
+                if (directoryState is { Kind: SyncEntryKind.Directory })
                 {
-                    _cloudFiles.CreateDirectoryPlaceholder(new RemoteDirectoryMaterializationRequest(
-                        syncPair.Id.ToString("D"),
-                        syncPair.LocalRootPath,
-                        syncPair.RemoteRootNodeId,
-                        directoryPath,
-                        new NodeDto
-                        {
-                            Id = remoteNodeId,
-                            Name = directoryPath.Split('/')[^1],
-                            CreatedAt = directoryState.SyncedAtUtc,
-                            UpdatedAt = directoryState.SyncedAtUtc,
-                        }));
+                    FinalizeDirectoryPlaceholder(syncPair, directoryPath, directoryState);
                     recordFinalizedPath();
                     continue;
                 }
@@ -176,6 +172,31 @@ namespace Cotton.Sync.Desktop.Platform
                 _cloudFiles.SetInSyncState(syncPair, directoryPath);
                 recordFinalizedPath();
             }
+        }
+
+        private void FinalizeDirectoryPlaceholder(
+            SyncPairSettings syncPair,
+            string relativePath,
+            SyncStateEntry directoryState)
+        {
+            if (directoryState.RemoteNodeId is not Guid remoteNodeId)
+            {
+                _cloudFiles.SetInSyncState(syncPair, relativePath);
+                return;
+            }
+
+            _cloudFiles.CreateDirectoryPlaceholder(new RemoteDirectoryMaterializationRequest(
+                syncPair.Id.ToString("D"),
+                syncPair.LocalRootPath,
+                syncPair.RemoteRootNodeId,
+                relativePath,
+                new NodeDto
+                {
+                    Id = remoteNodeId,
+                    Name = relativePath.Split('/')[^1],
+                    CreatedAt = directoryState.SyncedAtUtc,
+                    UpdatedAt = directoryState.SyncedAtUtc,
+                }));
         }
 
         private void PublishFinalizationProgress(
