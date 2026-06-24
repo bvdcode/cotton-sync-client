@@ -80,12 +80,18 @@ function Resolve-RequiredDirectory {
 function Assert-InstalledAutostart {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$ExecutablePath
+        [string]$ExecutablePath,
+
+        [string]$ProfileDataDirectory = ""
     )
 
     $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
     $runValue = (Get-ItemProperty -Path $runKey -Name "Cotton Sync" -ErrorAction SilentlyContinue)."Cotton Sync"
     $expectedRunValue = "`"$ExecutablePath`" --start-minimized"
+    if (-not [string]::IsNullOrWhiteSpace($ProfileDataDirectory)) {
+        $expectedRunValue += " --data-dir `"$ProfileDataDirectory`""
+    }
+
     if ($runValue -ne $expectedRunValue) {
         throw "Autostart registry value was not ready for logon capture. Expected '$expectedRunValue', got '$runValue'."
     }
@@ -185,7 +191,7 @@ if (-not (Test-Path -LiteralPath $installedExecutable -PathType Leaf)) {
     throw "Installed desktop executable was not found: $installedExecutable"
 }
 
-Assert-InstalledAutostart -ExecutablePath $installedExecutable
+Assert-InstalledAutostart -ExecutablePath $installedExecutable -ProfileDataDirectory $resolvedDataDirectory
 Invoke-ProfileSelfTestPreflight -ExecutablePath $installedExecutable -ProfileDataDirectory $resolvedDataDirectory
 
 if ($ValidateOnly) {

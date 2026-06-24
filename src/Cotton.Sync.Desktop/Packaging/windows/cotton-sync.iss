@@ -66,7 +66,7 @@ Name: "{group}\Uninstall Cotton Sync"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\Cotton Sync"; Filename: "{app}\Cotton.Sync.Desktop.exe"; IconFilename: "{app}\Cotton.Sync.Desktop.exe"; AppUserModelID: "{#AppUserModelId}"; Tasks: desktopicon
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Cotton Sync"; ValueData: """{app}\Cotton.Sync.Desktop.exe"" --start-minimized"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Cotton Sync"; ValueData: "{code:GetAutostartLaunchCommand}"; Flags: uninsdeletevalue
 Root: HKCU; Subkey: "Software\Classes\*\shell\CottonSyncCopyShareLink"; ValueType: string; ValueName: ""; ValueData: "Copy Cotton Cloud share link"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\*\shell\CottonSyncCopyShareLink"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\Cotton.Sync.Desktop.exe"
 Root: HKCU; Subkey: "Software\Classes\*\shell\CottonSyncCopyShareLink\command"; ValueType: string; ValueName: ""; ValueData: """{app}\Cotton.Sync.Desktop.exe"" --copy-shell-share-link ""%1"""
@@ -153,6 +153,18 @@ var
 begin
   Result := '--start-minimized';
   DataDirectory := ExpandConstant('{param:LaunchAfterUpdateDataDir|}');
+  if DataDirectory <> '' then
+  begin
+    Result := Result + ' --data-dir ' + AddQuotes(DataDirectory);
+  end;
+end;
+
+function GetAutostartLaunchCommand(Value: String): String;
+var
+  DataDirectory: String;
+begin
+  Result := AddQuotes(ExpandConstant('{app}\Cotton.Sync.Desktop.exe')) + ' --start-minimized';
+  DataDirectory := ExpandConstant('{param:AutostartDataDir|}');
   if DataDirectory <> '' then
   begin
     Result := Result + ' --data-dir ' + AddQuotes(DataDirectory);
