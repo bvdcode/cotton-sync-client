@@ -4,6 +4,8 @@ param(
 
     [string]$DataRoot = "",
 
+    [string]$ReportPath = "",
+
     [int]$TimeoutSeconds = 30
 )
 
@@ -24,6 +26,8 @@ New-Item -ItemType Directory -Path $root -Force | Out-Null
 
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
+
+$visualStateReportLines = New-Object System.Collections.Generic.List[string]
 
 function Get-WindowAutomationRoot {
     param(
@@ -183,6 +187,8 @@ function Test-VisualState {
         }
 
         Write-Host "Observed visual state '$Scenario' sample(s): $sampleCount"
+        $visualStateReportLines.Add(
+            "Scenario: $Scenario;Status=$ExpectedStatus;StableObservationSeconds=$StableObservationSeconds;Samples=$sampleCount")
     } finally {
         if (-not $process.HasExited) {
             $process.CloseMainWindow() | Out-Null
@@ -212,5 +218,20 @@ Test-VisualState `
     -RequireSettingsActions $false `
     -UnexpectedNames @("Download", "Update", "Processing queued changes", "Preparing cloud files 118054 of 500000", "118054 of 500000") `
     -StableObservationSeconds 6
+
+if (-not [string]::IsNullOrWhiteSpace($ReportPath)) {
+    $reportDirectory = Split-Path -Parent $ReportPath
+    if (-not [string]::IsNullOrWhiteSpace($reportDirectory)) {
+        New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null
+    }
+
+    $report = New-Object System.Collections.Generic.List[string]
+    $report.Add("Result: passed")
+    foreach ($line in $visualStateReportLines) {
+        $report.Add($line)
+    }
+
+    $report | Set-Content -LiteralPath $ReportPath -Encoding utf8
+}
 
 Write-Host "Verified installed update and VFS visual states."

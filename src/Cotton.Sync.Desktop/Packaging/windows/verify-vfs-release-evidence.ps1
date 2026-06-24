@@ -115,6 +115,12 @@ Assert-Contains -Content $updateRelaunch -Expected "ObservedForeground: False" -
 Assert-Contains -Content $updateRelaunch -Expected "VisibleWindowCount: 0" -Label "update-relaunch.txt"
 Assert-Contains -Content $updateRelaunch -Expected "CleanupRemaining: 0" -Label "update-relaunch.txt"
 
+$visualStates = Read-EvidenceFile -RelativePath "visual-states.txt"
+Assert-Contains -Content $visualStates -Expected "Result: passed" -Label "visual-states.txt"
+Assert-Contains -Content $visualStates -Expected "Scenario: update-download-progress" -Label "visual-states.txt"
+Assert-Contains -Content $visualStates -Expected "Scenario: update-install-progress" -Label "visual-states.txt"
+Assert-Contains -Content $visualStates -Expected "Scenario: virtual-files-seeding;Status=Syncing;StableObservationSeconds=6;Samples=" -Label "visual-states.txt"
+
 Assert-CleanupReport -RelativePath "post-uninstall-cleanup.txt"
 Assert-CleanupReport -RelativePath "post-reinstall-cleanup.txt"
 Assert-CleanupReport -RelativePath "post-upgrade-cleanup.txt"
