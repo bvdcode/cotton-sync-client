@@ -512,6 +512,7 @@ jobs:
           }
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-shell-share-link-verb.ps1" `
             -ExpectAbsent
+          & "src/Cotton.Sync.Desktop/Packaging/windows/verify-cloud-files-cleanup.ps1"
           $remainingInstallItems = @(Get-ChildItem -Path $installDir -Force -Recurse -ErrorAction SilentlyContinue)
           if ($remainingInstallItems.Count -ne 0) {
             $remainingInstallItems | ForEach-Object { Write-Host $_.FullName }
@@ -545,6 +546,7 @@ jobs:
             Get-Content $reinstallUninstallLog -ErrorAction SilentlyContinue
             throw "Windows reinstall cleanup exited with code $($reinstallUninstall.ExitCode)."
           }
+          & "src/Cotton.Sync.Desktop/Packaging/windows/verify-cloud-files-cleanup.ps1"
           $remainingInstallItems = @(Get-ChildItem -Path $installDir -Force -Recurse -ErrorAction SilentlyContinue)
           if ($remainingInstallItems.Count -ne 0) {
             $remainingInstallItems | ForEach-Object { Write-Host $_.FullName }
@@ -665,6 +667,7 @@ jobs:
           if ($runValue) {
             throw "Upgraded autostart registry value remained after uninstall."
           }
+          & "src/Cotton.Sync.Desktop/Packaging/windows/verify-cloud-files-cleanup.ps1"
 
       - name: Upload desktop Windows x64 artifact
         uses: actions/upload-artifact@v5

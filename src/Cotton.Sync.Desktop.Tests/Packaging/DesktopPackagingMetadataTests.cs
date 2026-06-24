@@ -669,6 +669,33 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         }
 
         [Test]
+        public void WindowsCloudFilesCleanupVerifierScript_ChecksExplorerAndStorageProviderRegistrations()
+        {
+            string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/verify-cloud-files-cleanup.ps1"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(script, Does.Contain("Cotton.Sync.Desktop"));
+                Assert.That(script, Does.Contain("Cotton Cloud"));
+                Assert.That(script, Does.Contain("Cotton Sync"));
+                Assert.That(
+                    script,
+                    Does.Contain("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\SyncRootManager"));
+                Assert.That(
+                    script,
+                    Does.Contain("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Desktop\\NameSpace"));
+                Assert.That(script, Does.Contain("Software\\Classes\\CLSID"));
+                Assert.That(script, Does.Contain("Software\\Classes\\WOW6432Node\\CLSID"));
+                Assert.That(script, Does.Contain("Test-ShellNamespaceRoots"));
+                Assert.That(script, Does.Contain("Test-ClassIdRoots"));
+                Assert.That(script, Does.Contain("Cloud Files or Explorer registration remained after uninstall."));
+                Assert.That(
+                    script,
+                    Does.Contain("Verified Cloud Files and Explorer registrations were removed after uninstall."));
+            });
+        }
+
+        [Test]
         public void CiWorkflow_SmokesWindowsZipArchiveOnWindows()
         {
             string workflow = GetDesktopWorkflow();
@@ -843,6 +870,10 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-autostart-launch.ps1"));
                 Assert.That(workflow, Does.Contain("-AppExecutable $installedExe"));
                 Assert.That(workflow, Does.Not.Contain("Set-ItemProperty -Path $runKey -Name \"Cotton Sync\""));
+                Assert.That(workflow, Does.Contain("Packaging/windows/verify-cloud-files-cleanup.ps1"));
+                Assert.That(
+                    Regex.Matches(workflow, "Packaging/windows/verify-cloud-files-cleanup.ps1").Count,
+                    Is.GreaterThanOrEqualTo(3));
                 Assert.That(workflow, Does.Contain("Installed desktop executable remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Install directory was not empty after uninstall."));
                 Assert.That(workflow, Does.Contain("Windows reinstall exited with code"));
@@ -1208,6 +1239,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-autostart-launch.ps1"));
                 Assert.That(workflow, Does.Contain("-AppExecutable $installedExe"));
                 Assert.That(workflow, Does.Not.Contain("Set-ItemProperty -Path $runKey -Name \"Cotton Sync\""));
+                Assert.That(workflow, Does.Contain("Packaging/windows/verify-cloud-files-cleanup.ps1"));
                 Assert.That(workflow, Does.Contain("Upgraded desktop executable remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Upgraded Start Menu shortcut remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Upgraded Start Menu uninstall shortcut remained after uninstall."));
