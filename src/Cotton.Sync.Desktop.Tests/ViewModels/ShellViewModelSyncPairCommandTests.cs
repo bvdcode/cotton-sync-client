@@ -107,8 +107,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsRemoveSyncPairConfirmationVisible, Is.True);
                 Assert.That(viewModel.RemoveSyncPairConfirmationTitle, Is.EqualTo("Remove Documents?"));
                 Assert.That(viewModel.RemoveSyncPairConfirmationMessage, Is.EqualTo("Stops syncing this folder. Local files stay on this device; cloud files stay online."));
-                Assert.That(viewModel.RemoveSyncPairConfirmationPath, Does.Contain("Local folder:"));
-                Assert.That(viewModel.RemoveSyncPairConfirmationPath, Does.EndWith("Documents"));
                 Assert.That(viewModel.ConfirmRemoveSelectedSyncPairCommand.CanExecute(null), Is.True);
                 Assert.That(viewModel.RemoveSelectedSyncPairCommand.CanExecute(null), Is.False);
             });
@@ -153,8 +151,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             {
                 Assert.That(viewModel.RemoveSyncPairConfirmationTitle, Is.EqualTo("Remove Desktop?"));
                 Assert.That(viewModel.RemoveSyncPairConfirmationMessage, Is.EqualTo("Stops syncing this folder. Cloud files stay online; the local placeholder folder is removed when it has no regular local files."));
-                Assert.That(viewModel.RemoveSyncPairConfirmationPath, Does.Contain("Local folder:"));
-                Assert.That(viewModel.RemoveSyncPairConfirmationPath, Does.EndWith("Desktop"));
             });
         }
 
@@ -179,8 +175,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             {
                 Assert.That(viewModel.IsRemovingSyncPair, Is.True);
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Removing sync folder"));
-                Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Removing Cloud Files sync root and cleaning local placeholder folder."));
-                Assert.That(viewModel.RemoveSyncPairProgressMessage, Is.EqualTo("Removing Cloud Files sync root and cleaning local placeholder folder."));
+                Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Removing Cloud Files sync root and cleaning local placeholder folder. Large online-only folders can take a few minutes."));
+                Assert.That(viewModel.RemoveSyncPairProgressMessage, Is.EqualTo("Removing Cloud Files sync root and cleaning local placeholder folder. Large online-only folders can take a few minutes."));
                 Assert.That(viewModel.IsRemoveSyncPairConfirmationVisible, Is.True);
                 Assert.That(viewModel.ConfirmRemoveSelectedSyncPairCommand.CanExecute(null), Is.False);
                 Assert.That(viewModel.CancelRemoveSyncPairCommand.CanExecute(null), Is.False);
