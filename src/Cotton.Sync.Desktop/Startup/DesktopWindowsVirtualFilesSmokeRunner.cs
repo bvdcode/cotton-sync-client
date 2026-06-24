@@ -2740,7 +2740,9 @@ namespace Cotton.Sync.Desktop.Startup
             string expectedFileCount = largeTreePlaceholderCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
             bool hasMetrics = completionLog is not null
                 && completionLog.Contains("1 directories discovered", StringComparison.Ordinal)
+                && completionLog.Contains("dirs/sec", StringComparison.Ordinal)
                 && completionLog.Contains(expectedFileCount + " files discovered", StringComparison.Ordinal)
+                && completionLog.Contains("files/sec", StringComparison.Ordinal)
                 && completionLog.Contains("remote pages read=", StringComparison.Ordinal)
                 && completionLog.Contains("remote page latency total=", StringComparison.Ordinal)
                 && completionLog.Contains(expectedFileCount + " placeholders created or refreshed", StringComparison.Ordinal)
@@ -2748,6 +2750,8 @@ namespace Cotton.Sync.Desktop.Startup
                 && completionLog.Contains("state writes " + expectedFileCount + " file rows", StringComparison.Ordinal)
                 && completionLog.Contains("file write batches", StringComparison.Ordinal)
                 && completionLog.Contains("directory rows 1", StringComparison.Ordinal)
+                && completionLog.Contains("state write rate=", StringComparison.Ordinal)
+                && completionLog.Contains("rows/sec", StringComparison.Ordinal)
                 && completionLog.Contains("managed heap start=", StringComparison.Ordinal)
                 && completionLog.Contains("peak=", StringComparison.Ordinal)
                 && completionLog.Contains("activities retained 0/0", StringComparison.Ordinal);

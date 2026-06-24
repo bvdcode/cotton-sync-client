@@ -1340,6 +1340,8 @@ namespace Cotton.Sync.Tests
                 Assert.That(startLog, Does.Contain("state batch size"));
                 Assert.That(startLog, Does.Contain("managed heap"));
                 Assert.That(completionLog, Does.Contain("3 files discovered"));
+                Assert.That(completionLog, Does.Contain("dirs/sec"));
+                Assert.That(completionLog, Does.Contain("files/sec"));
                 Assert.That(completionLog, Does.Contain("remote pages read=1"));
                 Assert.That(completionLog, Does.Contain("remote page latency total="));
                 Assert.That(completionLog, Does.Contain("avg="));
@@ -1350,6 +1352,8 @@ namespace Cotton.Sync.Tests
                 Assert.That(completionLog, Does.Contain("state writes 3 file rows"));
                 Assert.That(completionLog, Does.Contain("file write batches 1"));
                 Assert.That(completionLog, Does.Contain("directory rows 0"));
+                Assert.That(completionLog, Does.Contain("state write rate="));
+                Assert.That(completionLog, Does.Contain("rows/sec"));
                 Assert.That(completionLog, Does.Contain("managed heap start="));
                 Assert.That(completionLog, Does.Contain("completed="));
                 Assert.That(completionLog, Does.Contain("peak="));

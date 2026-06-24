@@ -449,6 +449,10 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("Initial VFS trace log contains large-run metrics."));
                 Assert.That(script, Does.Contain("Metric excerpt:"));
                 Assert.That(script, Does.Contain("placeholders/sec"));
+                Assert.That(script, Does.Contain("dirs/sec"));
+                Assert.That(script, Does.Contain("files/sec"));
+                Assert.That(script, Does.Contain("state write rate="));
+                Assert.That(script, Does.Contain("rows/sec"));
                 Assert.That(script, Does.Contain("Initial VFS runtime health captured."));
                 Assert.That(script, Does.Contain("workingSetBytes="));
                 Assert.That(script, Does.Contain("privateMemoryBytes="));
@@ -2227,7 +2231,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 {
                     "PASS: Initial VFS streaming run created a large placeholder baseline without per-placeholder activities.",
                     "PASS: Initial VFS trace log contains large-run metrics.",
-                    "Metric excerpt: Completed initial streaming Windows virtual-files population for Cloud: 1 directories discovered, 100000 files discovered, remote pages read=100, remote page latency total=00:00:00.4000000, 100000 placeholders created or refreshed at 2500 placeholders/sec, state writes 100000 file rows in 196 file write batches, directory rows 1, managed heap start=1000000 peak=2000000 end=1500000, activities retained 0/0",
+                    "Metric excerpt: Completed initial streaming Windows virtual-files population for Cloud: 1 directories discovered at 25 dirs/sec, 100000 files discovered at 2500 files/sec, remote pages read=100, remote page latency total=00:00:00.4000000, 100000 placeholders created or refreshed at 2500 placeholders/sec, state writes 100000 file rows, file write batches 196, directory rows 1, state write rate=2500 rows/sec, managed heap start=1000000 peak=2000000 end=1500000, activities retained 0/0",
                     "PASS: Initial VFS runtime health captured. before=workingSetBytes=100000000;privateMemoryBytes=80000000;threadCount=12;handleCount=200, after=workingSetBytes=150000000;privateMemoryBytes=120000000;threadCount=14;handleCount=250",
                     "Result: passed"
                 });
