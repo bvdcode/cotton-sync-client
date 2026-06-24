@@ -5934,6 +5934,11 @@ namespace Cotton.Sync.Desktop.ViewModels
         private static string CreateRunProgressOperation(DesktopRunProgressSnapshot progress)
         {
             string label = GetRunOperationLabel(progress.Stage);
+            if (!progress.IsCompleted && progress.Stage == SyncRunProgressStage.CreatingPlaceholders)
+            {
+                return label;
+            }
+
             if (IsStartingCountedRunProgress(progress))
             {
                 return GetStartingRunProgressOperationLabel(progress.Stage);
