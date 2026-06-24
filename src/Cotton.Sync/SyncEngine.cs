@@ -877,9 +877,15 @@ namespace Cotton.Sync
                 null,
                 startedAtUtc,
                 isCompleted: true);
-            double createdPlaceholderRatePerSecond = stopwatch.Elapsed.TotalSeconds <= 0d
-                ? createdPlaceholders
-                : createdPlaceholders / stopwatch.Elapsed.TotalSeconds;
+            double elapsedSeconds = stopwatch.Elapsed.TotalSeconds <= 0d
+                ? 1d
+                : stopwatch.Elapsed.TotalSeconds;
+            int finalDiscoveredDirectoryCount = Volatile.Read(ref discoveredDirectories);
+            int finalDiscoveredFileCount = Volatile.Read(ref discoveredFiles);
+            double discoveredDirectoryRatePerSecond = finalDiscoveredDirectoryCount / elapsedSeconds;
+            double discoveredFileRatePerSecond = finalDiscoveredFileCount / elapsedSeconds;
+            double createdPlaceholderRatePerSecond = createdPlaceholders / elapsedSeconds;
+            double stateWriteRatePerSecond = (stateFileRowsWritten + stateDirectoryRowsWritten) / elapsedSeconds;
             int remotePageCount = remoteScanProgress.PagesScanned;
             double remotePageAverageLatencyMilliseconds = remotePageCount <= 0
                 ? 0d
@@ -887,10 +893,12 @@ namespace Cotton.Sync
             long completedManagedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
             UpdateMax(ref peakManagedHeapBytes, completedManagedHeapBytes);
             _logger.LogInformation(
-                "Completed initial streaming Windows virtual-files population for pair {SyncPairId} with {DirectoryCount} directories discovered, {FileCount} files discovered, remote pages read={RemotePageCount}, remote page latency total={RemotePageLatencyTotalMilliseconds:F0} ms, avg={RemotePageLatencyAverageMilliseconds:F2} ms, max={RemotePageLatencyMaxMilliseconds:F0} ms, last={RemotePageLatencyLastMilliseconds:F0} ms, {CompletedFileCount} file items completed, {CreatedPlaceholderCount} placeholders created or refreshed, {SkippedCurrentPlaceholderCount} current placeholders skipped, {SkippedUnavailablePlaceholderCount} placeholders skipped with user action in {ElapsedMilliseconds} ms at {CreatedPlaceholderRatePerSecond:F2} placeholders/sec; state writes {StateFileRowsWritten} file rows, file write batches {StateFileWriteBatchCount}, directory rows {StateDirectoryRowsWritten}; managed heap start={StartingManagedHeapBytes} bytes, completed={CompletedManagedHeapBytes} bytes, peak={PeakManagedHeapBytes} bytes, delta={ManagedHeapDeltaBytes} bytes; queue capacity={QueueCapacity}, placeholder concurrency={PlaceholderConcurrency}, placeholder batch size={PlaceholderBatchSize}, state batch size={StateBatchSize}; activities retained {RetainedActivityCount}/{TotalActivityCount}, truncated={ActivityListTruncated}.",
+                "Completed initial streaming Windows virtual-files population for pair {SyncPairId} with {DirectoryCount} directories discovered at {DirectoryDiscoveryRatePerSecond:F2} dirs/sec, {FileCount} files discovered at {FileDiscoveryRatePerSecond:F2} files/sec, remote pages read={RemotePageCount}, remote page latency total={RemotePageLatencyTotalMilliseconds:F0} ms, avg={RemotePageLatencyAverageMilliseconds:F2} ms, max={RemotePageLatencyMaxMilliseconds:F0} ms, last={RemotePageLatencyLastMilliseconds:F0} ms, {CompletedFileCount} file items completed, {CreatedPlaceholderCount} placeholders created or refreshed, {SkippedCurrentPlaceholderCount} current placeholders skipped, {SkippedUnavailablePlaceholderCount} placeholders skipped with user action in {ElapsedMilliseconds} ms at {CreatedPlaceholderRatePerSecond:F2} placeholders/sec; state writes {StateFileRowsWritten} file rows, file write batches {StateFileWriteBatchCount}, directory rows {StateDirectoryRowsWritten}, state write rate={StateWriteRatePerSecond:F2} rows/sec; managed heap start={StartingManagedHeapBytes} bytes, completed={CompletedManagedHeapBytes} bytes, peak={PeakManagedHeapBytes} bytes, delta={ManagedHeapDeltaBytes} bytes; queue capacity={QueueCapacity}, placeholder concurrency={PlaceholderConcurrency}, placeholder batch size={PlaceholderBatchSize}, state batch size={StateBatchSize}; activities retained {RetainedActivityCount}/{TotalActivityCount}, truncated={ActivityListTruncated}.",
                 syncPair.SyncPairId,
-                Volatile.Read(ref discoveredDirectories),
-                Volatile.Read(ref discoveredFiles),
+                finalDiscoveredDirectoryCount,
+                discoveredDirectoryRatePerSecond,
+                finalDiscoveredFileCount,
+                discoveredFileRatePerSecond,
                 remotePageCount,
                 remoteScanProgress.PageReadLatencyTotal.TotalMilliseconds,
                 remotePageAverageLatencyMilliseconds,
@@ -905,6 +913,7 @@ namespace Cotton.Sync
                 stateFileRowsWritten,
                 stateFileWriteBatches,
                 stateDirectoryRowsWritten,
+                stateWriteRatePerSecond,
                 startingManagedHeapBytes,
                 completedManagedHeapBytes,
                 Volatile.Read(ref peakManagedHeapBytes),
@@ -4600,7 +4609,14 @@ namespace Cotton.Sync
             {
                 int createdPlaceholders = getCreatedPlaceholders();
                 double elapsedSeconds = Math.Max(stopwatch.Elapsed.TotalSeconds, 0.001d);
+                int discoveredDirectoryCount = getDiscoveredDirectories();
+                int discoveredFileCount = getDiscoveredFiles();
+                int stateFileRowsWritten = getStateFileRowsWritten();
+                int stateDirectoryRowsWritten = getStateDirectoryRowsWritten();
+                double discoveredDirectoryRatePerSecond = discoveredDirectoryCount / elapsedSeconds;
+                double discoveredFileRatePerSecond = discoveredFileCount / elapsedSeconds;
                 double createdPlaceholderRatePerSecond = createdPlaceholders / elapsedSeconds;
+                double stateWriteRatePerSecond = (stateFileRowsWritten + stateDirectoryRowsWritten) / elapsedSeconds;
                 int remotePageCount = remoteScanProgress.PagesScanned;
                 double remotePageAverageLatencyMilliseconds = remotePageCount <= 0
                     ? 0d
@@ -4608,11 +4624,13 @@ namespace Cotton.Sync
                 long managedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
                 recordManagedHeapSample(managedHeapBytes);
                 _logger.LogInformation(
-                    "Initial streaming Windows virtual-files population heartbeat for pair {SyncPairId}: elapsed={ElapsedMilliseconds} ms; discovered directories={DirectoryCount}, files={FileCount}; completed directories={CompletedDirectoryCount}, files={CompletedFileCount}; remote pages read={RemotePageCount}, remote page latency total={RemotePageLatencyTotalMilliseconds:F0} ms, avg={RemotePageLatencyAverageMilliseconds:F2} ms, max={RemotePageLatencyMaxMilliseconds:F0} ms, last={RemotePageLatencyLastMilliseconds:F0} ms; placeholders created or refreshed={CreatedPlaceholderCount}, current skipped={SkippedCurrentPlaceholderCount}, user-action skipped={SkippedUnavailablePlaceholderCount}, rate={CreatedPlaceholderRatePerSecond:F2} placeholders/sec; state writes file rows={StateFileRowsWritten}, file batches={StateFileWriteBatchCount}, directory rows={StateDirectoryRowsWritten}; managed heap={ManagedHeapBytes} bytes; queue capacity={QueueCapacity}, placeholder concurrency={PlaceholderConcurrency}, placeholder batch size={PlaceholderBatchSize}, state batch size={StateBatchSize}.",
+                    "Initial streaming Windows virtual-files population heartbeat for pair {SyncPairId}: elapsed={ElapsedMilliseconds} ms; discovered directories={DirectoryCount} at {DirectoryDiscoveryRatePerSecond:F2} dirs/sec, files={FileCount} at {FileDiscoveryRatePerSecond:F2} files/sec; completed directories={CompletedDirectoryCount}, files={CompletedFileCount}; remote pages read={RemotePageCount}, remote page latency total={RemotePageLatencyTotalMilliseconds:F0} ms, avg={RemotePageLatencyAverageMilliseconds:F2} ms, max={RemotePageLatencyMaxMilliseconds:F0} ms, last={RemotePageLatencyLastMilliseconds:F0} ms; placeholders created or refreshed={CreatedPlaceholderCount}, current skipped={SkippedCurrentPlaceholderCount}, user-action skipped={SkippedUnavailablePlaceholderCount}, rate={CreatedPlaceholderRatePerSecond:F2} placeholders/sec; state writes file rows={StateFileRowsWritten}, file batches={StateFileWriteBatchCount}, directory rows={StateDirectoryRowsWritten}, state write rate={StateWriteRatePerSecond:F2} rows/sec; managed heap={ManagedHeapBytes} bytes; queue capacity={QueueCapacity}, placeholder concurrency={PlaceholderConcurrency}, placeholder batch size={PlaceholderBatchSize}, state batch size={StateBatchSize}.",
                     syncPair.SyncPairId,
                     stopwatch.ElapsedMilliseconds,
-                    getDiscoveredDirectories(),
-                    getDiscoveredFiles(),
+                    discoveredDirectoryCount,
+                    discoveredDirectoryRatePerSecond,
+                    discoveredFileCount,
+                    discoveredFileRatePerSecond,
                     getCompletedDirectories(),
                     getCompletedFiles(),
                     remotePageCount,
@@ -4624,9 +4642,10 @@ namespace Cotton.Sync
                     getSkippedCurrentPlaceholders(),
                     getSkippedUnavailablePlaceholders(),
                     createdPlaceholderRatePerSecond,
-                    getStateFileRowsWritten(),
+                    stateFileRowsWritten,
                     getStateFileWriteBatches(),
-                    getStateDirectoryRowsWritten(),
+                    stateDirectoryRowsWritten,
+                    stateWriteRatePerSecond,
                     managedHeapBytes,
                     options.InitialVirtualFilesPopulationQueueCapacity,
                     options.InitialVirtualFilesPlaceholderConcurrency,
