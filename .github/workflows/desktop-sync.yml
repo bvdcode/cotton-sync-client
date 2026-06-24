@@ -404,6 +404,7 @@ jobs:
           $evidenceDir = Join-Path $env:RUNNER_TEMP "cotton-sync-vfs-release-evidence"
           $vfsSmokeDataDir = Join-Path $env:RUNNER_TEMP "cotton-sync-vfs-self-test-truthfulness-data"
           $autostartReport = Join-Path $evidenceDir "autostart-launch.txt"
+          $visualStatesReport = Join-Path $evidenceDir "visual-states.txt"
           $postUninstallCleanupReport = Join-Path $evidenceDir "post-uninstall-cleanup.txt"
           $postReinstallCleanupReport = Join-Path $evidenceDir "post-reinstall-cleanup.txt"
           New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
@@ -514,7 +515,8 @@ jobs:
             -DataDirectory (Join-Path $env:RUNNER_TEMP "cotton-sync-update-discovery-data")
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-update-visual-states.ps1" `
             -AppExecutable $installedExe `
-            -DataRoot (Join-Path $env:RUNNER_TEMP "cotton-sync-update-visual-states-data")
+            -DataRoot (Join-Path $env:RUNNER_TEMP "cotton-sync-update-visual-states-data") `
+            -ReportPath $visualStatesReport
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-update-install-handoff.ps1" `
             -AppExecutable $installedExe `
             -DataDirectory (Join-Path $env:RUNNER_TEMP "cotton-sync-update-install-data")

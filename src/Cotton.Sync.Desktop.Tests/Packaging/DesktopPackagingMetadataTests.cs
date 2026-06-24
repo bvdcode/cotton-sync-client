@@ -437,6 +437,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("ObservedForeground: False"));
                 Assert.That(script, Does.Contain("LaunchMode: attached-existing"));
                 Assert.That(script, Does.Contain("CleanupRemaining: 0"));
+                Assert.That(script, Does.Contain("visual-states.txt"));
+                Assert.That(script, Does.Contain("Scenario: virtual-files-seeding;Status=Syncing;StableObservationSeconds=6;Samples="));
                 Assert.That(script, Does.Contain("RemainingRegistrationCount: 0"));
                 Assert.That(script, Does.Contain("No Cloud Files or Explorer registration was captured before uninstall."));
                 Assert.That(script, Does.Contain("VFS smoke logs: captured:"));
@@ -1409,6 +1411,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("cotton-sync-update-discovery-data"));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-update-visual-states.ps1"));
                 Assert.That(workflow, Does.Contain("cotton-sync-update-visual-states-data"));
+                Assert.That(workflow, Does.Contain("$visualStatesReport = Join-Path $evidenceDir \"visual-states.txt\""));
+                Assert.That(workflow, Does.Contain("-ReportPath $visualStatesReport"));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-update-install-handoff.ps1"));
                 Assert.That(workflow, Does.Contain("cotton-sync-update-install-data"));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-shell-share-link-copy.ps1"));
@@ -1618,6 +1622,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             {
                 Assert.That(script, Does.Contain("[string]$AppExecutable"));
                 Assert.That(script, Does.Contain("[string]$DataRoot = \"\""));
+                Assert.That(script, Does.Contain("[string]$ReportPath = \"\""));
                 Assert.That(script, Does.Contain("UIAutomationClient"));
                 Assert.That(script, Does.Contain("--visual-smoke"));
                 Assert.That(script, Does.Contain("update-download-progress"));
@@ -1638,6 +1643,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("Assert-VisualStateSnapshot"));
                 Assert.That(script, Does.Contain("-StableObservationSeconds 6"));
                 Assert.That(script, Does.Contain("Observed visual state '$Scenario' sample(s):"));
+                Assert.That(script, Does.Contain("Scenario: $Scenario;Status=$ExpectedStatus;StableObservationSeconds=$StableObservationSeconds;Samples=$sampleCount"));
+                Assert.That(script, Does.Contain("Result: passed"));
+                Assert.That(script, Does.Contain("Set-Content -LiteralPath $ReportPath"));
                 Assert.That(script, Does.Contain("ControlType]::ProgressBar"));
                 Assert.That(script, Does.Contain("[string[]]$UnexpectedNames"));
                 Assert.That(script, Does.Contain("Assert-NameMissing -Names $names -UnexpectedName $unexpectedName"));
@@ -2105,6 +2113,15 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "ObservedForeground: False",
                     "VisibleWindowCount: 0",
                     "CleanupRemaining: 0"
+                });
+            File.WriteAllLines(
+                Path.Combine(evidenceDirectory, "visual-states.txt"),
+                new[]
+                {
+                    "Result: passed",
+                    "Scenario: update-download-progress;Status=Downloading update;StableObservationSeconds=0;Samples=1",
+                    "Scenario: update-install-progress;Status=Installing update;StableObservationSeconds=0;Samples=1",
+                    "Scenario: virtual-files-seeding;Status=Syncing;StableObservationSeconds=6;Samples=12"
                 });
             WriteCleanupEvidence(Path.Combine(evidenceDirectory, "post-uninstall-cleanup.txt"));
             WriteCleanupEvidence(Path.Combine(evidenceDirectory, "post-reinstall-cleanup.txt"));
