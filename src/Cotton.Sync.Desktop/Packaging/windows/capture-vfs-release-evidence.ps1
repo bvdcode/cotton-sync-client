@@ -26,6 +26,7 @@ $outputRoot = [System.IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $outputRoot -Force | Out-Null
 
 $summary = New-Object System.Collections.Generic.List[string]
+$pathRedactions = New-Object System.Collections.Generic.List[object]
 
 function Add-Summary {
     param(
@@ -51,6 +52,29 @@ function ConvertTo-SafeFileName {
     return $safe
 }
 
+function Add-PathRedaction {
+    param(
+        [string]$Path,
+        [string]$Placeholder
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return
+    }
+
+    try {
+        $fullPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+        if (-not [string]::IsNullOrWhiteSpace($fullPath)) {
+            $pathRedactions.Add([pscustomobject]@{
+                Path = $fullPath
+                Placeholder = $Placeholder
+            })
+        }
+    }
+    catch {
+    }
+}
+
 function Redact-Text {
     param([AllowNull()][string]$Value)
 
@@ -60,6 +84,15 @@ function Redact-Text {
 
     $redacted = $Value -replace "(?i)Bearer\s+[A-Za-z0-9._~+/=-]+", "Bearer <redacted>"
     $redacted = $redacted -replace "(?i)(access[_-]?token|refresh[_-]?token|id[_-]?token|password|totp|authorization)\s*[:=]\s*['""]?[^,'""\s}]+", '$1=<redacted>'
+    foreach ($item in $pathRedactions) {
+        $path = [string]$item.Path
+        $placeholder = [string]$item.Placeholder
+        if (-not [string]::IsNullOrWhiteSpace($path)) {
+            $redacted = $redacted.Replace($path, $placeholder)
+            $redacted = $redacted.Replace($path.Replace('\', '/'), $placeholder)
+        }
+    }
+
     return $redacted
 }
 
@@ -200,9 +233,20 @@ function Capture-Screenshot {
         Add-Summary "Screenshot" "captured: $path"
     }
     catch {
-        Add-Summary "Screenshot" ("failed: " + $_.Exception.Message)
+    Add-Summary "Screenshot" ("failed: " + $_.Exception.Message)
     }
 }
+
+Add-PathRedaction -Path $LocalRoot -Placeholder "<local root>"
+Add-PathRedaction -Path $DataDirectory -Placeholder "<data directory>"
+Add-PathRedaction -Path $InstallDirectory -Placeholder "<install directory>"
+Add-PathRedaction -Path $VfsSmokeDataDirectory -Placeholder "<vfs smoke data>"
+Add-PathRedaction -Path $OutputDirectory -Placeholder "<evidence output>"
+Add-PathRedaction -Path $env:USERPROFILE -Placeholder "<user profile>"
+Add-PathRedaction -Path $env:APPDATA -Placeholder "<app data>"
+Add-PathRedaction -Path $env:LOCALAPPDATA -Placeholder "<local app data>"
+Add-PathRedaction -Path $env:TEMP -Placeholder "<temp>"
+Add-PathRedaction -Path $env:TMP -Placeholder "<temp>"
 
 function Initialize-WindowProbe {
     if ("CottonReleaseEvidenceWindowProbe" -as [type]) {
