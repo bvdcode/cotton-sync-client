@@ -1910,6 +1910,9 @@ namespace Cotton.Sync.Desktop.ViewModels
                 case DesktopVisualSmokeScenario.HighPressureStarting:
                     ApplyVisualSmokeHighPressureStartingScenario();
                     break;
+                case DesktopVisualSmokeScenario.VirtualFilesSeeding:
+                    ApplyVisualSmokeVirtualFilesSeedingScenario();
+                    break;
                 case DesktopVisualSmokeScenario.UpdateDownloadProgress:
                     SelectedSettingsTabIndex = 0;
                     await ShowSettingsAsync().ConfigureAwait(true);
@@ -2161,6 +2164,29 @@ namespace Cotton.Sync.Desktop.ViewModels
                 IsCompleted: false,
                 OccurredAtUtc: startedAtUtc.AddSeconds(3)));
             AddActivity("Sync", syncPair.RemotePath, "Processing queued file changes");
+        }
+
+        private void ApplyVisualSmokeVirtualFilesSeedingScenario()
+        {
+            SyncPairRowViewModel? syncPair = SyncPairs.FirstOrDefault();
+            if (syncPair is null)
+            {
+                return;
+            }
+
+            DateTime startedAtUtc = new(2026, 6, 24, 3, 40, 0, DateTimeKind.Utc);
+            GlobalStatus = "Syncing";
+            syncPair.Status = "Syncing";
+            ApplyRunProgress(new DesktopRunProgressSnapshot(
+                syncPair.Id,
+                SyncRunProgressStage.CreatingPlaceholders,
+                FilesCompleted: 118_054,
+                FilesTotal: 500_000,
+                CurrentPath: "Photos/2026/image-118054.heic",
+                StartedAtUtc: startedAtUtc,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc.AddMinutes(2)));
+            AddActivity("Sync", syncPair.RemotePath, "Making cloud files available");
         }
 
         private void ApplyVisualSmokeUpdateDownloadProgressScenario()

@@ -263,6 +263,18 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void Parse_LoadsVirtualFilesSeedingVisualSmokeScenario()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--visual-smoke",
+                    "virtual-files-seeding",
+                ]);
+
+            Assert.That(options.VisualSmokeScenario, Is.EqualTo(DesktopVisualSmokeScenario.VirtualFilesSeeding));
+        }
+
+        [Test]
         public void Parse_LoadsUpdateDownloadProgressVisualSmokeScenario()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(
