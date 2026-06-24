@@ -894,6 +894,8 @@ namespace Cotton.Sync.Desktop.ViewModels
                 {
                     OnPropertyChanged(nameof(IsAddSyncPairSetupProgressVisible));
                     OnPropertyChanged(nameof(AddSyncPairSetupProgressMessage));
+                    OnPropertyChanged(nameof(RemoteFolderWizardPrimaryActionText));
+                    OnPropertyChanged(nameof(RemoteFolderWizardPrimaryActionToolTip));
                     RaiseAddSyncPairFlowCommandStates();
                 }
             }
@@ -1320,13 +1322,17 @@ namespace Cotton.Sync.Desktop.ViewModels
                 ? "Pick where this computer folder should sync in Cotton Cloud."
                 : "Start with the folder on this computer.";
 
-        public string RemoteFolderWizardPrimaryActionText => IsEditingSelectedSyncPairRemoteFolder
-            ? "Update cloud folder"
-            : "Use this folder";
+        public string RemoteFolderWizardPrimaryActionText => IsAddingSyncPair
+            ? AddSyncPairSetupProgressMessage
+            : IsEditingSelectedSyncPairRemoteFolder
+                ? "Update cloud folder"
+                : "Use this folder";
 
-        public string RemoteFolderWizardPrimaryActionToolTip => IsEditingSelectedSyncPairRemoteFolder
-            ? "Change the cloud folder for this sync folder"
-            : "Start syncing with the current cloud folder";
+        public string RemoteFolderWizardPrimaryActionToolTip => IsAddingSyncPair
+            ? "Setting up this sync folder"
+            : IsEditingSelectedSyncPairRemoteFolder
+                ? "Change the cloud folder for this sync folder"
+                : "Start syncing with the current cloud folder";
 
         public bool IsFutureSyncModesVisible => _featureFlags.ShowFutureSyncModes && IsWindowsVirtualFilesSupported;
 
