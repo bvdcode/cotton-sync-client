@@ -6015,8 +6015,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private static bool IsIndeterminatePlaceholderCreation(DesktopRunProgressSnapshot progress)
         {
-            return IsOpenEndedPlaceholderCreation(progress)
-                && (progress.FilesTotal is not > 0 || progress.FilesCompleted <= 0);
+            return IsOpenEndedPlaceholderCreation(progress);
         }
 
         private static bool IsOpenEndedPlaceholderCreation(DesktopRunProgressSnapshot progress)
