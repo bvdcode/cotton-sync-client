@@ -1322,6 +1322,10 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("Processing queued changes"));
                 Assert.That(script, Does.Contain("[bool]$RequireSettingsActions"));
                 Assert.That(script, Does.Contain("-RequireSettingsActions $false"));
+                Assert.That(script, Does.Contain("[int]$StableObservationSeconds = 0"));
+                Assert.That(script, Does.Contain("Assert-VisualStateSnapshot"));
+                Assert.That(script, Does.Contain("-StableObservationSeconds 6"));
+                Assert.That(script, Does.Contain("Observed visual state '$Scenario' sample(s):"));
                 Assert.That(script, Does.Contain("ControlType]::ProgressBar"));
                 Assert.That(script, Does.Contain("[string[]]$UnexpectedNames"));
                 Assert.That(script, Does.Contain("Assert-NameMissing -Names $names -UnexpectedName $unexpectedName"));
