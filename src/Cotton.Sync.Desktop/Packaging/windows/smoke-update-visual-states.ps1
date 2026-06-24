@@ -168,8 +168,13 @@ function Test-VisualState {
         $window = Get-WindowAutomationRoot -Process $process -TimeoutSeconds $TimeoutSeconds
         Start-Sleep -Milliseconds 1000
         $sampleCount = 0
+        $maxSnapshotMs = 0
+        $maxSampleGapMs = 0
+        $previousSampleElapsedMs = $null
+        $scenarioStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
         $deadline = [DateTime]::UtcNow.AddSeconds($StableObservationSeconds)
         while ($true) {
+            $snapshotStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
             Assert-VisualStateSnapshot `
                 -Window $window `
                 -Scenario $Scenario `
@@ -178,6 +183,14 @@ function Test-VisualState {
                 -ExpectedNames $ExpectedNames `
                 -RequireSettingsActions $RequireSettingsActions `
                 -UnexpectedNames $UnexpectedNames
+            $snapshotStopwatch.Stop()
+            $maxSnapshotMs = [Math]::Max($maxSnapshotMs, [int]$snapshotStopwatch.ElapsedMilliseconds)
+            $currentSampleElapsedMs = [int]$scenarioStopwatch.ElapsedMilliseconds
+            if ($null -ne $previousSampleElapsedMs) {
+                $maxSampleGapMs = [Math]::Max($maxSampleGapMs, $currentSampleElapsedMs - $previousSampleElapsedMs)
+            }
+
+            $previousSampleElapsedMs = $currentSampleElapsedMs
             $sampleCount++
             if ($StableObservationSeconds -le 0 -or [DateTime]::UtcNow -ge $deadline) {
                 break
@@ -188,7 +201,7 @@ function Test-VisualState {
 
         Write-Host "Observed visual state '$Scenario' sample(s): $sampleCount"
         $visualStateReportLines.Add(
-            "Scenario: $Scenario;Status=$ExpectedStatus;StableObservationSeconds=$StableObservationSeconds;Samples=$sampleCount")
+            "Scenario: $Scenario;Status=$ExpectedStatus;StableObservationSeconds=$StableObservationSeconds;Samples=$sampleCount;MaxSnapshotMs=$maxSnapshotMs;MaxSampleGapMs=$maxSampleGapMs")
     } finally {
         if (-not $process.HasExited) {
             $process.CloseMainWindow() | Out-Null
