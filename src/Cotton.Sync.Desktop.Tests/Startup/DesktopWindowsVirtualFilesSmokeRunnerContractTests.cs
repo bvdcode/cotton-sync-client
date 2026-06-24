@@ -180,8 +180,15 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(runner, Does.Contain("Pre-existing nested file survived with identical content."));
                 Assert.That(runner, Does.Contain("Pre-existing local files uploaded and received sync baselines."));
                 Assert.That(runner, Does.Contain("Pre-existing local directory tree received remote directory baselines."));
+                Assert.That(runner, Does.Contain("Cloud Files finalization progress completed before smoke success for "));
+                Assert.That(runner, Does.Contain("\"non-empty preservation app sync path\""));
+                Assert.That(runner, Does.Contain("Pre-existing top-level directory Cloud Files status was finalized."));
+                Assert.That(runner, Does.Contain("Remote-only directory Cloud Files status was finalized."));
+                Assert.That(runner, Does.Contain("\"non-empty preservation uploaded top-level directory\""));
+                Assert.That(runner, Does.Contain("\"non-empty preservation remote-only directory\""));
                 Assert.That(runner, Does.Contain("Remote-only file became an online-only placeholder."));
                 Assert.That(runner, Does.Contain("Remote-only placeholder Cloud Files status was finalized."));
+                Assert.That(runner, Does.Contain("RecordingRunProgressObserver"));
                 Assert.That(runner, Does.Contain("RecordingRemoteDirectorySynchronizer"));
             });
         }
