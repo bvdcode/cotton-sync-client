@@ -521,6 +521,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("Register-ScheduledTask"));
                 Assert.That(script, Does.Contain("New-ScheduledTaskTrigger -AtLogOn"));
                 Assert.That(script, Does.Contain("New-ScheduledTaskPrincipal"));
+                Assert.That(script, Does.Contain("$allowedTaskNamePrefix = \"Cotton Sync VFS Logon Evidence Capture\""));
+                Assert.That(script, Does.Contain("Assert-SafeTaskName -Value $TaskName"));
+                Assert.That(script, Does.Contain("TaskName must start with"));
                 Assert.That(script, Does.Contain("ConvertTo-CommandLineArgument"));
                 Assert.That(script, Does.Contain("Assert-RequiredValue -Name \"OutputDirectory\""));
                 Assert.That(script, Does.Contain("[switch]$ValidateOnly"));
