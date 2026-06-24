@@ -1204,6 +1204,31 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         }
 
         [Test]
+        public void WindowsVfsLogonEvidenceVerifierScript_RejectsProcessCreatedBeforeLatestLogon()
+        {
+            string evidenceDirectory = CreateVfsLogonEvidenceBundle();
+            try
+            {
+                string processesPath = Path.Combine(evidenceDirectory, "processes.txt");
+                string processes = File.ReadAllText(processesPath)
+                    .Replace(
+                        "CreationDate   : 2026-06-24T10:01:00.0000000Z",
+                        "CreationDate   : 2026-06-24T09:57:00.0000000Z",
+                        StringComparison.Ordinal);
+                File.WriteAllText(processesPath, processes);
+
+                (int exitCode, string output) = RunVfsLogonEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("created before the latest interactive Windows logon"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
         public void WindowsVfsLogonEvidenceVerifierScript_RejectsMissingTaskUnregistrationProof()
         {
             string evidenceDirectory = CreateVfsLogonEvidenceBundle();
