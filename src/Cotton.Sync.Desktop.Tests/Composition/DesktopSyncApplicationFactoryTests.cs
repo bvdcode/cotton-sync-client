@@ -226,6 +226,34 @@ namespace Cotton.Sync.Desktop.Tests.Composition
             await WaitForTaskExceptionObservationAsync(connectTask.Task);
         }
 
+        [Test]
+        public async Task DesktopHttpClientFactory_DisposeRemainingAttemptsSnapshotsAndClearsList()
+        {
+            TaskCompletionSource firstConnectTask = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource secondConnectTask = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            List<DesktopHttpClientFactory.ConnectAttempt> attempts =
+            [
+                new DesktopHttpClientFactory.ConnectAttempt(
+                    IPAddress.Loopback,
+                    new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp),
+                    firstConnectTask.Task),
+                new DesktopHttpClientFactory.ConnectAttempt(
+                    IPAddress.IPv6Loopback,
+                    new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp),
+                    secondConnectTask.Task),
+            ];
+
+            DesktopHttpClientFactory.DisposeRemainingAttempts(attempts);
+
+            Assert.That(attempts, Is.Empty);
+
+            firstConnectTask.SetException(new SocketException((int)SocketError.OperationAborted));
+            secondConnectTask.SetException(new SocketException((int)SocketError.OperationAborted));
+
+            await WaitForTaskExceptionObservationAsync(firstConnectTask.Task);
+            await WaitForTaskExceptionObservationAsync(secondConnectTask.Task);
+        }
+
         private static object GetPrivateFieldValue(object instance, string fieldName)
         {
             FieldInfo? field = instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);

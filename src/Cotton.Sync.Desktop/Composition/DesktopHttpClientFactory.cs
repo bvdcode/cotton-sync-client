@@ -75,10 +75,7 @@ namespace Cotton.Sync.Desktop.Composition
             }
             finally
             {
-                foreach (ConnectAttempt attempt in attempts)
-                {
-                    attempt.Dispose();
-                }
+                DisposeRemainingAttempts(attempts);
             }
 
             throw lastException ?? new SocketException((int)SocketError.HostNotFound);
@@ -111,7 +108,8 @@ namespace Cotton.Sync.Desktop.Composition
             List<ConnectAttempt> attempts,
             CancellationToken cancellationToken)
         {
-            Task completedTask = await Task.WhenAny(attempts.Select(static attempt => attempt.ConnectTask))
+            Task[] connectTasks = CreateConnectTaskSnapshot(attempts);
+            Task completedTask = await Task.WhenAny(connectTasks)
                 .WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
             return RemoveCompletedAttempt(attempts, completedTask);
@@ -124,7 +122,8 @@ namespace Cotton.Sync.Desktop.Composition
         {
             ArgumentNullException.ThrowIfNull(attempts);
             ArgumentOutOfRangeException.ThrowIfLessThan(fallbackDelay, TimeSpan.Zero);
-            Task<Task> completedConnectTask = Task.WhenAny(attempts.Select(static attempt => attempt.ConnectTask));
+            Task[] connectTasks = CreateConnectTaskSnapshot(attempts);
+            Task<Task> completedConnectTask = Task.WhenAny(connectTasks);
             Task fallbackDelayTask = Task.Delay(fallbackDelay, cancellationToken);
             Task completedTask = await Task.WhenAny(completedConnectTask, fallbackDelayTask).ConfigureAwait(false);
             if (completedTask == fallbackDelayTask)
@@ -142,6 +141,24 @@ namespace Cotton.Sync.Desktop.Composition
             ConnectAttempt completedAttempt = attempts.Single(attempt => ReferenceEquals(attempt.ConnectTask, completedTask));
             attempts.Remove(completedAttempt);
             return completedAttempt;
+        }
+
+        internal static void DisposeRemainingAttempts(List<ConnectAttempt> attempts)
+        {
+            ArgumentNullException.ThrowIfNull(attempts);
+            ConnectAttempt[] remainingAttempts = attempts.ToArray();
+            attempts.Clear();
+            foreach (ConnectAttempt attempt in remainingAttempts)
+            {
+                attempt.Dispose();
+            }
+        }
+
+        private static Task[] CreateConnectTaskSnapshot(List<ConnectAttempt> attempts)
+        {
+            return attempts
+                .Select(static attempt => attempt.ConnectTask)
+                .ToArray();
         }
 
         internal static void ObserveConnectCleanupFailure(Task connectTask)
