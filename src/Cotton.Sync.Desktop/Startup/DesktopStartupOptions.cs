@@ -19,12 +19,14 @@ namespace Cotton.Sync.Desktop.Startup
             bool runWindowsVirtualFilesSmoke,
             bool runLiveSyncSmoke,
             bool runUpdateDiscoverySmoke,
+            bool runUpdateInstallSmoke,
             bool printVersion,
             string? shellShareLinkTargetPath,
             string? shellCopyShareLinkTargetPath,
             DesktopVisualSmokeScenario? visualSmokeScenario,
             Uri? updateManifestUri,
             string? expectedUpdateVersion,
+            string? updateInstallerPath,
             TimeSpan windowsVirtualFilesSmokeHoldAfterPlaceholder,
             string? windowsVirtualFilesSmokePhase,
             TimeSpan liveSyncSmokeApprovalHold,
@@ -46,12 +48,14 @@ namespace Cotton.Sync.Desktop.Startup
             RunWindowsVirtualFilesSmoke = runWindowsVirtualFilesSmoke;
             RunLiveSyncSmoke = runLiveSyncSmoke;
             RunUpdateDiscoverySmoke = runUpdateDiscoverySmoke;
+            RunUpdateInstallSmoke = runUpdateInstallSmoke;
             PrintVersion = printVersion;
             ShellShareLinkTargetPath = shellShareLinkTargetPath;
             ShellCopyShareLinkTargetPath = shellCopyShareLinkTargetPath;
             VisualSmokeScenario = visualSmokeScenario;
             UpdateManifestUri = updateManifestUri;
             ExpectedUpdateVersion = expectedUpdateVersion;
+            UpdateInstallerPath = updateInstallerPath;
             WindowsVirtualFilesSmokeHoldAfterPlaceholder = windowsVirtualFilesSmokeHoldAfterPlaceholder;
             WindowsVirtualFilesSmokePhase = windowsVirtualFilesSmokePhase;
             LiveSyncSmokeApprovalHold = liveSyncSmokeApprovalHold;
@@ -76,6 +80,8 @@ namespace Cotton.Sync.Desktop.Startup
             false,
             false,
             false,
+            false,
+            null,
             null,
             null,
             null,
@@ -113,6 +119,8 @@ namespace Cotton.Sync.Desktop.Startup
 
         public bool RunUpdateDiscoverySmoke { get; }
 
+        public bool RunUpdateInstallSmoke { get; }
+
         public bool PrintVersion { get; }
 
         public string? ShellShareLinkTargetPath { get; }
@@ -124,6 +132,8 @@ namespace Cotton.Sync.Desktop.Startup
         public Uri? UpdateManifestUri { get; }
 
         public string? ExpectedUpdateVersion { get; }
+
+        public string? UpdateInstallerPath { get; }
 
         public TimeSpan WindowsVirtualFilesSmokeHoldAfterPlaceholder { get; }
 
@@ -163,6 +173,8 @@ namespace Cotton.Sync.Desktop.Startup
                 ?? ReadOption(args, "--update-manifest-uri");
             string? expectedUpdateVersion = ReadOption(args, "--expected-update-version")
                 ?? ReadOption(args, "--expected-latest-version");
+            string? updateInstallerPath = ReadOption(args, "--update-installer-path")
+                ?? ReadOption(args, "--installer-path");
             string? shellShareLinkTargetPath = ReadOption(args, "--resolve-shell-share-link-target")
                 ?? ReadOption(args, "--shell-share-link-target");
             string? shellCopyShareLinkTargetPath = ReadOption(args, "--copy-shell-share-link")
@@ -187,6 +199,8 @@ namespace Cotton.Sync.Desktop.Startup
                 || HasFlag(args, "--desktop-live-sync-smoke");
             bool runUpdateDiscoverySmoke = HasFlag(args, "--update-discovery-smoke")
                 || HasFlag(args, "--desktop-update-smoke");
+            bool runUpdateInstallSmoke = HasFlag(args, "--update-install-smoke")
+                || HasFlag(args, "--desktop-update-install-smoke");
             bool liveSyncSmokePreserveExistingLocalFiles =
                 HasFlag(args, "--live-sync-smoke-preserve-existing-local-files");
             bool printVersion = HasFlag(args, "--version")
@@ -204,12 +218,14 @@ namespace Cotton.Sync.Desktop.Startup
                 runWindowsVirtualFilesSmoke,
                 runLiveSyncSmoke,
                 runUpdateDiscoverySmoke,
+                runUpdateInstallSmoke,
                 printVersion,
                 NormalizeOptional(shellShareLinkTargetPath),
                 NormalizeOptional(shellCopyShareLinkTargetPath),
                 ParseVisualSmokeScenario(visualSmokeScenario),
                 ParseAbsoluteUri(updateManifestUri),
                 NormalizeOptional(expectedUpdateVersion),
+                NormalizeOptional(updateInstallerPath),
                 ParseNonNegativeSeconds(windowsVirtualFilesSmokeHoldAfterPlaceholder),
                 NormalizeOptional(windowsVirtualFilesSmokePhase),
                 ParseNonNegativeSeconds(liveSyncSmokeApprovalHold),

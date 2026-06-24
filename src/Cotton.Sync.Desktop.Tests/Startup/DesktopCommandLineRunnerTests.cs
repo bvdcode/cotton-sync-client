@@ -710,6 +710,74 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             });
         }
 
+        [Test]
+        public async Task RunUpdateInstallSmokeAsync_RequiresExplicitDataDirectory()
+        {
+            string installerPath = Path.Combine(_tempDirectory, "CottonSync-Windows-Setup.cmd");
+            File.WriteAllText(installerPath, "exit /b 0");
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--update-install-smoke",
+                    "--update-installer-path",
+                    installerPath,
+                ]);
+            var installer = new FakeDesktopUpdateInstaller();
+            using var output = new StringWriter();
+
+            int exitCode = await DesktopCommandLineRunner.RunUpdateInstallSmokeAsync(
+                DesktopAppPaths.CreateForDataDirectory(_tempDirectory),
+                options,
+                output,
+                installer);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(2));
+                Assert.That(output.ToString(), Does.Contain("--data-dir"));
+                Assert.That(output.ToString(), Does.Contain("real user profile"));
+                Assert.That(installer.Calls, Is.Zero);
+            });
+        }
+
+        [Test]
+        public async Task RunUpdateInstallSmokeAsync_LaunchesInstallerAndExportsDiagnostics()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            string installerPath = Path.Combine(_tempDirectory, "CottonSync-Windows-Setup.cmd");
+            File.WriteAllText(installerPath, "exit /b 0");
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--update-install-smoke",
+                    "--data-dir",
+                    _tempDirectory,
+                    "--update-installer-path",
+                    installerPath,
+                ]);
+            var installer = new FakeDesktopUpdateInstaller();
+            using var output = new StringWriter();
+
+            int exitCode = await DesktopCommandLineRunner.RunUpdateInstallSmokeAsync(
+                paths,
+                options,
+                output,
+                installer);
+
+            string report = output.ToString();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(0));
+                Assert.That(installer.Calls, Is.EqualTo(1));
+                Assert.That(installer.InstallerPath, Is.EqualTo(installerPath));
+                Assert.That(installer.LaunchAfterUpdate, Is.True);
+                Assert.That(report, Does.Contain("PASS: Update installer launch returns a process id"));
+                Assert.That(report, Does.Contain("PASS: Update installer startup probe does not fail"));
+                Assert.That(report, Does.Contain("PASS: Diagnostics bundle records installer launch outcome"));
+                Assert.That(report, Does.Contain("PASS: Installer launch wrote a trace log"));
+                Assert.That(report, Does.Contain("Result: passed"));
+            });
+        }
+
         private static SyncPairSettings CreateSyncPair(string displayName, SyncPairMode mode, string localRootPath)
         {
             return new SyncPairSettings
@@ -905,6 +973,25 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 {
                     throw Exception;
                 }
+            }
+        }
+
+        private sealed class FakeDesktopUpdateInstaller : IDesktopUpdateInstaller
+        {
+            public int Calls { get; private set; }
+
+            public string? InstallerPath { get; private set; }
+
+            public bool? LaunchAfterUpdate { get; private set; }
+
+            public DesktopUpdateInstallResult StartSilentInstall(
+                string installerPath,
+                bool launchAfterUpdate)
+            {
+                Calls++;
+                InstallerPath = installerPath;
+                LaunchAfterUpdate = launchAfterUpdate;
+                return new DesktopUpdateInstallResult(42, true, 0);
             }
         }
     }

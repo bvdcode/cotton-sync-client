@@ -502,6 +502,28 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void Parse_LoadsUpdateInstallSmokeOptions()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--update-install-smoke",
+                    "--data-dir",
+                    @"C:\CottonSyncQa\UpdateInstall",
+                    "--update-installer-path",
+                    @"C:\CottonSyncQa\UpdateInstall\CottonSync-Windows-Setup.cmd",
+                ]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(options.RunUpdateInstallSmoke, Is.True);
+                Assert.That(options.DataDirectory, Is.EqualTo(@"C:\CottonSyncQa\UpdateInstall"));
+                Assert.That(
+                    options.UpdateInstallerPath,
+                    Is.EqualTo(@"C:\CottonSyncQa\UpdateInstall\CottonSync-Windows-Setup.cmd"));
+            });
+        }
+
+        [Test]
         public void Parse_DoesNotTreatNextFlagAsOptionValue()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(

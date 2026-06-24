@@ -483,6 +483,18 @@ namespace Cotton.Sync.Desktop.Startup
                 cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
+        public static async Task<int> RunUpdateInstallSmokeAsync(
+            DesktopStartupOptions startupOptions,
+            TextWriter output,
+            CancellationToken cancellationToken = default)
+        {
+            return await RunUpdateInstallSmokeAsync(
+                DesktopStartupPathResolver.Resolve(startupOptions),
+                startupOptions,
+                output,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+
         internal static async Task<int> RunUpdateDiscoverySmokeAsync(
             DesktopAppPaths paths,
             DesktopStartupOptions startupOptions,
@@ -591,6 +603,82 @@ namespace Cotton.Sync.Desktop.Startup
             finally
             {
                 updateServiceLifetime?.Dispose();
+            }
+        }
+
+        internal static async Task<int> RunUpdateInstallSmokeAsync(
+            DesktopAppPaths paths,
+            DesktopStartupOptions startupOptions,
+            TextWriter output,
+            IDesktopUpdateInstaller? updateInstaller = null,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(paths);
+            ArgumentNullException.ThrowIfNull(startupOptions);
+            ArgumentNullException.ThrowIfNull(output);
+
+            string? validationError = ValidateUpdateInstallSmokeOptions(startupOptions);
+            if (validationError is not null)
+            {
+                await output.WriteLineAsync("Cotton Sync Desktop update install smoke").ConfigureAwait(false);
+                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                await output.WriteLineAsync("Error: " + validationError).ConfigureAwait(false);
+                return 2;
+            }
+
+            Directory.CreateDirectory(paths.DataDirectory);
+            DesktopTraceLogging.Install(paths);
+            try
+            {
+                await using DesktopShellController controller = CreateUpdateSmokeController(
+                    paths,
+                    startupOptions,
+                    updateInstaller: updateInstaller);
+                await output.WriteLineAsync("Cotton Sync Desktop update install smoke").ConfigureAwait(false);
+
+                DesktopUpdateInstallResult result = await controller
+                    .InstallDownloadedUpdateAsync(startupOptions.UpdateInstallerPath!, cancellationToken)
+                    .ConfigureAwait(false);
+                string diagnosticsBundlePath = await controller
+                    .ExportDiagnosticsAsync(DesktopDiagnosticsExportOptions.Public, cancellationToken)
+                    .ConfigureAwait(false);
+                int failures = 0;
+                failures += await WriteCheckAsync(
+                    output,
+                    result.ProcessId > 0,
+                    "Update installer launch returns a process id",
+                    "processId=" + result.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+                failures += await WriteCheckAsync(
+                    output,
+                    !result.ExitedDuringStartupProbe || result.ExitCode.GetValueOrDefault() == 0,
+                    "Update installer startup probe does not fail",
+                    "exitedDuringProbe=" + result.ExitedDuringStartupProbe
+                        + ", exitCode=" + (result.ExitCode?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "<running>"))
+                    .ConfigureAwait(false);
+                failures += await WriteCheckAsync(
+                    output,
+                    File.Exists(diagnosticsBundlePath),
+                    "Diagnostics bundle records installer launch outcome",
+                    "bundle=" + diagnosticsBundlePath).ConfigureAwait(false);
+                failures += await WriteCheckAsync(
+                    output,
+                    File.Exists(paths.LogFilePath),
+                    "Installer launch wrote a trace log",
+                    "log=" + paths.LogFilePath).ConfigureAwait(false);
+
+                await output.WriteLineAsync("Failures: " + failures.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+                return failures == 0 ? 0 : 1;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                await output.WriteLineAsync("Cotton Sync Desktop update install smoke").ConfigureAwait(false);
+                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                await output.WriteLineAsync("Error: " + exception.GetType().Name + ": " + CleanSingleLine(exception.Message))
+                    .ConfigureAwait(false);
+                return 1;
             }
         }
 
@@ -854,7 +942,8 @@ namespace Cotton.Sync.Desktop.Startup
         private static DesktopShellController CreateUpdateSmokeController(
             DesktopAppPaths paths,
             DesktopStartupOptions startupOptions,
-            IDesktopUpdateService updateService)
+            IDesktopUpdateService? updateService = null,
+            IDesktopUpdateInstaller? updateInstaller = null)
         {
             var loggerFactory = new DesktopTraceLoggerFactory();
             return new DesktopShellController(
@@ -867,7 +956,8 @@ namespace Cotton.Sync.Desktop.Startup
                         .CreateLogger<ProcessPlatformCommandService>(loggerFactory)),
                 new UnsupportedAutostartService(),
                 startupOptions,
-                updateService: updateService);
+                updateService: updateService,
+                updateInstaller: updateInstaller);
         }
 
         private static string? ValidateUpdateDiscoverySmokeOptions(DesktopStartupOptions startupOptions)
@@ -886,6 +976,31 @@ namespace Cotton.Sync.Desktop.Startup
                 && startupOptions.UpdateManifestUri.Scheme != Uri.UriSchemeHttps)
             {
                 return "--update-manifest-url must use http or https.";
+            }
+
+            return null;
+        }
+
+        private static string? ValidateUpdateInstallSmokeOptions(DesktopStartupOptions startupOptions)
+        {
+            if (startupOptions.DataDirectory is null)
+            {
+                return "--update-install-smoke requires an explicit --data-dir so test state never uses the real user profile.";
+            }
+
+            if (string.IsNullOrWhiteSpace(startupOptions.UpdateInstallerPath))
+            {
+                return "--update-install-smoke requires an explicit --update-installer-path.";
+            }
+
+            if (!Path.IsPathFullyQualified(startupOptions.UpdateInstallerPath))
+            {
+                return "--update-installer-path must be an absolute path.";
+            }
+
+            if (!File.Exists(startupOptions.UpdateInstallerPath))
+            {
+                return "Update installer file does not exist.";
             }
 
             return null;
