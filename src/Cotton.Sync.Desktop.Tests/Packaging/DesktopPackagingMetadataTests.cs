@@ -971,7 +971,10 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain(@"Software\Classes\Directory\shell\CottonSyncCopyShareLink"));
                 Assert.That(script, Does.Contain("Copy Cotton Cloud share link"));
                 Assert.That(script, Does.Contain("--copy-shell-share-link"));
-                Assert.That(script, Does.Contain("Verified installed shell share-link verbs."));
+                Assert.That(script, Does.Contain("Shell.Application"));
+                Assert.That(script, Does.Contain("Assert-ShellVerbVisibility"));
+                Assert.That(script, Does.Contain("Explorer shell did not expose"));
+                Assert.That(script, Does.Contain("Verified installed shell share-link verbs and Explorer visibility."));
                 Assert.That(script, Does.Contain("Verified installed shell share-link verbs were removed."));
             });
         }
