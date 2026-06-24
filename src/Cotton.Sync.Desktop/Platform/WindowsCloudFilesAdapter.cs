@@ -101,16 +101,18 @@ namespace Cotton.Sync.Desktop.Platform
                 return [];
             }
 
+            var registeredRootPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var checkedBaseDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var createdBaseDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var prepared = new PreparedFilePlaceholder[requests.Count];
             for (int index = 0; index < requests.Count; index++)
             {
-                prepared[index] = PrepareFilePlaceholder(index, requests[index]);
-            }
-
-            foreach (PreparedFilePlaceholder item in prepared)
-            {
-                EnsureSyncRootRegistered(item.SyncPairId, item.LocalRootPath, item.SyncRootIdentity);
-                Directory.CreateDirectory(item.Placeholder.BaseDirectoryPath);
+                prepared[index] = PrepareFilePlaceholder(
+                    index,
+                    requests[index],
+                    registeredRootPaths,
+                    checkedBaseDirectories,
+                    createdBaseDirectories);
             }
 
             var results = new RemoteFilePlaceholderResult[prepared.Length];
@@ -201,9 +203,15 @@ namespace Cotton.Sync.Desktop.Platform
 
         private PreparedFilePlaceholder PrepareFilePlaceholder(
             int index,
-            RemoteFilePlaceholderRequest request)
+            RemoteFilePlaceholderRequest request,
+            ISet<string> registeredRootPaths,
+            ISet<string> checkedBaseDirectories,
+            ISet<string> createdBaseDirectories)
         {
             ArgumentNullException.ThrowIfNull(request);
+            ArgumentNullException.ThrowIfNull(registeredRootPaths);
+            ArgumentNullException.ThrowIfNull(checkedBaseDirectories);
+            ArgumentNullException.ThrowIfNull(createdBaseDirectories);
             WindowsVirtualFilesRootSafetyResult safety = _rootSafety.Validate(request.LocalRootPath);
             if (!safety.IsSafe)
             {
@@ -213,13 +221,24 @@ namespace Cotton.Sync.Desktop.Platform
             Guid syncPairId = ParseSyncPairId(request.SyncPairId);
             string normalizedPath = SyncPath.Normalize(request.RelativePath);
             PlaceholderPath placeholderPath = ResolvePlaceholderPath(safety.FullPath, normalizedPath);
-            EnsureNoReparsePointDescendant(safety.FullPath, placeholderPath.BaseDirectoryPath);
+            if (checkedBaseDirectories.Add(placeholderPath.BaseDirectoryPath))
+            {
+                EnsureNoReparsePointDescendant(safety.FullPath, placeholderPath.BaseDirectoryPath);
+            }
+
             byte[] syncRootIdentity = CreateSyncRootIdentity(syncPairId, request.RemoteRootNodeId);
             byte[] fileIdentity = CreateFileIdentity(request, normalizedPath);
 
-            EnsureSyncRootRegistered(request.SyncPairId, safety.FullPath, syncRootIdentity);
+            if (registeredRootPaths.Add(safety.FullPath))
+            {
+                EnsureSyncRootRegistered(request.SyncPairId, safety.FullPath, syncRootIdentity);
+            }
 
-            Directory.CreateDirectory(placeholderPath.BaseDirectoryPath);
+            if (createdBaseDirectories.Add(placeholderPath.BaseDirectoryPath))
+            {
+                Directory.CreateDirectory(placeholderPath.BaseDirectoryPath);
+            }
+
             var nativePlaceholder = new WindowsCloudFilesNativePlaceholder(
                 placeholderPath.BaseDirectoryPath,
                 placeholderPath.RelativeFileName,
@@ -240,7 +259,6 @@ namespace Cotton.Sync.Desktop.Platform
                 nativePlaceholder,
                 fullPlaceholderPath,
                 updateExistingPlaceholder,
-                syncRootIdentity,
                 fileIdentity);
         }
 
@@ -1185,7 +1203,6 @@ namespace Cotton.Sync.Desktop.Platform
             WindowsCloudFilesNativePlaceholder Placeholder,
             string FullPlaceholderPath,
             bool UpdateExistingPlaceholder,
-            byte[] SyncRootIdentity,
             byte[] FileIdentity);
 
         private const uint FileFlagOpenReparsePoint = 0x00200000;
