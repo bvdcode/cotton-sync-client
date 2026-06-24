@@ -68,7 +68,10 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             Assert.Multiple(() =>
             {
                 Assert.That(program, Does.Contain("RemoveOrphanedShellNamespaceRoot(syncRootId)"));
+                Assert.That(program, Does.Contain("RemoveClassIdSubKeysForTargetFolderPath(targetFolderPath)"));
+                Assert.That(program, Does.Contain("\"TargetFolderPath\""));
                 Assert.That(program, Does.Contain("\"unregister shell-namespace=\""));
+                Assert.That(program, Does.Contain("\" class-id=\""));
                 Assert.That(program, Does.Contain("StorageProviderSyncRootManager.IsSupported()"));
             });
         }
