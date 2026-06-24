@@ -469,6 +469,8 @@ jobs:
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-update-visual-states.ps1" `
             -AppExecutable $installedExe `
             -DataRoot (Join-Path $env:RUNNER_TEMP "cotton-sync-update-visual-states-data")
+          & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-shell-share-link-verb.ps1" `
+            -ExpectedExecutablePath $installedExe
 
           $uninstaller = Join-Path $installDir "unins000.exe"
           if (-not (Test-Path $uninstaller)) {
@@ -499,6 +501,8 @@ jobs:
           if ($runValue) {
             throw "Autostart registry value remained after uninstall."
           }
+          & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-shell-share-link-verb.ps1" `
+            -ExpectAbsent
           $remainingInstallItems = @(Get-ChildItem -Path $installDir -Force -Recurse -ErrorAction SilentlyContinue)
           if ($remainingInstallItems.Count -ne 0) {
             $remainingInstallItems | ForEach-Object { Write-Host $_.FullName }
