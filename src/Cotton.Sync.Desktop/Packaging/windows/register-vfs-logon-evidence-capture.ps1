@@ -114,6 +114,41 @@ function Assert-TextContains {
     }
 }
 
+function Assert-RegisteredTaskMatchesRunner {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ExpectedTaskName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ExpectedRunnerPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ExpectedWorkingDirectory
+    )
+
+    $registeredTask = Get-ScheduledTask -TaskName $ExpectedTaskName -ErrorAction SilentlyContinue
+    if ($null -eq $registeredTask) {
+        throw "VFS logon evidence capture task was not registered: $ExpectedTaskName"
+    }
+
+    $action = $registeredTask.Actions | Select-Object -First 1
+    if ($null -eq $action) {
+        throw "VFS logon evidence capture task has no action: $ExpectedTaskName"
+    }
+
+    if ($action.Execute.IndexOf("powershell.exe", [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+        throw "VFS logon evidence capture task action does not use Windows PowerShell: $($action.Execute)"
+    }
+
+    if ($action.Arguments.IndexOf($ExpectedRunnerPath, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+        throw "VFS logon evidence capture task action does not reference the current runner: $ExpectedRunnerPath"
+    }
+
+    if (-not [string]::Equals($action.WorkingDirectory, $ExpectedWorkingDirectory, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "VFS logon evidence capture task working directory mismatch. Expected '$ExpectedWorkingDirectory', got '$($action.WorkingDirectory)'."
+    }
+}
+
 function Invoke-ProfileSelfTestPreflight {
     param(
         [Parameter(Mandatory = $true)]
@@ -299,6 +334,17 @@ Register-ScheduledTask `
     -Settings $taskSettings `
     -Description "Captures Cotton Sync VFS evidence after the next interactive Windows logon, then unregisters itself." `
     -Force | Out-Null
+
+try {
+    Assert-RegisteredTaskMatchesRunner `
+        -ExpectedTaskName $TaskName `
+        -ExpectedRunnerPath $runnerPath `
+        -ExpectedWorkingDirectory $resolvedOutputDirectory
+}
+catch {
+    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    throw
+}
 
 Write-Host "Registered VFS logon evidence capture task: $TaskName"
 Write-Host "Runner: $runnerPath"

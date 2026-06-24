@@ -534,6 +534,11 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             Assert.Multiple(() =>
             {
                 Assert.That(script, Does.Contain("Register-ScheduledTask"));
+                Assert.That(script, Does.Contain("Assert-RegisteredTaskMatchesRunner"));
+                Assert.That(script, Does.Contain("VFS logon evidence capture task was not registered"));
+                Assert.That(script, Does.Contain("VFS logon evidence capture task action does not reference the current runner"));
+                Assert.That(script, Does.Contain("VFS logon evidence capture task working directory mismatch"));
+                Assert.That(script, Does.Contain("Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue"));
                 Assert.That(script, Does.Contain("New-ScheduledTaskTrigger -AtLogOn"));
                 Assert.That(script, Does.Contain("New-ScheduledTaskPrincipal"));
                 Assert.That(script, Does.Contain("$allowedTaskNamePrefix = \"Cotton Sync VFS Logon Evidence Capture\""));
