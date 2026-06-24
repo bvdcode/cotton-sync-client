@@ -158,6 +158,23 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void Parse_LoadsWindowsVirtualFilesSmokePlaceholderCount()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--windows-virtual-files-smoke",
+                    "--vfs-smoke-placeholder-count",
+                    "100000",
+                ]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(options.RunWindowsVirtualFilesSmoke, Is.True);
+                Assert.That(options.WindowsVirtualFilesSmokePlaceholderCount, Is.EqualTo(100_000));
+            });
+        }
+
+        [Test]
         public void Parse_LoadsVersionFlag()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(["--version"]);

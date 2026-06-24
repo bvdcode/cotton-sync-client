@@ -117,7 +117,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(runner, Does.Contain("loggerFactory.CreateLogger<SyncEngine>()"));
                 Assert.That(runner, Does.Contain("Completed initial streaming Windows virtual-files population"));
                 Assert.That(runner, Does.Contain("remote page latency total="));
-                Assert.That(runner, Does.Contain("10000 placeholders created or refreshed"));
+                Assert.That(runner, Does.Contain("expectedFileCount + \" placeholders created or refreshed\""));
                 Assert.That(runner, Does.Contain("Initial VFS trace log contains large-run metrics."));
                 Assert.That(runner, Does.Contain("Metric excerpt: "));
             });

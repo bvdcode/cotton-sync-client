@@ -30,6 +30,7 @@ namespace Cotton.Sync.Desktop.Startup
             string? updateInstallerPath,
             TimeSpan windowsVirtualFilesSmokeHoldAfterPlaceholder,
             string? windowsVirtualFilesSmokePhase,
+            int? windowsVirtualFilesSmokePlaceholderCount,
             TimeSpan liveSyncSmokeApprovalHold,
             bool liveSyncSmokePreserveExistingLocalFiles,
             string? localRoot,
@@ -60,6 +61,7 @@ namespace Cotton.Sync.Desktop.Startup
             UpdateInstallerPath = updateInstallerPath;
             WindowsVirtualFilesSmokeHoldAfterPlaceholder = windowsVirtualFilesSmokeHoldAfterPlaceholder;
             WindowsVirtualFilesSmokePhase = windowsVirtualFilesSmokePhase;
+            WindowsVirtualFilesSmokePlaceholderCount = windowsVirtualFilesSmokePlaceholderCount;
             LiveSyncSmokeApprovalHold = liveSyncSmokeApprovalHold;
             LiveSyncSmokePreserveExistingLocalFiles = liveSyncSmokePreserveExistingLocalFiles;
             LocalRoot = localRoot;
@@ -91,6 +93,7 @@ namespace Cotton.Sync.Desktop.Startup
             null,
             null,
             TimeSpan.Zero,
+            null,
             null,
             TimeSpan.Zero,
             false,
@@ -144,6 +147,8 @@ namespace Cotton.Sync.Desktop.Startup
 
         public string? WindowsVirtualFilesSmokePhase { get; }
 
+        public int? WindowsVirtualFilesSmokePlaceholderCount { get; }
+
         public TimeSpan LiveSyncSmokeApprovalHold { get; }
 
         public bool LiveSyncSmokePreserveExistingLocalFiles { get; }
@@ -168,6 +173,8 @@ namespace Cotton.Sync.Desktop.Startup
             string? windowsVirtualFilesSmokeHoldAfterPlaceholder =
                 ReadOption(args, "--vfs-smoke-hold-after-placeholder-seconds");
             string? windowsVirtualFilesSmokePhase = ReadOption(args, "--vfs-smoke-phase");
+            string? windowsVirtualFilesSmokePlaceholderCount =
+                ReadOption(args, "--vfs-smoke-placeholder-count") ?? ReadOption(args, "--vfs-smoke-file-count");
             string? liveSyncSmokeApprovalHold = ReadOption(args, "--live-sync-smoke-approval-hold-seconds")
                 ?? ReadOption(args, "--desktop-live-sync-smoke-approval-hold-seconds");
             string? localRoot = ReadOption(args, "--local-root");
@@ -236,6 +243,7 @@ namespace Cotton.Sync.Desktop.Startup
                 NormalizeOptional(updateInstallerPath),
                 ParseNonNegativeSeconds(windowsVirtualFilesSmokeHoldAfterPlaceholder),
                 NormalizeOptional(windowsVirtualFilesSmokePhase),
+                ParsePositiveInt32(windowsVirtualFilesSmokePlaceholderCount),
                 ParseNonNegativeSeconds(liveSyncSmokeApprovalHold),
                 liveSyncSmokePreserveExistingLocalFiles,
                 NormalizeOptional(localRoot),
@@ -333,6 +341,19 @@ namespace Cotton.Sync.Desktop.Startup
             return int.TryParse(normalized, out int seconds) && seconds > 0
                 ? TimeSpan.FromSeconds(seconds)
                 : TimeSpan.Zero;
+        }
+
+        private static int? ParsePositiveInt32(string? value)
+        {
+            string? normalized = NormalizeOptional(value);
+            if (normalized is null)
+            {
+                return null;
+            }
+
+            return int.TryParse(normalized, out int parsed) && parsed > 0
+                ? parsed
+                : null;
         }
     }
 }
