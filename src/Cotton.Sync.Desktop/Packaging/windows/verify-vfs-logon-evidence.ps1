@@ -65,6 +65,49 @@ function Assert-DoesNotMatch {
     }
 }
 
+function Read-LabeledValue {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Label
+    )
+
+    foreach ($line in $Content -split "\r?\n") {
+        if ($line.StartsWith($Label, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $line.Substring($Label.Length).Trim()
+        }
+    }
+
+    throw "run-vfs-logon-evidence-capture.log did not contain expected label: $Label"
+}
+
+function Read-EvidenceTimestamp {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Label
+    )
+
+    $value = Read-LabeledValue -Content $Content -Label $Label
+    if ([string]::Equals($value, "<unavailable>", [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "run-vfs-logon-evidence-capture.log reported unavailable timestamp for $Label"
+    }
+
+    try {
+        return [System.DateTimeOffset]::Parse(
+            $value,
+            [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::RoundtripKind)
+    }
+    catch {
+        throw "run-vfs-logon-evidence-capture.log contained invalid timestamp for ${Label}: $value"
+    }
+}
+
 $summary = Read-EvidenceFile -RelativePath "summary.txt"
 Assert-Contains -Content $summary -Expected "OS: captured:" -Label "summary.txt"
 Assert-Contains -Content $summary -Expected "CapturedAt:" -Label "summary.txt"
@@ -134,6 +177,8 @@ Assert-Contains -Content $diagnosticsExport -Expected "Diagnostics" -Label "diag
 
 $runnerLog = Read-EvidenceFile -RelativePath "run-vfs-logon-evidence-capture.log"
 Assert-Contains -Content $runnerLog -Expected "RunnerStartedAt:" -Label "run-vfs-logon-evidence-capture.log"
+Assert-Contains -Content $runnerLog -Expected "TaskRegisteredAt:" -Label "run-vfs-logon-evidence-capture.log"
+Assert-Contains -Content $runnerLog -Expected "LatestInteractiveLogonAt:" -Label "run-vfs-logon-evidence-capture.log"
 Assert-Contains -Content $runnerLog -Expected "TaskName:" -Label "run-vfs-logon-evidence-capture.log"
 Assert-Contains -Content $runnerLog -Expected "RunnerUser:" -Label "run-vfs-logon-evidence-capture.log"
 Assert-Contains -Content $runnerLog -Expected "RunnerSessionId:" -Label "run-vfs-logon-evidence-capture.log"
@@ -147,5 +192,11 @@ Assert-DoesNotMatch `
 Assert-Contains -Content $runnerLog -Expected "Cotton VFS release evidence captured:" -Label "run-vfs-logon-evidence-capture.log"
 Assert-Contains -Content $runnerLog -Expected "CaptureExitCode: 0" -Label "run-vfs-logon-evidence-capture.log"
 Assert-Contains -Content $runnerLog -Expected "RunnerFinishedAt:" -Label "run-vfs-logon-evidence-capture.log"
+
+$taskRegisteredAt = Read-EvidenceTimestamp -Content $runnerLog -Label "TaskRegisteredAt:"
+$latestInteractiveLogonAt = Read-EvidenceTimestamp -Content $runnerLog -Label "LatestInteractiveLogonAt:"
+if ($latestInteractiveLogonAt -le $taskRegisteredAt) {
+    throw "VFS logon evidence was not captured after a newer interactive Windows logon."
+}
 
 Write-Host "Verified VFS logon evidence bundle: $resolvedEvidenceDirectory"

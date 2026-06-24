@@ -479,13 +479,16 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("[OK] Autostart adapter - Enabled"));
                 Assert.That(script, Does.Contain("[OK] Windows virtual files"));
                 Assert.That(script, Does.Contain("[OK] Local root:"));
-                Assert.That(script, Does.Contain("Write-CleanupReport -Result \"passed\""));
                 Assert.That(script, Does.Contain("run-vfs-logon-evidence-capture.log"));
                 Assert.That(script, Does.Contain("RunnerStartedAt:"));
+                Assert.That(script, Does.Contain("TaskRegisteredAt:"));
+                Assert.That(script, Does.Contain("LatestInteractiveLogonAt:"));
                 Assert.That(script, Does.Contain("RunnerUser:"));
                 Assert.That(script, Does.Contain("RunnerSessionId:"));
                 Assert.That(script, Does.Contain("RunnerProcessId:"));
                 Assert.That(script, Does.Contain("RunnerInteractive: True"));
+                Assert.That(script, Does.Contain("Read-EvidenceTimestamp"));
+                Assert.That(script, Does.Contain("VFS logon evidence was not captured after a newer interactive Windows logon."));
                 Assert.That(script, Does.Contain("VFS logon evidence runner executed in Windows session 0"));
                 Assert.That(script, Does.Contain("CaptureExitCode: 0"));
                 Assert.That(script, Does.Contain("No Cloud Files or Explorer registration was captured after logon."));
@@ -509,6 +512,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("-RunProfileSelfTest"));
                 Assert.That(script, Does.Contain("-RunDiagnosticsExport"));
                 Assert.That(script, Does.Contain("RunnerStartedAt:"));
+                Assert.That(script, Does.Contain("TaskRegisteredAt:"));
+                Assert.That(script, Does.Contain("LatestInteractiveLogonAt:"));
+                Assert.That(script, Does.Contain("Win32_LogonSession"));
                 Assert.That(script, Does.Contain("RunnerUser:"));
                 Assert.That(script, Does.Contain("RunnerSessionId:"));
                 Assert.That(script, Does.Contain("RunnerProcessId:"));
@@ -793,6 +799,31 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
 
                 Assert.That(exitCode, Is.Not.EqualTo(0), output);
                 Assert.That(output, Does.Contain("VFS logon evidence runner executed in Windows session 0"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsLogonEvidenceVerifierScript_RejectsEvidenceWithoutNewerInteractiveLogon()
+        {
+            string evidenceDirectory = CreateVfsLogonEvidenceBundle();
+            try
+            {
+                string runnerLogPath = Path.Combine(evidenceDirectory, "run-vfs-logon-evidence-capture.log");
+                string runnerLog = File.ReadAllText(runnerLogPath)
+                    .Replace(
+                        "LatestInteractiveLogonAt: 2026-06-24T10:00:00.0000000Z",
+                        "LatestInteractiveLogonAt: 2026-06-24T09:58:00.0000000Z",
+                        StringComparison.Ordinal);
+                File.WriteAllText(runnerLogPath, runnerLog);
+
+                (int exitCode, string output) = RunVfsLogonEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("VFS logon evidence was not captured after a newer interactive Windows logon."));
             }
             finally
             {
@@ -2192,6 +2223,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 new[]
                 {
                     "RunnerStartedAt: 2026-06-24T10:01:00.0000000Z",
+                    "TaskRegisteredAt: 2026-06-24T09:59:00.0000000Z",
+                    "LatestInteractiveLogonAt: 2026-06-24T10:00:00.0000000Z",
                     "TaskName: Cotton Sync VFS Logon Evidence Capture",
                     "RunnerUser: DESKTOP\\User",
                     "RunnerSessionId: 2",

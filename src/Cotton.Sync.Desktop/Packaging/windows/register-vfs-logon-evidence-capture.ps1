@@ -100,6 +100,7 @@ if ($CaptureScreenshot) {
 $captureArgumentsLiteral = "@(" + (($captureArguments | ForEach-Object { ConvertTo-SingleQuotedLiteral $_ }) -join ", ") + ")"
 $taskNameLiteral = ConvertTo-SingleQuotedLiteral $TaskName
 $runnerLogPathLiteral = ConvertTo-SingleQuotedLiteral $runnerLogPath
+$taskRegisteredAt = (Get-Date).ToString("O")
 
 $runnerScript = @"
 `$ErrorActionPreference = "Stop"
@@ -107,6 +108,13 @@ $runnerScript = @"
 Start-Sleep -Seconds $DelaySeconds
 try {
     "RunnerStartedAt: `$((Get-Date).ToString('O'))" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8
+    "TaskRegisteredAt: $taskRegisteredAt" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8 -Append
+    `$latestInteractiveLogon = Get-CimInstance Win32_LogonSession -ErrorAction SilentlyContinue | Where-Object { `$_.LogonType -eq 2 -or `$_.LogonType -eq 10 } | Sort-Object StartTime -Descending | Select-Object -First 1
+    if (`$null -ne `$latestInteractiveLogon -and `$null -ne `$latestInteractiveLogon.StartTime) {
+        "LatestInteractiveLogonAt: `$((([datetime]`$latestInteractiveLogon.StartTime).ToString('O')))" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8 -Append
+    } else {
+        "LatestInteractiveLogonAt: <unavailable>" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8 -Append
+    }
     "TaskName: $TaskName" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8 -Append
     "RunnerUser: `$([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8 -Append
     "RunnerSessionId: `$([System.Diagnostics.Process]::GetCurrentProcess().SessionId)" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8 -Append
