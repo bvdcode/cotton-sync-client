@@ -290,7 +290,7 @@ namespace Cotton.Sync.Desktop.Platform
 
             try
             {
-                _storageProviderRegistrar?.Unregister(syncPair.Id);
+                _storageProviderRegistrar?.Unregister(syncPair.Id, registration.LocalRootPath);
             }
             catch (Exception exception)
             {

@@ -1036,7 +1036,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 throw new NotSupportedException();
             }
 
-            public void Unregister(Guid syncPairId)
+            public void Unregister(Guid syncPairId, string localRootPath)
             {
                 throw new NotSupportedException();
             }

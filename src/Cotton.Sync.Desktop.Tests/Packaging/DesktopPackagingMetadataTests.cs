@@ -68,8 +68,12 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
 
             Assert.Multiple(() =>
             {
-                Assert.That(program, Does.Contain("RemoveOrphanedShellNamespaceRoot(syncRootId)"));
-                Assert.That(program, Does.Contain("RemoveClassIdSubKeysForTargetFolderPath(targetFolderPath)"));
+                Assert.That(program, Does.Contain("RemoveOrphanedShellNamespaceRoot(syncRootId, cleanupTargetFolderPath)"));
+                Assert.That(program, Does.Contain("unregister <account> [root]"));
+                Assert.That(program, Does.Contain("args.Length is 2 or 3"));
+                Assert.That(program, Does.Contain("ClassIdTargetsFolderPath"));
+                Assert.That(program, Does.Contain("ShellNamespaceRootMatches"));
+                Assert.That(program, Does.Contain("RemoveClassIdSubKeysForTargetFolderPath(cleanupTargetFolderPath)"));
                 Assert.That(program, Does.Contain("\"TargetFolderPath\""));
                 Assert.That(program, Does.Contain("\"unregister shell-namespace=\""));
                 Assert.That(program, Does.Contain("\" class-id=\""));
