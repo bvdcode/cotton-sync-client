@@ -73,6 +73,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 if (SetProperty(ref _currentOperation, value))
                 {
                     OnPropertyChanged(nameof(HasCurrentOperation));
+                    OnPropertyChanged(nameof(CurrentProgressAutomationName));
                 }
             }
         }
@@ -125,8 +126,21 @@ namespace Cotton.Sync.Desktop.ViewModels
         public bool IsCurrentProgressIndeterminate
         {
             get => _isCurrentProgressIndeterminate;
-            set => SetProperty(ref _isCurrentProgressIndeterminate, value);
+            set
+            {
+                if (SetProperty(ref _isCurrentProgressIndeterminate, value))
+                {
+                    OnPropertyChanged(nameof(CurrentProgressAutomationName));
+                }
+            }
         }
+
+        public string CurrentProgressAutomationName =>
+            IsCurrentProgressIndeterminate
+            && IsWindowsVirtualFilesMode
+            && string.Equals(CurrentOperation, "Preparing cloud files", StringComparison.Ordinal)
+                ? "Open-ended cloud file progress"
+                : "Folder sync progress";
 
         public string EditableDisplayName
         {
@@ -150,6 +164,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                     OnPropertyChanged(nameof(ModeLabel));
                     OnPropertyChanged(nameof(IsWindowsVirtualFilesMode));
                     OnPropertyChanged(nameof(IsFullMirrorMode));
+                    OnPropertyChanged(nameof(CurrentProgressAutomationName));
                 }
             }
         }

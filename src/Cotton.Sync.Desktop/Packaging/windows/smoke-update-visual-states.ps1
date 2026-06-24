@@ -106,7 +106,8 @@ function Assert-NameMissing {
 function Assert-ProgressBarPresent {
     param(
         [System.Windows.Automation.AutomationElement[]]$Elements,
-        [string]$Scenario
+        [string]$Scenario,
+        [string]$ExpectedName = ""
     )
 
     $progressBars = @($Elements | Where-Object {
@@ -114,6 +115,16 @@ function Assert-ProgressBarPresent {
     })
     if ($progressBars.Count -eq 0) {
         throw "Update visual state '$Scenario' did not expose a progress bar."
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedName)) {
+        $matchingProgressBar = $progressBars | Where-Object {
+            [string]::Equals($_.Current.Name, $ExpectedName, [System.StringComparison]::Ordinal)
+        } | Select-Object -First 1
+        if ($null -eq $matchingProgressBar) {
+            $progressBars | ForEach-Object { Write-Host "Observed progress bar name: $($_.Current.Name)" }
+            throw "Update visual state '$Scenario' did not expose expected progress bar '$ExpectedName'."
+        }
     }
 }
 
@@ -125,7 +136,8 @@ function Assert-VisualStateSnapshot {
         [string]$ExpectedDetailsPattern,
         [string[]]$ExpectedNames,
         [bool]$RequireSettingsActions,
-        [string[]]$UnexpectedNames
+        [string[]]$UnexpectedNames,
+        [string]$ExpectedProgressBarName = ""
     )
 
     $elements = Get-AutomationDescendants -Root $Window
@@ -140,7 +152,7 @@ function Assert-VisualStateSnapshot {
         Assert-NamePresent -Names $names -ExpectedName $expectedName -Scenario $Scenario
     }
     Assert-NameMatches -Names $names -Pattern $ExpectedDetailsPattern -Scenario $Scenario
-    Assert-ProgressBarPresent -Elements $elements -Scenario $Scenario
+    Assert-ProgressBarPresent -Elements $elements -Scenario $Scenario -ExpectedName $ExpectedProgressBarName
     foreach ($unexpectedName in $UnexpectedNames) {
         Assert-NameMissing -Names $names -UnexpectedName $unexpectedName -Scenario $Scenario
     }
@@ -154,6 +166,7 @@ function Test-VisualState {
         [string[]]$ExpectedNames = @(),
         [bool]$RequireSettingsActions = $true,
         [string[]]$UnexpectedNames = @("Download", "Update"),
+        [string]$ExpectedProgressBarName = "",
         [int]$StableObservationSeconds = 0
     )
 
@@ -182,7 +195,8 @@ function Test-VisualState {
                 -ExpectedDetailsPattern $ExpectedDetailsPattern `
                 -ExpectedNames $ExpectedNames `
                 -RequireSettingsActions $RequireSettingsActions `
-                -UnexpectedNames $UnexpectedNames
+                -UnexpectedNames $UnexpectedNames `
+                -ExpectedProgressBarName $ExpectedProgressBarName
             $snapshotStopwatch.Stop()
             $maxSnapshotMs = [Math]::Max($maxSnapshotMs, [int]$snapshotStopwatch.ElapsedMilliseconds)
             $currentSampleElapsedMs = [int]$scenarioStopwatch.ElapsedMilliseconds
@@ -230,6 +244,7 @@ Test-VisualState `
     -ExpectedNames @("Preparing cloud files") `
     -RequireSettingsActions $false `
     -UnexpectedNames @("Download", "Update", "Processing queued changes", "Preparing cloud files 118054 of 500000", "118054 of 500000") `
+    -ExpectedProgressBarName "Open-ended cloud file progress" `
     -StableObservationSeconds 6
 
 if (-not [string]::IsNullOrWhiteSpace($ReportPath)) {

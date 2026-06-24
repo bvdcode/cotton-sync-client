@@ -818,7 +818,9 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressSecondaryDetails, Is.Empty);
                 Assert.That(viewModel.CurrentWorkProgressHeaderRateDetails, Does.Not.Contain("left"));
                 Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.True);
+                Assert.That(viewModel.CurrentWorkProgressAutomationName, Is.EqualTo("Open-ended cloud file progress"));
                 Assert.That(row.CurrentOperation, Is.EqualTo("Preparing cloud files"));
+                Assert.That(row.CurrentProgressAutomationName, Is.EqualTo("Open-ended cloud file progress"));
             });
         }
 
