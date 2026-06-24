@@ -207,10 +207,10 @@ Test-VisualState `
 Test-VisualState `
     -Scenario "virtual-files-seeding" `
     -ExpectedStatus "Syncing" `
-    -ExpectedDetailsPattern "^Making cloud files available .+ 118054 of 500000 cloud items$" `
+    -ExpectedDetailsPattern "^Making cloud files available .+ 118054 cloud items ready .+ scanning cloud .+ saving state$" `
     -ExpectedNames @("Preparing cloud files") `
     -RequireSettingsActions $false `
-    -UnexpectedNames @("Download", "Update", "Processing queued changes", "Preparing cloud files 118054 of 500000") `
+    -UnexpectedNames @("Download", "Update", "Processing queued changes", "Preparing cloud files 118054 of 500000", "118054 of 500000") `
     -StableObservationSeconds 6
 
 Write-Host "Verified installed update and VFS visual states."
