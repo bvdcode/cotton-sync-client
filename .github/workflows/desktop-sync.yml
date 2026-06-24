@@ -528,8 +528,6 @@ jobs:
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-shell-share-link-verb.ps1" `
             -ExpectAbsent
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-cloud-files-cleanup.ps1"
-          & "src/Cotton.Sync.Desktop/Packaging/windows/verify-vfs-release-evidence.ps1" `
-            -EvidenceDirectory $evidenceDir
           $remainingInstallItems = @(Get-ChildItem -Path $installDir -Force -Recurse -ErrorAction SilentlyContinue)
           if ($remainingInstallItems.Count -ne 0) {
             $remainingInstallItems | ForEach-Object { Write-Host $_.FullName }
@@ -582,7 +580,8 @@ jobs:
           $installLog = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-install.log"
           $upgradeLog = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-current.log"
           $uninstallLog = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-uninstall.log"
-          $upgradeRelaunchReport = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-relaunch.txt"
+          $evidenceDir = Join-Path $env:RUNNER_TEMP "cotton-sync-vfs-release-evidence"
+          $upgradeRelaunchReport = Join-Path $evidenceDir "update-relaunch.txt"
           $upgradeAutostartReport = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-autostart-launch.txt"
           New-Item -ItemType Directory -Path $oldOutputDir -Force | Out-Null
           New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
@@ -692,6 +691,8 @@ jobs:
             throw "Upgraded autostart registry value remained after uninstall."
           }
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-cloud-files-cleanup.ps1"
+          & "src/Cotton.Sync.Desktop/Packaging/windows/verify-vfs-release-evidence.ps1" `
+            -EvidenceDirectory $evidenceDir
 
       - name: Upload desktop Windows x64 artifact
         uses: actions/upload-artifact@v5

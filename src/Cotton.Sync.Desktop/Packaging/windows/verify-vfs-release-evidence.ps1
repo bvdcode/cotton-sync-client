@@ -96,6 +96,14 @@ Assert-Contains -Content $autostartLaunch -Expected "ObservedForeground: False" 
 Assert-Contains -Content $autostartLaunch -Expected "VisibleWindowCount: 0" -Label "autostart-launch.txt"
 Assert-Contains -Content $autostartLaunch -Expected "CleanupRemaining: 0" -Label "autostart-launch.txt"
 
+$updateRelaunch = Read-EvidenceFile -RelativePath "update-relaunch.txt"
+Assert-Contains -Content $updateRelaunch -Expected "Result: passed" -Label "update-relaunch.txt"
+Assert-Contains -Content $updateRelaunch -Expected "LaunchMode: attached-existing" -Label "update-relaunch.txt"
+Assert-Contains -Content $updateRelaunch -Expected "--start-minimized" -Label "update-relaunch.txt"
+Assert-Contains -Content $updateRelaunch -Expected "ObservedForeground: False" -Label "update-relaunch.txt"
+Assert-Contains -Content $updateRelaunch -Expected "VisibleWindowCount: 0" -Label "update-relaunch.txt"
+Assert-Contains -Content $updateRelaunch -Expected "CleanupRemaining: 0" -Label "update-relaunch.txt"
+
 $processWindows = Read-EvidenceFile -RelativePath "process-windows.txt"
 if ($null -eq $processWindows) {
     throw "process-windows.txt could not be read."
