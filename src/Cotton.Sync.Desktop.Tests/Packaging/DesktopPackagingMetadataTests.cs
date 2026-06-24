@@ -843,7 +843,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Cotton.Sync.Desktop.exe\""));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-cloud-files-self-test-truthfulness.ps1"));
                 Assert.That(workflow, Does.Contain("cotton-sync-vfs-self-test-truthfulness-data"));
-                Assert.That(workflow, Does.Contain("-AdditionalVfsSmokePhases @(\"desktop-session-restore\")"));
+                Assert.That(
+                    workflow,
+                    Does.Contain("-AdditionalVfsSmokePhases @(\"desktop-session-restore\", \"shell-share-link-targets\")"));
                 Assert.That(workflow, Does.Contain("--self-test --data-dir"));
                 Assert.That(workflow, Does.Contain("-PublishDirectory $installDir"));
                 Assert.That(workflow, Does.Contain("-AppExecutable $installedExe"));
