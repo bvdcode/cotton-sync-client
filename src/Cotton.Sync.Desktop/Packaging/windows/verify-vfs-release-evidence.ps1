@@ -204,10 +204,10 @@ $visualStates = Read-EvidenceFile -RelativePath "visual-states.txt"
 Assert-Contains -Content $visualStates -Expected "Result: passed" -Label "visual-states.txt"
 Assert-Contains -Content $visualStates -Expected "Scenario: update-download-progress" -Label "visual-states.txt"
 Assert-Contains -Content $visualStates -Expected "Scenario: update-install-progress" -Label "visual-states.txt"
-Assert-Contains -Content $visualStates -Expected "Scenario: virtual-files-seeding;Status=Syncing;StableObservationSeconds=6;Samples=" -Label "visual-states.txt"
+Assert-Contains -Content $visualStates -Expected "Scenario: virtual-files-seeding;Status=Syncing;StableObservationSeconds=30;Samples=" -Label "visual-states.txt"
 Assert-VisualStateSamples -Content $visualStates -Scenario "update-download-progress" -MinimumSamples 1
 Assert-VisualStateSamples -Content $visualStates -Scenario "update-install-progress" -MinimumSamples 1
-Assert-VisualStateSamples -Content $visualStates -Scenario "virtual-files-seeding" -MinimumSamples 5
+Assert-VisualStateSamples -Content $visualStates -Scenario "virtual-files-seeding" -MinimumSamples 30
 Assert-VisualStateMetricMaximum -Content $visualStates -Scenario "virtual-files-seeding" -Metric "MaxSnapshotMs" -MaximumValue 3000
 Assert-VisualStateMetricMaximum -Content $visualStates -Scenario "virtual-files-seeding" -Metric "MaxSampleGapMs" -MaximumValue 5000
 
