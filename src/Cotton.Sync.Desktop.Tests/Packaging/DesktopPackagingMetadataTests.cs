@@ -410,6 +410,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("registry-cloud-files-explorer.txt"));
                 Assert.That(script, Does.Contain("process-windows.txt"));
                 Assert.That(script, Does.Contain("local-root-entries.csv"));
+                Assert.That(script, Does.Contain("Assert-Contains -Content $localRootEntries -Expected '\".\"'"));
                 Assert.That(script, Does.Contain("self-test.stdout.log"));
                 Assert.That(script, Does.Contain("diagnostics-export.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\cloud-files-vfs-smoke.stdout.log"));
@@ -536,6 +537,27 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(
                     output,
                     Does.Contain("vfs-smoke\\phase-desktop-session-restore\\cloud-files-vfs-smoke.stdout.log"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_RejectsMissingLocalRootEntry()
+        {
+            string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
+            try
+            {
+                File.WriteAllText(
+                    Path.Combine(evidenceDirectory, "local-root-entries.csv"),
+                    "\"RelativePath\",\"FullPath\",\"Exists\",\"Attributes\",\"Length\",\"LastWriteTimeUtc\"");
+
+                (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("local-root-entries.csv did not contain expected text: \".\""));
             }
             finally
             {
@@ -1858,7 +1880,10 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 "MatchCount: 1");
             File.WriteAllText(
                 Path.Combine(evidenceDirectory, "local-root-entries.csv"),
-                "\"RelativePath\",\"FullPath\",\"Exists\",\"Attributes\",\"Length\",\"LastWriteTimeUtc\"");
+                string.Join(
+                    Environment.NewLine,
+                    "\"RelativePath\",\"FullPath\",\"Exists\",\"Attributes\",\"Length\",\"LastWriteTimeUtc\"",
+                    "\".\",\"S:\\Cloud\",\"True\",\"Directory\",\"\",\"2026-06-24T10:00:00.0000000Z\""));
             File.WriteAllText(Path.Combine(evidenceDirectory, "self-test.stdout.log"), "Result: passed");
             File.WriteAllText(Path.Combine(evidenceDirectory, "diagnostics-export.stdout.log"), "Diagnostics exported");
             File.WriteAllText(
