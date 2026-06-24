@@ -823,6 +823,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("cotton-sync-update-discovery-data"));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-update-visual-states.ps1"));
                 Assert.That(workflow, Does.Contain("cotton-sync-update-visual-states-data"));
+                Assert.That(workflow, Does.Contain("Packaging/windows/smoke-shell-share-link-verb.ps1"));
+                Assert.That(workflow, Does.Contain("-ExpectedExecutablePath $installedExe"));
+                Assert.That(workflow, Does.Contain("-ExpectAbsent"));
                 Assert.That(workflow, Does.Contain("unins000.exe"));
                 Assert.That(workflow, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
                 Assert.That(workflow, Does.Contain("Autostart registry value was not installed correctly."));
@@ -908,6 +911,24 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(
                     normalizedWorkflow,
                     Does.Match("(?s)\\n  release:\\n    name: Publish Sync Client Release\\n    runs-on: ubuntu-latest\\n    needs:\\n      - linux\\n      - windows\\n      - cli-windows\\n      - release-checksums"));
+            });
+        }
+
+        [Test]
+        public void WindowsShellShareLinkVerbSmokeScript_VerifiesInstallAndUninstallRegistryState()
+        {
+            string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/smoke-shell-share-link-verb.ps1"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(script, Does.Contain("[string]$ExpectedExecutablePath = \"\""));
+                Assert.That(script, Does.Contain("[switch]$ExpectAbsent"));
+                Assert.That(script, Does.Contain(@"Software\Classes\*\shell\CottonSyncCopyShareLink"));
+                Assert.That(script, Does.Contain(@"Software\Classes\Directory\shell\CottonSyncCopyShareLink"));
+                Assert.That(script, Does.Contain("Copy Cotton Cloud share link"));
+                Assert.That(script, Does.Contain("--copy-shell-share-link"));
+                Assert.That(script, Does.Contain("Verified installed shell share-link verbs."));
+                Assert.That(script, Does.Contain("Verified installed shell share-link verbs were removed."));
             });
         }
 
