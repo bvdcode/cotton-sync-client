@@ -660,14 +660,25 @@ jobs:
           }
           $currentInstallerPath = ".\cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}-setup.exe"
 
-          $currentInstall = Start-Process `
-            -FilePath $currentInstallerPath `
-            -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/TASKS=", "/DIR=$installDir", "/LaunchAfterUpdate=1", "/LOG=$upgradeLog") `
-            -Wait `
-            -PassThru
-          if ($currentInstall.ExitCode -ne 0) {
+          $currentInstallStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
+          $currentInstallStartInfo.FileName = (Resolve-Path $currentInstallerPath).Path
+          $currentInstallStartInfo.UseShellExecute = $false
+          $currentInstallStartInfo.CreateNoWindow = $true
+          foreach ($argument in @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/TASKS=", "/DIR=$installDir", "/LaunchAfterUpdate=1", "/LaunchAfterUpdateDataDir=$dataDir", "/LOG=$upgradeLog")) {
+            [void]$currentInstallStartInfo.ArgumentList.Add($argument)
+          }
+
+          $currentInstall = [System.Diagnostics.Process]::Start($currentInstallStartInfo)
+          try {
+            $currentInstall.WaitForExit()
+            $currentInstallExitCode = $currentInstall.ExitCode
+          } finally {
+            $currentInstall.Dispose()
+          }
+
+          if ($currentInstallExitCode -ne 0) {
             Get-Content $upgradeLog -ErrorAction SilentlyContinue
-            throw "Current Windows installer exited with code $($currentInstall.ExitCode)."
+            throw "Current Windows installer exited with code $currentInstallExitCode."
           }
 
           $startMenuShortcut = Join-Path ([Environment]::GetFolderPath("Programs")) "Cotton Sync\Cotton Sync.lnk"

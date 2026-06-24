@@ -131,11 +131,55 @@ public static class CottonAutostartWindowProbe
 "@
 
 function Get-TargetProcess {
-    @(Get-CimInstance Win32_Process -Filter "Name = '$expectedProcessName'" -ErrorAction SilentlyContinue |
+    $processNameWithoutExtension = [System.IO.Path]::GetFileNameWithoutExtension($expectedProcessName)
+    @(Get-Process -Name $processNameWithoutExtension -ErrorAction SilentlyContinue |
         Where-Object {
-            -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) -and
-            [string]::Equals($_.ExecutablePath, $resolvedExecutable, [StringComparison]::OrdinalIgnoreCase)
+            -not [string]::IsNullOrWhiteSpace($_.Path) -and
+            [string]::Equals($_.Path, $resolvedExecutable, [StringComparison]::OrdinalIgnoreCase)
+        } |
+        ForEach-Object {
+            [pscustomobject]@{
+                ProcessId = $_.Id
+                ExecutablePath = $_.Path
+                CreationDate = $_.StartTime
+            }
         })
+}
+
+function Get-ProcessCommandLine {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$ProcessId
+    )
+
+    $powerShellPath = (Get-Process -Id $PID).Path
+    if ([string]::IsNullOrWhiteSpace($powerShellPath) -or -not (Test-Path -LiteralPath $powerShellPath)) {
+        $powerShellPath = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+    }
+
+    $stdoutPath = [System.IO.Path]::GetTempFileName()
+    $stderrPath = [System.IO.Path]::GetTempFileName()
+    try {
+        $command = "try { `$process = Get-CimInstance Win32_Process -Filter `"ProcessId = $ProcessId`" -OperationTimeoutSec 2 -ErrorAction Stop; if (`$null -ne `$process) { `$process.CommandLine } } catch { }"
+        $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+        $probe = Start-Process `
+            -FilePath $powerShellPath `
+            -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", $encodedCommand) `
+            -RedirectStandardOutput $stdoutPath `
+            -RedirectStandardError $stderrPath `
+            -WindowStyle Hidden `
+            -PassThru
+
+        if (-not $probe.WaitForExit(5000)) {
+            Stop-Process -Id $probe.Id -Force -ErrorAction SilentlyContinue
+            return ""
+        }
+
+        return (Get-Content -LiteralPath $stdoutPath -Raw -ErrorAction SilentlyContinue).Trim()
+    }
+    finally {
+        Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+    }
 }
 
 $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
@@ -146,7 +190,6 @@ if ($AttachExistingProcess) {
     Write-Host "Waiting for existing hidden startup process: $resolvedExecutable"
     do {
         $targetProcess = Get-TargetProcess |
-            Where-Object { $_.CommandLine -match "(^|\s)--start-minimized($|\s)" } |
             Sort-Object CreationDate -Descending |
             Select-Object -First 1
         if ($null -ne $targetProcess) {
@@ -220,8 +263,13 @@ if ($null -eq $process) {
     throw "Startup-launched process exited before observation started."
 }
 
-if ($targetProcess.CommandLine -notmatch "(^|\s)--start-minimized($|\s)") {
-    throw "Autostart-launched process command line did not include --start-minimized: $($targetProcess.CommandLine)"
+$targetCommandLine = Get-ProcessCommandLine -ProcessId $process.Id
+if ([string]::IsNullOrWhiteSpace($targetCommandLine)) {
+    throw "Autostart-launched process command line could not be captured within the bounded observation window."
+}
+
+if ($targetCommandLine -notmatch "(^|\s)--start-minimized($|\s)") {
+    throw "Autostart-launched process command line did not include --start-minimized: $targetCommandLine"
 }
 
 $observedVisibleWindows = @()
@@ -285,7 +333,7 @@ Write-AutostartReport `
         "LaunchMode: $(if ($AttachExistingProcess) { "attached-existing" } else { "started-command" })",
         "IsolationDataDirectory: $DataDirectory",
         "ProcessId: $($process.Id)",
-        "CommandLine: $($targetProcess.CommandLine)",
+        "CommandLine: $targetCommandLine",
         "ObservedForeground: $observedForeground",
         "VisibleWindowCount: $($observedVisibleWindows.Count)",
         "CleanupRemaining: $($cleanupProcesses.Count)")

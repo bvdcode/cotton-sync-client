@@ -76,7 +76,7 @@ Root: HKCU; Subkey: "Software\Classes\Directory\shell\CottonSyncCopyShareLink\co
 
 [Run]
 Filename: "{app}\Cotton.Sync.Desktop.exe"; Description: "Launch Cotton Sync"; Flags: nowait postinstall; Check: ShouldOfferLaunchAfterInstall
-Filename: "{app}\Cotton.Sync.Desktop.exe"; Parameters: "--start-minimized"; Flags: nowait; Check: ShouldLaunchHiddenAfterUpdate
+Filename: "{app}\Cotton.Sync.Desktop.exe"; Parameters: "{code:GetHiddenUpdateLaunchParameters}"; Flags: nowait; Check: ShouldLaunchHiddenAfterUpdate
 
 [UninstallRun]
 Filename: "{app}\Cotton.Sync.Desktop.exe"; Parameters: "--cleanup-cloud-files"; Flags: runhidden waituntilterminated; RunOnceId: "CottonSyncCloudFilesCleanup"
@@ -145,6 +145,18 @@ end;
 function ShouldLaunchHiddenAfterUpdate(): Boolean;
 begin
   Result := ExpandConstant('{param:LaunchAfterUpdate|0}') = '1';
+end;
+
+function GetHiddenUpdateLaunchParameters(Value: String): String;
+var
+  DataDirectory: String;
+begin
+  Result := '--start-minimized';
+  DataDirectory := ExpandConstant('{param:LaunchAfterUpdateDataDir|}');
+  if DataDirectory <> '' then
+  begin
+    Result := Result + ' --data-dir ' + AddQuotes(DataDirectory);
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
