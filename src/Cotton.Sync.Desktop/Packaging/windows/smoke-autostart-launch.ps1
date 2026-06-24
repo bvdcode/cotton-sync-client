@@ -55,6 +55,9 @@ $expectedProcessName = [System.IO.Path]::GetFileName($resolvedExecutable)
 $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
 $runValue = (Get-ItemProperty -Path $runKey -Name $RunValueName -ErrorAction SilentlyContinue).$RunValueName
 $expectedRunValue = "`"$resolvedExecutable`" --start-minimized"
+if (-not [string]::IsNullOrWhiteSpace($DataDirectory)) {
+    $expectedRunValue += " --data-dir `"$DataDirectory`""
+}
 if ($runValue -ne $expectedRunValue) {
     throw "Autostart registry value was not installed correctly. Expected '$expectedRunValue', got '$runValue'."
 }

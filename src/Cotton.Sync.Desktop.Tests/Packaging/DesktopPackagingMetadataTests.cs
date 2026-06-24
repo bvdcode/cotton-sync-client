@@ -547,6 +547,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("Resolve-RequiredDirectory -Name \"Install directory\""));
                 Assert.That(script, Does.Contain("Installed desktop executable was not found"));
                 Assert.That(script, Does.Contain("Autostart registry value was not ready for logon capture."));
+                Assert.That(script, Does.Contain("$expectedRunValue += \" --data-dir `\"$ProfileDataDirectory`\"\""));
+                Assert.That(script, Does.Contain("Assert-InstalledAutostart -ExecutablePath $installedExecutable -ProfileDataDirectory $resolvedDataDirectory"));
                 Assert.That(script, Does.Contain("Invoke-ProfileSelfTestPreflight"));
                 Assert.That(script, Does.Contain("--self-test"));
                 Assert.That(script, Does.Contain("[OK] Authentication state - Stored session available"));
@@ -1630,7 +1632,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(installerScript, Does.Contain("Create a desktop shortcut"));
                 Assert.That(installerScript, Does.Contain("Root: HKCU; Subkey: \"Software\\Microsoft\\Windows\\CurrentVersion\\Run\""));
                 Assert.That(installerScript, Does.Contain("ValueName: \"Cotton Sync\""));
-                Assert.That(installerScript, Does.Contain("ValueData: \"\"\"{app}\\Cotton.Sync.Desktop.exe\"\" --start-minimized\""));
+                Assert.That(installerScript, Does.Contain("ValueData: \"{code:GetAutostartLaunchCommand}\""));
                 Assert.That(installerScript, Does.Contain("Flags: uninsdeletevalue"));
                 Assert.That(installerScript, Does.Contain(@"Software\Classes\*\shell\CottonSyncCopyShareLink"));
                 Assert.That(installerScript, Does.Contain(@"Software\Classes\Directory\shell\CottonSyncCopyShareLink"));
@@ -1641,9 +1643,12 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(installerScript, Does.Contain("function ShouldOfferLaunchAfterInstall(): Boolean;"));
                 Assert.That(installerScript, Does.Contain("function ShouldLaunchHiddenAfterUpdate(): Boolean;"));
                 Assert.That(installerScript, Does.Contain("function GetHiddenUpdateLaunchParameters(Value: String): String;"));
+                Assert.That(installerScript, Does.Contain("function GetAutostartLaunchCommand(Value: String): String;"));
                 Assert.That(installerScript, Does.Contain("ExpandConstant('{param:LaunchAfterUpdate|0}') <> '1'"));
                 Assert.That(installerScript, Does.Contain("ExpandConstant('{param:LaunchAfterUpdate|0}') = '1'"));
                 Assert.That(installerScript, Does.Contain("ExpandConstant('{param:LaunchAfterUpdateDataDir|}')"));
+                Assert.That(installerScript, Does.Contain("ExpandConstant('{param:AutostartDataDir|}')"));
+                Assert.That(installerScript, Does.Contain("AddQuotes(ExpandConstant('{app}\\Cotton.Sync.Desktop.exe')) + ' --start-minimized'"));
                 Assert.That(installerScript, Does.Contain("Result := '--start-minimized';"));
                 Assert.That(installerScript, Does.Contain("Result := Result + ' --data-dir ' + AddQuotes(DataDirectory);"));
                 Assert.That(installerScript, Does.Contain("CurUninstallStepChanged"));
@@ -1747,9 +1752,11 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("unins000.exe"));
                 Assert.That(workflow, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
                 Assert.That(workflow, Does.Contain("Autostart registry value was not installed correctly."));
-                Assert.That(workflow, Does.Contain("$expectedRunValue = \"`\"$installedExe`\" --start-minimized\""));
+                Assert.That(workflow, Does.Contain("\"/AutostartDataDir=$dataDir\""));
+                Assert.That(workflow, Does.Contain("$expectedRunValue = \"`\"$installedExe`\" --start-minimized --data-dir `\"$dataDir`\"\""));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-autostart-launch.ps1"));
                 Assert.That(workflow, Does.Contain("-AppExecutable $installedExe"));
+                Assert.That(workflow, Does.Contain("-DataDirectory $dataDir"));
                 Assert.That(workflow, Does.Contain("-ReportPath $autostartReport"));
                 Assert.That(workflow, Does.Not.Contain("Set-ItemProperty -Path $runKey -Name \"Cotton Sync\""));
                 Assert.That(workflow, Does.Contain("Packaging/windows/verify-cloud-files-cleanup.ps1"));
@@ -2038,6 +2045,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("DataDirectory cannot be used when attaching to an existing installer-launched process."));
                 Assert.That(script, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
                 Assert.That(script, Does.Contain("$expectedRunValue = \"`\"$resolvedExecutable`\" --start-minimized\""));
+                Assert.That(script, Does.Contain("$expectedRunValue += \" --data-dir `\"$DataDirectory`\"\""));
                 Assert.That(script, Does.Contain("Autostart registry value was not installed correctly."));
                 Assert.That(script, Does.Contain("CottonAutostartWindowProbe"));
                 Assert.That(script, Does.Contain("GetVisibleWindowsForProcess"));

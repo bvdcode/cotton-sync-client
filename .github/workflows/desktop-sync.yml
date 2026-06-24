@@ -413,7 +413,7 @@ jobs:
 
           $install = Start-Process `
             -FilePath $installerPath `
-            -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/TASKS=", "/DIR=$installDir", "/LOG=$installLog") `
+            -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/TASKS=", "/DIR=$installDir", "/AutostartDataDir=$dataDir", "/LOG=$installLog") `
             -Wait `
             -PassThru
           if ($install.ExitCode -ne 0) {
@@ -441,13 +441,14 @@ jobs:
           }
           $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
           $runValue = (Get-ItemProperty -Path $runKey -Name "Cotton Sync" -ErrorAction SilentlyContinue)."Cotton Sync"
-          $expectedRunValue = "`"$installedExe`" --start-minimized"
+          $expectedRunValue = "`"$installedExe`" --start-minimized --data-dir `"$dataDir`""
           if ($runValue -ne $expectedRunValue) {
             throw "Autostart registry value was not installed correctly. Expected '$expectedRunValue', got '$runValue'."
           }
 
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-autostart-launch.ps1" `
             -AppExecutable $installedExe `
+            -DataDirectory $dataDir `
             -ReportPath $autostartReport
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-shortcut-app-id.ps1" `
             -ShortcutPath $startMenuShortcut `
