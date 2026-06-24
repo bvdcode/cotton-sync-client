@@ -995,6 +995,18 @@ namespace Cotton.Sync.Desktop.Startup
                         "Uploaded replacement sync root Cloud Files status was finalized.",
                         allowPartialDirectory: true)
                     .ConfigureAwait(false);
+                failures += await VerifyExplorerShellSettledStatusAsync(
+                        output,
+                        filePath,
+                        "uploaded replacement file",
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                failures += await VerifyExplorerShellSettledStatusAsync(
+                        output,
+                        Path.Combine(rootPath, ReplaceCloudOnlyDirectoryName),
+                        "uploaded replacement parent directory",
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {

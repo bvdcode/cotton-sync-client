@@ -139,6 +139,9 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(runner, Does.Contain("Uploaded replacement file Cloud Files status was finalized."));
                 Assert.That(runner, Does.Contain("Uploaded replacement parent directory Cloud Files status was finalized."));
                 Assert.That(runner, Does.Contain("Uploaded replacement sync root Cloud Files status was finalized."));
+                Assert.That(runner, Does.Contain("VerifyExplorerShellSettledStatusAsync("));
+                Assert.That(runner, Does.Contain("\"uploaded replacement file\""));
+                Assert.That(runner, Does.Contain("\"uploaded replacement parent directory\""));
             });
         }
 
