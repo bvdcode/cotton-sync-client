@@ -127,6 +127,36 @@ function Assert-VisualStateMetricMaximum {
     }
 }
 
+function Assert-RegexNumberMinimum {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Pattern,
+
+        [Parameter(Mandatory = $true)]
+        [decimal]$MinimumValue,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Label,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Metric
+    )
+
+    $match = [regex]::Match($Content, $Pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if (-not $match.Success) {
+        throw "$Label did not contain required metric: $Metric"
+    }
+
+    $rawValue = $match.Groups["value"].Value.Replace(",", "")
+    $value = [decimal]::Parse($rawValue, [System.Globalization.CultureInfo]::InvariantCulture)
+    if ($value -lt $MinimumValue) {
+        throw "$Label reported too small ${Metric}: $value"
+    }
+}
+
 $summary = Read-EvidenceFile -RelativePath "summary.txt"
 Assert-Contains -Content $summary -Expected "Installed app: captured:" -Label "summary.txt"
 Assert-Contains -Content $summary -Expected "Autostart registry: captured:" -Label "summary.txt"
@@ -266,6 +296,17 @@ Assert-Contains -Content $initialStreamingLogging -Expected "privateMemoryBytes=
 Assert-Contains -Content $initialStreamingLogging -Expected "threadCount=" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $initialStreamingLogging -Expected "handleCount=" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $initialStreamingLogging -Expected "Result: passed" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
+Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "(?<value>[\d,]+)\s+files\s+discovered" -MinimumValue 100000 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "files discovered"
+Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "files\s+discovered\s+at\s+(?<value>\d+(?:\.\d+)?)\s+files/sec" -MinimumValue 0.01 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "files/sec"
+Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "remote\s+pages\s+read=(?<value>[\d,]+)" -MinimumValue 1 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "remote pages"
+Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "remote\s+page\s+latency\s+total=(?<value>\d+(?:\.\d+)?)\s+ms" -MinimumValue 0 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "remote page latency"
+Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "(?<value>[\d,]+)\s+placeholders\s+created\s+or\s+refreshed" -MinimumValue 100000 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "placeholders created"
+Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "at\s+(?<value>\d+(?:\.\d+)?)\s+placeholders/sec" -MinimumValue 0.01 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "placeholders/sec"
+Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "state\s+writes\s+(?<value>[\d,]+)\s+file\s+rows" -MinimumValue 100000 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "state file rows"
+Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "state\s+write\s+rate=(?<value>\d+(?:\.\d+)?)\s+rows/sec" -MinimumValue 0.01 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "state rows/sec"
+Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "managed\s+heap\s+start=(?<value>[\d,]+)\s+bytes" -MinimumValue 1 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "managed heap"
+Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "workingSetBytes=(?<value>[\d,]+)" -MinimumValue 1 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "working set"
+Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "privateMemoryBytes=(?<value>[\d,]+)" -MinimumValue 1 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "private memory"
 
 $steadyStateRepeat = Read-EvidenceFile -RelativePath "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $steadyStateRepeat -Expected "Steady-state repeat pass avoided local placeholder-tree scanning." -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"

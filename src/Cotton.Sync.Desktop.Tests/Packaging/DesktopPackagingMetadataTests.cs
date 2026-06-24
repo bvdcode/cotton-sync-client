@@ -790,6 +790,39 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         }
 
         [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_RejectsZeroInitialStreamingThroughput()
+        {
+            string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
+            try
+            {
+                File.WriteAllLines(
+                    Path.Combine(
+                        evidenceDirectory,
+                        "vfs-smoke",
+                        "phase-initial-streaming-logging",
+                        "cloud-files-vfs-smoke.stdout.log"),
+                    new[]
+                    {
+                        "PASS: Initial VFS streaming run created a large placeholder baseline without per-placeholder activities.",
+                        "PASS: Initial VFS streaming progress stayed on placeholder creation and completed cleanly. samples=4, placeholderSamples=3, finalItems=100,001/100,001, completed=True, localScanSamples=0, remoteScanSamples=0, activities=0",
+                        "PASS: Initial VFS trace log contains large-run metrics.",
+                        "Metric excerpt: Completed initial streaming Windows virtual-files population for Cloud: 1 directories discovered at 25 dirs/sec, 100000 files discovered at 0 files/sec, remote pages read=100, remote page latency total=400 ms, avg=4 ms, max=10 ms, last=3 ms, 100000 file items completed, 100000 placeholders created or refreshed at 0 placeholders/sec; state writes 100000 file rows, file write batches 196, directory rows 1, state write rate=0 rows/sec; managed heap start=1000000 bytes, completed=1500000 bytes, peak=2000000 bytes, delta=500000 bytes; activities retained 0/0",
+                        "PASS: Initial VFS runtime health captured. before=workingSetBytes=100000000;privateMemoryBytes=80000000;threadCount=12;handleCount=200, after=workingSetBytes=150000000;privateMemoryBytes=120000000;threadCount=14;handleCount=250",
+                        "Result: passed"
+                    });
+
+                (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("reported too small files/sec"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
         public void WindowsVfsReleaseEvidenceVerifierScript_RejectsMissingPostUninstallCleanupEvidence()
         {
             string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
@@ -2270,7 +2303,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "PASS: Initial VFS streaming run created a large placeholder baseline without per-placeholder activities.",
                     "PASS: Initial VFS streaming progress stayed on placeholder creation and completed cleanly. samples=4, placeholderSamples=3, finalItems=100,001/100,001, completed=True, localScanSamples=0, remoteScanSamples=0, activities=0",
                     "PASS: Initial VFS trace log contains large-run metrics.",
-                    "Metric excerpt: Completed initial streaming Windows virtual-files population for Cloud: 1 directories discovered at 25 dirs/sec, 100000 files discovered at 2500 files/sec, remote pages read=100, remote page latency total=00:00:00.4000000, 100000 placeholders created or refreshed at 2500 placeholders/sec, state writes 100000 file rows, file write batches 196, directory rows 1, state write rate=2500 rows/sec, managed heap start=1000000 peak=2000000 end=1500000, activities retained 0/0",
+                    "Metric excerpt: Completed initial streaming Windows virtual-files population for Cloud: 1 directories discovered at 25 dirs/sec, 100000 files discovered at 2500 files/sec, remote pages read=100, remote page latency total=400 ms, avg=4 ms, max=10 ms, last=3 ms, 100000 file items completed, 100000 placeholders created or refreshed at 2500 placeholders/sec; state writes 100000 file rows, file write batches 196, directory rows 1, state write rate=2500 rows/sec; managed heap start=1000000 bytes, completed=1500000 bytes, peak=2000000 bytes, delta=500000 bytes; activities retained 0/0",
                     "PASS: Initial VFS runtime health captured. before=workingSetBytes=100000000;privateMemoryBytes=80000000;threadCount=12;handleCount=200, after=workingSetBytes=150000000;privateMemoryBytes=120000000;threadCount=14;handleCount=250",
                     "Result: passed"
                 });
