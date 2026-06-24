@@ -821,6 +821,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("-ExpectedAppVersion \"${{ steps.gitversion.outputs.SemVer }}\""));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-update-discovery.ps1"));
                 Assert.That(workflow, Does.Contain("cotton-sync-update-discovery-data"));
+                Assert.That(workflow, Does.Contain("Packaging/windows/smoke-update-visual-states.ps1"));
+                Assert.That(workflow, Does.Contain("cotton-sync-update-visual-states-data"));
                 Assert.That(workflow, Does.Contain("unins000.exe"));
                 Assert.That(workflow, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
                 Assert.That(workflow, Does.Contain("Autostart registry value was not installed correctly."));
@@ -906,6 +908,28 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(
                     normalizedWorkflow,
                     Does.Match("(?s)\\n  release:\\n    name: Publish Sync Client Release\\n    runs-on: ubuntu-latest\\n    needs:\\n      - linux\\n      - windows\\n      - cli-windows\\n      - release-checksums"));
+            });
+        }
+
+        [Test]
+        public void WindowsUpdateVisualStatesSmokeScript_VerifiesInstalledUpdatePanelStates()
+        {
+            string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/smoke-update-visual-states.ps1"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(script, Does.Contain("[string]$AppExecutable"));
+                Assert.That(script, Does.Contain("[string]$DataRoot = \"\""));
+                Assert.That(script, Does.Contain("UIAutomationClient"));
+                Assert.That(script, Does.Contain("--visual-smoke"));
+                Assert.That(script, Does.Contain("update-download-progress"));
+                Assert.That(script, Does.Contain("update-install-progress"));
+                Assert.That(script, Does.Contain("Downloading update"));
+                Assert.That(script, Does.Contain("Installing update"));
+                Assert.That(script, Does.Contain("ControlType]::ProgressBar"));
+                Assert.That(script, Does.Contain("UnexpectedName \"Download\""));
+                Assert.That(script, Does.Contain("UnexpectedName \"Update\""));
+                Assert.That(script, Does.Contain("Verified installed update visual states."));
             });
         }
 
