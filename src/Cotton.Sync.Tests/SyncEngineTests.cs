@@ -1584,14 +1584,15 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
-        public async Task RunOnceAsync_WithInitialWindowsVirtualFilesReportsLocalFilesAsActionRequired()
+        public async Task RunOnceAsync_WithInitialWindowsVirtualFilesFallsBackToReconcileWhenLocalFilesExist()
         {
-            LocalFileSnapshot local = LocalFile("Desktop/local.txt", "local-content");
+            LocalFileSnapshot local = LocalFile("local.txt", "local-content");
+            NodeFileManifestDto remote = RemoteFile("remote-only.txt", HashText("remote-content"), sizeBytes: 1024);
             var scanner = new FakeLocalFileScanner(local);
-            var remoteTree = EmptyRemoteTree();
+            RemoteTreeSnapshot remoteTree = RemoteTree(remote);
             var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
                 _remoteRootNodeId,
-                [],
+                [new RemoteFileSnapshot { RelativePath = "remote-only.txt", File = remote }],
                 snapshotCrawlResult: remoteTree);
             var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
             var placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
@@ -1607,21 +1608,32 @@ namespace Cotton.Sync.Tests
                 Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
                 new SyncRunOptions { InitialVirtualFilesPopulationQueueCapacity = 1 });
 
+            SyncStateEntry? localEntry = await stateStore.GetAsync("pair-a", "local.txt");
+            SyncStateEntry? remoteEntry = await stateStore.GetAsync("pair-a", "remote-only.txt");
             Assert.Multiple(() =>
             {
+                Assert.That(result.RequiresUserAction, Is.False);
                 Assert.That(remoteCrawler.StreamingCrawlCalls, Is.Zero);
-                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
-                Assert.That(remoteFileSynchronizer.Uploads, Is.Empty);
-                Assert.That(placeholderWriter.Requests, Is.Empty);
-                Assert.That(result.RequiresUserAction, Is.True);
-                Assert.That(result.ActionRequiredMessage, Is.EqualTo(
-                    "Virtual files setup found local content in the selected folder. Move it out or choose a clean folder before trying again."));
-                Assert.That(result.Activities, Is.Empty);
+                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.EqualTo(1));
+                Assert.That(remoteFileSynchronizer.Uploads, Has.Count.EqualTo(1));
+                Assert.That(remoteFileSynchronizer.Uploads[0].RelativePath, Is.EqualTo("local.txt"));
+                Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[] { "remote-only.txt" }));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[]
+                {
+                    SyncActivityKind.Uploaded,
+                    SyncActivityKind.PlaceholderCreated,
+                }));
+                Assert.That(localEntry, Is.Not.Null);
+                Assert.That(localEntry!.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(localEntry.RemoteContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(remoteEntry, Is.Not.Null);
+                Assert.That(remoteEntry!.RemoteFileId, Is.EqualTo(remote.Id));
+                Assert.That(remoteEntry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
             });
         }
 
         [Test]
-        public async Task RunOnceAsync_WithInitialWindowsVirtualFilesReportsPreservedDirectoryTreeAsActionRequired()
+        public async Task RunOnceAsync_WithInitialWindowsVirtualFilesCreatesRemoteFoldersForPreservedDirectoryTree()
         {
             var scanner = new FakeLocalFileScanner
             {
@@ -1638,29 +1650,37 @@ namespace Cotton.Sync.Tests
                 snapshotCrawlResult: remoteTree);
             var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
             var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            var remoteDirectories = new FakeRemoteDirectorySynchronizer();
             var stateStore = new SqliteSyncStateStore(_databasePath);
             var engine = new SyncEngine(
                 scanner,
                 remoteCrawler,
                 remoteFileSynchronizer,
                 stateStore,
+                remoteDirectories: remoteDirectories,
                 remoteFilePlaceholderWriter: placeholderWriter);
 
             SyncRunResult result = await engine.RunOnceAsync(
                 Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
                 new SyncRunOptions { InitialVirtualFilesPopulationQueueCapacity = 1 });
 
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
             Assert.Multiple(() =>
             {
+                Assert.That(result.RequiresUserAction, Is.False);
                 Assert.That(remoteCrawler.StreamingCrawlCalls, Is.Zero);
-                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
+                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.EqualTo(1));
                 Assert.That(remoteFileSynchronizer.Uploads, Is.Empty);
                 Assert.That(placeholderWriter.Requests, Is.Empty);
                 Assert.That(placeholderWriter.DirectoryRequests, Is.Empty);
-                Assert.That(result.RequiresUserAction, Is.True);
-                Assert.That(result.ActionRequiredMessage, Is.EqualTo(
-                    "Virtual files setup found local content in the selected folder. Move it out or choose a clean folder before trying again."));
-                Assert.That(result.Activities, Is.Empty);
+                Assert.That(remoteDirectories.Creates.Select(call => call.Name), Is.EqualTo(new[] { "Projects", "Archive" }));
+                Assert.That(state.Select(entry => entry.RelativePath), Is.EqualTo(new[] { "Projects", "Projects/Archive" }));
+                Assert.That(state.Select(entry => entry.Kind), Is.All.EqualTo(SyncEntryKind.Directory));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[]
+                {
+                    SyncActivityKind.Uploaded,
+                    SyncActivityKind.Uploaded,
+                }));
             });
         }
 

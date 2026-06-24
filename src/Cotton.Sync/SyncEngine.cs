@@ -24,8 +24,6 @@ namespace Cotton.Sync
         private const int RunProgressDetailedItemInterval = 25;
         private const int RunProgressDetailedItemLimit = 50_000;
         private const int RunProgressSparseItemInterval = 100;
-        private const string InitialVirtualFilesLocalRootRequiresReviewMessage =
-            "Virtual files setup found local content in the selected folder. Move it out or choose a clean folder before trying again.";
         private static readonly TimeSpan InitialVirtualFilesHeartbeatLogInterval = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan RunProgressReportTimeInterval = TimeSpan.FromMilliseconds(250);
         private static readonly TimeSpan CloudFilesMetadataTimestampTolerance = TimeSpan.FromSeconds(2);
@@ -716,15 +714,6 @@ namespace Cotton.Sync
                         startedAtUtc,
                         cancellationToken)
                     .ConfigureAwait(false);
-            if (streamingPlanDecision.ActionRequiredMessage is not null)
-            {
-                return CreateInitialWindowsVirtualFilesActionRequiredResult(
-                    syncPair,
-                    options,
-                    startedAtUtc,
-                    streamingPlanDecision.ActionRequiredMessage);
-            }
-
             InitialVirtualFilesStreamingPlan? streamingPlan = streamingPlanDecision.Plan;
             if (streamingPlan is null)
             {
@@ -923,29 +912,6 @@ namespace Cotton.Sync
                 result.Activities.Count,
                 result.TotalActivityCount,
                 result.IsActivityListTruncated);
-            return result;
-        }
-
-        private SyncRunResult CreateInitialWindowsVirtualFilesActionRequiredResult(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            DateTime startedAtUtc,
-            string message)
-        {
-            var result = new SyncRunResult();
-            result.RecordActionRequired(message);
-            ReportRunProgress(
-                options,
-                SyncRunProgressStage.Completed,
-                0,
-                0,
-                null,
-                startedAtUtc,
-                isCompleted: true);
-            _logger.LogInformation(
-                "Windows virtual-files initial setup for pair {SyncPairId} requires user action: {Reason}",
-                syncPair.SyncPairId,
-                message);
             return result;
         }
 
@@ -1159,8 +1125,7 @@ namespace Cotton.Sync
                     continue;
                 }
 
-                return InitialVirtualFilesStreamingPlanDecision.ActionRequired(
-                    InitialVirtualFilesLocalRootRequiresReviewMessage);
+                return InitialVirtualFilesStreamingPlanDecision.NotApplicable;
             }
 
             foreach (string directoryKey in localDirectoriesByPath.Keys)
@@ -1168,15 +1133,13 @@ namespace Cotton.Sync
                 if (directoryStateByPath.TryGetValue(directoryKey, out Guid? remoteNodeId)
                     && remoteNodeId is null)
                 {
-                    return InitialVirtualFilesStreamingPlanDecision.ActionRequired(
-                        InitialVirtualFilesLocalRootRequiresReviewMessage);
+                    return InitialVirtualFilesStreamingPlanDecision.NotApplicable;
                 }
 
                 if (!directoryStateByPath.ContainsKey(directoryKey)
                     && !HasAdoptablePlaceholderDescendant(directoryKey, adoptableUntrackedPlaceholderByPath.Keys))
                 {
-                    return InitialVirtualFilesStreamingPlanDecision.ActionRequired(
-                        InitialVirtualFilesLocalRootRequiresReviewMessage);
+                    return InitialVirtualFilesStreamingPlanDecision.NotApplicable;
                 }
             }
 
@@ -4490,22 +4453,14 @@ namespace Cotton.Sync
             IReadOnlyDictionary<string, InitialVirtualFilesPlaceholderBaseline> CurrentPlaceholderBaselineByPath,
             IReadOnlyDictionary<string, LocalFileSnapshot> AdoptableUntrackedPlaceholderByPath);
 
-        private sealed record InitialVirtualFilesStreamingPlanDecision(
-            InitialVirtualFilesStreamingPlan? Plan,
-            string? ActionRequiredMessage)
+        private sealed record InitialVirtualFilesStreamingPlanDecision(InitialVirtualFilesStreamingPlan? Plan)
         {
-            public static InitialVirtualFilesStreamingPlanDecision NotApplicable { get; } = new(null, null);
+            public static InitialVirtualFilesStreamingPlanDecision NotApplicable { get; } = new(Plan: null);
 
             public static InitialVirtualFilesStreamingPlanDecision FromPlan(InitialVirtualFilesStreamingPlan plan)
             {
                 ArgumentNullException.ThrowIfNull(plan);
-                return new InitialVirtualFilesStreamingPlanDecision(plan, ActionRequiredMessage: null);
-            }
-
-            public static InitialVirtualFilesStreamingPlanDecision ActionRequired(string message)
-            {
-                ArgumentException.ThrowIfNullOrWhiteSpace(message);
-                return new InitialVirtualFilesStreamingPlanDecision(Plan: null, ActionRequiredMessage: message);
+                return new InitialVirtualFilesStreamingPlanDecision(plan);
             }
         }
 
