@@ -403,7 +403,9 @@ jobs:
           $reinstallUninstallLog = Join-Path $env:RUNNER_TEMP "cotton-sync-reinstall-uninstall.log"
           $evidenceDir = Join-Path $env:RUNNER_TEMP "cotton-sync-vfs-release-evidence"
           $vfsSmokeDataDir = Join-Path $env:RUNNER_TEMP "cotton-sync-vfs-self-test-truthfulness-data"
+          $autostartReport = Join-Path $evidenceDir "autostart-launch.txt"
           New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $evidenceDir -Force | Out-Null
           $installerPath = ".\cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}-setup.exe"
 
           $install = Start-Process `
@@ -442,7 +444,8 @@ jobs:
           }
 
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-autostart-launch.ps1" `
-            -AppExecutable $installedExe
+            -AppExecutable $installedExe `
+            -ReportPath $autostartReport
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-shortcut-app-id.ps1" `
             -ShortcutPath $startMenuShortcut `
             -ExpectedAppUserModelId "Cotton.Sync.Desktop"
@@ -577,6 +580,7 @@ jobs:
           $installLog = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-install.log"
           $upgradeLog = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-current.log"
           $uninstallLog = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-uninstall.log"
+          $upgradeAutostartReport = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-autostart-launch.txt"
           New-Item -ItemType Directory -Path $oldOutputDir -Force | Out-Null
           New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
 
@@ -635,7 +639,8 @@ jobs:
           }
 
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-autostart-launch.ps1" `
-            -AppExecutable $installedExe
+            -AppExecutable $installedExe `
+            -ReportPath $upgradeAutostartReport
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-shortcut-app-id.ps1" `
             -ShortcutPath $startMenuShortcut `
             -ExpectedAppUserModelId "Cotton.Sync.Desktop"
