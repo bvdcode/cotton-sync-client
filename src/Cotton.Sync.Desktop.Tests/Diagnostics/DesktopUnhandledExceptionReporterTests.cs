@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.Desktop.Diagnostics;
+using System.Diagnostics;
 
 namespace Cotton.Sync.Desktop.Tests.Diagnostics
 {
@@ -42,6 +43,50 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                 Assert.That(message, Does.Contain("\"accessToken\":\"[redacted]\""));
                 Assert.That(message, Does.Not.Contain("secret-token"));
             });
+        }
+
+        [Test]
+        public void ReportUnobservedTaskException_LogsAndMarksExceptionObserved()
+        {
+            var exception = new AggregateException(
+                new InvalidOperationException("""{"accessToken":"secret-token","message":"failed"}"""));
+            var args = new UnobservedTaskExceptionEventArgs(exception);
+            var listener = new CollectingTraceListener();
+            Trace.Listeners.Add(listener);
+
+            try
+            {
+                DesktopUnhandledExceptionReporter.ReportUnobservedTaskException(args);
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(args.Observed, Is.True);
+                    Assert.That(listener.Output, Does.Contain("Unobserved desktop task exception captured."));
+                    Assert.That(listener.Output, Does.Contain("\"accessToken\":\"[redacted]\""));
+                    Assert.That(listener.Output, Does.Not.Contain("secret-token"));
+                });
+            }
+            finally
+            {
+                Trace.Listeners.Remove(listener);
+            }
+        }
+
+        private sealed class CollectingTraceListener : TraceListener
+        {
+            private readonly StringWriter _writer = new();
+
+            public string Output => _writer.ToString();
+
+            public override void Write(string? message)
+            {
+                _writer.Write(message);
+            }
+
+            public override void WriteLine(string? message)
+            {
+                _writer.WriteLine(message);
+            }
         }
     }
 }

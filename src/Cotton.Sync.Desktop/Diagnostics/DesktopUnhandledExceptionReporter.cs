@@ -51,7 +51,14 @@ namespace Cotton.Sync.Desktop.Diagnostics
 
         private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs args)
         {
+            ReportUnobservedTaskException(args);
+        }
+
+        internal static void ReportUnobservedTaskException(UnobservedTaskExceptionEventArgs args)
+        {
+            ArgumentNullException.ThrowIfNull(args);
             Trace.TraceError(FormatUnobservedTaskException(args.Exception));
+            args.SetObserved();
         }
     }
 }
