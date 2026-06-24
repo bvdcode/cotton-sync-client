@@ -20,6 +20,7 @@ namespace Cotton.Sync.App.LocalChanges
         private readonly TimeSpan _entryLifetime;
         private readonly int _eventBudget;
         private readonly int _maxEntriesPerPair;
+        private readonly Func<string, bool> _onlineOnlyCloudFilesPlaceholderProbe;
         private readonly Dictionary<Guid, Dictionary<string, SuppressionEntry>> _entriesByPair = [];
         private readonly Dictionary<Guid, ProviderWriteBurstScope> _providerWriteBurstsByPair = [];
         private int _registrationCount;
@@ -32,7 +33,23 @@ namespace Cotton.Sync.App.LocalChanges
             int eventBudget = 8,
             int maxEntriesPerPair = 100_000,
             TimeProvider? timeProvider = null)
+            : this(
+                IsOnlineOnlyCloudFilesPlaceholder,
+                entryLifetime,
+                eventBudget,
+                maxEntriesPerPair,
+                timeProvider)
         {
+        }
+
+        internal LocalChangeSuppression(
+            Func<string, bool> onlineOnlyCloudFilesPlaceholderProbe,
+            TimeSpan? entryLifetime = null,
+            int eventBudget = 8,
+            int maxEntriesPerPair = 100_000,
+            TimeProvider? timeProvider = null)
+        {
+            ArgumentNullException.ThrowIfNull(onlineOnlyCloudFilesPlaceholderProbe);
             _entryLifetime = entryLifetime ?? DefaultEntryLifetime;
             if (_entryLifetime <= TimeSpan.Zero)
             {
@@ -52,6 +69,7 @@ namespace Cotton.Sync.App.LocalChanges
             _eventBudget = eventBudget;
             _maxEntriesPerPair = maxEntriesPerPair;
             _timeProvider = timeProvider ?? TimeProvider.System;
+            _onlineOnlyCloudFilesPlaceholderProbe = onlineOnlyCloudFilesPlaceholderProbe;
         }
 
         /// <inheritdoc />
@@ -112,6 +130,7 @@ namespace Cotton.Sync.App.LocalChanges
                 {
                     scope.ActiveCount++;
                     scope.RootPath = rootPath;
+                    scope.ExpiresAt = DateTimeOffset.MaxValue;
                 }
                 else
                 {
@@ -169,7 +188,8 @@ namespace Cotton.Sync.App.LocalChanges
                 scope.ActiveCount--;
                 if (scope.ActiveCount <= 0)
                 {
-                    _providerWriteBurstsByPair.Remove(syncPairId);
+                    scope.ActiveCount = 0;
+                    scope.ExpiresAt = _timeProvider.GetUtcNow().Add(_entryLifetime);
                 }
             }
         }
@@ -265,19 +285,24 @@ namespace Cotton.Sync.App.LocalChanges
             bool includeCloudFilesPlaceholderProbe)
         {
             if (!_providerWriteBurstsByPair.TryGetValue(change.SyncPairId, out ProviderWriteBurstScope? scope)
-                || scope.ActiveCount <= 0
                 || !IsInsideRoot(scope.RootPath, change.FullPath))
             {
                 return false;
             }
 
+            if (scope.ActiveCount <= 0 && scope.ExpiresAt <= _timeProvider.GetUtcNow())
+            {
+                _providerWriteBurstsByPair.Remove(change.SyncPairId);
+                return false;
+            }
+
             if (change.Kind == LocalSyncRootChangeKind.Error)
             {
-                return true;
+                return scope.ActiveCount > 0;
             }
 
             return includeCloudFilesPlaceholderProbe
-                && IsOnlineOnlyCloudFilesPlaceholder(change.FullPath);
+                && _onlineOnlyCloudFilesPlaceholderProbe(change.FullPath);
         }
 
         private static bool IsOnlineOnlyCloudFilesPlaceholder(string fullPath)
@@ -367,11 +392,14 @@ namespace Cotton.Sync.App.LocalChanges
             {
                 RootPath = rootPath;
                 ActiveCount = 1;
+                ExpiresAt = DateTimeOffset.MaxValue;
             }
 
             public string RootPath { get; set; }
 
             public int ActiveCount { get; set; }
+
+            public DateTimeOffset ExpiresAt { get; set; }
         }
 
         private sealed class ProviderWriteBurstLease : IDisposable

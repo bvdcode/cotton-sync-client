@@ -415,6 +415,81 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task ProviderWriteBurstLatePlaceholderStorm_DoesNotRequestSyncAfterEntryCapacityTrim()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            var watcherFactory = new FakeWatcherFactory();
+            var supervisor = new FakeSyncSupervisor();
+            var suppression = new LocalChangeSuppression(
+                path => path.Contains("generated-", StringComparison.OrdinalIgnoreCase),
+                maxEntriesPerPair: 4);
+            using (IDisposable burst = suppression.SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath))
+            {
+                for (int index = 0; index < 20; index++)
+                {
+                    suppression.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, $"Cloud/generated-{index}.txt");
+                }
+            }
+
+            var coordinator = new LocalChangeSyncCoordinator(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval,
+                changeSuppression: suppression);
+            await coordinator.StartAsync();
+
+            for (int index = 0; index < 20; index++)
+            {
+                watcherFactory.CreatedWatchers[syncPair.Id].Raise(FullPath(syncPair, $"Cloud/generated-{index}.txt"));
+            }
+
+            bool observed = await supervisor.WaitForSyncAsync(DebounceInterval * 4);
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.False);
+                Assert.That(supervisor.SyncNowCallCount, Is.Zero);
+                Assert.That(coordinator.PendingRequestCount, Is.Zero);
+            });
+        }
+
+        [Test]
+        public async Task ProviderWriteBurstGrace_DoesNotHideNormalUserChange()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            var watcherFactory = new FakeWatcherFactory();
+            var supervisor = new FakeSyncSupervisor();
+            var suppression = new LocalChangeSuppression(
+                path => path.Contains("generated-", StringComparison.OrdinalIgnoreCase));
+            using (suppression.SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath))
+            {
+            }
+
+            var coordinator = new LocalChangeSyncCoordinator(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval,
+                changeSuppression: suppression);
+            await coordinator.StartAsync();
+
+            watcherFactory.CreatedWatchers[syncPair.Id].Raise(FullPath(syncPair, "Cloud/user-edit.txt"));
+
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(1));
+                Assert.That(supervisor.LastRequest?.IsFull, Is.False);
+                Assert.That(supervisor.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { "Cloud/user-edit.txt" }));
+            });
+        }
+
+        [Test]
         public async Task ProviderSuppressedParentDirectoryChange_DoesNotRequestSync()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
