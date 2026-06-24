@@ -391,6 +391,61 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesBatchesInitialDirectoryStateWrites()
+        {
+            const int directoryCount = 1_024;
+            const int stateBatchSize = 128;
+            List<RemoteDirectorySnapshot> remoteDirectories = Enumerable
+                .Range(0, directoryCount)
+                .Select(index =>
+                {
+                    string relativePath = "dir-" + index.ToString("D4", System.Globalization.CultureInfo.InvariantCulture);
+                    return new RemoteDirectorySnapshot
+                    {
+                        RelativePath = relativePath,
+                        Node = new NodeDto
+                        {
+                            Id = GuidFromIndex(index, 9),
+                            Name = relativePath,
+                        },
+                    };
+                })
+                .ToList();
+            var remoteCrawler = new StaticRemoteTreeCrawler([], remoteDirectories);
+            var stateStore = new CountingVirtualPlaceholderStateStore();
+            var placeholderWriter = new CountingRemoteFilePlaceholderWriter();
+            var engine = new SyncEngine(
+                new EmptyLocalFileScanner(),
+                remoteCrawler,
+                new GuardedRemoteFileSynchronizer(),
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            await engine.RunOnceAsync(
+                new SyncPair
+                {
+                    SyncPairId = "performance-vfs-directory-batch",
+                    LocalRootPath = _root,
+                    RemoteRootNodeId = RemoteRootNodeId,
+                    MaterializationMode = SyncPairMaterializationMode.WindowsVirtualFiles,
+                },
+                new SyncRunOptions
+                {
+                    InitialVirtualFilesStateBatchSize = stateBatchSize,
+                });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
+                Assert.That(remoteCrawler.FullCrawlCalls, Is.Zero);
+                Assert.That(stateStore.SingleUpsertCalls, Is.Zero);
+                Assert.That(stateStore.DirectoryUpserts, Is.EqualTo(directoryCount));
+                Assert.That(stateStore.UpsertManyCalls, Is.EqualTo(directoryCount / stateBatchSize));
+                Assert.That(stateStore.UpsertManyEntryCounts, Is.All.EqualTo(stateBatchSize));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_UploadsOneThousandSmallFilesWithinSmokeTarget()
         {
             await VerifyInitialUploadFileSetCompletesWithinSmokeTargetAsync(
@@ -1096,10 +1151,14 @@ namespace Cotton.Sync.Tests
         private class StaticRemoteTreeCrawler : IRemoteTreeStreamingCrawler, IRemotePathLookupCrawler
         {
             private readonly IReadOnlyList<RemoteFileSnapshot> _files;
+            private readonly IReadOnlyList<RemoteDirectorySnapshot> _directories;
 
-            public StaticRemoteTreeCrawler(IReadOnlyList<RemoteFileSnapshot> files)
+            public StaticRemoteTreeCrawler(
+                IReadOnlyList<RemoteFileSnapshot> files,
+                IReadOnlyList<RemoteDirectorySnapshot>? directories = null)
             {
                 _files = files;
+                _directories = directories ?? [];
             }
 
             public int FullCrawlCalls { get; private set; }
@@ -1118,6 +1177,7 @@ namespace Cotton.Sync.Tests
                         Id = rootNodeId,
                         Name = "root",
                     },
+                    Directories = _directories.ToList(),
                     Files = _files.ToList(),
                 });
             }
@@ -1135,6 +1195,17 @@ namespace Cotton.Sync.Tests
                     Name = "root",
                 };
                 progress?.Report(new RemoteTreeScanProgress(0, 0, currentPath: null));
+                for (int index = 0; index < _directories.Count; index++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    RemoteDirectorySnapshot directory = _directories[index];
+                    await sink.AddDirectoryAsync(directory, cancellationToken).ConfigureAwait(false);
+                    if (index == 0 || (index + 1) % 100 == 0)
+                    {
+                        progress?.Report(new RemoteTreeScanProgress(0, index + 1, directory.RelativePath));
+                    }
+                }
+
                 for (int index = 0; index < _files.Count; index++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -1146,7 +1217,7 @@ namespace Cotton.Sync.Tests
                     }
                 }
 
-                progress?.Report(new RemoteTreeScanProgress(_files.Count, 0, currentPath: null));
+                progress?.Report(new RemoteTreeScanProgress(_files.Count, _directories.Count, currentPath: null));
                 return root;
             }
 
@@ -1166,6 +1237,14 @@ namespace Cotton.Sync.Tests
                     },
                 };
                 var requested = new HashSet<string>(relativePaths.Select(SyncPath.ToKey), StringComparer.OrdinalIgnoreCase);
+                foreach (RemoteDirectorySnapshot directory in _directories)
+                {
+                    if (requested.Contains(SyncPath.ToKey(directory.RelativePath)))
+                    {
+                        snapshot.DirectoriesByPath[SyncPath.ToKey(directory.RelativePath)] = directory;
+                    }
+                }
+
                 foreach (RemoteFileSnapshot file in _files)
                 {
                     if (requested.Contains(SyncPath.ToKey(file.RelativePath)))
@@ -1356,8 +1435,13 @@ namespace Cotton.Sync.Tests
         private sealed class CountingVirtualPlaceholderStateStore : ISyncStateStore
         {
             private readonly Dictionary<string, SyncStateEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
+            private readonly List<int> _upsertManyEntryCounts = [];
+            private readonly object _gate = new();
             private int _fileUpserts;
+            private int _directoryUpserts;
             private int _remoteOnlyPlaceholderUpserts;
+            private int _singleUpsertCalls;
+            private int _upsertManyCalls;
 
             public CountingVirtualPlaceholderStateStore()
             {
@@ -1373,7 +1457,24 @@ namespace Cotton.Sync.Tests
 
             public int FileUpserts => Volatile.Read(ref _fileUpserts);
 
+            public int DirectoryUpserts => Volatile.Read(ref _directoryUpserts);
+
             public int RemoteOnlyPlaceholderUpserts => Volatile.Read(ref _remoteOnlyPlaceholderUpserts);
+
+            public int SingleUpsertCalls => Volatile.Read(ref _singleUpsertCalls);
+
+            public int UpsertManyCalls => Volatile.Read(ref _upsertManyCalls);
+
+            public IReadOnlyList<int> UpsertManyEntryCounts
+            {
+                get
+                {
+                    lock (_gate)
+                    {
+                        return _upsertManyEntryCounts.ToArray();
+                    }
+                }
+            }
 
             public int LoadPairEntriesCalls { get; private set; }
 
@@ -1430,7 +1531,38 @@ namespace Cotton.Sync.Tests
 
             public Task UpsertAsync(SyncStateEntry entry, CancellationToken cancellationToken = default)
             {
+                Interlocked.Increment(ref _singleUpsertCalls);
+                UpsertEntry(entry);
+                return Task.CompletedTask;
+            }
+
+            public Task UpsertManyAsync(
+                IReadOnlyCollection<SyncStateEntry> entries,
+                CancellationToken cancellationToken = default)
+            {
+                Interlocked.Increment(ref _upsertManyCalls);
+                lock (_gate)
+                {
+                    _upsertManyEntryCounts.Add(entries.Count);
+                }
+
+                foreach (SyncStateEntry entry in entries)
+                {
+                    UpsertEntry(entry);
+                }
+
+                return Task.CompletedTask;
+            }
+
+            private void UpsertEntry(SyncStateEntry entry)
+            {
                 _entries[SyncPath.ToKey(entry.RelativePath)] = entry;
+                if (entry.Kind == SyncEntryKind.Directory)
+                {
+                    Interlocked.Increment(ref _directoryUpserts);
+                    return;
+                }
+
                 if (entry.Kind == SyncEntryKind.File)
                 {
                     Interlocked.Increment(ref _fileUpserts);
@@ -1442,20 +1574,6 @@ namespace Cotton.Sync.Tests
                         Interlocked.Increment(ref _remoteOnlyPlaceholderUpserts);
                     }
                 }
-
-                return Task.CompletedTask;
-            }
-
-            public Task UpsertManyAsync(
-                IReadOnlyCollection<SyncStateEntry> entries,
-                CancellationToken cancellationToken = default)
-            {
-                foreach (SyncStateEntry entry in entries)
-                {
-                    UpsertAsync(entry, cancellationToken);
-                }
-
-                return Task.CompletedTask;
             }
 
             public Task SaveChangeCursorAsync(SyncChangeCursor cursor, CancellationToken cancellationToken = default)

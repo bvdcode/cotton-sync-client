@@ -787,6 +787,7 @@ namespace Cotton.Sync
                 () => Volatile.Read(ref completedFiles),
                 value => Volatile.Write(ref completedFiles, value),
                 () => Volatile.Read(ref completedDirectories),
+                () => Interlocked.Increment(ref completedDirectories),
                 () => lastPlaceholderProgressReportedAtUtc,
                 value => lastPlaceholderProgressReportedAtUtc = value,
                 workResult =>
@@ -812,10 +813,12 @@ namespace Cotton.Sync
                         Interlocked.Increment(ref stateFileWriteBatches);
                     }
                 },
-                () =>
+                writtenRows =>
                 {
-                    Interlocked.Increment(ref stateDirectoryRowsWritten);
-                    return Interlocked.Increment(ref completedDirectories);
+                    if (writtenRows > 0)
+                    {
+                        Interlocked.Add(ref stateDirectoryRowsWritten, writtenRows);
+                    }
                 },
                 streamingCancellation.Token);
             using var heartbeatCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -1281,14 +1284,16 @@ namespace Cotton.Sync
             Func<int> getCompletedFiles,
             Action<int> setCompletedFiles,
             Func<int> getCompletedDirectories,
+            Func<int> incrementCompletedDirectories,
             Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
             Action<DateTime?> setLastPlaceholderProgressReportedAtUtc,
             Action<InitialVirtualFilesFileWorkResult> recordFileWorkResult,
             Action<int> recordFileStateWrite,
-            Func<int> recordDirectoryStateWrite,
+            Action<int> recordDirectoryStateWrite,
             CancellationToken cancellationToken)
         {
             var pendingFileStates = new List<SyncStateEntry>(options.InitialVirtualFilesStateBatchSize);
+            var pendingDirectoryStates = new List<SyncStateEntry>(options.InitialVirtualFilesStateBatchSize);
             int placeholderBatchSize = _remoteFilePlaceholderWriter is IRemoteFilePlaceholderBatchWriter
                 ? options.InitialVirtualFilesPlaceholderBatchSize
                 : 1;
@@ -1333,9 +1338,6 @@ namespace Cotton.Sync
                                     waitForOne: false,
                                     cancellationToken)
                                 .ConfigureAwait(false);
-                            int flushedFileRows =
-                                await FlushInitialVirtualFilesStateBatchAsync(pendingFileStates, cancellationToken).ConfigureAwait(false);
-                            recordFileStateWrite(flushedFileRows);
                             await CreateRemoteBackedLocalDirectoryAsync(
                                     syncPair,
                                     directoryItem.Directory.RelativePath,
@@ -1353,15 +1355,18 @@ namespace Cotton.Sync
                                     finalizationRequest;
                             }
 
-                            await _stateStore
-                                .UpsertAsync(
-                                    BuildDirectoryBaseline(
-                                        syncPair,
-                                        directoryItem.Directory.RelativePath,
-                                        directoryItem.Directory.Node),
-                                    cancellationToken)
-                                .ConfigureAwait(false);
-                            int completedDirectories = recordDirectoryStateWrite();
+                            pendingDirectoryStates.Add(BuildDirectoryBaseline(
+                                syncPair,
+                                directoryItem.Directory.RelativePath,
+                                directoryItem.Directory.Node));
+                            if (pendingDirectoryStates.Count >= options.InitialVirtualFilesStateBatchSize)
+                            {
+                                int flushedDirectoryRows =
+                                    await FlushInitialVirtualFilesStateBatchAsync(pendingDirectoryStates, cancellationToken).ConfigureAwait(false);
+                                recordDirectoryStateWrite(flushedDirectoryRows);
+                            }
+
+                            int completedDirectories = incrementCompletedDirectories();
                             ReportStreamingVirtualFilesProgress(
                                 options,
                                 getCompletedFiles(),
@@ -1474,6 +1479,9 @@ namespace Cotton.Sync
                 int finalFlushedFileRows =
                     await FlushInitialVirtualFilesStateBatchAsync(pendingFileStates, cancellationToken).ConfigureAwait(false);
                 recordFileStateWrite(finalFlushedFileRows);
+                int finalFlushedDirectoryRows =
+                    await FlushInitialVirtualFilesStateBatchAsync(pendingDirectoryStates, cancellationToken).ConfigureAwait(false);
+                recordDirectoryStateWrite(finalFlushedDirectoryRows);
                 if (directoryTreeFinalizationRequests is { Count: > 0 }
                     && _remoteDirectoryTreePopulationObserver is not null)
                 {
@@ -1507,6 +1515,9 @@ namespace Cotton.Sync
                 int flushedFileRows =
                     await FlushInitialVirtualFilesStateBatchAsync(pendingFileStates, cancellationToken).ConfigureAwait(false);
                 recordFileStateWrite(flushedFileRows);
+                int flushedDirectoryRows =
+                    await FlushInitialVirtualFilesStateBatchAsync(pendingDirectoryStates, cancellationToken).ConfigureAwait(false);
+                recordDirectoryStateWrite(flushedDirectoryRows);
             }
         }
 
