@@ -388,6 +388,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("Redact-Text"));
                 Assert.That(script, Does.Contain("CaptureScreenshot"));
                 Assert.That(script, Does.Contain("RunSelfTest"));
+                Assert.That(script, Does.Contain("RunProfileSelfTest"));
+                Assert.That(script, Does.Contain("profile-self-test.stdout.log"));
                 Assert.That(script, Does.Contain("RunDiagnosticsExport"));
                 Assert.That(script, Does.Contain("Cotton VFS release evidence captured:"));
             });
@@ -426,6 +428,31 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("Cotton Sync had visible windows during evidence capture."));
                 Assert.That(script, Does.Contain("failed:"));
                 Assert.That(script, Does.Contain("Verified VFS release evidence bundle"));
+            });
+        }
+
+        [Test]
+        public void WindowsVfsLogonEvidenceVerifierScript_ChecksInstalledProfileEvidence()
+        {
+            string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/verify-vfs-logon-evidence.ps1"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(script, Does.Contain("[string]$EvidenceDirectory"));
+                Assert.That(script, Does.Contain("LastBootUpTime"));
+                Assert.That(script, Does.Contain("registry-run.txt"));
+                Assert.That(script, Does.Contain("processes.txt"));
+                Assert.That(script, Does.Contain("process-windows.txt"));
+                Assert.That(script, Does.Contain("registry-cloud-files-explorer.txt"));
+                Assert.That(script, Does.Contain("local-root-entries.csv"));
+                Assert.That(script, Does.Contain("profile-self-test.stdout.log"));
+                Assert.That(script, Does.Contain("[OK] Authentication state - Stored session available"));
+                Assert.That(script, Does.Contain("[OK] Autostart adapter - Enabled"));
+                Assert.That(script, Does.Contain("[OK] Windows virtual files"));
+                Assert.That(script, Does.Contain("[OK] Local root:"));
+                Assert.That(script, Does.Contain("Result: passed"));
+                Assert.That(script, Does.Contain("No Cloud Files or Explorer registration was captured after logon."));
+                Assert.That(script, Does.Contain("Verified VFS logon evidence bundle"));
             });
         }
 
@@ -487,6 +514,52 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
 
                 Assert.That(exitCode, Is.Not.EqualTo(0), output);
                 Assert.That(output, Does.Contain("Cotton Sync had visible windows during evidence capture."));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsLogonEvidenceVerifierScript_AcceptsCompleteLogonEvidenceBundle()
+        {
+            string evidenceDirectory = CreateVfsLogonEvidenceBundle();
+            try
+            {
+                (int exitCode, string output) = RunVfsLogonEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.EqualTo(0), output);
+                Assert.That(output, Does.Contain("Verified VFS logon evidence bundle"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsLogonEvidenceVerifierScript_RejectsSignedOutProfileSelfTest()
+        {
+            string evidenceDirectory = CreateVfsLogonEvidenceBundle();
+            try
+            {
+                File.WriteAllLines(
+                    Path.Combine(evidenceDirectory, "profile-self-test.stdout.log"),
+                    new[]
+                    {
+                        "Cotton Sync Desktop self-test",
+                        "[OK] Authentication state - Signed out",
+                        "[OK] Autostart adapter - Enabled",
+                        "[OK] Windows virtual files - Windows Cloud Files API is available.",
+                        "[OK] Local root: Cloud - S:\\Cloud",
+                        "Result: passed"
+                    });
+
+                (int exitCode, string output) = RunVfsLogonEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("[OK] Authentication state - Stored session available"));
             }
             finally
             {
@@ -1660,6 +1733,88 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             return evidenceDirectory;
         }
 
+        private static string CreateVfsLogonEvidenceBundle()
+        {
+            string evidenceDirectory = Path.Combine(
+                TestContext.CurrentContext.WorkDirectory,
+                "vfs-logon-evidence-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(evidenceDirectory);
+
+            File.WriteAllLines(
+                Path.Combine(evidenceDirectory, "summary.txt"),
+                new[]
+                {
+                    "OS: captured: os.txt",
+                    "Installed app: captured: installed-app.txt",
+                    "Autostart registry: captured: registry-run.txt",
+                    "Cotton processes: captured: processes.txt",
+                    "Cotton process windows: captured: process-windows.txt",
+                    "Cloud Files Explorer registrations: captured: registry-cloud-files-explorer.txt",
+                    "Local root entries: captured: local-root-entries.csv",
+                    "Installed profile self-test: exitCode=0; stdout=profile-self-test.stdout.log; stderr=profile-self-test.stderr.log",
+                    "Diagnostics export: exitCode=0; stdout=diagnostics-export.stdout.log; stderr=diagnostics-export.stderr.log"
+                });
+            File.WriteAllLines(
+                Path.Combine(evidenceDirectory, "os.txt"),
+                new[]
+                {
+                    "Caption        : Microsoft Windows",
+                    "LastBootUpTime : 2026-06-24T10:00:00.0000000Z"
+                });
+            File.WriteAllLines(
+                Path.Combine(evidenceDirectory, "installed-app.txt"),
+                new[]
+                {
+                    "ProductVersion: 0.1.0",
+                    "FileVersion: 0.1.0",
+                    "Sha256: abc"
+                });
+            File.WriteAllText(
+                Path.Combine(evidenceDirectory, "registry-run.txt"),
+                "Cotton Sync --start-minimized");
+            File.WriteAllLines(
+                Path.Combine(evidenceDirectory, "processes.txt"),
+                new[]
+                {
+                    "ProcessId      : 1234",
+                    "ExecutablePath : C:\\Program Files\\Cotton Sync\\Cotton.Sync.Desktop.exe",
+                    "CommandLine    : \"C:\\Program Files\\Cotton Sync\\Cotton.Sync.Desktop.exe\" --start-minimized",
+                    "CreationDate   : 2026-06-24T10:01:00.0000000Z"
+                });
+            File.WriteAllLines(
+                Path.Combine(evidenceDirectory, "process-windows.txt"),
+                new[]
+                {
+                    "ProcessId : 1234",
+                    "IsForeground : False",
+                    "VisibleWindowCount : 0"
+                });
+            File.WriteAllText(
+                Path.Combine(evidenceDirectory, "registry-cloud-files-explorer.txt"),
+                "MatchCount: 3");
+            File.WriteAllLines(
+                Path.Combine(evidenceDirectory, "local-root-entries.csv"),
+                new[]
+                {
+                    "\"RelativePath\",\"FullPath\",\"Exists\",\"Attributes\",\"Length\",\"LastWriteTimeUtc\"",
+                    "\".\",\"S:\\Cloud\",\"True\",\"Directory, ReparsePoint\",,"
+                });
+            File.WriteAllLines(
+                Path.Combine(evidenceDirectory, "profile-self-test.stdout.log"),
+                new[]
+                {
+                    "Cotton Sync Desktop self-test",
+                    "[OK] Authentication state - Stored session available",
+                    "[OK] Autostart adapter - Enabled",
+                    "[OK] Windows virtual files - Windows Cloud Files API is available.",
+                    "[OK] Local root: Cloud - S:\\Cloud",
+                    "Result: passed"
+                });
+            File.WriteAllText(Path.Combine(evidenceDirectory, "diagnostics-export.stdout.log"), "Diagnostics exported");
+
+            return evidenceDirectory;
+        }
+
         private static (int ExitCode, string Output) RunVfsReleaseEvidenceVerifier(string evidenceDirectory)
         {
             ProcessStartInfo startInfo = new()
@@ -1683,6 +1838,34 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             {
                 process.Kill(entireProcessTree: true);
                 throw new TimeoutException("VFS release evidence verifier did not exit within 30 seconds.");
+            }
+
+            return (process.ExitCode, stdout + stderr);
+        }
+
+        private static (int ExitCode, string Output) RunVfsLogonEvidenceVerifier(string evidenceDirectory)
+        {
+            ProcessStartInfo startInfo = new()
+            {
+                FileName = "pwsh",
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false
+            };
+            startInfo.ArgumentList.Add("-NoProfile");
+            startInfo.ArgumentList.Add("-File");
+            startInfo.ArgumentList.Add(GetDesktopFilePath("Packaging/windows/verify-vfs-logon-evidence.ps1"));
+            startInfo.ArgumentList.Add("-EvidenceDirectory");
+            startInfo.ArgumentList.Add(evidenceDirectory);
+
+            using Process process = Process.Start(startInfo)
+                ?? throw new InvalidOperationException("PowerShell verifier process did not start.");
+            string stdout = process.StandardOutput.ReadToEnd();
+            string stderr = process.StandardError.ReadToEnd();
+            if (!process.WaitForExit(milliseconds: 30000))
+            {
+                process.Kill(entireProcessTree: true);
+                throw new TimeoutException("VFS logon evidence verifier did not exit within 30 seconds.");
             }
 
             return (process.ExitCode, stdout + stderr);
