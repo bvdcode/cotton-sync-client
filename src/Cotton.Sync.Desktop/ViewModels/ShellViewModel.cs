@@ -1906,6 +1906,16 @@ namespace Cotton.Sync.Desktop.ViewModels
                 case DesktopVisualSmokeScenario.HighPressureStarting:
                     ApplyVisualSmokeHighPressureStartingScenario();
                     break;
+                case DesktopVisualSmokeScenario.UpdateDownloadProgress:
+                    SelectedSettingsTabIndex = 0;
+                    await ShowSettingsAsync().ConfigureAwait(true);
+                    ApplyVisualSmokeUpdateDownloadProgressScenario();
+                    break;
+                case DesktopVisualSmokeScenario.UpdateInstallProgress:
+                    SelectedSettingsTabIndex = 0;
+                    await ShowSettingsAsync().ConfigureAwait(true);
+                    ApplyVisualSmokeUpdateInstallProgressScenario();
+                    break;
                 case DesktopVisualSmokeScenario.FolderControls:
                     if (SyncPairs.FirstOrDefault() is { } syncPair)
                     {
@@ -2147,6 +2157,39 @@ namespace Cotton.Sync.Desktop.ViewModels
                 IsCompleted: false,
                 OccurredAtUtc: startedAtUtc.AddSeconds(3)));
             AddActivity("Sync", syncPair.RemotePath, "Processing queued file changes");
+        }
+
+        private void ApplyVisualSmokeUpdateDownloadProgressScenario()
+        {
+            DesktopUpdateDownloadProgress progress = new DesktopUpdateDownloadProgress(
+                "0.1.49",
+                "CottonSync-Windows-Setup.exe",
+                25_165_824,
+                100_663_296);
+            IsUpdateAvailable = true;
+            IsUpdateReady = false;
+            IsUpdateBusy = true;
+            IsUpdateInstallHandoffActive = false;
+            UpdateStatusText = "Downloading update";
+            UpdateDetailsText = FormatUpdateDownloadProgress(progress);
+            GlobalStatus = "Downloading update";
+            IsUpdateDownloadProgressVisible = true;
+            IsUpdateDownloadProgressIndeterminate = false;
+            UpdateDownloadProgressValue = 25d;
+            IsUpdateInstallProgressVisible = false;
+        }
+
+        private void ApplyVisualSmokeUpdateInstallProgressScenario()
+        {
+            IsUpdateAvailable = true;
+            IsUpdateReady = true;
+            IsUpdateBusy = true;
+            IsUpdateInstallHandoffActive = false;
+            UpdateStatusText = "Installing update";
+            UpdateDetailsText = "Starting the update installer.";
+            GlobalStatus = "Installing update";
+            ClearUpdateDownloadProgress();
+            IsUpdateInstallProgressVisible = true;
         }
 
         private async Task ApplyStartWithOperatingSystemAsync(bool enabled)

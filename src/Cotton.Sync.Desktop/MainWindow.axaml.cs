@@ -61,6 +61,7 @@ namespace Cotton.Sync.Desktop
                 new WindowLocalFolderPicker(this),
                 DesktopNotificationServiceFactory.CreateDefault(),
                 new AvaloniaDesktopThemeService(),
+                checkForUpdatesOnStartup: visualSmokeScenario is null,
                 notifyOnSessionRestore: notifyOnSessionRestore);
             DataContext = viewModel;
             ApplyWindowMode(viewModel);

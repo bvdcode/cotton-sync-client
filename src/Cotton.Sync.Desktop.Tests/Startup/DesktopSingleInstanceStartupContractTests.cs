@@ -131,6 +131,14 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             });
         }
 
+        [Test]
+        public void MainWindow_DisablesStartupUpdateChecksForVisualSmokeScenarios()
+        {
+            string mainWindow = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml.cs"));
+
+            Assert.That(mainWindow, Does.Contain("checkForUpdatesOnStartup: visualSmokeScenario is null"));
+        }
+
         private static string GetDesktopFilePath(string relativePath)
         {
             string directory = TestContext.CurrentContext.TestDirectory;

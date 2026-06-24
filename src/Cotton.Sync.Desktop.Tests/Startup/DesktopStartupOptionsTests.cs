@@ -238,6 +238,30 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void Parse_LoadsUpdateDownloadProgressVisualSmokeScenario()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--visual-smoke",
+                    "update-download-progress",
+                ]);
+
+            Assert.That(options.VisualSmokeScenario, Is.EqualTo(DesktopVisualSmokeScenario.UpdateDownloadProgress));
+        }
+
+        [Test]
+        public void Parse_LoadsUpdateInstallProgressVisualSmokeScenario()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--visual-smoke",
+                    "update-install-progress",
+                ]);
+
+            Assert.That(options.VisualSmokeScenario, Is.EqualTo(DesktopVisualSmokeScenario.UpdateInstallProgress));
+        }
+
+        [Test]
         public void Parse_LoadsHyphenatedVisualSmokeScenario()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(

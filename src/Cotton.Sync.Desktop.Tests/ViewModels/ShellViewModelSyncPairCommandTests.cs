@@ -799,6 +799,50 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task ApplyVisualSmokeScenarioAsync_ShowsUpdateDownloadProgress()
+        {
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            await viewModel.ApplyVisualSmokeScenarioAsync(DesktopVisualSmokeScenario.UpdateDownloadProgress);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Downloading update"));
+                Assert.That(viewModel.UpdateDetailsText, Does.Contain("24 MB / 96 MB"));
+                Assert.That(viewModel.UpdateDetailsText, Does.Contain("25%"));
+                Assert.That(viewModel.IsUpdateDownloadProgressVisible, Is.True);
+                Assert.That(viewModel.IsUpdateDownloadProgressIndeterminate, Is.False);
+                Assert.That(viewModel.UpdateDownloadProgressValue, Is.EqualTo(25d));
+                Assert.That(viewModel.IsUpdateDownloadVisible, Is.False);
+                Assert.That(viewModel.IsSettingsVisible, Is.True);
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Downloading update"));
+            });
+        }
+
+        [Test]
+        public async Task ApplyVisualSmokeScenarioAsync_ShowsUpdateInstallProgress()
+        {
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            await viewModel.ApplyVisualSmokeScenarioAsync(DesktopVisualSmokeScenario.UpdateInstallProgress);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Installing update"));
+                Assert.That(viewModel.UpdateDetailsText, Is.EqualTo("Starting the update installer."));
+                Assert.That(viewModel.IsUpdateInstallProgressVisible, Is.True);
+                Assert.That(viewModel.IsUpdateDownloadProgressVisible, Is.False);
+                Assert.That(viewModel.IsUpdateInstallVisible, Is.False);
+                Assert.That(viewModel.IsSettingsVisible, Is.True);
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Installing update"));
+            });
+        }
+
+        [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsFolderControls()
         {
             Guid firstPairId = Guid.NewGuid();
