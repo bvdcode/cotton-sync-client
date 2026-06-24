@@ -723,6 +723,33 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         }
 
         [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_RejectsTooFewVfsVisualStateSamples()
+        {
+            string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
+            try
+            {
+                File.WriteAllLines(
+                    Path.Combine(evidenceDirectory, "visual-states.txt"),
+                    new[]
+                    {
+                        "Result: passed",
+                        "Scenario: update-download-progress;Status=Downloading update;StableObservationSeconds=0;Samples=1",
+                        "Scenario: update-install-progress;Status=Installing update;StableObservationSeconds=0;Samples=1",
+                        "Scenario: virtual-files-seeding;Status=Syncing;StableObservationSeconds=6;Samples=1"
+                    });
+
+                (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("visual-states.txt reported too few samples for virtual-files-seeding"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
         public void WindowsVfsReleaseEvidenceVerifierScript_RejectsMissingPostUninstallCleanupEvidence()
         {
             string evidenceDirectory = CreateVfsReleaseEvidenceBundle();

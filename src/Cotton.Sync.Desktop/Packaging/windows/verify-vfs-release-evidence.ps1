@@ -76,6 +76,30 @@ function Assert-CleanupReport {
     Assert-Contains -Content $content -Expected "RemainingRegistrationCount: 0" -Label $RelativePath
 }
 
+function Assert-VisualStateSamples {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Scenario,
+
+        [Parameter(Mandatory = $true)]
+        [int]$MinimumSamples
+    )
+
+    $pattern = "Scenario:\s+" + [regex]::Escape($Scenario) + "\b.*?Samples=(?<samples>\d+)"
+    $match = [regex]::Match($Content, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if (-not $match.Success) {
+        throw "visual-states.txt did not contain sample count for scenario: $Scenario"
+    }
+
+    $sampleCount = [int]$match.Groups["samples"].Value
+    if ($sampleCount -lt $MinimumSamples) {
+        throw "visual-states.txt reported too few samples for ${Scenario}: $sampleCount"
+    }
+}
+
 $summary = Read-EvidenceFile -RelativePath "summary.txt"
 Assert-Contains -Content $summary -Expected "Installed app: captured:" -Label "summary.txt"
 Assert-Contains -Content $summary -Expected "Autostart registry: captured:" -Label "summary.txt"
@@ -120,6 +144,9 @@ Assert-Contains -Content $visualStates -Expected "Result: passed" -Label "visual
 Assert-Contains -Content $visualStates -Expected "Scenario: update-download-progress" -Label "visual-states.txt"
 Assert-Contains -Content $visualStates -Expected "Scenario: update-install-progress" -Label "visual-states.txt"
 Assert-Contains -Content $visualStates -Expected "Scenario: virtual-files-seeding;Status=Syncing;StableObservationSeconds=6;Samples=" -Label "visual-states.txt"
+Assert-VisualStateSamples -Content $visualStates -Scenario "update-download-progress" -MinimumSamples 1
+Assert-VisualStateSamples -Content $visualStates -Scenario "update-install-progress" -MinimumSamples 1
+Assert-VisualStateSamples -Content $visualStates -Scenario "virtual-files-seeding" -MinimumSamples 5
 
 Assert-CleanupReport -RelativePath "post-uninstall-cleanup.txt"
 Assert-CleanupReport -RelativePath "post-reinstall-cleanup.txt"
