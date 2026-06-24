@@ -829,6 +829,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("cotton-sync-shell-share-link-data"));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-shell-share-link-verb.ps1"));
                 Assert.That(workflow, Does.Contain("-ExpectedExecutablePath $installedExe"));
+                Assert.That(workflow, Does.Contain("-InvocationDataDirectory (Join-Path $env:RUNNER_TEMP \"cotton-sync-shell-share-link-data\")"));
+                Assert.That(workflow, Does.Contain("-InvokeInstalledVerb"));
                 Assert.That(workflow, Does.Contain("-ExpectAbsent"));
                 Assert.That(workflow, Does.Contain("unins000.exe"));
                 Assert.That(workflow, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
@@ -973,7 +975,14 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("--copy-shell-share-link"));
                 Assert.That(script, Does.Contain("Shell.Application"));
                 Assert.That(script, Does.Contain("Assert-ShellVerbVisibility"));
+                Assert.That(script, Does.Contain("Assert-InstalledShellVerbInvocation"));
+                Assert.That(script, Does.Contain("shell-share-link-root\\synced-file.txt"));
+                Assert.That(script, Does.Contain("ProtectedData]::Protect"));
+                Assert.That(script, Does.Contain("shell-share-link-smoke-access"));
+                Assert.That(script, Does.Contain("ShareLinkCopied: true"));
+                Assert.That(script, Does.Contain("download-link"));
                 Assert.That(script, Does.Contain("Explorer shell did not expose"));
+                Assert.That(script, Does.Contain("Verified installed shell share-link verbs, Explorer visibility, and shell invocation."));
                 Assert.That(script, Does.Contain("Verified installed shell share-link verbs and Explorer visibility."));
                 Assert.That(script, Does.Contain("Verified installed shell share-link verbs were removed."));
             });
