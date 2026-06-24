@@ -4746,8 +4746,12 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             {
                 Assert.That(viewModel.IsBusy, Is.False);
                 Assert.That(viewModel.IsAddSyncPairSetupProgressVisible, Is.True);
-                Assert.That(viewModel.AddSyncPairSetupProgressMessage, Is.EqualTo("Preparing virtual files"));
-                Assert.That(viewModel.RemoteFolderWizardPrimaryActionText, Is.EqualTo("Preparing virtual files"));
+                Assert.That(
+                    viewModel.AddSyncPairSetupProgressMessage,
+                    Is.EqualTo("Registering virtual files and starting sync"));
+                Assert.That(
+                    viewModel.RemoteFolderWizardPrimaryActionText,
+                    Is.EqualTo("Registering virtual files and starting sync"));
                 Assert.That(viewModel.RemoteFolderWizardPrimaryActionToolTip, Is.EqualTo("Setting up this sync folder"));
                 Assert.That(viewModel.UseRemoteFolderCommand.CanExecute(null), Is.False);
                 Assert.That(viewModel.SyncNowCommand.CanExecute(null), Is.True);

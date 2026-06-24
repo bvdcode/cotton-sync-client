@@ -919,8 +919,8 @@ namespace Cotton.Sync.Desktop.ViewModels
             IsAddingSyncPair && IsAddSyncPairWizardVisible && !IsEditingSelectedSyncPairRemoteFolder;
 
         public string AddSyncPairSetupProgressMessage => SelectedSyncMode == SyncPairMode.WindowsVirtualFiles
-            ? "Preparing virtual files"
-            : "Adding sync folder";
+            ? "Registering virtual files and starting sync"
+            : "Saving sync folder and starting sync";
 
         public bool IsBrowserSignInPending
         {
