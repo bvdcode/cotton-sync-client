@@ -2627,11 +2627,13 @@ namespace Cotton.Sync.Desktop.Startup
                     MaterializationMode = SyncPairMaterializationMode.WindowsVirtualFiles,
                 };
 
+                DesktopRuntimeHealthSnapshot beforeStreamingHealth = CreateRuntimeHealthSnapshot();
                 Stopwatch syncTimer = Stopwatch.StartNew();
                 SyncRunResult result = await syncEngine
                     .RunOnceAsync(syncPairCore, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
                 syncTimer.Stop();
+                DesktopRuntimeHealthSnapshot afterStreamingHealth = CreateRuntimeHealthSnapshot();
 
                 IReadOnlyList<SyncStateEntry> state = await stateStore
                     .LoadPairAsync(syncPair.Id.ToString("D"), cancellationToken)
@@ -2650,6 +2652,17 @@ namespace Cotton.Sync.Desktop.Startup
                         + result.TotalActivityCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
                         + ", syncElapsedMs="
                         + syncTimer.ElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+                failures += await WriteCheckAsync(
+                        output,
+                        afterStreamingHealth.WorkingSetBytes > 0
+                            && afterStreamingHealth.ThreadCount.GetValueOrDefault() > 0
+                            && afterStreamingHealth.HandleCount.GetValueOrDefault() > 0,
+                        "Initial VFS runtime health captured.",
+                        "before="
+                        + FormatRuntimeHealth(beforeStreamingHealth)
+                        + ", after="
+                        + FormatRuntimeHealth(afterStreamingHealth))
                     .ConfigureAwait(false);
 
                 Trace.Flush();
