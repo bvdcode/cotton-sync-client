@@ -737,6 +737,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     operations,
                     Is.EqualTo(new[] { "native-unregister", "storage-provider-unregister" }));
                 Assert.That(storageProvider.UnregisteredSyncPairIds, Is.EqualTo(new[] { syncPair.Id }));
+                Assert.That(storageProvider.UnregisteredLocalRootPaths, Is.EqualTo(new[] { Path.GetFullPath(syncPair.LocalRootPath) }));
             });
         }
 
@@ -767,6 +768,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     operations,
                     Is.EqualTo(new[] { "native-unregister", "storage-provider-unregister" }));
                 Assert.That(storageProvider.UnregisteredSyncPairIds, Is.EqualTo(new[] { syncPair.Id }));
+                Assert.That(storageProvider.UnregisteredLocalRootPaths, Is.EqualTo(new[] { Path.GetFullPath(syncPair.LocalRootPath) }));
                 Assert.That(events.Select(static item => item.Operation), Is.EqualTo(new[] { "unregister-sync-root", "unregister-sync-root" }));
                 Assert.That(events.Select(static item => item.Status), Is.EqualTo(new[] { "skipped", "completed" }));
                 Assert.That(events[0].HResult, Is.EqualTo(HResultPathNotFound));
@@ -1350,6 +1352,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<Guid> UnregisteredSyncPairIds { get; } = [];
 
+            public List<string> UnregisteredLocalRootPaths { get; } = [];
+
             public int UnregisterAllCalls { get; private set; }
 
             public bool IsSupported()
@@ -1368,10 +1372,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Registrations.Add(registration);
             }
 
-            public void Unregister(Guid syncPairId)
+            public void Unregister(Guid syncPairId, string localRootPath)
             {
                 _operationLog.Add("storage-provider-unregister");
                 UnregisteredSyncPairIds.Add(syncPairId);
+                UnregisteredLocalRootPaths.Add(localRootPath);
             }
 
             public void UnregisterAllForCurrentUser()

@@ -27,14 +27,14 @@ namespace Cotton.Sync.WindowsShell
             {
                 if (args.Length == 0)
                 {
-                    Console.Error.WriteLine("Usage: Cotton.Sync.WindowsShell register <account> <root> <version> <icon-resource> | unregister <account> | unregister-all | is-supported | is-registered <account>");
+                    Console.Error.WriteLine("Usage: Cotton.Sync.WindowsShell register <account> <root> <version> <icon-resource> | unregister <account> [root] | unregister-all | is-supported | is-registered <account>");
                     return 2;
                 }
 
                 return args[0] switch
                 {
                     "register" when args.Length == 5 => await RegisterAsync(args[1], args[2], args[3], args[4]).ConfigureAwait(false),
-                    "unregister" when args.Length == 2 => Unregister(args[1]),
+                    "unregister" when args.Length is 2 or 3 => Unregister(args[1], args.Length == 3 ? args[2] : null),
                     "unregister-all" when args.Length == 1 => UnregisterAll(),
                     "is-supported" => StorageProviderSyncRootManager.IsSupported() ? 0 : 1,
                     "is-registered" when args.Length == 2 => IsRegistered(args[1]),
@@ -130,7 +130,7 @@ namespace Cotton.Sync.WindowsShell
             return failures == 0 ? 0 : 1;
         }
 
-        private static int Unregister(string account)
+        private static int Unregister(string account, string? rootPath)
         {
             string syncRootId = CreateSyncRootId(account);
             StorageProviderSyncRootInfo? syncRoot = StorageProviderSyncRootManager.IsSupported()
@@ -139,6 +139,9 @@ namespace Cotton.Sync.WindowsShell
                 .FirstOrDefault(root => string.Equals(root.Id, syncRootId, StringComparison.Ordinal))
                 : null;
             string? targetFolderPath = syncRoot?.Path.Path;
+            string? cleanupTargetFolderPath = string.IsNullOrWhiteSpace(rootPath)
+                ? targetFolderPath
+                : Path.GetFullPath(rootPath);
 
             if (syncRoot is not null)
             {
@@ -150,10 +153,10 @@ namespace Cotton.Sync.WindowsShell
                 Console.WriteLine("not registered " + syncRootId);
             }
 
-            int shellRootsRemoved = RemoveOrphanedShellNamespaceRoot(syncRootId);
-            int classIdsRemoved = string.IsNullOrWhiteSpace(targetFolderPath)
+            int shellRootsRemoved = RemoveOrphanedShellNamespaceRoot(syncRootId, cleanupTargetFolderPath);
+            int classIdsRemoved = string.IsNullOrWhiteSpace(cleanupTargetFolderPath)
                 ? 0
-                : RemoveClassIdSubKeysForTargetFolderPath(targetFolderPath);
+                : RemoveClassIdSubKeysForTargetFolderPath(cleanupTargetFolderPath);
             Console.WriteLine(
                 "unregister shell-namespace="
                 + shellRootsRemoved.ToString(System.Globalization.CultureInfo.InvariantCulture)
@@ -176,16 +179,26 @@ namespace Cotton.Sync.WindowsShell
         private static int RemoveOrphanedShellNamespaceRoots(string syncRootIdPrefix)
         {
             return RemoveShellNamespaceRoots(
-                syncRootId => syncRootId.StartsWith(syncRootIdPrefix, StringComparison.Ordinal));
+                syncRootId => syncRootId.StartsWith(syncRootIdPrefix, StringComparison.Ordinal),
+                normalizedTargetFolderPath: null,
+                removeCottonProviderClasses: true);
         }
 
-        private static int RemoveOrphanedShellNamespaceRoot(string syncRootId)
+        private static int RemoveOrphanedShellNamespaceRoot(string syncRootId, string? targetFolderPath)
         {
+            string? normalizedTargetFolderPath = string.IsNullOrWhiteSpace(targetFolderPath)
+                ? null
+                : NormalizePathForComparison(targetFolderPath);
             return RemoveShellNamespaceRoots(
-                currentSyncRootId => string.Equals(currentSyncRootId, syncRootId, StringComparison.Ordinal));
+                currentSyncRootId => string.Equals(currentSyncRootId, syncRootId, StringComparison.Ordinal),
+                normalizedTargetFolderPath,
+                removeCottonProviderClasses: false);
         }
 
-        private static int RemoveShellNamespaceRoots(Func<string, bool> matchesSyncRootId)
+        private static int RemoveShellNamespaceRoots(
+            Func<string, bool> matchesSyncRootId,
+            string? normalizedTargetFolderPath,
+            bool removeCottonProviderClasses)
         {
             using RegistryKey? namespaceKey = Registry.CurrentUser.OpenSubKey(ShellNamespaceRegistryPath, writable: true);
             if (namespaceKey is null)
@@ -197,8 +210,13 @@ namespace Cotton.Sync.WindowsShell
             foreach (string subKeyName in namespaceKey.GetSubKeyNames())
             {
                 using RegistryKey? syncRootKey = namespaceKey.OpenSubKey(subKeyName);
-                if (syncRootKey?.GetValue(null) is not string syncRootId
-                    || !matchesSyncRootId(syncRootId))
+                string? syncRootId = syncRootKey?.GetValue(null) as string;
+                if (!ShellNamespaceRootMatches(
+                    subKeyName,
+                    syncRootId,
+                    matchesSyncRootId,
+                    normalizedTargetFolderPath,
+                    removeCottonProviderClasses))
                 {
                     continue;
                 }
@@ -207,10 +225,48 @@ namespace Cotton.Sync.WindowsShell
                 DeleteClassIdSubKey(ClassesClsidRegistryPath, subKeyName);
                 DeleteClassIdSubKey(WowClassesClsidRegistryPath, subKeyName);
                 removed++;
-                Console.WriteLine("removed shell namespace " + subKeyName + " -> " + syncRootId);
+                Console.WriteLine("removed shell namespace " + subKeyName + " -> " + (syncRootId ?? "provider class"));
             }
 
             return removed;
+        }
+
+        private static bool ShellNamespaceRootMatches(
+            string classId,
+            string? syncRootId,
+            Func<string, bool> matchesSyncRootId,
+            string? normalizedTargetFolderPath,
+            bool removeCottonProviderClasses)
+        {
+            if (syncRootId is not null && matchesSyncRootId(syncRootId))
+            {
+                return true;
+            }
+
+            if (normalizedTargetFolderPath is not null
+                && (ClassIdTargetsFolderPath(ClassesClsidRegistryPath, classId, normalizedTargetFolderPath)
+                    || ClassIdTargetsFolderPath(WowClassesClsidRegistryPath, classId, normalizedTargetFolderPath)))
+            {
+                return true;
+            }
+
+            return removeCottonProviderClasses
+                && (IsCottonPinnedProviderClassId(ClassesClsidRegistryPath, classId)
+                    || IsCottonPinnedProviderClassId(WowClassesClsidRegistryPath, classId));
+        }
+
+        private static bool ClassIdTargetsFolderPath(
+            string registryPath,
+            string classId,
+            string normalizedTargetFolderPath)
+        {
+            using RegistryKey? initPropertyBagKey = Registry.CurrentUser.OpenSubKey(
+                registryPath + "\\" + classId + @"\Instance\InitPropertyBag");
+            return initPropertyBagKey?.GetValue("TargetFolderPath") is string targetFolderPath
+                && string.Equals(
+                    NormalizePathForComparison(targetFolderPath),
+                    normalizedTargetFolderPath,
+                    StringComparison.OrdinalIgnoreCase);
         }
 
         private static int RemoveLegacyPinnedProviderClassIds()
@@ -269,19 +325,31 @@ namespace Cotton.Sync.WindowsShell
             foreach (string subKeyName in parentKey.GetSubKeyNames())
             {
                 using RegistryKey? classIdKey = parentKey.OpenSubKey(subKeyName);
-                if (classIdKey?.GetValue(null) is not string displayName
-                    || !IsCottonProviderDisplayName(displayName)
-                    || !IsPinnedToNamespaceTree(classIdKey))
+                if (classIdKey is null || !IsCottonPinnedProviderClass(classIdKey))
                 {
                     continue;
                 }
 
+                string displayName = (string)classIdKey.GetValue(null)!;
                 parentKey.DeleteSubKeyTree(subKeyName, throwOnMissingSubKey: false);
                 removed++;
                 Console.WriteLine("removed legacy shell class " + subKeyName + " -> " + displayName);
             }
 
             return removed;
+        }
+
+        private static bool IsCottonPinnedProviderClassId(string registryPath, string classId)
+        {
+            using RegistryKey? classIdKey = Registry.CurrentUser.OpenSubKey(registryPath + "\\" + classId);
+            return classIdKey is not null && IsCottonPinnedProviderClass(classIdKey);
+        }
+
+        private static bool IsCottonPinnedProviderClass(RegistryKey classIdKey)
+        {
+            return classIdKey.GetValue(null) is string displayName
+                && IsCottonProviderDisplayName(displayName)
+                && IsPinnedToNamespaceTree(classIdKey);
         }
 
         private static bool IsCottonProviderDisplayName(string displayName)

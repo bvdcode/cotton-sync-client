@@ -66,9 +66,13 @@ namespace Cotton.Sync.Desktop.Platform
             ThrowIfFailed(result, "register");
         }
 
-        public void Unregister(Guid syncPairId)
+        public void Unregister(Guid syncPairId, string localRootPath)
         {
-            WindowsStorageProviderSyncRootCommandResult result = Run("unregister", ToAccount(syncPairId));
+            ArgumentException.ThrowIfNullOrWhiteSpace(localRootPath);
+            WindowsStorageProviderSyncRootCommandResult result = Run(
+                "unregister",
+                ToAccount(syncPairId),
+                localRootPath);
             ThrowIfFailed(result, "unregister");
         }
 
