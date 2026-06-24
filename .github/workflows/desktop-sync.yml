@@ -453,7 +453,8 @@ jobs:
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-cloud-files-self-test-truthfulness.ps1" `
             -AppExecutable $installedExe `
             -DataDirectory $dataDir `
-            -VfsSmokeDataDirectory (Join-Path $env:RUNNER_TEMP "cotton-sync-vfs-self-test-truthfulness-data")
+            -VfsSmokeDataDirectory (Join-Path $env:RUNNER_TEMP "cotton-sync-vfs-self-test-truthfulness-data") `
+            -AdditionalVfsSmokePhases @("desktop-session-restore")
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-checksums.ps1" `
             -PublishDirectory $installDir
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-associated-icon.ps1" `
