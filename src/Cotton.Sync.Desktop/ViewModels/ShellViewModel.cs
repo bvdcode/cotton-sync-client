@@ -5391,7 +5391,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
 
             UpdateRunFileRate(observedFilesPerSecond, occurredAtUtc);
-            if (progressValues.Any(IsOpenEndedPlaceholderCreation))
+            if (progressValues.Any(static progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders))
             {
                 _currentRunProgressEstimatedTimeRemaining = null;
                 _lastRunProgressEstimateOccurredAtUtc = null;
@@ -5868,6 +5868,8 @@ namespace Cotton.Sync.Desktop.ViewModels
 
             string aggregateUnitName = progressValues.All(static progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders)
                 ? VirtualFileUserFacingCopy.CloudFilesProgressUnit
+                : progressValues.All(static progress => progress.Stage == SyncRunProgressStage.ScanningRemote)
+                    ? "cloud items"
                 : progressValues.All(static progress => progress.Stage == SyncRunProgressStage.FinalizingCloudFiles)
                     ? "folders"
                 : "files";
@@ -6018,13 +6020,15 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private static bool IsIndeterminatePlaceholderCreation(DesktopRunProgressSnapshot progress)
         {
-            return IsOpenEndedPlaceholderCreation(progress);
+            return progress.Stage == SyncRunProgressStage.CreatingPlaceholders
+                && !progress.FilesTotal.HasValue;
         }
 
         private static bool IsOpenEndedPlaceholderCreation(DesktopRunProgressSnapshot progress)
         {
             return !progress.IsCompleted
-                && progress.Stage == SyncRunProgressStage.CreatingPlaceholders;
+                && progress.Stage == SyncRunProgressStage.CreatingPlaceholders
+                && !progress.FilesTotal.HasValue;
         }
 
         private static bool IsStartingCountedRunProgress(DesktopRunProgressSnapshot progress)
@@ -6068,6 +6072,11 @@ namespace Cotton.Sync.Desktop.ViewModels
             if (stage == SyncRunProgressStage.CreatingPlaceholders)
             {
                 return VirtualFileUserFacingCopy.CloudItemsProgressUnit;
+            }
+
+            if (stage == SyncRunProgressStage.ScanningRemote)
+            {
+                return singular ? "cloud item" : "cloud items";
             }
 
             if (stage == SyncRunProgressStage.FinalizingCloudFiles)

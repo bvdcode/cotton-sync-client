@@ -820,6 +820,7 @@ namespace Cotton.Sync.Tests
             {
                 Assert.That(remoteScanProgress.Select(item => item.FilesCompleted), Does.Contain(1));
                 Assert.That(remoteScanProgress.Select(item => item.FilesCompleted), Does.Contain(2));
+                Assert.That(remoteScanProgress.Select(item => item.FilesTotal), Does.Contain(2));
                 Assert.That(remoteScanProgress.Where(item => !string.IsNullOrWhiteSpace(item.CurrentPath)).Select(item => item.CurrentPath), Is.EqualTo(new[] { "Cloud/a.txt", "Cloud/b.txt" }));
             });
         }
@@ -4954,13 +4955,26 @@ namespace Cotton.Sync.Tests
                 IProgress<RemoteTreeScanProgress>? progress,
                 CancellationToken cancellationToken = default)
             {
-                progress?.Report(new RemoteTreeScanProgress(0, _snapshot.Directories.Count, currentPath: null));
+                int entriesExpected = _progressPaths.Count + _snapshot.Directories.Count;
+                progress?.Report(new RemoteTreeScanProgress(
+                    0,
+                    _snapshot.Directories.Count,
+                    currentPath: null,
+                    entriesExpected: entriesExpected));
                 for (int index = 0; index < _progressPaths.Count; index++)
                 {
-                    progress?.Report(new RemoteTreeScanProgress(index + 1, _snapshot.Directories.Count, _progressPaths[index]));
+                    progress?.Report(new RemoteTreeScanProgress(
+                        index + 1,
+                        _snapshot.Directories.Count,
+                        _progressPaths[index],
+                        entriesExpected: entriesExpected));
                 }
 
-                progress?.Report(new RemoteTreeScanProgress(_progressPaths.Count, _snapshot.Directories.Count, currentPath: null));
+                progress?.Report(new RemoteTreeScanProgress(
+                    _progressPaths.Count,
+                    _snapshot.Directories.Count,
+                    currentPath: null,
+                    entriesExpected: entriesExpected));
                 return Task.FromResult(_snapshot);
             }
         }

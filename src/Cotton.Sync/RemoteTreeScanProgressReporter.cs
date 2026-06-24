@@ -19,11 +19,12 @@ namespace Cotton.Sync
         public void Report(RemoteTreeScanProgress value)
         {
             ArgumentNullException.ThrowIfNull(value);
+            int entriesScanned = value.FilesScanned + value.DirectoriesScanned;
             SyncRunProgressReporter.Report(
                 _options,
                 SyncRunProgressStage.ScanningRemote,
-                value.FilesScanned,
-                filesTotal: null,
+                entriesScanned,
+                value.EntriesExpected,
                 value.CurrentPath,
                 _startedAtUtc);
         }
