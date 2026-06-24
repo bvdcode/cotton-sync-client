@@ -444,6 +444,10 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("LaunchMode: attached-existing"));
                 Assert.That(script, Does.Contain("CleanupRemaining: 0"));
                 Assert.That(script, Does.Contain("visual-states.txt"));
+                Assert.That(script, Does.Contain("Assert-VisualStateStableObservationMinimum -Content $visualStates -Scenario \"update-download-progress\" -MinimumSeconds 5"));
+                Assert.That(script, Does.Contain("Assert-VisualStateStableObservationMinimum -Content $visualStates -Scenario \"update-install-progress\" -MinimumSeconds 5"));
+                Assert.That(script, Does.Contain("Assert-VisualStateSamples -Content $visualStates -Scenario \"update-download-progress\" -MinimumSamples 5"));
+                Assert.That(script, Does.Contain("Assert-VisualStateSamples -Content $visualStates -Scenario \"update-install-progress\" -MinimumSamples 5"));
                 Assert.That(script, Does.Contain("Scenario: virtual-files-seeding;Status=Syncing;StableObservationSeconds=30;Samples="));
                 Assert.That(script, Does.Contain("CheckedScope: HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\SyncRootManager"));
                 Assert.That(script, Does.Contain("CheckedScope: HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Desktop\\NameSpace"));
@@ -748,6 +752,60 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         }
 
         [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_RejectsTooFewUpdateVisualStateSamples()
+        {
+            string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
+            try
+            {
+                File.WriteAllLines(
+                    Path.Combine(evidenceDirectory, "visual-states.txt"),
+                    new[]
+                    {
+                        "Result: passed",
+                        "Scenario: update-download-progress;Status=Downloading update;StableObservationSeconds=5;Samples=1;MaxSnapshotMs=100;MaxSampleGapMs=0",
+                        "Scenario: update-install-progress;Status=Installing update;StableObservationSeconds=5;Samples=10;MaxSnapshotMs=100;MaxSampleGapMs=600",
+                        "Scenario: virtual-files-seeding;Status=Syncing;StableObservationSeconds=30;Samples=60;MaxSnapshotMs=100;MaxSampleGapMs=500"
+                    });
+
+                (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("visual-states.txt reported too few samples for update-download-progress"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_RejectsShortUpdateVisualStateWindow()
+        {
+            string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
+            try
+            {
+                File.WriteAllLines(
+                    Path.Combine(evidenceDirectory, "visual-states.txt"),
+                    new[]
+                    {
+                        "Result: passed",
+                        "Scenario: update-download-progress;Status=Downloading update;StableObservationSeconds=0;Samples=10;MaxSnapshotMs=100;MaxSampleGapMs=600",
+                        "Scenario: update-install-progress;Status=Installing update;StableObservationSeconds=5;Samples=10;MaxSnapshotMs=100;MaxSampleGapMs=600",
+                        "Scenario: virtual-files-seeding;Status=Syncing;StableObservationSeconds=30;Samples=60;MaxSnapshotMs=100;MaxSampleGapMs=500"
+                    });
+
+                (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("visual-states.txt reported too short stable observation window for update-download-progress"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
         public void WindowsVfsReleaseEvidenceVerifierScript_RejectsTooFewVfsVisualStateSamples()
         {
             string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
@@ -758,8 +816,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     new[]
                     {
                         "Result: passed",
-                        "Scenario: update-download-progress;Status=Downloading update;StableObservationSeconds=0;Samples=1;MaxSnapshotMs=100;MaxSampleGapMs=0",
-                        "Scenario: update-install-progress;Status=Installing update;StableObservationSeconds=0;Samples=1;MaxSnapshotMs=100;MaxSampleGapMs=0",
+                        "Scenario: update-download-progress;Status=Downloading update;StableObservationSeconds=5;Samples=10;MaxSnapshotMs=100;MaxSampleGapMs=600",
+                        "Scenario: update-install-progress;Status=Installing update;StableObservationSeconds=5;Samples=10;MaxSnapshotMs=100;MaxSampleGapMs=600",
                         "Scenario: virtual-files-seeding;Status=Syncing;StableObservationSeconds=30;Samples=1;MaxSnapshotMs=100;MaxSampleGapMs=500"
                     });
 
@@ -785,8 +843,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     new[]
                     {
                         "Result: passed",
-                        "Scenario: update-download-progress;Status=Downloading update;StableObservationSeconds=0;Samples=1;MaxSnapshotMs=100;MaxSampleGapMs=0",
-                        "Scenario: update-install-progress;Status=Installing update;StableObservationSeconds=0;Samples=1;MaxSnapshotMs=100;MaxSampleGapMs=0",
+                        "Scenario: update-download-progress;Status=Downloading update;StableObservationSeconds=5;Samples=10;MaxSnapshotMs=100;MaxSampleGapMs=600",
+                        "Scenario: update-install-progress;Status=Installing update;StableObservationSeconds=5;Samples=10;MaxSnapshotMs=100;MaxSampleGapMs=600",
                         "Scenario: virtual-files-seeding;Status=Syncing;StableObservationSeconds=30;Samples=60;MaxSnapshotMs=100;MaxSampleGapMs=6000"
                     });
 
@@ -812,8 +870,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     new[]
                     {
                         "Result: passed",
-                        "Scenario: update-download-progress;Status=Downloading update;StableObservationSeconds=0;Samples=1;MaxSnapshotMs=100;MaxSampleGapMs=0",
-                        "Scenario: update-install-progress;Status=Installing update;StableObservationSeconds=0;Samples=1;MaxSnapshotMs=100;MaxSampleGapMs=0",
+                        "Scenario: update-download-progress;Status=Downloading update;StableObservationSeconds=5;Samples=10;MaxSnapshotMs=100;MaxSampleGapMs=600",
+                        "Scenario: update-install-progress;Status=Installing update;StableObservationSeconds=5;Samples=10;MaxSnapshotMs=100;MaxSampleGapMs=600",
                         "Scenario: virtual-files-seeding;Status=Syncing;StableObservationSeconds=6;Samples=60;MaxSnapshotMs=100;MaxSampleGapMs=500"
                     });
 
@@ -1866,6 +1924,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("118054 cloud items ready"));
                 Assert.That(script, Does.Contain("[int]$StableObservationSeconds = 0"));
                 Assert.That(script, Does.Contain("Assert-VisualStateSnapshot"));
+                Assert.That(script, Does.Contain("-StableObservationSeconds 5"));
                 Assert.That(script, Does.Contain("-StableObservationSeconds 30"));
                 Assert.That(script, Does.Contain("Observed visual state '$Scenario' sample(s):"));
                 Assert.That(script, Does.Contain("Scenario: $Scenario;Status=$ExpectedStatus;StableObservationSeconds=$StableObservationSeconds;Samples=$sampleCount"));
@@ -2346,8 +2405,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 new[]
                 {
                     "Result: passed",
-                    "Scenario: update-download-progress;Status=Downloading update;StableObservationSeconds=0;Samples=1;MaxSnapshotMs=100;MaxSampleGapMs=0",
-                    "Scenario: update-install-progress;Status=Installing update;StableObservationSeconds=0;Samples=1;MaxSnapshotMs=100;MaxSampleGapMs=0",
+                    "Scenario: update-download-progress;Status=Downloading update;StableObservationSeconds=5;Samples=10;MaxSnapshotMs=100;MaxSampleGapMs=600",
+                    "Scenario: update-install-progress;Status=Installing update;StableObservationSeconds=5;Samples=10;MaxSnapshotMs=100;MaxSampleGapMs=600",
                     "Scenario: virtual-files-seeding;Status=Syncing;StableObservationSeconds=30;Samples=60;MaxSnapshotMs=100;MaxSampleGapMs=500"
                 });
             WriteCleanupEvidence(Path.Combine(evidenceDirectory, "post-uninstall-cleanup.txt"));

@@ -104,6 +104,30 @@ function Assert-VisualStateSamples {
     }
 }
 
+function Assert-VisualStateStableObservationMinimum {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Scenario,
+
+        [Parameter(Mandatory = $true)]
+        [int]$MinimumSeconds
+    )
+
+    $pattern = "Scenario:\s+" + [regex]::Escape($Scenario) + "\b.*?StableObservationSeconds=(?<seconds>\d+)"
+    $match = [regex]::Match($Content, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if (-not $match.Success) {
+        throw "visual-states.txt did not contain StableObservationSeconds for scenario: $Scenario"
+    }
+
+    $stableObservationSeconds = [int]$match.Groups["seconds"].Value
+    if ($stableObservationSeconds -lt $MinimumSeconds) {
+        throw "visual-states.txt reported too short stable observation window for ${Scenario}: $stableObservationSeconds"
+    }
+}
+
 function Assert-VisualStateMetricMaximum {
     param(
         [Parameter(Mandatory = $true)]
@@ -205,9 +229,15 @@ Assert-Contains -Content $visualStates -Expected "Result: passed" -Label "visual
 Assert-Contains -Content $visualStates -Expected "Scenario: update-download-progress" -Label "visual-states.txt"
 Assert-Contains -Content $visualStates -Expected "Scenario: update-install-progress" -Label "visual-states.txt"
 Assert-Contains -Content $visualStates -Expected "Scenario: virtual-files-seeding;Status=Syncing;StableObservationSeconds=30;Samples=" -Label "visual-states.txt"
-Assert-VisualStateSamples -Content $visualStates -Scenario "update-download-progress" -MinimumSamples 1
-Assert-VisualStateSamples -Content $visualStates -Scenario "update-install-progress" -MinimumSamples 1
+Assert-VisualStateStableObservationMinimum -Content $visualStates -Scenario "update-download-progress" -MinimumSeconds 5
+Assert-VisualStateStableObservationMinimum -Content $visualStates -Scenario "update-install-progress" -MinimumSeconds 5
+Assert-VisualStateSamples -Content $visualStates -Scenario "update-download-progress" -MinimumSamples 5
+Assert-VisualStateSamples -Content $visualStates -Scenario "update-install-progress" -MinimumSamples 5
 Assert-VisualStateSamples -Content $visualStates -Scenario "virtual-files-seeding" -MinimumSamples 30
+Assert-VisualStateMetricMaximum -Content $visualStates -Scenario "update-download-progress" -Metric "MaxSnapshotMs" -MaximumValue 3000
+Assert-VisualStateMetricMaximum -Content $visualStates -Scenario "update-download-progress" -Metric "MaxSampleGapMs" -MaximumValue 2000
+Assert-VisualStateMetricMaximum -Content $visualStates -Scenario "update-install-progress" -Metric "MaxSnapshotMs" -MaximumValue 3000
+Assert-VisualStateMetricMaximum -Content $visualStates -Scenario "update-install-progress" -Metric "MaxSampleGapMs" -MaximumValue 2000
 Assert-VisualStateMetricMaximum -Content $visualStates -Scenario "virtual-files-seeding" -Metric "MaxSnapshotMs" -MaximumValue 3000
 Assert-VisualStateMetricMaximum -Content $visualStates -Scenario "virtual-files-seeding" -Metric "MaxSampleGapMs" -MaximumValue 5000
 
