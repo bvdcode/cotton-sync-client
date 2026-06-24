@@ -193,6 +193,31 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void RunAsync_DesktopRootLifecyclePhaseUsesAppServiceAndNativeVfsCleanup()
+        {
+            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(runner, Does.Contain("\"desktop-root-lifecycle\""));
+                Assert.That(runner, Does.Contain("RunDesktopRootLifecycleAsync("));
+                Assert.That(runner, Does.Contain("Desktop root lifecycle smoke requires the native Windows Cloud Files API."));
+                Assert.That(runner, Does.Contain("CreateDesktopRootSyncPair("));
+                Assert.That(runner, Does.Contain("DisplayName = \"Desktop\""));
+                Assert.That(runner, Does.Contain("RemoteDisplayPath = \"/Desktop\""));
+                Assert.That(runner, Does.Contain("SaveSyncPairAsync(syncPair"));
+                Assert.That(runner, Does.Contain("StartSyncAsync(cancellationToken)"));
+                Assert.That(runner, Does.Contain("SyncNowAsync(syncPair.Id"));
+                Assert.That(runner, Does.Contain("DeleteSyncPairAsync(syncPair.Id"));
+                Assert.That(runner, Does.Contain("WindowsCloudFilesSyncRootConnectionCoordinator"));
+                Assert.That(runner, Does.Contain("Desktop root sync pair was saved through the app service."));
+                Assert.That(runner, Does.Contain("Desktop root remote file became an online-only placeholder."));
+                Assert.That(runner, Does.Contain("Desktop root Cloud Files sync root status was finalized."));
+                Assert.That(runner, Does.Contain("Deleting the Desktop root sync pair removed the local placeholder root."));
+            });
+        }
+
+        [Test]
         public void RunAsync_NonEmptyPreservationPhaseVerifiesPreExistingLocalFiles()
         {
             string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
