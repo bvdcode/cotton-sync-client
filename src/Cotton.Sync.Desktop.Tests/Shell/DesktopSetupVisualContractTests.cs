@@ -964,6 +964,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(addFolderWizard, Does.Contain("Content=\"{Binding RemoteFolderWizardPrimaryActionText}\""));
                 Assert.That(addFolderWizard, Does.Contain("ToolTip.Tip=\"{Binding RemoteFolderWizardPrimaryActionToolTip}\""));
                 Assert.That(addFolderWizard, Does.Contain("UseRemoteFolderCommand"));
+                Assert.That(addFolderWizard, Does.Contain("IsVisible=\"{Binding IsRemoteFolderLoadingVisible}\""));
+                Assert.That(addFolderWizard, Does.Contain("Text=\"{Binding RemoteFolderLoadingMessage}\""));
                 Assert.That(addFolderWizard, Does.Contain("IsAddSyncPairLocalSummaryVisible"));
                 Assert.That(addFolderWizard, Does.Not.Contain("Command=\"{Binding AddSyncPairCommand}\""));
                 Assert.That(addFolderWizard, Does.Not.Contain("Content=\"Sync\""));

@@ -4175,6 +4175,49 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task ShowAddSyncPairCommand_ShowsCloudFolderLoadingStateWhileRemoteFoldersLoad()
+        {
+            var localFolderPicker = new FakeLocalFolderPicker();
+            var listCompletion = new TaskCompletionSource<DesktopRemoteFolderListSnapshot>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            {
+                ListRemoteFoldersCompletion = listCompletion,
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller, localFolderPicker: localFolderPicker);
+            await viewModel.InitializeAsync();
+            viewModel.LocalFolderPath = "/home/user/Cotton";
+
+            Task commandTask = ExecuteAsync(viewModel.ShowAddSyncPairCommand);
+            await WaitForAsync(() => viewModel.IsRemoteFolderLoading);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.IsBusy, Is.True);
+                Assert.That(viewModel.IsAddSyncPairWizardVisible, Is.True);
+                Assert.That(viewModel.IsAddSyncPairCloudStepVisible, Is.True);
+                Assert.That(viewModel.IsRemoteFolderLoadingVisible, Is.True);
+                Assert.That(viewModel.RemoteFolderLoadingMessage, Is.EqualTo("Loading cloud folders"));
+                Assert.That(viewModel.RemoteFolderWizardPrimaryActionText, Is.EqualTo("Loading cloud folders"));
+                Assert.That(viewModel.RemoteFolderWizardPrimaryActionToolTip, Is.EqualTo("Loading cloud folders"));
+                Assert.That(viewModel.UseRemoteFolderCommand.CanExecute(null), Is.False);
+            });
+
+            listCompletion.SetResult(new DesktopRemoteFolderListSnapshot(
+                "/",
+                [new DesktopRemoteFolderSnapshot(Guid.NewGuid(), "Documents", "/Documents")]));
+            await commandTask;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.IsRemoteFolderLoading, Is.False);
+                Assert.That(viewModel.IsRemoteFolderLoadingVisible, Is.False);
+                Assert.That(viewModel.RemoteFolderWizardPrimaryActionText, Is.EqualTo("Use this folder"));
+                Assert.That(viewModel.UseRemoteFolderCommand.CanExecute(null), Is.True);
+            });
+        }
+
+        [Test]
         public async Task RemoteFolderFilter_FiltersLoadedCloudFoldersAndKeepsCurrentFolderSelectable()
         {
             var localFolderPicker = new FakeLocalFolderPicker();
@@ -6568,6 +6611,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             public Dictionary<string, DesktopRemoteFolderListSnapshot> RemoteFoldersByPath { get; } = [];
 
+            public TaskCompletionSource<DesktopRemoteFolderListSnapshot>? ListRemoteFoldersCompletion { get; set; }
+
             public List<string> ListRemoteFolderPaths { get; } = [];
 
             public List<(string ParentPath, string FolderName)> CreatedRemoteFolders { get; } = [];
@@ -6799,15 +6844,33 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 return await completion.Task.ConfigureAwait(false);
             }
 
-            public Task<DesktopRemoteFolderListSnapshot> ListRemoteFoldersAsync(
+            public async Task<DesktopRemoteFolderListSnapshot> ListRemoteFoldersAsync(
                 string remotePath,
                 CancellationToken cancellationToken = default)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 ListRemoteFolderPaths.Add(remotePath);
-                return Task.FromResult(RemoteFoldersByPath.GetValueOrDefault(
-                    remotePath,
-                    new DesktopRemoteFolderListSnapshot(remotePath, [])));
+                if (ListRemoteFoldersCompletion is not null)
+                {
+                    return await WaitForRemoteFoldersAsync(ListRemoteFoldersCompletion, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                return RemoteFoldersByPath.GetValueOrDefault(remotePath, new DesktopRemoteFolderListSnapshot(remotePath, []));
+            }
+
+            private static async Task<DesktopRemoteFolderListSnapshot> WaitForRemoteFoldersAsync(
+                TaskCompletionSource<DesktopRemoteFolderListSnapshot> completion,
+                CancellationToken cancellationToken)
+            {
+                using CancellationTokenRegistration registration = cancellationToken.Register(
+                    static state =>
+                    {
+                        var taskCompletion = (TaskCompletionSource<DesktopRemoteFolderListSnapshot>)state!;
+                        taskCompletion.TrySetCanceled();
+                    },
+                    completion);
+                return await completion.Task.ConfigureAwait(false);
             }
 
             public Task<DesktopRemoteFolderSnapshot> CreateRemoteFolderAsync(
