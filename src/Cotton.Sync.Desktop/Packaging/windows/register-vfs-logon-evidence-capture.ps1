@@ -16,6 +16,8 @@ param(
 
     [switch]$CaptureScreenshot,
 
+    [switch]$ValidateOnly,
+
     [switch]$Remove
 )
 
@@ -46,6 +48,36 @@ function Assert-RequiredValue {
     }
 }
 
+function Resolve-RequiredDirectory {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
+        throw "$Name was not found: $Path"
+    }
+
+    return (Resolve-Path -LiteralPath $Path).Path
+}
+
+function Assert-InstalledAutostart {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ExecutablePath
+    )
+
+    $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+    $runValue = (Get-ItemProperty -Path $runKey -Name "Cotton Sync" -ErrorAction SilentlyContinue)."Cotton Sync"
+    $expectedRunValue = "`"$ExecutablePath`" --start-minimized"
+    if ($runValue -ne $expectedRunValue) {
+        throw "Autostart registry value was not ready for logon capture. Expected '$expectedRunValue', got '$runValue'."
+    }
+}
+
 if ($DelaySeconds -lt 0) {
     throw "DelaySeconds must not be negative."
 }
@@ -66,8 +98,23 @@ if (-not (Test-Path -LiteralPath $captureScript)) {
     throw "VFS release evidence capture script was not found: $captureScript"
 }
 
-if (-not (Test-Path -LiteralPath $InstallDirectory)) {
-    throw "Install directory was not found: $InstallDirectory"
+$resolvedLocalRoot = Resolve-RequiredDirectory -Name "Local root" -Path $LocalRoot
+$resolvedDataDirectory = Resolve-RequiredDirectory -Name "Data directory" -Path $DataDirectory
+$resolvedInstallDirectory = Resolve-RequiredDirectory -Name "Install directory" -Path $InstallDirectory
+$installedExecutable = Join-Path $resolvedInstallDirectory "Cotton.Sync.Desktop.exe"
+if (-not (Test-Path -LiteralPath $installedExecutable -PathType Leaf)) {
+    throw "Installed desktop executable was not found: $installedExecutable"
+}
+
+Assert-InstalledAutostart -ExecutablePath $installedExecutable
+
+if ($ValidateOnly) {
+    Write-Host "Validated VFS logon evidence capture inputs."
+    Write-Host "Executable: $installedExecutable"
+    Write-Host "LocalRoot: $resolvedLocalRoot"
+    Write-Host "DataDirectory: $resolvedDataDirectory"
+    Write-Host "InstallDirectory: $resolvedInstallDirectory"
+    return
 }
 
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
@@ -84,11 +131,11 @@ $captureArguments = @(
     "-OutputDirectory",
     $resolvedOutputDirectory,
     "-LocalRoot",
-    $LocalRoot,
+    $resolvedLocalRoot,
     "-DataDirectory",
-    $DataDirectory,
+    $resolvedDataDirectory,
     "-InstallDirectory",
-    $InstallDirectory,
+    $resolvedInstallDirectory,
     "-RunProfileSelfTest",
     "-RunDiagnosticsExport"
 )

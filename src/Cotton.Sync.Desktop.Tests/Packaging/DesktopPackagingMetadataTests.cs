@@ -512,7 +512,17 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("New-ScheduledTaskPrincipal"));
                 Assert.That(script, Does.Contain("ConvertTo-CommandLineArgument"));
                 Assert.That(script, Does.Contain("Assert-RequiredValue -Name \"OutputDirectory\""));
+                Assert.That(script, Does.Contain("[switch]$ValidateOnly"));
+                Assert.That(script, Does.Contain("Resolve-RequiredDirectory -Name \"Local root\""));
+                Assert.That(script, Does.Contain("Resolve-RequiredDirectory -Name \"Data directory\""));
+                Assert.That(script, Does.Contain("Resolve-RequiredDirectory -Name \"Install directory\""));
+                Assert.That(script, Does.Contain("Installed desktop executable was not found"));
+                Assert.That(script, Does.Contain("Autostart registry value was not ready for logon capture."));
+                Assert.That(script, Does.Contain("Validated VFS logon evidence capture inputs."));
                 Assert.That(script, Does.Contain("capture-vfs-release-evidence.ps1"));
+                Assert.That(script, Does.Contain("$resolvedLocalRoot"));
+                Assert.That(script, Does.Contain("$resolvedDataDirectory"));
+                Assert.That(script, Does.Contain("$resolvedInstallDirectory"));
                 Assert.That(script, Does.Contain("-RunProfileSelfTest"));
                 Assert.That(script, Does.Contain("-RunDiagnosticsExport"));
                 Assert.That(script, Does.Contain("RunnerStartedAt:"));
