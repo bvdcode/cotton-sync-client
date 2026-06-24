@@ -113,13 +113,39 @@ function Assert-ProgressBarPresent {
     }
 }
 
+function Assert-VisualStateSnapshot {
+    param(
+        [System.Windows.Automation.AutomationElement]$Window,
+        [string]$Scenario,
+        [string]$ExpectedStatus,
+        [string]$ExpectedDetailsPattern,
+        [bool]$RequireSettingsActions,
+        [string[]]$UnexpectedNames
+    )
+
+    $elements = Get-AutomationDescendants -Root $Window
+    $names = Get-AutomationNames -Elements $elements
+
+    if ($RequireSettingsActions) {
+        Assert-NamePresent -Names $names -ExpectedName "Settings" -Scenario $Scenario
+        Assert-NamePresent -Names $names -ExpectedName "Updates" -Scenario $Scenario
+    }
+    Assert-NamePresent -Names $names -ExpectedName $ExpectedStatus -Scenario $Scenario
+    Assert-NameMatches -Names $names -Pattern $ExpectedDetailsPattern -Scenario $Scenario
+    Assert-ProgressBarPresent -Elements $elements -Scenario $Scenario
+    foreach ($unexpectedName in $UnexpectedNames) {
+        Assert-NameMissing -Names $names -UnexpectedName $unexpectedName -Scenario $Scenario
+    }
+}
+
 function Test-VisualState {
     param(
         [string]$Scenario,
         [string]$ExpectedStatus,
         [string]$ExpectedDetailsPattern,
         [bool]$RequireSettingsActions = $true,
-        [string[]]$UnexpectedNames = @("Download", "Update")
+        [string[]]$UnexpectedNames = @("Download", "Update"),
+        [int]$StableObservationSeconds = 0
     )
 
     $dataDirectory = Join-Path $root $Scenario
@@ -132,19 +158,25 @@ function Test-VisualState {
     try {
         $window = Get-WindowAutomationRoot -Process $process -TimeoutSeconds $TimeoutSeconds
         Start-Sleep -Milliseconds 1000
-        $elements = Get-AutomationDescendants -Root $window
-        $names = Get-AutomationNames -Elements $elements
+        $sampleCount = 0
+        $deadline = [DateTime]::UtcNow.AddSeconds($StableObservationSeconds)
+        while ($true) {
+            Assert-VisualStateSnapshot `
+                -Window $window `
+                -Scenario $Scenario `
+                -ExpectedStatus $ExpectedStatus `
+                -ExpectedDetailsPattern $ExpectedDetailsPattern `
+                -RequireSettingsActions $RequireSettingsActions `
+                -UnexpectedNames $UnexpectedNames
+            $sampleCount++
+            if ($StableObservationSeconds -le 0 -or [DateTime]::UtcNow -ge $deadline) {
+                break
+            }
 
-        if ($RequireSettingsActions) {
-            Assert-NamePresent -Names $names -ExpectedName "Settings" -Scenario $Scenario
-            Assert-NamePresent -Names $names -ExpectedName "Updates" -Scenario $Scenario
+            Start-Sleep -Milliseconds 500
         }
-        Assert-NamePresent -Names $names -ExpectedName $ExpectedStatus -Scenario $Scenario
-        Assert-NameMatches -Names $names -Pattern $ExpectedDetailsPattern -Scenario $Scenario
-        Assert-ProgressBarPresent -Elements $elements -Scenario $Scenario
-        foreach ($unexpectedName in $UnexpectedNames) {
-            Assert-NameMissing -Names $names -UnexpectedName $unexpectedName -Scenario $Scenario
-        }
+
+        Write-Host "Observed visual state '$Scenario' sample(s): $sampleCount"
     } finally {
         if (-not $process.HasExited) {
             $process.CloseMainWindow() | Out-Null
@@ -171,6 +203,7 @@ Test-VisualState `
     -ExpectedStatus "Syncing" `
     -ExpectedDetailsPattern "^Making cloud files available .+ 118054 of 500000 cloud items$" `
     -RequireSettingsActions $false `
-    -UnexpectedNames @("Download", "Update", "Processing queued changes")
+    -UnexpectedNames @("Download", "Update", "Processing queued changes") `
+    -StableObservationSeconds 6
 
 Write-Host "Verified installed update and VFS visual states."
