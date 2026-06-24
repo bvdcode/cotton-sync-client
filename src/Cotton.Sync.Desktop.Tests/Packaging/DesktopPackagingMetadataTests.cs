@@ -823,6 +823,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("cotton-sync-update-discovery-data"));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-update-visual-states.ps1"));
                 Assert.That(workflow, Does.Contain("cotton-sync-update-visual-states-data"));
+                Assert.That(workflow, Does.Contain("Packaging/windows/smoke-update-install-handoff.ps1"));
+                Assert.That(workflow, Does.Contain("cotton-sync-update-install-data"));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-shell-share-link-verb.ps1"));
                 Assert.That(workflow, Does.Contain("-ExpectedExecutablePath $installedExe"));
                 Assert.That(workflow, Does.Contain("-ExpectAbsent"));
@@ -865,6 +867,26 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(
                     normalizedWorkflow,
                     Does.Match("(?s)\\n  release:\\n    name: Publish Sync Client Release\\n    runs-on: ubuntu-latest\\n    needs:\\n      - linux\\n      - windows\\n      - cli-windows\\n      - release-checksums"));
+            });
+        }
+
+        [Test]
+        public void CiWorkflow_GatesWindowsReleaseOnUpdateInstallSmokeBeforePublishing()
+        {
+            string workflow = GetDesktopWorkflow();
+            string normalizedWorkflow = workflow.Replace("\r\n", "\n", StringComparison.Ordinal);
+            int updateInstallSmokeIndex = normalizedWorkflow.IndexOf(
+                "Packaging/windows/smoke-update-install-handoff.ps1",
+                StringComparison.Ordinal);
+            int uploadInstallerIndex = normalizedWorkflow.IndexOf(
+                "Upload desktop Windows installer artifact",
+                StringComparison.Ordinal);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(updateInstallSmokeIndex, Is.GreaterThanOrEqualTo(0));
+                Assert.That(uploadInstallerIndex, Is.GreaterThanOrEqualTo(0));
+                Assert.That(updateInstallSmokeIndex, Is.LessThan(uploadInstallerIndex));
             });
         }
 
@@ -980,6 +1002,26 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("pendingInstallerSizeBytes"));
                 Assert.That(script, Does.Contain("Desktop update download completed"));
                 Assert.That(script, Does.Contain("Verified update discovery smoke"));
+            });
+        }
+
+        [Test]
+        public void WindowsUpdateInstallSmokeScript_VerifiesInstalledInstallerHandoff()
+        {
+            string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/smoke-update-install-handoff.ps1"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(script, Does.Contain("[string]$AppExecutable"));
+                Assert.That(script, Does.Contain("[string]$DataDirectory"));
+                Assert.That(script, Does.Contain("CottonSync-Windows-Setup.cmd"));
+                Assert.That(script, Does.Contain("--update-install-smoke"));
+                Assert.That(script, Does.Contain("--update-installer-path"));
+                Assert.That(script, Does.Contain("diagnostics.json"));
+                Assert.That(script, Does.Contain("lastInstallLaunchStatus"));
+                Assert.That(script, Does.Contain("lastInstallProcessId"));
+                Assert.That(script, Does.Contain("lastInstallExitCode"));
+                Assert.That(script, Does.Contain("Verified installed update install handoff."));
             });
         }
 
