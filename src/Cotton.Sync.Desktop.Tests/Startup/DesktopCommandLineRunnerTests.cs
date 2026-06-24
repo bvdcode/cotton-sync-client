@@ -403,6 +403,58 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public async Task RunShellShareLinkSmokeAsync_RequiresExplicitDataDirectory()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(["--shell-share-link-smoke"]);
+            using StringWriter output = new StringWriter();
+
+            int exitCode = await DesktopCommandLineRunner.RunShellShareLinkSmokeAsync(
+                DesktopAppPaths.CreateForDataDirectory(_tempDirectory),
+                options,
+                output);
+
+            string report = output.ToString();
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(2));
+                Assert.That(report, Does.Contain("--data-dir"));
+                Assert.That(report, Does.Contain("real user profile"));
+            });
+        }
+
+        [Test]
+        public async Task RunShellShareLinkSmokeAsync_CoversCopyAndFailureCases()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--shell-share-link-smoke",
+                    "--data-dir",
+                    _tempDirectory,
+                ]);
+            using StringWriter output = new StringWriter();
+
+            int exitCode = await DesktopCommandLineRunner.RunShellShareLinkSmokeAsync(paths, options, output);
+
+            string report = output.ToString();
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(0));
+                Assert.That(report, Does.Contain("PASS: State-backed file share link copied"));
+                Assert.That(report, Does.Contain("PASS: State-backed remote-only placeholder share link copied"));
+                Assert.That(report, Does.Contain("PASS: State-backed hydrated placeholder share link copied"));
+                Assert.That(report, Does.Contain("PASS: State-backed folder share link copied"));
+                Assert.That(report, Does.Contain("PASS: Local-only item is rejected without clipboard write"));
+                Assert.That(report, Does.Contain("PASS: Signed-out share link target asks for sign-in"));
+                Assert.That(report, Does.Contain("Failures: 0"));
+                Assert.That(report, Does.Contain("Result: passed"));
+                Assert.That(report, Does.Not.Contain(_tempDirectory));
+                Assert.That(report, Does.Not.Contain("synced-file.txt"));
+                Assert.That(report, Does.Not.Contain("local-only.txt"));
+            });
+        }
+
+        [Test]
         public async Task RunShellShareLinkTargetAsync_ReturnsFailureForLocalOnlyPath()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(Path.Combine(_tempDirectory, "state"));

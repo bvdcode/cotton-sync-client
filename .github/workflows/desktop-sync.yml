@@ -472,6 +472,9 @@ jobs:
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-update-install-handoff.ps1" `
             -AppExecutable $installedExe `
             -DataDirectory (Join-Path $env:RUNNER_TEMP "cotton-sync-update-install-data")
+          & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-shell-share-link-copy.ps1" `
+            -AppExecutable $installedExe `
+            -DataDirectory (Join-Path $env:RUNNER_TEMP "cotton-sync-shell-share-link-data")
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-shell-share-link-verb.ps1" `
             -ExpectedExecutablePath $installedExe
 

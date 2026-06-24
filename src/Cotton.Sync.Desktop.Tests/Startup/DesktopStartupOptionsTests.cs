@@ -524,6 +524,23 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void Parse_LoadsShellShareLinkSmokeOptions()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--shell-share-link-smoke",
+                    "--data-dir",
+                    @"C:\CottonSyncQa\ShellShareLink",
+                ]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(options.RunShellShareLinkSmoke, Is.True);
+                Assert.That(options.DataDirectory, Is.EqualTo(@"C:\CottonSyncQa\ShellShareLink"));
+            });
+        }
+
+        [Test]
         public void Parse_DoesNotTreatNextFlagAsOptionValue()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(
