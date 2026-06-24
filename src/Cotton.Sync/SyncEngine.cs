@@ -1062,9 +1062,10 @@ namespace Cotton.Sync
             DateTime startedAtUtc,
             CancellationToken cancellationToken)
         {
+            SyncRunOptions silentPreflightOptions = CloneWithoutRunProgress(options);
             LocalTreeLookupSnapshot? localTreeLookups = await ScanLocalTreeLookupsAsync(
                     syncPair.LocalRootPath,
-                    options,
+                    silentPreflightOptions,
                     startedAtUtc,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -1078,7 +1079,11 @@ namespace Cotton.Sync
                     .ConfigureAwait(false);
             }
 
-            LocalTreeSnapshot localTree = await ScanLocalTreeAsync(syncPair.LocalRootPath, options, startedAtUtc, cancellationToken)
+            LocalTreeSnapshot localTree = await ScanLocalTreeAsync(
+                    syncPair.LocalRootPath,
+                    silentPreflightOptions,
+                    startedAtUtc,
+                    cancellationToken)
                 .ConfigureAwait(false);
             Dictionary<string, LocalDirectorySnapshot> directoriesByPath = localTree.Directories.ToDictionary(
                 directory => SyncPath.ToKey(directory.RelativePath),
@@ -4094,6 +4099,26 @@ namespace Cotton.Sync
                 ActivityProgress = options.ActivityProgress,
                 TransferProgress = options.TransferProgress,
                 RunProgress = options.RunProgress,
+                CooperativeYieldAsync = options.CooperativeYieldAsync,
+            };
+        }
+
+        private static SyncRunOptions CloneWithoutRunProgress(SyncRunOptions options)
+        {
+            return new SyncRunOptions
+            {
+                Scope = options.Scope,
+                DeleteRemotePermanently = options.DeleteRemotePermanently,
+                MinimumLocalUploadAge = options.MinimumLocalUploadAge,
+                MaximumLocalDeletesPerRun = options.MaximumLocalDeletesPerRun,
+                MaximumRemoteDeletesPerRun = options.MaximumRemoteDeletesPerRun,
+                MaximumStoredResultActivities = options.MaximumStoredResultActivities,
+                InitialVirtualFilesPopulationQueueCapacity = options.InitialVirtualFilesPopulationQueueCapacity,
+                InitialVirtualFilesStateBatchSize = options.InitialVirtualFilesStateBatchSize,
+                InitialVirtualFilesPlaceholderConcurrency = options.InitialVirtualFilesPlaceholderConcurrency,
+                InitialVirtualFilesPlaceholderBatchSize = options.InitialVirtualFilesPlaceholderBatchSize,
+                ActivityProgress = options.ActivityProgress,
+                TransferProgress = options.TransferProgress,
                 CooperativeYieldAsync = options.CooperativeYieldAsync,
             };
         }

@@ -247,6 +247,10 @@ Assert-Contains -Content $reconnectExisting -Expected "Result: passed" -Label "v
 
 $initialStreamingLogging = Read-EvidenceFile -RelativePath "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $initialStreamingLogging -Expected "Initial VFS streaming run created a large placeholder baseline without per-placeholder activities." -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $initialStreamingLogging -Expected "Initial VFS streaming progress stayed on placeholder creation and completed cleanly." -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $initialStreamingLogging -Expected "localScanSamples=0" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $initialStreamingLogging -Expected "remoteScanSamples=0" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $initialStreamingLogging -Expected "activities=0" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $initialStreamingLogging -Expected "Initial VFS trace log contains large-run metrics." -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $initialStreamingLogging -Expected "Metric excerpt:" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $initialStreamingLogging -Expected "placeholders/sec" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"

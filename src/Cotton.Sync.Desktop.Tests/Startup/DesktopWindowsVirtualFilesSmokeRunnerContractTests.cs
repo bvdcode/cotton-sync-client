@@ -115,6 +115,10 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(runner, Does.Contain("DesktopCloudFilesPlaceholderWriter placeholderWriter = new("));
                 Assert.That(runner, Does.Contain("Cloud Files sync root connected for initial VFS logging smoke."));
                 Assert.That(runner, Does.Contain("loggerFactory.CreateLogger<SyncEngine>()"));
+                Assert.That(runner, Does.Contain("new SyncRunOptions { RunProgress = runProgress }"));
+                Assert.That(runner, Does.Contain("Initial VFS streaming progress stayed on placeholder creation and completed cleanly."));
+                Assert.That(runner, Does.Contain("localScanSamples="));
+                Assert.That(runner, Does.Contain("remoteScanSamples="));
                 Assert.That(runner, Does.Contain("Completed initial streaming Windows virtual-files population"));
                 Assert.That(runner, Does.Contain("remote page latency total="));
                 Assert.That(runner, Does.Contain("expectedFileCount + \" placeholders created or refreshed\""));
