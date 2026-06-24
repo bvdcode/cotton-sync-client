@@ -109,7 +109,7 @@ Start-Sleep -Seconds $DelaySeconds
 try {
     "RunnerStartedAt: `$((Get-Date).ToString('O'))" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8
     "TaskRegisteredAt: $taskRegisteredAt" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8 -Append
-    `$latestInteractiveLogon = Get-CimInstance Win32_LogonSession -ErrorAction SilentlyContinue | Where-Object { `$_.LogonType -eq 2 -or `$_.LogonType -eq 10 } | Sort-Object StartTime -Descending | Select-Object -First 1
+    `$latestInteractiveLogon = Get-CimInstance Win32_LogonSession -OperationTimeoutSec 2 -ErrorAction SilentlyContinue | Where-Object { `$_.LogonType -eq 2 -or `$_.LogonType -eq 10 } | Sort-Object StartTime -Descending | Select-Object -First 1
     if (`$null -ne `$latestInteractiveLogon -and `$null -ne `$latestInteractiveLogon.StartTime) {
         "LatestInteractiveLogonAt: `$((([datetime]`$latestInteractiveLogon.StartTime).ToString('O')))" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8 -Append
     } else {
