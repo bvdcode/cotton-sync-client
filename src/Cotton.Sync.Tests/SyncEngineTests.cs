@@ -1986,8 +1986,9 @@ namespace Cotton.Sync.Tests
 
             IReadOnlyList<RemoteDirectoryMaterializationRequest> completedTree =
                 placeholderWriter.CompletedDirectoryTreeRequests.Single();
-            SyncRunProgress finalizingProgress = runProgress.Values.Single(progress =>
-                progress.Stage == SyncRunProgressStage.FinalizingCloudFiles);
+            List<SyncRunProgress> finalizingProgress = runProgress.Values
+                .Where(progress => progress.Stage == SyncRunProgressStage.FinalizingCloudFiles)
+                .ToList();
             List<SyncRunProgress> placeholderProgress = runProgress.Values
                 .Where(progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders)
                 .ToList();
@@ -2011,9 +2012,18 @@ namespace Cotton.Sync.Tests
                 Assert.That(placeholderProgress.Any(progress =>
                     progress.FilesTotal == 3
                     && progress.CurrentPath == "Temp/Images/photo.heic"), Is.True);
-                Assert.That(finalizingProgress.FilesCompleted, Is.EqualTo(2));
-                Assert.That(finalizingProgress.FilesTotal, Is.EqualTo(2));
-                Assert.That(finalizingProgress.IsCompleted, Is.False);
+                Assert.That(
+                    finalizingProgress.Select(static progress => new
+                    {
+                        progress.FilesCompleted,
+                        progress.FilesTotal,
+                        progress.IsCompleted,
+                    }),
+                    Is.EqualTo(new[]
+                    {
+                        new { FilesCompleted = 0, FilesTotal = (int?)2, IsCompleted = false },
+                        new { FilesCompleted = 2, FilesTotal = (int?)2, IsCompleted = true },
+                    }));
                 Assert.That(
                     runProgress.Values.FindIndex(progress => progress.Stage == SyncRunProgressStage.FinalizingCloudFiles),
                     Is.LessThan(runProgress.Values.FindIndex(progress => progress.Stage == SyncRunProgressStage.Completed)));
