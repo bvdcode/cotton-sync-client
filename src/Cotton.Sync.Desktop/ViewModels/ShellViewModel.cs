@@ -1695,12 +1695,20 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public bool IsRemoveSyncPairConfirmationVisible => _pendingRemoveSyncPair is not null;
 
+        public bool IsRemoveSyncPairConfirmationActionsVisible => IsRemoveSyncPairConfirmationVisible && !IsRemovingSyncPair;
+
         public string RemoveSyncPairConfirmationTitle => _pendingRemoveSyncPair is null
             ? "Remove sync folder?"
+            : IsRemovingSyncPair
+                ? "Removing " + _pendingRemoveSyncPair.DisplayName
             : "Remove " + _pendingRemoveSyncPair.DisplayName + "?";
 
         public string RemoveSyncPairConfirmationMessage => _pendingRemoveSyncPair?.Mode == SyncPairMode.WindowsVirtualFiles
-            ? "Stops syncing this folder. Cloud files stay online; the local placeholder folder is removed when it has no regular local files."
+            ? IsRemovingSyncPair
+                ? "Removing the Cloud Files registration and local placeholder folder. This can take a few minutes for large online-only folders."
+                : "Stops syncing this folder. Cloud files stay online; the local placeholder folder is removed when it has no regular local files."
+            : IsRemovingSyncPair
+                ? "Removing this sync folder from the client."
             : "Stops syncing this folder. Local files stay on this device; cloud files stay online.";
 
         public bool IsRemovingSyncPair
@@ -1710,6 +1718,9 @@ namespace Cotton.Sync.Desktop.ViewModels
             {
                 if (SetProperty(ref _isRemovingSyncPair, value))
                 {
+                    OnPropertyChanged(nameof(IsRemoveSyncPairConfirmationActionsVisible));
+                    OnPropertyChanged(nameof(RemoveSyncPairConfirmationTitle));
+                    OnPropertyChanged(nameof(RemoveSyncPairConfirmationMessage));
                     OnPropertyChanged(nameof(RemoveSyncPairProgressMessage));
                 }
             }
