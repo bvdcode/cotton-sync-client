@@ -144,4 +144,14 @@ Assert-Contains -Content $initialStreamingLogging -Expected "state writes" -Labe
 Assert-Contains -Content $initialStreamingLogging -Expected "managed heap start=" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $initialStreamingLogging -Expected "Result: passed" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
 
+$steadyStateRepeat = Read-EvidenceFile -RelativePath "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $steadyStateRepeat -Expected "Steady-state repeat pass avoided local placeholder-tree scanning." -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $steadyStateRepeat -Expected "files=100,000" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $steadyStateRepeat -Expected "fullLocalScans=0" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $steadyStateRepeat -Expected "metadataTreeScans=0" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $steadyStateRepeat -Expected "pathLookups=0" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $steadyStateRepeat -Expected "transfers=0" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $steadyStateRepeat -Expected "placeholderWrites=0" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $steadyStateRepeat -Expected "Result: passed" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
+
 Write-Host "Verified VFS release evidence bundle: $resolvedEvidenceDirectory"

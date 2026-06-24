@@ -11,7 +11,9 @@ param(
 
     [string[]]$AdditionalVfsSmokePhases = @(),
 
-    [int]$InitialStreamingPlaceholderCount = 100000
+    [int]$InitialStreamingPlaceholderCount = 100000,
+
+    [int]$SteadyStateRepeatPlaceholderCount = 100000
 )
 
 $ErrorActionPreference = "Stop"
@@ -137,6 +139,15 @@ if ($vfsSmokePassed) {
             $phaseArguments += @(
                 "--vfs-smoke-placeholder-count",
                 $InitialStreamingPlaceholderCount.ToString([System.Globalization.CultureInfo]::InvariantCulture))
+        }
+        elseif ($phaseName -eq "steady-state-repeat") {
+            if ($SteadyStateRepeatPlaceholderCount -le 0) {
+                throw "SteadyStateRepeatPlaceholderCount must be greater than zero."
+            }
+
+            $phaseArguments += @(
+                "--vfs-smoke-placeholder-count",
+                $SteadyStateRepeatPlaceholderCount.ToString([System.Globalization.CultureInfo]::InvariantCulture))
         }
 
         $phaseResult = Invoke-CottonDesktopCommand `
