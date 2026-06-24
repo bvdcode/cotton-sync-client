@@ -391,6 +391,12 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("Capture-VfsSmokeLogs"));
                 Assert.That(script, Does.Contain("vfs-smoke"));
                 Assert.That(script, Does.Contain("Redact-Text"));
+                Assert.That(script, Does.Contain("Add-PathRedaction -Path $LocalRoot -Placeholder \"<local root>\""));
+                Assert.That(script, Does.Contain("Add-PathRedaction -Path $DataDirectory -Placeholder \"<data directory>\""));
+                Assert.That(script, Does.Contain("Add-PathRedaction -Path $InstallDirectory -Placeholder \"<install directory>\""));
+                Assert.That(script, Does.Contain("Add-PathRedaction -Path $VfsSmokeDataDirectory -Placeholder \"<vfs smoke data>\""));
+                Assert.That(script, Does.Contain("Add-PathRedaction -Path $env:USERPROFILE -Placeholder \"<user profile>\""));
+                Assert.That(script, Does.Contain("$redacted = $redacted.Replace($path, $placeholder)"));
                 Assert.That(script, Does.Contain("CaptureScreenshot"));
                 Assert.That(script, Does.Contain("RunSelfTest"));
                 Assert.That(script, Does.Contain("RunProfileSelfTest"));
