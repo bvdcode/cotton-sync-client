@@ -1871,6 +1871,7 @@ namespace Cotton.Sync.Tests
             Assert.Multiple(() =>
             {
                 Assert.That(runProgress.Values.Any(progress => progress.Stage == SyncRunProgressStage.ScanningRemote), Is.False);
+                Assert.That(runProgress.Values.Any(progress => progress.Stage == SyncRunProgressStage.ScanningLocal), Is.False);
                 Assert.That(placeholderProgress, Is.Not.Empty);
                 Assert.That(placeholderProgress.Any(progress =>
                     progress.FilesCompleted == 0

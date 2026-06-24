@@ -103,7 +103,13 @@ namespace Cotton.Sync
             options ??= new SyncRunOptions();
             ValidateOptions(options);
             DateTime startedAtUtc = DateTime.UtcNow;
-            ReportRunProgress(options, SyncRunProgressStage.ScanningLocal, 0, null, null, startedAtUtc);
+            bool initialWindowsVirtualFilesStreamingCanApply =
+                CanRunInitialWindowsVirtualFilesStreaming(syncPair, options);
+            if (!initialWindowsVirtualFilesStreamingCanApply)
+            {
+                ReportRunProgress(options, SyncRunProgressStage.ScanningLocal, 0, null, null, startedAtUtc);
+            }
+
             _logger.LogInformation("Starting sync pass for pair {SyncPairId}.", syncPair.SyncPairId);
             await _stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
             SyncRunResult? initialVirtualFilesResult = await TryRunInitialWindowsVirtualFilesStreamingPopulationAsync(
@@ -130,6 +136,11 @@ namespace Cotton.Sync
                 }
 
                 return initialVirtualFilesResult;
+            }
+
+            if (initialWindowsVirtualFilesStreamingCanApply)
+            {
+                ReportRunProgress(options, SyncRunProgressStage.ScanningLocal, 0, null, null, startedAtUtc);
             }
 
             SyncTreeLookups treeLookups = await ScanTreesAndBuildLookupsAsync(syncPair, options, startedAtUtc, cancellationToken)
@@ -944,10 +955,7 @@ namespace Cotton.Sync
             DateTime startedAtUtc,
             CancellationToken cancellationToken)
         {
-            if (syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles
-                || !options.Scope.IsFull
-                || _remoteStreamingCrawler is null
-                || _remoteFilePlaceholderWriter is null)
+            if (!CanRunInitialWindowsVirtualFilesStreaming(syncPair, options))
             {
                 return InitialVirtualFilesStreamingPlanDecision.NotApplicable;
             }
@@ -965,6 +973,14 @@ namespace Cotton.Sync
                     options,
                     startedAtUtc,
                     cancellationToken).ConfigureAwait(false);
+        }
+
+        private bool CanRunInitialWindowsVirtualFilesStreaming(SyncPair syncPair, SyncRunOptions options)
+        {
+            return syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
+                && options.Scope.IsFull
+                && _remoteStreamingCrawler is not null
+                && _remoteFilePlaceholderWriter is not null;
         }
 
         private async Task<InitialVirtualFilesStreamingPlan?> TryCreateStateFirstWindowsVirtualFilesStreamingPlanAsync(
