@@ -368,8 +368,17 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("[string]$InstallDirectory = (Join-Path $env:LOCALAPPDATA \"Programs\\Cotton Sync\")"));
                 Assert.That(script, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
                 Assert.That(script, Does.Contain("HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\SyncRootManager"));
+                Assert.That(script, Does.Contain("HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Desktop\\NameSpace"));
+                Assert.That(script, Does.Contain("HKCU\\Software\\Classes\\CLSID"));
+                Assert.That(script, Does.Contain("HKCU\\Software\\Classes\\WOW6432Node\\CLSID"));
                 Assert.That(script, Does.Contain("Cotton.Sync.Desktop.exe"));
                 Assert.That(script, Does.Contain("Get-FileHash -LiteralPath $appExecutable -Algorithm SHA256"));
+                Assert.That(script, Does.Contain("CottonReleaseEvidenceWindowProbe"));
+                Assert.That(script, Does.Contain("GetVisibleWindowsForProcess"));
+                Assert.That(script, Does.Contain("GetForegroundProcessId"));
+                Assert.That(script, Does.Contain("Capture-ProcessWindows"));
+                Assert.That(script, Does.Contain("Capture-CloudFilesExplorerRegistrations"));
+                Assert.That(script, Does.Contain("registry-cloud-files-explorer.txt"));
                 Assert.That(script, Does.Contain("Capture-RootEntries"));
                 Assert.That(script, Does.Contain("Capture-LogTails"));
                 Assert.That(script, Does.Contain("Redact-Text"));
