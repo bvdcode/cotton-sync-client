@@ -10,7 +10,7 @@ namespace Cotton.Sync.App.LocalChanges
     /// </summary>
     public sealed class LocalChangeSuppression : ILocalChangeSuppression
     {
-        private const int FileAttributeUnpinned = 0x00100000;
+        private const int FileAttributeRecallOnOpen = 0x00040000;
         private const int FileAttributeRecallOnDataAccess = 0x00400000;
         private static readonly TimeSpan DefaultEntryLifetime = TimeSpan.FromMinutes(2);
         private static readonly char[] DirectorySeparators = [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar];
@@ -310,8 +310,7 @@ namespace Cotton.Sync.App.LocalChanges
             try
             {
                 FileAttributes attributes = File.GetAttributes(fullPath);
-                return HasRawAttribute(attributes, FileAttributeUnpinned)
-                    && HasRawAttribute(attributes, FileAttributeRecallOnDataAccess);
+                return IsOnlineOnlyCloudFilesAttributes(attributes);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
             {
@@ -322,6 +321,13 @@ namespace Cotton.Sync.App.LocalChanges
         private static bool HasRawAttribute(FileAttributes attributes, int rawAttribute)
         {
             return (((int)attributes) & rawAttribute) == rawAttribute;
+        }
+
+        internal static bool IsOnlineOnlyCloudFilesAttributes(FileAttributes attributes)
+        {
+            return HasRawAttribute(attributes, FileAttributeRecallOnOpen)
+                || HasRawAttribute(attributes, FileAttributeRecallOnDataAccess)
+                || (attributes & FileAttributes.Offline) != 0;
         }
 
         private static string ResolveInsideRoot(string localRootPath, string relativePath)

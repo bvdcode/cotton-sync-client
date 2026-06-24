@@ -415,6 +415,21 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public void ProviderWriteBurstGrace_RecognizesRecallOnlyCloudFilesAttributes()
+        {
+            FileAttributes recallOnOpen = FileAttributes.Archive | (FileAttributes)0x00040000;
+            FileAttributes recallOnDataAccess = FileAttributes.Archive | (FileAttributes)0x00400000;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(LocalChangeSuppression.IsOnlineOnlyCloudFilesAttributes(recallOnOpen), Is.True);
+                Assert.That(LocalChangeSuppression.IsOnlineOnlyCloudFilesAttributes(recallOnDataAccess), Is.True);
+                Assert.That(LocalChangeSuppression.IsOnlineOnlyCloudFilesAttributes(FileAttributes.Offline), Is.True);
+                Assert.That(LocalChangeSuppression.IsOnlineOnlyCloudFilesAttributes(FileAttributes.ReparsePoint), Is.False);
+            });
+        }
+
+        [Test]
         public async Task ProviderWriteBurstLatePlaceholderStorm_DoesNotRequestSyncAfterEntryCapacityTrim()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
