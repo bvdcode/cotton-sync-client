@@ -31,6 +31,12 @@ function ConvertTo-SingleQuotedLiteral {
     return "'" + $Value.Replace("'", "''") + "'"
 }
 
+function ConvertTo-CommandLineArgument {
+    param([string]$Value)
+
+    return '"' + $Value.Replace('"', '\"') + '"'
+}
+
 if ($DelaySeconds -lt 0) {
     throw "DelaySeconds must not be negative."
 }
@@ -109,7 +115,7 @@ $runnerScript | Out-File -LiteralPath $runnerPath -Encoding utf8
 $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 $taskAction = New-ScheduledTaskAction `
     -Execute "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
-    -Argument ("-NoProfile -ExecutionPolicy Bypass -File " + (ConvertTo-SingleQuotedLiteral $runnerPath)) `
+    -Argument ("-NoProfile -ExecutionPolicy Bypass -File " + (ConvertTo-CommandLineArgument $runnerPath)) `
     -WorkingDirectory $resolvedOutputDirectory
 $taskTrigger = New-ScheduledTaskTrigger -AtLogOn -User $currentUser
 $taskPrincipal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType Interactive

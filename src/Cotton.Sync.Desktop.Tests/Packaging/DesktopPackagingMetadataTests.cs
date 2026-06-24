@@ -466,6 +466,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("Register-ScheduledTask"));
                 Assert.That(script, Does.Contain("New-ScheduledTaskTrigger -AtLogOn"));
                 Assert.That(script, Does.Contain("New-ScheduledTaskPrincipal"));
+                Assert.That(script, Does.Contain("ConvertTo-CommandLineArgument"));
                 Assert.That(script, Does.Contain("capture-vfs-release-evidence.ps1"));
                 Assert.That(script, Does.Contain("-RunProfileSelfTest"));
                 Assert.That(script, Does.Contain("-RunDiagnosticsExport"));
