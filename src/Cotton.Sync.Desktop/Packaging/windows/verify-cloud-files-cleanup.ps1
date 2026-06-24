@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2025-2026 Vadim Belov <https://belov.us>
 
+param(
+    [string]$ReportPath = ""
+)
+
 $ErrorActionPreference = "Stop"
 
 $providerId = "Cotton.Sync.Desktop"
@@ -13,6 +17,34 @@ $patterns = @(
 )
 
 $remainingRegistrations = New-Object System.Collections.Generic.List[string]
+
+function Write-CleanupReport {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Result,
+
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.List[string]]$Registrations
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ReportPath)) {
+        return
+    }
+
+    $directory = Split-Path -Parent $ReportPath
+    if (-not [string]::IsNullOrWhiteSpace($directory)) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add("Result: $Result")
+    $lines.Add("RemainingRegistrationCount: $($Registrations.Count)")
+    foreach ($registration in $Registrations) {
+        $lines.Add("RemainingRegistration: $registration")
+    }
+
+    $lines | Set-Content -LiteralPath $ReportPath -Encoding utf8
+}
 
 function Test-ContainsProviderPattern {
     param([object]$Value)
@@ -206,6 +238,7 @@ Test-ClassIdRoots `
     -DisplayPath "HKCU:\Software\Classes\WOW6432Node\CLSID"
 
 if ($remainingRegistrations.Count -ne 0) {
+    Write-CleanupReport -Result "failed" -Registrations $remainingRegistrations
     foreach ($registration in $remainingRegistrations) {
         Write-Host $registration
     }
@@ -213,4 +246,5 @@ if ($remainingRegistrations.Count -ne 0) {
     throw "Cloud Files or Explorer registration remained after uninstall."
 }
 
+Write-CleanupReport -Result "passed" -Registrations $remainingRegistrations
 Write-Host "Verified Cloud Files and Explorer registrations were removed after uninstall."

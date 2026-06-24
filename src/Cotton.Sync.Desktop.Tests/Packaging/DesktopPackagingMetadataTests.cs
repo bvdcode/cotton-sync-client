@@ -412,6 +412,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("registry-run.txt"));
                 Assert.That(script, Does.Contain("autostart-launch.txt"));
                 Assert.That(script, Does.Contain("update-relaunch.txt"));
+                Assert.That(script, Does.Contain("post-uninstall-cleanup.txt"));
+                Assert.That(script, Does.Contain("post-reinstall-cleanup.txt"));
+                Assert.That(script, Does.Contain("post-upgrade-cleanup.txt"));
                 Assert.That(script, Does.Contain("registry-cloud-files-explorer.txt"));
                 Assert.That(script, Does.Contain("process-windows.txt"));
                 Assert.That(script, Does.Contain("local-root-entries.csv"));
@@ -431,6 +434,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("ObservedForeground: False"));
                 Assert.That(script, Does.Contain("LaunchMode: attached-existing"));
                 Assert.That(script, Does.Contain("CleanupRemaining: 0"));
+                Assert.That(script, Does.Contain("RemainingRegistrationCount: 0"));
                 Assert.That(script, Does.Contain("No Cloud Files or Explorer registration was captured before uninstall."));
                 Assert.That(script, Does.Contain("VFS smoke logs: captured:"));
                 Assert.That(script, Does.Contain("Desktop startup restored the saved signed-in session."));
@@ -471,7 +475,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("[OK] Autostart adapter - Enabled"));
                 Assert.That(script, Does.Contain("[OK] Windows virtual files"));
                 Assert.That(script, Does.Contain("[OK] Local root:"));
-                Assert.That(script, Does.Contain("Result: passed"));
+                Assert.That(script, Does.Contain("Write-CleanupReport -Result \"passed\""));
                 Assert.That(script, Does.Contain("run-vfs-logon-evidence-capture.log"));
                 Assert.That(script, Does.Contain("RunnerStartedAt:"));
                 Assert.That(script, Does.Contain("RunnerUser:"));
@@ -679,6 +683,25 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
 
                 Assert.That(exitCode, Is.Not.EqualTo(0), output);
                 Assert.That(output, Does.Contain("update-relaunch.txt"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_RejectsMissingPostUninstallCleanupEvidence()
+        {
+            string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
+            try
+            {
+                File.Delete(Path.Combine(evidenceDirectory, "post-uninstall-cleanup.txt"));
+
+                (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("post-uninstall-cleanup.txt"));
             }
             finally
             {
@@ -1086,6 +1109,10 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     Does.Contain("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Desktop\\NameSpace"));
                 Assert.That(script, Does.Contain("Software\\Classes\\CLSID"));
                 Assert.That(script, Does.Contain("Software\\Classes\\WOW6432Node\\CLSID"));
+                Assert.That(script, Does.Contain("[string]$ReportPath = \"\""));
+                Assert.That(script, Does.Contain("Write-CleanupReport"));
+                Assert.That(script, Does.Contain("RemainingRegistrationCount: $($Registrations.Count)"));
+                Assert.That(script, Does.Contain("Write-CleanupReport -Result \"passed\""));
                 Assert.That(script, Does.Contain("Test-ShellNamespaceRoots"));
                 Assert.That(script, Does.Contain("Test-ClassIdRoots"));
                 Assert.That(script, Does.Contain("Cloud Files or Explorer registration remained after uninstall."));
@@ -1947,6 +1974,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "VisibleWindowCount: 0",
                     "CleanupRemaining: 0"
                 });
+            WriteCleanupEvidence(Path.Combine(evidenceDirectory, "post-uninstall-cleanup.txt"));
+            WriteCleanupEvidence(Path.Combine(evidenceDirectory, "post-reinstall-cleanup.txt"));
+            WriteCleanupEvidence(Path.Combine(evidenceDirectory, "post-upgrade-cleanup.txt"));
             File.WriteAllLines(
                 Path.Combine(evidenceDirectory, "process-windows.txt"),
                 new[]
@@ -2014,6 +2044,17 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 });
 
             return evidenceDirectory;
+        }
+
+        private static void WriteCleanupEvidence(string path)
+        {
+            File.WriteAllLines(
+                path,
+                new[]
+                {
+                    "Result: passed",
+                    "RemainingRegistrationCount: 0"
+                });
         }
 
         private static string CreateVfsLogonEvidenceBundle()
