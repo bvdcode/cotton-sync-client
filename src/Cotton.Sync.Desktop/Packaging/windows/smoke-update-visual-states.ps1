@@ -119,6 +119,7 @@ function Assert-VisualStateSnapshot {
         [string]$Scenario,
         [string]$ExpectedStatus,
         [string]$ExpectedDetailsPattern,
+        [string[]]$ExpectedNames,
         [bool]$RequireSettingsActions,
         [string[]]$UnexpectedNames
     )
@@ -131,6 +132,9 @@ function Assert-VisualStateSnapshot {
         Assert-NamePresent -Names $names -ExpectedName "Updates" -Scenario $Scenario
     }
     Assert-NamePresent -Names $names -ExpectedName $ExpectedStatus -Scenario $Scenario
+    foreach ($expectedName in $ExpectedNames) {
+        Assert-NamePresent -Names $names -ExpectedName $expectedName -Scenario $Scenario
+    }
     Assert-NameMatches -Names $names -Pattern $ExpectedDetailsPattern -Scenario $Scenario
     Assert-ProgressBarPresent -Elements $elements -Scenario $Scenario
     foreach ($unexpectedName in $UnexpectedNames) {
@@ -143,6 +147,7 @@ function Test-VisualState {
         [string]$Scenario,
         [string]$ExpectedStatus,
         [string]$ExpectedDetailsPattern,
+        [string[]]$ExpectedNames = @(),
         [bool]$RequireSettingsActions = $true,
         [string[]]$UnexpectedNames = @("Download", "Update"),
         [int]$StableObservationSeconds = 0
@@ -166,6 +171,7 @@ function Test-VisualState {
                 -Scenario $Scenario `
                 -ExpectedStatus $ExpectedStatus `
                 -ExpectedDetailsPattern $ExpectedDetailsPattern `
+                -ExpectedNames $ExpectedNames `
                 -RequireSettingsActions $RequireSettingsActions `
                 -UnexpectedNames $UnexpectedNames
             $sampleCount++
@@ -202,8 +208,9 @@ Test-VisualState `
     -Scenario "virtual-files-seeding" `
     -ExpectedStatus "Syncing" `
     -ExpectedDetailsPattern "^Making cloud files available .+ 118054 of 500000 cloud items$" `
+    -ExpectedNames @("Preparing cloud files") `
     -RequireSettingsActions $false `
-    -UnexpectedNames @("Download", "Update", "Processing queued changes") `
+    -UnexpectedNames @("Download", "Update", "Processing queued changes", "Preparing cloud files 118054 of 500000") `
     -StableObservationSeconds 6
 
 Write-Host "Verified installed update and VFS visual states."

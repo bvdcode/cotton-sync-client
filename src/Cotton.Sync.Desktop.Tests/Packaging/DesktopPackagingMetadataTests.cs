@@ -1353,6 +1353,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("Processing queued changes"));
                 Assert.That(script, Does.Contain("[bool]$RequireSettingsActions"));
                 Assert.That(script, Does.Contain("-RequireSettingsActions $false"));
+                Assert.That(script, Does.Contain("[string[]]$ExpectedNames = @()"));
+                Assert.That(script, Does.Contain("-ExpectedNames @(\"Preparing cloud files\")"));
+                Assert.That(script, Does.Contain("Preparing cloud files 118054 of 500000"));
                 Assert.That(script, Does.Contain("[int]$StableObservationSeconds = 0"));
                 Assert.That(script, Does.Contain("Assert-VisualStateSnapshot"));
                 Assert.That(script, Does.Contain("-StableObservationSeconds 6"));
