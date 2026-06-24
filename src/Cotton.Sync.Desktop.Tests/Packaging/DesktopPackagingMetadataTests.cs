@@ -1,6 +1,7 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
@@ -423,6 +424,71 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("failed:"));
                 Assert.That(script, Does.Contain("Verified VFS release evidence bundle"));
             });
+        }
+
+        [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_AcceptsCompleteEvidenceBundle()
+        {
+            string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
+            try
+            {
+                (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.EqualTo(0), output);
+                Assert.That(output, Does.Contain("Verified VFS release evidence bundle"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_RejectsMissingDesktopSessionRestoreLogs()
+        {
+            string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
+            try
+            {
+                Directory.Delete(
+                    Path.Combine(evidenceDirectory, "vfs-smoke", "phase-desktop-session-restore"),
+                    recursive: true);
+
+                (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(
+                    output,
+                    Does.Contain("vfs-smoke\\phase-desktop-session-restore\\cloud-files-vfs-smoke.stdout.log"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_RejectsVisibleStartupWindowCapture()
+        {
+            string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
+            try
+            {
+                File.WriteAllLines(
+                    Path.Combine(evidenceDirectory, "process-windows.txt"),
+                    new[]
+                    {
+                        "IsForeground : False",
+                        "VisibleWindowCount : 1"
+                    });
+
+                (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("Cotton Sync had visible windows during evidence capture."));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
         }
 
         [Test]
@@ -1491,6 +1557,118 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         private static string? GetProperty(XElement propertyGroup, string name)
         {
             return propertyGroup.Element(name)?.Value;
+        }
+
+        private static string CreateVfsReleaseEvidenceBundle()
+        {
+            string evidenceDirectory = Path.Combine(
+                TestContext.CurrentContext.WorkDirectory,
+                "vfs-release-evidence-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(evidenceDirectory);
+            Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-desktop-session-restore"));
+            Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-shell-share-link-targets"));
+
+            File.WriteAllLines(
+                Path.Combine(evidenceDirectory, "summary.txt"),
+                new[]
+                {
+                    "Installed app: captured: installed-app.txt",
+                    "Autostart registry: captured: registry-run.txt",
+                    "Cotton process windows: captured: process-windows.txt",
+                    "Cloud Files Explorer registrations: captured: registry-cloud-files-explorer.txt",
+                    "Local root entries: captured: local-root-entries.csv",
+                    "Log tails: captured 1 log file(s)",
+                    "VFS smoke logs: captured: vfs-smoke; files=6",
+                    "Installed self-test: exitCode=0; stdout=self-test.stdout.log; stderr=self-test.stderr.log",
+                    "Diagnostics export: exitCode=0; stdout=diagnostics-export.stdout.log; stderr=diagnostics-export.stderr.log"
+                });
+            File.WriteAllLines(
+                Path.Combine(evidenceDirectory, "installed-app.txt"),
+                new[]
+                {
+                    "ProductVersion: 0.1.0",
+                    "FileVersion: 0.1.0",
+                    "Sha256: abc"
+                });
+            File.WriteAllText(
+                Path.Combine(evidenceDirectory, "registry-run.txt"),
+                "Cotton Sync --start-minimized");
+            File.WriteAllLines(
+                Path.Combine(evidenceDirectory, "process-windows.txt"),
+                new[]
+                {
+                    "IsForeground : False",
+                    "VisibleWindowCount : 0"
+                });
+            File.WriteAllText(
+                Path.Combine(evidenceDirectory, "registry-cloud-files-explorer.txt"),
+                "MatchCount: 1");
+            File.WriteAllText(
+                Path.Combine(evidenceDirectory, "local-root-entries.csv"),
+                "\"RelativePath\",\"FullPath\",\"Exists\",\"Attributes\",\"Length\",\"LastWriteTimeUtc\"");
+            File.WriteAllText(Path.Combine(evidenceDirectory, "self-test.stdout.log"), "Result: passed");
+            File.WriteAllText(Path.Combine(evidenceDirectory, "diagnostics-export.stdout.log"), "Diagnostics exported");
+            File.WriteAllText(
+                Path.Combine(evidenceDirectory, "vfs-smoke", "cloud-files-vfs-smoke.stdout.log"),
+                "Result: passed");
+            File.WriteAllLines(
+                Path.Combine(
+                    evidenceDirectory,
+                    "vfs-smoke",
+                    "phase-desktop-session-restore",
+                    "cloud-files-vfs-smoke.stdout.log"),
+                new[]
+                {
+                    "Desktop startup restored the saved signed-in session.",
+                    "Desktop startup used the remembered server for session restore.",
+                    "Desktop startup reconnected the persisted Cloud Files sync root.",
+                    "Result: passed"
+                });
+            File.WriteAllText(
+                Path.Combine(
+                    evidenceDirectory,
+                    "vfs-smoke",
+                    "phase-shell-share-link-targets",
+                    "cloud-files-vfs-smoke.stdout.log"),
+                "Result: passed");
+
+            return evidenceDirectory;
+        }
+
+        private static (int ExitCode, string Output) RunVfsReleaseEvidenceVerifier(string evidenceDirectory)
+        {
+            ProcessStartInfo startInfo = new()
+            {
+                FileName = "pwsh",
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false
+            };
+            startInfo.ArgumentList.Add("-NoProfile");
+            startInfo.ArgumentList.Add("-File");
+            startInfo.ArgumentList.Add(GetDesktopFilePath("Packaging/windows/verify-vfs-release-evidence.ps1"));
+            startInfo.ArgumentList.Add("-EvidenceDirectory");
+            startInfo.ArgumentList.Add(evidenceDirectory);
+
+            using Process process = Process.Start(startInfo)
+                ?? throw new InvalidOperationException("PowerShell verifier process did not start.");
+            string stdout = process.StandardOutput.ReadToEnd();
+            string stderr = process.StandardError.ReadToEnd();
+            if (!process.WaitForExit(milliseconds: 30000))
+            {
+                process.Kill(entireProcessTree: true);
+                throw new TimeoutException("VFS release evidence verifier did not exit within 30 seconds.");
+            }
+
+            return (process.ExitCode, stdout + stderr);
+        }
+
+        private static void DeleteTestDirectory(string directory)
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
         }
 
         private static string NormalizeProfilePath(string? value)
