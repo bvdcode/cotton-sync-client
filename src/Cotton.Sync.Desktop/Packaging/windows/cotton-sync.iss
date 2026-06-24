@@ -75,7 +75,8 @@ Root: HKCU; Subkey: "Software\Classes\Directory\shell\CottonSyncCopyShareLink"; 
 Root: HKCU; Subkey: "Software\Classes\Directory\shell\CottonSyncCopyShareLink\command"; ValueType: string; ValueName: ""; ValueData: """{app}\Cotton.Sync.Desktop.exe"" --copy-shell-share-link ""%1"""
 
 [Run]
-Filename: "{app}\Cotton.Sync.Desktop.exe"; Description: "Launch Cotton Sync"; Flags: nowait postinstall; Check: ShouldLaunchAfterInstall
+Filename: "{app}\Cotton.Sync.Desktop.exe"; Description: "Launch Cotton Sync"; Flags: nowait postinstall; Check: ShouldOfferLaunchAfterInstall
+Filename: "{app}\Cotton.Sync.Desktop.exe"; Parameters: "--start-minimized"; Flags: nowait; Check: ShouldLaunchHiddenAfterUpdate
 
 [UninstallRun]
 Filename: "{app}\Cotton.Sync.Desktop.exe"; Parameters: "--cleanup-cloud-files"; Flags: runhidden waituntilterminated; RunOnceId: "CottonSyncCloudFilesCleanup"
@@ -136,9 +137,14 @@ begin
   Result := True;
 end;
 
-function ShouldLaunchAfterInstall(): Boolean;
+function ShouldOfferLaunchAfterInstall(): Boolean;
 begin
-  Result := (not WizardSilent) or (ExpandConstant('{param:LaunchAfterUpdate|0}') = '1');
+  Result := (not WizardSilent) and (ExpandConstant('{param:LaunchAfterUpdate|0}') <> '1');
+end;
+
+function ShouldLaunchHiddenAfterUpdate(): Boolean;
+begin
+  Result := ExpandConstant('{param:LaunchAfterUpdate|0}') = '1';
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

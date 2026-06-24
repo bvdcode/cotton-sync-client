@@ -1163,8 +1163,11 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(installerScript, Does.Contain(@"Software\Classes\Directory\shell\CottonSyncCopyShareLink"));
                 Assert.That(installerScript, Does.Contain("Copy Cotton Cloud share link"));
                 Assert.That(installerScript, Does.Contain("--copy-shell-share-link"));
-                Assert.That(installerScript, Does.Contain("Flags: nowait postinstall; Check: ShouldLaunchAfterInstall"));
-                Assert.That(installerScript, Does.Contain("function ShouldLaunchAfterInstall(): Boolean;"));
+                Assert.That(installerScript, Does.Contain("Flags: nowait postinstall; Check: ShouldOfferLaunchAfterInstall"));
+                Assert.That(installerScript, Does.Contain("Parameters: \"--start-minimized\"; Flags: nowait; Check: ShouldLaunchHiddenAfterUpdate"));
+                Assert.That(installerScript, Does.Contain("function ShouldOfferLaunchAfterInstall(): Boolean;"));
+                Assert.That(installerScript, Does.Contain("function ShouldLaunchHiddenAfterUpdate(): Boolean;"));
+                Assert.That(installerScript, Does.Contain("ExpandConstant('{param:LaunchAfterUpdate|0}') <> '1'"));
                 Assert.That(installerScript, Does.Contain("ExpandConstant('{param:LaunchAfterUpdate|0}') = '1'"));
                 Assert.That(installerScript, Does.Contain("CurUninstallStepChanged"));
                 Assert.That(installerScript, Does.Contain("RegDeleteValue(HKCU, 'Software\\Microsoft\\Windows\\CurrentVersion\\Run', 'Cotton Sync')"));
