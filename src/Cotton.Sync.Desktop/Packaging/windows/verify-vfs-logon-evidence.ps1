@@ -299,6 +299,7 @@ Assert-DoesNotMatch `
 Assert-Contains -Content $runnerLog -Expected "Cotton VFS release evidence captured:" -Label "run-vfs-logon-evidence-capture.log"
 Assert-Contains -Content $runnerLog -Expected "CaptureExitCode: 0" -Label "run-vfs-logon-evidence-capture.log"
 Assert-Contains -Content $runnerLog -Expected "RunnerFinishedAt:" -Label "run-vfs-logon-evidence-capture.log"
+Assert-Contains -Content $runnerLog -Expected "TaskUnregistered: True" -Label "run-vfs-logon-evidence-capture.log"
 
 $taskRegisteredAt = Read-EvidenceTimestamp -Content $runnerLog -Label "TaskRegisteredAt:"
 $latestInteractiveLogonAt = Read-EvidenceTimestamp -Content $runnerLog -Label "LatestInteractiveLogonAt:"
