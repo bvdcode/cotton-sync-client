@@ -953,10 +953,12 @@
                         <Button Grid.Column="1"
                                 Content="Cancel"
                                 Classes="compact"
+                                IsVisible="{Binding IsRemoveSyncPairConfirmationActionsVisible}"
                                 Command="{Binding CancelRemoveSyncPairCommand}" />
                         <Button Grid.Column="2"
                                 Content="Remove"
                                 Classes="compact"
+                                IsVisible="{Binding IsRemoveSyncPairConfirmationActionsVisible}"
                                 Command="{Binding ConfirmRemoveSelectedSyncPairCommand}" />
                         <TextBlock Grid.Row="1"
                                    Grid.ColumnSpan="3"

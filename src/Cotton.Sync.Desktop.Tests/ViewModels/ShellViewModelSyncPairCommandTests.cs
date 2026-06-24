@@ -105,6 +105,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsSelectedSyncPairEditorVisible, Is.True);
                 Assert.That(viewModel.SelectedSyncPair?.IsEditorVisible, Is.True);
                 Assert.That(viewModel.IsRemoveSyncPairConfirmationVisible, Is.True);
+                Assert.That(viewModel.IsRemoveSyncPairConfirmationActionsVisible, Is.True);
                 Assert.That(viewModel.RemoveSyncPairConfirmationTitle, Is.EqualTo("Remove Documents?"));
                 Assert.That(viewModel.RemoveSyncPairConfirmationMessage, Is.EqualTo("Stops syncing this folder. Local files stay on this device; cloud files stay online."));
                 Assert.That(viewModel.ConfirmRemoveSelectedSyncPairCommand.CanExecute(null), Is.True);
@@ -178,6 +179,11 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Removing Cloud Files sync root and cleaning local placeholder folder. Large online-only folders can take a few minutes."));
                 Assert.That(viewModel.RemoveSyncPairProgressMessage, Is.EqualTo("Removing Cloud Files sync root and cleaning local placeholder folder. Large online-only folders can take a few minutes."));
                 Assert.That(viewModel.IsRemoveSyncPairConfirmationVisible, Is.True);
+                Assert.That(viewModel.IsRemoveSyncPairConfirmationActionsVisible, Is.False);
+                Assert.That(viewModel.RemoveSyncPairConfirmationTitle, Is.EqualTo("Removing Desktop"));
+                Assert.That(
+                    viewModel.RemoveSyncPairConfirmationMessage,
+                    Is.EqualTo("Removing the Cloud Files registration and local placeholder folder. This can take a few minutes for large online-only folders."));
                 Assert.That(viewModel.ConfirmRemoveSelectedSyncPairCommand.CanExecute(null), Is.False);
                 Assert.That(viewModel.CancelRemoveSyncPairCommand.CanExecute(null), Is.False);
             });
