@@ -401,6 +401,7 @@ jobs:
           $uninstallLog = Join-Path $env:RUNNER_TEMP "cotton-sync-uninstall.log"
           $reinstallLog = Join-Path $env:RUNNER_TEMP "cotton-sync-reinstall.log"
           $reinstallUninstallLog = Join-Path $env:RUNNER_TEMP "cotton-sync-reinstall-uninstall.log"
+          $evidenceDir = Join-Path $env:RUNNER_TEMP "cotton-sync-vfs-release-evidence"
           New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
           $installerPath = ".\cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}-setup.exe"
 
@@ -480,6 +481,13 @@ jobs:
             -ExpectedExecutablePath $installedExe `
             -InvocationDataDirectory (Join-Path $env:RUNNER_TEMP "cotton-sync-shell-share-link-data") `
             -InvokeInstalledVerb
+          & "src/Cotton.Sync.Desktop/Packaging/windows/capture-vfs-release-evidence.ps1" `
+            -OutputDirectory $evidenceDir `
+            -LocalRoot "S:\CottonSyncVfsQa\root" `
+            -DataDirectory $dataDir `
+            -InstallDirectory $installDir `
+            -RunSelfTest `
+            -RunDiagnosticsExport
 
           $uninstaller = Join-Path $installDir "unins000.exe"
           if (-not (Test-Path $uninstaller)) {
@@ -682,6 +690,15 @@ jobs:
         with:
           name: desktop-windows-installer
           path: cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}-setup.exe
+
+      - name: Upload desktop Windows installer evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: desktop-windows-installer-evidence
+          path: ${{ runner.temp }}/cotton-sync-vfs-release-evidence
+          if-no-files-found: error
+          retention-days: 14
 
   cli-windows:
     name: Sync CLI Windows Package Smoke
