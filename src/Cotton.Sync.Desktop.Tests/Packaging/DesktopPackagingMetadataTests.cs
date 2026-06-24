@@ -499,7 +499,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("processes.txt"));
                 Assert.That(script, Does.Contain("Read-FormatListRecords"));
                 Assert.That(script, Does.Contain("registry-run.txt did not reference the installed executable path"));
-                Assert.That(script, Does.Contain("processes.txt did not contain a running installed executable with --start-minimized"));
+                Assert.That(script, Does.Contain("processes.txt did not contain a running installed executable matching the captured HKCU Run command"));
                 Assert.That(script, Does.Contain("process-windows.txt"));
                 Assert.That(script, Does.Contain("registry-cloud-files-explorer.txt"));
                 Assert.That(script, Does.Contain("local-root-entries.csv"));
@@ -1058,7 +1058,42 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 (int exitCode, string output) = RunVfsLogonEvidenceVerifier(evidenceDirectory);
 
                 Assert.That(exitCode, Is.Not.EqualTo(0), output);
-                Assert.That(output, Does.Contain("processes.txt did not contain a running installed executable with --start-minimized"));
+                Assert.That(output, Does.Contain("processes.txt did not contain a running installed executable matching the captured HKCU Run command"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsLogonEvidenceVerifierScript_RejectsRunningProcessMissingRunCommandArguments()
+        {
+            string evidenceDirectory = CreateVfsLogonEvidenceBundle();
+            try
+            {
+                File.WriteAllLines(
+                    Path.Combine(evidenceDirectory, "registry-run.txt"),
+                    new[]
+                    {
+                        "Key   : HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+                        "Name  : Cotton Sync",
+                        "Value : \"C:\\Program Files\\Cotton Sync\\Cotton.Sync.Desktop.exe\" --start-minimized --data-dir \"S:\\CottonSyncVfsQa\\profile\""
+                    });
+                File.WriteAllLines(
+                    Path.Combine(evidenceDirectory, "processes.txt"),
+                    new[]
+                    {
+                        "ProcessId      : 1234",
+                        "ExecutablePath : C:\\Program Files\\Cotton Sync\\Cotton.Sync.Desktop.exe",
+                        "CommandLine    : \"C:\\Program Files\\Cotton Sync\\Cotton.Sync.Desktop.exe\" --start-minimized",
+                        "CreationDate   : 2026-06-24T10:01:00.0000000Z"
+                    });
+
+                (int exitCode, string output) = RunVfsLogonEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("processes.txt did not contain a running installed executable matching the captured HKCU Run command"));
             }
             finally
             {

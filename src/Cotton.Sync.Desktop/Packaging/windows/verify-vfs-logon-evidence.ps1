@@ -238,6 +238,7 @@ foreach ($processRecord in $processRecords) {
     $processCommandLine = [string]$processRecord["CommandLine"]
     if ((Test-SamePathText -Left $processExecutablePath -Right $installedExecutablePath) -and
         $processCommandLine.IndexOf($installedExecutablePath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+        $processCommandLine.IndexOf($registryRunValue, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and
         $processCommandLine.IndexOf("--start-minimized", [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
         $runningInstalledProcessFound = $true
         break
@@ -245,7 +246,7 @@ foreach ($processRecord in $processRecords) {
 }
 
 if (-not $runningInstalledProcessFound) {
-    throw "processes.txt did not contain a running installed executable with --start-minimized: $installedExecutablePath"
+    throw "processes.txt did not contain a running installed executable matching the captured HKCU Run command: $registryRunValue"
 }
 
 $processWindows = Read-EvidenceFile -RelativePath "process-windows.txt"
