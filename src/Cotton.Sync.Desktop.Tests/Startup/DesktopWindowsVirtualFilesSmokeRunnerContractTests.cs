@@ -103,6 +103,27 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void RunAsync_ExposesInitialStreamingLoggingPhaseWithTraceMetrics()
+        {
+            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(runner, Does.Contain("\"initial-streaming-logging\""));
+                Assert.That(runner, Does.Contain("RunInitialStreamingLoggingAsync("));
+                Assert.That(runner, Does.Contain("new InitialStreamingLoggingRemoteCrawler("));
+                Assert.That(runner, Does.Contain("DesktopCloudFilesPlaceholderWriter placeholderWriter = new("));
+                Assert.That(runner, Does.Contain("Cloud Files sync root connected for initial VFS logging smoke."));
+                Assert.That(runner, Does.Contain("loggerFactory.CreateLogger<SyncEngine>()"));
+                Assert.That(runner, Does.Contain("Completed initial streaming Windows virtual-files population"));
+                Assert.That(runner, Does.Contain("remote page latency total="));
+                Assert.That(runner, Does.Contain("10000 placeholders created or refreshed"));
+                Assert.That(runner, Does.Contain("Initial VFS trace log contains large-run metrics."));
+                Assert.That(runner, Does.Contain("Metric excerpt: "));
+            });
+        }
+
+        [Test]
         public void RunAsync_LargeTreePhaseVerifiesCloudFilesDirectoryStatusFinalization()
         {
             string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));

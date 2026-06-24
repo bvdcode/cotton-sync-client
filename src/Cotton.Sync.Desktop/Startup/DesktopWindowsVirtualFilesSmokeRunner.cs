@@ -26,6 +26,7 @@ using Cotton.Sync.VirtualFiles;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Extensions.Logging;
 
 namespace Cotton.Sync.Desktop.Startup
 {
@@ -123,6 +124,7 @@ namespace Cotton.Sync.Desktop.Startup
             string phase = (startupOptions.WindowsVirtualFilesSmokePhase ?? string.Empty).Trim().ToLowerInvariant();
             bool leaveRegistered = string.Equals(phase, "leave-registered", StringComparison.Ordinal);
             bool reconnectExisting = string.Equals(phase, "reconnect-existing", StringComparison.Ordinal);
+            bool initialStreamingLogging = string.Equals(phase, "initial-streaming-logging", StringComparison.Ordinal);
             bool steadyStateRepeat = string.Equals(phase, "steady-state-repeat", StringComparison.Ordinal);
             bool largeTree = string.Equals(phase, "large-tree", StringComparison.Ordinal);
             bool largeHydration = string.Equals(phase, "large-hydration-progress", StringComparison.Ordinal);
@@ -135,6 +137,7 @@ namespace Cotton.Sync.Desktop.Startup
             if (!string.IsNullOrEmpty(phase)
                 && !leaveRegistered
                 && !reconnectExisting
+                && !initialStreamingLogging
                 && !steadyStateRepeat
                 && !largeTree
                 && !largeHydration
@@ -157,6 +160,18 @@ namespace Cotton.Sync.Desktop.Startup
             IWindowsCloudFilesAdapter cloudFiles = cloudFilesAdapter
                 ?? new WindowsCloudFilesAdapter(nativeApi: nativeApi, diagnostics: diagnostics);
             SyncPairSettings syncPair = CreateSyncPair(rootPath);
+            if (initialStreamingLogging)
+            {
+                return await RunInitialStreamingLoggingAsync(
+                    paths,
+                    output,
+                    cloudFiles,
+                    syncPair,
+                    diagnostics,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             if (steadyStateRepeat)
             {
                 return await RunSteadyStateRepeatAsync(
@@ -1235,6 +1250,225 @@ namespace Cotton.Sync.Desktop.Startup
 
             await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
             return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> RunInitialStreamingLoggingAsync(
+            DesktopAppPaths paths,
+            TextWriter output,
+            IWindowsCloudFilesAdapter cloudFiles,
+            SyncPairSettings syncPair,
+            WindowsCloudFilesDiagnostics diagnostics,
+            CancellationToken cancellationToken)
+        {
+            string rootPath = syncPair.LocalRootPath;
+            SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath);
+            IReadOnlyList<RemoteFileSnapshot> remoteFiles = CreateLargeTreeRemoteFiles(syncPair);
+            RemoteDirectorySnapshot largeTreeDirectory = CreateLargeTreeRemoteDirectory(syncPair);
+            WindowsCloudFilesConnection? connection = null;
+            int failures = 0;
+
+            try
+            {
+                TryUnregisterExistingRoot(cloudFiles, syncPair, output);
+                PrepareRoot(rootPath);
+                await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+                await stateStore.DeletePairAsync(syncPair.Id.ToString("D"), cancellationToken).ConfigureAwait(false);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Isolated QA root prepared for initial VFS logging smoke.")
+                    + " root="
+                    + rootPath)
+                    .ConfigureAwait(false);
+                connection = cloudFiles.ConnectSyncRoot(syncPair, new NoopCloudFilesCallbackHandler());
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Cloud Files sync root connected for initial VFS logging smoke.")
+                    + " root="
+                    + connection.LocalRootPath)
+                    .ConfigureAwait(false);
+
+                using DesktopTraceLoggerFactory loggerFactory = new();
+                ILogger<SyncEngine> syncLogger = loggerFactory.CreateLogger<SyncEngine>();
+                ILogger<DesktopCloudFilesPlaceholderWriter> placeholderLogger =
+                    loggerFactory.CreateLogger<DesktopCloudFilesPlaceholderWriter>();
+                DesktopCloudFilesPlaceholderWriter placeholderWriter = new(
+                    cloudFilesAdapter: cloudFiles,
+                    getCapabilities: static () => new SyncPairModeCapabilitySnapshot(true, "Windows Cloud Files API is available."),
+                    logger: placeholderLogger);
+                SyncEngine syncEngine = new(
+                    new LocalFileScanner(),
+                    new InitialStreamingLoggingRemoteCrawler(
+                        syncPair.RemoteRootNodeId,
+                        largeTreeDirectory,
+                        remoteFiles),
+                    new NoTransferRemoteFileSynchronizer(),
+                    stateStore,
+                    remoteFilePlaceholderWriter: placeholderWriter,
+                    logger: syncLogger);
+                SyncPair syncPairCore = new()
+                {
+                    SyncPairId = syncPair.Id.ToString("D"),
+                    LocalRootPath = syncPair.LocalRootPath,
+                    RemoteRootNodeId = syncPair.RemoteRootNodeId,
+                    MaterializationMode = SyncPairMaterializationMode.WindowsVirtualFiles,
+                };
+
+                Stopwatch syncTimer = Stopwatch.StartNew();
+                SyncRunResult result = await syncEngine
+                    .RunOnceAsync(syncPairCore, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                syncTimer.Stop();
+
+                IReadOnlyList<SyncStateEntry> state = await stateStore
+                    .LoadPairAsync(syncPair.Id.ToString("D"), cancellationToken)
+                    .ConfigureAwait(false);
+                failures += await WriteCheckAsync(
+                        output,
+                        !result.RequiresUserAction
+                            && result.TotalActivityCount == LargeTreePlaceholderCount
+                            && state.Count == LargeTreePlaceholderCount + 1,
+                        "Initial VFS streaming run created a large placeholder baseline.",
+                        "files="
+                        + LargeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                        + ", stateRows="
+                        + state.Count.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                        + ", activities="
+                        + result.TotalActivityCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                        + ", syncElapsedMs="
+                        + syncTimer.ElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+
+                Trace.Flush();
+                failures += await VerifyInitialStreamingLogMetricsAsync(
+                        paths.LogFilePath,
+                        output,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                failures++;
+                await output.WriteLineAsync(
+                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                connection?.Dispose();
+                failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
+            }
+
+            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
+            {
+                await output.WriteLineAsync(
+                    "Diagnostic: "
+                    + item.Operation
+                    + " "
+                    + item.Status
+                    + " "
+                    + CleanSingleLine(item.Details))
+                    .ConfigureAwait(false);
+            }
+
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> WriteCheckAsync(
+            TextWriter output,
+            bool passed,
+            string label,
+            string details)
+        {
+            await output.WriteLineAsync(
+                    FormatCheck(passed, label)
+                    + " "
+                    + CleanSingleLine(details))
+                .ConfigureAwait(false);
+            return passed ? 0 : 1;
+        }
+
+        private static async Task<int> VerifyInitialStreamingLogMetricsAsync(
+            string logFilePath,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            if (!File.Exists(logFilePath))
+            {
+                await output.WriteLineAsync(
+                        FormatCheck(false, "Initial VFS logging smoke wrote a trace log.")
+                        + " log=missing")
+                    .ConfigureAwait(false);
+                return 1;
+            }
+
+            string logText = await File.ReadAllTextAsync(logFilePath, cancellationToken).ConfigureAwait(false);
+            string? completionLog = logText
+                .Split(["\r\n", "\n"], StringSplitOptions.None)
+                .LastOrDefault(static line => line.Contains(
+                    "Completed initial streaming Windows virtual-files population",
+                    StringComparison.Ordinal));
+            bool hasMetrics = completionLog is not null
+                && completionLog.Contains("1 directories discovered", StringComparison.Ordinal)
+                && completionLog.Contains("10000 files discovered", StringComparison.Ordinal)
+                && completionLog.Contains("remote pages read=", StringComparison.Ordinal)
+                && completionLog.Contains("remote page latency total=", StringComparison.Ordinal)
+                && completionLog.Contains("10000 placeholders created or refreshed", StringComparison.Ordinal)
+                && completionLog.Contains("placeholders/sec", StringComparison.Ordinal)
+                && completionLog.Contains("state writes 10000 file rows", StringComparison.Ordinal)
+                && completionLog.Contains("file write batches", StringComparison.Ordinal)
+                && completionLog.Contains("directory rows 1", StringComparison.Ordinal)
+                && completionLog.Contains("managed heap start=", StringComparison.Ordinal)
+                && completionLog.Contains("peak=", StringComparison.Ordinal)
+                && completionLog.Contains("activities retained", StringComparison.Ordinal);
+            await output.WriteLineAsync(
+                    FormatCheck(hasMetrics, "Initial VFS trace log contains large-run metrics.")
+                    + " hasCompletionLog="
+                    + (completionLog is not null).ToString()
+                    + ", log="
+                    + logFilePath)
+                .ConfigureAwait(false);
+            if (hasMetrics)
+            {
+                await output.WriteLineAsync("Metric excerpt: " + CleanSingleLine(completionLog!)).ConfigureAwait(false);
+            }
+
+            return hasMetrics ? 0 : 1;
+        }
+
+        private static IReadOnlyList<RemoteFileSnapshot> CreateLargeTreeRemoteFiles(SyncPairSettings syncPair)
+        {
+            byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
+            string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
+            List<RemoteFileSnapshot> remoteFiles = new(LargeTreePlaceholderCount);
+            for (int index = 0; index < LargeTreePlaceholderCount; index++)
+            {
+                string relativePath = LargeTreeDirectoryName
+                    + "/file-"
+                    + index.ToString("D5", System.Globalization.CultureInfo.InvariantCulture)
+                    + ".txt";
+                RemoteFilePlaceholderRequest request = CreatePlaceholderRequest(
+                    syncPair,
+                    relativePath,
+                    expectedContent.LongLength,
+                    expectedHash);
+                ApplyLargeSmokeRemoteIdentity(request.RemoteFile, index);
+                remoteFiles.Add(new RemoteFileSnapshot
+                {
+                    RelativePath = relativePath,
+                    File = request.RemoteFile,
+                });
+            }
+
+            return remoteFiles;
+        }
+
+        private static RemoteDirectorySnapshot CreateLargeTreeRemoteDirectory(SyncPairSettings syncPair)
+        {
+            RemoteDirectoryMaterializationRequest request = CreateDirectoryRequest(syncPair, LargeTreeDirectoryName);
+            return new RemoteDirectorySnapshot
+            {
+                RelativePath = request.RelativePath,
+                Node = request.RemoteDirectory,
+            };
         }
 
         private static async Task<int> VerifyPairDeletedAsync(
@@ -3523,6 +3757,82 @@ namespace Cotton.Sync.Desktop.Startup
                     0,
                     currentPath: null,
                     pagesScanned: Math.Max(1, (_files.Count + 999) / 1_000)));
+                return root;
+            }
+        }
+
+        private class InitialStreamingLoggingRemoteCrawler : IRemoteTreeStreamingCrawler
+        {
+            private readonly Guid _rootNodeId;
+            private readonly RemoteDirectorySnapshot _directory;
+            private readonly IReadOnlyList<RemoteFileSnapshot> _files;
+
+            public InitialStreamingLoggingRemoteCrawler(
+                Guid rootNodeId,
+                RemoteDirectorySnapshot directory,
+                IReadOnlyList<RemoteFileSnapshot> files)
+            {
+                _rootNodeId = rootNodeId;
+                _directory = directory;
+                _files = files;
+            }
+
+            public Task<RemoteTreeSnapshot> CrawlAsync(Guid rootNodeId, CancellationToken cancellationToken = default)
+            {
+                throw new InvalidOperationException("Initial VFS logging smoke must use streaming remote discovery.");
+            }
+
+            public async Task<NodeDto> CrawlStreamingAsync(
+                Guid rootNodeId,
+                IRemoteTreeStreamSink sink,
+                IProgress<RemoteTreeScanProgress>? progress,
+                CancellationToken cancellationToken = default)
+            {
+                NodeDto root = new()
+                {
+                    Id = _rootNodeId,
+                    Name = "root",
+                };
+                progress?.Report(new RemoteTreeScanProgress(0, 0, currentPath: null, pagesScanned: 0));
+                await sink.AddDirectoryAsync(_directory, cancellationToken).ConfigureAwait(false);
+                progress?.Report(new RemoteTreeScanProgress(
+                    0,
+                    1,
+                    _directory.RelativePath,
+                    pagesScanned: 1,
+                    pageReadLatencyTotal: TimeSpan.FromMilliseconds(3),
+                    pageReadLatencyMax: TimeSpan.FromMilliseconds(3),
+                    lastPageReadLatency: TimeSpan.FromMilliseconds(3)));
+
+                for (int index = 0; index < _files.Count; index++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    RemoteFileSnapshot file = _files[index];
+                    await sink.AddFileAsync(file, cancellationToken).ConfigureAwait(false);
+                    if ((index + 1) % 1_000 == 0 || index == _files.Count - 1)
+                    {
+                        int pagesScanned = (index / 1_000) + 2;
+                        TimeSpan latency = TimeSpan.FromMilliseconds(4 + pagesScanned % 7);
+                        progress?.Report(new RemoteTreeScanProgress(
+                            index + 1,
+                            1,
+                            file.RelativePath,
+                            pagesScanned: pagesScanned,
+                            pageReadLatencyTotal: TimeSpan.FromMilliseconds(3 + pagesScanned * 5),
+                            pageReadLatencyMax: latency,
+                            lastPageReadLatency: latency));
+                    }
+                }
+
+                int totalPages = Math.Max(2, (_files.Count + 999) / 1_000 + 1);
+                progress?.Report(new RemoteTreeScanProgress(
+                    _files.Count,
+                    1,
+                    currentPath: null,
+                    pagesScanned: totalPages,
+                    pageReadLatencyTotal: TimeSpan.FromMilliseconds(3 + totalPages * 5),
+                    pageReadLatencyMax: TimeSpan.FromMilliseconds(10),
+                    lastPageReadLatency: TimeSpan.FromMilliseconds(5)));
                 return root;
             }
         }
