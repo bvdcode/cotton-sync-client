@@ -89,6 +89,27 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void Program_TreatsSelfTestAndDiagnosticsExportAsHeadlessCommandModes()
+        {
+            string program = File.ReadAllText(GetDesktopFilePath("Program.cs"));
+            int selfTestIndex = program.IndexOf("startupOptions.RunSelfTest", StringComparison.Ordinal);
+            int selfTestRunnerIndex = program.IndexOf("RunSelfTestAsync(paths, startupOptions, Console.Out)", StringComparison.Ordinal);
+            int exportIndex = program.IndexOf("startupOptions.ExportDiagnostics", StringComparison.Ordinal);
+            int exportRunnerIndex = program.IndexOf("RunExportDiagnosticsAsync(paths, startupOptions, Console.Out)", StringComparison.Ordinal);
+            int singleInstanceIndex = program.IndexOf("DesktopSingleInstanceGuard", StringComparison.Ordinal);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(selfTestIndex, Is.GreaterThanOrEqualTo(0));
+                Assert.That(selfTestRunnerIndex, Is.GreaterThan(selfTestIndex));
+                Assert.That(selfTestRunnerIndex, Is.LessThan(singleInstanceIndex));
+                Assert.That(exportIndex, Is.GreaterThanOrEqualTo(0));
+                Assert.That(exportRunnerIndex, Is.GreaterThan(exportIndex));
+                Assert.That(exportRunnerIndex, Is.LessThan(singleInstanceIndex));
+            });
+        }
+
+        [Test]
         public void Program_TreatsSocketCleanupSmokeAsHeadlessCommandMode()
         {
             string program = File.ReadAllText(GetDesktopFilePath("Program.cs"));

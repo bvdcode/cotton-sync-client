@@ -4,17 +4,13 @@
 param(
     [string]$TaskName = "Cotton Sync VFS Logon Evidence Capture",
 
-    [Parameter(Mandatory = $true)]
-    [string]$OutputDirectory,
+    [string]$OutputDirectory = "",
 
-    [Parameter(Mandatory = $true)]
-    [string]$LocalRoot,
+    [string]$LocalRoot = "",
 
-    [Parameter(Mandatory = $true)]
-    [string]$DataDirectory,
+    [string]$DataDirectory = "",
 
-    [Parameter(Mandatory = $true)]
-    [string]$InstallDirectory,
+    [string]$InstallDirectory = "",
 
     [int]$DelaySeconds = 45,
 
@@ -37,6 +33,19 @@ function ConvertTo-CommandLineArgument {
     return '"' + $Value.Replace('"', '\"') + '"'
 }
 
+function Assert-RequiredValue {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [string]$Value
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        throw "$Name is required unless -Remove is used."
+    }
+}
+
 if ($DelaySeconds -lt 0) {
     throw "DelaySeconds must not be negative."
 }
@@ -46,6 +55,11 @@ if ($Remove) {
     Write-Host "Removed VFS logon evidence capture task: $TaskName"
     return
 }
+
+Assert-RequiredValue -Name "OutputDirectory" -Value $OutputDirectory
+Assert-RequiredValue -Name "LocalRoot" -Value $LocalRoot
+Assert-RequiredValue -Name "DataDirectory" -Value $DataDirectory
+Assert-RequiredValue -Name "InstallDirectory" -Value $InstallDirectory
 
 $captureScript = Join-Path $PSScriptRoot "capture-vfs-release-evidence.ps1"
 if (-not (Test-Path -LiteralPath $captureScript)) {
