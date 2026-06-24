@@ -411,6 +411,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("installed-app.txt"));
                 Assert.That(script, Does.Contain("registry-run.txt"));
                 Assert.That(script, Does.Contain("autostart-launch.txt"));
+                Assert.That(script, Does.Contain("update-relaunch.txt"));
                 Assert.That(script, Does.Contain("registry-cloud-files-explorer.txt"));
                 Assert.That(script, Does.Contain("process-windows.txt"));
                 Assert.That(script, Does.Contain("local-root-entries.csv"));
@@ -428,6 +429,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("Installed self-test: exitCode=0;"));
                 Assert.That(script, Does.Contain("Diagnostics export: exitCode=0;"));
                 Assert.That(script, Does.Contain("ObservedForeground: False"));
+                Assert.That(script, Does.Contain("LaunchMode: attached-existing"));
                 Assert.That(script, Does.Contain("CleanupRemaining: 0"));
                 Assert.That(script, Does.Contain("No Cloud Files or Explorer registration was captured before uninstall."));
                 Assert.That(script, Does.Contain("VFS smoke logs: captured:"));
@@ -658,6 +660,25 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
 
                 Assert.That(exitCode, Is.Not.EqualTo(0), output);
                 Assert.That(output, Does.Contain("Cotton Sync had visible windows during evidence capture."));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_RejectsMissingUpdateRelaunchEvidence()
+        {
+            string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
+            try
+            {
+                File.Delete(Path.Combine(evidenceDirectory, "update-relaunch.txt"));
+
+                (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("update-relaunch.txt"));
             }
             finally
             {
@@ -1667,13 +1688,16 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("$expectedRunValue = \"`\"$installedExe`\" --start-minimized\""));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-autostart-launch.ps1"));
                 Assert.That(workflow, Does.Contain("-AppExecutable $installedExe"));
-                Assert.That(workflow, Does.Contain("$upgradeRelaunchReport = Join-Path $env:RUNNER_TEMP \"cotton-sync-upgrade-relaunch.txt\""));
+                Assert.That(workflow, Does.Contain("$evidenceDir = Join-Path $env:RUNNER_TEMP \"cotton-sync-vfs-release-evidence\""));
+                Assert.That(workflow, Does.Contain("$upgradeRelaunchReport = Join-Path $evidenceDir \"update-relaunch.txt\""));
                 Assert.That(workflow, Does.Contain("-ReportPath $upgradeRelaunchReport"));
                 Assert.That(workflow, Does.Contain("-AttachExistingProcess"));
                 Assert.That(workflow, Does.Contain("$upgradeAutostartReport = Join-Path $env:RUNNER_TEMP \"cotton-sync-upgrade-autostart-launch.txt\""));
                 Assert.That(workflow, Does.Contain("-ReportPath $upgradeAutostartReport"));
                 Assert.That(workflow, Does.Not.Contain("Set-ItemProperty -Path $runKey -Name \"Cotton Sync\""));
                 Assert.That(workflow, Does.Contain("Packaging/windows/verify-cloud-files-cleanup.ps1"));
+                Assert.That(workflow, Does.Contain("Packaging/windows/verify-vfs-release-evidence.ps1"));
+                Assert.That(workflow, Does.Contain("-EvidenceDirectory $evidenceDir"));
                 Assert.That(workflow, Does.Contain("Upgraded desktop executable remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Upgraded Start Menu shortcut remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Upgraded Start Menu uninstall shortcut remained after uninstall."));
@@ -1905,6 +1929,18 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 new[]
                 {
                     "Result: passed",
+                    "ExpectedRunValue: Cotton.Sync.Desktop.exe --start-minimized",
+                    "CommandLine: Cotton.Sync.Desktop.exe --start-minimized",
+                    "ObservedForeground: False",
+                    "VisibleWindowCount: 0",
+                    "CleanupRemaining: 0"
+                });
+            File.WriteAllLines(
+                Path.Combine(evidenceDirectory, "update-relaunch.txt"),
+                new[]
+                {
+                    "Result: passed",
+                    "LaunchMode: attached-existing",
                     "ExpectedRunValue: Cotton.Sync.Desktop.exe --start-minimized",
                     "CommandLine: Cotton.Sync.Desktop.exe --start-minimized",
                     "ObservedForeground: False",
