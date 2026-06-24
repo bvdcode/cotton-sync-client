@@ -3253,6 +3253,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             GlobalStatus = "Exporting diagnostics";
             try
             {
+                await YieldToUiDispatcherAsync().ConfigureAwait(true);
                 string bundlePath = await _controller.ExportDiagnosticsAsync().ConfigureAwait(true);
                 LastDiagnosticsBundlePath = bundlePath;
                 if (!preserveActionRequired)
@@ -3267,6 +3268,18 @@ namespace Cotton.Sync.Desktop.ViewModels
             {
                 IsExportingDiagnostics = false;
             }
+        }
+
+        private Task YieldToUiDispatcherAsync()
+        {
+            if (!_uiDispatcher.CheckAccess())
+            {
+                return Task.CompletedTask;
+            }
+
+            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _uiDispatcher.Post(() => completion.TrySetResult());
+            return completion.Task;
         }
 
         private async Task OpenDataFolderAsync()

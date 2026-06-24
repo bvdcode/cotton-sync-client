@@ -3918,6 +3918,34 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task ExportDiagnosticsCommand_YieldsProgressBeforeStartingExport()
+        {
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            {
+                ExportDiagnosticsCompletion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously),
+            };
+            var dispatcher = new QueuedAccessDesktopUiDispatcher();
+            using ShellViewModel viewModel = CreateViewModel(controller, uiDispatcher: dispatcher);
+            await viewModel.InitializeAsync();
+
+            viewModel.ExportDiagnosticsCommand.Execute(null);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.IsExportingDiagnostics, Is.True);
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Exporting diagnostics"));
+                Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Collecting logs and diagnostic state."));
+                Assert.That(controller.ExportDiagnosticsCalls, Is.Zero);
+                Assert.That(dispatcher.PendingActionCount, Is.EqualTo(1));
+            });
+
+            dispatcher.DrainAll();
+            await WaitForAsync(() => controller.ExportDiagnosticsCalls == 1);
+            controller.ExportDiagnosticsCompletion.SetResult(controller.ExportDiagnosticsPath);
+            await WaitForAsync(() => !viewModel.ExportDiagnosticsCommand.IsRunning);
+        }
+
+        [Test]
         public async Task ExportDiagnosticsCommand_ReportsFailureAsActionRequired()
         {
             var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
@@ -7097,6 +7125,38 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             public void Post(Action action)
             {
                 PostedActionCount++;
+                _actions.Enqueue(action);
+            }
+
+            public Task InvokeAsync(Action action, CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                action();
+                return Task.CompletedTask;
+            }
+
+            public void DrainAll()
+            {
+                while (_actions.Count > 0)
+                {
+                    _actions.Dequeue()();
+                }
+            }
+        }
+
+        private sealed class QueuedAccessDesktopUiDispatcher : IDesktopUiDispatcher
+        {
+            private readonly Queue<Action> _actions = [];
+
+            public int PendingActionCount => _actions.Count;
+
+            public bool CheckAccess()
+            {
+                return true;
+            }
+
+            public void Post(Action action)
+            {
                 _actions.Enqueue(action);
             }
 
