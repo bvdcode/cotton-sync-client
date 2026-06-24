@@ -121,6 +121,7 @@ Assert-DoesNotMatch `
 
 $localRootEntries = Read-EvidenceFile -RelativePath "local-root-entries.csv"
 Assert-Contains -Content $localRootEntries -Expected '"RelativePath","FullPath","Exists","Attributes","Length","LastWriteTimeUtc"' -Label "local-root-entries.csv"
+Assert-Contains -Content $localRootEntries -Expected '"."' -Label "local-root-entries.csv"
 
 $selfTest = Read-EvidenceFile -RelativePath "self-test.stdout.log"
 Assert-Contains -Content $selfTest -Expected "Result: passed" -Label "self-test.stdout.log"
