@@ -126,7 +126,8 @@ namespace Cotton.Sync.Desktop.Platform
                     foreach (string directoryPath in Directory.EnumerateDirectories(current, "*", ChildEnumeration))
                     {
                         FileAttributes attributes = File.GetAttributes(directoryPath);
-                        if ((attributes & FileAttributes.ReparsePoint) != 0)
+                        if ((attributes & FileAttributes.ReparsePoint) != 0
+                            && !IsSafeCloudFilesPlaceholder(attributes))
                         {
                             return "Local root contains at least one reparse directory.";
                         }

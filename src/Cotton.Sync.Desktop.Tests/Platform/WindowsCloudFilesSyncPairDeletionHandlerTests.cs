@@ -142,10 +142,15 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             FileAttributes offlineAttributes = FileAttributes.Archive
                 | (FileAttributes)FileAttributeUnpinned
                 | FileAttributes.Offline;
+            FileAttributes directoryPlaceholderAttributes = FileAttributes.Directory
+                | FileAttributes.ReparsePoint
+                | (FileAttributes)FileAttributeUnpinned
+                | (FileAttributes)FileAttributeRecallOnDataAccess;
 
             bool safe = WindowsVirtualFilesRootCleaner.IsSafeCloudFilesPlaceholder(onlineOnlyAttributes);
             bool recallOnOpenSafe = WindowsVirtualFilesRootCleaner.IsSafeCloudFilesPlaceholder(recallOnOpenAttributes);
             bool offlineSafe = WindowsVirtualFilesRootCleaner.IsSafeCloudFilesPlaceholder(offlineAttributes);
+            bool directoryPlaceholderSafe = WindowsVirtualFilesRootCleaner.IsSafeCloudFilesPlaceholder(directoryPlaceholderAttributes);
             bool regularFileSafe = WindowsVirtualFilesRootCleaner.IsSafeCloudFilesPlaceholder(FileAttributes.Archive);
             bool reparsePointSafe = WindowsVirtualFilesRootCleaner.IsSafeCloudFilesPlaceholder(FileAttributes.ReparsePoint);
 
@@ -154,6 +159,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(safe, Is.True);
                 Assert.That(recallOnOpenSafe, Is.True);
                 Assert.That(offlineSafe, Is.True);
+                Assert.That(directoryPlaceholderSafe, Is.True);
                 Assert.That(regularFileSafe, Is.False);
                 Assert.That(reparsePointSafe, Is.False);
             });
