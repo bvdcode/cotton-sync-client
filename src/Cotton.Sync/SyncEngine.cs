@@ -1483,7 +1483,7 @@ namespace Cotton.Sync
                     ReportRunProgress(
                         options,
                         SyncRunProgressStage.FinalizingCloudFiles,
-                        directoryTreeFinalizationRequests.Count,
+                        0,
                         directoriesDiscovered,
                         null,
                         startedAtUtc);
@@ -1492,6 +1492,14 @@ namespace Cotton.Sync
                             directoryTreeFinalizationRequests.Values.ToArray(),
                             cancellationToken)
                         .ConfigureAwait(false);
+                    ReportRunProgress(
+                        options,
+                        SyncRunProgressStage.FinalizingCloudFiles,
+                        directoryTreeFinalizationRequests.Count,
+                        directoriesDiscovered,
+                        null,
+                        startedAtUtc,
+                        isCompleted: true);
                 }
             }
             finally
