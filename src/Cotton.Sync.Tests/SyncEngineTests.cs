@@ -1865,7 +1865,10 @@ namespace Cotton.Sync.Tests
                 new() { RelativePath = "Desktop/first.txt", File = RemoteFile("Desktop/first.txt", HashText("first"), sizeBytes: 11) },
                 new() { RelativePath = "Desktop/second.txt", File = RemoteFile("Desktop/second.txt", HashText("second"), sizeBytes: 12) },
             ];
-            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(_remoteRootNodeId, remoteFiles);
+            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
+                _remoteRootNodeId,
+                remoteFiles,
+                entriesExpected: remoteFiles.Count);
             var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
             var placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
             var stateStore = new SqliteSyncStateStore(_databasePath);
@@ -1894,9 +1897,9 @@ namespace Cotton.Sync.Tests
                 Assert.That(runProgress.Values.Any(progress => progress.Stage == SyncRunProgressStage.ScanningLocal), Is.False);
                 Assert.That(placeholderProgress, Is.Not.Empty);
                 Assert.That(placeholderProgress.Any(progress =>
-                    progress.FilesCompleted == 0
-                    && progress.FilesTotal == 1
+                    progress.FilesTotal == remoteFiles.Count
                     && progress.CurrentPath == "Desktop/first.txt"), Is.True);
+                Assert.That(placeholderProgress.Any(progress => progress.FilesTotal == 1), Is.False);
                 Assert.That(placeholderProgress.Any(progress =>
                     progress.FilesTotal == remoteFiles.Count), Is.True);
                 Assert.That(placeholderProgress.Last().FilesTotal, Is.EqualTo(remoteFiles.Count));
@@ -4971,15 +4974,18 @@ namespace Cotton.Sync.Tests
             private readonly Guid _rootNodeId;
             private readonly IReadOnlyList<RemoteFileSnapshot> _files;
             private readonly RemoteTreeSnapshot? _snapshotCrawlResult;
+            private readonly int? _entriesExpected;
 
             public BlockingStreamingRemoteTreeCrawler(
                 Guid rootNodeId,
                 IReadOnlyList<RemoteFileSnapshot> files,
-                RemoteTreeSnapshot? snapshotCrawlResult = null)
+                RemoteTreeSnapshot? snapshotCrawlResult = null,
+                int? entriesExpected = null)
             {
                 _rootNodeId = rootNodeId;
                 _files = files;
                 _snapshotCrawlResult = snapshotCrawlResult;
+                _entriesExpected = entriesExpected;
             }
 
             public TaskCompletionSource FirstPlaceholderStarted { get; } =
@@ -5017,12 +5023,26 @@ namespace Cotton.Sync.Tests
                     Name = "root",
                 };
                 progress?.Report(new RemoteTreeScanProgress(0, 0, currentPath: null));
+                if (_entriesExpected.HasValue)
+                {
+                    progress?.Report(new RemoteTreeScanProgress(
+                        0,
+                        0,
+                        currentPath: null,
+                        pagesScanned: 1,
+                        entriesExpected: _entriesExpected));
+                }
 
                 for (int index = 0; index < _files.Count; index++)
                 {
                     RemoteFileSnapshot file = _files[index];
                     await sink.AddFileAsync(file, cancellationToken).ConfigureAwait(false);
-                    progress?.Report(new RemoteTreeScanProgress(index + 1, 0, file.RelativePath, pagesScanned: 1));
+                    progress?.Report(new RemoteTreeScanProgress(
+                        index + 1,
+                        0,
+                        file.RelativePath,
+                        pagesScanned: 1,
+                        entriesExpected: _entriesExpected));
                     if (index == 0)
                     {
                         try
@@ -5040,7 +5060,12 @@ namespace Cotton.Sync.Tests
                 }
 
                 StreamingCompleted = true;
-                progress?.Report(new RemoteTreeScanProgress(_files.Count, 0, currentPath: null, pagesScanned: 1));
+                progress?.Report(new RemoteTreeScanProgress(
+                    _files.Count,
+                    0,
+                    currentPath: null,
+                    pagesScanned: 1,
+                    entriesExpected: _entriesExpected));
                 return root;
             }
         }
