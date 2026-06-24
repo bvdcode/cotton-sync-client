@@ -459,7 +459,8 @@ jobs:
             -AppExecutable $installedExe `
             -DataDirectory $dataDir `
             -VfsSmokeDataDirectory $vfsSmokeDataDir `
-            -AdditionalVfsSmokePhases @("desktop-session-restore", "shell-share-link-targets")
+            -AdditionalVfsSmokePhases @("desktop-session-restore", "shell-share-link-targets", "initial-streaming-logging") `
+            -InitialStreamingPlaceholderCount 100000
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-checksums.ps1" `
             -PublishDirectory $installDir
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-associated-icon.ps1" `

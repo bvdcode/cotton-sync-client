@@ -9,7 +9,9 @@ param(
 
     [string]$LocalRoot = "S:\CottonSyncVfsQa\root",
 
-    [string[]]$AdditionalVfsSmokePhases = @()
+    [string[]]$AdditionalVfsSmokePhases = @(),
+
+    [int]$InitialStreamingPlaceholderCount = 100000
 )
 
 $ErrorActionPreference = "Stop"
@@ -119,15 +121,26 @@ if ($vfsSmokePassed) {
         $phaseName = $phase.Trim()
         $phaseDataDirectory = Join-Path $VfsSmokeDataDirectory ("phase-" + $phaseName)
         New-Item -ItemType Directory -Path $phaseDataDirectory -Force | Out-Null
-        $phaseResult = Invoke-CottonDesktopCommand `
-            -Arguments @(
+        $phaseArguments = @(
                 "--windows-virtual-files-smoke",
                 "--data-dir",
                 $phaseDataDirectory,
                 "--local-root",
                 $LocalRoot,
                 "--vfs-smoke-phase",
-                $phaseName) `
+                $phaseName)
+        if ($phaseName -eq "initial-streaming-logging") {
+            if ($InitialStreamingPlaceholderCount -le 0) {
+                throw "InitialStreamingPlaceholderCount must be greater than zero."
+            }
+
+            $phaseArguments += @(
+                "--vfs-smoke-placeholder-count",
+                $InitialStreamingPlaceholderCount.ToString([System.Globalization.CultureInfo]::InvariantCulture))
+        }
+
+        $phaseResult = Invoke-CottonDesktopCommand `
+            -Arguments $phaseArguments `
             -StdoutPath (Join-Path $phaseDataDirectory "cloud-files-vfs-smoke.stdout.log") `
             -StderrPath (Join-Path $phaseDataDirectory "cloud-files-vfs-smoke.stderr.log")
         $phasePassed = $phaseResult.ExitCode -eq 0 -and ($phaseResult.Stdout | Where-Object { $_ -eq "Result: passed" } | Select-Object -First 1)

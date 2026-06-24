@@ -135,4 +135,13 @@ Assert-Contains -Content $desktopSessionRestore -Expected "Result: passed" -Labe
 $shellShareLinkTargets = Read-EvidenceFile -RelativePath "vfs-smoke\phase-shell-share-link-targets\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $shellShareLinkTargets -Expected "Result: passed" -Label "vfs-smoke\phase-shell-share-link-targets\cloud-files-vfs-smoke.stdout.log"
 
+$initialStreamingLogging = Read-EvidenceFile -RelativePath "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $initialStreamingLogging -Expected "Initial VFS streaming run created a large placeholder baseline without per-placeholder activities." -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $initialStreamingLogging -Expected "Initial VFS trace log contains large-run metrics." -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $initialStreamingLogging -Expected "Metric excerpt:" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $initialStreamingLogging -Expected "placeholders/sec" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $initialStreamingLogging -Expected "state writes" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $initialStreamingLogging -Expected "managed heap start=" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $initialStreamingLogging -Expected "Result: passed" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
+
 Write-Host "Verified VFS release evidence bundle: $resolvedEvidenceDirectory"
