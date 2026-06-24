@@ -20,7 +20,8 @@ namespace Cotton.Sync.Remote
             int pagesScanned = 0,
             TimeSpan pageReadLatencyTotal = default,
             TimeSpan pageReadLatencyMax = default,
-            TimeSpan lastPageReadLatency = default)
+            TimeSpan lastPageReadLatency = default,
+            int? entriesExpected = null)
         {
             ArgumentOutOfRangeException.ThrowIfNegative(filesScanned);
             ArgumentOutOfRangeException.ThrowIfNegative(directoriesScanned);
@@ -28,6 +29,11 @@ namespace Cotton.Sync.Remote
             ArgumentOutOfRangeException.ThrowIfNegative(pageReadLatencyTotal.Ticks);
             ArgumentOutOfRangeException.ThrowIfNegative(pageReadLatencyMax.Ticks);
             ArgumentOutOfRangeException.ThrowIfNegative(lastPageReadLatency.Ticks);
+            if (entriesExpected.HasValue)
+            {
+                ArgumentOutOfRangeException.ThrowIfNegative(entriesExpected.Value);
+            }
+
             FilesScanned = filesScanned;
             DirectoriesScanned = directoriesScanned;
             CurrentPath = string.IsNullOrWhiteSpace(currentPath) ? string.Empty : SyncPath.Normalize(currentPath);
@@ -35,6 +41,7 @@ namespace Cotton.Sync.Remote
             PageReadLatencyTotal = pageReadLatencyTotal;
             PageReadLatencyMax = pageReadLatencyMax;
             LastPageReadLatency = lastPageReadLatency;
+            EntriesExpected = entriesExpected;
         }
 
         /// <summary>
@@ -51,6 +58,11 @@ namespace Cotton.Sync.Remote
         /// Gets the number of remote child pages loaded so far.
         /// </summary>
         public int PagesScanned { get; }
+
+        /// <summary>
+        /// Gets the number of remote file and directory entries expected from already discovered remote pages.
+        /// </summary>
+        public int? EntriesExpected { get; }
 
         /// <summary>
         /// Gets the cumulative latency spent reading remote child pages.

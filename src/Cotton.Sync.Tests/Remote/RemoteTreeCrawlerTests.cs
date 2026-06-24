@@ -215,9 +215,11 @@ namespace Cotton.Sync.Tests.Remote
                 Assert.That(progress.Values, Has.Count.GreaterThanOrEqualTo(3));
                 Assert.That(progress.Values[0].FilesScanned, Is.Zero);
                 Assert.That(progress.Values[0].DirectoriesScanned, Is.Zero);
+                Assert.That(progress.Values.Any(item => item.CurrentPath == "Docs" && item.EntriesExpected == 2), Is.True);
                 Assert.That(progress.Values.Any(item => item.FilesScanned == 1 && item.CurrentPath == "root.txt"), Is.True);
                 Assert.That(progress.Values[^1].FilesScanned, Is.EqualTo(3));
                 Assert.That(progress.Values[^1].DirectoriesScanned, Is.EqualTo(1));
+                Assert.That(progress.Values[^1].EntriesExpected, Is.EqualTo(4));
                 Assert.That(progress.Values[^1].CurrentPath, Is.Empty);
             });
         }
@@ -299,6 +301,7 @@ namespace Cotton.Sync.Tests.Remote
                 Assert.That(sink.Files.Select(file => file.RelativePath), Is.EquivalentTo(new[] { "Docs/report.txt", "Photos/photo.jpg", "Videos/clip.mp4" }));
                 Assert.That(client.MaxConcurrentGetChildrenCalls, Is.GreaterThan(1));
                 Assert.That(progress.Values[^1].PagesScanned, Is.EqualTo(4));
+                Assert.That(progress.Values[^1].EntriesExpected, Is.EqualTo(6));
                 Assert.That(progress.Values[^1].PageReadLatencyTotal, Is.GreaterThan(TimeSpan.Zero));
                 Assert.That(progress.Values[^1].PageReadLatencyMax, Is.GreaterThan(TimeSpan.Zero));
                 Assert.That(progress.Values[^1].LastPageReadLatency, Is.GreaterThan(TimeSpan.Zero));
