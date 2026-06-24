@@ -914,7 +914,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             string cloudFolderPicker = GetSlice(
                 mainWindowXaml,
                 "IsVisible=\"{Binding IsAddSyncPairCloudStepVisible}\"",
-                "<Grid Grid.Row=\"3\"\n                  ColumnDefinitions=\"*,Auto\"");
+                "<TextBlock Grid.Row=\"4\"");
 
             Assert.Multiple(() =>
             {
