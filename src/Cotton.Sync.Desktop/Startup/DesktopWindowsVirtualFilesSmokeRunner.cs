@@ -849,6 +849,8 @@ namespace Cotton.Sync.Desktop.Startup
             var activityPublisher = new InMemoryAppActivityPublisher();
             var transferProgressPublisher = new InMemoryAppTransferProgressPublisher();
             var runProgressPublisher = new InMemoryAppRunProgressPublisher();
+            RecordingRunProgressObserver runProgressObserver = new();
+            IDisposable runProgressSubscription = runProgressPublisher.Subscribe(runProgressObserver);
             var localChangeSuppression = new LocalChangeSuppression();
             WindowsCloudFilesConnection? connection = null;
             int failures = 0;
@@ -944,6 +946,12 @@ namespace Cotton.Sync.Desktop.Startup
 
                 await pairWork.RunOnceAsync(syncPair, cancellationToken).ConfigureAwait(false);
 
+                failures += await VerifyRunProgressCompletedFinalizingCloudFilesAsync(
+                        output,
+                        runProgressObserver.Snapshot(),
+                        "non-empty preservation app sync path")
+                    .ConfigureAwait(false);
+
                 FileContentHash rootAfter = await ReadFileHashThroughExternalProcessAsync(rootLocalFilePath, cancellationToken)
                     .ConfigureAwait(false);
                 FileContentHash nestedAfter = await ReadFileHashThroughExternalProcessAsync(nestedLocalFilePath, cancellationToken)
@@ -1005,6 +1013,32 @@ namespace Cotton.Sync.Desktop.Startup
                         " directoriesCreated="
                         + remoteDirectories.Creates.Count.ToString(System.Globalization.CultureInfo.InvariantCulture))
                     .ConfigureAwait(false);
+                failures += await VerifyCloudFilesInSyncStateAsync(
+                        output,
+                        cloudFiles,
+                        syncPair,
+                        NonEmptyPreservationDirectoryName,
+                        "Pre-existing top-level directory Cloud Files status was finalized.")
+                    .ConfigureAwait(false);
+                failures += await VerifyCloudFilesInSyncStateAsync(
+                        output,
+                        cloudFiles,
+                        syncPair,
+                        NonEmptyPreservationRemoteOnlyDirectoryName,
+                        "Remote-only directory Cloud Files status was finalized.")
+                    .ConfigureAwait(false);
+                failures += await VerifyExplorerShellSettledStatusAsync(
+                        output,
+                        Path.Combine(rootPath, NonEmptyPreservationDirectoryName),
+                        "non-empty preservation uploaded top-level directory",
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                failures += await VerifyExplorerShellSettledStatusAsync(
+                        output,
+                        Path.Combine(rootPath, NonEmptyPreservationRemoteOnlyDirectoryName),
+                        "non-empty preservation remote-only directory",
+                        cancellationToken)
+                    .ConfigureAwait(false);
                 failures += await WritePassFailAsync(
                         output,
                         File.Exists(remoteOnlyFilePath)
@@ -1041,6 +1075,7 @@ namespace Cotton.Sync.Desktop.Startup
             finally
             {
                 connection?.Dispose();
+                runProgressSubscription.Dispose();
                 failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
             }
 
@@ -3331,6 +3366,50 @@ namespace Cotton.Sync.Desktop.Startup
             return true;
         }
 
+        private static async Task<int> VerifyRunProgressCompletedFinalizingCloudFilesAsync(
+            TextWriter output,
+            IReadOnlyList<AppRunProgress> progress,
+            string label)
+        {
+            int finalizingStartIndex = -1;
+            int finalizingCompletedIndex = -1;
+            int completedIndex = -1;
+            for (int index = 0; index < progress.Count; index++)
+            {
+                AppRunProgress item = progress[index];
+                if (item.Stage == SyncRunProgressStage.FinalizingCloudFiles && !item.IsCompleted && finalizingStartIndex < 0)
+                {
+                    finalizingStartIndex = index;
+                }
+
+                if (item.Stage == SyncRunProgressStage.FinalizingCloudFiles && item.IsCompleted)
+                {
+                    finalizingCompletedIndex = index;
+                }
+
+                if (item.Stage == SyncRunProgressStage.Completed)
+                {
+                    completedIndex = index;
+                }
+            }
+
+            bool passed = finalizingStartIndex >= 0
+                && finalizingCompletedIndex > finalizingStartIndex
+                && (completedIndex < 0 || finalizingCompletedIndex > completedIndex);
+            await output.WriteLineAsync(
+                FormatCheck(passed, "Cloud Files finalization progress completed before smoke success for " + label + ".")
+                + " samples="
+                + progress.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", finalizingStartIndex="
+                + finalizingStartIndex.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", finalizingCompletedIndex="
+                + finalizingCompletedIndex.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", completedIndex="
+                + completedIndex.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .ConfigureAwait(false);
+            return passed ? 0 : 1;
+        }
+
         private static async Task<bool> WaitForAttributesAsync(
             string filePath,
             Func<FileAttributes, bool> predicate,
@@ -3644,6 +3723,37 @@ namespace Cotton.Sync.Desktop.Startup
                 }
 
                 return false;
+            }
+        }
+
+        private sealed class RecordingRunProgressObserver : IObserver<AppRunProgress>
+        {
+            private readonly object _gate = new();
+            private readonly List<AppRunProgress> _values = [];
+
+            public void OnCompleted()
+            {
+            }
+
+            public void OnError(Exception error)
+            {
+                ArgumentNullException.ThrowIfNull(error);
+            }
+
+            public void OnNext(AppRunProgress value)
+            {
+                lock (_gate)
+                {
+                    _values.Add(value);
+                }
+            }
+
+            public IReadOnlyList<AppRunProgress> Snapshot()
+            {
+                lock (_gate)
+                {
+                    return _values.ToArray();
+                }
             }
         }
 
