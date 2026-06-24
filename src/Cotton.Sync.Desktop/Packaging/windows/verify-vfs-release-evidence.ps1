@@ -122,6 +122,16 @@ Assert-DoesNotMatch `
 $localRootEntries = Read-EvidenceFile -RelativePath "local-root-entries.csv"
 Assert-Contains -Content $localRootEntries -Expected '"RelativePath","FullPath","Exists","Attributes","Length","LastWriteTimeUtc"' -Label "local-root-entries.csv"
 Assert-Contains -Content $localRootEntries -Expected '"."' -Label "local-root-entries.csv"
+$localRootRows = @($localRootEntries | ConvertFrom-Csv)
+$localRootRow = $localRootRows | Where-Object { $_.RelativePath -eq "." } | Select-Object -First 1
+if ($null -eq $localRootRow -or $localRootRow.Exists -ne "True") {
+    throw "local-root-entries.csv did not prove the local root existed during evidence capture."
+}
+
+$localRootAttributes = if ($null -eq $localRootRow.Attributes) { "" } else { [string]$localRootRow.Attributes }
+if ($localRootAttributes.IndexOf("Directory", [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+    throw "local-root-entries.csv did not prove the local root was a directory during evidence capture."
+}
 
 $selfTest = Read-EvidenceFile -RelativePath "self-test.stdout.log"
 Assert-Contains -Content $selfTest -Expected "Result: passed" -Label "self-test.stdout.log"
