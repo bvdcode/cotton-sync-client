@@ -129,6 +129,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private bool _isDesktopSyncChangesApiUnavailable;
         private bool _isEditingSelectedSyncPairRemoteFolder;
         private bool _isLocalFolderSelectionError;
+        private bool _isRemoteFolderLoading;
         private bool _isSelectedSyncPairEditorVisible;
         private bool _isSettingsVisible;
         private bool _isActivityVisible;
@@ -899,6 +900,24 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public string DiagnosticsExportProgressMessage => "Collecting logs and diagnostic state.";
 
+        public bool IsRemoteFolderLoading
+        {
+            get => _isRemoteFolderLoading;
+            private set
+            {
+                if (SetProperty(ref _isRemoteFolderLoading, value))
+                {
+                    OnPropertyChanged(nameof(IsRemoteFolderLoadingVisible));
+                    OnPropertyChanged(nameof(RemoteFolderWizardPrimaryActionText));
+                    OnPropertyChanged(nameof(RemoteFolderWizardPrimaryActionToolTip));
+                }
+            }
+        }
+
+        public bool IsRemoteFolderLoadingVisible => IsRemoteFolderLoading && IsAddSyncPairCloudStepVisible;
+
+        public string RemoteFolderLoadingMessage => "Loading cloud folders";
+
         public bool IsAddingSyncPair
         {
             get => _isAddingSyncPair;
@@ -1338,12 +1357,16 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public string RemoteFolderWizardPrimaryActionText => IsAddingSyncPair
             ? AddSyncPairSetupProgressMessage
+            : IsRemoteFolderLoading
+                ? RemoteFolderLoadingMessage
             : IsEditingSelectedSyncPairRemoteFolder
                 ? "Update cloud folder"
                 : "Use this folder";
 
         public string RemoteFolderWizardPrimaryActionToolTip => IsAddingSyncPair
             ? "Setting up this sync folder"
+            : IsRemoteFolderLoading
+                ? "Loading cloud folders"
             : IsEditingSelectedSyncPairRemoteFolder
                 ? "Change the cloud folder for this sync folder"
                 : "Start syncing with the current cloud folder";
@@ -3867,6 +3890,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private async Task LoadRemoteFoldersAsync(string remotePath)
         {
             IsBusy = true;
+            IsRemoteFolderLoading = true;
             try
             {
                 NewRemoteFolderName = string.Empty;
@@ -3893,6 +3917,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
             finally
             {
+                IsRemoteFolderLoading = false;
                 IsBusy = false;
             }
         }
@@ -4925,6 +4950,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             OnPropertyChanged(nameof(IsAddSyncPairLocalStepVisible));
             OnPropertyChanged(nameof(IsAddSyncPairCloudStepVisible));
             OnPropertyChanged(nameof(IsCreateRemoteFolderVisible));
+            OnPropertyChanged(nameof(IsRemoteFolderLoadingVisible));
             OnPropertyChanged(nameof(IsAddSyncPairSetupProgressVisible));
             OnPropertyChanged(nameof(AddSyncPairWizardTitle));
             OnPropertyChanged(nameof(AddSyncPairWizardSubtitle));
