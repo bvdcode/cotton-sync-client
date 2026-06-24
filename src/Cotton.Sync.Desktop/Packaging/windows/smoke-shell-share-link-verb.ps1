@@ -11,6 +11,12 @@ $verbSubKeys = @(
     "Software\Classes\Directory\shell\CottonSyncCopyShareLink"
 )
 
+function Normalize-ShellVerbName {
+    param([string]$Name)
+
+    return ($Name -replace "&", "").Trim()
+}
+
 function Open-CurrentUserSubKey {
     param([string]$SubKey)
 
@@ -68,6 +74,63 @@ function Assert-KeyPresent {
     }
 }
 
+function Get-ShellVerbNames {
+    param([string]$Path)
+
+    $resolvedPath = (Resolve-Path -LiteralPath $Path).Path
+    $parentPath = Split-Path -LiteralPath $resolvedPath -Parent
+    $leafName = Split-Path -LiteralPath $resolvedPath -Leaf
+    $shell = New-Object -ComObject Shell.Application
+    $folder = $shell.Namespace($parentPath)
+    if ($null -eq $folder) {
+        throw "Shell namespace could not open probe parent."
+    }
+
+    $item = $folder.ParseName($leafName)
+    if ($null -eq $item) {
+        throw "Shell namespace could not resolve probe item."
+    }
+
+    $names = New-Object System.Collections.Generic.List[string]
+    foreach ($verb in $item.Verbs()) {
+        $names.Add((Normalize-ShellVerbName -Name ([string]$verb.Name)))
+    }
+
+    return $names
+}
+
+function Assert-ShellVerbVisible {
+    param(
+        [string]$Path,
+        [string]$ExpectedLabel
+    )
+
+    $names = Get-ShellVerbNames -Path $Path
+    foreach ($name in $names) {
+        if ([string]::Equals($name, $ExpectedLabel, [StringComparison]::Ordinal)) {
+            return
+        }
+    }
+
+    throw "Explorer shell did not expose '$ExpectedLabel' for the probe item."
+}
+
+function Assert-ShellVerbVisibility {
+    $probeRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("cotton-shell-share-link-" + [Guid]::NewGuid().ToString("N"))
+    $probeFile = Join-Path $probeRoot "synced-file.txt"
+    $probeDirectory = Join-Path $probeRoot "SyncedFolder"
+    New-Item -ItemType Directory -Path $probeRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $probeDirectory -Force | Out-Null
+    Set-Content -LiteralPath $probeFile -Value "share-link smoke" -Encoding UTF8
+
+    try {
+        Assert-ShellVerbVisible -Path $probeFile -ExpectedLabel "Copy Cotton Cloud share link"
+        Assert-ShellVerbVisible -Path $probeDirectory -ExpectedLabel "Copy Cotton Cloud share link"
+    } finally {
+        Remove-Item -LiteralPath $probeRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 if ($ExpectAbsent) {
     foreach ($subKey in $verbSubKeys) {
         Assert-KeyAbsent -SubKey $subKey
@@ -86,4 +149,6 @@ foreach ($subKey in $verbSubKeys) {
     Assert-KeyPresent -SubKey $subKey -ExpectedExecutablePath $resolvedExecutable
 }
 
-Write-Host "Verified installed shell share-link verbs."
+Assert-ShellVerbVisibility
+
+Write-Host "Verified installed shell share-link verbs and Explorer visibility."
