@@ -229,6 +229,7 @@ Assert-Contains -Content $processes -Expected "Cotton.Sync.Desktop.exe" -Label "
 Assert-Contains -Content $processes -Expected "--start-minimized" -Label "processes.txt"
 $processRecords = Read-FormatListRecords -Content $processes -Label "processes.txt"
 $runningInstalledProcessFound = $false
+$runningInstalledProcessCreatedAtText = ""
 foreach ($processRecord in $processRecords) {
     if (-not $processRecord.ContainsKey("ExecutablePath") -or -not $processRecord.ContainsKey("CommandLine")) {
         continue
@@ -240,7 +241,12 @@ foreach ($processRecord in $processRecords) {
         $processCommandLine.IndexOf($installedExecutablePath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and
         $processCommandLine.IndexOf($registryRunValue, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and
         $processCommandLine.IndexOf("--start-minimized", [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        if (-not $processRecord.ContainsKey("CreationDate")) {
+            throw "processes.txt matched the installed executable but did not capture CreationDate."
+        }
+
         $runningInstalledProcessFound = $true
+        $runningInstalledProcessCreatedAtText = [string]$processRecord["CreationDate"]
         break
     }
 }
@@ -306,6 +312,20 @@ $taskRegisteredAt = Read-EvidenceTimestamp -Content $runnerLog -Label "TaskRegis
 $latestInteractiveLogonAt = Read-EvidenceTimestamp -Content $runnerLog -Label "LatestInteractiveLogonAt:"
 if ($latestInteractiveLogonAt -le $taskRegisteredAt) {
     throw "VFS logon evidence was not captured after a newer interactive Windows logon."
+}
+
+try {
+    $runningInstalledProcessCreatedAt = [System.DateTimeOffset]::Parse(
+        $runningInstalledProcessCreatedAtText,
+        [System.Globalization.CultureInfo]::InvariantCulture,
+        [System.Globalization.DateTimeStyles]::RoundtripKind)
+}
+catch {
+    throw "processes.txt contained invalid CreationDate for the matched installed process: $runningInstalledProcessCreatedAtText"
+}
+
+if ($runningInstalledProcessCreatedAt -lt $latestInteractiveLogonAt) {
+    throw "processes.txt matched a Cotton Sync process that was created before the latest interactive Windows logon."
 }
 
 Write-Host "Verified VFS logon evidence bundle: $resolvedEvidenceDirectory"
