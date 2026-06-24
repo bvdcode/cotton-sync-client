@@ -7,6 +7,7 @@ param(
     [int]$MaxRootEntries = 500,
     [switch]$CaptureScreenshot,
     [switch]$RunSelfTest,
+    [switch]$RunProfileSelfTest,
     [switch]$RunDiagnosticsExport
 )
 
@@ -441,6 +442,14 @@ if ($RunSelfTest) {
         -Arguments @("--self-test", "--data-dir", $selfTestDataDirectory) `
         -StdoutName "self-test.stdout.log" `
         -StderrName "self-test.stderr.log"
+}
+
+if ($RunProfileSelfTest) {
+    Run-InstalledAppCommand `
+        -Name "Installed profile self-test" `
+        -Arguments @("--self-test", "--data-dir", $DataDirectory) `
+        -StdoutName "profile-self-test.stdout.log" `
+        -StderrName "profile-self-test.stderr.log"
 }
 
 if ($RunDiagnosticsExport) {
