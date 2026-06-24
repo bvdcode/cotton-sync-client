@@ -174,6 +174,15 @@ Assert-Contains -Content $desktopSessionRestore -Expected "Result: passed" -Labe
 $shellShareLinkTargets = Read-EvidenceFile -RelativePath "vfs-smoke\phase-shell-share-link-targets\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $shellShareLinkTargets -Expected "Result: passed" -Label "vfs-smoke\phase-shell-share-link-targets\cloud-files-vfs-smoke.stdout.log"
 
+$leaveRegistered = Read-EvidenceFile -RelativePath "vfs-smoke\phase-leave-registered\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $leaveRegistered -Expected "Cloud Files sync root left registered for process restart smoke." -Label "vfs-smoke\phase-leave-registered\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $leaveRegistered -Expected "Result: passed" -Label "vfs-smoke\phase-leave-registered\cloud-files-vfs-smoke.stdout.log"
+
+$reconnectExisting = Read-EvidenceFile -RelativePath "vfs-smoke\phase-reconnect-existing\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $reconnectExisting -Expected "Existing remote-only placeholder is available before reconnect hydration." -Label "vfs-smoke\phase-reconnect-existing\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $reconnectExisting -Expected "Cloud Files sync root unregistered after smoke." -Label "vfs-smoke\phase-reconnect-existing\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $reconnectExisting -Expected "Result: passed" -Label "vfs-smoke\phase-reconnect-existing\cloud-files-vfs-smoke.stdout.log"
+
 $initialStreamingLogging = Read-EvidenceFile -RelativePath "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $initialStreamingLogging -Expected "Initial VFS streaming run created a large placeholder baseline without per-placeholder activities." -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $initialStreamingLogging -Expected "Initial VFS trace log contains large-run metrics." -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"

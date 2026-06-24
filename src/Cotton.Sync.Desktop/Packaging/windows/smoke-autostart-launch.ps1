@@ -10,6 +10,8 @@ param(
 
     [string]$ReportPath = "",
 
+    [string]$DataDirectory = "",
+
     [switch]$AttachExistingProcess
 )
 
@@ -21,6 +23,10 @@ if ($TimeoutSeconds -le 0) {
 
 if ($ObservationSeconds -le 0) {
     throw "ObservationSeconds must be greater than zero."
+}
+
+if ($AttachExistingProcess -and -not [string]::IsNullOrWhiteSpace($DataDirectory)) {
+    throw "DataDirectory cannot be used when attaching to an existing installer-launched process."
 }
 
 function Write-AutostartReport {
@@ -173,10 +179,18 @@ if ($AttachExistingProcess) {
         throw "Existing Cotton Sync process did not exit before autostart smoke."
     }
 
+    $launchArguments = New-Object System.Collections.Generic.List[string]
+    $launchArguments.Add("--start-minimized")
+    if (-not [string]::IsNullOrWhiteSpace($DataDirectory)) {
+        New-Item -ItemType Directory -Path $DataDirectory -Force | Out-Null
+        $launchArguments.Add("--data-dir")
+        $launchArguments.Add($DataDirectory)
+    }
+
     Write-Host "Launching installed autostart command: $expectedRunValue"
     $process = Start-Process `
         -FilePath $resolvedExecutable `
-        -ArgumentList @("--start-minimized") `
+        -ArgumentList $launchArguments `
         -PassThru
 
     do {
@@ -269,6 +283,7 @@ Write-AutostartReport `
         "Executable: $resolvedExecutable",
         "ExpectedRunValue: $expectedRunValue",
         "LaunchMode: $(if ($AttachExistingProcess) { "attached-existing" } else { "started-command" })",
+        "IsolationDataDirectory: $DataDirectory",
         "ProcessId: $($process.Id)",
         "CommandLine: $($targetProcess.CommandLine)",
         "ObservedForeground: $observedForeground",

@@ -464,6 +464,42 @@ jobs:
             -AdditionalVfsSmokePhases @("desktop-session-restore", "shell-share-link-targets", "initial-streaming-logging", "steady-state-repeat") `
             -InitialStreamingPlaceholderCount 100000 `
             -SteadyStateRepeatPlaceholderCount 100000
+          function Invoke-InstalledVfsSmokePhase {
+            param(
+              [Parameter(Mandatory = $true)]
+              [string]$PhaseName
+            )
+
+            $phaseDataDir = Join-Path $vfsSmokeDataDir ("phase-" + $PhaseName)
+            New-Item -ItemType Directory -Path $phaseDataDir -Force | Out-Null
+            $phaseStdout = Join-Path $phaseDataDir "cloud-files-vfs-smoke.stdout.log"
+            $phaseStderr = Join-Path $phaseDataDir "cloud-files-vfs-smoke.stderr.log"
+            $phaseProcess = Start-Process `
+              -FilePath $installedExe `
+              -ArgumentList @(
+                "--windows-virtual-files-smoke",
+                "--data-dir",
+                $phaseDataDir,
+                "--local-root",
+                "S:\CottonSyncVfsQa\root",
+                "--vfs-smoke-phase",
+                $PhaseName) `
+              -RedirectStandardOutput $phaseStdout `
+              -RedirectStandardError $phaseStderr `
+              -Wait `
+              -PassThru
+            $phaseOutput = if (Test-Path $phaseStdout) { Get-Content $phaseStdout } else { @() }
+            if ($phaseProcess.ExitCode -ne 0 -or -not ($phaseOutput | Where-Object { $_ -eq "Result: passed" } | Select-Object -First 1)) {
+              $phaseOutput | ForEach-Object { Write-Host $_ }
+              if (Test-Path $phaseStderr) { Get-Content $phaseStderr | ForEach-Object { Write-Host $_ } }
+              throw "Windows virtual files smoke phase '$PhaseName' failed."
+            }
+
+            return $phaseDataDir
+          }
+
+          & "src/Cotton.Sync.Desktop/Packaging/windows/verify-cloud-files-cleanup.ps1"
+          $leaveRegisteredPhaseDir = Invoke-InstalledVfsSmokePhase -PhaseName "leave-registered"
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-checksums.ps1" `
             -PublishDirectory $installDir
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-associated-icon.ps1" `
@@ -497,6 +533,10 @@ jobs:
             -VfsSmokeDataDirectory $vfsSmokeDataDir `
             -RunSelfTest `
             -RunDiagnosticsExport
+          $reconnectExistingPhaseDir = Invoke-InstalledVfsSmokePhase -PhaseName "reconnect-existing"
+          $evidenceReconnectExistingDir = Join-Path (Join-Path $evidenceDir "vfs-smoke") "phase-reconnect-existing"
+          New-Item -ItemType Directory -Path $evidenceReconnectExistingDir -Force | Out-Null
+          Copy-Item -Path (Join-Path $reconnectExistingPhaseDir "*") -Destination $evidenceReconnectExistingDir -Recurse -Force
 
           $uninstaller = Join-Path $installDir "unins000.exe"
           if (-not (Test-Path $uninstaller)) {
