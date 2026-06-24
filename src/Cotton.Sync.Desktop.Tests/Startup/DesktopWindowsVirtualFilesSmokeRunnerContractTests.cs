@@ -167,6 +167,32 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void RunAsync_ShellShareLinkTargetsPhaseVerifiesRealVfsTargets()
+        {
+            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(runner, Does.Contain("\"shell-share-link-targets\""));
+                Assert.That(runner, Does.Contain("RunShellShareLinkTargetsAsync("));
+                Assert.That(runner, Does.Contain("Shell share-link VFS target smoke requires the native Windows Cloud Files API."));
+                Assert.That(runner, Does.Contain("Cloud Files sync root connected for VFS shell share-link target smoke."));
+                Assert.That(runner, Does.Contain("VFS shell share-link smoke seeded synced, placeholder, folder, and local-only targets."));
+                Assert.That(runner, Does.Contain("VFS synced file share link copied"));
+                Assert.That(runner, Does.Contain("VFS remote-only placeholder share link copied"));
+                Assert.That(runner, Does.Contain("VFS hydrated placeholder share link copied"));
+                Assert.That(runner, Does.Contain("VFS folder share link copied"));
+                Assert.That(runner, Does.Contain("VFS local-only item is rejected without clipboard write"));
+                Assert.That(runner, Does.Contain("RunShellShareLinkCopyAsync("));
+                Assert.That(runner, Does.Contain("VfsShellShareLinkSmokeClient"));
+                Assert.That(runner, Does.Contain("VfsShellShareLinkSmokeClipboardService"));
+                Assert.That(runner, Does.Contain("VFS shell share-link remote-only placeholder Cloud Files status was finalized."));
+                Assert.That(runner, Does.Contain("VFS shell share-link hydrated placeholder Cloud Files status was finalized."));
+                Assert.That(runner, Does.Contain("VFS shell share-link folder Cloud Files status was finalized."));
+            });
+        }
+
+        [Test]
         public void RunAsync_NonEmptyPreservationPhaseVerifiesPreExistingLocalFiles()
         {
             string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
