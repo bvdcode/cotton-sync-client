@@ -1323,9 +1323,9 @@ namespace Cotton.Sync.Desktop.Startup
                 failures += await WriteCheckAsync(
                         output,
                         !result.RequiresUserAction
-                            && result.TotalActivityCount == LargeTreePlaceholderCount
+                            && result.TotalActivityCount == 0
                             && state.Count == LargeTreePlaceholderCount + 1,
-                        "Initial VFS streaming run created a large placeholder baseline.",
+                        "Initial VFS streaming run created a large placeholder baseline without per-placeholder activities.",
                         "files="
                         + LargeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
                         + ", stateRows="
@@ -1418,7 +1418,7 @@ namespace Cotton.Sync.Desktop.Startup
                 && completionLog.Contains("directory rows 1", StringComparison.Ordinal)
                 && completionLog.Contains("managed heap start=", StringComparison.Ordinal)
                 && completionLog.Contains("peak=", StringComparison.Ordinal)
-                && completionLog.Contains("activities retained", StringComparison.Ordinal);
+                && completionLog.Contains("activities retained 0/0", StringComparison.Ordinal);
             await output.WriteLineAsync(
                     FormatCheck(hasMetrics, "Initial VFS trace log contains large-run metrics.")
                     + " hasCompletionLog="

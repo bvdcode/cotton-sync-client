@@ -1337,9 +1337,8 @@ namespace Cotton.Sync.Tests
                     "Desktop/third.txt",
                 }));
                 Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
-                Assert.That(result.TotalActivityCount, Is.EqualTo(remoteFiles.Count));
-                Assert.That(result.Activities.Select(activity => activity.Kind), Is.All.EqualTo(SyncActivityKind.PlaceholderCreated));
-                Assert.That(result.Activities.Select(activity => activity.RelativePath), Is.EquivalentTo(remoteFiles.Select(file => file.RelativePath)));
+                Assert.That(result.TotalActivityCount, Is.Zero);
+                Assert.That(result.Activities, Is.Empty);
                 Assert.That(state, Has.Count.EqualTo(3));
                 Assert.That(state.Select(entry => entry.PlaceholderHydrationState), Is.All.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
                 Assert.That(startLog, Does.Contain("queue capacity 1"));
@@ -1366,9 +1365,9 @@ namespace Cotton.Sync.Tests
                 Assert.That(completionLog, Does.Contain("placeholder concurrency="));
                 Assert.That(completionLog, Does.Contain("placeholder batch size="));
                 Assert.That(completionLog, Does.Contain("state batch size="));
-                Assert.That(completionLog, Does.Contain("activities retained 3/3"));
+                Assert.That(completionLog, Does.Contain("activities retained 0/0"));
                 Assert.That(completionLog, Does.Contain("truncated=False"));
-                Assert.That(syncCompletionLog, Does.Contain("3 activities"));
+                Assert.That(syncCompletionLog, Does.Contain("0 activities"));
                 Assert.That(syncCompletionLog, Does.Contain("0 file content transfers"));
             });
         }
@@ -1423,9 +1422,8 @@ namespace Cotton.Sync.Tests
                         new[] { "Desktop/file-0003.txt", "Desktop/file-0004.txt", "Desktop/file-0005.txt" },
                         new[] { "Desktop/file-0006.txt" },
                     }));
-                Assert.That(result.TotalActivityCount, Is.EqualTo(remoteFiles.Count));
-                Assert.That(result.Activities.Select(activity => activity.Kind), Is.All.EqualTo(SyncActivityKind.PlaceholderCreated));
-                Assert.That(result.Activities.Select(activity => activity.RelativePath), Is.EqualTo(remoteFiles.Select(file => file.RelativePath)));
+                Assert.That(result.TotalActivityCount, Is.Zero);
+                Assert.That(result.Activities, Is.Empty);
                 Assert.That(state.Count(entry => entry.Kind == SyncEntryKind.File), Is.EqualTo(remoteFiles.Count));
                 Assert.That(state.Where(entry => entry.Kind == SyncEntryKind.File), Has.All.Matches<SyncStateEntry>(
                     entry => entry.PlaceholderHydrationState == SyncPlaceholderHydrationState.RemoteOnly
@@ -1476,9 +1474,8 @@ namespace Cotton.Sync.Tests
                 Assert.That(scanner.ScanCalls, Is.Zero);
                 Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[] { "Desktop/new.txt" }));
                 Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
-                Assert.That(result.TotalActivityCount, Is.EqualTo(1));
-                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.PlaceholderCreated }));
-                Assert.That(result.Activities.Select(activity => activity.RelativePath), Is.EqualTo(new[] { "Desktop/new.txt" }));
+                Assert.That(result.TotalActivityCount, Is.Zero);
+                Assert.That(result.Activities, Is.Empty);
                 Assert.That(state, Has.Count.EqualTo(2));
                 Assert.That(state.Select(entry => entry.PlaceholderHydrationState), Is.All.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
             });
@@ -1528,9 +1525,8 @@ namespace Cotton.Sync.Tests
                 Assert.That(stateStore.GetAsyncCallCount, Is.Zero);
                 Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[] { "Desktop/new.txt" }));
                 Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
-                Assert.That(result.TotalActivityCount, Is.EqualTo(1));
-                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.PlaceholderCreated }));
-                Assert.That(result.Activities.Select(activity => activity.RelativePath), Is.EqualTo(new[] { "Desktop/new.txt" }));
+                Assert.That(result.TotalActivityCount, Is.Zero);
+                Assert.That(result.Activities, Is.Empty);
             });
         }
 
@@ -1573,9 +1569,8 @@ namespace Cotton.Sync.Tests
                 Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
                 Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[] { relativePath }));
                 Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
-                Assert.That(result.TotalActivityCount, Is.EqualTo(1));
-                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.PlaceholderCreated }));
-                Assert.That(result.Activities.Select(activity => activity.RelativePath), Is.EqualTo(new[] { relativePath }));
+                Assert.That(result.TotalActivityCount, Is.Zero);
+                Assert.That(result.Activities, Is.Empty);
                 Assert.That(state, Is.Not.Null);
                 Assert.That(state!.RemoteContentHash, Is.EqualTo(newRemote.ContentHash));
                 Assert.That(state.RemoteSizeBytes, Is.EqualTo(newRemote.SizeBytes));
@@ -1806,8 +1801,8 @@ namespace Cotton.Sync.Tests
                 Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
                 Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
                 Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[] { relativePath }));
-                Assert.That(result.TotalActivityCount, Is.EqualTo(1));
-                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.PlaceholderCreated }));
+                Assert.That(result.TotalActivityCount, Is.Zero);
+                Assert.That(result.Activities, Is.Empty);
                 Assert.That(state, Has.Count.EqualTo(1));
                 Assert.That(state[0].PlaceholderIdentity, Is.EqualTo(placeholderWriter.PlaceholderIdentity));
                 Assert.That(state[0].PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
@@ -1852,7 +1847,8 @@ namespace Cotton.Sync.Tests
                     placeholderWriter.CompletedDirectoryTreeRequests.Single().Select(request => request.RelativePath),
                     Is.EqualTo(new[] { "Desktop" }));
                 Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[] { relativePath }));
-                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.PlaceholderCreated }));
+                Assert.That(result.TotalActivityCount, Is.Zero);
+                Assert.That(result.Activities, Is.Empty);
                 Assert.That(state.Select(entry => entry.RelativePath), Is.EquivalentTo(new[] { "Desktop", relativePath }));
             });
         }

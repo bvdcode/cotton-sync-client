@@ -1821,7 +1821,7 @@ namespace Cotton.Sync
 
             int completedFiles = getCompletedFiles() + 1;
             setCompletedFiles(completedFiles);
-            bool reportedProgress = ReportStreamingVirtualFilesProgress(
+            ReportStreamingVirtualFilesProgress(
                 options,
                 completedFiles,
                 getDiscoveredFiles(),
@@ -1832,9 +1832,7 @@ namespace Cotton.Sync
                 startedAtUtc,
                 getLastPlaceholderProgressReportedAtUtc(),
                 setLastPlaceholderProgressReportedAtUtc);
-            bool reportCreatedPlaceholderActivity =
-                workResult.ActivityKind == SyncActivityKind.PlaceholderCreated && workResult.State is not null;
-            if (workResult.ReportActivity || reportCreatedPlaceholderActivity)
+            if (workResult.ReportActivity)
             {
                 Report(
                     result,
@@ -1843,7 +1841,7 @@ namespace Cotton.Sync
                     workResult.RelativePath,
                     workResult.Details,
                     workResult.RequiresUserAction,
-                    publishActivityProgress: workResult.ReportActivity || reportedProgress);
+                    publishActivityProgress: true);
             }
 
             await YieldAfterLargeBatchAsync(
