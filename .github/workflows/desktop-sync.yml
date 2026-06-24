@@ -392,7 +392,7 @@ jobs:
           }
 
       - name: Smoke desktop Windows installer
-        timeout-minutes: 8
+        timeout-minutes: 20
         shell: pwsh
         run: |
           $installDir = Join-Path $env:RUNNER_TEMP "cotton-sync-installed"
@@ -463,8 +463,8 @@ jobs:
             -DataDirectory $dataDir `
             -VfsSmokeDataDirectory $vfsSmokeDataDir `
             -AdditionalVfsSmokePhases @("desktop-session-restore", "shell-share-link-targets", "initial-streaming-logging", "steady-state-repeat") `
-            -InitialStreamingPlaceholderCount 100000 `
-            -SteadyStateRepeatPlaceholderCount 100000
+            -InitialStreamingPlaceholderCount 500000 `
+            -SteadyStateRepeatPlaceholderCount 500000
           function Invoke-InstalledVfsSmokePhase {
             param(
               [Parameter(Mandatory = $true)]

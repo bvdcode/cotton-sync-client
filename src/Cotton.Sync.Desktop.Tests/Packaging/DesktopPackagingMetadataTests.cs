@@ -812,7 +812,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                         "PASS: Initial VFS streaming run created a large placeholder baseline without per-placeholder activities.",
                         "PASS: Initial VFS streaming progress stayed on placeholder creation and completed cleanly. samples=4, placeholderSamples=3, finalItems=100,001/100,001, completed=True, localScanSamples=0, remoteScanSamples=0, activities=0",
                         "PASS: Initial VFS trace log contains large-run metrics.",
-                        "Metric excerpt: Completed initial streaming Windows virtual-files population for Cloud: 1 directories discovered at 25 dirs/sec, 100000 files discovered at 0 files/sec, remote pages read=100, remote page latency total=400 ms, avg=4 ms, max=10 ms, last=3 ms, 100000 file items completed, 100000 placeholders created or refreshed at 0 placeholders/sec; state writes 100000 file rows, file write batches 196, directory rows 1, state write rate=0 rows/sec; managed heap start=1000000 bytes, completed=1500000 bytes, peak=2000000 bytes, delta=500000 bytes; activities retained 0/0",
+                        "Metric excerpt: Completed initial streaming Windows virtual-files population for Cloud: 1 directories discovered at 25 dirs/sec, 500000 files discovered at 0 files/sec, remote pages read=500, remote page latency total=2000 ms, avg=4 ms, max=10 ms, last=3 ms, 500000 file items completed, 500000 placeholders created or refreshed at 0 placeholders/sec; state writes 500000 file rows, file write batches 977, directory rows 1, state write rate=0 rows/sec; managed heap start=1000000 bytes, completed=1500000 bytes, peak=2000000 bytes, delta=500000 bytes; activities retained 0/0",
                         "PASS: Initial VFS runtime health captured. before=workingSetBytes=100000000;privateMemoryBytes=80000000;threadCount=12;handleCount=200, after=workingSetBytes=150000000;privateMemoryBytes=120000000;threadCount=14;handleCount=250",
                         "Result: passed"
                     });
@@ -821,6 +821,39 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
 
                 Assert.That(exitCode, Is.Not.EqualTo(0), output);
                 Assert.That(output, Does.Contain("reported too small files/sec"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_RejectsInitialStreamingBelowLargeAccountScale()
+        {
+            string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
+            try
+            {
+                File.WriteAllLines(
+                    Path.Combine(
+                        evidenceDirectory,
+                        "vfs-smoke",
+                        "phase-initial-streaming-logging",
+                        "cloud-files-vfs-smoke.stdout.log"),
+                    new[]
+                    {
+                        "PASS: Initial VFS streaming run created a large placeholder baseline without per-placeholder activities.",
+                        "PASS: Initial VFS streaming progress stayed on placeholder creation and completed cleanly. samples=4, placeholderSamples=3, finalItems=100,001/100,001, completed=True, localScanSamples=0, remoteScanSamples=0, activities=0",
+                        "PASS: Initial VFS trace log contains large-run metrics.",
+                        "Metric excerpt: Completed initial streaming Windows virtual-files population for Cloud: 1 directories discovered at 25 dirs/sec, 100000 files discovered at 2500 files/sec, remote pages read=100, remote page latency total=400 ms, avg=4 ms, max=10 ms, last=3 ms, 100000 file items completed, 100000 placeholders created or refreshed at 2500 placeholders/sec; state writes 100000 file rows, file write batches 196, directory rows 1, state write rate=2500 rows/sec; managed heap start=1000000 bytes, completed=1500000 bytes, peak=2000000 bytes, delta=500000 bytes; activities retained 0/0",
+                        "PASS: Initial VFS runtime health captured. before=workingSetBytes=100000000;privateMemoryBytes=80000000;threadCount=12;handleCount=200, after=workingSetBytes=150000000;privateMemoryBytes=120000000;threadCount=14;handleCount=250",
+                        "Result: passed"
+                    });
+
+                (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("reported too small files discovered"));
             }
             finally
             {
@@ -1550,8 +1583,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(
                     workflow,
                     Does.Contain("-AdditionalVfsSmokePhases @(\"desktop-session-restore\", \"shell-share-link-targets\", \"initial-streaming-logging\", \"steady-state-repeat\")"));
-                Assert.That(workflow, Does.Contain("-InitialStreamingPlaceholderCount 100000"));
-                Assert.That(workflow, Does.Contain("-SteadyStateRepeatPlaceholderCount 100000"));
+                Assert.That(workflow, Does.Contain("timeout-minutes: 20"));
+                Assert.That(workflow, Does.Contain("-InitialStreamingPlaceholderCount 500000"));
+                Assert.That(workflow, Does.Contain("-SteadyStateRepeatPlaceholderCount 500000"));
                 Assert.That(workflow, Does.Contain("function Invoke-InstalledVfsSmokePhase"));
                 Assert.That(workflow, Does.Contain("Invoke-InstalledVfsSmokePhase -PhaseName \"leave-registered\""));
                 Assert.That(workflow, Does.Contain("Invoke-InstalledVfsSmokePhase -PhaseName \"reconnect-existing\""));
@@ -2361,7 +2395,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "PASS: Initial VFS streaming run created a large placeholder baseline without per-placeholder activities.",
                     "PASS: Initial VFS streaming progress stayed on placeholder creation and completed cleanly. samples=4, placeholderSamples=3, finalItems=100,001/100,001, completed=True, localScanSamples=0, remoteScanSamples=0, activities=0",
                     "PASS: Initial VFS trace log contains large-run metrics.",
-                    "Metric excerpt: Completed initial streaming Windows virtual-files population for Cloud: 1 directories discovered at 25 dirs/sec, 100000 files discovered at 2500 files/sec, remote pages read=100, remote page latency total=400 ms, avg=4 ms, max=10 ms, last=3 ms, 100000 file items completed, 100000 placeholders created or refreshed at 2500 placeholders/sec; state writes 100000 file rows, file write batches 196, directory rows 1, state write rate=2500 rows/sec; managed heap start=1000000 bytes, completed=1500000 bytes, peak=2000000 bytes, delta=500000 bytes; activities retained 0/0",
+                    "Metric excerpt: Completed initial streaming Windows virtual-files population for Cloud: 1 directories discovered at 25 dirs/sec, 500000 files discovered at 2500 files/sec, remote pages read=500, remote page latency total=2000 ms, avg=4 ms, max=10 ms, last=3 ms, 500000 file items completed, 500000 placeholders created or refreshed at 2500 placeholders/sec; state writes 500000 file rows, file write batches 977, directory rows 1, state write rate=2500 rows/sec; managed heap start=1000000 bytes, completed=1500000 bytes, peak=2000000 bytes, delta=500000 bytes; activities retained 0/0",
                     "PASS: Initial VFS runtime health captured. before=workingSetBytes=100000000;privateMemoryBytes=80000000;threadCount=12;handleCount=200, after=workingSetBytes=150000000;privateMemoryBytes=120000000;threadCount=14;handleCount=250",
                     "Result: passed"
                 });
@@ -2373,7 +2407,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "cloud-files-vfs-smoke.stdout.log"),
                 new[]
                 {
-                    "PASS: Steady-state repeat pass avoided local placeholder-tree scanning. files=100,000, syncElapsedMs=3000, streamingCrawls=1, fullLocalScans=0, metadataTreeScans=0, pathLookups=0, transfers=0, placeholderWrites=0",
+                    "PASS: Steady-state repeat pass avoided local placeholder-tree scanning. files=500,000, syncElapsedMs=3000, streamingCrawls=1, fullLocalScans=0, metadataTreeScans=0, pathLookups=0, transfers=0, placeholderWrites=0",
                     "Result: passed"
                 });
 
