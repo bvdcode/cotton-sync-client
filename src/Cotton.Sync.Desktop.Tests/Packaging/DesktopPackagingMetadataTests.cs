@@ -832,6 +832,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Smoke desktop Windows installer"));
                 Assert.That(workflow, Does.Contain("cotton-sync-installed"));
                 Assert.That(workflow, Does.Contain("cotton-sync-installer-data"));
+                Assert.That(workflow, Does.Contain("cotton-sync-vfs-release-evidence"));
                 Assert.That(workflow, Does.Contain("/VERYSILENT"));
                 Assert.That(workflow, Does.Contain("/SUPPRESSMSGBOXES"));
                 Assert.That(workflow, Does.Contain("/NORESTART"));
@@ -873,6 +874,12 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("-ExpectedExecutablePath $installedExe"));
                 Assert.That(workflow, Does.Contain("-InvocationDataDirectory (Join-Path $env:RUNNER_TEMP \"cotton-sync-shell-share-link-data\")"));
                 Assert.That(workflow, Does.Contain("-InvokeInstalledVerb"));
+                Assert.That(workflow, Does.Contain("Packaging/windows/capture-vfs-release-evidence.ps1"));
+                Assert.That(workflow, Does.Contain("-OutputDirectory $evidenceDir"));
+                Assert.That(workflow, Does.Contain("-LocalRoot \"S:\\CottonSyncVfsQa\\root\""));
+                Assert.That(workflow, Does.Contain("-InstallDirectory $installDir"));
+                Assert.That(workflow, Does.Contain("-RunSelfTest"));
+                Assert.That(workflow, Does.Contain("-RunDiagnosticsExport"));
                 Assert.That(workflow, Does.Contain("-ExpectAbsent"));
                 Assert.That(workflow, Does.Contain("unins000.exe"));
                 Assert.That(workflow, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
@@ -894,6 +901,11 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Start Menu shortcut remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Start Menu uninstall shortcut remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Autostart registry value remained after uninstall."));
+                Assert.That(workflow, Does.Contain("Upload desktop Windows installer evidence"));
+                Assert.That(workflow, Does.Contain("name: desktop-windows-installer-evidence"));
+                Assert.That(workflow, Does.Contain("path: ${{ runner.temp }}/cotton-sync-vfs-release-evidence"));
+                Assert.That(workflow, Does.Contain("if-no-files-found: error"));
+                Assert.That(workflow, Does.Contain("retention-days: 14"));
             });
         }
 
