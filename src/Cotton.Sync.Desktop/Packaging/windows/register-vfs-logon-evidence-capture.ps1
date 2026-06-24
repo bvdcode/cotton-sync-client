@@ -197,6 +197,8 @@ catch {
 }
 finally {
     Unregister-ScheduledTask -TaskName $taskNameLiteral -Confirm:`$false -ErrorAction SilentlyContinue
+    `$remainingTask = Get-ScheduledTask -TaskName $taskNameLiteral -ErrorAction SilentlyContinue
+    "TaskUnregistered: `$(`$null -eq `$remainingTask)" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8 -Append
 }
 
 exit `$exitCode

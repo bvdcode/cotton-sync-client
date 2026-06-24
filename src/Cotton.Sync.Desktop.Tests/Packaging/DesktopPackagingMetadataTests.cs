@@ -516,6 +516,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("VFS logon evidence was not captured after a newer interactive Windows logon."));
                 Assert.That(script, Does.Contain("VFS logon evidence runner executed in Windows session 0"));
                 Assert.That(script, Does.Contain("CaptureExitCode: 0"));
+                Assert.That(script, Does.Contain("TaskUnregistered: True"));
                 Assert.That(script, Does.Contain("No Cloud Files or Explorer registration was captured after logon."));
                 Assert.That(script, Does.Contain("Verified VFS logon evidence bundle"));
             });
@@ -560,6 +561,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("RunnerInteractive:"));
                 Assert.That(script, Does.Contain("CaptureExitCode:"));
                 Assert.That(script, Does.Contain("RunnerFinishedAt:"));
+                Assert.That(script, Does.Contain("TaskUnregistered:"));
                 Assert.That(script, Does.Contain("Unregister-ScheduledTask -TaskName $taskNameLiteral"));
                 Assert.That(script, Does.Contain("run-vfs-logon-evidence-capture.log"));
                 Assert.That(script, Does.Contain("Removed VFS logon evidence capture task"));
@@ -1028,6 +1030,28 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
 
                 Assert.That(exitCode, Is.Not.EqualTo(0), output);
                 Assert.That(output, Does.Contain("VFS logon evidence was not captured after a newer interactive Windows logon."));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsLogonEvidenceVerifierScript_RejectsMissingTaskUnregistrationProof()
+        {
+            string evidenceDirectory = CreateVfsLogonEvidenceBundle();
+            try
+            {
+                string runnerLogPath = Path.Combine(evidenceDirectory, "run-vfs-logon-evidence-capture.log");
+                string runnerLog = File.ReadAllText(runnerLogPath)
+                    .Replace("TaskUnregistered: True" + Environment.NewLine, string.Empty, StringComparison.Ordinal);
+                File.WriteAllText(runnerLogPath, runnerLog);
+
+                (int exitCode, string output) = RunVfsLogonEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("TaskUnregistered: True"));
             }
             finally
             {
@@ -2470,7 +2494,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "RunnerInteractive: True",
                     "Cotton VFS release evidence captured: S:\\Evidence",
                     "CaptureExitCode: 0",
-                    "RunnerFinishedAt: 2026-06-24T10:02:00.0000000Z"
+                    "RunnerFinishedAt: 2026-06-24T10:02:00.0000000Z",
+                    "TaskUnregistered: True"
                 });
 
             return evidenceDirectory;
