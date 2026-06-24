@@ -118,6 +118,11 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(runner, Does.Contain("Completed initial streaming Windows virtual-files population"));
                 Assert.That(runner, Does.Contain("remote page latency total="));
                 Assert.That(runner, Does.Contain("expectedFileCount + \" placeholders created or refreshed\""));
+                Assert.That(runner, Does.Contain("Initial VFS runtime health captured."));
+                Assert.That(runner, Does.Contain("\"before=\""));
+                Assert.That(runner, Does.Contain("\", after=\""));
+                Assert.That(runner, Does.Contain("FormatRuntimeHealth(beforeStreamingHealth)"));
+                Assert.That(runner, Does.Contain("FormatRuntimeHealth(afterStreamingHealth)"));
                 Assert.That(runner, Does.Contain("Initial VFS trace log contains large-run metrics."));
                 Assert.That(runner, Does.Contain("Metric excerpt: "));
             });

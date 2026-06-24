@@ -190,6 +190,11 @@ Assert-Contains -Content $initialStreamingLogging -Expected "Metric excerpt:" -L
 Assert-Contains -Content $initialStreamingLogging -Expected "placeholders/sec" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $initialStreamingLogging -Expected "state writes" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $initialStreamingLogging -Expected "managed heap start=" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $initialStreamingLogging -Expected "Initial VFS runtime health captured." -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $initialStreamingLogging -Expected "workingSetBytes=" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $initialStreamingLogging -Expected "privateMemoryBytes=" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $initialStreamingLogging -Expected "threadCount=" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $initialStreamingLogging -Expected "handleCount=" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $initialStreamingLogging -Expected "Result: passed" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
 
 $steadyStateRepeat = Read-EvidenceFile -RelativePath "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
