@@ -245,7 +245,7 @@ Test-VisualState `
     -RequireSettingsActions $false `
     -UnexpectedNames @("Download", "Update", "Processing queued changes", "Preparing cloud files 118054 of 500000", "118054 of 500000") `
     -ExpectedProgressBarName "Open-ended cloud file progress" `
-    -StableObservationSeconds 6
+    -StableObservationSeconds 30
 
 if (-not [string]::IsNullOrWhiteSpace($ReportPath)) {
     $reportDirectory = Split-Path -Parent $ReportPath
