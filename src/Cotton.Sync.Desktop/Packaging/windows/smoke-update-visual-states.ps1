@@ -230,12 +230,14 @@ function Test-VisualState {
 Test-VisualState `
     -Scenario "update-download-progress" `
     -ExpectedStatus "Downloading update" `
-    -ExpectedDetailsPattern "^Downloading .+ / .+ \(25%\)\.$"
+    -ExpectedDetailsPattern "^Downloading .+ / .+ \(25%\)\.$" `
+    -StableObservationSeconds 5
 
 Test-VisualState `
     -Scenario "update-install-progress" `
     -ExpectedStatus "Installing update" `
-    -ExpectedDetailsPattern "^Starting the update installer\.$"
+    -ExpectedDetailsPattern "^Starting the update installer\.$" `
+    -StableObservationSeconds 5
 
 Test-VisualState `
     -Scenario "virtual-files-seeding" `
