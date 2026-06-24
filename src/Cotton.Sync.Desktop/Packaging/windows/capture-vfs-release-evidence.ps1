@@ -3,6 +3,7 @@ param(
     [string]$LocalRoot = (Join-Path $env:USERPROFILE "Desktop"),
     [string]$DataDirectory = (Join-Path $env:APPDATA "Cotton"),
     [string]$InstallDirectory = (Join-Path $env:LOCALAPPDATA "Programs\Cotton Sync"),
+    [string]$VfsSmokeDataDirectory = "",
     [int]$MaxRootEntries = 500,
     [switch]$CaptureScreenshot,
     [switch]$RunSelfTest,
@@ -146,6 +147,36 @@ function Capture-LogTails {
     }
 
     Add-Summary "Log tails" ("captured {0} log file(s)" -f $logs.Count)
+}
+
+function Capture-VfsSmokeLogs {
+    if ([string]::IsNullOrWhiteSpace($VfsSmokeDataDirectory)) {
+        Add-Summary "VFS smoke logs" "not configured"
+        return
+    }
+
+    if (-not (Test-Path -LiteralPath $VfsSmokeDataDirectory)) {
+        Add-Summary "VFS smoke logs" "failed: source directory not found: $VfsSmokeDataDirectory"
+        return
+    }
+
+    $sourceRoot = (Resolve-Path -LiteralPath $VfsSmokeDataDirectory).Path
+    $targetRoot = Join-Path $outputRoot "vfs-smoke"
+    New-Item -ItemType Directory -Path $targetRoot -Force | Out-Null
+    $logs = @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -eq ".log" })
+
+    foreach ($log in $logs) {
+        $relativePath = [System.IO.Path]::GetRelativePath($sourceRoot, $log.FullName)
+        $targetPath = Join-Path $targetRoot $relativePath
+        $targetDirectory = Split-Path -Parent $targetPath
+        New-Item -ItemType Directory -Path $targetDirectory -Force | Out-Null
+        Get-Content -LiteralPath $log.FullName -ErrorAction SilentlyContinue |
+            ForEach-Object { Redact-Text $_ } |
+            Out-File -LiteralPath $targetPath -Encoding utf8
+    }
+
+    Add-Summary "VFS smoke logs" ("captured: {0}; files={1}" -f $targetRoot, $logs.Count)
 }
 
 function Capture-Screenshot {
@@ -332,6 +363,7 @@ Add-Summary "Computer" $env:COMPUTERNAME
 Add-Summary "LocalRoot" $LocalRoot
 Add-Summary "DataDirectory" $DataDirectory
 Add-Summary "InstallDirectory" $InstallDirectory
+Add-Summary "VfsSmokeDataDirectory" $VfsSmokeDataDirectory
 
 Invoke-Capture "OS" "os.txt" {
     Get-CimInstance Win32_OperatingSystem |
@@ -395,6 +427,7 @@ Invoke-Capture "Local root entries" "local-root-entries.csv" {
 }
 
 Capture-LogTails
+Capture-VfsSmokeLogs
 
 if ($CaptureScreenshot) {
     Capture-Screenshot

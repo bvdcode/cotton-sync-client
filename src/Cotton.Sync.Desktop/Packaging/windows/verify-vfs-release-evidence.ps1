@@ -45,6 +45,26 @@ function Assert-Contains {
     }
 }
 
+function Assert-DoesNotMatch {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Pattern,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Label,
+
+        [Parameter(Mandatory = $true)]
+        [string]$FailureMessage
+    )
+
+    if ([regex]::IsMatch($Content, $Pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::Multiline)) {
+        throw "$Label failed: $FailureMessage"
+    }
+}
+
 $summary = Read-EvidenceFile -RelativePath "summary.txt"
 Assert-Contains -Content $summary -Expected "Installed app: captured:" -Label "summary.txt"
 Assert-Contains -Content $summary -Expected "Autostart registry: captured:" -Label "summary.txt"
@@ -52,6 +72,7 @@ Assert-Contains -Content $summary -Expected "Cotton process windows: captured:" 
 Assert-Contains -Content $summary -Expected "Cloud Files Explorer registrations: captured:" -Label "summary.txt"
 Assert-Contains -Content $summary -Expected "Local root entries: captured:" -Label "summary.txt"
 Assert-Contains -Content $summary -Expected "Log tails: captured" -Label "summary.txt"
+Assert-Contains -Content $summary -Expected "VFS smoke logs: captured:" -Label "summary.txt"
 Assert-Contains -Content $summary -Expected "Installed self-test: exitCode=0;" -Label "summary.txt"
 Assert-Contains -Content $summary -Expected "Diagnostics export: exitCode=0;" -Label "summary.txt"
 
@@ -72,6 +93,16 @@ $processWindows = Read-EvidenceFile -RelativePath "process-windows.txt"
 if ($null -eq $processWindows) {
     throw "process-windows.txt could not be read."
 }
+Assert-DoesNotMatch `
+    -Content $processWindows `
+    -Pattern "^\s*IsForeground\s*:\s*True\b" `
+    -Label "process-windows.txt" `
+    -FailureMessage "Cotton Sync became the foreground window during evidence capture."
+Assert-DoesNotMatch `
+    -Content $processWindows `
+    -Pattern "^\s*VisibleWindowCount\s*:\s*[1-9]\d*\b" `
+    -Label "process-windows.txt" `
+    -FailureMessage "Cotton Sync had visible windows during evidence capture."
 
 $registryExplorer = Read-EvidenceFile -RelativePath "registry-cloud-files-explorer.txt"
 Assert-Contains -Content $registryExplorer -Expected "MatchCount:" -Label "registry-cloud-files-explorer.txt"
@@ -84,5 +115,17 @@ Assert-Contains -Content $selfTest -Expected "Result: passed" -Label "self-test.
 
 $diagnosticsExport = Read-EvidenceFile -RelativePath "diagnostics-export.stdout.log"
 Assert-Contains -Content $diagnosticsExport -Expected "Diagnostics" -Label "diagnostics-export.stdout.log"
+
+$vfsSmoke = Read-EvidenceFile -RelativePath "vfs-smoke\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $vfsSmoke -Expected "Result: passed" -Label "vfs-smoke\cloud-files-vfs-smoke.stdout.log"
+
+$desktopSessionRestore = Read-EvidenceFile -RelativePath "vfs-smoke\phase-desktop-session-restore\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $desktopSessionRestore -Expected "Desktop startup restored the saved signed-in session." -Label "vfs-smoke\phase-desktop-session-restore\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $desktopSessionRestore -Expected "Desktop startup used the remembered server for session restore." -Label "vfs-smoke\phase-desktop-session-restore\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $desktopSessionRestore -Expected "Desktop startup reconnected the persisted Cloud Files sync root." -Label "vfs-smoke\phase-desktop-session-restore\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $desktopSessionRestore -Expected "Result: passed" -Label "vfs-smoke\phase-desktop-session-restore\cloud-files-vfs-smoke.stdout.log"
+
+$shellShareLinkTargets = Read-EvidenceFile -RelativePath "vfs-smoke\phase-shell-share-link-targets\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $shellShareLinkTargets -Expected "Result: passed" -Label "vfs-smoke\phase-shell-share-link-targets\cloud-files-vfs-smoke.stdout.log"
 
 Write-Host "Verified VFS release evidence bundle: $resolvedEvidenceDirectory"

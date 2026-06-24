@@ -366,6 +366,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("[string]$LocalRoot = (Join-Path $env:USERPROFILE \"Desktop\")"));
                 Assert.That(script, Does.Contain("[string]$DataDirectory = (Join-Path $env:APPDATA \"Cotton\")"));
                 Assert.That(script, Does.Contain("[string]$InstallDirectory = (Join-Path $env:LOCALAPPDATA \"Programs\\Cotton Sync\")"));
+                Assert.That(script, Does.Contain("[string]$VfsSmokeDataDirectory = \"\""));
                 Assert.That(script, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
                 Assert.That(script, Does.Contain("HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\SyncRootManager"));
                 Assert.That(script, Does.Contain("HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Desktop\\NameSpace"));
@@ -381,6 +382,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("registry-cloud-files-explorer.txt"));
                 Assert.That(script, Does.Contain("Capture-RootEntries"));
                 Assert.That(script, Does.Contain("Capture-LogTails"));
+                Assert.That(script, Does.Contain("Capture-VfsSmokeLogs"));
+                Assert.That(script, Does.Contain("vfs-smoke"));
                 Assert.That(script, Does.Contain("Redact-Text"));
                 Assert.That(script, Does.Contain("CaptureScreenshot"));
                 Assert.That(script, Does.Contain("RunSelfTest"));
@@ -405,8 +408,18 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("local-root-entries.csv"));
                 Assert.That(script, Does.Contain("self-test.stdout.log"));
                 Assert.That(script, Does.Contain("diagnostics-export.stdout.log"));
+                Assert.That(script, Does.Contain("vfs-smoke\\cloud-files-vfs-smoke.stdout.log"));
+                Assert.That(script, Does.Contain("vfs-smoke\\phase-desktop-session-restore\\cloud-files-vfs-smoke.stdout.log"));
+                Assert.That(script, Does.Contain("vfs-smoke\\phase-shell-share-link-targets\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("Installed self-test: exitCode=0;"));
                 Assert.That(script, Does.Contain("Diagnostics export: exitCode=0;"));
+                Assert.That(script, Does.Contain("VFS smoke logs: captured:"));
+                Assert.That(script, Does.Contain("Desktop startup restored the saved signed-in session."));
+                Assert.That(script, Does.Contain("Desktop startup reconnected the persisted Cloud Files sync root."));
+                Assert.That(script, Does.Contain("IsForeground"));
+                Assert.That(script, Does.Contain("VisibleWindowCount"));
+                Assert.That(script, Does.Contain("Cotton Sync became the foreground window during evidence capture."));
+                Assert.That(script, Does.Contain("Cotton Sync had visible windows during evidence capture."));
                 Assert.That(script, Does.Contain("failed:"));
                 Assert.That(script, Does.Contain("Verified VFS release evidence bundle"));
             });
@@ -856,6 +869,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("cotton-sync-installed"));
                 Assert.That(workflow, Does.Contain("cotton-sync-installer-data"));
                 Assert.That(workflow, Does.Contain("cotton-sync-vfs-release-evidence"));
+                Assert.That(workflow, Does.Contain("$vfsSmokeDataDir = Join-Path $env:RUNNER_TEMP \"cotton-sync-vfs-self-test-truthfulness-data\""));
                 Assert.That(workflow, Does.Contain("/VERYSILENT"));
                 Assert.That(workflow, Does.Contain("/SUPPRESSMSGBOXES"));
                 Assert.That(workflow, Does.Contain("/NORESTART"));
@@ -901,6 +915,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("-OutputDirectory $evidenceDir"));
                 Assert.That(workflow, Does.Contain("-LocalRoot \"S:\\CottonSyncVfsQa\\root\""));
                 Assert.That(workflow, Does.Contain("-InstallDirectory $installDir"));
+                Assert.That(workflow, Does.Contain("-VfsSmokeDataDirectory $vfsSmokeDataDir"));
                 Assert.That(workflow, Does.Contain("-RunSelfTest"));
                 Assert.That(workflow, Does.Contain("-RunDiagnosticsExport"));
                 Assert.That(workflow, Does.Contain("-ExpectAbsent"));
