@@ -380,6 +380,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("Cotton.Sync.Desktop.exe"));
                 Assert.That(script, Does.Contain("-OperationTimeoutSec 2"));
                 Assert.That(script, Does.Contain("Get-FileHash -LiteralPath $appExecutable -Algorithm SHA256"));
+                Assert.That(script, Does.Contain("([datetime]$_.CreationDate).ToString(\"O\")"));
                 Assert.That(script, Does.Contain("CottonReleaseEvidenceWindowProbe"));
                 Assert.That(script, Does.Contain("GetVisibleWindowsForProcess"));
                 Assert.That(script, Does.Contain("GetForegroundProcessId"));

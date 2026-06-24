@@ -455,7 +455,16 @@ Invoke-Capture "Cloud Files registry" "registry-syncrootmanager.txt" {
 
 Invoke-Capture "Cotton processes" "processes.txt" {
     Get-CottonProcess |
-        Select-Object ProcessId, ExecutablePath, CommandLine, CreationDate |
+        Select-Object ProcessId, ExecutablePath, CommandLine, @{
+            Name = "CreationDate"
+            Expression = {
+                if ($null -eq $_.CreationDate) {
+                    return $null
+                }
+
+                ([datetime]$_.CreationDate).ToString("O")
+            }
+        } |
         Format-List
 }
 
