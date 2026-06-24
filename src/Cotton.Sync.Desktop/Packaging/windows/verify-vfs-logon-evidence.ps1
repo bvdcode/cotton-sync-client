@@ -83,6 +83,82 @@ function Read-LabeledValue {
     throw "run-vfs-logon-evidence-capture.log did not contain expected label: $Label"
 }
 
+function Read-FormatListRecords {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Label
+    )
+
+    $records = New-Object System.Collections.Generic.List[object]
+    $current = @{}
+    foreach ($line in $Content -split "\r?\n") {
+        if ([string]::IsNullOrWhiteSpace($line)) {
+            if ($current.Count -gt 0) {
+                $records.Add($current)
+                $current = @{}
+            }
+
+            continue
+        }
+
+        $match = [regex]::Match($line, "^\s*(?<key>[^:]+?)\s*:\s*(?<value>.*)$")
+        if ($match.Success) {
+            $current[$match.Groups["key"].Value.Trim()] = $match.Groups["value"].Value.Trim()
+        }
+    }
+
+    if ($current.Count -gt 0) {
+        $records.Add($current)
+    }
+
+    if ($records.Count -eq 0) {
+        throw "$Label did not contain Format-List records."
+    }
+
+    return $records.ToArray()
+}
+
+function Read-RequiredRecordValue {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]]$Records,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Key,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Label
+    )
+
+    foreach ($record in $Records) {
+        if ($record.ContainsKey($Key)) {
+            $value = [string]$record[$Key]
+            if (-not [string]::IsNullOrWhiteSpace($value)) {
+                return $value.Trim()
+            }
+        }
+    }
+
+    throw "$Label did not contain expected value: $Key"
+}
+
+function Test-SamePathText {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Left,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Right
+    )
+
+    $normalizedLeft = $Left.Trim().Trim('"')
+    $normalizedRight = $Right.Trim().Trim('"')
+    return [string]::Equals($normalizedLeft, $normalizedRight, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
 function Read-EvidenceTimestamp {
     param(
         [Parameter(Mandatory = $true)]
@@ -128,18 +204,49 @@ $os = Read-EvidenceFile -RelativePath "os.txt"
 Assert-Contains -Content $os -Expected "LastBootUpTime" -Label "os.txt"
 
 $installedApp = Read-EvidenceFile -RelativePath "installed-app.txt"
+Assert-Contains -Content $installedApp -Expected "Path" -Label "installed-app.txt"
 Assert-Contains -Content $installedApp -Expected "ProductVersion" -Label "installed-app.txt"
 Assert-Contains -Content $installedApp -Expected "FileVersion" -Label "installed-app.txt"
 Assert-Contains -Content $installedApp -Expected "Sha256" -Label "installed-app.txt"
+$installedAppRecords = Read-FormatListRecords -Content $installedApp -Label "installed-app.txt"
+$installedExecutablePath = Read-RequiredRecordValue -Records $installedAppRecords -Key "Path" -Label "installed-app.txt"
+if (-not $installedExecutablePath.EndsWith("\Cotton.Sync.Desktop.exe", [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "installed-app.txt path was not the desktop executable: $installedExecutablePath"
+}
 
 $registryRun = Read-EvidenceFile -RelativePath "registry-run.txt"
 Assert-Contains -Content $registryRun -Expected "Cotton Sync" -Label "registry-run.txt"
 Assert-Contains -Content $registryRun -Expected "--start-minimized" -Label "registry-run.txt"
+$registryRunRecords = Read-FormatListRecords -Content $registryRun -Label "registry-run.txt"
+$registryRunValue = Read-RequiredRecordValue -Records $registryRunRecords -Key "Value" -Label "registry-run.txt"
+if ($registryRunValue.IndexOf($installedExecutablePath, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+    throw "registry-run.txt did not reference the installed executable path: $installedExecutablePath"
+}
 
 $processes = Read-EvidenceFile -RelativePath "processes.txt"
 Assert-Contains -Content $processes -Expected "ProcessId" -Label "processes.txt"
 Assert-Contains -Content $processes -Expected "Cotton.Sync.Desktop.exe" -Label "processes.txt"
 Assert-Contains -Content $processes -Expected "--start-minimized" -Label "processes.txt"
+$processRecords = Read-FormatListRecords -Content $processes -Label "processes.txt"
+$runningInstalledProcessFound = $false
+foreach ($processRecord in $processRecords) {
+    if (-not $processRecord.ContainsKey("ExecutablePath") -or -not $processRecord.ContainsKey("CommandLine")) {
+        continue
+    }
+
+    $processExecutablePath = [string]$processRecord["ExecutablePath"]
+    $processCommandLine = [string]$processRecord["CommandLine"]
+    if ((Test-SamePathText -Left $processExecutablePath -Right $installedExecutablePath) -and
+        $processCommandLine.IndexOf($installedExecutablePath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+        $processCommandLine.IndexOf("--start-minimized", [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        $runningInstalledProcessFound = $true
+        break
+    }
+}
+
+if (-not $runningInstalledProcessFound) {
+    throw "processes.txt did not contain a running installed executable with --start-minimized: $installedExecutablePath"
+}
 
 $processWindows = Read-EvidenceFile -RelativePath "process-windows.txt"
 Assert-DoesNotMatch `

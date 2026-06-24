@@ -472,6 +472,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("LastBootUpTime"));
                 Assert.That(script, Does.Contain("registry-run.txt"));
                 Assert.That(script, Does.Contain("processes.txt"));
+                Assert.That(script, Does.Contain("Read-FormatListRecords"));
+                Assert.That(script, Does.Contain("registry-run.txt did not reference the installed executable path"));
+                Assert.That(script, Does.Contain("processes.txt did not contain a running installed executable with --start-minimized"));
                 Assert.That(script, Does.Contain("process-windows.txt"));
                 Assert.That(script, Does.Contain("registry-cloud-files-explorer.txt"));
                 Assert.That(script, Does.Contain("local-root-entries.csv"));
@@ -731,6 +734,59 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
 
                 Assert.That(exitCode, Is.EqualTo(0), output);
                 Assert.That(output, Does.Contain("Verified VFS logon evidence bundle"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsLogonEvidenceVerifierScript_RejectsAutostartFromDifferentInstall()
+        {
+            string evidenceDirectory = CreateVfsLogonEvidenceBundle();
+            try
+            {
+                File.WriteAllLines(
+                    Path.Combine(evidenceDirectory, "registry-run.txt"),
+                    new[]
+                    {
+                        "Key   : HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+                        "Name  : Cotton Sync",
+                        "Value : \"C:\\Program Files\\Old Cotton Sync\\Cotton.Sync.Desktop.exe\" --start-minimized"
+                    });
+
+                (int exitCode, string output) = RunVfsLogonEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("registry-run.txt did not reference the installed executable path"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsLogonEvidenceVerifierScript_RejectsRunningProcessFromDifferentInstall()
+        {
+            string evidenceDirectory = CreateVfsLogonEvidenceBundle();
+            try
+            {
+                File.WriteAllLines(
+                    Path.Combine(evidenceDirectory, "processes.txt"),
+                    new[]
+                    {
+                        "ProcessId      : 1234",
+                        "ExecutablePath : C:\\Program Files\\Old Cotton Sync\\Cotton.Sync.Desktop.exe",
+                        "CommandLine    : \"C:\\Program Files\\Old Cotton Sync\\Cotton.Sync.Desktop.exe\" --start-minimized",
+                        "CreationDate   : 2026-06-24T10:01:00.0000000Z"
+                    });
+
+                (int exitCode, string output) = RunVfsLogonEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("processes.txt did not contain a running installed executable with --start-minimized"));
             }
             finally
             {
@@ -2174,13 +2230,19 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Path.Combine(evidenceDirectory, "installed-app.txt"),
                 new[]
                 {
+                    "Path: C:\\Program Files\\Cotton Sync\\Cotton.Sync.Desktop.exe",
                     "ProductVersion: 0.1.0",
                     "FileVersion: 0.1.0",
                     "Sha256: abc"
                 });
-            File.WriteAllText(
+            File.WriteAllLines(
                 Path.Combine(evidenceDirectory, "registry-run.txt"),
-                "Cotton Sync --start-minimized");
+                new[]
+                {
+                    "Key   : HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+                    "Name  : Cotton Sync",
+                    "Value : \"C:\\Program Files\\Cotton Sync\\Cotton.Sync.Desktop.exe\" --start-minimized"
+                });
             File.WriteAllLines(
                 Path.Combine(evidenceDirectory, "processes.txt"),
                 new[]
