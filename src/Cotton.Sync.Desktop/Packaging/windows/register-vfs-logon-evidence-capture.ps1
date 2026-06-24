@@ -91,6 +91,70 @@ function Assert-InstalledAutostart {
     }
 }
 
+function Assert-TextContains {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Expected,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Label
+    )
+
+    if ($Content.IndexOf($Expected, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+        throw "$Label did not contain expected text: $Expected"
+    }
+}
+
+function Invoke-ProfileSelfTestPreflight {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ExecutablePath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ProfileDataDirectory
+    )
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $ExecutablePath
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.ArgumentList.Add("--self-test")
+    $startInfo.ArgumentList.Add("--data-dir")
+    $startInfo.ArgumentList.Add($ProfileDataDirectory)
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    [void]$process.Start()
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    if (-not $process.WaitForExit(60000)) {
+        try {
+            $process.Kill()
+        }
+        catch {
+        }
+
+        throw "Installed profile self-test timed out before logon capture could be armed."
+    }
+
+    $stdout = $stdoutTask.GetAwaiter().GetResult()
+    $stderr = $stderrTask.GetAwaiter().GetResult()
+    if ($process.ExitCode -ne 0) {
+        throw "Installed profile self-test was not ready for logon capture. Exit code: $($process.ExitCode). $stderr"
+    }
+
+    Assert-TextContains -Content $stdout -Expected "[OK] Authentication state - Stored session available" -Label "Installed profile self-test"
+    Assert-TextContains -Content $stdout -Expected "[OK] Autostart adapter - Enabled" -Label "Installed profile self-test"
+    Assert-TextContains -Content $stdout -Expected "[OK] Windows virtual files" -Label "Installed profile self-test"
+    Assert-TextContains -Content $stdout -Expected "[OK] Local root:" -Label "Installed profile self-test"
+    Assert-TextContains -Content $stdout -Expected "Result: passed" -Label "Installed profile self-test"
+}
+
 if ($DelaySeconds -lt 0) {
     throw "DelaySeconds must not be negative."
 }
@@ -122,6 +186,7 @@ if (-not (Test-Path -LiteralPath $installedExecutable -PathType Leaf)) {
 }
 
 Assert-InstalledAutostart -ExecutablePath $installedExecutable
+Invoke-ProfileSelfTestPreflight -ExecutablePath $installedExecutable -ProfileDataDirectory $resolvedDataDirectory
 
 if ($ValidateOnly) {
     Write-Host "Validated VFS logon evidence capture inputs."
