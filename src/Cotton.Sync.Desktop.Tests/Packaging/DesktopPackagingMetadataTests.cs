@@ -416,6 +416,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-desktop-session-restore\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-shell-share-link-targets\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-initial-streaming-logging\\cloud-files-vfs-smoke.stdout.log"));
+                Assert.That(script, Does.Contain("vfs-smoke\\phase-steady-state-repeat\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("Installed self-test: exitCode=0;"));
                 Assert.That(script, Does.Contain("Diagnostics export: exitCode=0;"));
                 Assert.That(script, Does.Contain("ObservedForeground: False"));
@@ -426,6 +427,11 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("Initial VFS trace log contains large-run metrics."));
                 Assert.That(script, Does.Contain("Metric excerpt:"));
                 Assert.That(script, Does.Contain("placeholders/sec"));
+                Assert.That(script, Does.Contain("Steady-state repeat pass avoided local placeholder-tree scanning."));
+                Assert.That(script, Does.Contain("fullLocalScans=0"));
+                Assert.That(script, Does.Contain("metadataTreeScans=0"));
+                Assert.That(script, Does.Contain("pathLookups=0"));
+                Assert.That(script, Does.Contain("placeholderWrites=0"));
                 Assert.That(script, Does.Contain("IsForeground"));
                 Assert.That(script, Does.Contain("VisibleWindowCount"));
                 Assert.That(script, Does.Contain("Cotton Sync became the foreground window during evidence capture."));
@@ -529,6 +535,29 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(
                     output,
                     Does.Contain("vfs-smoke\\phase-desktop-session-restore\\cloud-files-vfs-smoke.stdout.log"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_RejectsMissingSteadyStateRepeatLogs()
+        {
+            string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
+            try
+            {
+                Directory.Delete(
+                    Path.Combine(evidenceDirectory, "vfs-smoke", "phase-steady-state-repeat"),
+                    recursive: true);
+
+                (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(
+                    output,
+                    Does.Contain("vfs-smoke\\phase-steady-state-repeat\\cloud-files-vfs-smoke.stdout.log"));
             }
             finally
             {
@@ -925,13 +954,16 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("[string]$LocalRoot = \"S:\\CottonSyncVfsQa\\root\""));
                 Assert.That(script, Does.Contain("[string[]]$AdditionalVfsSmokePhases = @()"));
                 Assert.That(script, Does.Contain("[int]$InitialStreamingPlaceholderCount = 100000"));
+                Assert.That(script, Does.Contain("[int]$SteadyStateRepeatPlaceholderCount = 100000"));
                 Assert.That(script, Does.Contain("--self-test"));
                 Assert.That(script, Does.Contain("--windows-virtual-files-smoke"));
                 Assert.That(script, Does.Contain("--local-root"));
                 Assert.That(script, Does.Contain("--vfs-smoke-phase"));
                 Assert.That(script, Does.Contain("InitialStreamingPlaceholderCount must be greater than zero."));
                 Assert.That(script, Does.Contain("initial-streaming-logging"));
+                Assert.That(script, Does.Contain("steady-state-repeat"));
                 Assert.That(script, Does.Contain("--vfs-smoke-placeholder-count"));
+                Assert.That(script, Does.Contain("SteadyStateRepeatPlaceholderCount must be greater than zero."));
                 Assert.That(script, Does.Contain("Additional Windows virtual files smoke phase '$phaseName' failed."));
                 Assert.That(script, Does.Contain("'^\\[(OK|SKIP|FAIL)\\] Windows virtual files - '"));
                 Assert.That(script, Does.Contain("Windows virtual files self-test reported OK even though the VFS smoke failed."));
@@ -1121,8 +1153,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("cotton-sync-vfs-self-test-truthfulness-data"));
                 Assert.That(
                     workflow,
-                    Does.Contain("-AdditionalVfsSmokePhases @(\"desktop-session-restore\", \"shell-share-link-targets\", \"initial-streaming-logging\")"));
+                    Does.Contain("-AdditionalVfsSmokePhases @(\"desktop-session-restore\", \"shell-share-link-targets\", \"initial-streaming-logging\", \"steady-state-repeat\")"));
                 Assert.That(workflow, Does.Contain("-InitialStreamingPlaceholderCount 100000"));
+                Assert.That(workflow, Does.Contain("-SteadyStateRepeatPlaceholderCount 100000"));
                 Assert.That(workflow, Does.Contain("--self-test --data-dir"));
                 Assert.That(workflow, Does.Contain("-PublishDirectory $installDir"));
                 Assert.That(workflow, Does.Contain("-AppExecutable $installedExe"));
@@ -1753,6 +1786,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-desktop-session-restore"));
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-shell-share-link-targets"));
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-initial-streaming-logging"));
+            Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-steady-state-repeat"));
 
             File.WriteAllLines(
                 Path.Combine(evidenceDirectory, "summary.txt"),
@@ -1839,6 +1873,17 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "PASS: Initial VFS streaming run created a large placeholder baseline without per-placeholder activities.",
                     "PASS: Initial VFS trace log contains large-run metrics.",
                     "Metric excerpt: Completed initial streaming Windows virtual-files population for Cloud: 1 directories discovered, 100000 files discovered, remote pages read=100, remote page latency total=00:00:00.4000000, 100000 placeholders created or refreshed at 2500 placeholders/sec, state writes 100000 file rows in 196 file write batches, directory rows 1, managed heap start=1000000 peak=2000000 end=1500000, activities retained 0/0",
+                    "Result: passed"
+                });
+            File.WriteAllLines(
+                Path.Combine(
+                    evidenceDirectory,
+                    "vfs-smoke",
+                    "phase-steady-state-repeat",
+                    "cloud-files-vfs-smoke.stdout.log"),
+                new[]
+                {
+                    "PASS: Steady-state repeat pass avoided local placeholder-tree scanning. files=100,000, syncElapsedMs=3000, streamingCrawls=1, fullLocalScans=0, metadataTreeScans=0, pathLookups=0, transfers=0, placeholderWrites=0",
                     "Result: passed"
                 });
 
