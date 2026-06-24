@@ -83,7 +83,7 @@ function Invoke-Capture {
 }
 
 function Get-CottonProcess {
-    @(Get-CimInstance Win32_Process -Filter "Name = 'Cotton.Sync.Desktop.exe'" -ErrorAction SilentlyContinue)
+    @(Get-CimInstance Win32_Process -Filter "Name = 'Cotton.Sync.Desktop.exe'" -OperationTimeoutSec 2 -ErrorAction SilentlyContinue)
 }
 
 function Capture-RootEntries {
