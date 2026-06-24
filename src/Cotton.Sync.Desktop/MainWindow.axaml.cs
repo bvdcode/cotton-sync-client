@@ -4,6 +4,7 @@
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -64,6 +65,7 @@ namespace Cotton.Sync.Desktop
                 checkForUpdatesOnStartup: visualSmokeScenario is null,
                 notifyOnSessionRestore: notifyOnSessionRestore);
             DataContext = viewModel;
+            viewModel.UpdateInstallShutdownRequested += OnUpdateInstallShutdownRequested;
             ApplyWindowMode(viewModel);
             viewModel.PropertyChanged += OnViewModelPropertyChanged;
             Opened += async (_, _) =>
@@ -86,6 +88,7 @@ namespace Cotton.Sync.Desktop
             {
                 Closing -= OnClosing;
                 viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+                viewModel.UpdateInstallShutdownRequested -= OnUpdateInstallShutdownRequested;
                 await viewModel.DisposeAsync().ConfigureAwait(true);
             };
         }
@@ -162,6 +165,18 @@ namespace Cotton.Sync.Desktop
             {
                 ScrollSelectedSyncPairIntoView(syncPairViewModel);
             }
+        }
+
+        private void OnUpdateInstallShutdownRequested(object? sender, EventArgs e)
+        {
+            _lifecyclePolicy.RequestQuit();
+            if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            {
+                desktop.Shutdown();
+                return;
+            }
+
+            Close();
         }
 
         private async Task InitializeShellOnceAsync(ShellViewModel viewModel)

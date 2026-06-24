@@ -6012,6 +6012,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/v0.0.2")),
             };
             using ShellViewModel viewModel = CreateViewModel(controller);
+            bool shutdownRequested = false;
+            viewModel.UpdateInstallShutdownRequested += (_, _) => shutdownRequested = true;
             await viewModel.InitializeAsync();
             await ExecuteAsync(viewModel.CheckForUpdatesCommand);
             await ExecuteAsync(viewModel.DownloadUpdateCommand);
@@ -6030,6 +6032,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsUpdateInstallVisible, Is.False);
                 Assert.That(viewModel.InstallUpdateCommand.CanExecute(null), Is.False);
                 Assert.That(viewModel.CanCheckForUpdates, Is.False);
+                Assert.That(shutdownRequested, Is.True);
+                Assert.That(viewModel.Activities.All(activity => activity.Path != installerPath), Is.True);
             });
         }
 
@@ -6059,6 +6063,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 InstallUpdateCompletion = installCompletion,
             };
             using ShellViewModel viewModel = CreateViewModel(controller);
+            bool shutdownRequested = false;
+            viewModel.UpdateInstallShutdownRequested += (_, _) => shutdownRequested = true;
             await viewModel.InitializeAsync();
             await ExecuteAsync(viewModel.CheckForUpdatesCommand);
             await ExecuteAsync(viewModel.DownloadUpdateCommand);
@@ -6075,10 +6081,12 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsUpdateInstallProgressVisible, Is.True);
                 Assert.That(viewModel.CanInstallUpdate, Is.False);
                 Assert.That(viewModel.IsUpdateInstallVisible, Is.False);
+                Assert.That(shutdownRequested, Is.False);
             });
 
             installCompletion.SetResult();
             await WaitForAsync(() => !viewModel.InstallUpdateCommand.IsRunning);
+            Assert.That(shutdownRequested, Is.True);
         }
 
         [Test]
@@ -6106,6 +6114,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 InstallUpdateException = new InvalidOperationException("Cotton Sync update installer could not be started."),
             };
             using ShellViewModel viewModel = CreateViewModel(controller);
+            bool shutdownRequested = false;
+            viewModel.UpdateInstallShutdownRequested += (_, _) => shutdownRequested = true;
             await viewModel.InitializeAsync();
             await ExecuteAsync(viewModel.CheckForUpdatesCommand);
             await ExecuteAsync(viewModel.DownloadUpdateCommand);
@@ -6123,6 +6133,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CanInstallUpdate, Is.True);
                 Assert.That(viewModel.IsUpdateInstallVisible, Is.True);
                 Assert.That(viewModel.InstallUpdateCommand.CanExecute(null), Is.True);
+                Assert.That(shutdownRequested, Is.False);
             });
         }
 

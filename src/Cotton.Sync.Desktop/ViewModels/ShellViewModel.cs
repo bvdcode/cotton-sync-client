@@ -341,6 +341,8 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public ObservableCollection<NotificationRowViewModel> Notifications { get; } = [];
 
+        internal event EventHandler? UpdateInstallShutdownRequested;
+
         public AsyncRelayCommand AddSyncPairCommand { get; }
 
         public AsyncRelayCommand BrowseLocalFolderCommand { get; }
@@ -3104,7 +3106,8 @@ namespace Cotton.Sync.Desktop.ViewModels
                     ? "Update installer launched and handed off to Windows. Cotton Sync will restart after the update is installed."
                     : "Update installer launched. Cotton Sync will restart after the update is installed.";
                 GlobalStatus = "Installing update";
-                AddActivity("Update", installerPath, "Silent update installer started");
+                AddActivity("Update", string.Empty, "Silent update installer started");
+                UpdateInstallShutdownRequested?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
