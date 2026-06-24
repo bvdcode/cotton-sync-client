@@ -133,12 +133,14 @@ namespace Cotton.Sync.WindowsShell
         private static int Unregister(string account)
         {
             string syncRootId = CreateSyncRootId(account);
-            bool isRegistered = StorageProviderSyncRootManager.IsSupported()
-                && StorageProviderSyncRootManager
+            StorageProviderSyncRootInfo? syncRoot = StorageProviderSyncRootManager.IsSupported()
+                ? StorageProviderSyncRootManager
                 .GetCurrentSyncRoots()
-                .Any(root => string.Equals(root.Id, syncRootId, StringComparison.Ordinal));
+                .FirstOrDefault(root => string.Equals(root.Id, syncRootId, StringComparison.Ordinal))
+                : null;
+            string? targetFolderPath = syncRoot?.Path.Path;
 
-            if (isRegistered)
+            if (syncRoot is not null)
             {
                 StorageProviderSyncRootManager.Unregister(syncRootId);
                 Console.WriteLine("unregistered " + syncRootId);
@@ -149,9 +151,14 @@ namespace Cotton.Sync.WindowsShell
             }
 
             int shellRootsRemoved = RemoveOrphanedShellNamespaceRoot(syncRootId);
+            int classIdsRemoved = string.IsNullOrWhiteSpace(targetFolderPath)
+                ? 0
+                : RemoveClassIdSubKeysForTargetFolderPath(targetFolderPath);
             Console.WriteLine(
                 "unregister shell-namespace="
-                + shellRootsRemoved.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                + shellRootsRemoved.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + " class-id="
+                + classIdsRemoved.ToString(System.Globalization.CultureInfo.InvariantCulture));
             return 0;
         }
 
@@ -212,6 +219,44 @@ namespace Cotton.Sync.WindowsShell
                 + RemoveLegacyPinnedProviderClassIds(WowClassesClsidRegistryPath);
         }
 
+        private static int RemoveClassIdSubKeysForTargetFolderPath(string targetFolderPath)
+        {
+            string normalizedTargetFolderPath = NormalizePathForComparison(targetFolderPath);
+            return RemoveClassIdSubKeysForTargetFolderPath(ClassesClsidRegistryPath, normalizedTargetFolderPath)
+                + RemoveClassIdSubKeysForTargetFolderPath(WowClassesClsidRegistryPath, normalizedTargetFolderPath);
+        }
+
+        private static int RemoveClassIdSubKeysForTargetFolderPath(
+            string registryPath,
+            string normalizedTargetFolderPath)
+        {
+            using RegistryKey? parentKey = Registry.CurrentUser.OpenSubKey(registryPath, writable: true);
+            if (parentKey is null)
+            {
+                return 0;
+            }
+
+            int removed = 0;
+            foreach (string subKeyName in parentKey.GetSubKeyNames())
+            {
+                using RegistryKey? initPropertyBagKey = parentKey.OpenSubKey(subKeyName + @"\Instance\InitPropertyBag");
+                if (initPropertyBagKey?.GetValue("TargetFolderPath") is not string targetFolderPath
+                    || !string.Equals(
+                        NormalizePathForComparison(targetFolderPath),
+                        normalizedTargetFolderPath,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                parentKey.DeleteSubKeyTree(subKeyName, throwOnMissingSubKey: false);
+                removed++;
+                Console.WriteLine("removed shell class " + subKeyName + " -> " + targetFolderPath);
+            }
+
+            return removed;
+        }
+
         private static int RemoveLegacyPinnedProviderClassIds(string registryPath)
         {
             using RegistryKey? parentKey = Registry.CurrentUser.OpenSubKey(registryPath, writable: true);
@@ -259,6 +304,12 @@ namespace Cotton.Sync.WindowsShell
         {
             using RegistryKey? parentKey = Registry.CurrentUser.OpenSubKey(registryPath, writable: true);
             parentKey?.DeleteSubKeyTree(classId, throwOnMissingSubKey: false);
+        }
+
+        private static string NormalizePathForComparison(string path)
+        {
+            return Path.GetFullPath(path)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         }
 
         private static string CreateSyncRootId(string account)
