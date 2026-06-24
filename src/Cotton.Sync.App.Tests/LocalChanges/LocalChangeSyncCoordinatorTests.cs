@@ -385,6 +385,78 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task ProviderWriteBurstLateWatcherOverflow_DoesNotRequestFullSyncDuringGrace()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            var watcherFactory = new FakeWatcherFactory();
+            var supervisor = new FakeSyncSupervisor();
+            var suppression = new LocalChangeSuppression();
+            using (suppression.SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath))
+            {
+            }
+
+            var coordinator = new LocalChangeSyncCoordinator(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval,
+                changeSuppression: suppression);
+            await coordinator.StartAsync();
+
+            watcherFactory.CreatedWatchers[syncPair.Id].Raise(
+                syncPair.LocalRootPath,
+                LocalSyncRootChangeKind.Error);
+
+            bool observed = await supervisor.WaitForSyncAsync(DebounceInterval * 4);
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.False);
+                Assert.That(supervisor.SyncNowCallCount, Is.Zero);
+                Assert.That(coordinator.PendingRequestCount, Is.Zero);
+            });
+        }
+
+        [Test]
+        public async Task ProviderWriteBurstExpiredGrace_DoesNotHideRealWatcherError()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            var watcherFactory = new FakeWatcherFactory();
+            var supervisor = new FakeSyncSupervisor();
+            var timeProvider = new MutableTimeProvider();
+            var suppression = new LocalChangeSuppression(
+                entryLifetime: TimeSpan.FromSeconds(1),
+                timeProvider: timeProvider);
+            using (suppression.SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath))
+            {
+            }
+
+            timeProvider.Advance(TimeSpan.FromSeconds(2));
+            var coordinator = new LocalChangeSyncCoordinator(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval,
+                changeSuppression: suppression);
+            await coordinator.StartAsync();
+
+            watcherFactory.CreatedWatchers[syncPair.Id].Raise(
+                syncPair.LocalRootPath,
+                LocalSyncRootChangeKind.Error);
+
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(1));
+                Assert.That(supervisor.LastRequest?.IsFull, Is.True);
+            });
+        }
+
+        [Test]
         public async Task ProviderWriteBurst_DoesNotHideNormalUserChange()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
@@ -688,6 +760,21 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             return Path.Combine(
                 syncPair.LocalRootPath,
                 relativePath.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        private sealed class MutableTimeProvider : TimeProvider
+        {
+            private DateTimeOffset _utcNow = new(2026, 6, 23, 0, 0, 0, TimeSpan.Zero);
+
+            public override DateTimeOffset GetUtcNow()
+            {
+                return _utcNow;
+            }
+
+            public void Advance(TimeSpan duration)
+            {
+                _utcNow = _utcNow.Add(duration);
+            }
         }
 
         private class FakeWatcherFactory : ILocalSyncRootWatcherFactory

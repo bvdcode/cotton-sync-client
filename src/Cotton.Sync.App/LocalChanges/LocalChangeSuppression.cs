@@ -298,7 +298,7 @@ namespace Cotton.Sync.App.LocalChanges
 
             if (change.Kind == LocalSyncRootChangeKind.Error)
             {
-                return scope.ActiveCount > 0;
+                return true;
             }
 
             return includeCloudFilesPlaceholderProbe
