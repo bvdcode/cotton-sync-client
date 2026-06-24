@@ -22,6 +22,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$allowedTaskNamePrefix = "Cotton Sync VFS Logon Evidence Capture"
 
 function ConvertTo-SingleQuotedLiteral {
     param([string]$Value)
@@ -33,6 +34,18 @@ function ConvertTo-CommandLineArgument {
     param([string]$Value)
 
     return '"' + $Value.Replace('"', '\"') + '"'
+}
+
+function Assert-SafeTaskName {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        throw "TaskName is required."
+    }
+
+    if (-not $Value.StartsWith($allowedTaskNamePrefix, [System.StringComparison]::Ordinal)) {
+        throw "TaskName must start with '$allowedTaskNamePrefix'."
+    }
 }
 
 function Assert-RequiredValue {
@@ -81,6 +94,8 @@ function Assert-InstalledAutostart {
 if ($DelaySeconds -lt 0) {
     throw "DelaySeconds must not be negative."
 }
+
+Assert-SafeTaskName -Value $TaskName
 
 if ($Remove) {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
