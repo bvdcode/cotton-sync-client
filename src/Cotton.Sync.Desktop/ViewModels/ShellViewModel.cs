@@ -4375,13 +4375,13 @@ namespace Cotton.Sync.Desktop.ViewModels
                     continue;
                 }
 
-                row.Status = pairStatus.Status;
-                row.IsEnabled = !string.Equals(pairStatus.Status, "Disabled", StringComparison.Ordinal);
-                row.LastError = pairStatus.LastError;
                 bool isActiveStatus = IsActiveSyncStatus(pairStatus);
                 bool hasFreshDetailedProgress = HasFreshDetailedProgress(pairStatus.Id);
                 bool keepProgressDuringCompletionSuppression =
                     suppressedInitialSyncCompletePairIds.Contains(pairStatus.Id) && hasFreshDetailedProgress;
+                row.Status = keepProgressDuringCompletionSuppression ? "Syncing" : pairStatus.Status;
+                row.IsEnabled = !string.Equals(pairStatus.Status, "Disabled", StringComparison.Ordinal);
+                row.LastError = pairStatus.LastError;
                 if ((!isActiveStatus && !keepProgressDuringCompletionSuppression) || !hasFreshDetailedProgress)
                 {
                     row.CurrentOperation = pairStatus.CurrentOperation ?? string.Empty;

@@ -3290,6 +3290,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             ]));
 
             Assert.That(viewModel.HasNotifications, Is.False);
+            Assert.That(viewModel.SyncPairs.Single().Status, Is.EqualTo("Syncing"));
 
             controller.ReportStatus(new DesktopSyncStatusSnapshot(
             [
@@ -3322,6 +3323,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             Assert.Multiple(() =>
             {
+                Assert.That(viewModel.SyncPairs.Single().Status, Is.EqualTo("Idle"));
                 Assert.That(viewModel.HasNotifications, Is.True);
                 Assert.That(viewModel.Notifications.Single().Title, Is.EqualTo("Initial sync complete"));
                 Assert.That(viewModel.Notifications.Single().Message, Is.EqualTo("Cloud is up to date."));
@@ -3365,6 +3367,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Assert.Multiple(() =>
             {
                 Assert.That(viewModel.HasNotifications, Is.False);
+                Assert.That(viewModel.SyncPairs.Single().Status, Is.EqualTo("Syncing"));
                 Assert.That(viewModel.CurrentRunProgressDetails, Is.EqualTo("Finalizing cloud file status · 1 of 10 folders"));
             });
 
@@ -3388,6 +3391,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             Assert.Multiple(() =>
             {
+                Assert.That(viewModel.SyncPairs.Single().Status, Is.EqualTo("Idle"));
                 Assert.That(viewModel.HasNotifications, Is.True);
                 Assert.That(viewModel.Notifications.Single().Title, Is.EqualTo("Initial sync complete"));
                 Assert.That(viewModel.Notifications.Single().Message, Is.EqualTo("Cloud is up to date."));
