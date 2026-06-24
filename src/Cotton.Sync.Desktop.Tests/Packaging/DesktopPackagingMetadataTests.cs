@@ -1539,12 +1539,14 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("[string]$AppExecutable"));
                 Assert.That(script, Does.Contain("[string]$RunValueName = \"Cotton Sync\""));
                 Assert.That(script, Does.Contain("[string]$ReportPath = \"\""));
+                Assert.That(script, Does.Contain("[switch]$AttachExistingProcess"));
                 Assert.That(script, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
                 Assert.That(script, Does.Contain("$expectedRunValue = \"`\"$resolvedExecutable`\" --start-minimized\""));
                 Assert.That(script, Does.Contain("Autostart registry value was not installed correctly."));
                 Assert.That(script, Does.Contain("CottonAutostartWindowProbe"));
                 Assert.That(script, Does.Contain("GetVisibleWindowsForProcess"));
                 Assert.That(script, Does.Contain("GetForegroundProcessId"));
+                Assert.That(script, Does.Contain("Waiting for existing hidden startup process"));
                 Assert.That(script, Does.Contain("Start-Process `"));
                 Assert.That(script, Does.Contain("-ArgumentList @(\"--start-minimized\")"));
                 Assert.That(script, Does.Contain("command line did not include --start-minimized"));
@@ -1552,6 +1554,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("became the foreground window"));
                 Assert.That(script, Does.Contain("Write-AutostartReport"));
                 Assert.That(script, Does.Contain("Result: passed"));
+                Assert.That(script, Does.Contain("LaunchMode: $(if ($AttachExistingProcess)"));
                 Assert.That(script, Does.Contain("ObservedForeground: $observedForeground"));
                 Assert.That(script, Does.Contain("VisibleWindowCount: $($observedVisibleWindows.Count)"));
                 Assert.That(script, Does.Contain("CleanupRemaining: $($cleanupProcesses.Count)"));
@@ -1639,6 +1642,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("-FilePath $oldInstaller"));
                 Assert.That(workflow, Does.Contain("$currentInstallerPath = \".\\cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}-setup.exe\""));
                 Assert.That(workflow, Does.Contain("-FilePath $currentInstallerPath"));
+                Assert.That(workflow, Does.Contain("\"/LaunchAfterUpdate=1\""));
                 Assert.That(workflow, Does.Contain("Current Windows installer exited with code"));
                 Assert.That(workflow, Does.Contain("Cotton Sync\\Cotton Sync.lnk"));
                 Assert.That(workflow, Does.Contain("Cotton Sync\\Uninstall Cotton Sync.lnk"));
@@ -1663,6 +1667,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("$expectedRunValue = \"`\"$installedExe`\" --start-minimized\""));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-autostart-launch.ps1"));
                 Assert.That(workflow, Does.Contain("-AppExecutable $installedExe"));
+                Assert.That(workflow, Does.Contain("$upgradeRelaunchReport = Join-Path $env:RUNNER_TEMP \"cotton-sync-upgrade-relaunch.txt\""));
+                Assert.That(workflow, Does.Contain("-ReportPath $upgradeRelaunchReport"));
+                Assert.That(workflow, Does.Contain("-AttachExistingProcess"));
                 Assert.That(workflow, Does.Contain("$upgradeAutostartReport = Join-Path $env:RUNNER_TEMP \"cotton-sync-upgrade-autostart-launch.txt\""));
                 Assert.That(workflow, Does.Contain("-ReportPath $upgradeAutostartReport"));
                 Assert.That(workflow, Does.Not.Contain("Set-ItemProperty -Path $runKey -Name \"Cotton Sync\""));

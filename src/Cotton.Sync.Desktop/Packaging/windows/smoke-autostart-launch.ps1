@@ -8,7 +8,9 @@ param(
 
     [int]$ObservationSeconds = 6,
 
-    [string]$ReportPath = ""
+    [string]$ReportPath = "",
+
+    [switch]$AttachExistingProcess
 )
 
 $ErrorActionPreference = "Stop"
@@ -130,46 +132,78 @@ function Get-TargetProcess {
         })
 }
 
-$existingProcesses = Get-TargetProcess
-foreach ($process in $existingProcesses) {
-    Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
-}
-
-$stopDeadline = [DateTime]::UtcNow.AddSeconds(10)
-do {
-    $remaining = Get-TargetProcess
-    if ($remaining.Count -eq 0) {
-        break
-    }
-
-    Start-Sleep -Milliseconds 250
-} while ([DateTime]::UtcNow -lt $stopDeadline)
-
-if ($remaining.Count -ne 0) {
-    $remaining | ForEach-Object { Write-Host "Existing process remained: $($_.ProcessId) $($_.ExecutablePath)" }
-    throw "Existing Cotton Sync process did not exit before autostart smoke."
-}
-
-Write-Host "Launching installed autostart command: $expectedRunValue"
-$process = Start-Process `
-    -FilePath $resolvedExecutable `
-    -ArgumentList @("--start-minimized") `
-    -PassThru
-
 $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
 $targetProcess = $null
-do {
-    $candidates = Get-TargetProcess
-    $targetProcess = $candidates | Where-Object { [int]$_.ProcessId -eq $process.Id } | Select-Object -First 1
-    if ($null -ne $targetProcess) {
-        break
+$process = $null
+
+if ($AttachExistingProcess) {
+    Write-Host "Waiting for existing hidden startup process: $resolvedExecutable"
+    do {
+        $targetProcess = Get-TargetProcess |
+            Where-Object { $_.CommandLine -match "(^|\s)--start-minimized($|\s)" } |
+            Sort-Object CreationDate -Descending |
+            Select-Object -First 1
+        if ($null -ne $targetProcess) {
+            $process = Get-Process -Id $targetProcess.ProcessId -ErrorAction SilentlyContinue
+            if ($null -ne $process) {
+                break
+            }
+        }
+
+        Start-Sleep -Milliseconds 250
+    } while ([DateTime]::UtcNow -lt $deadline)
+} else {
+    $existingProcesses = Get-TargetProcess
+    foreach ($existingProcess in $existingProcesses) {
+        Stop-Process -Id $existingProcess.ProcessId -Force -ErrorAction SilentlyContinue
     }
 
-    Start-Sleep -Milliseconds 250
-} while ([DateTime]::UtcNow -lt $deadline)
+    $stopDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        $remaining = Get-TargetProcess
+        if ($remaining.Count -eq 0) {
+            break
+        }
+
+        Start-Sleep -Milliseconds 250
+    } while ([DateTime]::UtcNow -lt $stopDeadline)
+
+    if ($remaining.Count -ne 0) {
+        $remaining | ForEach-Object { Write-Host "Existing process remained: $($_.ProcessId) $($_.ExecutablePath)" }
+        throw "Existing Cotton Sync process did not exit before autostart smoke."
+    }
+
+    Write-Host "Launching installed autostart command: $expectedRunValue"
+    $process = Start-Process `
+        -FilePath $resolvedExecutable `
+        -ArgumentList @("--start-minimized") `
+        -PassThru
+
+    do {
+        $candidates = Get-TargetProcess
+        $targetProcess = $candidates | Where-Object { [int]$_.ProcessId -eq $process.Id } | Select-Object -First 1
+        if ($null -ne $targetProcess) {
+            break
+        }
+
+        Start-Sleep -Milliseconds 250
+    } while ([DateTime]::UtcNow -lt $deadline)
+}
 
 if ($null -eq $targetProcess) {
+    if ($AttachExistingProcess) {
+        throw "Hidden startup process did not appear for $resolvedExecutable within $TimeoutSeconds second(s)."
+    }
+
     throw "Autostart command did not launch $resolvedExecutable within $TimeoutSeconds second(s)."
+}
+
+if ($null -eq $process) {
+    $process = Get-Process -Id $targetProcess.ProcessId -ErrorAction SilentlyContinue
+}
+
+if ($null -eq $process) {
+    throw "Startup-launched process exited before observation started."
 }
 
 if ($targetProcess.CommandLine -notmatch "(^|\s)--start-minimized($|\s)") {
@@ -234,6 +268,7 @@ Write-AutostartReport `
         "Result: passed",
         "Executable: $resolvedExecutable",
         "ExpectedRunValue: $expectedRunValue",
+        "LaunchMode: $(if ($AttachExistingProcess) { "attached-existing" } else { "started-command" })",
         "ProcessId: $($process.Id)",
         "CommandLine: $($targetProcess.CommandLine)",
         "ObservedForeground: $observedForeground",

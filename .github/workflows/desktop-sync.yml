@@ -582,6 +582,7 @@ jobs:
           $installLog = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-install.log"
           $upgradeLog = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-current.log"
           $uninstallLog = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-uninstall.log"
+          $upgradeRelaunchReport = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-relaunch.txt"
           $upgradeAutostartReport = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-autostart-launch.txt"
           New-Item -ItemType Directory -Path $oldOutputDir -Force | Out-Null
           New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
@@ -617,7 +618,7 @@ jobs:
 
           $currentInstall = Start-Process `
             -FilePath $currentInstallerPath `
-            -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/TASKS=", "/DIR=$installDir", "/LOG=$upgradeLog") `
+            -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/TASKS=", "/DIR=$installDir", "/LaunchAfterUpdate=1", "/LOG=$upgradeLog") `
             -Wait `
             -PassThru
           if ($currentInstall.ExitCode -ne 0) {
@@ -640,6 +641,10 @@ jobs:
             throw "Upgraded autostart registry value was not installed correctly. Expected '$expectedRunValue', got '$runValue'."
           }
 
+          & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-autostart-launch.ps1" `
+            -AppExecutable $installedExe `
+            -ReportPath $upgradeRelaunchReport `
+            -AttachExistingProcess
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-autostart-launch.ps1" `
             -AppExecutable $installedExe `
             -ReportPath $upgradeAutostartReport
