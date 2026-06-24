@@ -210,9 +210,13 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(runner, Does.Contain("SyncNowAsync(syncPair.Id"));
                 Assert.That(runner, Does.Contain("DeleteSyncPairAsync(syncPair.Id"));
                 Assert.That(runner, Does.Contain("WindowsCloudFilesSyncRootConnectionCoordinator"));
+                Assert.That(runner, Does.Contain("CreateDesktopRootLifecycleApplication("));
                 Assert.That(runner, Does.Contain("Desktop root sync pair was saved through the app service."));
                 Assert.That(runner, Does.Contain("Desktop root remote file became an online-only placeholder."));
                 Assert.That(runner, Does.Contain("Desktop root Cloud Files sync root status was finalized."));
+                Assert.That(runner, Does.Contain("Desktop root sync root reconnected from persisted settings after app restart."));
+                Assert.That(runner, Does.Contain("Restarted Desktop root callbacks hydrated the persisted placeholder."));
+                Assert.That(runner, Does.Contain("Restarted Desktop root placeholder was dehydrated before pair deletion."));
                 Assert.That(runner, Does.Contain("Deleting the Desktop root sync pair removed the local placeholder root."));
             });
         }

@@ -85,7 +85,8 @@ namespace Cotton.Sync.Desktop.Composition
                 _loggerFactory.CreateLogger<WindowsCloudFilesSyncRootConnectionCoordinator>());
             var cloudFilesDeletionHandler = new WindowsCloudFilesSyncPairDeletionHandler(
                 cloudFilesAdapter,
-                _loggerFactory.CreateLogger<WindowsCloudFilesSyncPairDeletionHandler>());
+                _loggerFactory.CreateLogger<WindowsCloudFilesSyncPairDeletionHandler>(),
+                syncStateStore: stateStore);
             var remoteFilePlaceholderWriter = new DesktopCloudFilesPlaceholderWriter(
                 cloudFilesAdapter: cloudFilesAdapter,
                 localChangeSuppression: localChangeSuppression,

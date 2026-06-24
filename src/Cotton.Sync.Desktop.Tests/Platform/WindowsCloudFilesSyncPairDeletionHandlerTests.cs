@@ -3,6 +3,7 @@
 
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Platform;
+using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
 
 namespace Cotton.Sync.Desktop.Tests.Platform
@@ -166,6 +167,32 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void WindowsVirtualFilesRootCleaner_TreatsHydratedCloudFilesPlaceholderStateAsSafe()
+        {
+            string rootPath = Path.Combine(_tempDirectory, "root");
+            string cachedFilePath = Path.Combine(rootPath, "cached.txt");
+            Directory.CreateDirectory(rootPath);
+            File.WriteAllText(cachedFilePath, "cached");
+            SyncPairSettings syncPair = CreatePair(SyncPairMode.WindowsVirtualFiles, rootPath);
+            FakeCloudFilesAdapter adapter = new();
+            adapter.SetPlaceholderState(
+                "cached.txt",
+                WindowsCloudFilesPlaceholderState.Placeholder
+                | WindowsCloudFilesPlaceholderState.InSync
+                | WindowsCloudFilesPlaceholderState.Partial
+                | WindowsCloudFilesPlaceholderState.PartiallyOnDisk);
+            WindowsVirtualFilesRootCleaner cleaner = new(cloudFiles: adapter);
+
+            WindowsVirtualFilesRootCleanupDecision decision = cleaner.EvaluateBeforeUnregister(syncPair);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(decision.ShouldRemoveRoot, Is.True);
+                Assert.That(decision.Reason, Does.Contain("Cloud Files placeholders"));
+            });
+        }
+
+        [Test]
         public async Task WindowsVirtualFilesRootCleaner_RemovesEmptyRootWhenDecisionAllows()
         {
             string rootPath = Path.Combine(_tempDirectory, "empty-root");
@@ -226,6 +253,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         private sealed class FakeCloudFilesAdapter : IWindowsCloudFilesAdapter
         {
             private readonly List<string>? _operations;
+            private readonly Dictionary<string, WindowsCloudFilesPlaceholderState> _placeholderStates =
+                new(StringComparer.OrdinalIgnoreCase);
 
             public FakeCloudFilesAdapter(List<string>? operations = null)
             {
@@ -253,6 +282,24 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public void SetInSyncState(SyncPairSettings syncPair, string relativePath)
             {
                 throw new NotSupportedException();
+            }
+
+            public void SetPlaceholderState(string relativePath, WindowsCloudFilesPlaceholderState state)
+            {
+                _placeholderStates[SyncPath.Normalize(relativePath)] = state;
+            }
+
+            public WindowsCloudFilesPlaceholderState GetPlaceholderState(SyncPairSettings syncPair, string? relativePath = null)
+            {
+                if (relativePath is null)
+                {
+                    return WindowsCloudFilesPlaceholderState.None;
+                }
+
+                string normalizedPath = SyncPath.Normalize(relativePath);
+                return _placeholderStates.TryGetValue(normalizedPath, out WindowsCloudFilesPlaceholderState state)
+                    ? state
+                    : WindowsCloudFilesPlaceholderState.None;
             }
 
             public WindowsCloudFilesConnection ConnectSyncRoot(

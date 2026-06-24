@@ -1452,7 +1452,6 @@ namespace Cotton.Sync.Desktop.Startup
                 diagnostics);
             SqliteSyncPairSettingsStore pairStore = new(paths.AppDatabasePath);
             SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath);
-            InMemoryAppStatusPublisher statusPublisher = new();
             InMemoryAppActivityPublisher activityPublisher = new();
             InMemoryAppTransferProgressPublisher transferProgressPublisher = new();
             InMemoryAppRunProgressPublisher runProgressPublisher = new();
@@ -1528,25 +1527,15 @@ namespace Cotton.Sync.Desktop.Startup
                     localChangeSuppression,
                     diagnostics,
                     runProgressPublisher);
-                SyncPairRunnerFactory runnerFactory = new(pairWork);
-                SyncSupervisor supervisor = new(pairStore, runnerFactory, statusPublisher);
-                WindowsCloudFilesSyncRootConnectionCoordinator connectionCoordinator = new(
+                InMemoryAppStatusPublisher statusPublisher = new();
+                app = CreateDesktopRootLifecycleApplication(
                     pairStore,
+                    stateStore,
                     cloudFiles,
-                    callbackHandler);
-                app = new SyncApplicationService(
-                    pairStore,
-                    NoopSyncPairPrerequisiteValidator.Instance,
-                    new NoopAppPreferencesStore(),
-                    NoopAuthFlow.Instance,
-                    NoopAppCodeBrowserAuthFlow.Instance,
-                    supervisor,
-                    NoopPlatformCommandService.Instance,
-                    syncCoreLifecycleComponents: [connectionCoordinator],
-                    syncStateStore: stateStore,
-                    validator: new SyncPairSettingsValidator(
-                        new SyncPairModeCapabilitySnapshot(true, "Windows Cloud Files API is available.")),
-                    syncPairDeletionHandler: new WindowsCloudFilesSyncPairDeletionHandler(cloudFiles));
+                    callbackHandler,
+                    pairWork,
+                    statusPublisher,
+                    diagnostics);
 
                 SyncPairSaveResult saveResult = await app.SaveSyncPairAsync(syncPair, cancellationToken)
                     .ConfigureAwait(false);
@@ -1626,6 +1615,59 @@ namespace Cotton.Sync.Desktop.Startup
                         cancellationToken)
                     .ConfigureAwait(false);
 
+                await app.StopSyncAsync(cancellationToken).ConfigureAwait(false);
+                syncCoreStopped = true;
+                await output.WriteLineAsync(
+                        FormatCheck(true, "Desktop root sync core stopped before restart simulation."))
+                    .ConfigureAwait(false);
+
+                InMemoryAppStatusPublisher restartedStatusPublisher = new();
+                app = CreateDesktopRootLifecycleApplication(
+                    pairStore,
+                    stateStore,
+                    cloudFiles,
+                    callbackHandler,
+                    pairWork,
+                    restartedStatusPublisher,
+                    diagnostics);
+                syncCoreStopped = false;
+                await app.StartSyncAsync(cancellationToken).ConfigureAwait(false);
+                SyncPairStatus? restartedStatus = restartedStatusPublisher.Current.SyncPairs
+                    .FirstOrDefault(item => item.SyncPairId == syncPair.Id);
+                failures += await WriteCheckAsync(
+                        output,
+                        restartedStatus is { State: SyncPairRunState.Idle },
+                        "Desktop root sync root reconnected from persisted settings after app restart.",
+                        "state="
+                        + (restartedStatus?.State.ToString() ?? "missing"))
+                    .ConfigureAwait(false);
+
+                string restartedHydratedText = await ReadAllTextThroughExternalProcessAsync(remoteFilePath, cancellationToken)
+                    .ConfigureAwait(false);
+                failures += await WriteCheckAsync(
+                        output,
+                        string.Equals(
+                            restartedHydratedText,
+                            Encoding.UTF8.GetString(remoteContent),
+                            StringComparison.Ordinal)
+                        && contentProvider.DownloadedPaths.Contains(
+                            SyncPath.Normalize(DesktopRootRemoteFilePath),
+                            StringComparer.OrdinalIgnoreCase),
+                        "Restarted Desktop root callbacks hydrated the persisted placeholder.",
+                        "downloads="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+
+                cloudFiles.DehydratePlaceholder(syncPair, DesktopRootRemoteFilePath);
+                failures += await VerifyCloudFilesInSyncStateAsync(
+                        output,
+                        cloudFiles,
+                        syncPair,
+                        DesktopRootRemoteFilePath,
+                        "Restarted Desktop root placeholder was dehydrated before pair deletion.",
+                        allowPartialDirectory: true)
+                    .ConfigureAwait(false);
+
                 await app.DeleteSyncPairAsync(syncPair.Id, cancellationToken).ConfigureAwait(false);
                 pairDeleted = true;
                 await app.StopSyncAsync(cancellationToken).ConfigureAwait(false);
@@ -1687,6 +1729,39 @@ namespace Cotton.Sync.Desktop.Startup
 
             await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
             return failures == 0 ? 0 : 1;
+        }
+
+        private static SyncApplicationService CreateDesktopRootLifecycleApplication(
+            ISyncPairSettingsStore pairStore,
+            ISyncStateStore stateStore,
+            IWindowsCloudFilesAdapter cloudFiles,
+            IWindowsCloudFilesCallbackHandler callbackHandler,
+            ISyncPairWork pairWork,
+            InMemoryAppStatusPublisher statusPublisher,
+            IWindowsCloudFilesDiagnostics diagnostics)
+        {
+            SyncPairRunnerFactory runnerFactory = new(pairWork);
+            SyncSupervisor supervisor = new(pairStore, runnerFactory, statusPublisher);
+            WindowsCloudFilesSyncRootConnectionCoordinator connectionCoordinator = new(
+                pairStore,
+                cloudFiles,
+                callbackHandler);
+            return new SyncApplicationService(
+                pairStore,
+                NoopSyncPairPrerequisiteValidator.Instance,
+                new NoopAppPreferencesStore(),
+                NoopAuthFlow.Instance,
+                NoopAppCodeBrowserAuthFlow.Instance,
+                supervisor,
+                NoopPlatformCommandService.Instance,
+                syncCoreLifecycleComponents: [connectionCoordinator],
+                syncStateStore: stateStore,
+                validator: new SyncPairSettingsValidator(
+                    new SyncPairModeCapabilitySnapshot(true, "Windows Cloud Files API is available.")),
+                syncPairDeletionHandler: new WindowsCloudFilesSyncPairDeletionHandler(
+                    cloudFiles,
+                    diagnostics: diagnostics,
+                    syncStateStore: stateStore));
         }
 
         private static async Task<int> RunReplaceCloudOnlyUploadAsync(
@@ -2526,7 +2601,9 @@ namespace Cotton.Sync.Desktop.Startup
                 NullRemoteChangeSyncCoordinator.Instance,
                 NullPeriodicSyncCoordinator.Instance,
                 syncStateStore: stateStore,
-                syncPairDeletionHandler: new WindowsCloudFilesSyncPairDeletionHandler(cloudFiles));
+                syncPairDeletionHandler: new WindowsCloudFilesSyncPairDeletionHandler(
+                    cloudFiles,
+                    syncStateStore: stateStore));
         }
 
         private static byte[] CreateLargeSmokePlaceholderIdentity(int index)

@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.SyncPairs;
+using Cotton.Sync.State;
 
 namespace Cotton.Sync.Desktop.Platform
 {
@@ -10,6 +11,12 @@ namespace Cotton.Sync.Desktop.Platform
         private const int FileAttributeRecallOnOpen = 0x00040000;
         private const int FileAttributeUnpinned = 0x00100000;
         private const int FileAttributeRecallOnDataAccess = 0x00400000;
+        private static readonly TimeSpan[] CleanupRetryDelays =
+        [
+            TimeSpan.FromMilliseconds(100),
+            TimeSpan.FromMilliseconds(250),
+            TimeSpan.FromMilliseconds(500),
+        ];
 
         private static readonly EnumerationOptions ChildEnumeration = new()
         {
@@ -18,10 +25,19 @@ namespace Cotton.Sync.Desktop.Platform
         };
 
         private readonly WindowsVirtualFilesRootSafetyPolicy _rootSafety;
+        private readonly IWindowsCloudFilesAdapter? _cloudFiles;
+        private readonly IReadOnlySet<string> _knownCloudFilesRelativePathKeys;
 
-        public WindowsVirtualFilesRootCleaner(WindowsVirtualFilesRootSafetyPolicy? rootSafety = null)
+        public WindowsVirtualFilesRootCleaner(
+            WindowsVirtualFilesRootSafetyPolicy? rootSafety = null,
+            IWindowsCloudFilesAdapter? cloudFiles = null,
+            IEnumerable<string>? knownCloudFilesRelativePaths = null)
         {
             _rootSafety = rootSafety ?? new WindowsVirtualFilesRootSafetyPolicy();
+            _cloudFiles = cloudFiles;
+            _knownCloudFilesRelativePathKeys = (knownCloudFilesRelativePaths ?? [])
+                .Select(SyncPath.ToKey)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
         }
 
         public WindowsVirtualFilesRootCleanupDecision EvaluateBeforeUnregister(SyncPairSettings syncPair)
@@ -39,7 +55,7 @@ namespace Cotton.Sync.Desktop.Platform
                 return Skip(rootPath, "Local root is already absent.");
             }
 
-            string? inspectionFailure = InspectForRemoval(rootPath);
+            string? inspectionFailure = InspectForRemoval(syncPair, rootPath);
             if (inspectionFailure is not null)
             {
                 return Skip(rootPath, inspectionFailure);
@@ -51,7 +67,7 @@ namespace Cotton.Sync.Desktop.Platform
                 "Local root contains only directories and Cloud Files placeholders.");
         }
 
-        public Task<WindowsVirtualFilesRootCleanupResult> CleanupAfterUnregisterAsync(
+        public async Task<WindowsVirtualFilesRootCleanupResult> CleanupAfterUnregisterAsync(
             WindowsVirtualFilesRootCleanupDecision decision,
             CancellationToken cancellationToken = default)
         {
@@ -59,34 +75,48 @@ namespace Cotton.Sync.Desktop.Platform
             cancellationToken.ThrowIfCancellationRequested();
             if (!decision.ShouldRemoveRoot)
             {
-                return Task.FromResult(new WindowsVirtualFilesRootCleanupResult(false, decision.Reason));
+                return new WindowsVirtualFilesRootCleanupResult(false, decision.Reason);
             }
 
-            try
+            for (int attempt = 0; attempt <= CleanupRetryDelays.Length; attempt++)
             {
-                if (Directory.Exists(decision.LocalRootPath))
+                try
                 {
-                    string? inspectionFailure = InspectForRemoval(decision.LocalRootPath);
-                    if (inspectionFailure is not null)
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (Directory.Exists(decision.LocalRootPath))
                     {
-                        return Task.FromResult(new WindowsVirtualFilesRootCleanupResult(
-                            false,
-                            "Local root was preserved because it changed before cleanup: " + inspectionFailure));
+                        string? inspectionFailure = InspectForRemoval(null, decision.LocalRootPath);
+                        if (inspectionFailure is not null)
+                        {
+                            return new WindowsVirtualFilesRootCleanupResult(
+                                false,
+                                "Local root was preserved because it changed before cleanup: " + inspectionFailure);
+                        }
+
+                        Directory.Delete(decision.LocalRootPath, recursive: true);
                     }
 
-                    Directory.Delete(decision.LocalRootPath, recursive: true);
+                    return new WindowsVirtualFilesRootCleanupResult(
+                        true,
+                        "Local root was removed after Cloud Files unregister.");
                 }
+                catch (Exception exception) when (
+                    IsExpectedFileSystemFailure(exception)
+                    && attempt < CleanupRetryDelays.Length)
+                {
+                    await Task.Delay(CleanupRetryDelays[attempt], cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (IsExpectedFileSystemFailure(exception))
+                {
+                    return new WindowsVirtualFilesRootCleanupResult(
+                        false,
+                        "Local root was preserved because cleanup failed: " + exception.Message);
+                }
+            }
 
-                return Task.FromResult(new WindowsVirtualFilesRootCleanupResult(
-                    true,
-                    "Local root was removed after Cloud Files unregister."));
-            }
-            catch (Exception exception) when (IsExpectedFileSystemFailure(exception))
-            {
-                return Task.FromResult(new WindowsVirtualFilesRootCleanupResult(
-                    false,
-                    "Local root was preserved because cleanup failed: " + exception.Message));
-            }
+            return new WindowsVirtualFilesRootCleanupResult(
+                false,
+                "Local root was preserved because cleanup did not complete.");
         }
 
         private static WindowsVirtualFilesRootCleanupDecision Skip(string localRootPath, string reason)
@@ -105,7 +135,7 @@ namespace Cotton.Sync.Desktop.Platform
                     || (attributes & FileAttributes.Offline) != 0);
         }
 
-        private static string? InspectForRemoval(string rootPath)
+        private string? InspectForRemoval(SyncPairSettings? syncPair, string rootPath)
         {
             try
             {
@@ -117,7 +147,8 @@ namespace Cotton.Sync.Desktop.Platform
                     foreach (string filePath in Directory.EnumerateFiles(current, "*", ChildEnumeration))
                     {
                         FileAttributes attributes = File.GetAttributes(filePath);
-                        if (!IsSafeCloudFilesPlaceholder(attributes))
+                        if (!IsSafeCloudFilesPlaceholder(attributes)
+                            && !IsKnownCloudFilesPlaceholder(syncPair, rootPath, filePath))
                         {
                             return "Local root contains at least one regular local file.";
                         }
@@ -127,7 +158,8 @@ namespace Cotton.Sync.Desktop.Platform
                     {
                         FileAttributes attributes = File.GetAttributes(directoryPath);
                         if ((attributes & FileAttributes.ReparsePoint) != 0
-                            && !IsSafeCloudFilesPlaceholder(attributes))
+                            && !IsSafeCloudFilesPlaceholder(attributes)
+                            && !IsKnownCloudFilesPlaceholder(syncPair, rootPath, directoryPath))
                         {
                             return "Local root contains at least one reparse directory.";
                         }
@@ -144,6 +176,44 @@ namespace Cotton.Sync.Desktop.Platform
             return null;
         }
 
+        private bool IsKnownCloudFilesPlaceholder(SyncPairSettings? syncPair, string rootPath, string fullPath)
+        {
+            if (syncPair is null)
+            {
+                return false;
+            }
+
+            string relativePath = Path.GetRelativePath(rootPath, fullPath);
+            if (string.IsNullOrWhiteSpace(relativePath)
+                || string.Equals(relativePath, ".", StringComparison.Ordinal)
+                || Path.IsPathRooted(relativePath)
+                || relativePath.StartsWith("..", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            try
+            {
+                string normalizedPath = SyncPath.Normalize(relativePath);
+                if (_knownCloudFilesRelativePathKeys.Contains(SyncPath.ToKey(normalizedPath)))
+                {
+                    return true;
+                }
+
+                if (_cloudFiles is null)
+                {
+                    return false;
+                }
+
+                WindowsCloudFilesPlaceholderState state = _cloudFiles.GetPlaceholderState(syncPair, normalizedPath);
+                return state.HasFlag(WindowsCloudFilesPlaceholderState.Placeholder);
+            }
+            catch (Exception exception) when (IsExpectedCloudFilesInspectionFailure(exception))
+            {
+                return false;
+            }
+        }
+
         private static bool HasRawAttribute(FileAttributes attributes, int rawAttribute)
         {
             return (((int)attributes) & rawAttribute) == rawAttribute;
@@ -156,6 +226,13 @@ namespace Cotton.Sync.Desktop.Platform
                 or DirectoryNotFoundException
                 or PathTooLongException
                 or NotSupportedException;
+        }
+
+        private static bool IsExpectedCloudFilesInspectionFailure(Exception exception)
+        {
+            return IsExpectedFileSystemFailure(exception)
+                || exception is ArgumentException
+                or WindowsCloudFilesNativeException;
         }
     }
 }
