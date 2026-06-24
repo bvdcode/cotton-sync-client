@@ -38,7 +38,7 @@ namespace Cotton.Sync.Desktop.Startup
         private const string LargeTreeDirectoryName = "large-tree";
         private const string ReplaceCloudOnlyDirectoryName = "replace-cloud-only";
         private const string ReplaceCloudOnlyRelativePath = ReplaceCloudOnlyDirectoryName + "/replace-smoke.txt";
-        private const int LargeTreePlaceholderCount = 10_000;
+        private const int DefaultLargeTreePlaceholderCount = 10_000;
         private const int LargeCleanupStateWriteBatchSize = 500;
         private const string LargeHydrationRelativePath = "large-hydration-smoke.bin";
         private const int LargeHydrationSizeBytes = 32 * 1024 * 1024;
@@ -160,6 +160,7 @@ namespace Cotton.Sync.Desktop.Startup
             IWindowsCloudFilesAdapter cloudFiles = cloudFilesAdapter
                 ?? new WindowsCloudFilesAdapter(nativeApi: nativeApi, diagnostics: diagnostics);
             SyncPairSettings syncPair = CreateSyncPair(rootPath);
+            int largeTreePlaceholderCount = GetLargeTreePlaceholderCount(startupOptions);
             if (initialStreamingLogging)
             {
                 return await RunInitialStreamingLoggingAsync(
@@ -167,6 +168,7 @@ namespace Cotton.Sync.Desktop.Startup
                     output,
                     cloudFiles,
                     syncPair,
+                    largeTreePlaceholderCount,
                     diagnostics,
                     cancellationToken)
                     .ConfigureAwait(false);
@@ -179,6 +181,7 @@ namespace Cotton.Sync.Desktop.Startup
                     output,
                     cloudFiles,
                     syncPair,
+                    largeTreePlaceholderCount,
                     diagnostics,
                     cancellationToken)
                     .ConfigureAwait(false);
@@ -191,6 +194,7 @@ namespace Cotton.Sync.Desktop.Startup
                     output,
                     cloudFiles,
                     syncPair,
+                    largeTreePlaceholderCount,
                     diagnostics,
                     cancellationToken)
                     .ConfigureAwait(false);
@@ -217,6 +221,7 @@ namespace Cotton.Sync.Desktop.Startup
                     cloudFiles,
                     nativeApi,
                     syncPair,
+                    largeTreePlaceholderCount,
                     diagnostics,
                     cancellationToken)
                     .ConfigureAwait(false);
@@ -1070,6 +1075,7 @@ namespace Cotton.Sync.Desktop.Startup
             TextWriter output,
             IWindowsCloudFilesAdapter cloudFiles,
             SyncPairSettings syncPair,
+            int largeTreePlaceholderCount,
             WindowsCloudFilesDiagnostics diagnostics,
             CancellationToken cancellationToken)
         {
@@ -1078,7 +1084,7 @@ namespace Cotton.Sync.Desktop.Startup
             byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
             string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
             var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
-            var remoteFiles = new List<RemoteFileSnapshot>(LargeTreePlaceholderCount);
+            var remoteFiles = new List<RemoteFileSnapshot>(largeTreePlaceholderCount);
             int failures = 0;
 
             try
@@ -1094,9 +1100,9 @@ namespace Cotton.Sync.Desktop.Startup
                     + rootPath)
                     .ConfigureAwait(false);
 
-                var createdEntries = new List<SyncStateEntry>(LargeTreePlaceholderCount);
+                var createdEntries = new List<SyncStateEntry>(largeTreePlaceholderCount);
                 var createTimer = Stopwatch.StartNew();
-                for (int index = 0; index < LargeTreePlaceholderCount; index++)
+                for (int index = 0; index < largeTreePlaceholderCount; index++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     string relativePath = LargeTreeDirectoryName
@@ -1124,7 +1130,7 @@ namespace Cotton.Sync.Desktop.Startup
                             "Progress: created "
                             + (index + 1).ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
                             + " / "
-                            + LargeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                            + largeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
                             + " placeholders.")
                             .ConfigureAwait(false);
                     }
@@ -1139,7 +1145,7 @@ namespace Cotton.Sync.Desktop.Startup
                 await output.WriteLineAsync(
                     FormatCheck(true, "Steady-state repeat smoke persisted placeholder baseline.")
                     + " files="
-                    + LargeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                    + largeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
                     + ", elapsedMs="
                     + createTimer.ElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture))
                     .ConfigureAwait(false);
@@ -1181,7 +1187,7 @@ namespace Cotton.Sync.Desktop.Startup
                     await output.WriteLineAsync(
                         FormatCheck(true, "Steady-state repeat pass avoided local placeholder-tree scanning.")
                         + " files="
-                        + LargeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                        + largeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
                         + ", syncElapsedMs="
                         + syncTimer.ElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
                         + ", streamingCrawls="
@@ -1257,12 +1263,13 @@ namespace Cotton.Sync.Desktop.Startup
             TextWriter output,
             IWindowsCloudFilesAdapter cloudFiles,
             SyncPairSettings syncPair,
+            int largeTreePlaceholderCount,
             WindowsCloudFilesDiagnostics diagnostics,
             CancellationToken cancellationToken)
         {
             string rootPath = syncPair.LocalRootPath;
             SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath);
-            IReadOnlyList<RemoteFileSnapshot> remoteFiles = CreateLargeTreeRemoteFiles(syncPair);
+            IReadOnlyList<RemoteFileSnapshot> remoteFiles = CreateLargeTreeRemoteFiles(syncPair, largeTreePlaceholderCount);
             RemoteDirectorySnapshot largeTreeDirectory = CreateLargeTreeRemoteDirectory(syncPair);
             WindowsCloudFilesConnection? connection = null;
             int failures = 0;
@@ -1324,10 +1331,10 @@ namespace Cotton.Sync.Desktop.Startup
                         output,
                         !result.RequiresUserAction
                             && result.TotalActivityCount == 0
-                            && state.Count == LargeTreePlaceholderCount + 1,
+                            && state.Count == largeTreePlaceholderCount + 1,
                         "Initial VFS streaming run created a large placeholder baseline without per-placeholder activities.",
                         "files="
-                        + LargeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                        + largeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
                         + ", stateRows="
                         + state.Count.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
                         + ", activities="
@@ -1340,6 +1347,7 @@ namespace Cotton.Sync.Desktop.Startup
                 failures += await VerifyInitialStreamingLogMetricsAsync(
                         paths.LogFilePath,
                         output,
+                        largeTreePlaceholderCount,
                         cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -1389,6 +1397,7 @@ namespace Cotton.Sync.Desktop.Startup
         private static async Task<int> VerifyInitialStreamingLogMetricsAsync(
             string logFilePath,
             TextWriter output,
+            int largeTreePlaceholderCount,
             CancellationToken cancellationToken)
         {
             if (!File.Exists(logFilePath))
@@ -1406,14 +1415,15 @@ namespace Cotton.Sync.Desktop.Startup
                 .LastOrDefault(static line => line.Contains(
                     "Completed initial streaming Windows virtual-files population",
                     StringComparison.Ordinal));
+            string expectedFileCount = largeTreePlaceholderCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
             bool hasMetrics = completionLog is not null
                 && completionLog.Contains("1 directories discovered", StringComparison.Ordinal)
-                && completionLog.Contains("10000 files discovered", StringComparison.Ordinal)
+                && completionLog.Contains(expectedFileCount + " files discovered", StringComparison.Ordinal)
                 && completionLog.Contains("remote pages read=", StringComparison.Ordinal)
                 && completionLog.Contains("remote page latency total=", StringComparison.Ordinal)
-                && completionLog.Contains("10000 placeholders created or refreshed", StringComparison.Ordinal)
+                && completionLog.Contains(expectedFileCount + " placeholders created or refreshed", StringComparison.Ordinal)
                 && completionLog.Contains("placeholders/sec", StringComparison.Ordinal)
-                && completionLog.Contains("state writes 10000 file rows", StringComparison.Ordinal)
+                && completionLog.Contains("state writes " + expectedFileCount + " file rows", StringComparison.Ordinal)
                 && completionLog.Contains("file write batches", StringComparison.Ordinal)
                 && completionLog.Contains("directory rows 1", StringComparison.Ordinal)
                 && completionLog.Contains("managed heap start=", StringComparison.Ordinal)
@@ -1434,12 +1444,24 @@ namespace Cotton.Sync.Desktop.Startup
             return hasMetrics ? 0 : 1;
         }
 
-        private static IReadOnlyList<RemoteFileSnapshot> CreateLargeTreeRemoteFiles(SyncPairSettings syncPair)
+        private static int GetLargeTreePlaceholderCount(DesktopStartupOptions startupOptions)
+        {
+            return startupOptions.WindowsVirtualFilesSmokePlaceholderCount ?? DefaultLargeTreePlaceholderCount;
+        }
+
+        private static string CreateLargeTreeFileName(int index)
+        {
+            return "file-" + index.ToString("D5", System.Globalization.CultureInfo.InvariantCulture) + ".txt";
+        }
+
+        private static IReadOnlyList<RemoteFileSnapshot> CreateLargeTreeRemoteFiles(
+            SyncPairSettings syncPair,
+            int largeTreePlaceholderCount)
         {
             byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
             string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
-            List<RemoteFileSnapshot> remoteFiles = new(LargeTreePlaceholderCount);
-            for (int index = 0; index < LargeTreePlaceholderCount; index++)
+            List<RemoteFileSnapshot> remoteFiles = new(largeTreePlaceholderCount);
+            for (int index = 0; index < largeTreePlaceholderCount; index++)
             {
                 string relativePath = LargeTreeDirectoryName
                     + "/file-"
@@ -1887,6 +1909,7 @@ namespace Cotton.Sync.Desktop.Startup
             IWindowsCloudFilesAdapter cloudFiles,
             IWindowsCloudFilesNativeApi? nativeApi,
             SyncPairSettings syncPair,
+            int largeTreePlaceholderCount,
             WindowsCloudFilesDiagnostics diagnostics,
             CancellationToken cancellationToken)
         {
@@ -1920,9 +1943,9 @@ namespace Cotton.Sync.Desktop.Startup
                     + rootPath)
                     .ConfigureAwait(false);
 
-                var createdEntries = new List<SyncStateEntry>(LargeTreePlaceholderCount);
+                var createdEntries = new List<SyncStateEntry>(largeTreePlaceholderCount);
                 var createTimer = Stopwatch.StartNew();
-                for (int index = 0; index < LargeTreePlaceholderCount; index++)
+                for (int index = 0; index < largeTreePlaceholderCount; index++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     string relativePath = LargeTreeDirectoryName
@@ -1945,7 +1968,7 @@ namespace Cotton.Sync.Desktop.Startup
                             "Progress: created "
                             + (index + 1).ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
                             + " / "
-                            + LargeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                            + largeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
                             + " placeholders.")
                             .ConfigureAwait(false);
                     }
@@ -1960,7 +1983,7 @@ namespace Cotton.Sync.Desktop.Startup
                     new SyncChangeCursor
                     {
                         SyncPairId = syncPair.Id.ToString("D"),
-                        LastCursor = LargeTreePlaceholderCount,
+                        LastCursor = largeTreePlaceholderCount,
                         UpdatedAtUtc = DateTime.UtcNow,
                     },
                     cancellationToken)
@@ -1973,7 +1996,7 @@ namespace Cotton.Sync.Desktop.Startup
                 await output.WriteLineAsync(
                     FormatCheck(true, "Large virtual-files pair persisted placeholders before deletion.")
                     + " files="
-                    + LargeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                    + largeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
                     + ", elapsedMs="
                     + createTimer.ElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
                     + ", stateEntries="
@@ -2343,6 +2366,7 @@ namespace Cotton.Sync.Desktop.Startup
             TextWriter output,
             IWindowsCloudFilesAdapter cloudFiles,
             SyncPairSettings syncPair,
+            int largeTreePlaceholderCount,
             WindowsCloudFilesDiagnostics diagnostics,
             CancellationToken cancellationToken)
         {
@@ -2374,7 +2398,7 @@ namespace Cotton.Sync.Desktop.Startup
                     .ConfigureAwait(false);
 
                 var createTimer = Stopwatch.StartNew();
-                for (int index = 0; index < LargeTreePlaceholderCount; index++)
+                for (int index = 0; index < largeTreePlaceholderCount; index++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     string relativePath = LargeTreeDirectoryName
@@ -2393,7 +2417,7 @@ namespace Cotton.Sync.Desktop.Startup
                             "Progress: created "
                             + (index + 1).ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
                             + " / "
-                            + LargeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                            + largeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
                             + " placeholders.")
                             .ConfigureAwait(false);
                     }
@@ -2403,7 +2427,7 @@ namespace Cotton.Sync.Desktop.Startup
                 await output.WriteLineAsync(
                     FormatCheck(true, "Large remote-only placeholder tree was created.")
                     + " files="
-                    + LargeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                    + largeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
                     + ", elapsedMs="
                     + createTimer.ElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture))
                     .ConfigureAwait(false);
@@ -2439,7 +2463,7 @@ namespace Cotton.Sync.Desktop.Startup
                     .ConfigureAwait(false);
                 failures += await VerifyExplorerShellSettledStatusAsync(
                         output,
-                        Path.Combine(largeTreePath, "file-09999.txt"),
+                        Path.Combine(largeTreePath, CreateLargeTreeFileName(largeTreePlaceholderCount - 1)),
                         "large-tree last placeholder",
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -2447,7 +2471,7 @@ namespace Cotton.Sync.Desktop.Startup
                 var enumerationTimer = Stopwatch.StartNew();
                 int enumeratedFiles = Directory.EnumerateFiles(largeTreePath, "*.txt", SearchOption.TopDirectoryOnly).Count();
                 enumerationTimer.Stop();
-                if (enumeratedFiles == LargeTreePlaceholderCount)
+                if (enumeratedFiles == largeTreePlaceholderCount)
                 {
                     await output.WriteLineAsync(
                         FormatCheck(true, "Large placeholder directory enumeration completed.")
@@ -2463,7 +2487,7 @@ namespace Cotton.Sync.Desktop.Startup
                     await output.WriteLineAsync(
                         FormatCheck(false, "Large placeholder directory enumeration returned an unexpected count.")
                         + " expected="
-                        + LargeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                        + largeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
                         + ", actual="
                         + enumeratedFiles.ToString("N0", System.Globalization.CultureInfo.InvariantCulture))
                         .ConfigureAwait(false);
