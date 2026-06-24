@@ -750,6 +750,7 @@ Scope notes:
 
 - First sign-in is passed by the installed `0ae05d0` app-code approval rerun.
 - Real placeholder-seeding render stability is passed for the captured `b90610f` 4 fps window, and host `S:` VFS smokes have since covered steady-state repeat, large-tree, replacement finalization, pair deletion cleanup, and shell share-link targets without stale Explorer registrations.
+- The Windows installer evidence gate now requires captured VFS smoke output for the base Cloud Files run, startup/session restore, and shell share-link targets, and rejects visible or foreground startup windows before the installed evidence bundle is accepted.
 - Range/chunk hydration is implemented and source-verified through `Cotton.Sdk 0.4.32`; live installed range coverage is covered by the broader installed VFS gates, not a separate ninth checkbox.
 - The secondary clean-machine diagnostics bundle is valid full-mirror clean-machine evidence, but it does not close VFS clean Windows evidence because its sync pair mode is `fullMirror`.
 - General full-upload throughput warning from the accidental broad smoke remains a release-performance watch item outside the VFS checklist; it should be tracked separately if the first full-mirror release gate is reopened.
