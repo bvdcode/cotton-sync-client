@@ -457,6 +457,25 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         }
 
         [Test]
+        public void WindowsVfsLogonEvidenceCaptureRegistrationScript_RegistersOneShotProfileCapture()
+        {
+            string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/register-vfs-logon-evidence-capture.ps1"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(script, Does.Contain("Register-ScheduledTask"));
+                Assert.That(script, Does.Contain("New-ScheduledTaskTrigger -AtLogOn"));
+                Assert.That(script, Does.Contain("New-ScheduledTaskPrincipal"));
+                Assert.That(script, Does.Contain("capture-vfs-release-evidence.ps1"));
+                Assert.That(script, Does.Contain("-RunProfileSelfTest"));
+                Assert.That(script, Does.Contain("-RunDiagnosticsExport"));
+                Assert.That(script, Does.Contain("Unregister-ScheduledTask -TaskName $taskNameLiteral"));
+                Assert.That(script, Does.Contain("run-vfs-logon-evidence-capture.log"));
+                Assert.That(script, Does.Contain("Removed VFS logon evidence capture task"));
+            });
+        }
+
+        [Test]
         public void WindowsVfsReleaseEvidenceVerifierScript_AcceptsCompleteEvidenceBundle()
         {
             string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
