@@ -113,6 +113,11 @@ Assert-DoesNotMatch `
 
 $registryExplorer = Read-EvidenceFile -RelativePath "registry-cloud-files-explorer.txt"
 Assert-Contains -Content $registryExplorer -Expected "MatchCount:" -Label "registry-cloud-files-explorer.txt"
+Assert-DoesNotMatch `
+    -Content $registryExplorer `
+    -Pattern "^\s*MatchCount:\s*0\b" `
+    -Label "registry-cloud-files-explorer.txt" `
+    -FailureMessage "No Cloud Files or Explorer registration was captured before uninstall."
 
 $localRootEntries = Read-EvidenceFile -RelativePath "local-root-entries.csv"
 Assert-Contains -Content $localRootEntries -Expected '"RelativePath","FullPath","Exists","Attributes","Length","LastWriteTimeUtc"' -Label "local-root-entries.csv"

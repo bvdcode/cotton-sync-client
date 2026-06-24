@@ -421,6 +421,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("Diagnostics export: exitCode=0;"));
                 Assert.That(script, Does.Contain("ObservedForeground: False"));
                 Assert.That(script, Does.Contain("CleanupRemaining: 0"));
+                Assert.That(script, Does.Contain("No Cloud Files or Explorer registration was captured before uninstall."));
                 Assert.That(script, Does.Contain("VFS smoke logs: captured:"));
                 Assert.That(script, Does.Contain("Desktop startup restored the saved signed-in session."));
                 Assert.That(script, Does.Contain("Desktop startup reconnected the persisted Cloud Files sync root."));
@@ -535,6 +536,27 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(
                     output,
                     Does.Contain("vfs-smoke\\phase-desktop-session-restore\\cloud-files-vfs-smoke.stdout.log"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_RejectsMissingCloudFilesRegistration()
+        {
+            string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
+            try
+            {
+                File.WriteAllText(
+                    Path.Combine(evidenceDirectory, "registry-cloud-files-explorer.txt"),
+                    "MatchCount: 0");
+
+                (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("No Cloud Files or Explorer registration was captured before uninstall."));
             }
             finally
             {
