@@ -8,6 +8,22 @@ namespace Cotton.Sync.Desktop.Tests.Platform
     public class WindowsRunAutostartServiceTests
     {
         [Test]
+        public void DesktopAutostartServiceFactory_RegistersWindowsAutostartHiddenToTray()
+        {
+            string factory = File.ReadAllText(GetDesktopPlatformFilePath("DesktopAutostartServiceFactory.cs"));
+            int windowsBranchIndex = factory.IndexOf("OperatingSystem.IsWindows()", StringComparison.Ordinal);
+            int launchCommandIndex = factory.IndexOf(
+                "AutostartLaunchCommand.TryCreateDefault(startMinimized: true)",
+                StringComparison.Ordinal);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(windowsBranchIndex, Is.GreaterThanOrEqualTo(0));
+                Assert.That(launchCommandIndex, Is.GreaterThan(windowsBranchIndex));
+            });
+        }
+
+        [Test]
         public void TryCreateDefaultLaunchCommand_ReturnsNullForDotnetHost()
         {
             AutostartLaunchCommand? command = AutostartLaunchCommand.TryCreate(
@@ -174,6 +190,29 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 Values.Remove(valueName);
             }
+        }
+
+        private static string GetDesktopPlatformFilePath(string fileName)
+        {
+            string directory = TestContext.CurrentContext.TestDirectory;
+            while (!string.IsNullOrWhiteSpace(directory))
+            {
+                string candidate = Path.Combine(directory, "src", "Cotton.Sync.Desktop", "Platform", fileName);
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
+
+                string? parent = Directory.GetParent(directory)?.FullName;
+                if (parent == directory)
+                {
+                    break;
+                }
+
+                directory = parent ?? string.Empty;
+            }
+
+            throw new FileNotFoundException("Desktop platform file was not found.", fileName);
         }
     }
 }

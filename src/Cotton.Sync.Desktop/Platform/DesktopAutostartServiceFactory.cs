@@ -21,8 +21,7 @@ namespace Cotton.Sync.Desktop.Platform
 
             if (OperatingSystem.IsWindows())
             {
-                AutostartLaunchCommand? launchCommand = AutostartLaunchCommand.TryCreateDefault(
-                    DesktopPlatformCapabilities.IsTrayLifecycleSupported);
+                AutostartLaunchCommand? launchCommand = AutostartLaunchCommand.TryCreateDefault(startMinimized: true);
                 return launchCommand is null
                     ? new UnsupportedAutostartService()
                     : new WindowsRunAutostartService(launchCommand);
