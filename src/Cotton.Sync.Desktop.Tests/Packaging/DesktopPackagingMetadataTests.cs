@@ -390,6 +390,29 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         }
 
         [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_ChecksRequiredEvidenceBundleFiles()
+        {
+            string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/verify-vfs-release-evidence.ps1"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(script, Does.Contain("[string]$EvidenceDirectory"));
+                Assert.That(script, Does.Contain("summary.txt"));
+                Assert.That(script, Does.Contain("installed-app.txt"));
+                Assert.That(script, Does.Contain("registry-run.txt"));
+                Assert.That(script, Does.Contain("registry-cloud-files-explorer.txt"));
+                Assert.That(script, Does.Contain("process-windows.txt"));
+                Assert.That(script, Does.Contain("local-root-entries.csv"));
+                Assert.That(script, Does.Contain("self-test.stdout.log"));
+                Assert.That(script, Does.Contain("diagnostics-export.stdout.log"));
+                Assert.That(script, Does.Contain("Installed self-test: exitCode=0;"));
+                Assert.That(script, Does.Contain("Diagnostics export: exitCode=0;"));
+                Assert.That(script, Does.Contain("failed:"));
+                Assert.That(script, Does.Contain("Verified VFS release evidence bundle"));
+            });
+        }
+
+        [Test]
         public void WindowsChecksumVerificationScript_VerifiesPublishedManifest()
         {
             string checksumScript = File.ReadAllText(GetDesktopFilePath("Packaging/windows/verify-checksums.ps1"));
@@ -889,6 +912,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("-AppExecutable $installedExe"));
                 Assert.That(workflow, Does.Not.Contain("Set-ItemProperty -Path $runKey -Name \"Cotton Sync\""));
                 Assert.That(workflow, Does.Contain("Packaging/windows/verify-cloud-files-cleanup.ps1"));
+                Assert.That(workflow, Does.Contain("Packaging/windows/verify-vfs-release-evidence.ps1"));
+                Assert.That(workflow, Does.Contain("-EvidenceDirectory $evidenceDir"));
                 Assert.That(
                     Regex.Matches(workflow, "Packaging/windows/verify-cloud-files-cleanup.ps1").Count,
                     Is.GreaterThanOrEqualTo(3));
