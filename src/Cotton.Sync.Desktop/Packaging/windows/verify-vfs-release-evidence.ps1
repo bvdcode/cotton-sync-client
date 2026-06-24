@@ -89,6 +89,13 @@ $registryRun = Read-EvidenceFile -RelativePath "registry-run.txt"
 Assert-Contains -Content $registryRun -Expected "Cotton Sync" -Label "registry-run.txt"
 Assert-Contains -Content $registryRun -Expected "--start-minimized" -Label "registry-run.txt"
 
+$autostartLaunch = Read-EvidenceFile -RelativePath "autostart-launch.txt"
+Assert-Contains -Content $autostartLaunch -Expected "Result: passed" -Label "autostart-launch.txt"
+Assert-Contains -Content $autostartLaunch -Expected "--start-minimized" -Label "autostart-launch.txt"
+Assert-Contains -Content $autostartLaunch -Expected "ObservedForeground: False" -Label "autostart-launch.txt"
+Assert-Contains -Content $autostartLaunch -Expected "VisibleWindowCount: 0" -Label "autostart-launch.txt"
+Assert-Contains -Content $autostartLaunch -Expected "CleanupRemaining: 0" -Label "autostart-launch.txt"
+
 $processWindows = Read-EvidenceFile -RelativePath "process-windows.txt"
 if ($null -eq $processWindows) {
     throw "process-windows.txt could not be read."

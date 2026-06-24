@@ -404,6 +404,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("summary.txt"));
                 Assert.That(script, Does.Contain("installed-app.txt"));
                 Assert.That(script, Does.Contain("registry-run.txt"));
+                Assert.That(script, Does.Contain("autostart-launch.txt"));
                 Assert.That(script, Does.Contain("registry-cloud-files-explorer.txt"));
                 Assert.That(script, Does.Contain("process-windows.txt"));
                 Assert.That(script, Does.Contain("local-root-entries.csv"));
@@ -414,6 +415,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-shell-share-link-targets\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("Installed self-test: exitCode=0;"));
                 Assert.That(script, Does.Contain("Diagnostics export: exitCode=0;"));
+                Assert.That(script, Does.Contain("ObservedForeground: False"));
+                Assert.That(script, Does.Contain("CleanupRemaining: 0"));
                 Assert.That(script, Does.Contain("VFS smoke logs: captured:"));
                 Assert.That(script, Does.Contain("Desktop startup restored the saved signed-in session."));
                 Assert.That(script, Does.Contain("Desktop startup reconnected the persisted Cloud Files sync root."));
@@ -936,6 +939,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("cotton-sync-installer-data"));
                 Assert.That(workflow, Does.Contain("cotton-sync-vfs-release-evidence"));
                 Assert.That(workflow, Does.Contain("$vfsSmokeDataDir = Join-Path $env:RUNNER_TEMP \"cotton-sync-vfs-self-test-truthfulness-data\""));
+                Assert.That(workflow, Does.Contain("$autostartReport = Join-Path $evidenceDir \"autostart-launch.txt\""));
+                Assert.That(workflow, Does.Contain("New-Item -ItemType Directory -Path $evidenceDir -Force"));
                 Assert.That(workflow, Does.Contain("/VERYSILENT"));
                 Assert.That(workflow, Does.Contain("/SUPPRESSMSGBOXES"));
                 Assert.That(workflow, Does.Contain("/NORESTART"));
@@ -991,6 +996,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("$expectedRunValue = \"`\"$installedExe`\" --start-minimized\""));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-autostart-launch.ps1"));
                 Assert.That(workflow, Does.Contain("-AppExecutable $installedExe"));
+                Assert.That(workflow, Does.Contain("-ReportPath $autostartReport"));
                 Assert.That(workflow, Does.Not.Contain("Set-ItemProperty -Path $runKey -Name \"Cotton Sync\""));
                 Assert.That(workflow, Does.Contain("Packaging/windows/verify-cloud-files-cleanup.ps1"));
                 Assert.That(workflow, Does.Contain("Packaging/windows/verify-vfs-release-evidence.ps1"));
@@ -1248,6 +1254,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             {
                 Assert.That(script, Does.Contain("[string]$AppExecutable"));
                 Assert.That(script, Does.Contain("[string]$RunValueName = \"Cotton Sync\""));
+                Assert.That(script, Does.Contain("[string]$ReportPath = \"\""));
                 Assert.That(script, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
                 Assert.That(script, Does.Contain("$expectedRunValue = \"`\"$resolvedExecutable`\" --start-minimized\""));
                 Assert.That(script, Does.Contain("Autostart registry value was not installed correctly."));
@@ -1259,6 +1266,11 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("command line did not include --start-minimized"));
                 Assert.That(script, Does.Contain("created a visible top-level window"));
                 Assert.That(script, Does.Contain("became the foreground window"));
+                Assert.That(script, Does.Contain("Write-AutostartReport"));
+                Assert.That(script, Does.Contain("Result: passed"));
+                Assert.That(script, Does.Contain("ObservedForeground: $observedForeground"));
+                Assert.That(script, Does.Contain("VisibleWindowCount: $($observedVisibleWindows.Count)"));
+                Assert.That(script, Does.Contain("CleanupRemaining: $($cleanupProcesses.Count)"));
                 Assert.That(script, Does.Contain("Verified installed autostart launch stayed hidden to tray"));
             });
         }
@@ -1367,6 +1379,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("$expectedRunValue = \"`\"$installedExe`\" --start-minimized\""));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-autostart-launch.ps1"));
                 Assert.That(workflow, Does.Contain("-AppExecutable $installedExe"));
+                Assert.That(workflow, Does.Contain("$upgradeAutostartReport = Join-Path $env:RUNNER_TEMP \"cotton-sync-upgrade-autostart-launch.txt\""));
+                Assert.That(workflow, Does.Contain("-ReportPath $upgradeAutostartReport"));
                 Assert.That(workflow, Does.Not.Contain("Set-ItemProperty -Path $runKey -Name \"Cotton Sync\""));
                 Assert.That(workflow, Does.Contain("Packaging/windows/verify-cloud-files-cleanup.ps1"));
                 Assert.That(workflow, Does.Contain("Upgraded desktop executable remained after uninstall."));
@@ -1593,6 +1607,17 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             File.WriteAllText(
                 Path.Combine(evidenceDirectory, "registry-run.txt"),
                 "Cotton Sync --start-minimized");
+            File.WriteAllLines(
+                Path.Combine(evidenceDirectory, "autostart-launch.txt"),
+                new[]
+                {
+                    "Result: passed",
+                    "ExpectedRunValue: Cotton.Sync.Desktop.exe --start-minimized",
+                    "CommandLine: Cotton.Sync.Desktop.exe --start-minimized",
+                    "ObservedForeground: False",
+                    "VisibleWindowCount: 0",
+                    "CleanupRemaining: 0"
+                });
             File.WriteAllLines(
                 Path.Combine(evidenceDirectory, "process-windows.txt"),
                 new[]

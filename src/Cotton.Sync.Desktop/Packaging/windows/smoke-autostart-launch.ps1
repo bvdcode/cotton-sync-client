@@ -6,7 +6,9 @@ param(
 
     [int]$TimeoutSeconds = 30,
 
-    [int]$ObservationSeconds = 6
+    [int]$ObservationSeconds = 6,
+
+    [string]$ReportPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,6 +19,27 @@ if ($TimeoutSeconds -le 0) {
 
 if ($ObservationSeconds -le 0) {
     throw "ObservationSeconds must be greater than zero."
+}
+
+function Write-AutostartReport {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$Lines
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return
+    }
+
+    $directory = Split-Path -Parent $Path
+    if (-not [string]::IsNullOrWhiteSpace($directory)) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+
+    $Lines | Set-Content -LiteralPath $Path -Encoding utf8
 }
 
 $resolvedExecutable = (Resolve-Path -LiteralPath $AppExecutable).Path
@@ -204,5 +227,17 @@ $cleanupProcesses = Get-TargetProcess
 if ($cleanupProcesses.Count -ne 0) {
     $cleanupProcesses | ForEach-Object { Write-Host "Warning: autostart-launched process remained after cleanup: $($_.ProcessId) $($_.ExecutablePath)" }
 }
+
+Write-AutostartReport `
+    -Path $ReportPath `
+    -Lines @(
+        "Result: passed",
+        "Executable: $resolvedExecutable",
+        "ExpectedRunValue: $expectedRunValue",
+        "ProcessId: $($process.Id)",
+        "CommandLine: $($targetProcess.CommandLine)",
+        "ObservedForeground: $observedForeground",
+        "VisibleWindowCount: $($observedVisibleWindows.Count)",
+        "CleanupRemaining: $($cleanupProcesses.Count)")
 
 Write-Host "Verified installed autostart launch stayed hidden to tray: $resolvedExecutable"
