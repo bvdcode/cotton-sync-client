@@ -2786,6 +2786,7 @@ namespace Cotton.Sync
                 return;
             }
 
+            await EnsureLocalContentHashAsync(local, options, cancellationToken).ConfigureAwait(false);
             NodeFileManifestDto uploaded;
             try
             {

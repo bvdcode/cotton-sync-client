@@ -142,9 +142,8 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
-        public async Task RunOnceAsync_UploadsLocalOnlyMetadataSnapshotWithoutPreHashing()
+        public async Task RunOnceAsync_UploadsLocalOnlyMetadataSnapshotAfterLazyHashing()
         {
-            const string uploadedHash = "uploaded-content-hash";
             var local = new LocalFileSnapshot
             {
                 RelativePath = "Docs/large.bin",
@@ -154,10 +153,7 @@ namespace Cotton.Sync.Tests
                 LastWriteUtc = new DateTime(2026, 6, 6, 8, 0, 0, DateTimeKind.Utc),
             };
             var scanner = new MetadataOnlyLocalFileScanner(local);
-            var remoteFiles = new FakeRemoteFileSynchronizer
-            {
-                EmptyLocalHashUploadContentHash = uploadedHash,
-            };
+            var remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), remoteFiles, out SqliteSyncStateStore stateStore);
 
             SyncRunResult result = await engine.RunOnceAsync(Pair());
@@ -165,19 +161,18 @@ namespace Cotton.Sync.Tests
             SyncStateEntry? entry = await stateStore.GetAsync("pair-a", "docs/large.bin");
             Assert.Multiple(() =>
             {
-                Assert.That(scanner.ContentHashCalls, Is.Zero);
-                Assert.That(remoteFiles.UploadInputContentHashes, Is.EqualTo(new[] { string.Empty }));
+                Assert.That(scanner.ContentHashCalls, Is.EqualTo(1));
+                Assert.That(remoteFiles.UploadInputContentHashes, Is.EqualTo(new[] { "precomputed-content-hash" }));
                 Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
                 Assert.That(entry, Is.Not.Null);
-                Assert.That(entry!.LocalContentHash, Is.EqualTo(uploadedHash));
-                Assert.That(entry.RemoteContentHash, Is.EqualTo(uploadedHash));
+                Assert.That(entry!.LocalContentHash, Is.EqualTo("precomputed-content-hash"));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo("precomputed-content-hash"));
             });
         }
 
         [Test]
         public async Task RunOnceAsync_UsesMetadataLookupScannerWhenAvailable()
         {
-            const string uploadedHash = "lookup-uploaded-content-hash";
             var local = new LocalFileSnapshot
             {
                 RelativePath = "Docs/direct-lookup.bin",
@@ -187,10 +182,7 @@ namespace Cotton.Sync.Tests
                 LastWriteUtc = new DateTime(2026, 6, 6, 9, 0, 0, DateTimeKind.Utc),
             };
             var scanner = new LookupOnlyLocalFileScanner(local);
-            var remoteFiles = new FakeRemoteFileSynchronizer
-            {
-                EmptyLocalHashUploadContentHash = uploadedHash,
-            };
+            var remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), remoteFiles, out SqliteSyncStateStore stateStore);
 
             await engine.RunOnceAsync(Pair());
@@ -201,9 +193,9 @@ namespace Cotton.Sync.Tests
                 Assert.That(scanner.LookupScanCalls, Is.EqualTo(1));
                 Assert.That(scanner.MetadataTreeScanCalls, Is.Zero);
                 Assert.That(scanner.TreeScanCalls, Is.Zero);
-                Assert.That(remoteFiles.UploadInputContentHashes, Is.EqualTo(new[] { string.Empty }));
+                Assert.That(remoteFiles.UploadInputContentHashes, Is.EqualTo(new[] { "precomputed-content-hash" }));
                 Assert.That(entry, Is.Not.Null);
-                Assert.That(entry!.LocalContentHash, Is.EqualTo(uploadedHash));
+                Assert.That(entry!.LocalContentHash, Is.EqualTo("precomputed-content-hash"));
                 Assert.That(entry.LocalSizeBytes, Is.EqualTo(local.SizeBytes));
             });
         }

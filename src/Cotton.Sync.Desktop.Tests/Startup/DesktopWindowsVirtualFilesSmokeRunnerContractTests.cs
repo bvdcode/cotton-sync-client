@@ -166,6 +166,26 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             });
         }
 
+        [Test]
+        public void RunAsync_NonEmptyPreservationPhaseVerifiesPreExistingLocalFiles()
+        {
+            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(runner, Does.Contain("\"non-empty-preservation\""));
+                Assert.That(runner, Does.Contain("RunNonEmptyPreservationAsync("));
+                Assert.That(runner, Does.Contain("Isolated non-empty QA root prepared."));
+                Assert.That(runner, Does.Contain("Pre-existing root file survived with identical content."));
+                Assert.That(runner, Does.Contain("Pre-existing nested file survived with identical content."));
+                Assert.That(runner, Does.Contain("Pre-existing local files uploaded and received sync baselines."));
+                Assert.That(runner, Does.Contain("Pre-existing local directory tree received remote directory baselines."));
+                Assert.That(runner, Does.Contain("Remote-only file became an online-only placeholder."));
+                Assert.That(runner, Does.Contain("Remote-only placeholder Cloud Files status was finalized."));
+                Assert.That(runner, Does.Contain("RecordingRemoteDirectorySynchronizer"));
+            });
+        }
+
         private static string GetDesktopFilePath(string relativePath)
         {
             string directory = TestContext.CurrentContext.TestDirectory;
