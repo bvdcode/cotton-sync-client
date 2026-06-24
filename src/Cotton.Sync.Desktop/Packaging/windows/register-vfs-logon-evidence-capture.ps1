@@ -106,12 +106,16 @@ $runnerScript = @"
 `$exitCode = 1
 Start-Sleep -Seconds $DelaySeconds
 try {
+    "RunnerStartedAt: `$((Get-Date).ToString('O'))" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8
+    "TaskName: $TaskName" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8 -Append
     `$arguments = $captureArgumentsLiteral
-    & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" @arguments *> $runnerLogPathLiteral
+    & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" @arguments *>> $runnerLogPathLiteral
     `$exitCode = `$LASTEXITCODE
+    "CaptureExitCode: `$exitCode" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8 -Append
     if (`$exitCode -ne 0) {
         throw "VFS logon evidence capture exited with code `$exitCode."
     }
+    "RunnerFinishedAt: `$((Get-Date).ToString('O'))" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8 -Append
 }
 catch {
     `$exitCode = 1

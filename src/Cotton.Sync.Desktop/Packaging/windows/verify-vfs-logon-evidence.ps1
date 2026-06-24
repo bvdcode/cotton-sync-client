@@ -67,6 +67,7 @@ function Assert-DoesNotMatch {
 
 $summary = Read-EvidenceFile -RelativePath "summary.txt"
 Assert-Contains -Content $summary -Expected "OS: captured:" -Label "summary.txt"
+Assert-Contains -Content $summary -Expected "CapturedAt:" -Label "summary.txt"
 Assert-Contains -Content $summary -Expected "Installed app: captured:" -Label "summary.txt"
 Assert-Contains -Content $summary -Expected "Autostart registry: captured:" -Label "summary.txt"
 Assert-Contains -Content $summary -Expected "Cotton processes: captured:" -Label "summary.txt"
@@ -130,5 +131,12 @@ Assert-Contains -Content $profileSelfTest -Expected "Result: passed" -Label "pro
 
 $diagnosticsExport = Read-EvidenceFile -RelativePath "diagnostics-export.stdout.log"
 Assert-Contains -Content $diagnosticsExport -Expected "Diagnostics" -Label "diagnostics-export.stdout.log"
+
+$runnerLog = Read-EvidenceFile -RelativePath "run-vfs-logon-evidence-capture.log"
+Assert-Contains -Content $runnerLog -Expected "RunnerStartedAt:" -Label "run-vfs-logon-evidence-capture.log"
+Assert-Contains -Content $runnerLog -Expected "TaskName:" -Label "run-vfs-logon-evidence-capture.log"
+Assert-Contains -Content $runnerLog -Expected "Cotton VFS release evidence captured:" -Label "run-vfs-logon-evidence-capture.log"
+Assert-Contains -Content $runnerLog -Expected "CaptureExitCode: 0" -Label "run-vfs-logon-evidence-capture.log"
+Assert-Contains -Content $runnerLog -Expected "RunnerFinishedAt:" -Label "run-vfs-logon-evidence-capture.log"
 
 Write-Host "Verified VFS logon evidence bundle: $resolvedEvidenceDirectory"

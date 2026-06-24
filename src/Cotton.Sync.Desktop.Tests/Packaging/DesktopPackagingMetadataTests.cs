@@ -451,6 +451,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("[OK] Windows virtual files"));
                 Assert.That(script, Does.Contain("[OK] Local root:"));
                 Assert.That(script, Does.Contain("Result: passed"));
+                Assert.That(script, Does.Contain("run-vfs-logon-evidence-capture.log"));
+                Assert.That(script, Does.Contain("RunnerStartedAt:"));
+                Assert.That(script, Does.Contain("CaptureExitCode: 0"));
                 Assert.That(script, Does.Contain("No Cloud Files or Explorer registration was captured after logon."));
                 Assert.That(script, Does.Contain("Verified VFS logon evidence bundle"));
             });
@@ -471,6 +474,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("capture-vfs-release-evidence.ps1"));
                 Assert.That(script, Does.Contain("-RunProfileSelfTest"));
                 Assert.That(script, Does.Contain("-RunDiagnosticsExport"));
+                Assert.That(script, Does.Contain("RunnerStartedAt:"));
+                Assert.That(script, Does.Contain("CaptureExitCode:"));
+                Assert.That(script, Does.Contain("RunnerFinishedAt:"));
                 Assert.That(script, Does.Contain("Unregister-ScheduledTask -TaskName $taskNameLiteral"));
                 Assert.That(script, Does.Contain("run-vfs-logon-evidence-capture.log"));
                 Assert.That(script, Does.Contain("Removed VFS logon evidence capture task"));
@@ -581,6 +587,25 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
 
                 Assert.That(exitCode, Is.Not.EqualTo(0), output);
                 Assert.That(output, Does.Contain("[OK] Authentication state - Stored session available"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsLogonEvidenceVerifierScript_RejectsMissingRunnerLog()
+        {
+            string evidenceDirectory = CreateVfsLogonEvidenceBundle();
+            try
+            {
+                File.Delete(Path.Combine(evidenceDirectory, "run-vfs-logon-evidence-capture.log"));
+
+                (int exitCode, string output) = RunVfsLogonEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("run-vfs-logon-evidence-capture.log"));
             }
             finally
             {
@@ -1765,6 +1790,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Path.Combine(evidenceDirectory, "summary.txt"),
                 new[]
                 {
+                    "CapturedAt: 2026-06-24T10:02:00.0000000Z",
                     "OS: captured: os.txt",
                     "Installed app: captured: installed-app.txt",
                     "Autostart registry: captured: registry-run.txt",
@@ -1832,6 +1858,16 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "Result: passed"
                 });
             File.WriteAllText(Path.Combine(evidenceDirectory, "diagnostics-export.stdout.log"), "Diagnostics exported");
+            File.WriteAllLines(
+                Path.Combine(evidenceDirectory, "run-vfs-logon-evidence-capture.log"),
+                new[]
+                {
+                    "RunnerStartedAt: 2026-06-24T10:01:00.0000000Z",
+                    "TaskName: Cotton Sync VFS Logon Evidence Capture",
+                    "Cotton VFS release evidence captured: S:\\Evidence",
+                    "CaptureExitCode: 0",
+                    "RunnerFinishedAt: 2026-06-24T10:02:00.0000000Z"
+                });
 
             return evidenceDirectory;
         }
