@@ -135,6 +135,15 @@ Assert-Contains -Content $diagnosticsExport -Expected "Diagnostics" -Label "diag
 $runnerLog = Read-EvidenceFile -RelativePath "run-vfs-logon-evidence-capture.log"
 Assert-Contains -Content $runnerLog -Expected "RunnerStartedAt:" -Label "run-vfs-logon-evidence-capture.log"
 Assert-Contains -Content $runnerLog -Expected "TaskName:" -Label "run-vfs-logon-evidence-capture.log"
+Assert-Contains -Content $runnerLog -Expected "RunnerUser:" -Label "run-vfs-logon-evidence-capture.log"
+Assert-Contains -Content $runnerLog -Expected "RunnerSessionId:" -Label "run-vfs-logon-evidence-capture.log"
+Assert-Contains -Content $runnerLog -Expected "RunnerProcessId:" -Label "run-vfs-logon-evidence-capture.log"
+Assert-Contains -Content $runnerLog -Expected "RunnerInteractive: True" -Label "run-vfs-logon-evidence-capture.log"
+Assert-DoesNotMatch `
+    -Content $runnerLog `
+    -Pattern "^\s*RunnerSessionId:\s*0\b" `
+    -Label "run-vfs-logon-evidence-capture.log" `
+    -FailureMessage "VFS logon evidence runner executed in Windows session 0 instead of an interactive user session."
 Assert-Contains -Content $runnerLog -Expected "Cotton VFS release evidence captured:" -Label "run-vfs-logon-evidence-capture.log"
 Assert-Contains -Content $runnerLog -Expected "CaptureExitCode: 0" -Label "run-vfs-logon-evidence-capture.log"
 Assert-Contains -Content $runnerLog -Expected "RunnerFinishedAt:" -Label "run-vfs-logon-evidence-capture.log"

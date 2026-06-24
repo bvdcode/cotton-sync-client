@@ -108,6 +108,10 @@ Start-Sleep -Seconds $DelaySeconds
 try {
     "RunnerStartedAt: `$((Get-Date).ToString('O'))" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8
     "TaskName: $TaskName" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8 -Append
+    "RunnerUser: `$([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8 -Append
+    "RunnerSessionId: `$([System.Diagnostics.Process]::GetCurrentProcess().SessionId)" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8 -Append
+    "RunnerProcessId: `$PID" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8 -Append
+    "RunnerInteractive: `$([Environment]::UserInteractive)" | Out-File -LiteralPath $runnerLogPathLiteral -Encoding utf8 -Append
     `$arguments = $captureArgumentsLiteral
     & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" @arguments *>> $runnerLogPathLiteral
     `$exitCode = `$LASTEXITCODE
