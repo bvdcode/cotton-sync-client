@@ -1736,6 +1736,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("-RequireSettingsActions $false"));
                 Assert.That(script, Does.Contain("[string[]]$ExpectedNames = @()"));
                 Assert.That(script, Does.Contain("-ExpectedNames @(\"Preparing cloud files\")"));
+                Assert.That(script, Does.Contain("[string]$ExpectedProgressBarName = \"\""));
+                Assert.That(script, Does.Contain("-ExpectedProgressBarName \"Open-ended cloud file progress\""));
+                Assert.That(script, Does.Contain("did not expose expected progress bar"));
                 Assert.That(script, Does.Contain("Preparing cloud files 118054 of 500000"));
                 Assert.That(script, Does.Contain("118054 of 500000"));
                 Assert.That(script, Does.Contain("118054 cloud items ready"));

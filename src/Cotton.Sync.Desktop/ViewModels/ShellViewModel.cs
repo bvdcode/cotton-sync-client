@@ -819,6 +819,18 @@ namespace Cotton.Sync.Desktop.ViewModels
                 ? !TryCalculateAggregateTransferProgressValue(out _)
                 : HasCurrentTransfer ? IsCurrentTransferIndeterminate : IsCurrentRunProgressIndeterminate;
 
+        public string CurrentWorkProgressAutomationName =>
+            HasOpenEndedCloudFileProgress
+                ? "Open-ended cloud file progress"
+                : "Sync progress";
+
+        private bool HasOpenEndedCloudFileProgress =>
+            HasCurrentRunProgress
+            && _runProgressByPair.Count > 0
+            && _runProgressByPair.Values.All(static progress =>
+                !progress.IsCompleted
+                && progress.Stage == SyncRunProgressStage.CreatingPlaceholders);
+
         private bool IsRunProgressPrimary => HasCurrentRunProgress;
 
         private bool HasActiveTransferProgress => _transferProgressByPair.Count > 0;
@@ -5133,6 +5145,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             OnPropertyChanged(nameof(HasCurrentWorkProgressSecondaryDetails));
             OnPropertyChanged(nameof(CurrentWorkProgressValue));
             OnPropertyChanged(nameof(IsCurrentWorkProgressIndeterminate));
+            OnPropertyChanged(nameof(CurrentWorkProgressAutomationName));
         }
 
         private string CreateRunTransferSizeDetails()
