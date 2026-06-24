@@ -17,6 +17,12 @@ $patterns = @(
 )
 
 $remainingRegistrations = New-Object System.Collections.Generic.List[string]
+$checkedScopes = @(
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\SyncRootManager",
+    "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace",
+    "HKCU:\Software\Classes\CLSID",
+    "HKCU:\Software\Classes\WOW6432Node\CLSID"
+)
 
 function Write-CleanupReport {
     param(
@@ -39,6 +45,10 @@ function Write-CleanupReport {
 
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add("Result: $Result")
+    foreach ($scope in $checkedScopes) {
+        $lines.Add("CheckedScope: $scope")
+    }
+
     $lines.Add("RemainingRegistrationCount: $($Registrations.Count)")
     foreach ($registration in $Registrations) {
         $lines.Add("RemainingRegistration: $registration")
