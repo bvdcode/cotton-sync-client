@@ -445,6 +445,10 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("CleanupRemaining: 0"));
                 Assert.That(script, Does.Contain("visual-states.txt"));
                 Assert.That(script, Does.Contain("Scenario: virtual-files-seeding;Status=Syncing;StableObservationSeconds=6;Samples="));
+                Assert.That(script, Does.Contain("CheckedScope: HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\SyncRootManager"));
+                Assert.That(script, Does.Contain("CheckedScope: HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Desktop\\NameSpace"));
+                Assert.That(script, Does.Contain("CheckedScope: HKCU:\\Software\\Classes\\CLSID"));
+                Assert.That(script, Does.Contain("CheckedScope: HKCU:\\Software\\Classes\\WOW6432Node\\CLSID"));
                 Assert.That(script, Does.Contain("RemainingRegistrationCount: 0"));
                 Assert.That(script, Does.Contain("No Cloud Files or Explorer registration was captured before uninstall."));
                 Assert.That(script, Does.Contain("VFS smoke logs: captured:"));
@@ -834,6 +838,31 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
 
                 Assert.That(exitCode, Is.Not.EqualTo(0), output);
                 Assert.That(output, Does.Contain("post-uninstall-cleanup.txt"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_RejectsCleanupReportWithoutCheckedScopes()
+        {
+            string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
+            try
+            {
+                File.WriteAllLines(
+                    Path.Combine(evidenceDirectory, "post-uninstall-cleanup.txt"),
+                    new[]
+                    {
+                        "Result: passed",
+                        "RemainingRegistrationCount: 0"
+                    });
+
+                (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("did not contain expected text: CheckedScope:"));
             }
             finally
             {
@@ -1322,6 +1351,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("[string]$ReportPath = \"\""));
                 Assert.That(script, Does.Contain("Write-CleanupReport"));
                 Assert.That(script, Does.Contain("[AllowEmptyCollection()]"));
+                Assert.That(script, Does.Contain("$checkedScopes = @("));
+                Assert.That(script, Does.Contain("CheckedScope: $scope"));
                 Assert.That(script, Does.Contain("RemainingRegistrationCount: $($Registrations.Count)"));
                 Assert.That(script, Does.Contain("Write-CleanupReport -Result \"passed\""));
                 Assert.That(script, Does.Contain("Test-ShellNamespaceRoots"));
@@ -2332,6 +2363,10 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 new[]
                 {
                     "Result: passed",
+                    "CheckedScope: HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\SyncRootManager",
+                    "CheckedScope: HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Desktop\\NameSpace",
+                    "CheckedScope: HKCU:\\Software\\Classes\\CLSID",
+                    "CheckedScope: HKCU:\\Software\\Classes\\WOW6432Node\\CLSID",
                     "RemainingRegistrationCount: 0"
                 });
         }

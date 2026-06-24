@@ -73,6 +73,10 @@ function Assert-CleanupReport {
 
     $content = Read-EvidenceFile -RelativePath $RelativePath
     Assert-Contains -Content $content -Expected "Result: passed" -Label $RelativePath
+    Assert-Contains -Content $content -Expected "CheckedScope: HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\SyncRootManager" -Label $RelativePath
+    Assert-Contains -Content $content -Expected "CheckedScope: HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace" -Label $RelativePath
+    Assert-Contains -Content $content -Expected "CheckedScope: HKCU:\Software\Classes\CLSID" -Label $RelativePath
+    Assert-Contains -Content $content -Expected "CheckedScope: HKCU:\Software\Classes\WOW6432Node\CLSID" -Label $RelativePath
     Assert-Contains -Content $content -Expected "RemainingRegistrationCount: 0" -Label $RelativePath
 }
 
