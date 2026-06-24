@@ -12,6 +12,7 @@ using Cotton.Sync.App.Preferences;
 using Cotton.Sync.App.Progress;
 using Cotton.Sync.App.RemoteChanges;
 using Cotton.Sync.App.Runners;
+using Cotton.Sync.App.ShellIntegration;
 using Cotton.Sync.App.Status;
 using Cotton.Sync.App.Supervision;
 using Cotton.Sync.App.SyncApplication;
@@ -43,6 +44,12 @@ namespace Cotton.Sync.Desktop.Startup
         private const string NonEmptyPreservationRemoteOnlyFilePath = NonEmptyPreservationRemoteOnlyDirectoryName + "/cloud-only.txt";
         private const string ReplaceCloudOnlyDirectoryName = "replace-cloud-only";
         private const string ReplaceCloudOnlyRelativePath = ReplaceCloudOnlyDirectoryName + "/replace-smoke.txt";
+        private const string ShellShareLinkDirectoryName = "share-link";
+        private const string ShellShareLinkSyncedFilePath = ShellShareLinkDirectoryName + "/synced-file.txt";
+        private const string ShellShareLinkRemoteOnlyFilePath = ShellShareLinkDirectoryName + "/remote-only-placeholder.txt";
+        private const string ShellShareLinkHydratedFilePath = ShellShareLinkDirectoryName + "/hydrated-placeholder.txt";
+        private const string ShellShareLinkFolderPath = ShellShareLinkDirectoryName + "/Folder";
+        private const string ShellShareLinkLocalOnlyFilePath = ShellShareLinkDirectoryName + "/local-only.txt";
         private const int DefaultLargeTreePlaceholderCount = 10_000;
         private const int LargeCleanupStateWriteBatchSize = 500;
         private const string LargeHydrationRelativePath = "large-hydration-smoke.bin";
@@ -140,6 +147,7 @@ namespace Cotton.Sync.Desktop.Startup
             bool explorerFreeUpSpace = string.Equals(phase, "explorer-free-up-space", StringComparison.Ordinal);
             bool remoteUpdateAfterDehydrate = string.Equals(phase, "remote-update-after-dehydrate", StringComparison.Ordinal);
             bool replaceCloudOnlyUpload = string.Equals(phase, "replace-cloud-only-upload", StringComparison.Ordinal);
+            bool shellShareLinkTargets = string.Equals(phase, "shell-share-link-targets", StringComparison.Ordinal);
             if (!string.IsNullOrEmpty(phase)
                 && !leaveRegistered
                 && !reconnectExisting
@@ -153,7 +161,8 @@ namespace Cotton.Sync.Desktop.Startup
                 && !trayQuitDisconnect
                 && !explorerFreeUpSpace
                 && !remoteUpdateAfterDehydrate
-                && !replaceCloudOnlyUpload)
+                && !replaceCloudOnlyUpload
+                && !shellShareLinkTargets)
             {
                 await output.WriteLineAsync(FormatCheck(false, "Unsupported Windows virtual-files smoke phase: " + phase))
                     .ConfigureAwait(false);
@@ -278,6 +287,19 @@ namespace Cotton.Sync.Desktop.Startup
                     paths,
                     output,
                     cloudFiles,
+                    syncPair,
+                    diagnostics,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (shellShareLinkTargets)
+            {
+                return await RunShellShareLinkTargetsAsync(
+                    paths,
+                    output,
+                    cloudFiles,
+                    nativeApi,
                     syncPair,
                     diagnostics,
                     cancellationToken)
@@ -1116,6 +1138,262 @@ namespace Cotton.Sync.Desktop.Startup
             };
         }
 
+        private static async Task<int> RunShellShareLinkTargetsAsync(
+            DesktopAppPaths paths,
+            TextWriter output,
+            IWindowsCloudFilesAdapter cloudFiles,
+            IWindowsCloudFilesNativeApi? nativeApi,
+            SyncPairSettings syncPair,
+            WindowsCloudFilesDiagnostics diagnostics,
+            CancellationToken cancellationToken)
+        {
+            if (nativeApi is null)
+            {
+                await output.WriteLineAsync(
+                        FormatCheck(false, "Shell share-link VFS target smoke requires the native Windows Cloud Files API."))
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                return 2;
+            }
+
+            string rootPath = syncPair.LocalRootPath;
+            string shareLinkDirectoryPath = Path.Combine(rootPath, ShellShareLinkDirectoryName);
+            string syncedFilePath = ToFullPath(rootPath, ShellShareLinkSyncedFilePath);
+            string remoteOnlyFilePath = ToFullPath(rootPath, ShellShareLinkRemoteOnlyFilePath);
+            string hydratedFilePath = ToFullPath(rootPath, ShellShareLinkHydratedFilePath);
+            string folderPath = ToFullPath(rootPath, ShellShareLinkFolderPath);
+            string localOnlyFilePath = ToFullPath(rootPath, ShellShareLinkLocalOnlyFilePath);
+            byte[] syncedContent = Encoding.UTF8.GetBytes("Cotton Sync VFS share-link synced file\n");
+            byte[] remoteOnlyContent = Encoding.UTF8.GetBytes("Cotton Sync VFS share-link remote-only placeholder\n");
+            byte[] hydratedContent = Encoding.UTF8.GetBytes("Cotton Sync VFS share-link hydrated placeholder\n");
+            byte[] localOnlyContent = Encoding.UTF8.GetBytes("Cotton Sync VFS share-link local-only file\n");
+            string remoteOnlyHash = Convert.ToHexStringLower(SHA256.HashData(remoteOnlyContent));
+            string hydratedHash = Convert.ToHexStringLower(SHA256.HashData(hydratedContent));
+            Dictionary<string, byte[]> contentByPath = new(StringComparer.OrdinalIgnoreCase)
+            {
+                [SyncPath.Normalize(ShellShareLinkRemoteOnlyFilePath)] = remoteOnlyContent,
+                [SyncPath.Normalize(ShellShareLinkHydratedFilePath)] = hydratedContent,
+            };
+            DictionarySmokeContentProvider contentProvider = new(contentByPath);
+            WindowsCloudFilesHydrationCoordinator callbackHandler = new(
+                contentProvider,
+                nativeApi,
+                Path.Combine(paths.DataDirectory, "vfs-shell-share-link-temp"),
+                diagnostics);
+            SqliteSyncPairSettingsStore pairStore = new(paths.AppDatabasePath);
+            SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath);
+            WindowsCloudFilesConnection? connection = null;
+            int failures = 0;
+
+            try
+            {
+                TryUnregisterExistingRoot(cloudFiles, syncPair, output);
+                PrepareRoot(rootPath);
+                Directory.CreateDirectory(shareLinkDirectoryPath);
+                await File.WriteAllBytesAsync(syncedFilePath, syncedContent, cancellationToken).ConfigureAwait(false);
+                await File.WriteAllBytesAsync(localOnlyFilePath, localOnlyContent, cancellationToken).ConfigureAwait(false);
+                await pairStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+                await pairStore.UpsertAsync(syncPair, cancellationToken).ConfigureAwait(false);
+                await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+                await stateStore.DeletePairAsync(syncPair.Id.ToString("D"), cancellationToken).ConfigureAwait(false);
+                await output.WriteLineAsync(
+                        FormatCheck(true, "Isolated QA root prepared for VFS shell share-link target smoke.")
+                        + " root="
+                        + rootPath)
+                    .ConfigureAwait(false);
+
+                connection = cloudFiles.ConnectSyncRoot(syncPair, callbackHandler);
+                await output.WriteLineAsync(
+                        FormatCheck(true, "Cloud Files sync root connected for VFS shell share-link target smoke.")
+                        + " root="
+                        + connection.LocalRootPath)
+                    .ConfigureAwait(false);
+
+                cloudFiles.CreateDirectoryPlaceholder(CreateDirectoryRequest(syncPair, ShellShareLinkFolderPath));
+                await stateStore
+                    .UpsertAsync(CreateDirectoryState(syncPair, ShellShareLinkFolderPath), cancellationToken)
+                    .ConfigureAwait(false);
+
+                RemoteFilePlaceholderRequest remoteOnlyRequest = CreatePlaceholderRequest(
+                    syncPair,
+                    ShellShareLinkRemoteOnlyFilePath,
+                    remoteOnlyContent.LongLength,
+                    remoteOnlyHash);
+                ApplyShellShareLinkRemoteIdentity(remoteOnlyRequest.RemoteFile, 1);
+                RemoteFilePlaceholderResult remoteOnlyPlaceholder = cloudFiles.CreateFilePlaceholder(remoteOnlyRequest);
+                await stateStore
+                    .UpsertAsync(CreatePlaceholderState(syncPair, remoteOnlyRequest, remoteOnlyPlaceholder), cancellationToken)
+                    .ConfigureAwait(false);
+
+                RemoteFilePlaceholderRequest hydratedRequest = CreatePlaceholderRequest(
+                    syncPair,
+                    ShellShareLinkHydratedFilePath,
+                    hydratedContent.LongLength,
+                    hydratedHash);
+                ApplyShellShareLinkRemoteIdentity(hydratedRequest.RemoteFile, 2);
+                RemoteFilePlaceholderResult hydratedPlaceholder = cloudFiles.CreateFilePlaceholder(hydratedRequest);
+                SyncStateEntry hydratedState = CreatePlaceholderState(syncPair, hydratedRequest, hydratedPlaceholder);
+                await stateStore.UpsertAsync(hydratedState, cancellationToken).ConfigureAwait(false);
+
+                await stateStore
+                    .UpsertAsync(
+                        CreateShellShareLinkSyncedFileState(
+                            syncPair,
+                            ShellShareLinkSyncedFilePath,
+                            syncedContent,
+                            3),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                await output.WriteLineAsync(
+                        FormatCheck(true, "VFS shell share-link smoke seeded synced, placeholder, folder, and local-only targets.")
+                        + " targets=5")
+                    .ConfigureAwait(false);
+
+                string hydratedText = await ReadAllTextThroughExternalProcessAsync(hydratedFilePath, cancellationToken)
+                    .ConfigureAwait(false);
+                bool hydrated = string.Equals(
+                        hydratedText,
+                        Encoding.UTF8.GetString(hydratedContent),
+                        StringComparison.Ordinal)
+                    && contentProvider.DownloadedPaths.Contains(
+                        SyncPath.Normalize(ShellShareLinkHydratedFilePath),
+                        StringComparer.OrdinalIgnoreCase);
+                if (hydrated)
+                {
+                    hydratedState.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
+                    await stateStore.UpsertAsync(hydratedState, cancellationToken).ConfigureAwait(false);
+                }
+
+                failures += await WritePassFailAsync(
+                        output,
+                        hydrated,
+                        "VFS shell share-link hydrated placeholder fetched exact remote content before copy.",
+                        " downloads="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+
+                failures += await RunVfsShellShareLinkCopyCaseAsync(
+                    paths,
+                    "VFS synced file share link copied",
+                    syncedFilePath,
+                    ShellShareLinkSyncedFilePath,
+                    ShellShareLinkTargetKind.File,
+                    expectCopied: true,
+                    expectedFailureReason: null,
+                    output,
+                    cancellationToken).ConfigureAwait(false);
+                failures += await RunVfsShellShareLinkCopyCaseAsync(
+                    paths,
+                    "VFS remote-only placeholder share link copied",
+                    remoteOnlyFilePath,
+                    ShellShareLinkRemoteOnlyFilePath,
+                    ShellShareLinkTargetKind.File,
+                    expectCopied: true,
+                    expectedFailureReason: null,
+                    output,
+                    cancellationToken).ConfigureAwait(false);
+                failures += await RunVfsShellShareLinkCopyCaseAsync(
+                    paths,
+                    "VFS hydrated placeholder share link copied",
+                    hydratedFilePath,
+                    ShellShareLinkHydratedFilePath,
+                    ShellShareLinkTargetKind.File,
+                    expectCopied: true,
+                    expectedFailureReason: null,
+                    output,
+                    cancellationToken).ConfigureAwait(false);
+                failures += await RunVfsShellShareLinkCopyCaseAsync(
+                    paths,
+                    "VFS folder share link copied",
+                    folderPath,
+                    ShellShareLinkFolderPath,
+                    ShellShareLinkTargetKind.Directory,
+                    expectCopied: true,
+                    expectedFailureReason: null,
+                    output,
+                    cancellationToken).ConfigureAwait(false);
+                failures += await RunVfsShellShareLinkCopyCaseAsync(
+                    paths,
+                    "VFS local-only item is rejected without clipboard write",
+                    localOnlyFilePath,
+                    ShellShareLinkLocalOnlyFilePath,
+                    ShellShareLinkTargetKind.Unknown,
+                    expectCopied: false,
+                    expectedFailureReason: "target-missing-baseline",
+                    output,
+                    cancellationToken).ConfigureAwait(false);
+
+                failures += await VerifyCloudFilesInSyncStateAsync(
+                        output,
+                        cloudFiles,
+                        syncPair,
+                        ShellShareLinkRemoteOnlyFilePath,
+                        "VFS shell share-link remote-only placeholder Cloud Files status was finalized.",
+                        allowPartialDirectory: true)
+                    .ConfigureAwait(false);
+                failures += await VerifyCloudFilesInSyncStateAsync(
+                        output,
+                        cloudFiles,
+                        syncPair,
+                        ShellShareLinkHydratedFilePath,
+                        "VFS shell share-link hydrated placeholder Cloud Files status was finalized.")
+                    .ConfigureAwait(false);
+                failures += await VerifyCloudFilesInSyncStateAsync(
+                        output,
+                        cloudFiles,
+                        syncPair,
+                        ShellShareLinkFolderPath,
+                        "VFS shell share-link folder Cloud Files status was finalized.")
+                    .ConfigureAwait(false);
+                failures += await VerifyExplorerShellSettledStatusAsync(
+                        output,
+                        remoteOnlyFilePath,
+                        "VFS shell share-link remote-only placeholder",
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                failures += await VerifyExplorerShellSettledStatusAsync(
+                        output,
+                        hydratedFilePath,
+                        "VFS shell share-link hydrated placeholder",
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                failures += await VerifyExplorerShellSettledStatusAsync(
+                        output,
+                        folderPath,
+                        "VFS shell share-link folder",
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                failures++;
+                await output.WriteLineAsync(
+                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                connection?.Dispose();
+                failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
+            }
+
+            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
+            {
+                await output.WriteLineAsync(
+                    "Diagnostic: "
+                    + item.Operation
+                    + " "
+                    + item.Status
+                    + " "
+                    + CleanSingleLine(item.Details))
+                    .ConfigureAwait(false);
+            }
+
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
         private static async Task<int> RunReplaceCloudOnlyUploadAsync(
             DesktopAppPaths paths,
             TextWriter output,
@@ -1361,6 +1639,113 @@ namespace Cotton.Sync.Desktop.Startup
                 RemoteNodeId = request.RemoteDirectory.Id,
                 SyncedAtUtc = DateTime.UtcNow,
             };
+        }
+
+        private static SyncStateEntry CreateShellShareLinkSyncedFileState(
+            SyncPairSettings syncPair,
+            string relativePath,
+            byte[] content,
+            int identityIndex)
+        {
+            string contentHash = Convert.ToHexStringLower(SHA256.HashData(content));
+            return new SyncStateEntry
+            {
+                SyncPairId = syncPair.Id.ToString("D"),
+                RelativePath = SyncPath.Normalize(relativePath),
+                Kind = SyncEntryKind.File,
+                LocalContentHash = contentHash,
+                LocalSizeBytes = content.LongLength,
+                RemoteSizeBytes = content.LongLength,
+                RemoteNodeId = Guid.CreateVersion7(),
+                RemoteFileId = Guid.CreateVersion7(),
+                RemoteFileManifestId = Guid.CreateVersion7(),
+                RemoteOriginalNodeFileId = Guid.CreateVersion7(),
+                RemoteContentHash = contentHash,
+                RemoteETag = "vfs-shell-share-link-etag-" + identityIndex.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                PlaceholderHydrationState = SyncPlaceholderHydrationState.None,
+                SyncedAtUtc = DateTime.UtcNow,
+            };
+        }
+
+        private static async Task<int> RunVfsShellShareLinkCopyCaseAsync(
+            DesktopAppPaths paths,
+            string label,
+            string selectedPath,
+            string expectedRelativePath,
+            ShellShareLinkTargetKind expectedKind,
+            bool expectCopied,
+            string? expectedFailureReason,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--data-dir",
+                    paths.DataDirectory,
+                    "--copy-shell-share-link",
+                    selectedPath,
+                ]);
+            using StringWriter caseOutput = new StringWriter();
+            VfsShellShareLinkSmokeClient shareLinkClient = new();
+            VfsShellShareLinkSmokeClipboardService clipboard = new();
+            VfsShellShareLinkSmokeNotificationService notifications = new();
+
+            int exitCode = await DesktopCommandLineRunner.RunShellShareLinkCopyAsync(
+                    paths,
+                    options,
+                    caseOutput,
+                    shareLinkClient: shareLinkClient,
+                    clipboardService: clipboard,
+                    notificationService: notifications,
+                    cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            string report = caseOutput.ToString();
+            bool copiedMatches = expectCopied
+                ? exitCode == 0 && !string.IsNullOrWhiteSpace(clipboard.CopiedText)
+                : exitCode != 0 && clipboard.CopiedText is null;
+            bool failureMatches = expectedFailureReason is null
+                ? !report.Contains("FailureReason:", StringComparison.Ordinal)
+                : report.Contains("FailureReason: " + expectedFailureReason, StringComparison.Ordinal);
+            bool notificationMatches = expectCopied
+                ? string.Equals(notifications.LastMessage, "Share link copied to clipboard.", StringComparison.Ordinal)
+                : !string.IsNullOrWhiteSpace(notifications.LastMessage);
+            bool statusMatches = expectCopied
+                ? report.Contains("Status: resolved", StringComparison.Ordinal)
+                : report.Contains("Status: missing-baseline", StringComparison.Ordinal);
+            bool targetMatches = expectCopied
+                ? shareLinkClient.LastTarget is not null
+                    && string.Equals(
+                        shareLinkClient.LastTarget.RelativePath,
+                        SyncPath.Normalize(expectedRelativePath),
+                        StringComparison.OrdinalIgnoreCase)
+                    && shareLinkClient.LastTarget.Kind == expectedKind
+                    && ((expectedKind == ShellShareLinkTargetKind.File && shareLinkClient.LastTarget.RemoteFileId.HasValue)
+                        || (expectedKind == ShellShareLinkTargetKind.Directory && shareLinkClient.LastTarget.RemoteNodeId.HasValue))
+                : shareLinkClient.LastTarget is null;
+            bool noPathLeak = !report.Contains(selectedPath, StringComparison.OrdinalIgnoreCase)
+                && !report.Contains(Path.GetFileName(selectedPath), StringComparison.OrdinalIgnoreCase);
+            bool resultMatches = report.Contains(expectCopied ? "Result: passed" : "Result: failed", StringComparison.Ordinal);
+            bool passed = copiedMatches
+                && failureMatches
+                && notificationMatches
+                && statusMatches
+                && targetMatches
+                && noPathLeak
+                && resultMatches;
+
+            return await WriteCheckAsync(
+                    output,
+                    passed,
+                    label,
+                    "exitCode="
+                    + exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", copied="
+                    + (clipboard.CopiedText is not null).ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", notification="
+                    + (!string.IsNullOrWhiteSpace(notifications.LastMessage))
+                        .ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .ConfigureAwait(false);
         }
 
         private static async Task<int> RunSteadyStateRepeatAsync(
@@ -3037,6 +3422,16 @@ namespace Cotton.Sync.Desktop.Startup
                 });
         }
 
+        private static void ApplyShellShareLinkRemoteIdentity(NodeFileManifestDto remoteFile, int identityIndex)
+        {
+            ArgumentNullException.ThrowIfNull(remoteFile);
+            remoteFile.Id = Guid.CreateVersion7();
+            remoteFile.NodeId = Guid.CreateVersion7();
+            remoteFile.FileManifestId = Guid.CreateVersion7();
+            remoteFile.OriginalNodeFileId = Guid.CreateVersion7();
+            remoteFile.ETag = "vfs-shell-share-link-etag-" + identityIndex.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
         private static RemoteDirectoryMaterializationRequest CreateDirectoryRequest(
             SyncPairSettings syncPair,
             string relativePath)
@@ -3140,6 +3535,11 @@ namespace Cotton.Sync.Desktop.Startup
             return path.EndsWith(Path.DirectorySeparatorChar)
                 ? path
                 : path + Path.DirectorySeparatorChar;
+        }
+
+        private static string ToFullPath(string rootPath, string relativePath)
+        {
+            return Path.Combine(rootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
         }
 
         private static string CleanSingleLine(string? message)
@@ -4491,6 +4891,94 @@ namespace Cotton.Sync.Desktop.Startup
                     content.LongLength,
                     isCompleted: true));
                 destination.Position = 0;
+            }
+        }
+
+        private class DictionarySmokeContentProvider : IWindowsCloudFilesRemoteContentProvider
+        {
+            private readonly IReadOnlyDictionary<string, byte[]> _contentByPath;
+
+            public DictionarySmokeContentProvider(IReadOnlyDictionary<string, byte[]> contentByPath)
+            {
+                _contentByPath = contentByPath ?? throw new ArgumentNullException(nameof(contentByPath));
+            }
+
+            public int DownloadCount { get; private set; }
+
+            public List<string> DownloadedPaths { get; } = [];
+
+            public async Task DownloadAsync(
+                WindowsCloudFilesPlaceholderIdentity identity,
+                Stream destination,
+                IProgress<SyncTransferProgress>? transferProgress = null,
+                CancellationToken cancellationToken = default)
+            {
+                ArgumentNullException.ThrowIfNull(identity);
+                ArgumentNullException.ThrowIfNull(destination);
+                string normalizedPath = SyncPath.Normalize(identity.RelativePath);
+                if (!_contentByPath.TryGetValue(normalizedPath, out byte[]? content))
+                {
+                    throw new InvalidOperationException("No smoke content was registered for the requested placeholder.");
+                }
+
+                DownloadCount++;
+                DownloadedPaths.Add(normalizedPath);
+                transferProgress?.Report(new SyncTransferProgress(
+                    SyncTransferDirection.Download,
+                    identity.RelativePath,
+                    0,
+                    content.LongLength,
+                    isCompleted: false));
+                await destination.WriteAsync(content, cancellationToken).ConfigureAwait(false);
+                transferProgress?.Report(new SyncTransferProgress(
+                    SyncTransferDirection.Download,
+                    identity.RelativePath,
+                    content.LongLength,
+                    content.LongLength,
+                    isCompleted: true));
+                destination.Position = 0;
+            }
+        }
+
+        private class VfsShellShareLinkSmokeClient : IDesktopShellShareLinkClient
+        {
+            public ShellShareLinkTarget? LastTarget { get; private set; }
+
+            public Task<DesktopShellShareLinkResult> CreateShareLinkAsync(
+                ShellShareLinkTarget target,
+                CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                LastTarget = target;
+                string slug = target.Kind.ToString().ToLowerInvariant()
+                    + "-"
+                    + target.RelativePath.Replace('/', '-');
+                return Task.FromResult(
+                    DesktopShellShareLinkResult.Created(new Uri("https://share.example/s/" + Uri.EscapeDataString(slug))));
+            }
+        }
+
+        private class VfsShellShareLinkSmokeClipboardService : IDesktopClipboardService
+        {
+            public string? CopiedText { get; private set; }
+
+            public Task CopyTextAsync(string text, CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                CopiedText = text;
+                return Task.CompletedTask;
+            }
+        }
+
+        private class VfsShellShareLinkSmokeNotificationService : IDesktopNotificationService
+        {
+            public bool IsSupported => true;
+
+            public string? LastMessage { get; private set; }
+
+            public void Show(string title, string message)
+            {
+                LastMessage = message;
             }
         }
 
