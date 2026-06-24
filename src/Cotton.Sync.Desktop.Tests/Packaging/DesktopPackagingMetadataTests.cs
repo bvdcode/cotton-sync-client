@@ -411,6 +411,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("process-windows.txt"));
                 Assert.That(script, Does.Contain("local-root-entries.csv"));
                 Assert.That(script, Does.Contain("Assert-Contains -Content $localRootEntries -Expected '\".\"'"));
+                Assert.That(script, Does.Contain("ConvertFrom-Csv"));
+                Assert.That(script, Does.Contain("local-root-entries.csv did not prove the local root existed during evidence capture."));
+                Assert.That(script, Does.Contain("local-root-entries.csv did not prove the local root was a directory during evidence capture."));
                 Assert.That(script, Does.Contain("self-test.stdout.log"));
                 Assert.That(script, Does.Contain("diagnostics-export.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\cloud-files-vfs-smoke.stdout.log"));
@@ -558,6 +561,30 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
 
                 Assert.That(exitCode, Is.Not.EqualTo(0), output);
                 Assert.That(output, Does.Contain("local-root-entries.csv did not contain expected text: \".\""));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_RejectsMissingLocalRootPath()
+        {
+            string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
+            try
+            {
+                File.WriteAllText(
+                    Path.Combine(evidenceDirectory, "local-root-entries.csv"),
+                    string.Join(
+                        Environment.NewLine,
+                        "\"RelativePath\",\"FullPath\",\"Exists\",\"Attributes\",\"Length\",\"LastWriteTimeUtc\"",
+                        "\".\",\"S:\\Missing\",\"False\",\"\",\"\",\"\""));
+
+                (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(output, Does.Contain("local-root-entries.csv did not prove the local root existed during evidence capture."));
             }
             finally
             {
