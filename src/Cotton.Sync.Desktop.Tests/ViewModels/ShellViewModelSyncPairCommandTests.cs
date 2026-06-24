@@ -817,7 +817,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     Is.EqualTo("Making cloud files available \u00B7 118054 of 500000 cloud items"));
                 Assert.That(viewModel.CurrentWorkProgressSecondaryDetails, Is.Empty);
                 Assert.That(viewModel.CurrentWorkProgressHeaderRateDetails, Does.Not.Contain("left"));
-                Assert.That(row.CurrentOperation, Is.EqualTo("Preparing cloud files 118054 of 500000"));
+                Assert.That(row.CurrentOperation, Is.EqualTo("Preparing cloud files"));
             });
         }
 
@@ -1683,12 +1683,12 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentRunProgressValue, Is.EqualTo(30).Within(0.01));
                 Assert.That(viewModel.CurrentRunProgressDetails, Is.EqualTo("Making cloud files available \u00B7 3 of 10 cloud items"));
                 Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Making cloud files available \u00B7 3 of 10 cloud items"));
-                Assert.That(row.CurrentOperation, Is.EqualTo("Preparing cloud files 3 of 10"));
+                Assert.That(row.CurrentOperation, Is.EqualTo("Preparing cloud files"));
                 Assert.That(row.HasCurrentOperation, Is.True);
                 Assert.That(row.HasCurrentProgress, Is.True);
                 Assert.That(row.IsCurrentProgressIndeterminate, Is.False);
                 Assert.That(row.CurrentProgressValue, Is.EqualTo(30).Within(0.01));
-                Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Documents: Preparing cloud files 3 of 10"));
+                Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Documents: Preparing cloud files"));
             });
         }
 
@@ -2922,8 +2922,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             Assert.Multiple(() =>
             {
-                Assert.That(firstOperation, Is.EqualTo("Preparing cloud files 120 of 10000"));
-                Assert.That(row.CurrentOperation, Is.EqualTo("Preparing cloud files 260 of 10500"));
+                Assert.That(firstOperation, Is.EqualTo("Preparing cloud files"));
+                Assert.That(row.CurrentOperation, Is.EqualTo("Preparing cloud files"));
                 Assert.That(firstDetails, Is.EqualTo("Making cloud files available \u00B7 120 of 10000 cloud items"));
                 Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Making cloud files available \u00B7 260 of 10500 cloud items"));
                 Assert.That(viewModel.CurrentWorkProgressSecondaryDetails, Is.Empty);
