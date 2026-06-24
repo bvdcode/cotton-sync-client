@@ -65,6 +65,17 @@ function Assert-DoesNotMatch {
     }
 }
 
+function Assert-CleanupReport {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RelativePath
+    )
+
+    $content = Read-EvidenceFile -RelativePath $RelativePath
+    Assert-Contains -Content $content -Expected "Result: passed" -Label $RelativePath
+    Assert-Contains -Content $content -Expected "RemainingRegistrationCount: 0" -Label $RelativePath
+}
+
 $summary = Read-EvidenceFile -RelativePath "summary.txt"
 Assert-Contains -Content $summary -Expected "Installed app: captured:" -Label "summary.txt"
 Assert-Contains -Content $summary -Expected "Autostart registry: captured:" -Label "summary.txt"
@@ -103,6 +114,10 @@ Assert-Contains -Content $updateRelaunch -Expected "--start-minimized" -Label "u
 Assert-Contains -Content $updateRelaunch -Expected "ObservedForeground: False" -Label "update-relaunch.txt"
 Assert-Contains -Content $updateRelaunch -Expected "VisibleWindowCount: 0" -Label "update-relaunch.txt"
 Assert-Contains -Content $updateRelaunch -Expected "CleanupRemaining: 0" -Label "update-relaunch.txt"
+
+Assert-CleanupReport -RelativePath "post-uninstall-cleanup.txt"
+Assert-CleanupReport -RelativePath "post-reinstall-cleanup.txt"
+Assert-CleanupReport -RelativePath "post-upgrade-cleanup.txt"
 
 $processWindows = Read-EvidenceFile -RelativePath "process-windows.txt"
 if ($null -eq $processWindows) {
