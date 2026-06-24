@@ -2626,11 +2626,15 @@ namespace Cotton.Sync.Desktop.Startup
                     RemoteRootNodeId = syncPair.RemoteRootNodeId,
                     MaterializationMode = SyncPairMaterializationMode.WindowsVirtualFiles,
                 };
+                RecordingSyncRunProgress runProgress = new();
 
                 DesktopRuntimeHealthSnapshot beforeStreamingHealth = CreateRuntimeHealthSnapshot();
                 Stopwatch syncTimer = Stopwatch.StartNew();
                 SyncRunResult result = await syncEngine
-                    .RunOnceAsync(syncPairCore, cancellationToken: cancellationToken)
+                    .RunOnceAsync(
+                        syncPairCore,
+                        new SyncRunOptions { RunProgress = runProgress },
+                        cancellationToken)
                     .ConfigureAwait(false);
                 syncTimer.Stop();
                 DesktopRuntimeHealthSnapshot afterStreamingHealth = CreateRuntimeHealthSnapshot();
@@ -2652,6 +2656,48 @@ namespace Cotton.Sync.Desktop.Startup
                         + result.TotalActivityCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
                         + ", syncElapsedMs="
                         + syncTimer.ElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+                IReadOnlyList<SyncRunProgress> progressSamples = runProgress.Snapshot();
+                IReadOnlyList<SyncRunProgress> placeholderProgress = progressSamples
+                    .Where(static progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders)
+                    .ToArray();
+                int expectedPlaceholderProgressItems = largeTreePlaceholderCount + 1;
+                bool hasProgressSummary = placeholderProgress.Count > 0
+                    && progressSamples.Any(static progress => progress.Stage == SyncRunProgressStage.Completed && progress.IsCompleted)
+                    && !progressSamples.Any(static progress =>
+                        progress.Stage is SyncRunProgressStage.ScanningLocal or SyncRunProgressStage.ScanningRemote)
+                    && placeholderProgress.Last().FilesCompleted == expectedPlaceholderProgressItems
+                    && placeholderProgress.Last().FilesTotal == expectedPlaceholderProgressItems;
+                failures += await WriteCheckAsync(
+                        output,
+                        hasProgressSummary,
+                        "Initial VFS streaming progress stayed on placeholder creation and completed cleanly.",
+                        "samples="
+                        + progressSamples.Count.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                        + ", placeholderSamples="
+                        + placeholderProgress.Count.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                        + ", finalItems="
+                        + (placeholderProgress.Count == 0
+                            ? "0"
+                            : placeholderProgress.Last().FilesCompleted.ToString("N0", System.Globalization.CultureInfo.InvariantCulture))
+                        + "/"
+                        + (placeholderProgress.Count == 0
+                            ? "0"
+                            : placeholderProgress.Last().FilesTotal.GetValueOrDefault().ToString(
+                                "N0",
+                                System.Globalization.CultureInfo.InvariantCulture))
+                        + ", completed="
+                        + progressSamples.Any(static progress => progress.Stage == SyncRunProgressStage.Completed && progress.IsCompleted).ToString()
+                        + ", localScanSamples="
+                        + progressSamples.Count(static progress => progress.Stage == SyncRunProgressStage.ScanningLocal).ToString(
+                            "N0",
+                            System.Globalization.CultureInfo.InvariantCulture)
+                        + ", remoteScanSamples="
+                        + progressSamples.Count(static progress => progress.Stage == SyncRunProgressStage.ScanningRemote).ToString(
+                            "N0",
+                            System.Globalization.CultureInfo.InvariantCulture)
+                        + ", activities="
+                        + result.TotalActivityCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture))
                     .ConfigureAwait(false);
                 failures += await WriteCheckAsync(
                         output,
@@ -2956,6 +3002,29 @@ namespace Cotton.Sync.Desktop.Startup
             return value.HasValue
                 ? value.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
                 : "unavailable";
+        }
+
+        private sealed class RecordingSyncRunProgress : IProgress<SyncRunProgress>
+        {
+            private readonly object _sync = new();
+            private readonly List<SyncRunProgress> _items = [];
+
+            public void Report(SyncRunProgress value)
+            {
+                ArgumentNullException.ThrowIfNull(value);
+                lock (_sync)
+                {
+                    _items.Add(value);
+                }
+            }
+
+            public IReadOnlyList<SyncRunProgress> Snapshot()
+            {
+                lock (_sync)
+                {
+                    return _items.ToArray();
+                }
+            }
         }
 
         private static async Task<int> RunTrayQuitDisconnectAsync(
