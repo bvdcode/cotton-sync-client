@@ -132,6 +132,14 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void Parse_LoadsSocketCleanupSmokeFlag()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(["--socket-cleanup-smoke"]);
+
+            Assert.That(options.RunSocketCleanupSmoke, Is.True);
+        }
+
+        [Test]
         public void Parse_LoadsWindowsVirtualFilesSmokeHoldSeconds()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(

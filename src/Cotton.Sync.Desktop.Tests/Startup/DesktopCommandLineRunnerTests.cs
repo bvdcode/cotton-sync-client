@@ -100,6 +100,29 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public async Task RunSocketCleanupSmokeAsync_SuppressesExpectedSocketAbortEvents()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                ["--data-dir", _tempDirectory, "--socket-cleanup-smoke"]);
+            using StringWriter output = new();
+
+            int exitCode = await DesktopCommandLineRunner.RunSocketCleanupSmokeAsync(
+                DesktopAppPaths.CreateForDataDirectory(_tempDirectory),
+                options,
+                output);
+
+            string report = output.ToString();
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(0));
+                Assert.That(report, Does.Contain("Cotton Sync Desktop socket cleanup smoke"));
+                Assert.That(report, Does.Contain("ExpectedCleanupEventsObserved: 3/3"));
+                Assert.That(report, Does.Contain("UnexpectedUnobservedSocketCleanupLog: false"));
+                Assert.That(report, Does.Contain("Result: passed"));
+            });
+        }
+
+        [Test]
         public async Task RunCloudFilesCleanupAsync_UnregistersOnlyVirtualFilesPairs()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(["--data-dir", _tempDirectory, "--cleanup-cloud-files"]);

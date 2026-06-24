@@ -46,6 +46,7 @@ namespace Cotton.Sync.Desktop
                 && !startupOptions.RunUpdateDiscoverySmoke
                 && !startupOptions.RunUpdateInstallSmoke
                 && !startupOptions.RunShellShareLinkSmoke
+                && !startupOptions.RunSocketCleanupSmoke
                 && startupOptions.ShellShareLinkTargetPath is null
                 && startupOptions.ShellCopyShareLinkTargetPath is null
                 && DesktopPendingUpdateStartup.TryStartPendingUpdate(paths, DesktopAppVersion.Current))
@@ -97,6 +98,14 @@ namespace Cotton.Sync.Desktop
             {
                 return DesktopCommandLineRunner
                     .RunShellShareLinkSmokeAsync(paths, startupOptions, Console.Out)
+                    .GetAwaiter()
+                    .GetResult();
+            }
+
+            if (startupOptions.RunSocketCleanupSmoke)
+            {
+                return DesktopCommandLineRunner
+                    .RunSocketCleanupSmokeAsync(paths, startupOptions, Console.Out)
                     .GetAwaiter()
                     .GetResult();
             }

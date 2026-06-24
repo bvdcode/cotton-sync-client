@@ -14,6 +14,7 @@ using Cotton.Sync.Desktop.Shell;
 using Cotton.Sync.Desktop.Updates;
 using Cotton.Sync.State;
 using System.Diagnostics;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -328,6 +329,56 @@ namespace Cotton.Sync.Desktop.Startup
 
             await output.WriteLineAsync(copied ? "Result: passed" : "Result: failed").ConfigureAwait(false);
             return copied ? 0 : 1;
+        }
+
+        internal static async Task<int> RunSocketCleanupSmokeAsync(
+            DesktopAppPaths paths,
+            DesktopStartupOptions startupOptions,
+            TextWriter output)
+        {
+            ArgumentNullException.ThrowIfNull(paths);
+            ArgumentNullException.ThrowIfNull(startupOptions);
+            ArgumentNullException.ThrowIfNull(output);
+
+            DesktopTraceLogging.Install(paths);
+            SocketCleanupSmokeTraceListener listener = new();
+            Trace.Listeners.Add(listener);
+            int observedEvents = 0;
+
+            try
+            {
+                for (int index = 0; index < 3; index++)
+                {
+                    AggregateException exception =
+                        new(new SocketException((int)SocketError.OperationAborted));
+                    UnobservedTaskExceptionEventArgs args = new(exception);
+                    DesktopUnhandledExceptionReporter.ReportUnobservedTaskException(args);
+                    if (args.Observed)
+                    {
+                        observedEvents++;
+                    }
+                }
+            }
+            finally
+            {
+                Trace.Listeners.Remove(listener);
+            }
+
+            string capturedTrace = listener.Output;
+            bool unexpectedLogWritten = capturedTrace.Contains(
+                "Unobserved desktop task exception captured.",
+                StringComparison.Ordinal);
+            bool passed = observedEvents == 3 && !unexpectedLogWritten;
+
+            await output.WriteLineAsync("Cotton Sync Desktop socket cleanup smoke").ConfigureAwait(false);
+            await output.WriteLineAsync(
+                "ExpectedCleanupEventsObserved: "
+                + observedEvents.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + "/3").ConfigureAwait(false);
+            await output.WriteLineAsync("UnexpectedUnobservedSocketCleanupLog: " + FormatBoolean(unexpectedLogWritten))
+                .ConfigureAwait(false);
+            await output.WriteLineAsync(passed ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return passed ? 0 : 1;
         }
 
         public static async Task<int> RunShellShareLinkSmokeAsync(
@@ -2082,6 +2133,23 @@ namespace Cotton.Sync.Desktop.Startup
             public void Show(string title, string message)
             {
                 LastMessage = message;
+            }
+        }
+
+        private sealed class SocketCleanupSmokeTraceListener : TraceListener
+        {
+            private readonly StringWriter _writer = new();
+
+            public string Output => _writer.ToString();
+
+            public override void Write(string? message)
+            {
+                _writer.Write(message);
+            }
+
+            public override void WriteLine(string? message)
+            {
+                _writer.WriteLine(message);
             }
         }
 

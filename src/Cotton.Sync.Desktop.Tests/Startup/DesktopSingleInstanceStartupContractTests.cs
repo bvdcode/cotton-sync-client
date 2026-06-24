@@ -89,6 +89,24 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void Program_TreatsSocketCleanupSmokeAsHeadlessCommandMode()
+        {
+            string program = File.ReadAllText(GetDesktopFilePath("Program.cs"));
+            int pendingUpdateIndex = program.IndexOf("DesktopPendingUpdateStartup.TryStartPendingUpdate", StringComparison.Ordinal);
+            int commandIndex = program.IndexOf("startupOptions.RunSocketCleanupSmoke", StringComparison.Ordinal);
+            int runnerIndex = program.IndexOf("RunSocketCleanupSmokeAsync", StringComparison.Ordinal);
+            int singleInstanceIndex = program.IndexOf("DesktopSingleInstanceGuard", StringComparison.Ordinal);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(commandIndex, Is.GreaterThanOrEqualTo(0));
+                Assert.That(commandIndex, Is.LessThan(pendingUpdateIndex));
+                Assert.That(runnerIndex, Is.GreaterThan(pendingUpdateIndex));
+                Assert.That(runnerIndex, Is.LessThan(singleInstanceIndex));
+            });
+        }
+
+        [Test]
         public void App_StartsActivationServerForRunningInstance()
         {
             string app = File.ReadAllText(GetDesktopFilePath("App.axaml.cs"));
