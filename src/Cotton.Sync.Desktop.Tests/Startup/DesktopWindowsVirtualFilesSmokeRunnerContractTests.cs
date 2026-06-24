@@ -222,6 +222,28 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void RunAsync_DesktopSessionRestorePhaseVerifiesSavedSessionAndVfsReconnect()
+        {
+            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(runner, Does.Contain("\"desktop-session-restore\""));
+                Assert.That(runner, Does.Contain("RunDesktopSessionRestoreAsync("));
+                Assert.That(runner, Does.Contain("Desktop session restore smoke requires the native Windows Cloud Files API."));
+                Assert.That(runner, Does.Contain("Persisted startup state prepared for Desktop session restore smoke."));
+                Assert.That(runner, Does.Contain("Desktop startup restored the saved signed-in session."));
+                Assert.That(runner, Does.Contain("Desktop startup used the remembered server for session restore."));
+                Assert.That(runner, Does.Contain("Desktop startup loaded the persisted virtual-files sync pair."));
+                Assert.That(runner, Does.Contain("Desktop startup reconnected the persisted Cloud Files sync root."));
+                Assert.That(runner, Does.Contain("Deleting the restored Desktop session pair removed the local placeholder root."));
+                Assert.That(runner, Does.Contain("SessionRestoreApplicationFactory"));
+                Assert.That(runner, Does.Contain("SessionRestoreMemoryTokenStore"));
+                Assert.That(runner, Does.Contain("SmokeAutostartService"));
+            });
+        }
+
+        [Test]
         public void RunAsync_NonEmptyPreservationPhaseVerifiesPreExistingLocalFiles()
         {
             string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));

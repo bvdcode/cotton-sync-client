@@ -655,9 +655,12 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("[string]$DataDirectory"));
                 Assert.That(script, Does.Contain("[string]$VfsSmokeDataDirectory = \"\""));
                 Assert.That(script, Does.Contain("[string]$LocalRoot = \"S:\\CottonSyncVfsQa\\root\""));
+                Assert.That(script, Does.Contain("[string[]]$AdditionalVfsSmokePhases = @()"));
                 Assert.That(script, Does.Contain("--self-test"));
                 Assert.That(script, Does.Contain("--windows-virtual-files-smoke"));
                 Assert.That(script, Does.Contain("--local-root"));
+                Assert.That(script, Does.Contain("--vfs-smoke-phase"));
+                Assert.That(script, Does.Contain("Additional Windows virtual files smoke phase '$phaseName' failed."));
                 Assert.That(script, Does.Contain("'^\\[(OK|SKIP|FAIL)\\] Windows virtual files - '"));
                 Assert.That(script, Does.Contain("Windows virtual files self-test reported OK even though the VFS smoke failed."));
                 Assert.That(script, Does.Contain("Windows virtual files self-test reported '$windowsVirtualFilesStatus' even though the VFS smoke passed."));
@@ -813,6 +816,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Cotton.Sync.Desktop.exe\""));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-cloud-files-self-test-truthfulness.ps1"));
                 Assert.That(workflow, Does.Contain("cotton-sync-vfs-self-test-truthfulness-data"));
+                Assert.That(workflow, Does.Contain("-AdditionalVfsSmokePhases @(\"desktop-session-restore\")"));
                 Assert.That(workflow, Does.Contain("--self-test --data-dir"));
                 Assert.That(workflow, Does.Contain("-PublishDirectory $installDir"));
                 Assert.That(workflow, Does.Contain("-AppExecutable $installedExe"));

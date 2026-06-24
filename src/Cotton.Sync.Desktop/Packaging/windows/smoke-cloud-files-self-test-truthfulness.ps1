@@ -7,7 +7,9 @@ param(
 
     [string]$VfsSmokeDataDirectory = "",
 
-    [string]$LocalRoot = "S:\CottonSyncVfsQa\root"
+    [string]$LocalRoot = "S:\CottonSyncVfsQa\root",
+
+    [string[]]$AdditionalVfsSmokePhases = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -106,6 +108,34 @@ if ($vfsSmokeFailed -and $windowsVirtualFilesStatus -eq "OK") {
 if (-not $vfsSmokePassed -and -not $vfsSmokeFailed) {
     Write-CommandOutput -Result $vfsSmokeResult
     throw "Windows virtual files smoke result was inconclusive."
+}
+
+if ($vfsSmokePassed) {
+    foreach ($phase in $AdditionalVfsSmokePhases) {
+        if ([string]::IsNullOrWhiteSpace($phase)) {
+            continue
+        }
+
+        $phaseName = $phase.Trim()
+        $phaseDataDirectory = Join-Path $VfsSmokeDataDirectory ("phase-" + $phaseName)
+        New-Item -ItemType Directory -Path $phaseDataDirectory -Force | Out-Null
+        $phaseResult = Invoke-CottonDesktopCommand `
+            -Arguments @(
+                "--windows-virtual-files-smoke",
+                "--data-dir",
+                $phaseDataDirectory,
+                "--local-root",
+                $LocalRoot,
+                "--vfs-smoke-phase",
+                $phaseName) `
+            -StdoutPath (Join-Path $phaseDataDirectory "cloud-files-vfs-smoke.stdout.log") `
+            -StderrPath (Join-Path $phaseDataDirectory "cloud-files-vfs-smoke.stderr.log")
+        $phasePassed = $phaseResult.ExitCode -eq 0 -and ($phaseResult.Stdout | Where-Object { $_ -eq "Result: passed" } | Select-Object -First 1)
+        if (-not $phasePassed) {
+            Write-CommandOutput -Result $phaseResult
+            throw "Additional Windows virtual files smoke phase '$phaseName' failed."
+        }
+    }
 }
 
 Write-Host "Verified Cloud Files self-test truthfulness: selfTest=$windowsVirtualFilesStatus; vfsSmokeExit=$($vfsSmokeResult.ExitCode)."

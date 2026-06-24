@@ -2,7 +2,11 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Files;
+using Cotton.Auth;
 using Cotton.Nodes;
+using Cotton.Sdk.Auth;
+using Cotton.Sdk.Nodes;
+using Cotton.Sdk.Sync;
 using Cotton.Sync.App.Activities;
 using Cotton.Sync.App.Auth;
 using Cotton.Sync.App.Continuous;
@@ -17,9 +21,11 @@ using Cotton.Sync.App.Status;
 using Cotton.Sync.App.Supervision;
 using Cotton.Sync.App.SyncApplication;
 using Cotton.Sync.App.SyncPairs;
+using Cotton.Sync.Desktop.Auth;
 using Cotton.Sync.Desktop.Composition;
 using Cotton.Sync.Desktop.Diagnostics;
 using Cotton.Sync.Desktop.Platform;
+using Cotton.Sync.Desktop.Shell;
 using Cotton.Sync.Local;
 using Cotton.Sync.Remote;
 using Cotton.Sync.State;
@@ -51,6 +57,7 @@ namespace Cotton.Sync.Desktop.Startup
         private const string ShellShareLinkFolderPath = ShellShareLinkDirectoryName + "/Folder";
         private const string ShellShareLinkLocalOnlyFilePath = ShellShareLinkDirectoryName + "/local-only.txt";
         private const string DesktopRootDirectoryName = "Desktop";
+        private const string DesktopSessionRestoreDirectoryName = "DesktopSessionRestore";
         private const string DesktopRootRemoteFilePath = "desktop-cloud-file.txt";
         private const int DefaultLargeTreePlaceholderCount = 10_000;
         private const int LargeCleanupStateWriteBatchSize = 500;
@@ -151,6 +158,7 @@ namespace Cotton.Sync.Desktop.Startup
             bool replaceCloudOnlyUpload = string.Equals(phase, "replace-cloud-only-upload", StringComparison.Ordinal);
             bool shellShareLinkTargets = string.Equals(phase, "shell-share-link-targets", StringComparison.Ordinal);
             bool desktopRootLifecycle = string.Equals(phase, "desktop-root-lifecycle", StringComparison.Ordinal);
+            bool desktopSessionRestore = string.Equals(phase, "desktop-session-restore", StringComparison.Ordinal);
             if (!string.IsNullOrEmpty(phase)
                 && !leaveRegistered
                 && !reconnectExisting
@@ -166,7 +174,8 @@ namespace Cotton.Sync.Desktop.Startup
                 && !remoteUpdateAfterDehydrate
                 && !replaceCloudOnlyUpload
                 && !shellShareLinkTargets
-                && !desktopRootLifecycle)
+                && !desktopRootLifecycle
+                && !desktopSessionRestore)
             {
                 await output.WriteLineAsync(FormatCheck(false, "Unsupported Windows virtual-files smoke phase: " + phase))
                     .ConfigureAwait(false);
@@ -313,6 +322,19 @@ namespace Cotton.Sync.Desktop.Startup
             if (desktopRootLifecycle)
             {
                 return await RunDesktopRootLifecycleAsync(
+                    paths,
+                    output,
+                    cloudFiles,
+                    nativeApi,
+                    syncPair,
+                    diagnostics,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (desktopSessionRestore)
+            {
+                return await RunDesktopSessionRestoreAsync(
                     paths,
                     output,
                     cloudFiles,
@@ -1729,6 +1751,245 @@ namespace Cotton.Sync.Desktop.Startup
 
             await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
             return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> RunDesktopSessionRestoreAsync(
+            DesktopAppPaths paths,
+            TextWriter output,
+            IWindowsCloudFilesAdapter cloudFiles,
+            IWindowsCloudFilesNativeApi? nativeApi,
+            SyncPairSettings baseSyncPair,
+            WindowsCloudFilesDiagnostics diagnostics,
+            CancellationToken cancellationToken)
+        {
+            if (nativeApi is null)
+            {
+                await output.WriteLineAsync(
+                        FormatCheck(false, "Desktop session restore smoke requires the native Windows Cloud Files API."))
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                return 2;
+            }
+
+            string baseRootPath = NormalizeFullPath(baseSyncPair.LocalRootPath);
+            string rootPath = string.Equals(
+                    Path.GetFileName(baseRootPath),
+                    DesktopSessionRestoreDirectoryName,
+                    StringComparison.OrdinalIgnoreCase)
+                ? baseRootPath
+                : Path.Combine(baseRootPath, DesktopSessionRestoreDirectoryName);
+            SyncPairSettings syncPair = CreateDesktopSessionRestoreSyncPair(rootPath);
+            SqliteAppPreferencesStore preferencesStore = new(paths.AppDatabasePath);
+            SqliteSyncPairSettingsStore pairStore = new(paths.AppDatabasePath);
+            SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath);
+            InMemoryAppStatusPublisher statusPublisher = new();
+            SyncApplicationService? app = null;
+            DesktopShellController? controller = null;
+            bool pairDeleted = false;
+            bool syncCoreStopped = false;
+            int failures = 0;
+
+            try
+            {
+                TryUnregisterExistingRoot(cloudFiles, syncPair, output);
+                PrepareRoot(rootPath);
+                await preferencesStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+                await pairStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+                await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+                await pairStore.DeleteAsync(syncPair.Id, cancellationToken).ConfigureAwait(false);
+                await stateStore.DeletePairAsync(syncPair.Id.ToString("D"), cancellationToken).ConfigureAwait(false);
+                AppPreferences preferences = await preferencesStore.GetAsync(cancellationToken).ConfigureAwait(false);
+                Uri serverUrl = new("https://desktop-session-restore-smoke.example/");
+                preferences.RememberedServerUrl = serverUrl;
+                preferences.RememberedUsername = "session-restore-smoke";
+                preferences.StartWithOperatingSystem = true;
+                await preferencesStore.SaveAsync(preferences, cancellationToken).ConfigureAwait(false);
+                await pairStore.UpsertAsync(syncPair, cancellationToken).ConfigureAwait(false);
+                await output.WriteLineAsync(
+                        FormatCheck(true, "Persisted startup state prepared for Desktop session restore smoke.")
+                        + " root="
+                        + rootPath)
+                    .ConfigureAwait(false);
+
+                app = CreateDesktopRootLifecycleApplication(
+                    pairStore,
+                    stateStore,
+                    cloudFiles,
+                    new NoopCloudFilesCallbackHandler(),
+                    NoopSyncPairWork.Instance,
+                    statusPublisher,
+                    diagnostics);
+                SessionRestoreMemoryTokenStore tokenStore = new();
+                SessionRestoreApplicationFactory factory = new(app, tokenStore, statusPublisher, serverUrl);
+                controller = new DesktopShellController(
+                    paths,
+                    factory,
+                    preferencesStore,
+                    pairStore,
+                    NoopPlatformCommandService.Instance,
+                    new SmokeAutostartService(),
+                    tokenStorageCapabilities: static () => new DesktopTokenStorageCapabilitySnapshot(
+                        "smoke-release-secure",
+                        true,
+                        "Release-secure token storage available"),
+                    savedSessionRestoreTimeout: TimeSpan.FromSeconds(5),
+                    savedSessionRestoreRetryBaseDelay: TimeSpan.FromMilliseconds(100),
+                    tokenStorageVerificationTimeout: TimeSpan.FromSeconds(5));
+
+                DesktopShellSnapshot snapshot = await controller.LoadAsync(cancellationToken).ConfigureAwait(false);
+                failures += await WriteCheckAsync(
+                        output,
+                        snapshot.IsSignedIn && string.Equals(snapshot.AccountName, "smoke", StringComparison.Ordinal),
+                        "Desktop startup restored the saved signed-in session.",
+                        "signedIn="
+                        + snapshot.IsSignedIn.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", account="
+                        + (snapshot.AccountName ?? "missing"))
+                    .ConfigureAwait(false);
+                failures += await WriteCheckAsync(
+                        output,
+                        factory.CreatedServerUrls.Count == 1
+                        && factory.CreatedServerUrls[0] == serverUrl,
+                        "Desktop startup used the remembered server for session restore.",
+                        "hosts="
+                        + factory.CreatedServerUrls.Count.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+                DesktopSyncPairSnapshot? restoredPair = snapshot.SyncPairs
+                    .FirstOrDefault(item => item.Id == syncPair.Id);
+                failures += await WriteCheckAsync(
+                        output,
+                        restoredPair is not null
+                        && string.Equals(restoredPair.LocalPath, rootPath, StringComparison.OrdinalIgnoreCase)
+                        && restoredPair.Mode == SyncPairMode.WindowsVirtualFiles,
+                        "Desktop startup loaded the persisted virtual-files sync pair.",
+                        "pair="
+                        + (restoredPair?.DisplayName ?? "missing")
+                        + ", mode="
+                        + (restoredPair?.Mode.ToString() ?? "missing"))
+                    .ConfigureAwait(false);
+                failures += await WaitForSessionRestoreSyncRootAsync(
+                        output,
+                        cloudFiles,
+                        syncPair,
+                        statusPublisher,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                await app.DeleteSyncPairAsync(syncPair.Id, cancellationToken).ConfigureAwait(false);
+                pairDeleted = true;
+                await app.StopSyncAsync(cancellationToken).ConfigureAwait(false);
+                syncCoreStopped = true;
+                failures += await VerifyPairDeletedAsync(pairStore, stateStore, syncPair, output, cancellationToken)
+                    .ConfigureAwait(false);
+                failures += await WriteCheckAsync(
+                        output,
+                        !Directory.Exists(rootPath),
+                        "Deleting the restored Desktop session pair removed the local placeholder root.",
+                        "rootExists="
+                        + Directory.Exists(rootPath).ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                failures++;
+                await output.WriteLineAsync(
+                        FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                if (controller is not null)
+                {
+                    await controller.DisposeAsync().ConfigureAwait(false);
+                }
+
+                if (app is not null && !syncCoreStopped)
+                {
+                    try
+                    {
+                        await app.StopSyncAsync(CancellationToken.None).ConfigureAwait(false);
+                    }
+                    catch (Exception exception) when (exception is not OperationCanceledException)
+                    {
+                        failures++;
+                        await output.WriteLineAsync(
+                                FormatCheck(false, "Desktop session restore sync core cleanup failed.")
+                                + " "
+                                + CleanSingleLine(exception.Message))
+                            .ConfigureAwait(false);
+                    }
+                }
+
+                if (!pairDeleted)
+                {
+                    failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
+                }
+            }
+
+            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
+            {
+                await output.WriteLineAsync(
+                    "Diagnostic: "
+                    + item.Operation
+                    + " "
+                    + item.Status
+                    + " "
+                    + CleanSingleLine(item.Details))
+                    .ConfigureAwait(false);
+            }
+
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> WaitForSessionRestoreSyncRootAsync(
+            TextWriter output,
+            IWindowsCloudFilesAdapter cloudFiles,
+            SyncPairSettings syncPair,
+            InMemoryAppStatusPublisher statusPublisher,
+            CancellationToken cancellationToken)
+        {
+            WindowsCloudFilesPlaceholderState? lastState = null;
+            Exception? lastException = null;
+            DateTime deadline = DateTime.UtcNow.AddSeconds(10);
+            do
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    lastState = cloudFiles.GetPlaceholderState(syncPair);
+                    SyncPairStatus? status = statusPublisher.Current.SyncPairs
+                        .FirstOrDefault(item => item.SyncPairId == syncPair.Id);
+                    if (lastState.Value.HasFlag(WindowsCloudFilesPlaceholderState.SyncRoot)
+                        && lastState.Value.HasFlag(WindowsCloudFilesPlaceholderState.InSync)
+                        && status is { State: SyncPairRunState.Idle })
+                    {
+                        await output.WriteLineAsync(
+                                FormatCheck(true, "Desktop startup reconnected the persisted Cloud Files sync root.")
+                                + " state="
+                                + lastState.Value
+                                + ", runner="
+                                + status.State)
+                            .ConfigureAwait(false);
+                        return 0;
+                    }
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    lastException = exception;
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken).ConfigureAwait(false);
+            } while (DateTime.UtcNow < deadline);
+
+            await output.WriteLineAsync(
+                    FormatCheck(false, "Desktop startup did not reconnect the persisted Cloud Files sync root.")
+                    + " state="
+                    + (lastState?.ToString() ?? "missing")
+                    + ", error="
+                    + (lastException is null ? "none" : CleanSingleLine(lastException.Message)))
+                .ConfigureAwait(false);
+            return 1;
         }
 
         private static SyncApplicationService CreateDesktopRootLifecycleApplication(
@@ -3781,6 +4042,22 @@ namespace Cotton.Sync.Desktop.Startup
             };
         }
 
+        private static SyncPairSettings CreateDesktopSessionRestoreSyncPair(string rootPath)
+        {
+            return new SyncPairSettings
+            {
+                Id = Guid.Parse("13131313-1313-1313-1313-131313131313"),
+                DisplayName = "Desktop",
+                LocalRootPath = rootPath,
+                RemoteDisplayPath = "/Desktop",
+                RemoteRootNodeId = Guid.Parse("24242424-2424-2424-2424-242424242424"),
+                Mode = SyncPairMode.WindowsVirtualFiles,
+                IsEnabled = true,
+                CreatedAtUtc = DateTime.UtcNow,
+                UpdatedAtUtc = DateTime.UtcNow,
+            };
+        }
+
         private static RemoteFilePlaceholderRequest CreatePlaceholderRequest(
             SyncPairSettings syncPair,
             string relativePath,
@@ -5373,6 +5650,205 @@ namespace Cotton.Sync.Desktop.Startup
         private sealed record SubstResult(int ExitCode, string Output, string Error);
 
         private sealed record FileContentHash(long Length, string Sha256);
+
+        private sealed class SessionRestoreApplicationFactory : IDesktopSyncApplicationFactory
+        {
+            private readonly SyncApplicationService _app;
+            private readonly Uri _expectedServerUrl;
+            private readonly InMemoryAppStatusPublisher _statusPublisher;
+            private readonly SessionRestoreMemoryTokenStore _tokenStore;
+
+            public SessionRestoreApplicationFactory(
+                SyncApplicationService app,
+                SessionRestoreMemoryTokenStore tokenStore,
+                InMemoryAppStatusPublisher statusPublisher,
+                Uri expectedServerUrl)
+            {
+                _app = app ?? throw new ArgumentNullException(nameof(app));
+                _tokenStore = tokenStore ?? throw new ArgumentNullException(nameof(tokenStore));
+                _statusPublisher = statusPublisher ?? throw new ArgumentNullException(nameof(statusPublisher));
+                _expectedServerUrl = expectedServerUrl ?? throw new ArgumentNullException(nameof(expectedServerUrl));
+            }
+
+            public List<Uri> CreatedServerUrls { get; } = [];
+
+            public DesktopSyncApplicationHost Create(Uri serverUrl)
+            {
+                CreatedServerUrls.Add(serverUrl);
+                if (serverUrl != _expectedServerUrl)
+                {
+                    throw new InvalidOperationException("Unexpected Desktop session restore smoke server URL.");
+                }
+
+                return new DesktopSyncApplicationHost(
+                    _app,
+                    new SessionRestoreRemoteRootResolver(),
+                    _statusPublisher,
+                    new InMemoryAppActivityPublisher(),
+                    new InMemorySessionRevocationPublisher(),
+                    new InMemoryAppTransferProgressPublisher(),
+                    new InMemoryAppRunProgressPublisher(),
+                    _tokenStore,
+                    new SessionRestoreNodeClient(),
+                    new SessionRestoreSyncClient(),
+                    new HttpClient(),
+                    serverUrl);
+            }
+        }
+
+        private sealed class SessionRestoreMemoryTokenStore : ICottonTokenStore
+        {
+            private TokenPairDto? _tokens = new()
+            {
+                AccessToken = "session-restore-access",
+                RefreshToken = "session-restore-refresh",
+            };
+
+            public Task<TokenPairDto?> GetAsync(CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.FromResult(_tokens is null ? null : Clone(_tokens));
+            }
+
+            public Task SaveAsync(TokenPairDto tokens, CancellationToken cancellationToken = default)
+            {
+                ArgumentNullException.ThrowIfNull(tokens);
+                cancellationToken.ThrowIfCancellationRequested();
+                _tokens = Clone(tokens);
+                return Task.CompletedTask;
+            }
+
+            public Task ClearAsync(CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _tokens = null;
+                return Task.CompletedTask;
+            }
+
+            private static TokenPairDto Clone(TokenPairDto tokens)
+            {
+                return new TokenPairDto
+                {
+                    AccessToken = tokens.AccessToken,
+                    RefreshToken = tokens.RefreshToken,
+                };
+            }
+        }
+
+        private sealed class SessionRestoreRemoteRootResolver : IRemoteRootResolver
+        {
+            public Task<NodeDto> EnsureAsync(string? remotePath = null, CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.FromResult(new NodeDto
+                {
+                    Id = Guid.Parse("25252525-2525-2525-2525-252525252525"),
+                    LayoutId = Guid.Parse("26262626-2626-2626-2626-262626262626"),
+                    ParentId = Guid.Parse("27272727-2727-2727-2727-272727272727"),
+                    Name = string.IsNullOrWhiteSpace(remotePath)
+                        ? "Cloud"
+                        : remotePath.Trim('/'),
+                });
+            }
+        }
+
+        private sealed class SessionRestoreNodeClient : ICottonNodeClient
+        {
+            public Task<NodeDto> ResolveAsync(string? path = null, CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task<NodeDto> GetAsync(Guid nodeId, CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task<NodeContentDto> GetChildrenAsync(
+                Guid nodeId,
+                int page = 1,
+                int pageSize = 100,
+                int depth = 0,
+                CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task<NodeDto> CreateAsync(Guid parentId, string name, CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task<NodeDto> MoveAsync(Guid nodeId, Guid parentId, CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task<NodeDto> RenameAsync(Guid nodeId, string name, CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task<NodeDto> UpdateMetadataAsync(
+                Guid nodeId,
+                IReadOnlyDictionary<string, string> metadata,
+                CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task DeleteAsync(Guid nodeId, bool skipTrash = false, CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task<RestoreOutcomeDto> RestoreAsync(
+                Guid nodeId,
+                RestoreItemRequestDto? request = null,
+                CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task<List<NodeDto>> GetAncestorsAsync(Guid nodeId, CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+        }
+
+        private sealed class SessionRestoreSyncClient : ICottonSyncClient
+        {
+            public Task<SyncChangesResponseDto> GetChangesAsync(
+                long sinceCursor = 0,
+                int limit = 500,
+                CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.FromResult(new SyncChangesResponseDto
+                {
+                    SinceCursor = sinceCursor,
+                    NextCursor = sinceCursor,
+                    HasMore = false,
+                });
+            }
+        }
+
+        private sealed class SmokeAutostartService : IAutostartService
+        {
+            public bool IsSupported => true;
+
+            public Task<bool> IsEnabledAsync(CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.FromResult(true);
+            }
+
+            public Task SetEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.CompletedTask;
+            }
+        }
 
         private sealed class NoopSyncPairPrerequisiteValidator : ISyncPairPrerequisiteValidator
         {
