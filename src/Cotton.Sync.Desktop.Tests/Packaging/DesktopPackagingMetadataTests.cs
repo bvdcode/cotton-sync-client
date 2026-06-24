@@ -543,6 +543,12 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("Resolve-RequiredDirectory -Name \"Install directory\""));
                 Assert.That(script, Does.Contain("Installed desktop executable was not found"));
                 Assert.That(script, Does.Contain("Autostart registry value was not ready for logon capture."));
+                Assert.That(script, Does.Contain("Invoke-ProfileSelfTestPreflight"));
+                Assert.That(script, Does.Contain("--self-test"));
+                Assert.That(script, Does.Contain("[OK] Authentication state - Stored session available"));
+                Assert.That(script, Does.Contain("[OK] Autostart adapter - Enabled"));
+                Assert.That(script, Does.Contain("[OK] Windows virtual files"));
+                Assert.That(script, Does.Contain("[OK] Local root:"));
                 Assert.That(script, Does.Contain("Validated VFS logon evidence capture inputs."));
                 Assert.That(script, Does.Contain("capture-vfs-release-evidence.ps1"));
                 Assert.That(script, Does.Contain("$resolvedLocalRoot"));
