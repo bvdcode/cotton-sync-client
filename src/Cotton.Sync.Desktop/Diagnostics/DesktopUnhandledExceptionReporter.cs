@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Diagnostics;
+using System.Net.Sockets;
 
 namespace Cotton.Sync.Desktop.Diagnostics
 {
@@ -57,8 +58,25 @@ namespace Cotton.Sync.Desktop.Diagnostics
         internal static void ReportUnobservedTaskException(UnobservedTaskExceptionEventArgs args)
         {
             ArgumentNullException.ThrowIfNull(args);
+            if (IsExpectedDesktopSocketCleanupException(args.Exception))
+            {
+                args.SetObserved();
+                return;
+            }
+
             Trace.TraceError(FormatUnobservedTaskException(args.Exception));
             args.SetObserved();
+        }
+
+        internal static bool IsExpectedDesktopSocketCleanupException(AggregateException exception)
+        {
+            ArgumentNullException.ThrowIfNull(exception);
+            IReadOnlyCollection<Exception> innerExceptions = exception.Flatten().InnerExceptions;
+            return innerExceptions.Count > 0
+                && innerExceptions.All(static inner => inner is SocketException
+                {
+                    SocketErrorCode: SocketError.OperationAborted,
+                });
         }
     }
 }

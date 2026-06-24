@@ -3,6 +3,7 @@
 
 using Cotton.Sync.Desktop.Diagnostics;
 using System.Diagnostics;
+using System.Net.Sockets;
 
 namespace Cotton.Sync.Desktop.Tests.Diagnostics
 {
@@ -64,6 +65,59 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                     Assert.That(listener.Output, Does.Contain("Unobserved desktop task exception captured."));
                     Assert.That(listener.Output, Does.Contain("\"accessToken\":\"[redacted]\""));
                     Assert.That(listener.Output, Does.Not.Contain("secret-token"));
+                });
+            }
+            finally
+            {
+                Trace.Listeners.Remove(listener);
+            }
+        }
+
+        [Test]
+        public void ReportUnobservedTaskException_SuppressesExpectedSocketCleanupAbort()
+        {
+            var exception = new AggregateException(new SocketException((int)SocketError.OperationAborted));
+            var args = new UnobservedTaskExceptionEventArgs(exception);
+            var listener = new CollectingTraceListener();
+            Trace.Listeners.Add(listener);
+
+            try
+            {
+                DesktopUnhandledExceptionReporter.ReportUnobservedTaskException(args);
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(args.Observed, Is.True);
+                    Assert.That(listener.Output, Is.Empty);
+                    Assert.That(DesktopUnhandledExceptionReporter.IsExpectedDesktopSocketCleanupException(exception), Is.True);
+                });
+            }
+            finally
+            {
+                Trace.Listeners.Remove(listener);
+            }
+        }
+
+        [Test]
+        public void ReportUnobservedTaskException_LogsMixedSocketCleanupAggregate()
+        {
+            var exception = new AggregateException(
+                new SocketException((int)SocketError.OperationAborted),
+                new InvalidOperationException("real failure"));
+            var args = new UnobservedTaskExceptionEventArgs(exception);
+            var listener = new CollectingTraceListener();
+            Trace.Listeners.Add(listener);
+
+            try
+            {
+                DesktopUnhandledExceptionReporter.ReportUnobservedTaskException(args);
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(args.Observed, Is.True);
+                    Assert.That(listener.Output, Does.Contain("Unobserved desktop task exception captured."));
+                    Assert.That(listener.Output, Does.Contain("real failure"));
+                    Assert.That(DesktopUnhandledExceptionReporter.IsExpectedDesktopSocketCleanupException(exception), Is.False);
                 });
             }
             finally
