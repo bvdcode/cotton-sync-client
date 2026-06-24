@@ -24,6 +24,7 @@ function Write-CleanupReport {
         [string]$Result,
 
         [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
         [System.Collections.Generic.List[string]]$Registrations
     )
 

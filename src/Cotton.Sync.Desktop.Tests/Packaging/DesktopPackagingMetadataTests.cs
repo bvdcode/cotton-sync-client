@@ -427,6 +427,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("vfs-smoke\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-desktop-session-restore\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-shell-share-link-targets\\cloud-files-vfs-smoke.stdout.log"));
+                Assert.That(script, Does.Contain("vfs-smoke\\phase-leave-registered\\cloud-files-vfs-smoke.stdout.log"));
+                Assert.That(script, Does.Contain("vfs-smoke\\phase-reconnect-existing\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-initial-streaming-logging\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-steady-state-repeat\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("Installed self-test: exitCode=0;"));
@@ -439,6 +441,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("VFS smoke logs: captured:"));
                 Assert.That(script, Does.Contain("Desktop startup restored the saved signed-in session."));
                 Assert.That(script, Does.Contain("Desktop startup reconnected the persisted Cloud Files sync root."));
+                Assert.That(script, Does.Contain("Cloud Files sync root left registered for process restart smoke."));
+                Assert.That(script, Does.Contain("Existing remote-only placeholder is available before reconnect hydration."));
                 Assert.That(script, Does.Contain("Initial VFS trace log contains large-run metrics."));
                 Assert.That(script, Does.Contain("Metric excerpt:"));
                 Assert.That(script, Does.Contain("placeholders/sec"));
@@ -1111,6 +1115,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("Software\\Classes\\WOW6432Node\\CLSID"));
                 Assert.That(script, Does.Contain("[string]$ReportPath = \"\""));
                 Assert.That(script, Does.Contain("Write-CleanupReport"));
+                Assert.That(script, Does.Contain("[AllowEmptyCollection()]"));
                 Assert.That(script, Does.Contain("RemainingRegistrationCount: $($Registrations.Count)"));
                 Assert.That(script, Does.Contain("Write-CleanupReport -Result \"passed\""));
                 Assert.That(script, Does.Contain("Test-ShellNamespaceRoots"));
@@ -1282,6 +1287,10 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     Does.Contain("-AdditionalVfsSmokePhases @(\"desktop-session-restore\", \"shell-share-link-targets\", \"initial-streaming-logging\", \"steady-state-repeat\")"));
                 Assert.That(workflow, Does.Contain("-InitialStreamingPlaceholderCount 100000"));
                 Assert.That(workflow, Does.Contain("-SteadyStateRepeatPlaceholderCount 100000"));
+                Assert.That(workflow, Does.Contain("function Invoke-InstalledVfsSmokePhase"));
+                Assert.That(workflow, Does.Contain("Invoke-InstalledVfsSmokePhase -PhaseName \"leave-registered\""));
+                Assert.That(workflow, Does.Contain("Invoke-InstalledVfsSmokePhase -PhaseName \"reconnect-existing\""));
+                Assert.That(workflow, Does.Contain("phase-reconnect-existing"));
                 Assert.That(workflow, Does.Contain("--self-test --data-dir"));
                 Assert.That(workflow, Does.Contain("-PublishDirectory $installDir"));
                 Assert.That(workflow, Does.Contain("-AppExecutable $installedExe"));
@@ -1587,7 +1596,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("[string]$AppExecutable"));
                 Assert.That(script, Does.Contain("[string]$RunValueName = \"Cotton Sync\""));
                 Assert.That(script, Does.Contain("[string]$ReportPath = \"\""));
+                Assert.That(script, Does.Contain("[string]$DataDirectory = \"\""));
                 Assert.That(script, Does.Contain("[switch]$AttachExistingProcess"));
+                Assert.That(script, Does.Contain("DataDirectory cannot be used when attaching to an existing installer-launched process."));
                 Assert.That(script, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
                 Assert.That(script, Does.Contain("$expectedRunValue = \"`\"$resolvedExecutable`\" --start-minimized\""));
                 Assert.That(script, Does.Contain("Autostart registry value was not installed correctly."));
@@ -1596,13 +1607,16 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("GetForegroundProcessId"));
                 Assert.That(script, Does.Contain("Waiting for existing hidden startup process"));
                 Assert.That(script, Does.Contain("Start-Process `"));
-                Assert.That(script, Does.Contain("-ArgumentList @(\"--start-minimized\")"));
+                Assert.That(script, Does.Contain("$launchArguments.Add(\"--start-minimized\")"));
+                Assert.That(script, Does.Contain("$launchArguments.Add(\"--data-dir\")"));
+                Assert.That(script, Does.Contain("-ArgumentList $launchArguments"));
                 Assert.That(script, Does.Contain("command line did not include --start-minimized"));
                 Assert.That(script, Does.Contain("created a visible top-level window"));
                 Assert.That(script, Does.Contain("became the foreground window"));
                 Assert.That(script, Does.Contain("Write-AutostartReport"));
                 Assert.That(script, Does.Contain("Result: passed"));
                 Assert.That(script, Does.Contain("LaunchMode: $(if ($AttachExistingProcess)"));
+                Assert.That(script, Does.Contain("IsolationDataDirectory: $DataDirectory"));
                 Assert.That(script, Does.Contain("ObservedForeground: $observedForeground"));
                 Assert.That(script, Does.Contain("VisibleWindowCount: $($observedVisibleWindows.Count)"));
                 Assert.That(script, Does.Contain("CleanupRemaining: $($cleanupProcesses.Count)"));
@@ -1923,6 +1937,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             Directory.CreateDirectory(evidenceDirectory);
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-desktop-session-restore"));
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-shell-share-link-targets"));
+            Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-leave-registered"));
+            Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-reconnect-existing"));
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-initial-streaming-logging"));
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-steady-state-repeat"));
 
@@ -1936,7 +1952,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "Cloud Files Explorer registrations: captured: registry-cloud-files-explorer.txt",
                     "Local root entries: captured: local-root-entries.csv",
                     "Log tails: captured 1 log file(s)",
-                    "VFS smoke logs: captured: vfs-smoke; files=6",
+                    "VFS smoke logs: captured: vfs-smoke; files=8",
                     "Installed self-test: exitCode=0; stdout=self-test.stdout.log; stderr=self-test.stderr.log",
                     "Diagnostics export: exitCode=0; stdout=diagnostics-export.stdout.log; stderr=diagnostics-export.stderr.log"
                 });
@@ -2018,6 +2034,29 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "phase-shell-share-link-targets",
                     "cloud-files-vfs-smoke.stdout.log"),
                 "Result: passed");
+            File.WriteAllLines(
+                Path.Combine(
+                    evidenceDirectory,
+                    "vfs-smoke",
+                    "phase-leave-registered",
+                    "cloud-files-vfs-smoke.stdout.log"),
+                new[]
+                {
+                    "PASS: Cloud Files sync root left registered for process restart smoke.",
+                    "Result: passed"
+                });
+            File.WriteAllLines(
+                Path.Combine(
+                    evidenceDirectory,
+                    "vfs-smoke",
+                    "phase-reconnect-existing",
+                    "cloud-files-vfs-smoke.stdout.log"),
+                new[]
+                {
+                    "PASS: Existing remote-only placeholder is available before reconnect hydration.",
+                    "PASS: Cloud Files sync root unregistered after smoke.",
+                    "Result: passed"
+                });
             File.WriteAllLines(
                 Path.Combine(
                     evidenceDirectory,
