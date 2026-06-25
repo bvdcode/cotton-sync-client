@@ -26,6 +26,12 @@ function Normalize-ShellVerbName {
     return ($Name -replace "&", "").Trim()
 }
 
+function ConvertTo-PowerShellSingleQuotedString {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value)
+
+    return "'" + $Value.Replace("'", "''") + "'"
+}
+
 function Open-CurrentUserSubKey {
     param([string]$SubKey)
 
@@ -351,11 +357,19 @@ function Assert-InstalledShellVerbInvocation {
     $wrapperPath = Join-Path $DataDirectory "invoke-shell-share-link.ps1"
 
     Remove-Item -LiteralPath $serverReadyPath, $requestPath, $stdoutPath, $stderrPath, $commandStdoutPath, $commandStderrPath, $exitPath -Force -ErrorAction SilentlyContinue
+    $appExecutableLiteral = ConvertTo-PowerShellSingleQuotedString -Value $AppExecutable
+    $serverUrlLiteral = ConvertTo-PowerShellSingleQuotedString -Value $serverUrl
+    $dataDirectoryLiteral = ConvertTo-PowerShellSingleQuotedString -Value $DataDirectory
+    $stdoutPathLiteral = ConvertTo-PowerShellSingleQuotedString -Value $stdoutPath
+    $stderrPathLiteral = ConvertTo-PowerShellSingleQuotedString -Value $stderrPath
+    $exitPathLiteral = ConvertTo-PowerShellSingleQuotedString -Value $exitPath
+
     $wrapperLines = @(
         'param([string]$TargetPath)',
         '$ErrorActionPreference = "Stop"',
-        '$process = Start-Process -FilePath ' + (ConvertTo-Json $AppExecutable -Compress) + ' -ArgumentList @("--server-url", ' + (ConvertTo-Json $serverUrl -Compress) + ', "--data-dir", ' + (ConvertTo-Json $DataDirectory -Compress) + ', "--copy-shell-share-link", $TargetPath) -Wait -PassThru -RedirectStandardOutput ' + (ConvertTo-Json $stdoutPath -Compress) + ' -RedirectStandardError ' + (ConvertTo-Json $stderrPath -Compress),
-        '[System.IO.File]::WriteAllText(' + (ConvertTo-Json $exitPath -Compress) + ', [string]$process.ExitCode)'
+        ('$arguments = @("--server-url", {0}, "--data-dir", {1}, "--copy-shell-share-link", $TargetPath)' -f $serverUrlLiteral, $dataDirectoryLiteral),
+        ('$process = Start-Process -FilePath {0} -ArgumentList $arguments -Wait -PassThru -RedirectStandardOutput {1} -RedirectStandardError {2}' -f $appExecutableLiteral, $stdoutPathLiteral, $stderrPathLiteral),
+        ('[System.IO.File]::WriteAllText({0}, [string]$process.ExitCode)' -f $exitPathLiteral)
     )
     Set-Content -LiteralPath $wrapperPath -Value $wrapperLines -Encoding UTF8
 

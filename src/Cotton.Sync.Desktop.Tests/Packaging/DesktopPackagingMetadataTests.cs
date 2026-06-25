@@ -2008,6 +2008,10 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Not.Contain("Split-Path -LiteralPath"));
                 Assert.That(script, Does.Contain("Assert-ShellVerbVisibility"));
                 Assert.That(script, Does.Contain("Assert-InstalledShellVerbInvocation"));
+                Assert.That(script, Does.Contain("ConvertTo-PowerShellSingleQuotedString"));
+                Assert.That(script, Does.Contain(@"$arguments = @(""--server-url"""));
+                Assert.That(script, Does.Contain("Start-Process -FilePath {0} -ArgumentList $arguments"));
+                Assert.That(script, Does.Not.Contain("'$process = Start-Process -FilePath ' +"));
                 Assert.That(script, Does.Contain("shell-share-link-command.stdout.log"));
                 Assert.That(script, Does.Contain("Installed shell share-link verb command did not reference the smoke wrapper and target placeholder."));
                 Assert.That(script, Does.Contain("Installed shell share-link verb command wrapper exited with code"));
