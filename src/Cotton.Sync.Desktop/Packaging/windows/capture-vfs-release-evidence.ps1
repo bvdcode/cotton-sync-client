@@ -328,9 +328,21 @@ public static class CottonReleaseEvidenceWindowProbe
 function Capture-ProcessWindows {
     Initialize-WindowProbe
     $foregroundProcessId = [CottonReleaseEvidenceWindowProbe]::GetForegroundProcessId()
-    foreach ($process in Get-CottonProcess) {
+    $processes = @(Get-CottonProcess)
+    if ($processes.Count -eq 0) {
+        [pscustomobject]@{
+            ProcessCount = 0
+            IsForeground = $false
+            VisibleWindowCount = 0
+            VisibleWindowTitles = ""
+        }
+        return
+    }
+
+    foreach ($process in $processes) {
         $windows = @([CottonReleaseEvidenceWindowProbe]::GetVisibleWindowsForProcess([int]$process.ProcessId))
         [pscustomobject]@{
+            ProcessCount = $processes.Count
             ProcessId = $process.ProcessId
             IsForeground = ([int]$process.ProcessId -eq $foregroundProcessId)
             VisibleWindowCount = $windows.Count

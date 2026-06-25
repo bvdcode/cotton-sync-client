@@ -64,6 +64,14 @@ namespace Cotton.Sync.Desktop
                 else
                 {
                     desktop.MainWindow = window;
+                    if (StartupOptions.VisualSmokeScenario is not null)
+                    {
+                        Dispatcher.UIThread.Post(() =>
+                        {
+                            window.Show();
+                            window.Activate();
+                        });
+                    }
                 }
 
                 if (useTrayLifecycle)
