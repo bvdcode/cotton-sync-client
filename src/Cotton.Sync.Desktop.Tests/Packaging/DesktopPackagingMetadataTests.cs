@@ -1747,9 +1747,17 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("cotton-sync-installed"));
                 Assert.That(workflow, Does.Contain("cotton-sync-installer-data"));
                 Assert.That(workflow, Does.Contain("cotton-sync-vfs-release-evidence"));
+                Assert.That(workflow, Does.Contain("$installLog = Join-Path $evidenceDir \"cotton-sync-install.log\""));
+                Assert.That(workflow, Does.Contain("$uninstallLog = Join-Path $evidenceDir \"cotton-sync-uninstall.log\""));
+                Assert.That(workflow, Does.Contain("$reinstallLog = Join-Path $evidenceDir \"cotton-sync-reinstall.log\""));
+                Assert.That(workflow, Does.Contain("$reinstallUninstallLog = Join-Path $evidenceDir \"cotton-sync-reinstall-uninstall.log\""));
+                Assert.That(workflow, Does.Contain("$contextReport = Join-Path $evidenceDir \"installer-smoke-context.txt\""));
                 Assert.That(workflow, Does.Contain("$vfsSmokeDataDir = Join-Path $env:RUNNER_TEMP \"cotton-sync-vfs-self-test-truthfulness-data\""));
+                Assert.That(workflow, Does.Contain("$vfsLocalRoot = Join-Path $env:RUNNER_TEMP \"cotton-sync-vfs-root\""));
                 Assert.That(workflow, Does.Contain("$autostartReport = Join-Path $evidenceDir \"autostart-launch.txt\""));
                 Assert.That(workflow, Does.Contain("New-Item -ItemType Directory -Path $evidenceDir -Force"));
+                Assert.That(workflow, Does.Contain("New-Item -ItemType Directory -Path $vfsLocalRoot -Force"));
+                Assert.That(workflow, Does.Contain("Set-Content -LiteralPath $contextReport -Encoding utf8"));
                 Assert.That(workflow, Does.Contain("/VERYSILENT"));
                 Assert.That(workflow, Does.Contain("/SUPPRESSMSGBOXES"));
                 Assert.That(workflow, Does.Contain("/NORESTART"));
@@ -1770,6 +1778,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Cotton.Sync.Desktop.exe\""));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-cloud-files-self-test-truthfulness.ps1"));
                 Assert.That(workflow, Does.Contain("cotton-sync-vfs-self-test-truthfulness-data"));
+                Assert.That(workflow, Does.Contain("-LocalRoot $vfsLocalRoot"));
                 Assert.That(
                     workflow,
                     Does.Contain("-AdditionalVfsSmokePhases @(\"desktop-session-restore\", \"shell-share-link-targets\", \"initial-streaming-logging\", \"steady-state-repeat\")"));
@@ -1802,7 +1811,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("-InvokeInstalledVerb"));
                 Assert.That(workflow, Does.Contain("Packaging/windows/capture-vfs-release-evidence.ps1"));
                 Assert.That(workflow, Does.Contain("-OutputDirectory $evidenceDir"));
-                Assert.That(workflow, Does.Contain("-LocalRoot \"S:\\CottonSyncVfsQa\\root\""));
+                Assert.That(workflow, Does.Not.Contain("\"S:\\CottonSyncVfsQa\\root\""));
                 Assert.That(workflow, Does.Contain("-InstallDirectory $installDir"));
                 Assert.That(workflow, Does.Contain("-VfsSmokeDataDirectory $vfsSmokeDataDir"));
                 Assert.That(workflow, Does.Contain("-RunSelfTest"));
@@ -1830,6 +1839,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Reinstalled desktop executable was not found."));
                 Assert.That(workflow, Does.Contain("Windows reinstall cleanup exited with code"));
                 Assert.That(workflow, Does.Contain("Install directory was not empty after reinstall cleanup."));
+                Assert.That(workflow, Does.Contain("$installLog = Join-Path $evidenceDir \"cotton-sync-upgrade-install.log\""));
+                Assert.That(workflow, Does.Contain("$upgradeLog = Join-Path $evidenceDir \"cotton-sync-upgrade-current.log\""));
+                Assert.That(workflow, Does.Contain("$uninstallLog = Join-Path $evidenceDir \"cotton-sync-upgrade-uninstall.log\""));
                 Assert.That(workflow, Does.Contain("Start Menu shortcut remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Start Menu uninstall shortcut remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Autostart registry value remained after uninstall."));
