@@ -171,6 +171,20 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void App_VisualSmokeExplicitlyShowsWindowForScreenshotCapture()
+        {
+            string app = File.ReadAllText(GetDesktopFilePath("App.axaml.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(app, Does.Contain("StartupOptions.VisualSmokeScenario is not null"));
+                Assert.That(app, Does.Contain("Dispatcher.UIThread.Post(() =>"));
+                Assert.That(app, Does.Contain("window.Show();"));
+                Assert.That(app, Does.Contain("window.Activate();"));
+            });
+        }
+
+        [Test]
         public void MainWindow_DisablesStartupUpdateChecksForVisualSmokeScenarios()
         {
             string mainWindow = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml.cs"));

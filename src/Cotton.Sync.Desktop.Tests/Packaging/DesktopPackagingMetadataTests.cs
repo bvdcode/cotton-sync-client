@@ -386,6 +386,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("GetVisibleWindowsForProcess"));
                 Assert.That(script, Does.Contain("GetForegroundProcessId"));
                 Assert.That(script, Does.Contain("Capture-ProcessWindows"));
+                Assert.That(script, Does.Contain("$processes = @(Get-CottonProcess)"));
+                Assert.That(script, Does.Contain("ProcessCount = 0"));
+                Assert.That(script, Does.Contain("VisibleWindowCount = 0"));
                 Assert.That(script, Does.Contain("Capture-CloudFilesExplorerRegistrations"));
                 Assert.That(script, Does.Contain("registry-cloud-files-explorer.txt"));
                 Assert.That(script, Does.Contain("Capture-RootEntries"));
