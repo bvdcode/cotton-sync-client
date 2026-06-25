@@ -397,19 +397,30 @@ jobs:
         run: |
           $installDir = Join-Path $env:RUNNER_TEMP "cotton-sync-installed"
           $dataDir = Join-Path $env:RUNNER_TEMP "cotton-sync-installer-data"
-          $installLog = Join-Path $env:RUNNER_TEMP "cotton-sync-install.log"
-          $uninstallLog = Join-Path $env:RUNNER_TEMP "cotton-sync-uninstall.log"
-          $reinstallLog = Join-Path $env:RUNNER_TEMP "cotton-sync-reinstall.log"
-          $reinstallUninstallLog = Join-Path $env:RUNNER_TEMP "cotton-sync-reinstall-uninstall.log"
           $evidenceDir = Join-Path $env:RUNNER_TEMP "cotton-sync-vfs-release-evidence"
+          $installLog = Join-Path $evidenceDir "cotton-sync-install.log"
+          $uninstallLog = Join-Path $evidenceDir "cotton-sync-uninstall.log"
+          $reinstallLog = Join-Path $evidenceDir "cotton-sync-reinstall.log"
+          $reinstallUninstallLog = Join-Path $evidenceDir "cotton-sync-reinstall-uninstall.log"
           $vfsSmokeDataDir = Join-Path $env:RUNNER_TEMP "cotton-sync-vfs-self-test-truthfulness-data"
+          $vfsLocalRoot = Join-Path $env:RUNNER_TEMP "cotton-sync-vfs-root"
+          $contextReport = Join-Path $evidenceDir "installer-smoke-context.txt"
           $autostartReport = Join-Path $evidenceDir "autostart-launch.txt"
           $visualStatesReport = Join-Path $evidenceDir "visual-states.txt"
           $postUninstallCleanupReport = Join-Path $evidenceDir "post-uninstall-cleanup.txt"
           $postReinstallCleanupReport = Join-Path $evidenceDir "post-reinstall-cleanup.txt"
           New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
           New-Item -ItemType Directory -Path $evidenceDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $vfsLocalRoot -Force | Out-Null
           $installerPath = ".\cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}-setup.exe"
+          @(
+            "StartedAt: $((Get-Date).ToString('O'))",
+            "Version: ${{ steps.gitversion.outputs.SemVer }}",
+            "InstallDir: $installDir",
+            "DataDir: $dataDir",
+            "VfsLocalRoot: $vfsLocalRoot",
+            "InstallerPath: $installerPath"
+          ) | Set-Content -LiteralPath $contextReport -Encoding utf8
 
           $install = Start-Process `
             -FilePath $installerPath `
@@ -463,6 +474,7 @@ jobs:
             -AppExecutable $installedExe `
             -DataDirectory $dataDir `
             -VfsSmokeDataDirectory $vfsSmokeDataDir `
+            -LocalRoot $vfsLocalRoot `
             -AdditionalVfsSmokePhases @("desktop-session-restore", "shell-share-link-targets", "initial-streaming-logging", "steady-state-repeat") `
             -InitialStreamingPlaceholderCount 500000 `
             -SteadyStateRepeatPlaceholderCount 500000
@@ -483,7 +495,7 @@ jobs:
                 "--data-dir",
                 $phaseDataDir,
                 "--local-root",
-                "S:\CottonSyncVfsQa\root",
+                $vfsLocalRoot,
                 "--vfs-smoke-phase",
                 $PhaseName) `
               -RedirectStandardOutput $phaseStdout `
@@ -530,7 +542,7 @@ jobs:
             -InvokeInstalledVerb
           & "src/Cotton.Sync.Desktop/Packaging/windows/capture-vfs-release-evidence.ps1" `
             -OutputDirectory $evidenceDir `
-            -LocalRoot "S:\CottonSyncVfsQa\root" `
+            -LocalRoot $vfsLocalRoot `
             -DataDirectory $dataDir `
             -InstallDirectory $installDir `
             -VfsSmokeDataDirectory $vfsSmokeDataDir `
@@ -624,15 +636,16 @@ jobs:
           $oldOutputDir = Join-Path $env:RUNNER_TEMP "cotton-sync-old-installer"
           $installDir = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-installed"
           $dataDir = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-data"
-          $installLog = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-install.log"
-          $upgradeLog = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-current.log"
-          $uninstallLog = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-uninstall.log"
           $evidenceDir = Join-Path $env:RUNNER_TEMP "cotton-sync-vfs-release-evidence"
+          $installLog = Join-Path $evidenceDir "cotton-sync-upgrade-install.log"
+          $upgradeLog = Join-Path $evidenceDir "cotton-sync-upgrade-current.log"
+          $uninstallLog = Join-Path $evidenceDir "cotton-sync-upgrade-uninstall.log"
           $upgradeRelaunchReport = Join-Path $evidenceDir "update-relaunch.txt"
           $upgradeAutostartReport = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-autostart-launch.txt"
           $postUpgradeCleanupReport = Join-Path $evidenceDir "post-upgrade-cleanup.txt"
           New-Item -ItemType Directory -Path $oldOutputDir -Force | Out-Null
           New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $evidenceDir -Force | Out-Null
 
           & "$env:INNO_SETUP_COMPILER" `
             "/DSourceDir=$publishDir" `
