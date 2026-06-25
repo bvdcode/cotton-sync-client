@@ -40,7 +40,7 @@ namespace Cotton.Sync.Desktop.Startup
     internal static class DesktopWindowsVirtualFilesSmokeRunner
     {
         private const string DefaultSmokeRoot = @"S:\CottonSyncVfsQa\root";
-        private const string AllowedSmokeRoot = @"S:\CottonSyncVfsQa";
+        private const string DefaultSmokeParentRoot = @"S:\CottonSyncVfsQa";
         private const string RelativePlaceholderPath = "remote-only-smoke.txt";
         private const string LargeTreeDirectoryName = "large-tree";
         private const string NonEmptyPreservationDirectoryName = "pre-existing";
@@ -113,7 +113,6 @@ namespace Cotton.Sync.Desktop.Startup
             ArgumentNullException.ThrowIfNull(output);
 
             await output.WriteLineAsync("Cotton Sync Desktop Windows virtual files smoke").ConfigureAwait(false);
-            await output.WriteLineAsync("Allowed destructive root: " + AllowedSmokeRoot + @"\...").ConfigureAwait(false);
 
             if (!OperatingSystem.IsWindows())
             {
@@ -124,6 +123,8 @@ namespace Cotton.Sync.Desktop.Startup
             }
 
             string rootPath = ResolveSmokeRoot(startupOptions.LocalRoot);
+            await output.WriteLineAsync("Destructive root: " + rootPath).ConfigureAwait(false);
+
             string? rootError = ValidateSmokeRoot(rootPath);
             if (rootError is not null)
             {
@@ -3946,20 +3947,49 @@ namespace Cotton.Sync.Desktop.Startup
         {
             if (!Path.IsPathFullyQualified(rootPath))
             {
-                return "Windows virtual-files smoke root must be an absolute path under " + AllowedSmokeRoot + @"\...";
+                return "Windows virtual-files smoke root must be an absolute path.";
             }
 
-            string allowedRoot = Path.GetFullPath(AllowedSmokeRoot);
+            WindowsVirtualFilesRootSafetyResult safety = new WindowsVirtualFilesRootSafetyPolicy().Validate(rootPath);
+            if (!safety.IsSafe)
+            {
+                return "Windows virtual-files smoke root is unsafe: " + safety.Details;
+            }
+
+            string defaultParentRoot = Path.GetFullPath(DefaultSmokeParentRoot);
             StringComparison comparison = StringComparison.OrdinalIgnoreCase;
             string normalizedRoot = NormalizeFullPath(rootPath);
-            string normalizedAllowed = NormalizeFullPath(allowedRoot);
-            if (string.Equals(normalizedRoot, normalizedAllowed, comparison)
-                || !normalizedRoot.StartsWith(EnsureTrailingSeparator(normalizedAllowed), comparison))
+            string normalizedDefaultParentRoot = NormalizeFullPath(defaultParentRoot);
+            if (IsChildOf(normalizedRoot, normalizedDefaultParentRoot, comparison))
             {
-                return "Windows virtual-files smoke refuses to touch paths outside " + AllowedSmokeRoot + @"\...";
+                return null;
             }
 
-            return null;
+            string? runnerTemp = Environment.GetEnvironmentVariable("RUNNER_TEMP");
+            if (!string.IsNullOrWhiteSpace(runnerTemp))
+            {
+                string normalizedRunnerTemp = NormalizeFullPath(runnerTemp);
+                if (IsChildOf(normalizedRoot, normalizedRunnerTemp, comparison))
+                {
+                    return null;
+                }
+            }
+
+            if (string.Equals(normalizedRoot, normalizedDefaultParentRoot, comparison))
+            {
+                return "Windows virtual-files smoke refuses to use the default parent root directly.";
+            }
+
+            return "Windows virtual-files smoke refuses to touch paths outside an allowed smoke root.";
+        }
+
+        private static bool IsChildOf(
+            string candidate,
+            string root,
+            StringComparison comparison)
+        {
+            return !string.Equals(candidate, root, comparison)
+                && candidate.StartsWith(EnsureTrailingSeparator(root), comparison);
         }
 
         private static async Task<string?> PrepareSmokeRootEnvironmentAsync(
