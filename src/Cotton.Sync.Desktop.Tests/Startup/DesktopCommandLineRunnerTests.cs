@@ -553,9 +553,9 @@ namespace Cotton.Sync.Desktop.Tests.Startup
 
         [Test]
         [Platform(Include = "Win")]
-        public async Task RunWindowsVirtualFilesSmokeAsync_RejectsRootOutsideIsolatedQaDrive()
+        public async Task RunWindowsVirtualFilesSmokeAsync_RejectsDriveRoot()
         {
-            string unsafeRoot = Path.Combine(_tempDirectory, "vfs-root");
+            string unsafeRoot = Path.GetPathRoot(_tempDirectory) ?? @"C:\";
             DesktopStartupOptions options = DesktopStartupOptions.Parse(
                 [
                     "--windows-virtual-files-smoke",
@@ -575,7 +575,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             Assert.Multiple(() =>
             {
                 Assert.That(exitCode, Is.EqualTo(2));
-                Assert.That(output.ToString(), Does.Contain(@"refuses to touch paths outside S:\CottonSyncVfsQa\..."));
+                Assert.That(output.ToString(), Does.Contain("cannot be a drive or share root"));
                 Assert.That(output.ToString(), Does.Contain("Result: failed"));
             });
         }
