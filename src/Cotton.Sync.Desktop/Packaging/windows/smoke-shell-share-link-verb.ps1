@@ -87,8 +87,8 @@ function Get-ShellVerbNames {
     param([string]$Path)
 
     $resolvedPath = (Resolve-Path -LiteralPath $Path).Path
-    $parentPath = Split-Path -LiteralPath $resolvedPath -Parent
-    $leafName = Split-Path -LiteralPath $resolvedPath -Leaf
+    $parentPath = [System.IO.Path]::GetDirectoryName($resolvedPath)
+    $leafName = [System.IO.Path]::GetFileName($resolvedPath)
     $shell = New-Object -ComObject Shell.Application
     $folder = $shell.Namespace($parentPath)
     if ($null -eq $folder) {
@@ -294,8 +294,8 @@ function Invoke-ShellVerb {
     )
 
     $resolvedPath = (Resolve-Path -LiteralPath $Path).Path
-    $parentPath = Split-Path -LiteralPath $resolvedPath -Parent
-    $leafName = Split-Path -LiteralPath $resolvedPath -Leaf
+    $parentPath = [System.IO.Path]::GetDirectoryName($resolvedPath)
+    $leafName = [System.IO.Path]::GetFileName($resolvedPath)
     $shell = New-Object -ComObject Shell.Application
     $folder = $shell.Namespace($parentPath)
     if ($null -eq $folder) {
