@@ -3324,6 +3324,8 @@ namespace Cotton.Sync.Desktop.ViewModels
         private async Task ExportDiagnosticsAsync()
         {
             bool preserveActionRequired = HasActionRequired;
+            string previousGlobalStatus = GlobalStatus;
+            string previousActionRequiredMessage = ActionRequiredMessage;
             IsExportingDiagnostics = true;
             GlobalStatus = "Exporting diagnostics";
             try
@@ -3331,7 +3333,14 @@ namespace Cotton.Sync.Desktop.ViewModels
                 await YieldToUiDispatcherAsync().ConfigureAwait(true);
                 string bundlePath = await _controller.ExportDiagnosticsAsync().ConfigureAwait(true);
                 LastDiagnosticsBundlePath = bundlePath;
-                if (!preserveActionRequired)
+                if (preserveActionRequired)
+                {
+                    GlobalStatus = string.IsNullOrWhiteSpace(previousGlobalStatus)
+                        ? "Action required"
+                        : previousGlobalStatus;
+                    ActionRequiredMessage = previousActionRequiredMessage;
+                }
+                else
                 {
                     GlobalStatus = "Diagnostics exported";
                     ActionRequiredMessage = string.Empty;

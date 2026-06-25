@@ -535,7 +535,7 @@ namespace Cotton.Sync.Tests
                 Assert.That(remoteFilesClient.DownloadCalls, Is.Zero);
                 Assert.That(remoteFilesClient.DeleteCalls, Is.Zero);
                 Assert.That(remoteFilesClient.Uploads.Single().RelativePath, Is.EqualTo(relativePath));
-                Assert.That(remoteFilesClient.UploadInputContentHashes.Single(), Is.Empty);
+                Assert.That(remoteFilesClient.UploadInputContentHashes.Single(), Is.EqualTo(expectedHash));
                 Assert.That(remoteFilesClient.Uploads.Single().LocalFile.SizeBytes, Is.EqualTo(fileSizeBytes));
                 Assert.That(remoteFilesClient.Uploads.Single().LocalFile.ContentHash, Is.EqualTo(expectedHash));
                 Assert.That(localScanElapsed, Is.GreaterThanOrEqualTo(TimeSpan.Zero));
