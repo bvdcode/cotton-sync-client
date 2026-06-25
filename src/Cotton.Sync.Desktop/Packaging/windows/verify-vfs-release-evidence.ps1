@@ -3,16 +3,23 @@
 
 param(
     [Parameter(Mandatory = $true)]
-    [string]$EvidenceDirectory
+    [string]$EvidenceDirectory,
+
+    [int]$MinimumVfsPlaceholderCount = 500000
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($MinimumVfsPlaceholderCount -le 0) {
+    throw "MinimumVfsPlaceholderCount must be greater than zero."
+}
 
 if (-not (Test-Path -LiteralPath $EvidenceDirectory)) {
     throw "VFS release evidence directory was not found: $EvidenceDirectory"
 }
 
 $resolvedEvidenceDirectory = (Resolve-Path -LiteralPath $EvidenceDirectory).Path
+$minimumVfsPlaceholderCountText = $MinimumVfsPlaceholderCount.ToString("N0", [System.Globalization.CultureInfo]::InvariantCulture)
 
 function Read-EvidenceFile {
     param(
@@ -330,13 +337,13 @@ Assert-Contains -Content $initialStreamingLogging -Expected "privateMemoryBytes=
 Assert-Contains -Content $initialStreamingLogging -Expected "threadCount=" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $initialStreamingLogging -Expected "handleCount=" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $initialStreamingLogging -Expected "Result: passed" -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log"
-Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "(?<value>[\d,]+)\s+files\s+discovered" -MinimumValue 500000 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "files discovered"
+Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "(?<value>[\d,]+)\s+files\s+discovered" -MinimumValue $MinimumVfsPlaceholderCount -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "files discovered"
 Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "files\s+discovered\s+at\s+(?<value>\d+(?:\.\d+)?)\s+files/sec" -MinimumValue 0.01 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "files/sec"
 Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "remote\s+pages\s+read=(?<value>[\d,]+)" -MinimumValue 1 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "remote pages"
 Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "remote\s+page\s+latency\s+total=(?<value>\d+(?:\.\d+)?)\s+ms" -MinimumValue 0 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "remote page latency"
-Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "(?<value>[\d,]+)\s+placeholders\s+created\s+or\s+refreshed" -MinimumValue 500000 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "placeholders created"
+Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "(?<value>[\d,]+)\s+placeholders\s+created\s+or\s+refreshed" -MinimumValue $MinimumVfsPlaceholderCount -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "placeholders created"
 Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "at\s+(?<value>\d+(?:\.\d+)?)\s+placeholders/sec" -MinimumValue 0.01 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "placeholders/sec"
-Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "state\s+writes\s+(?<value>[\d,]+)\s+file\s+rows" -MinimumValue 500000 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "state file rows"
+Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "state\s+writes\s+(?<value>[\d,]+)\s+file\s+rows" -MinimumValue $MinimumVfsPlaceholderCount -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "state file rows"
 Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "state\s+write\s+rate=(?<value>\d+(?:\.\d+)?)\s+rows/sec" -MinimumValue 0.01 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "state rows/sec"
 Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "managed\s+heap\s+start=(?<value>[\d,]+)\s+bytes" -MinimumValue 1 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "managed heap"
 Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "workingSetBytes=(?<value>[\d,]+)" -MinimumValue 1 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "working set"
@@ -344,7 +351,7 @@ Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "privateMem
 
 $steadyStateRepeat = Read-EvidenceFile -RelativePath "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $steadyStateRepeat -Expected "Steady-state repeat pass avoided local placeholder-tree scanning." -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
-Assert-Contains -Content $steadyStateRepeat -Expected "files=500,000" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $steadyStateRepeat -Expected "files=$minimumVfsPlaceholderCountText" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $steadyStateRepeat -Expected "fullLocalScans=0" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $steadyStateRepeat -Expected "metadataTreeScans=0" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $steadyStateRepeat -Expected "pathLookups=0" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"

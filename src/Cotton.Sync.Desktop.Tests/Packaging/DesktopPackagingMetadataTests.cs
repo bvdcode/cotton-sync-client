@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Diagnostics;
+using System.Globalization;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
@@ -415,6 +416,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             Assert.Multiple(() =>
             {
                 Assert.That(script, Does.Contain("[string]$EvidenceDirectory"));
+                Assert.That(script, Does.Contain("[int]$MinimumVfsPlaceholderCount = 500000"));
+                Assert.That(script, Does.Contain("MinimumVfsPlaceholderCount must be greater than zero."));
                 Assert.That(script, Does.Contain("summary.txt"));
                 Assert.That(script, Does.Contain("installed-app.txt"));
                 Assert.That(script, Does.Contain("registry-run.txt"));
@@ -468,6 +471,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("files/sec"));
                 Assert.That(script, Does.Contain("state write rate="));
                 Assert.That(script, Does.Contain("rows/sec"));
+                Assert.That(script, Does.Contain("$MinimumVfsPlaceholderCount"));
+                Assert.That(script, Does.Contain("$minimumVfsPlaceholderCountText"));
                 Assert.That(script, Does.Contain("Initial VFS runtime health captured."));
                 Assert.That(script, Does.Contain("workingSetBytes="));
                 Assert.That(script, Does.Contain("privateMemoryBytes="));
@@ -953,6 +958,23 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
 
                 Assert.That(exitCode, Is.Not.EqualTo(0), output);
                 Assert.That(output, Does.Contain("reported too small files discovered"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_AcceptsBoundedReleaseGateScaleWhenRequested()
+        {
+            string evidenceDirectory = CreateVfsReleaseEvidenceBundle(100000);
+            try
+            {
+                (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory, minimumVfsPlaceholderCount: 100000);
+
+                Assert.That(exitCode, Is.EqualTo(0), output);
+                Assert.That(output, Does.Contain("Verified VFS release evidence bundle"));
             }
             finally
             {
@@ -1561,6 +1583,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("InitialStreamingPlaceholderCount must be greater than zero."));
                 Assert.That(script, Does.Contain("initial-streaming-logging"));
                 Assert.That(script, Does.Contain("steady-state-repeat"));
+                Assert.That(script, Does.Contain("Starting Windows virtual files smoke phase '$phaseName'."));
+                Assert.That(script, Does.Contain("Completed Windows virtual files smoke phase '$phaseName'."));
                 Assert.That(script, Does.Contain("--vfs-smoke-placeholder-count"));
                 Assert.That(script, Does.Contain("SteadyStateRepeatPlaceholderCount must be greater than zero."));
                 Assert.That(script, Does.Contain("Additional Windows virtual files smoke phase '$phaseName' failed."));
@@ -1754,6 +1778,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("$contextReport = Join-Path $evidenceDir \"installer-smoke-context.txt\""));
                 Assert.That(workflow, Does.Contain("$vfsSmokeDataDir = Join-Path $env:RUNNER_TEMP \"cotton-sync-vfs-self-test-truthfulness-data\""));
                 Assert.That(workflow, Does.Contain("$vfsLocalRoot = Join-Path $env:RUNNER_TEMP \"cotton-sync-vfs-root\""));
+                Assert.That(workflow, Does.Contain("$ciVfsPlaceholderCount = 100000"));
+                Assert.That(workflow, Does.Contain("VfsPlaceholderCount: $ciVfsPlaceholderCount"));
                 Assert.That(workflow, Does.Contain("$autostartReport = Join-Path $evidenceDir \"autostart-launch.txt\""));
                 Assert.That(workflow, Does.Contain("New-Item -ItemType Directory -Path $evidenceDir -Force"));
                 Assert.That(workflow, Does.Contain("New-Item -ItemType Directory -Path $vfsLocalRoot -Force"));
@@ -1783,8 +1809,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     workflow,
                     Does.Contain("-AdditionalVfsSmokePhases @(\"desktop-session-restore\", \"shell-share-link-targets\", \"initial-streaming-logging\", \"steady-state-repeat\")"));
                 Assert.That(workflow, Does.Contain("timeout-minutes: 20"));
-                Assert.That(workflow, Does.Contain("-InitialStreamingPlaceholderCount 500000"));
-                Assert.That(workflow, Does.Contain("-SteadyStateRepeatPlaceholderCount 500000"));
+                Assert.That(workflow, Does.Contain("-InitialStreamingPlaceholderCount $ciVfsPlaceholderCount"));
+                Assert.That(workflow, Does.Contain("-SteadyStateRepeatPlaceholderCount $ciVfsPlaceholderCount"));
                 Assert.That(workflow, Does.Contain("function Invoke-InstalledVfsSmokePhase"));
                 Assert.That(workflow, Does.Contain("Invoke-InstalledVfsSmokePhase -PhaseName \"leave-registered\""));
                 Assert.That(workflow, Does.Contain("Invoke-InstalledVfsSmokePhase -PhaseName \"reconnect-existing\""));
@@ -1830,6 +1856,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Packaging/windows/verify-cloud-files-cleanup.ps1"));
                 Assert.That(workflow, Does.Contain("Packaging/windows/verify-vfs-release-evidence.ps1"));
                 Assert.That(workflow, Does.Contain("-EvidenceDirectory $evidenceDir"));
+                Assert.That(workflow, Does.Contain("-MinimumVfsPlaceholderCount $ciVfsPlaceholderCount"));
                 Assert.That(
                     Regex.Matches(workflow, "Packaging/windows/verify-cloud-files-cleanup.ps1").Count,
                     Is.GreaterThanOrEqualTo(3));
@@ -2466,8 +2493,13 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             return propertyGroup.Element(name)?.Value;
         }
 
-        private static string CreateVfsReleaseEvidenceBundle()
+        private static string CreateVfsReleaseEvidenceBundle(int placeholderCount = 500000)
         {
+            string placeholderCountText = placeholderCount.ToString(
+                "N0",
+                CultureInfo.InvariantCulture);
+            string placeholderCountRaw = placeholderCount.ToString(CultureInfo.InvariantCulture);
+            string finalItemCountText = (placeholderCount + 1).ToString("N0", CultureInfo.InvariantCulture);
             string evidenceDirectory = Path.Combine(
                 TestContext.CurrentContext.WorkDirectory,
                 "vfs-release-evidence-" + Guid.NewGuid().ToString("N"));
@@ -2612,9 +2644,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 new[]
                 {
                     "PASS: Initial VFS streaming run created a large placeholder baseline without per-placeholder activities.",
-                    "PASS: Initial VFS streaming progress stayed on placeholder creation and completed cleanly. samples=4, placeholderSamples=3, finalItems=100,001/100,001, completed=True, localScanSamples=0, remoteScanSamples=0, activities=0",
+                    $"PASS: Initial VFS streaming progress stayed on placeholder creation and completed cleanly. samples=4, placeholderSamples=3, finalItems={finalItemCountText}/{finalItemCountText}, completed=True, localScanSamples=0, remoteScanSamples=0, activities=0",
                     "PASS: Initial VFS trace log contains large-run metrics.",
-                    "Metric excerpt: Completed initial streaming Windows virtual-files population for Cloud: 1 directories discovered at 25 dirs/sec, 500000 files discovered at 2500 files/sec, remote pages read=500, remote page latency total=2000 ms, avg=4 ms, max=10 ms, last=3 ms, 500000 file items completed, 500000 placeholders created or refreshed at 2500 placeholders/sec; state writes 500000 file rows, file write batches 977, directory rows 1, state write rate=2500 rows/sec; managed heap start=1000000 bytes, completed=1500000 bytes, peak=2000000 bytes, delta=500000 bytes; activities retained 0/0",
+                    $"Metric excerpt: Completed initial streaming Windows virtual-files population for Cloud: 1 directories discovered at 25 dirs/sec, {placeholderCountRaw} files discovered at 2500 files/sec, remote pages read=500, remote page latency total=2000 ms, avg=4 ms, max=10 ms, last=3 ms, {placeholderCountRaw} file items completed, {placeholderCountRaw} placeholders created or refreshed at 2500 placeholders/sec; state writes {placeholderCountRaw} file rows, file write batches 977, directory rows 1, state write rate=2500 rows/sec; managed heap start=1000000 bytes, completed=1500000 bytes, peak=2000000 bytes, delta=500000 bytes; activities retained 0/0",
                     "PASS: Initial VFS runtime health captured. before=workingSetBytes=100000000;privateMemoryBytes=80000000;threadCount=12;handleCount=200, after=workingSetBytes=150000000;privateMemoryBytes=120000000;threadCount=14;handleCount=250",
                     "Result: passed"
                 });
@@ -2626,7 +2658,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "cloud-files-vfs-smoke.stdout.log"),
                 new[]
                 {
-                    "PASS: Steady-state repeat pass avoided local placeholder-tree scanning. files=500,000, syncElapsedMs=3000, streamingCrawls=1, fullLocalScans=0, metadataTreeScans=0, pathLookups=0, transfers=0, placeholderWrites=0",
+                    $"PASS: Steady-state repeat pass avoided local placeholder-tree scanning. files={placeholderCountText}, syncElapsedMs=3000, streamingCrawls=1, fullLocalScans=0, metadataTreeScans=0, pathLookups=0, transfers=0, placeholderWrites=0",
                     "Result: passed"
                 });
 
@@ -2754,7 +2786,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             return evidenceDirectory;
         }
 
-        private static (int ExitCode, string Output) RunVfsReleaseEvidenceVerifier(string evidenceDirectory)
+        private static (int ExitCode, string Output) RunVfsReleaseEvidenceVerifier(
+            string evidenceDirectory,
+            int? minimumVfsPlaceholderCount = null)
         {
             ProcessStartInfo startInfo = new()
             {
@@ -2768,6 +2802,11 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             startInfo.ArgumentList.Add(GetDesktopFilePath("Packaging/windows/verify-vfs-release-evidence.ps1"));
             startInfo.ArgumentList.Add("-EvidenceDirectory");
             startInfo.ArgumentList.Add(evidenceDirectory);
+            if (minimumVfsPlaceholderCount is not null)
+            {
+                startInfo.ArgumentList.Add("-MinimumVfsPlaceholderCount");
+                startInfo.ArgumentList.Add(minimumVfsPlaceholderCount.Value.ToString(CultureInfo.InvariantCulture));
+            }
 
             using Process process = Process.Start(startInfo)
                 ?? throw new InvalidOperationException("PowerShell verifier process did not start.");
