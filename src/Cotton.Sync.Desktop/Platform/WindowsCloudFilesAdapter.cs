@@ -40,6 +40,7 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly WindowsVirtualFilesRootSafetyPolicy _rootSafety;
         private readonly IWindowsCloudFilesNativeApi _nativeApi;
         private readonly IWindowsStorageProviderSyncRootRegistrar? _storageProviderRegistrar;
+        private readonly IWindowsShellChangeNotifier _shellChangeNotifier;
         private readonly IWindowsCloudFilesDiagnostics _diagnostics;
         private readonly Func<string, bool> _isReparsePoint;
         private readonly Func<string, bool> _isCloudFilesReparsePoint;
@@ -51,6 +52,7 @@ namespace Cotton.Sync.Desktop.Platform
             WindowsVirtualFilesRootSafetyPolicy? rootSafety = null,
             IWindowsCloudFilesNativeApi? nativeApi = null,
             IWindowsStorageProviderSyncRootRegistrar? storageProviderRegistrar = null,
+            IWindowsShellChangeNotifier? shellChangeNotifier = null,
             IWindowsCloudFilesDiagnostics? diagnostics = null,
             Func<string, bool>? isReparsePoint = null,
             Func<string, bool>? isCloudFilesReparsePoint = null,
@@ -59,6 +61,7 @@ namespace Cotton.Sync.Desktop.Platform
             _rootSafety = rootSafety ?? new WindowsVirtualFilesRootSafetyPolicy();
             _nativeApi = nativeApi ?? new WindowsCloudFilesNativeApi();
             _storageProviderRegistrar = storageProviderRegistrar ?? WindowsStorageProviderSyncRootRegistrar.TryCreateDefault();
+            _shellChangeNotifier = shellChangeNotifier ?? new WindowsShellChangeNotifier();
             _diagnostics = diagnostics ?? WindowsCloudFilesDiagnostics.Shared;
             _isReparsePoint = isReparsePoint ?? IsReparsePoint;
             _isCloudFilesReparsePoint = isCloudFilesReparsePoint ?? IsCloudFilesReparsePoint;
@@ -425,6 +428,7 @@ namespace Cotton.Sync.Desktop.Platform
                     request.SyncPairId,
                     localRootPath,
                     normalizedPath);
+                _shellChangeNotifier.NotifyDirectoryUpdated(fullPlaceholderPath);
             }
             catch (Exception exception)
             {
@@ -485,6 +489,7 @@ namespace Cotton.Sync.Desktop.Platform
                     request.SyncPairId,
                     localRootPath,
                     normalizedPath);
+                _shellChangeNotifier.NotifyDirectoryUpdated(fullPlaceholderPath);
             }
             catch (Exception exception)
             {
@@ -555,6 +560,7 @@ namespace Cotton.Sync.Desktop.Platform
                 request.SyncPairId,
                 localRootPath,
                 normalizedPath);
+            _shellChangeNotifier.NotifyDirectoryUpdated(fullPlaceholderPath);
             _diagnostics.Record(
                 "convert-directory-placeholder",
                 "repaired-placeholder",
@@ -597,6 +603,7 @@ namespace Cotton.Sync.Desktop.Platform
                 registration.LocalRootPath,
                 normalizedPath,
                 "Windows Cloud Files placeholder was dehydrated.");
+            NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: false);
         }
 
         public void SetInSyncState(SyncPairSettings syncPair, string relativePath)
@@ -645,6 +652,7 @@ namespace Cotton.Sync.Desktop.Platform
                     syncPair.Id.ToString(),
                     registration.LocalRootPath,
                     normalizedPath);
+                NotifyShellPathUpdated(fullPlaceholderPath, isDirectory);
             }
             catch (Exception exception)
             {
@@ -749,6 +757,7 @@ namespace Cotton.Sync.Desktop.Platform
                     syncPair.Id.ToString(),
                     registration.LocalRootPath,
                     normalizedPath);
+                _shellChangeNotifier.NotifyItemUpdated(fullPlaceholderPath);
             }
             catch (Exception exception)
             {
@@ -783,6 +792,7 @@ namespace Cotton.Sync.Desktop.Platform
                     syncPair.Id.ToString(),
                     registration.LocalRootPath,
                     null);
+                _shellChangeNotifier.NotifyDirectoryUpdated(registration.LocalRootPath);
             }
             catch (Exception exception)
             {
@@ -858,6 +868,17 @@ namespace Cotton.Sync.Desktop.Platform
                     + state
                     + ".");
             }
+        }
+
+        private void NotifyShellPathUpdated(string path, bool isDirectory)
+        {
+            if (isDirectory)
+            {
+                _shellChangeNotifier.NotifyDirectoryUpdated(path);
+                return;
+            }
+
+            _shellChangeNotifier.NotifyItemUpdated(path);
         }
 
         private void EnsureNoReparsePointDescendant(string syncRootPath, string targetDirectoryPath)
