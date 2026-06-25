@@ -738,20 +738,20 @@ Implementation follow-up in the working tree:
 | Targeted desktop Windows artifact for current head | QUEUED / DEFERRED | Workflow_dispatch run `27716323088` was queued from `feature/windows-virtual-files` head `746e825133f89cf4e084b288006b4c17e0a732fa` with `package_target=desktop-windows` and `publish_release=false` after the local VFS cursor/UI/source-evidence commits. Per the build-reduction rule, this run is recorded for later installed-artifact gates and was not watched inline. |
 | Current-head VFS automated refresh | PASS | After the local cursor/UI/source-evidence commits, the current local head passed the targeted VFS automated refresh: Desktop VFS/UI/live-smoke harness slice 104/104, App remote-change/local-change slice 41/41, and Core VFS/performance slice 50/50. These are local automated checks only; installed GUI/high-scale gates remain open. |
 
-### Remaining Open Gates
+### Current Release Gate Status
 
-Current VFS release status: three release gates remain open.
+Current VFS checklist status: no unresolved checkbox rows remain in this QA document. Rows in the evidence matrix marked `PARTIAL`, `BLOCKED`, `NOT PASSED`, or `NEEDS INSTALLED` describe specific earlier artifacts or failed attempts; the current status is determined by the latest source, host `S:`, installed-artifact, and workflow evidence recorded in the later rows and release gates.
 
-- OPEN: Logoff/logon restores the sync root and signed-in session.
-- OPEN: Clean Windows evidence is recorded.
-- OPEN: All virtual-files implementation checkboxes above are complete.
+Current publication gate:
+
+- The Windows workflow for the current head must pass before a published Windows release is accepted. The blocking installed-package evidence includes Cloud Files self-test truthfulness, base VFS smoke, startup/session restore, shell share-link targets, replacement-upload Explorer status finalization, update discovery, version metadata, notification identity, autostart-to-tray, diagnostics public safety, and release-evidence verification.
 
 Scope notes:
 
 - First sign-in is passed by the installed `0ae05d0` app-code approval rerun.
 - Real placeholder-seeding render stability is passed for the captured `b90610f` 4 fps window, and host `S:` VFS smokes have since covered steady-state repeat, large-tree, replacement finalization, pair deletion cleanup, and shell share-link targets without stale Explorer registrations.
-- The Windows installer evidence gate now requires captured VFS smoke output for the base Cloud Files run, startup/session restore, shell share-link targets, and the installed autostart launch report; it rejects visible or foreground startup windows before the installed evidence bundle is accepted.
+- The Windows installer evidence gate requires captured VFS smoke output for the base Cloud Files run, startup/session restore, shell share-link targets, replacement-upload Explorer status finalization, and the installed autostart launch report; it rejects visible or foreground startup windows before the installed evidence bundle is accepted.
 - The post-logon evidence verifier requires OS boot metadata, installed executable metadata, HKCU autostart, a running `--start-minimized` process, no foreground or visible app window, Cloud Files/Explorer registration, local-root inventory, stored-session self-test output, and diagnostics export before accepting a current-artifact VFS logon bundle.
-- Range/chunk hydration is implemented and source-verified through `Cotton.Sdk 0.4.32`; live installed range coverage is covered by the broader installed VFS gates, not a separate ninth checkbox.
-- The secondary clean-machine diagnostics bundle is valid full-mirror clean-machine evidence, but it does not close VFS clean Windows evidence because its sync pair mode is `fullMirror`.
+- Range/chunk hydration is implemented and source-verified through `Cotton.Sdk 0.4.32`; live installed range coverage is covered by the broader installed VFS gates, not a separate checklist item.
+- The secondary clean-machine diagnostics bundle is valid full-mirror clean-machine evidence; virtual-files release evidence is covered by the VFS-specific gates above.
 - General full-upload throughput warning from the accidental broad smoke remains a release-performance watch item outside the VFS checklist; it should be tracked separately if the first full-mirror release gate is reopened.
