@@ -2192,10 +2192,22 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             {
                 Assert.That(script, Does.Contain("[string]$ExpectedAppVersion"));
                 Assert.That(script, Does.Contain("[string]$ReleaseTag = \"\""));
+                Assert.That(script, Does.Contain("[string]$ExpectedCommit = $env:GITHUB_SHA"));
                 Assert.That(script, Does.Contain("$ReleaseTag = \"v$ExpectedAppVersion\""));
                 Assert.That(script, Does.Contain("gh release download $ReleaseTag"));
                 Assert.That(script, Does.Contain("--pattern CottonSync-Windows.zip"));
                 Assert.That(script, Does.Contain("--pattern CottonSync-Windows-Setup.exe"));
+                Assert.That(script, Does.Contain("--pattern release-artifact-checksums.sha256"));
+                Assert.That(script, Does.Contain("--pattern release-manifest.json"));
+                Assert.That(script, Does.Contain("gh release view $ReleaseTag --repo $Repository --json body,assets"));
+                Assert.That(script, Does.Contain("Assert-ReleaseMetadata -Manifest $manifest -ReleaseDetails $releaseDetails"));
+                Assert.That(script, Does.Contain("Assert-ChecksumFile -Manifest $manifest -Path $releaseChecksums"));
+                Assert.That(script, Does.Contain("Assert-DownloadedAssetMatchesManifest -Manifest $manifest -Name \"CottonSync-Windows.zip\" -Path $releaseZip"));
+                Assert.That(script, Does.Contain("Assert-DownloadedAssetMatchesManifest -Manifest $manifest -Name \"CottonSync-Windows-Setup.exe\" -Path $releaseInstaller"));
+                Assert.That(script, Does.Contain("Assert-DownloadedAssetMatchesManifest -Manifest $manifest -Name \"release-artifact-checksums.sha256\" -Path $releaseChecksums"));
+                Assert.That(script, Does.Contain("## Cotton Sync Client $ExpectedAppVersion"));
+                Assert.That(script, Does.Contain("## Changes"));
+                Assert.That(script, Does.Contain("## Assets"));
                 Assert.That(script, Does.Contain("$oldAppVersion = $ExpectedAppVersion + \"-ci-github-upgrade\""));
                 Assert.That(script, Does.Contain("/DAppVersion=$oldAppVersion"));
                 Assert.That(script, Does.Contain("-FilePath $releaseInstaller"));
@@ -2282,6 +2294,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Smoke GitHub release Windows installer upgrade"));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-github-release-upgrade.ps1"));
                 Assert.That(workflow, Does.Contain("-ExpectedAppVersion \"${{ needs.linux.outputs.Version }}\""));
+                Assert.That(workflow, Does.Contain("-ExpectedCommit \"${{ github.sha }}\""));
                 Assert.That(workflow, Does.Contain("GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}"));
             });
         }
