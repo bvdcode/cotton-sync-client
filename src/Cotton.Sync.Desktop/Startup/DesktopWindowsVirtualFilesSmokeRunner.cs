@@ -65,6 +65,7 @@ namespace Cotton.Sync.Desktop.Startup
         private const int LargeHydrationSizeBytes = 32 * 1024 * 1024;
         private const int LargeHydrationChunkBytes = 1024 * 1024;
         private const string SmokeContentText = "Cotton Sync Windows virtual files smoke content\n";
+        private static readonly TimeSpan ExternalFileReadTimeout = TimeSpan.FromSeconds(30);
 
         internal static async Task<int> PrepareStartupEnvironmentAsync(
             DesktopStartupOptions startupOptions,
@@ -4507,7 +4508,30 @@ namespace Cotton.Sync.Desktop.Startup
 
             Task<string> stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
             Task<string> stderr = process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            using var timeoutCancellation = new CancellationTokenSource(ExternalFileReadTimeout);
+            using CancellationTokenSource linkedCancellation =
+                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCancellation.Token);
+            try
+            {
+                await process.WaitForExitAsync(linkedCancellation.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeoutCancellation.IsCancellationRequested)
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+
+                throw new TimeoutException(
+                    "External file-read helper timed out after "
+                    + ExternalFileReadTimeout.TotalSeconds.ToString(
+                        "0",
+                        System.Globalization.CultureInfo.InvariantCulture)
+                    + " seconds while reading "
+                    + filePath
+                    + ".");
+            }
+
             string output = await stdout.ConfigureAwait(false);
             string error = await stderr.ConfigureAwait(false);
             if (process.ExitCode != 0)
