@@ -88,6 +88,11 @@ begin
   Result := '''' + Value + '''';
 end;
 
+function CommandLineQuoted(Value: String): String;
+begin
+  Result := '"' + Value + '"';
+end;
+
 procedure StopInstalledAppForSilentUninstall();
 var
   ResultCode: Integer;
@@ -155,7 +160,7 @@ begin
   DataDirectory := ExpandConstant('{param:LaunchAfterUpdateDataDir|}');
   if DataDirectory <> '' then
   begin
-    Result := Result + ' --data-dir ' + AddQuotes(DataDirectory);
+    Result := Result + ' --data-dir ' + CommandLineQuoted(DataDirectory);
   end;
 end;
 
@@ -163,11 +168,11 @@ function GetAutostartLaunchCommand(Value: String): String;
 var
   DataDirectory: String;
 begin
-  Result := AddQuotes(ExpandConstant('{app}\Cotton.Sync.Desktop.exe')) + ' --start-minimized';
+  Result := CommandLineQuoted(ExpandConstant('{app}\Cotton.Sync.Desktop.exe')) + ' --start-minimized';
   DataDirectory := ExpandConstant('{param:AutostartDataDir|}');
   if DataDirectory <> '' then
   begin
-    Result := Result + ' --data-dir ' + AddQuotes(DataDirectory);
+    Result := Result + ' --data-dir ' + CommandLineQuoted(DataDirectory);
   end;
 end;
 
