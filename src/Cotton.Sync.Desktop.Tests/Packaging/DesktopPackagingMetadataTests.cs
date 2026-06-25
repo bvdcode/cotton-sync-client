@@ -2129,7 +2129,10 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("diagnostics.json"));
                 Assert.That(script, Does.Contain("lastInstallLaunchStatus"));
                 Assert.That(script, Does.Contain("lastInstallProcessId"));
+                Assert.That(script, Does.Contain("Update installer startup probe check was not reported."));
+                Assert.That(script, Does.Contain("exitedDuringProbe=(?<exited>True|False)"));
                 Assert.That(script, Does.Contain("lastInstallExitCode"));
+                Assert.That(script, Does.Contain("expected null while the installer was still running."));
                 Assert.That(script, Does.Contain("Verified installed update install handoff."));
             });
         }
