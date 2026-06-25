@@ -410,6 +410,8 @@ jobs:
           $visualStatesReport = Join-Path $evidenceDir "visual-states.txt"
           $postUninstallCleanupReport = Join-Path $evidenceDir "post-uninstall-cleanup.txt"
           $postReinstallCleanupReport = Join-Path $evidenceDir "post-reinstall-cleanup.txt"
+          $reinstallSelfTestStdout = Join-Path $evidenceDir "reinstall-self-test.stdout.log"
+          $reinstallSelfTestStderr = Join-Path $evidenceDir "reinstall-self-test.stderr.log"
           New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
           New-Item -ItemType Directory -Path $evidenceDir -Force | Out-Null
           New-Item -ItemType Directory -Path $vfsLocalRoot -Force | Out-Null
@@ -611,7 +613,19 @@ jobs:
           if (-not (Test-Path $installedExe)) {
             throw "Reinstalled desktop executable was not found."
           }
-          & $installedExe --self-test --data-dir "$dataDir"
+          $reinstallSelfTest = Start-Process `
+            -FilePath $installedExe `
+            -ArgumentList @("--self-test", "--data-dir", $dataDir) `
+            -RedirectStandardOutput $reinstallSelfTestStdout `
+            -RedirectStandardError $reinstallSelfTestStderr `
+            -Wait `
+            -PassThru
+          if ($reinstallSelfTest.ExitCode -ne 0) {
+            Get-Content $reinstallSelfTestStdout -ErrorAction SilentlyContinue
+            Get-Content $reinstallSelfTestStderr -ErrorAction SilentlyContinue
+            throw "Reinstalled desktop self-test exited with code $($reinstallSelfTest.ExitCode)."
+          }
+          Write-Host "Verified reinstalled desktop self-test."
 
           $reinstallUninstaller = Join-Path $installDir "unins000.exe"
           if (-not (Test-Path $reinstallUninstaller)) {
@@ -633,6 +647,7 @@ jobs:
             $remainingInstallItems | ForEach-Object { Write-Host $_.FullName }
             throw "Install directory was not empty after reinstall cleanup."
           }
+          exit 0
 
       - name: Smoke desktop Windows installer upgrade
         timeout-minutes: 8
