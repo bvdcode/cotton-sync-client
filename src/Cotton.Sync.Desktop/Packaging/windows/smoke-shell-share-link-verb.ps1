@@ -287,37 +287,6 @@ function Set-DefaultRegistryValue {
     }
 }
 
-function Invoke-ShellVerb {
-    param(
-        [string]$Path,
-        [string]$ExpectedLabel
-    )
-
-    $resolvedPath = (Resolve-Path -LiteralPath $Path).Path
-    $parentPath = [System.IO.Path]::GetDirectoryName($resolvedPath)
-    $leafName = [System.IO.Path]::GetFileName($resolvedPath)
-    $shell = New-Object -ComObject Shell.Application
-    $folder = $shell.Namespace($parentPath)
-    if ($null -eq $folder) {
-        throw "Shell namespace could not open invocation parent."
-    }
-
-    $item = $folder.ParseName($leafName)
-    if ($null -eq $item) {
-        throw "Shell namespace could not resolve invocation target."
-    }
-
-    foreach ($verb in $item.Verbs()) {
-        $name = Normalize-ShellVerbName -Name ([string]$verb.Name)
-        if ([string]::Equals($name, $ExpectedLabel, [StringComparison]::Ordinal)) {
-            $verb.DoIt()
-            return
-        }
-    }
-
-    throw "Explorer shell did not expose '$ExpectedLabel' for the invocation target."
-}
-
 function Wait-File {
     param(
         [string]$Path,
@@ -376,10 +345,12 @@ function Assert-InstalledShellVerbInvocation {
     $requestPath = Join-Path $DataDirectory "shell-share-link-server-request.txt"
     $stdoutPath = Join-Path $DataDirectory "shell-share-link-verb.stdout.log"
     $stderrPath = Join-Path $DataDirectory "shell-share-link-verb.stderr.log"
+    $commandStdoutPath = Join-Path $DataDirectory "shell-share-link-command.stdout.log"
+    $commandStderrPath = Join-Path $DataDirectory "shell-share-link-command.stderr.log"
     $exitPath = Join-Path $DataDirectory "shell-share-link-verb.exit"
     $wrapperPath = Join-Path $DataDirectory "invoke-shell-share-link.ps1"
 
-    Remove-Item -LiteralPath $serverReadyPath, $requestPath, $stdoutPath, $stderrPath, $exitPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $serverReadyPath, $requestPath, $stdoutPath, $stderrPath, $commandStdoutPath, $commandStderrPath, $exitPath -Force -ErrorAction SilentlyContinue
     $wrapperLines = @(
         'param([string]$TargetPath)',
         '$ErrorActionPreference = "Stop"',
@@ -399,8 +370,23 @@ function Assert-InstalledShellVerbInvocation {
                 -Value ("powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$wrapperPath`" `"%1`"")
         }
 
-        Invoke-ShellVerb -Path $targetPath -ExpectedLabel "Copy Cotton Cloud share link"
-        Wait-File -Path $exitPath
+        $registeredCommand = Get-DefaultRegistryValue -SubKey $verbCommandSubKeys[0]
+        if ($registeredCommand.IndexOf($wrapperPath, [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
+            $registeredCommand.IndexOf("%1", [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+            throw "Installed shell share-link verb command did not reference the smoke wrapper and target placeholder."
+        }
+
+        $commandExitCode = Invoke-ProcessCapture `
+            -FilePath "powershell.exe" `
+            -Arguments @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $wrapperPath, $targetPath) `
+            -StandardOutputPath $commandStdoutPath `
+            -StandardErrorPath $commandStderrPath
+        if ($commandExitCode -ne 0) {
+            $commandError = if (Test-Path -LiteralPath $commandStderrPath) { Get-Content -LiteralPath $commandStderrPath -Raw } else { "" }
+            throw "Installed shell share-link verb command wrapper exited with code $commandExitCode. $commandError"
+        }
+
+        Wait-File -Path $exitPath -TimeoutSeconds 5
         Wait-File -Path $requestPath
         $exitCode = [int](Get-Content -LiteralPath $exitPath -Raw)
         $stdout = if (Test-Path -LiteralPath $stdoutPath) { Get-Content -LiteralPath $stdoutPath } else { @() }
