@@ -479,7 +479,7 @@ jobs:
             -DataDirectory $dataDir `
             -VfsSmokeDataDirectory $vfsSmokeDataDir `
             -LocalRoot $vfsLocalRoot `
-            -AdditionalVfsSmokePhases @("desktop-session-restore", "shell-share-link-targets", "initial-streaming-logging", "steady-state-repeat") `
+            -AdditionalVfsSmokePhases @("desktop-session-restore", "shell-share-link-targets", "initial-streaming-logging", "steady-state-repeat", "replace-cloud-only-upload") `
             -InitialStreamingPlaceholderCount $ciVfsPlaceholderCount `
             -SteadyStateRepeatPlaceholderCount $ciVfsPlaceholderCount
           function Invoke-InstalledVfsSmokePhase {
