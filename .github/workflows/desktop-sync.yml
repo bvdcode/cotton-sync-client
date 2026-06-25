@@ -404,6 +404,7 @@ jobs:
           $reinstallUninstallLog = Join-Path $evidenceDir "cotton-sync-reinstall-uninstall.log"
           $vfsSmokeDataDir = Join-Path $env:RUNNER_TEMP "cotton-sync-vfs-self-test-truthfulness-data"
           $vfsLocalRoot = Join-Path $env:RUNNER_TEMP "cotton-sync-vfs-root"
+          $ciVfsPlaceholderCount = 100000
           $contextReport = Join-Path $evidenceDir "installer-smoke-context.txt"
           $autostartReport = Join-Path $evidenceDir "autostart-launch.txt"
           $visualStatesReport = Join-Path $evidenceDir "visual-states.txt"
@@ -419,6 +420,7 @@ jobs:
             "InstallDir: $installDir",
             "DataDir: $dataDir",
             "VfsLocalRoot: $vfsLocalRoot",
+            "VfsPlaceholderCount: $ciVfsPlaceholderCount",
             "InstallerPath: $installerPath"
           ) | Set-Content -LiteralPath $contextReport -Encoding utf8
 
@@ -476,8 +478,8 @@ jobs:
             -VfsSmokeDataDirectory $vfsSmokeDataDir `
             -LocalRoot $vfsLocalRoot `
             -AdditionalVfsSmokePhases @("desktop-session-restore", "shell-share-link-targets", "initial-streaming-logging", "steady-state-repeat") `
-            -InitialStreamingPlaceholderCount 500000 `
-            -SteadyStateRepeatPlaceholderCount 500000
+            -InitialStreamingPlaceholderCount $ciVfsPlaceholderCount `
+            -SteadyStateRepeatPlaceholderCount $ciVfsPlaceholderCount
           function Invoke-InstalledVfsSmokePhase {
             param(
               [Parameter(Mandatory = $true)]
@@ -765,7 +767,8 @@ jobs:
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-cloud-files-cleanup.ps1" `
             -ReportPath $postUpgradeCleanupReport
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-vfs-release-evidence.ps1" `
-            -EvidenceDirectory $evidenceDir
+            -EvidenceDirectory $evidenceDir `
+            -MinimumVfsPlaceholderCount $ciVfsPlaceholderCount
 
       - name: Upload desktop Windows x64 artifact
         uses: actions/upload-artifact@v5

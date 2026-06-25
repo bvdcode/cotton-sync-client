@@ -69,10 +69,12 @@ function Write-CommandOutput {
     $Result.Stderr | ForEach-Object { Write-Host $_ }
 }
 
+Write-Host "Starting Cloud Files self-test truthfulness smoke."
 $selfTestResult = Invoke-CottonDesktopCommand `
     -Arguments @("--self-test", "--data-dir", $DataDirectory, "--local-root", $LocalRoot) `
     -StdoutPath (Join-Path $DataDirectory "cloud-files-self-test.stdout.log") `
     -StderrPath (Join-Path $DataDirectory "cloud-files-self-test.stderr.log")
+Write-Host "Completed desktop self-test command."
 
 $windowsVirtualFilesLine = $selfTestResult.Stdout |
     Where-Object { $_ -match '^\[(OK|SKIP|FAIL)\] Windows virtual files - ' } |
@@ -93,6 +95,7 @@ $vfsSmokeResult = Invoke-CottonDesktopCommand `
     -Arguments @("--windows-virtual-files-smoke", "--data-dir", $VfsSmokeDataDirectory, "--local-root", $LocalRoot) `
     -StdoutPath (Join-Path $VfsSmokeDataDirectory "cloud-files-vfs-smoke.stdout.log") `
     -StderrPath (Join-Path $VfsSmokeDataDirectory "cloud-files-vfs-smoke.stderr.log")
+Write-Host "Completed base Windows virtual files smoke command."
 
 $vfsSmokePassed = $vfsSmokeResult.ExitCode -eq 0 -and ($vfsSmokeResult.Stdout | Where-Object { $_ -eq "Result: passed" } | Select-Object -First 1)
 $vfsSmokeFailed = $vfsSmokeResult.ExitCode -ne 0 -or ($vfsSmokeResult.Stdout | Where-Object { $_ -eq "Result: failed" } | Select-Object -First 1)
@@ -150,6 +153,7 @@ if ($vfsSmokePassed) {
                 $SteadyStateRepeatPlaceholderCount.ToString([System.Globalization.CultureInfo]::InvariantCulture))
         }
 
+        Write-Host "Starting Windows virtual files smoke phase '$phaseName'."
         $phaseResult = Invoke-CottonDesktopCommand `
             -Arguments $phaseArguments `
             -StdoutPath (Join-Path $phaseDataDirectory "cloud-files-vfs-smoke.stdout.log") `
@@ -159,6 +163,8 @@ if ($vfsSmokePassed) {
             Write-CommandOutput -Result $phaseResult
             throw "Additional Windows virtual files smoke phase '$phaseName' failed."
         }
+
+        Write-Host "Completed Windows virtual files smoke phase '$phaseName'."
     }
 }
 
