@@ -2003,6 +2003,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("Copy Cotton Cloud share link"));
                 Assert.That(script, Does.Contain("--copy-shell-share-link"));
                 Assert.That(script, Does.Contain("Shell.Application"));
+                Assert.That(script, Does.Contain("[System.IO.Path]::GetDirectoryName($resolvedPath)"));
+                Assert.That(script, Does.Contain("[System.IO.Path]::GetFileName($resolvedPath)"));
+                Assert.That(script, Does.Not.Contain("Split-Path -LiteralPath"));
                 Assert.That(script, Does.Contain("Assert-ShellVerbVisibility"));
                 Assert.That(script, Does.Contain("Assert-InstalledShellVerbInvocation"));
                 Assert.That(script, Does.Contain("shell-share-link-root\\synced-file.txt"));
