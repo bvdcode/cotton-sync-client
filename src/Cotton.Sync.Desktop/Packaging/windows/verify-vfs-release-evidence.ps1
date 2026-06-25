@@ -307,6 +307,14 @@ Assert-Contains -Content $desktopSessionRestore -Expected "Result: passed" -Labe
 $shellShareLinkTargets = Read-EvidenceFile -RelativePath "vfs-smoke\phase-shell-share-link-targets\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $shellShareLinkTargets -Expected "Result: passed" -Label "vfs-smoke\phase-shell-share-link-targets\cloud-files-vfs-smoke.stdout.log"
 
+$replaceCloudOnlyUpload = Read-EvidenceFile -RelativePath "vfs-smoke\phase-replace-cloud-only-upload\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $replaceCloudOnlyUpload -Expected "Uploaded replacement file Cloud Files status was finalized." -Label "vfs-smoke\phase-replace-cloud-only-upload\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $replaceCloudOnlyUpload -Expected "Uploaded replacement parent directory Cloud Files status was finalized." -Label "vfs-smoke\phase-replace-cloud-only-upload\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $replaceCloudOnlyUpload -Expected "Uploaded replacement sync root Cloud Files status was finalized." -Label "vfs-smoke\phase-replace-cloud-only-upload\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $replaceCloudOnlyUpload -Expected "Explorer shell status settled for uploaded replacement file." -Label "vfs-smoke\phase-replace-cloud-only-upload\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $replaceCloudOnlyUpload -Expected "Explorer shell status settled for uploaded replacement parent directory." -Label "vfs-smoke\phase-replace-cloud-only-upload\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $replaceCloudOnlyUpload -Expected "Result: passed" -Label "vfs-smoke\phase-replace-cloud-only-upload\cloud-files-vfs-smoke.stdout.log"
+
 $leaveRegistered = Read-EvidenceFile -RelativePath "vfs-smoke\phase-leave-registered\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $leaveRegistered -Expected "Cloud Files sync root left registered for process restart smoke." -Label "vfs-smoke\phase-leave-registered\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $leaveRegistered -Expected "Result: passed" -Label "vfs-smoke\phase-leave-registered\cloud-files-vfs-smoke.stdout.log"

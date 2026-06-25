@@ -441,6 +441,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("vfs-smoke\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-desktop-session-restore\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-shell-share-link-targets\\cloud-files-vfs-smoke.stdout.log"));
+                Assert.That(script, Does.Contain("vfs-smoke\\phase-replace-cloud-only-upload\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-leave-registered\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-reconnect-existing\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-initial-streaming-logging\\cloud-files-vfs-smoke.stdout.log"));
@@ -465,6 +466,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("VFS smoke logs: captured:"));
                 Assert.That(script, Does.Contain("Desktop startup restored the saved signed-in session."));
                 Assert.That(script, Does.Contain("Desktop startup reconnected the persisted Cloud Files sync root."));
+                Assert.That(script, Does.Contain("Uploaded replacement parent directory Cloud Files status was finalized."));
+                Assert.That(script, Does.Contain("Explorer shell status settled for uploaded replacement parent directory."));
                 Assert.That(script, Does.Contain("Cloud Files sync root left registered for process restart smoke."));
                 Assert.That(script, Does.Contain("Existing remote-only placeholder is available before reconnect hydration."));
                 Assert.That(script, Does.Contain("Initial VFS trace log contains large-run metrics."));
@@ -627,6 +630,29 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(
                     output,
                     Does.Contain("vfs-smoke\\phase-desktop-session-restore\\cloud-files-vfs-smoke.stdout.log"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_RejectsMissingReplaceCloudOnlyUploadLogs()
+        {
+            string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
+            try
+            {
+                Directory.Delete(
+                    Path.Combine(evidenceDirectory, "vfs-smoke", "phase-replace-cloud-only-upload"),
+                    recursive: true);
+
+                (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(
+                    output,
+                    Does.Contain("vfs-smoke\\phase-replace-cloud-only-upload\\cloud-files-vfs-smoke.stdout.log"));
             }
             finally
             {
@@ -1812,7 +1838,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("-LocalRoot $vfsLocalRoot"));
                 Assert.That(
                     workflow,
-                    Does.Contain("-AdditionalVfsSmokePhases @(\"desktop-session-restore\", \"shell-share-link-targets\", \"initial-streaming-logging\", \"steady-state-repeat\")"));
+                    Does.Contain("-AdditionalVfsSmokePhases @(\"desktop-session-restore\", \"shell-share-link-targets\", \"initial-streaming-logging\", \"steady-state-repeat\", \"replace-cloud-only-upload\")"));
                 Assert.That(workflow, Does.Contain("timeout-minutes: 20"));
                 Assert.That(workflow, Does.Contain("-InitialStreamingPlaceholderCount $ciVfsPlaceholderCount"));
                 Assert.That(workflow, Does.Contain("-SteadyStateRepeatPlaceholderCount $ciVfsPlaceholderCount"));
@@ -2540,6 +2566,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             Directory.CreateDirectory(evidenceDirectory);
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-desktop-session-restore"));
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-shell-share-link-targets"));
+            Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-replace-cloud-only-upload"));
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-leave-registered"));
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-reconnect-existing"));
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-initial-streaming-logging"));
@@ -2555,7 +2582,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "Cloud Files Explorer registrations: captured: registry-cloud-files-explorer.txt",
                     "Local root entries: captured: local-root-entries.csv",
                     "Log tails: captured 1 log file(s)",
-                    "VFS smoke logs: captured: vfs-smoke; files=8",
+                    "VFS smoke logs: captured: vfs-smoke; files=9",
                     "Installed self-test: exitCode=0; stdout=self-test.stdout.log; stderr=self-test.stderr.log",
                     "Diagnostics export: exitCode=0; stdout=diagnostics-export.stdout.log; stderr=diagnostics-export.stderr.log"
                 });
@@ -2646,6 +2673,21 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "phase-shell-share-link-targets",
                     "cloud-files-vfs-smoke.stdout.log"),
                 "Result: passed");
+            File.WriteAllLines(
+                Path.Combine(
+                    evidenceDirectory,
+                    "vfs-smoke",
+                    "phase-replace-cloud-only-upload",
+                    "cloud-files-vfs-smoke.stdout.log"),
+                new[]
+                {
+                    "PASS: Uploaded replacement file Cloud Files status was finalized.",
+                    "PASS: Uploaded replacement parent directory Cloud Files status was finalized.",
+                    "PASS: Uploaded replacement sync root Cloud Files status was finalized.",
+                    "PASS: Explorer shell status settled for uploaded replacement file.",
+                    "PASS: Explorer shell status settled for uploaded replacement parent directory.",
+                    "Result: passed"
+                });
             File.WriteAllLines(
                 Path.Combine(
                     evidenceDirectory,
