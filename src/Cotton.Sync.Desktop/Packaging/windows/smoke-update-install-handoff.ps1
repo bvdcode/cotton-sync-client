@@ -112,6 +112,23 @@ if (-not ($smokeOutput | Where-Object { $_ -eq "Result: passed" } | Select-Objec
     throw "Update install smoke did not report a passed result."
 }
 
+$startupProbeLine = $smokeOutput |
+    Where-Object { $_.StartsWith("PASS: Update installer startup probe does not fail") } |
+    Select-Object -First 1
+if ([string]::IsNullOrWhiteSpace($startupProbeLine)) {
+    throw "Update installer startup probe check was not reported."
+}
+
+$startupProbeMatch = [regex]::Match(
+    $startupProbeLine,
+    "exitedDuringProbe=(?<exited>True|False),\s+exitCode=(?<exitCode><running>|-?\d+)")
+if (-not $startupProbeMatch.Success) {
+    throw "Update installer startup probe line was not parseable: $startupProbeLine"
+}
+
+$expectedExitedDuringStartupProbe = [bool]::Parse($startupProbeMatch.Groups["exited"].Value)
+$expectedExitCodeText = $startupProbeMatch.Groups["exitCode"].Value
+
 $bundleLine = $smokeOutput | Where-Object { $_.StartsWith("PASS: Diagnostics bundle records installer launch outcome") } | Select-Object -First 1
 if ([string]::IsNullOrWhiteSpace($bundleLine)) {
     throw "Update install diagnostics bundle check was not reported."
@@ -146,12 +163,22 @@ try {
         throw "Diagnostics lastInstallProcessId was not a positive process id."
     }
 
-    if ($update.lastInstallExitedDuringStartupProbe -ne $true) {
-        throw "Diagnostics lastInstallExitedDuringStartupProbe was not true for the fake installer."
+    if ($update.lastInstallExitedDuringStartupProbe -ne $expectedExitedDuringStartupProbe) {
+        throw "Diagnostics lastInstallExitedDuringStartupProbe was '$($update.lastInstallExitedDuringStartupProbe)', expected '$expectedExitedDuringStartupProbe'."
     }
 
-    if ($update.lastInstallExitCode -ne 0) {
-        throw "Diagnostics lastInstallExitCode was '$($update.lastInstallExitCode)', expected 0."
+    if ($expectedExitedDuringStartupProbe) {
+        if ($expectedExitCodeText -eq "<running>") {
+            throw "Update installer startup probe reported an exited process without an exit code."
+        }
+
+        $expectedExitCode = [int]::Parse($expectedExitCodeText, [System.Globalization.CultureInfo]::InvariantCulture)
+        if ($update.lastInstallExitCode -ne $expectedExitCode) {
+            throw "Diagnostics lastInstallExitCode was '$($update.lastInstallExitCode)', expected $expectedExitCode."
+        }
+    }
+    elseif ($null -ne $update.lastInstallExitCode) {
+        throw "Diagnostics lastInstallExitCode was '$($update.lastInstallExitCode)', expected null while the installer was still running."
     }
 }
 finally {
