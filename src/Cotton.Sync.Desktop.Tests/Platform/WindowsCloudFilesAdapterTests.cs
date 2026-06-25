@@ -906,9 +906,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 InSyncStateAfterSet = WindowsCloudFilesPlaceholderState.InSync | WindowsCloudFilesPlaceholderState.Partial,
             };
             var diagnostics = new WindowsCloudFilesDiagnostics();
+            var shellChanges = new RecordingShellChangeNotifier();
             var adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
+                shellChangeNotifier: shellChanges,
                 diagnostics: diagnostics,
                 isReparsePoint: _ => true);
             string root = Path.Combine(_tempDirectory, "root");
@@ -929,6 +931,33 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(diagnostic.Operation, Is.EqualTo("set-in-sync-state"));
                 Assert.That(diagnostic.Status, Is.EqualTo("failed"));
                 Assert.That(diagnostic.RelativePath, Is.EqualTo("Projects"));
+                Assert.That(shellChanges.DirectoryUpdates, Is.Empty);
+                Assert.That(shellChanges.ItemUpdates, Is.Empty);
+            });
+        }
+
+        [Test]
+        public void SetInSyncState_NotifiesExplorerAfterDirectoryStatusFinalization()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var shellChanges = new RecordingShellChangeNotifier();
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                shellChangeNotifier: shellChanges,
+                isReparsePoint: _ => true);
+            string root = Path.Combine(_tempDirectory, "root");
+            string directoryPath = Path.GetFullPath(Path.Combine(root, "Projects"));
+            Directory.CreateDirectory(directoryPath);
+            SyncPairSettings syncPair = CreateSyncPair(root);
+
+            adapter.SetInSyncState(syncPair, "Projects");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { directoryPath }));
+                Assert.That(shellChanges.DirectoryUpdates, Is.EqualTo(new[] { directoryPath }));
+                Assert.That(shellChanges.ItemUpdates, Is.Empty);
             });
         }
 
@@ -1045,6 +1074,56 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(diagnostic.Operation, Is.EqualTo("set-sync-root-in-sync-state"));
                 Assert.That(diagnostic.Status, Is.EqualTo("completed"));
                 Assert.That(diagnostic.RelativePath, Is.Null);
+            });
+        }
+
+        [Test]
+        public void SetSyncRootInSyncState_NotifiesExplorerAfterRootStatusFinalization()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var shellChanges = new RecordingShellChangeNotifier();
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                shellChangeNotifier: shellChanges);
+            string root = Path.Combine(_tempDirectory, "root");
+            Directory.CreateDirectory(root);
+            SyncPairSettings syncPair = CreateSyncPair(root);
+
+            adapter.SetSyncRootInSyncState(syncPair);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { Path.GetFullPath(root) }));
+                Assert.That(shellChanges.DirectoryUpdates, Is.EqualTo(new[] { Path.GetFullPath(root) }));
+                Assert.That(shellChanges.ItemUpdates, Is.Empty);
+            });
+        }
+
+        [Test]
+        public void FinalizeUploadedFilePlaceholder_NotifiesExplorerAfterUploadedFileStatusFinalization()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var shellChanges = new RecordingShellChangeNotifier();
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                shellChangeNotifier: shellChanges,
+                isReparsePoint: _ => false);
+            string root = Path.Combine(_tempDirectory, "root");
+            string filePath = Path.GetFullPath(Path.Combine(root, "Projects", "report.txt"));
+            Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+            File.WriteAllText(filePath, "local");
+            SyncPairSettings syncPair = CreateSyncPair(root);
+            SyncStateEntry state = CreateUploadedFileState(syncPair, "Projects/report.txt");
+
+            adapter.FinalizeUploadedFilePlaceholder(syncPair, state);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { filePath }));
+                Assert.That(shellChanges.ItemUpdates, Is.EqualTo(new[] { filePath }));
+                Assert.That(shellChanges.DirectoryUpdates, Is.Empty);
             });
         }
 
@@ -1337,6 +1416,23 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 byte[] FileIdentity,
                 bool IsDirectory,
                 bool MarkInSync);
+        }
+
+        private sealed class RecordingShellChangeNotifier : IWindowsShellChangeNotifier
+        {
+            public List<string> ItemUpdates { get; } = [];
+
+            public List<string> DirectoryUpdates { get; } = [];
+
+            public void NotifyItemUpdated(string path)
+            {
+                ItemUpdates.Add(path);
+            }
+
+            public void NotifyDirectoryUpdated(string path)
+            {
+                DirectoryUpdates.Add(path);
+            }
         }
 
         private sealed class FakeStorageProviderSyncRootRegistrar : IWindowsStorageProviderSyncRootRegistrar
