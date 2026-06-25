@@ -659,12 +659,15 @@ jobs:
           $installDir = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-installed"
           $dataDir = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-data"
           $evidenceDir = Join-Path $env:RUNNER_TEMP "cotton-sync-vfs-release-evidence"
+          $ciVfsPlaceholderCount = 100000
           $installLog = Join-Path $evidenceDir "cotton-sync-upgrade-install.log"
           $upgradeLog = Join-Path $evidenceDir "cotton-sync-upgrade-current.log"
           $uninstallLog = Join-Path $evidenceDir "cotton-sync-upgrade-uninstall.log"
           $upgradeRelaunchReport = Join-Path $evidenceDir "update-relaunch.txt"
           $upgradeAutostartReport = Join-Path $env:RUNNER_TEMP "cotton-sync-upgrade-autostart-launch.txt"
           $postUpgradeCleanupReport = Join-Path $evidenceDir "post-upgrade-cleanup.txt"
+          $upgradeSelfTestStdout = Join-Path $evidenceDir "upgrade-self-test.stdout.log"
+          $upgradeSelfTestStderr = Join-Path $evidenceDir "upgrade-self-test.stderr.log"
           New-Item -ItemType Directory -Path $oldOutputDir -Force | Out-Null
           New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
           New-Item -ItemType Directory -Path $evidenceDir -Force | Out-Null
@@ -744,7 +747,19 @@ jobs:
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-shortcut-app-id.ps1" `
             -ShortcutPath $startMenuShortcut `
             -ExpectedAppUserModelId "Cotton.Sync.Desktop"
-          & $installedExe --self-test --data-dir "$dataDir"
+          $upgradeSelfTest = Start-Process `
+            -FilePath $installedExe `
+            -ArgumentList @("--self-test", "--data-dir", $dataDir) `
+            -RedirectStandardOutput $upgradeSelfTestStdout `
+            -RedirectStandardError $upgradeSelfTestStderr `
+            -Wait `
+            -PassThru
+          if ($upgradeSelfTest.ExitCode -ne 0) {
+            Get-Content $upgradeSelfTestStdout -ErrorAction SilentlyContinue
+            Get-Content $upgradeSelfTestStderr -ErrorAction SilentlyContinue
+            throw "Upgraded desktop self-test exited with code $($upgradeSelfTest.ExitCode)."
+          }
+          Write-Host "Verified upgraded desktop self-test."
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-checksums.ps1" `
             -PublishDirectory $installDir
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-associated-icon.ps1" `
@@ -789,6 +804,7 @@ jobs:
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-vfs-release-evidence.ps1" `
             -EvidenceDirectory $evidenceDir `
             -MinimumVfsPlaceholderCount $ciVfsPlaceholderCount
+          exit 0
 
       - name: Upload desktop Windows x64 artifact
         uses: actions/upload-artifact@v5

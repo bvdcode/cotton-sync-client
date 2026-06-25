@@ -2278,6 +2278,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             {
                 Assert.That(workflow, Does.Contain("Smoke desktop Windows installer upgrade"));
                 Assert.That(workflow, Does.Contain("cotton-sync-old-installer"));
+                Assert.That(workflow, Does.Contain("$ciVfsPlaceholderCount = 100000"));
                 Assert.That(workflow, Does.Contain("/DAppVersion=0.0.1-ci-upgrade"));
                 Assert.That(workflow, Does.Contain("/DOutputBaseFilename=cotton-sync-desktop-win-x64-0.0.1-ci-upgrade-setup"));
                 Assert.That(workflow, Does.Contain("Old Windows installer was not created."));
@@ -2299,7 +2300,12 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Packaging/windows/verify-shortcut-app-id.ps1"));
                 Assert.That(workflow, Does.Contain("-ShortcutPath $startMenuShortcut"));
                 Assert.That(workflow, Does.Contain("-ExpectedAppUserModelId \"Cotton.Sync.Desktop\""));
-                Assert.That(workflow, Does.Contain("& $installedExe --self-test --data-dir"));
+                Assert.That(workflow, Does.Contain("$upgradeSelfTestStdout = Join-Path $evidenceDir \"upgrade-self-test.stdout.log\""));
+                Assert.That(workflow, Does.Contain("$upgradeSelfTestStderr = Join-Path $evidenceDir \"upgrade-self-test.stderr.log\""));
+                Assert.That(workflow, Does.Contain("$upgradeSelfTest = Start-Process `"));
+                Assert.That(workflow, Does.Contain("Upgraded desktop self-test exited with code"));
+                Assert.That(workflow, Does.Contain("Write-Host \"Verified upgraded desktop self-test.\""));
+                Assert.That(workflow, Does.Not.Contain("& $installedExe --self-test --data-dir"));
                 Assert.That(workflow, Does.Contain("-PublishDirectory $installDir"));
                 Assert.That(workflow, Does.Contain("-ExpectedIcon \"src/Cotton.Sync.Desktop/Assets/app.ico\""));
                 Assert.That(workflow, Does.Contain("Packaging/windows/verify-version-metadata.ps1"));
@@ -2325,6 +2331,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Packaging/windows/verify-cloud-files-cleanup.ps1"));
                 Assert.That(workflow, Does.Contain("Packaging/windows/verify-vfs-release-evidence.ps1"));
                 Assert.That(workflow, Does.Contain("-EvidenceDirectory $evidenceDir"));
+                Assert.That(workflow, Does.Contain("-MinimumVfsPlaceholderCount $ciVfsPlaceholderCount"));
+                Assert.That(workflow, Does.Contain("exit 0"));
                 Assert.That(workflow, Does.Contain("Upgraded desktop executable remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Upgraded Start Menu shortcut remained after uninstall."));
                 Assert.That(workflow, Does.Contain("Upgraded Start Menu uninstall shortcut remained after uninstall."));
