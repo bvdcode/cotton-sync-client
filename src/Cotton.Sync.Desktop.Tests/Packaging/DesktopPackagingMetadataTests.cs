@@ -1812,6 +1812,10 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("-InitialStreamingPlaceholderCount $ciVfsPlaceholderCount"));
                 Assert.That(workflow, Does.Contain("-SteadyStateRepeatPlaceholderCount $ciVfsPlaceholderCount"));
                 Assert.That(workflow, Does.Contain("function Invoke-InstalledVfsSmokePhase"));
+                Assert.That(workflow, Does.Contain("\"--vfs-smoke-placeholder-count\""));
+                Assert.That(workflow, Does.Contain("Write-Host \"Starting installed VFS smoke phase 'leave-registered'.\""));
+                Assert.That(workflow, Does.Contain("Write-Host \"Starting installed VFS smoke phase 'reconnect-existing'.\""));
+                Assert.That(workflow, Does.Contain("Write-Host \"Completed installed VFS smoke phase '$PhaseName'.\""));
                 Assert.That(workflow, Does.Contain("Invoke-InstalledVfsSmokePhase -PhaseName \"leave-registered\""));
                 Assert.That(workflow, Does.Contain("Invoke-InstalledVfsSmokePhase -PhaseName \"reconnect-existing\""));
                 Assert.That(workflow, Does.Contain("phase-reconnect-existing"));

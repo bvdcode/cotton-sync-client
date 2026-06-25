@@ -499,11 +499,14 @@ jobs:
                 "--local-root",
                 $vfsLocalRoot,
                 "--vfs-smoke-phase",
-                $PhaseName) `
+                $PhaseName,
+                "--vfs-smoke-placeholder-count",
+                $ciVfsPlaceholderCount) `
               -RedirectStandardOutput $phaseStdout `
               -RedirectStandardError $phaseStderr `
               -Wait `
               -PassThru
+            Write-Host "Completed installed VFS smoke phase '$PhaseName'."
             $phaseOutput = if (Test-Path $phaseStdout) { Get-Content $phaseStdout } else { @() }
             if ($phaseProcess.ExitCode -ne 0 -or -not ($phaseOutput | Where-Object { $_ -eq "Result: passed" } | Select-Object -First 1)) {
               $phaseOutput | ForEach-Object { Write-Host $_ }
@@ -515,6 +518,7 @@ jobs:
           }
 
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-cloud-files-cleanup.ps1"
+          Write-Host "Starting installed VFS smoke phase 'leave-registered'."
           $leaveRegisteredPhaseDir = Invoke-InstalledVfsSmokePhase -PhaseName "leave-registered"
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-checksums.ps1" `
             -PublishDirectory $installDir
@@ -550,6 +554,7 @@ jobs:
             -VfsSmokeDataDirectory $vfsSmokeDataDir `
             -RunSelfTest `
             -RunDiagnosticsExport
+          Write-Host "Starting installed VFS smoke phase 'reconnect-existing'."
           $reconnectExistingPhaseDir = Invoke-InstalledVfsSmokePhase -PhaseName "reconnect-existing"
           $evidenceReconnectExistingDir = Join-Path (Join-Path $evidenceDir "vfs-smoke") "phase-reconnect-existing"
           New-Item -ItemType Directory -Path $evidenceReconnectExistingDir -Force | Out-Null

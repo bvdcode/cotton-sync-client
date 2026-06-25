@@ -133,6 +133,21 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void RunAsync_BoundsExternalPlaceholderHydrationReads()
+        {
+            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(runner, Does.Contain("ExternalFileReadTimeout = TimeSpan.FromSeconds(30)"));
+                Assert.That(runner, Does.Contain("CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCancellation.Token)"));
+                Assert.That(runner, Does.Contain("process.WaitForExitAsync(linkedCancellation.Token)"));
+                Assert.That(runner, Does.Contain("External file-read helper timed out after "));
+                Assert.That(runner, Does.Contain("process.Kill(entireProcessTree: true)"));
+            });
+        }
+
+        [Test]
         public void RunAsync_LargeTreePhaseVerifiesCloudFilesDirectoryStatusFinalization()
         {
             string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
