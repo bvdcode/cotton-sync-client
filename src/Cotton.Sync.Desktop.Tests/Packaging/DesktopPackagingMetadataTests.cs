@@ -1781,6 +1781,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("$ciVfsPlaceholderCount = 100000"));
                 Assert.That(workflow, Does.Contain("VfsPlaceholderCount: $ciVfsPlaceholderCount"));
                 Assert.That(workflow, Does.Contain("$autostartReport = Join-Path $evidenceDir \"autostart-launch.txt\""));
+                Assert.That(workflow, Does.Contain("$reinstallSelfTestStdout = Join-Path $evidenceDir \"reinstall-self-test.stdout.log\""));
+                Assert.That(workflow, Does.Contain("$reinstallSelfTestStderr = Join-Path $evidenceDir \"reinstall-self-test.stderr.log\""));
                 Assert.That(workflow, Does.Contain("New-Item -ItemType Directory -Path $evidenceDir -Force"));
                 Assert.That(workflow, Does.Contain("New-Item -ItemType Directory -Path $vfsLocalRoot -Force"));
                 Assert.That(workflow, Does.Contain("Set-Content -LiteralPath $contextReport -Encoding utf8"));
@@ -1819,7 +1821,11 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Invoke-InstalledVfsSmokePhase -PhaseName \"leave-registered\""));
                 Assert.That(workflow, Does.Contain("Invoke-InstalledVfsSmokePhase -PhaseName \"reconnect-existing\""));
                 Assert.That(workflow, Does.Contain("phase-reconnect-existing"));
-                Assert.That(workflow, Does.Contain("--self-test --data-dir"));
+                Assert.That(workflow, Does.Contain("$reinstallSelfTest = Start-Process `"));
+                Assert.That(workflow, Does.Contain("-ArgumentList @(\"--self-test\", \"--data-dir\", $dataDir)"));
+                Assert.That(workflow, Does.Contain("Reinstalled desktop self-test exited with code"));
+                Assert.That(workflow, Does.Contain("Write-Host \"Verified reinstalled desktop self-test.\""));
+                Assert.That(workflow, Does.Contain("exit 0"));
                 Assert.That(workflow, Does.Contain("-PublishDirectory $installDir"));
                 Assert.That(workflow, Does.Contain("-AppExecutable $installedExe"));
                 Assert.That(workflow, Does.Contain("-ExpectedIcon \"src/Cotton.Sync.Desktop/Assets/app.ico\""));
