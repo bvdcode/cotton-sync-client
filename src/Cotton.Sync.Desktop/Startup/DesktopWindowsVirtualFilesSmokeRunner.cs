@@ -156,6 +156,7 @@ namespace Cotton.Sync.Desktop.Startup
             bool largeRemovePairCleanup = string.Equals(phase, "large-remove-pair-cleanup", StringComparison.Ordinal);
             bool trayQuitDisconnect = string.Equals(phase, "tray-quit-disconnect", StringComparison.Ordinal);
             bool explorerFreeUpSpace = string.Equals(phase, "explorer-free-up-space", StringComparison.Ordinal);
+            bool explorerAlwaysKeep = string.Equals(phase, "explorer-always-keep", StringComparison.Ordinal);
             bool remoteUpdateAfterDehydrate = string.Equals(phase, "remote-update-after-dehydrate", StringComparison.Ordinal);
             bool replaceCloudOnlyUpload = string.Equals(phase, "replace-cloud-only-upload", StringComparison.Ordinal);
             bool shellShareLinkTargets = string.Equals(phase, "shell-share-link-targets", StringComparison.Ordinal);
@@ -173,6 +174,7 @@ namespace Cotton.Sync.Desktop.Startup
                 && !largeRemovePairCleanup
                 && !trayQuitDisconnect
                 && !explorerFreeUpSpace
+                && !explorerAlwaysKeep
                 && !remoteUpdateAfterDehydrate
                 && !replaceCloudOnlyUpload
                 && !shellShareLinkTargets
@@ -286,6 +288,19 @@ namespace Cotton.Sync.Desktop.Startup
             if (explorerFreeUpSpace)
             {
                 return await RunExplorerFreeUpSpaceAsync(
+                    paths,
+                    output,
+                    cloudFiles,
+                    nativeApi,
+                    syncPair,
+                    diagnostics,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (explorerAlwaysKeep)
+            {
+                return await RunExplorerAlwaysKeepAsync(
                     paths,
                     output,
                     cloudFiles,
@@ -854,6 +869,247 @@ namespace Cotton.Sync.Desktop.Startup
                         + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
                         .ConfigureAwait(false);
                 }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                failures++;
+                await output.WriteLineAsync(
+                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                connection?.Dispose();
+                failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
+            }
+
+            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
+            {
+                await output.WriteLineAsync(
+                    "Diagnostic: "
+                    + item.Operation
+                    + " "
+                    + item.Status
+                    + " "
+                    + CleanSingleLine(item.Details))
+                    .ConfigureAwait(false);
+            }
+
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> RunExplorerAlwaysKeepAsync(
+            DesktopAppPaths paths,
+            TextWriter output,
+            IWindowsCloudFilesAdapter cloudFiles,
+            IWindowsCloudFilesNativeApi? nativeApi,
+            SyncPairSettings syncPair,
+            WindowsCloudFilesDiagnostics diagnostics,
+            CancellationToken cancellationToken)
+        {
+            if (nativeApi is null)
+            {
+                await output.WriteLineAsync(FormatCheck(false, "Explorer Always keep smoke requires the native Windows Cloud Files API."))
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                return 2;
+            }
+
+            string rootPath = syncPair.LocalRootPath;
+            string placeholderPath = Path.Combine(rootPath, RelativePlaceholderPath);
+            byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
+            string expectedText = Encoding.UTF8.GetString(expectedContent);
+            string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
+            var contentProvider = new StaticSmokeContentProvider(expectedContent);
+            var callbackHandler = new WindowsCloudFilesHydrationCoordinator(
+                contentProvider,
+                nativeApi,
+                Path.Combine(paths.DataDirectory, "vfs-smoke-temp"),
+                diagnostics);
+            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            WindowsCloudFilesConnection? connection = null;
+            int failures = 0;
+
+            try
+            {
+                await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+                await stateStore.DeletePairAsync(syncPair.Id.ToString("D"), cancellationToken).ConfigureAwait(false);
+                TryUnregisterExistingRoot(cloudFiles, syncPair, output);
+                PrepareRoot(rootPath);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Isolated QA root prepared for Explorer Always keep smoke.")
+                    + " root="
+                    + rootPath)
+                    .ConfigureAwait(false);
+
+                RemoteFilePlaceholderRequest placeholderRequest = CreatePlaceholderRequest(
+                    syncPair,
+                    RelativePlaceholderPath,
+                    expectedContent.LongLength,
+                    expectedHash);
+                RemoteFilePlaceholderResult placeholder = cloudFiles.CreateFilePlaceholder(placeholderRequest);
+                await stateStore
+                    .UpsertAsync(
+                        CreatePlaceholderState(syncPair, placeholderRequest, placeholder),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                connection = cloudFiles.ConnectSyncRoot(syncPair, callbackHandler);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Cloud Files callbacks connected for Explorer Always keep smoke.")
+                    + " root="
+                    + connection.LocalRootPath)
+                    .ConfigureAwait(false);
+
+                FileAttributes remoteOnlyAttributes = File.GetAttributes(placeholderPath);
+                bool startsOnlineOnly = HasRecallOnDataAccess(remoteOnlyAttributes)
+                    && contentProvider.DownloadCount == 0;
+                await output.WriteLineAsync(
+                    FormatCheck(startsOnlineOnly, "Remote-only placeholder exists before invoking Explorer Always keep.")
+                    + " attributes="
+                    + FormatAttributes(remoteOnlyAttributes)
+                    + ", downloads="
+                    + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+                if (!startsOnlineOnly)
+                {
+                    failures++;
+                }
+
+                nativeApi.SetPinState(placeholderPath, WindowsCloudFilesPinState.Pinned);
+                bool pinned = await WaitForAttributesAsync(
+                    placeholderPath,
+                    HasPinned,
+                    TimeSpan.FromSeconds(10),
+                    cancellationToken)
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync(
+                    FormatCheck(pinned, "Cloud Files pinned state was applied for Always keep processing.")
+                    + " attributes="
+                    + FormatAttributes(File.GetAttributes(placeholderPath)))
+                    .ConfigureAwait(false);
+                if (!pinned)
+                {
+                    failures++;
+                }
+
+                var hydrationWork = new WindowsVirtualFilesDehydrationPairWork(
+                    NoopSyncPairWork.Instance,
+                    stateStore,
+                    cloudFiles,
+                    new LocalFileScanner(),
+                    diagnostics);
+                await hydrationWork
+                    .RunOnceAsync(
+                        syncPair,
+                        SyncRunRequest.ForLocalChangedPaths([RelativePlaceholderPath]),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Production app Always keep handler processed the Cloud Files pin-state change.")
+                    + " path="
+                    + RelativePlaceholderPath)
+                    .ConfigureAwait(false);
+
+                bool becameHydratedPinned = await WaitForAttributesAsync(
+                    placeholderPath,
+                    attributes => HasPinned(attributes)
+                        && !HasRecallOnDataAccess(attributes)
+                        && (attributes & FileAttributes.Offline) == 0,
+                    TimeSpan.FromSeconds(10),
+                    cancellationToken)
+                    .ConfigureAwait(false);
+                FileAttributes hydratedAttributes = File.GetAttributes(placeholderPath);
+                if (becameHydratedPinned && contentProvider.DownloadCount == 1)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Explorer Always keep hydrated the placeholder and kept it pinned.")
+                        + " attributes="
+                        + FormatAttributes(hydratedAttributes)
+                        + ", downloads="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Explorer Always keep did not settle to a pinned hydrated placeholder.")
+                        + " attributes="
+                        + FormatAttributes(hydratedAttributes)
+                        + ", downloads="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+
+                int downloadsBeforeRead = contentProvider.DownloadCount;
+                string hydratedText = await ReadAllTextThroughExternalProcessAsync(placeholderPath, cancellationToken)
+                    .ConfigureAwait(false);
+                string hydratedHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(hydratedText)));
+                if (string.Equals(hydratedText, expectedText, StringComparison.Ordinal)
+                    && string.Equals(hydratedHash, expectedHash, StringComparison.OrdinalIgnoreCase)
+                    && contentProvider.DownloadCount == downloadsBeforeRead)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Reading the Always-keep file used local hydrated content.")
+                        + " sha256="
+                        + hydratedHash
+                        + ", downloadsBeforeRead="
+                        + downloadsBeforeRead.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", downloadsAfterRead="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Reading the Always-keep file did not use the expected local content.")
+                        + " expectedSha256="
+                        + expectedHash
+                        + ", actualSha256="
+                        + hydratedHash
+                        + ", downloadsBeforeRead="
+                        + downloadsBeforeRead.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", downloadsAfterRead="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+
+                SyncStateEntry? state = await stateStore
+                    .GetAsync(syncPair.Id.ToString("D"), RelativePlaceholderPath, cancellationToken)
+                    .ConfigureAwait(false);
+                bool stateUpdated = state is
+                {
+                    PlaceholderHydrationState: SyncPlaceholderHydrationState.Hydrated,
+                    LocalContentHash: not null,
+                    LocalSizeBytes: not null,
+                }
+                    && string.Equals(state.LocalContentHash, expectedHash, StringComparison.OrdinalIgnoreCase)
+                    && state.LocalSizeBytes == expectedContent.LongLength;
+                await output.WriteLineAsync(
+                    FormatCheck(stateUpdated, "Always-keep hydration updated sync-state as hydrated.")
+                    + " state="
+                    + FormatStateSummary(state))
+                    .ConfigureAwait(false);
+                if (!stateUpdated)
+                {
+                    failures++;
+                }
+
+                failures += await VerifyCloudFilesInSyncStateAsync(
+                        output,
+                        cloudFiles,
+                        syncPair,
+                        RelativePlaceholderPath,
+                        "Always-keep placeholder Cloud Files status was finalized.")
+                    .ConfigureAwait(false);
+                failures += await VerifyExplorerShellSettledStatusAsync(
+                        output,
+                        placeholderPath,
+                        "always-keep placeholder",
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -4387,6 +4643,12 @@ namespace Cotton.Sync.Desktop.Startup
             return (((int)attributes) & RecallOnDataAccess) == RecallOnDataAccess;
         }
 
+        private static bool HasPinned(FileAttributes attributes)
+        {
+            const int Pinned = 0x00080000;
+            return (((int)attributes) & Pinned) == Pinned;
+        }
+
         private static void AddKnownCloudFilesAttribute(
             int raw,
             int flag,
@@ -4762,7 +5024,16 @@ namespace Cotton.Sync.Desktop.Startup
             string filePath,
             CancellationToken cancellationToken)
         {
+            return InvokeExplorerVerbAsync(filePath, IsFreeUpSpaceVerb, cancellationToken);
+        }
+
+        private static Task<ShellVerbInvocationResult> InvokeExplorerVerbAsync(
+            string filePath,
+            Func<string, bool> matchesVerb,
+            CancellationToken cancellationToken)
+        {
             ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+            ArgumentNullException.ThrowIfNull(matchesVerb);
             cancellationToken.ThrowIfCancellationRequested();
             var completion = new TaskCompletionSource<ShellVerbInvocationResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
@@ -4770,7 +5041,7 @@ namespace Cotton.Sync.Desktop.Startup
             {
                 try
                 {
-                    completion.TrySetResult(InvokeExplorerFreeUpSpaceCore(filePath));
+                    completion.TrySetResult(InvokeExplorerVerbCore(filePath, matchesVerb));
                 }
                 catch (Exception exception)
                 {
@@ -4790,7 +5061,9 @@ namespace Cotton.Sync.Desktop.Startup
             return completion.Task;
         }
 
-        private static ShellVerbInvocationResult InvokeExplorerFreeUpSpaceCore(string filePath)
+        private static ShellVerbInvocationResult InvokeExplorerVerbCore(
+            string filePath,
+            Func<string, bool> matchesVerb)
         {
             if (!OperatingSystem.IsWindows())
             {
@@ -4836,7 +5109,7 @@ namespace Cotton.Sync.Desktop.Startup
                     names.Add(name);
                 }
 
-                if (IsFreeUpSpaceVerb(name))
+                if (matchesVerb(name))
                 {
                     verb.DoIt();
                     return new ShellVerbInvocationResult(true, name, names);
@@ -5650,6 +5923,11 @@ namespace Cotton.Sync.Desktop.Startup
             }
 
             public void DehydratePlaceholder(string filePath)
+            {
+                throw new NotSupportedException();
+            }
+
+            public void HydratePlaceholder(string filePath)
             {
                 throw new NotSupportedException();
             }

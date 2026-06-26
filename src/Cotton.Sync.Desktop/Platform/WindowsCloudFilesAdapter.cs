@@ -606,6 +606,84 @@ namespace Cotton.Sync.Desktop.Platform
             NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: false);
         }
 
+        public void HydratePlaceholder(SyncPairSettings syncPair, string relativePath)
+        {
+            ArgumentNullException.ThrowIfNull(syncPair);
+            ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
+            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
+            string normalizedPath = SyncPath.Normalize(relativePath);
+            PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
+            EnsureNoReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
+            string fullPlaceholderPath = Path.Combine(
+                placeholderPath.BaseDirectoryPath,
+                placeholderPath.RelativeFileName);
+            const string operation = "hydrate-placeholder";
+            if (!File.Exists(fullPlaceholderPath))
+            {
+                _diagnostics.Record(
+                    operation,
+                    "skipped",
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    normalizedPath,
+                    "Windows Cloud Files hydration was skipped for a missing placeholder.");
+                return;
+            }
+
+            if (!_isReparsePoint(fullPlaceholderPath))
+            {
+                _diagnostics.Record(
+                    operation,
+                    "skipped",
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    normalizedPath,
+                    "Windows Cloud Files hydration was skipped for a non-placeholder file.");
+                return;
+            }
+
+            try
+            {
+                ExecuteNativeOperationWithTransientPathRetry(
+                    () => _nativeApi.HydratePlaceholder(fullPlaceholderPath),
+                    operation,
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    normalizedPath);
+                ExecuteNativeOperationWithTransientPathRetry(
+                    () => _nativeApi.SetPinState(fullPlaceholderPath, WindowsCloudFilesPinState.Pinned),
+                    "set-pin-state",
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    normalizedPath);
+                ExecuteNativeOperationWithTransientPathRetry(
+                    () => SetAndVerifyInSyncState(fullPlaceholderPath),
+                    "set-in-sync-state",
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    normalizedPath);
+                NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: false);
+            }
+            catch (Exception exception)
+            {
+                RecordFailure(
+                    operation,
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    normalizedPath,
+                    exception);
+                throw;
+            }
+
+            _diagnostics.Record(
+                operation,
+                "completed",
+                syncPair.Id.ToString(),
+                registration.LocalRootPath,
+                normalizedPath,
+                "Windows Cloud Files placeholder was hydrated for offline availability.");
+        }
+
         public void SetInSyncState(SyncPairSettings syncPair, string relativePath)
         {
             ArgumentNullException.ThrowIfNull(syncPair);

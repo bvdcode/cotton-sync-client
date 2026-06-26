@@ -49,6 +49,13 @@ namespace Cotton.Sync.Desktop.Platform
 
         void DehydratePlaceholder(SyncPairSettings syncPair, string relativePath);
 
+        void HydratePlaceholder(SyncPairSettings syncPair, string relativePath)
+        {
+            ArgumentNullException.ThrowIfNull(syncPair);
+            ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
+            SetInSyncState(syncPair, relativePath);
+        }
+
         void SetInSyncState(SyncPairSettings syncPair, string relativePath);
 
         void FinalizeUploadedFilePlaceholder(SyncPairSettings syncPair, SyncStateEntry fileState)

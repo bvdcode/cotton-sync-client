@@ -33,6 +33,8 @@ namespace Cotton.Sync.Desktop.Platform
 
         WindowsCloudFilesPlaceholderState GetPlaceholderState(string filePath);
 
+        void HydratePlaceholder(string filePath);
+
         WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request);
 
         void DisconnectSyncRoot(WindowsCloudFilesConnectionKey connectionKey);

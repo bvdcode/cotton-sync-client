@@ -325,6 +325,30 @@ namespace Cotton.Sync.Desktop.Platform
             return state;
         }
 
+        public void HydratePlaceholder(string filePath)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+            int openResult = CfOpenFileWithOplock(
+                WindowsNativePath.ToWin32FilePath(filePath),
+                CfOpenFileFlags.None,
+                out IntPtr protectedHandle);
+            ThrowIfFailed(openResult, nameof(CfOpenFileWithOplock));
+            try
+            {
+                int hydrateResult = CfHydratePlaceholder(
+                    protectedHandle,
+                    0,
+                    -1,
+                    CfHydrateFlags.None,
+                    IntPtr.Zero);
+                ThrowIfFailed(hydrateResult, nameof(CfHydratePlaceholder));
+            }
+            finally
+            {
+                CfCloseHandle(protectedHandle);
+            }
+        }
+
         public WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request)
         {
             ArgumentNullException.ThrowIfNull(request);
@@ -574,6 +598,14 @@ namespace Cotton.Sync.Desktop.Platform
             long StartingOffset,
             long Length,
             CfDehydrateFlags DehydrateFlags,
+            IntPtr Overlapped);
+
+        [DllImport("CldApi.dll", ExactSpelling = true)]
+        private static extern int CfHydratePlaceholder(
+            IntPtr FileHandle,
+            long StartingOffset,
+            long Length,
+            CfHydrateFlags HydrateFlags,
             IntPtr Overlapped);
 
         [DllImport("CldApi.dll", ExactSpelling = true)]
@@ -878,6 +910,12 @@ namespace Cotton.Sync.Desktop.Platform
 
         [Flags]
         private enum CfDehydrateFlags : uint
+        {
+            None = 0x00000000,
+        }
+
+        [Flags]
+        private enum CfHydrateFlags : uint
         {
             None = 0x00000000,
         }

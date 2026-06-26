@@ -13,7 +13,50 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 {
     public class WindowsVirtualFilesDehydrationPairWorkTests
     {
+        private const int FileAttributePinned = 0x00080000;
         private const int FileAttributeUnpinned = 0x00100000;
+        private const int FileAttributeRecallOnDataAccess = 0x00400000;
+
+        [Test]
+        public async Task RunOnceAsync_HydratesPinnedRemoteOnlyPlaceholderAndSuppressesInnerSync()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            var stateStore = new FakeSyncStateStore();
+            SyncStateEntry state = CreatePlaceholderState(syncPair, "Docs/report.txt");
+            stateStore.UpsertEntry(state);
+            var cloudFiles = new FakeCloudFilesAdapter();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var inner = new RecordingSyncPairWork();
+            var suppression = new RecordingLocalChangeSuppression();
+            int diskReads = 0;
+            var work = new WindowsVirtualFilesDehydrationPairWork(
+                inner,
+                stateStore,
+                cloudFiles,
+                new FakeContentHasher("remote-hash"),
+                diagnostics,
+                _ => diskReads++ == 0 ? CreatePinnedRemoteOnlyDiskState() : CreatePinnedHydratedDiskState(),
+                suppression);
+
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]));
+
+            SyncStateEntry updated = stateStore.GetRequired(syncPair.Id, "Docs/report.txt");
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Is.Empty);
+                Assert.That(cloudFiles.HydratedPaths, Is.EqualTo(new[] { "Docs/report.txt" }));
+                Assert.That(
+                    suppression.SuppressedWrites,
+                    Is.EqualTo(new[] { new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs/report.txt") }));
+                Assert.That(updated.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+                Assert.That(updated.LocalContentHash, Is.EqualTo("remote-hash"));
+                Assert.That(updated.LocalSizeBytes, Is.EqualTo(12));
+                Assert.That(updated.LocalLastWriteUtc, Is.EqualTo(new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc)));
+                Assert.That(diagnostic.Operation, Is.EqualTo("manual-always-keep"));
+                Assert.That(diagnostic.Status, Is.EqualTo("completed"));
+            });
+        }
 
         [Test]
         public async Task RunOnceAsync_DehydratesSafeUnpinnedPlaceholderAndSuppressesInnerSync()
@@ -140,6 +183,30 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 LastWriteUtc: new DateTime(2026, 06, 16, 10, 05, 00, DateTimeKind.Utc));
         }
 
+        private static WindowsVirtualFileDiskState CreatePinnedRemoteOnlyDiskState()
+        {
+            FileAttributes attributes = FileAttributes.Archive
+                | FileAttributes.ReparsePoint
+                | FileAttributes.Offline
+                | (FileAttributes)FileAttributePinned
+                | (FileAttributes)FileAttributeRecallOnDataAccess;
+            return new WindowsVirtualFileDiskState(
+                attributes,
+                Length: 12,
+                LastWriteUtc: new DateTime(2026, 06, 16, 10, 05, 00, DateTimeKind.Utc));
+        }
+
+        private static WindowsVirtualFileDiskState CreatePinnedHydratedDiskState()
+        {
+            FileAttributes attributes = FileAttributes.Archive
+                | FileAttributes.ReparsePoint
+                | (FileAttributes)FileAttributePinned;
+            return new WindowsVirtualFileDiskState(
+                attributes,
+                Length: 12,
+                LastWriteUtc: new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc));
+        }
+
         private static SyncPairSettings CreateVirtualFilesPair()
         {
             return new SyncPairSettings
@@ -243,6 +310,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             public List<string> DehydratedPaths { get; } = [];
 
+            public List<string> HydratedPaths { get; } = [];
+
             public RemoteFilePlaceholderResult CreateFilePlaceholder(RemoteFilePlaceholderRequest request)
             {
                 throw new NotSupportedException();
@@ -256,6 +325,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public void DehydratePlaceholder(SyncPairSettings syncPair, string relativePath)
             {
                 DehydratedPaths.Add(relativePath);
+            }
+
+            public void HydratePlaceholder(SyncPairSettings syncPair, string relativePath)
+            {
+                HydratedPaths.Add(relativePath);
             }
 
             public void SetInSyncState(SyncPairSettings syncPair, string relativePath)
