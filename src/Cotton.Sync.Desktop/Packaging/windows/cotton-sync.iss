@@ -78,9 +78,6 @@ Root: HKCU; Subkey: "Software\Classes\Directory\shell\CottonSyncCopyShareLink\co
 Filename: "{app}\Cotton.Sync.Desktop.exe"; Description: "Launch Cotton Sync"; Flags: nowait postinstall; Check: ShouldOfferLaunchAfterInstall
 Filename: "{app}\Cotton.Sync.Desktop.exe"; Parameters: "{code:GetHiddenUpdateLaunchParameters}"; Flags: nowait; Check: ShouldLaunchHiddenAfterUpdate
 
-[UninstallRun]
-Filename: "{app}\Cotton.Sync.Desktop.exe"; Parameters: "--cleanup-cloud-files"; Flags: runhidden waituntilterminated; RunOnceId: "CottonSyncCloudFilesCleanup"
-
 [Code]
 function PowerShellSingleQuotedLiteral(Value: String): String;
 begin
@@ -136,6 +133,39 @@ begin
   Log('Silent uninstall app mutex was still present after waiting for process shutdown.');
 end;
 
+procedure RunCloudFilesCleanupForUninstall();
+var
+  ResultCode: Integer;
+  PowerShellPath: String;
+  AppExecutablePath: String;
+  Command: String;
+begin
+  AppExecutablePath := ExpandConstant('{app}\Cotton.Sync.Desktop.exe');
+  PowerShellPath := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
+  Command := '$target = ' + PowerShellSingleQuotedLiteral(AppExecutablePath) + '; ' +
+    'if (-not (Test-Path -LiteralPath $target)) { Write-Output ''Cloud Files cleanup skipped: executable missing.''; exit 0 }; ' +
+    '$process = Start-Process -FilePath $target -ArgumentList @(''--cleanup-cloud-files'') -WindowStyle Hidden -PassThru; ' +
+    '$deadline = (Get-Date).AddSeconds(60); ' +
+    'while ((-not $process.HasExited) -and ((Get-Date) -lt $deadline)) { Start-Sleep -Milliseconds 250; $process.Refresh() }; ' +
+    'if (-not $process.HasExited) { ' +
+    'Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue; ' +
+    'Write-Output ''Cloud Files cleanup timed out.''; exit 124 }; ' +
+    '$process.Refresh(); exit $process.ExitCode';
+
+  if Exec(PowerShellPath, '-NoProfile -ExecutionPolicy Bypass -Command ' + AddQuotes(Command), '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    Log(Format('Cloud Files cleanup command exited with code %d.', [ResultCode]));
+    if ResultCode <> 0 then
+    begin
+      Log('Cloud Files cleanup did not complete successfully; uninstall will continue so the app is not left installed.');
+    end;
+  end
+  else
+  begin
+    Log('Cloud Files cleanup command could not be started; uninstall will continue.');
+  end;
+end;
+
 function InitializeUninstall(): Boolean;
 begin
   StopInstalledAppForSilentUninstall();
@@ -180,6 +210,7 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
   begin
+    RunCloudFilesCleanupForUninstall();
     RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'Cotton Sync');
   end;
 end;

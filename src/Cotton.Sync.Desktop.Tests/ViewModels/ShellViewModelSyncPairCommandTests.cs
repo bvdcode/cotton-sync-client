@@ -2858,6 +2858,42 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task RunProgressChanged_ShowsFolderRateForCloudFileFinalization()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            DateTime startedAtUtc = new(2026, 6, 26, 3, 40, 0, DateTimeKind.Utc);
+
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.FinalizingCloudFiles,
+                FilesCompleted: 0,
+                FilesTotal: 8570,
+                CurrentPath: "Cloud",
+                StartedAtUtc: startedAtUtc,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc));
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.FinalizingCloudFiles,
+                FilesCompleted: 1400,
+                FilesTotal: 8570,
+                CurrentPath: "Cloud/Temp",
+                StartedAtUtc: startedAtUtc,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc.AddSeconds(10)));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.CurrentWorkProgressHeaderRateDetails, Is.EqualTo("140 folders/s · 55s left"));
+                Assert.That(viewModel.CurrentWorkProgressHeaderRateDetails, Does.Not.Contain("files/s"));
+                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Finalizing cloud file status · 1400 of 8570 folders"));
+            });
+        }
+
+        [Test]
         public async Task RunProgressChanged_DoesNotShowPlaceholderEtaForGrowingStreamingTotal()
         {
             Guid syncPairId = Guid.NewGuid();

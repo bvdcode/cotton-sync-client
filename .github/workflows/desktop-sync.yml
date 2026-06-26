@@ -576,6 +576,11 @@ jobs:
             Get-Content $uninstallLog -ErrorAction SilentlyContinue
             throw "Windows uninstaller exited with code $($uninstall.ExitCode)."
           }
+          $uninstallLogContent = @(Get-Content $uninstallLog -ErrorAction SilentlyContinue)
+          if (-not ($uninstallLogContent | Where-Object { $_ -match "Cloud Files cleanup command exited with code 0\." } | Select-Object -First 1)) {
+            $uninstallLogContent | Select-Object -Last 80 | ForEach-Object { Write-Host $_ }
+            throw "Cloud Files cleanup did not exit cleanly during uninstall."
+          }
 
           if (Test-Path $installedExe) {
             Get-ChildItem $installDir -Recurse -ErrorAction SilentlyContinue
@@ -639,6 +644,11 @@ jobs:
           if ($reinstallUninstall.ExitCode -ne 0) {
             Get-Content $reinstallUninstallLog -ErrorAction SilentlyContinue
             throw "Windows reinstall cleanup exited with code $($reinstallUninstall.ExitCode)."
+          }
+          $reinstallUninstallLogContent = @(Get-Content $reinstallUninstallLog -ErrorAction SilentlyContinue)
+          if (-not ($reinstallUninstallLogContent | Where-Object { $_ -match "Cloud Files cleanup command exited with code 0\." } | Select-Object -First 1)) {
+            $reinstallUninstallLogContent | Select-Object -Last 80 | ForEach-Object { Write-Host $_ }
+            throw "Cloud Files cleanup did not exit cleanly during reinstall cleanup."
           }
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-cloud-files-cleanup.ps1" `
             -ReportPath $postReinstallCleanupReport
