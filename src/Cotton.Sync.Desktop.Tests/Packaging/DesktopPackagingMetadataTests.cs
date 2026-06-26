@@ -1389,8 +1389,14 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     Does.Contain("PublishWindowsShellHelper"));
                 Assert.That(installerScript, Does.Contain("Source: \"{#SourceDir}\\*\""));
                 Assert.That(installerScript, Does.Contain("recursesubdirs createallsubdirs"));
-                Assert.That(installerScript, Does.Contain("[UninstallRun]"));
-                Assert.That(installerScript, Does.Contain("Parameters: \"--cleanup-cloud-files\""));
+                Assert.That(installerScript, Does.Not.Contain("[UninstallRun]"));
+                Assert.That(installerScript, Does.Contain("RunCloudFilesCleanupForUninstall"));
+                Assert.That(installerScript, Does.Contain("--cleanup-cloud-files"));
+                Assert.That(installerScript, Does.Contain("$deadline = (Get-Date).AddSeconds(60)"));
+                Assert.That(installerScript, Does.Contain("Cloud Files cleanup timed out."));
+                Assert.That(installerScript, Does.Contain("Cloud Files cleanup command exited with code %d."));
+                Assert.That(workflow, Does.Contain("Cloud Files cleanup did not exit cleanly during uninstall."));
+                Assert.That(workflow, Does.Contain("Cloud Files cleanup did not exit cleanly during reinstall cleanup."));
                 AssertCloudFilesImport(nativeApiType, "CfRegisterSyncRoot");
                 AssertCloudFilesImport(nativeApiType, "CfUnregisterSyncRoot");
                 AssertCloudFilesImport(nativeApiType, "CfCreatePlaceholders");

@@ -5270,6 +5270,12 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return FormatCloudItemRate(unitsPerSecond);
             }
 
+            if (progressValues.Count > 0
+                && progressValues.All(static progress => progress.Stage == SyncRunProgressStage.FinalizingCloudFiles))
+            {
+                return FormatFolderRate(unitsPerSecond);
+            }
+
             return FormatFileRate(unitsPerSecond);
         }
 
@@ -6410,6 +6416,11 @@ namespace Cotton.Sync.Desktop.ViewModels
         private static string FormatCloudItemRate(double itemsPerSecond)
         {
             return FormatUnitRate(itemsPerSecond, " cloud item/s", " cloud items/s");
+        }
+
+        private static string FormatFolderRate(double foldersPerSecond)
+        {
+            return FormatUnitRate(foldersPerSecond, " folder/s", " folders/s");
         }
 
         private static string FormatUnitRate(double unitsPerSecond, string singularUnit, string pluralUnit)
