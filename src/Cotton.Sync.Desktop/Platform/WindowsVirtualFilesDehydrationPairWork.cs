@@ -11,6 +11,7 @@ namespace Cotton.Sync.Desktop.Platform
 {
     internal sealed class WindowsVirtualFilesDehydrationPairWork : ISyncPairWork
     {
+        private const int FileAttributePinned = 0x00080000;
         private const int FileAttributeUnpinned = 0x00100000;
         private const int FileAttributeRecallOnDataAccess = 0x00400000;
 
@@ -62,7 +63,9 @@ namespace Cotton.Sync.Desktop.Platform
             foreach (string relativePath in request.LocalChangedPaths)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!await TryHandleManualDehydrationAsync(syncPair, relativePath, cancellationToken)
+                if (!await TryHandleManualHydrationAsync(syncPair, relativePath, cancellationToken)
+                        .ConfigureAwait(false)
+                    && !await TryHandleManualDehydrationAsync(syncPair, relativePath, cancellationToken)
                         .ConfigureAwait(false))
                 {
                     remainingPaths.Add(relativePath);
@@ -78,6 +81,112 @@ namespace Cotton.Sync.Desktop.Platform
                 ? request
                 : SyncRunRequest.ForLocalChangedPaths(remainingPaths);
             await _inner.RunOnceAsync(syncPair, remainingRequest, cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task<bool> TryHandleManualHydrationAsync(
+            SyncPairSettings syncPair,
+            string relativePath,
+            CancellationToken cancellationToken)
+        {
+            string normalizedPath;
+            try
+            {
+                normalizedPath = SyncPath.Normalize(relativePath);
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+
+            SyncStateEntry? state = await _stateStore
+                .GetAsync(syncPair.Id.ToString("D"), normalizedPath, cancellationToken)
+                .ConfigureAwait(false);
+            if (!IsTrackedVirtualFile(state))
+            {
+                return false;
+            }
+
+            string fullPath;
+            try
+            {
+                fullPath = ResolveFullPath(syncPair.LocalRootPath, normalizedPath);
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+            catch (NotSupportedException)
+            {
+                return false;
+            }
+
+            WindowsVirtualFileDiskState? diskState;
+            try
+            {
+                diskState = _readDiskState(fullPath);
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return false;
+            }
+
+            if (diskState is null || !IsManualAlwaysKeepCandidate(diskState.Attributes, state!.PlaceholderHydrationState))
+            {
+                return false;
+            }
+
+            _localChangeSuppression?.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, normalizedPath);
+            try
+            {
+                _cloudFiles.HydratePlaceholder(syncPair, normalizedPath);
+            }
+            catch (Exception exception)
+            {
+                RecordFailed(syncPair, normalizedPath, "Explorer Always keep on this device hydration failed: " + exception.Message);
+                throw;
+            }
+
+            WindowsVirtualFileDiskState? hydratedState = _readDiskState(fullPath);
+            if (hydratedState is null)
+            {
+                const string details = "Hydrated placeholder is missing after Explorer Always keep on this device.";
+                RecordFailed(syncPair, normalizedPath, details);
+                throw new InvalidOperationException(details);
+            }
+
+            if (!SizeMatchesBaseline(state!, hydratedState.Length))
+            {
+                const string details = "Hydrated local size differs from the tracked remote file.";
+                RecordFailed(syncPair, normalizedPath, details);
+                throw new InvalidOperationException(details);
+            }
+
+            if (!await ContentMatchesRemoteAsync(state!, normalizedPath, fullPath, hydratedState, cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                const string details = "Hydrated local content differs from the tracked remote file.";
+                RecordFailed(syncPair, normalizedPath, details);
+                throw new InvalidOperationException(details);
+            }
+
+            state!.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
+            state.LocalContentHash = state.RemoteContentHash;
+            state.LocalLastWriteUtc = hydratedState.LastWriteUtc;
+            state.LocalSizeBytes = hydratedState.Length;
+            state.SyncedAtUtc = DateTime.UtcNow;
+            await _stateStore.UpsertAsync(state, cancellationToken).ConfigureAwait(false);
+            _diagnostics.Record(
+                "manual-always-keep",
+                "completed",
+                syncPair.Id.ToString("D"),
+                syncPair.LocalRootPath,
+                normalizedPath,
+                "Explorer Always keep on this device hydrated the tracked placeholder.");
+            return true;
         }
 
         private async Task<bool> TryHandleManualDehydrationAsync(
@@ -201,6 +310,17 @@ namespace Cotton.Sync.Desktop.Platform
                 details);
         }
 
+        private void RecordFailed(SyncPairSettings syncPair, string normalizedPath, string details)
+        {
+            _diagnostics.Record(
+                "manual-always-keep",
+                "failed",
+                syncPair.Id.ToString("D"),
+                syncPair.LocalRootPath,
+                normalizedPath,
+                details);
+        }
+
         private static bool IsTrackedVirtualFile(SyncStateEntry? state)
         {
             return state is
@@ -222,6 +342,17 @@ namespace Cotton.Sync.Desktop.Platform
                 && HasRawAttribute(attributes, FileAttributeUnpinned)
                 && !HasRawAttribute(attributes, FileAttributeRecallOnDataAccess)
                 && (attributes & FileAttributes.Offline) == 0;
+        }
+
+        private static bool IsManualAlwaysKeepCandidate(
+            FileAttributes attributes,
+            SyncPlaceholderHydrationState hydrationState)
+        {
+            return (attributes & FileAttributes.ReparsePoint) != 0
+                && HasRawAttribute(attributes, FileAttributePinned)
+                && (hydrationState != SyncPlaceholderHydrationState.Hydrated
+                    || HasRawAttribute(attributes, FileAttributeRecallOnDataAccess)
+                    || (attributes & FileAttributes.Offline) != 0);
         }
 
         private static bool HasRawAttribute(FileAttributes attributes, int attribute)

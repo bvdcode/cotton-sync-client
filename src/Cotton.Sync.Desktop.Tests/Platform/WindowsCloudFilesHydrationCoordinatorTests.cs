@@ -1053,6 +1053,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 throw new NotSupportedException();
             }
+
+            public void HydratePlaceholder(string filePath)
+            {
+                throw new NotSupportedException();
+            }
         }
     }
 }

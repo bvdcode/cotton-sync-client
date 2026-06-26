@@ -842,6 +842,42 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void HydratePlaceholder_HydratesPinsMarksInSyncAndNotifiesShell()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var shellChanges = new RecordingShellChangeNotifier();
+            string root = Path.Combine(_tempDirectory, "root");
+            string target = Path.GetFullPath(Path.Combine(root, "Projects", "remote-only.txt"));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllText(target, string.Empty);
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                shellChangeNotifier: shellChanges,
+                isReparsePoint: path => string.Equals(Path.GetFullPath(path), target, StringComparison.OrdinalIgnoreCase));
+            SyncPairSettings syncPair = CreateSyncPair(root);
+
+            adapter.HydratePlaceholder(syncPair, "Projects/remote-only.txt");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.HydratedPaths, Is.EqualTo(new[] { target }));
+                Assert.That(nativeApi.PinStates, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.PinStates[0].FilePath, Is.EqualTo(target));
+                Assert.That(nativeApi.PinStates[0].PinState, Is.EqualTo(WindowsCloudFilesPinState.Pinned));
+                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { target }));
+                Assert.That(shellChanges.ItemUpdates, Is.EqualTo(new[] { target }));
+                Assert.That(shellChanges.DirectoryUpdates, Is.Empty);
+                Assert.That(nativeApi.CallLog, Is.EqualTo(new[]
+                {
+                    "native-hydrate",
+                    "native-set-pin-state",
+                    "native-set-in-sync-state",
+                }));
+            });
+        }
+
+        [Test]
         public void SetInSyncState_ForwardsDirectoryPlaceholderToNativeBoundary()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
@@ -1290,6 +1326,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<string> DehydratedPaths { get; } = [];
 
+            public List<string> HydratedPaths { get; } = [];
+
             public Exception? RegisterException { get; set; }
 
             public Exception? UnregisterException { get; set; }
@@ -1407,6 +1445,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public void DehydratePlaceholder(string filePath)
             {
                 DehydratedPaths.Add(filePath);
+            }
+
+            public void HydratePlaceholder(string filePath)
+            {
+                CallLog.Add("native-hydrate");
+                HydratedPaths.Add(filePath);
             }
 
             public sealed record PinStateCall(string FilePath, WindowsCloudFilesPinState PinState);
