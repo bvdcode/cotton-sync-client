@@ -1234,6 +1234,67 @@ jobs:
 
           cat release-notes.md
 
+      - name: Validate release payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          required_assets=(
+            CottonSync-CLI-Windows.zip
+            CottonSync-Linux.deb
+            CottonSync-Linux.tar.gz
+            CottonSync-Windows-Setup.exe
+            CottonSync-Windows.tar.gz
+            CottonSync-Windows.zip
+            release-artifact-checksums.sha256
+            release-manifest.json
+          )
+
+          for asset in "${required_assets[@]}"; do
+            path="release-assets/${asset}"
+            if [ ! -s "$path" ]; then
+              echo "Required release asset is missing or empty: ${asset}" >&2
+              exit 1
+            fi
+          done
+
+          if [ ! -s release-notes.md ]; then
+            echo "Release notes body is missing or empty." >&2
+            exit 1
+          fi
+
+          grep -Fq "## Changes" release-notes.md
+          grep -Fq "## Assets" release-notes.md
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          expected_assets = {
+              "CottonSync-CLI-Windows.zip",
+              "CottonSync-Linux.deb",
+              "CottonSync-Linux.tar.gz",
+              "CottonSync-Windows-Setup.exe",
+              "CottonSync-Windows.tar.gz",
+              "CottonSync-Windows.zip",
+              "release-artifact-checksums.sha256",
+          }
+          manifest_path = Path("release-assets/release-manifest.json")
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          actual_assets = {asset["name"] for asset in manifest.get("assets", [])}
+          if actual_assets != expected_assets:
+              raise SystemExit(
+                  "Release manifest asset set mismatch. "
+                  f"expected={sorted(expected_assets)} actual={sorted(actual_assets)}"
+              )
+          for asset in manifest["assets"]:
+              if int(asset.get("sizeBytes", 0)) <= 0:
+                  raise SystemExit(f"Release manifest asset has invalid size: {asset['name']}")
+              if not asset.get("sha256"):
+                  raise SystemExit(f"Release manifest asset has no checksum: {asset['name']}")
+              if not asset.get("url"):
+                  raise SystemExit(f"Release manifest asset has no download URL: {asset['name']}")
+          PY
+
       - name: Publish GitHub Release
         uses: ncipollo/release-action@v1
         with:

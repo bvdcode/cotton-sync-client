@@ -2542,6 +2542,14 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("git log --no-merges --pretty=format:'- %s (`%h`)'"));
                 Assert.That(workflow, Does.Contain("git log --no-merges --max-count=50 --pretty=format:'- %s (`%h`)'"));
                 Assert.That(workflow, Does.Contain("[Full changelog](${changelog_url})"));
+                Assert.That(workflow, Does.Contain("Validate release payload"));
+                Assert.That(workflow, Does.Contain("required_assets=("));
+                Assert.That(workflow, Does.Contain("Required release asset is missing or empty"));
+                Assert.That(workflow, Does.Contain("Release notes body is missing or empty."));
+                Assert.That(workflow, Does.Contain("Release manifest asset set mismatch."));
+                Assert.That(workflow, Does.Contain("Release manifest asset has invalid size"));
+                Assert.That(workflow, Does.Contain("Release manifest asset has no checksum"));
+                Assert.That(workflow, Does.Contain("Release manifest asset has no download URL"));
                 Assert.That(workflow, Does.Contain("bodyFile: release-notes.md"));
                 Assert.That(workflow, Does.Not.Contain("Cotton Sync client release."));
                 Assert.That(workflow, Does.Contain("artifacts: \"release-assets/*\""));
