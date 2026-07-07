@@ -70,7 +70,7 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Restore solution
-        run: dotnet restore src/Cotton.sln
+        run: dotnet restore src/Cotton.sln --locked-mode
 
       - name: Test solution
         run: dotnet test src/Cotton.sln --no-restore -p:UseSharedCompilation=false
@@ -117,10 +117,10 @@ jobs:
           command -v xvfb-run
 
       - name: Restore desktop project
-        run: dotnet restore src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj
+        run: dotnet restore src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --locked-mode
 
       - name: Publish desktop Linux x64
-        run: dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj /p:PublishProfile=linux-x64 -p:Version='${{ steps.gitversion.outputs.SemVer }}' -p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}' -p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}' -p:InformationalVersion='${{ steps.gitversion.outputs.SemVer }}'
+        run: dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --no-restore /p:PublishProfile=linux-x64 -p:Version='${{ steps.gitversion.outputs.SemVer }}' -p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}' -p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}' -p:InformationalVersion='${{ steps.gitversion.outputs.SemVer }}'
 
       - name: Smoke desktop Linux self-test
         run: |
@@ -331,10 +331,10 @@ jobs:
           python-version: 3.x
 
       - name: Restore desktop project
-        run: dotnet restore src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj
+        run: dotnet restore src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --locked-mode
 
       - name: Publish desktop Windows x64
-        run: dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj /p:PublishProfile=win-x64 -p:Version='${{ steps.gitversion.outputs.SemVer }}' -p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}' -p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}' -p:InformationalVersion='${{ steps.gitversion.outputs.SemVer }}'
+        run: dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --no-restore /p:PublishProfile=win-x64 -p:Version='${{ steps.gitversion.outputs.SemVer }}' -p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}' -p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}' -p:InformationalVersion='${{ steps.gitversion.outputs.SemVer }}'
 
       - name: Smoke desktop Windows self-test
         timeout-minutes: 4
@@ -892,10 +892,10 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Restore CLI project
-        run: dotnet restore src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj
+        run: dotnet restore src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj --locked-mode
 
       - name: Publish sync CLI Windows x64
-        run: dotnet publish src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:PublishTrimmed=false -p:PublishReadyToRun=false -p:Version='${{ steps.gitversion.outputs.SemVer }}' -p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}' -p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}' -p:InformationalVersion='${{ steps.gitversion.outputs.SemVer }}' -o src/Cotton.Sync.Cli/bin/Release/net10.0/publish/win-x64
+        run: dotnet publish src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj --no-restore -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:PublishTrimmed=false -p:PublishReadyToRun=false -p:Version='${{ steps.gitversion.outputs.SemVer }}' -p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}' -p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}' -p:InformationalVersion='${{ steps.gitversion.outputs.SemVer }}' -o src/Cotton.Sync.Cli/bin/Release/net10.0/publish/win-x64
 
       - name: Smoke sync CLI Windows package
         shell: pwsh

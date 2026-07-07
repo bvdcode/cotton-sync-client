@@ -32,6 +32,42 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             });
         }
 
+        [Test]
+        public void ReleaseBuildPolicy_PinsSdkLocksPackagesAndControlsDebugArtifacts()
+        {
+            string globalJson = File.ReadAllText(GetRepositoryFilePath("global.json"));
+            XDocument buildProps = XDocument.Load(GetRepositoryFilePath("Directory.Build.props"));
+            string workflow = GetDesktopWorkflow();
+            XElement[] propertyGroups = buildProps.Root!.Elements("PropertyGroup").ToArray();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(globalJson, Does.Contain("\"version\": \"10.0.301\""));
+                Assert.That(globalJson, Does.Contain("\"rollForward\": \"latestFeature\""));
+                Assert.That(
+                    GetProperty(propertyGroups[0], "RestorePackagesWithLockFile"),
+                    Is.EqualTo("true"));
+                Assert.That(GetProperty(propertyGroups[0], "TreatWarningsAsErrors"), Is.EqualTo("true"));
+                Assert.That(GetProperty(propertyGroups[0], "RestoreLockedMode"), Is.EqualTo("true"));
+                Assert.That(GetProperty(propertyGroups[1], "DebugSymbols"), Is.EqualTo("false"));
+                Assert.That(GetProperty(propertyGroups[1], "DebugType"), Is.EqualTo("none"));
+                Assert.That(workflow, Does.Contain("dotnet restore src/Cotton.sln --locked-mode"));
+                Assert.That(
+                    Regex.Matches(
+                        workflow,
+                        Regex.Escape("dotnet restore src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --locked-mode")).Count,
+                    Is.EqualTo(2));
+                Assert.That(workflow, Does.Contain("dotnet restore src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj --locked-mode"));
+                Assert.That(workflow, Does.Contain("dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --no-restore /p:PublishProfile=linux-x64"));
+                Assert.That(workflow, Does.Contain("dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --no-restore /p:PublishProfile=win-x64"));
+                Assert.That(workflow, Does.Contain("dotnet publish src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj --no-restore -c Release -r win-x64"));
+                Assert.That(File.Exists(GetRepositoryFilePath(Path.Combine("src", "Cotton.Sync.Desktop", "packages.lock.json"))), Is.True);
+                Assert.That(File.Exists(GetRepositoryFilePath(Path.Combine("src", "Cotton.Sync.Cli", "packages.lock.json"))), Is.True);
+                Assert.That(File.Exists(GetRepositoryFilePath(Path.Combine("src", "Cotton.Sync", "packages.lock.json"))), Is.True);
+                Assert.That(File.Exists(GetRepositoryFilePath(Path.Combine("src", "Cotton.Sync.App", "packages.lock.json"))), Is.True);
+            });
+        }
+
         [TestCaseSource(nameof(VersionedApplicationProjectPaths))]
         public void ApplicationProject_DoesNotHardCodeGeneratedReleaseVersionMetadata(string projectPath)
         {
@@ -1367,7 +1403,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(GetProperty(propertyGroup, "PublishReadyToRun"), Is.EqualTo("false"));
                 Assert.That(
                     workflow,
-                    Does.Contain("dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj /p:PublishProfile=win-x64"));
+                    Does.Contain("dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --no-restore /p:PublishProfile=win-x64"));
                 Assert.That(workflow, Does.Not.Contain("    paths:"));
                 Assert.That(solution, Does.Contain(@"Cotton.Sync.WindowsShell\Cotton.Sync.WindowsShell.csproj"));
                 Assert.That(
