@@ -138,6 +138,29 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task RemoveSelectedSyncPairCommand_NotifiesConfirmationActionsVisibility()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(
+                CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Idle", mode: SyncPairMode.WindowsVirtualFiles)));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            List<string?> changedProperties = new();
+            viewModel.PropertyChanged += (_, args) => changedProperties.Add(args.PropertyName);
+            await viewModel.InitializeAsync();
+
+            await ExecuteAsync(viewModel.RemoveSelectedSyncPairCommand);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.IsRemoveSyncPairConfirmationVisible, Is.True);
+                Assert.That(viewModel.IsRemoveSyncPairConfirmationActionsVisible, Is.True);
+                Assert.That(
+                    changedProperties,
+                    Does.Contain(nameof(ShellViewModel.IsRemoveSyncPairConfirmationActionsVisible)));
+            });
+        }
+
+        [Test]
         public async Task RemoveSelectedSyncPairCommand_WarnsBeforeRemovingVirtualFilesPair()
         {
             Guid syncPairId = Guid.NewGuid();

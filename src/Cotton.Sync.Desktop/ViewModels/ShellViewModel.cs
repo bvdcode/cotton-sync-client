@@ -2787,6 +2787,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
             _pendingRemoveSyncPair = syncPair;
             OnPropertyChanged(nameof(IsRemoveSyncPairConfirmationVisible));
+            OnPropertyChanged(nameof(IsRemoveSyncPairConfirmationActionsVisible));
             OnPropertyChanged(nameof(RemoveSyncPairConfirmationTitle));
             OnPropertyChanged(nameof(RemoveSyncPairConfirmationMessage));
             OnPropertyChanged(nameof(RemoveSyncPairProgressMessage));
