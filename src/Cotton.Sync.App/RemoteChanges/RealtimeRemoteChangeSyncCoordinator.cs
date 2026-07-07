@@ -15,10 +15,13 @@ namespace Cotton.Sync.App.RemoteChanges
     public class RealtimeRemoteChangeSyncCoordinator : IRemoteChangeSyncCoordinator
     {
         private static readonly TimeSpan DefaultDebounceInterval = TimeSpan.FromMilliseconds(750);
+        private static readonly TimeSpan DefaultMaxDebounceDelay = TimeSpan.FromSeconds(5);
 
         private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
         private readonly object _pendingGate = new();
         private readonly TimeSpan _debounceInterval;
+        private readonly TimeSpan _maxDebounceDelay;
+        private readonly TimeProvider _timeProvider;
         private readonly ILogger<RealtimeRemoteChangeSyncCoordinator> _logger;
         private readonly ICottonRealtimeClient _realtime;
         private readonly ISessionRevocationHandler _sessionRevocationHandler;
@@ -48,7 +51,9 @@ namespace Cotton.Sync.App.RemoteChanges
             ISyncSupervisor supervisor,
             TimeSpan? debounceInterval = null,
             ISessionRevocationHandler? sessionRevocationHandler = null,
-            ILogger<RealtimeRemoteChangeSyncCoordinator>? logger = null)
+            ILogger<RealtimeRemoteChangeSyncCoordinator>? logger = null,
+            TimeSpan? maxDebounceDelay = null,
+            TimeProvider? timeProvider = null)
         {
             _realtime = realtime ?? throw new ArgumentNullException(nameof(realtime));
             _supervisor = supervisor ?? throw new ArgumentNullException(nameof(supervisor));
@@ -59,6 +64,13 @@ namespace Cotton.Sync.App.RemoteChanges
                 throw new ArgumentOutOfRangeException(nameof(debounceInterval), "Debounce interval cannot be negative.");
             }
 
+            _maxDebounceDelay = maxDebounceDelay ?? DefaultMaxDebounceDelay;
+            if (_maxDebounceDelay < TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxDebounceDelay), "Maximum debounce delay cannot be negative.");
+            }
+
+            _timeProvider = timeProvider ?? TimeProvider.System;
             _logger = logger ?? NullLogger<RealtimeRemoteChangeSyncCoordinator>.Instance;
         }
 
@@ -153,7 +165,8 @@ namespace Cotton.Sync.App.RemoteChanges
 
                 var next = new PendingRemoteSyncRequest(
                     CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token),
-                    change.MethodName);
+                    change.MethodName,
+                    _timeProvider.GetUtcNow());
                 _pendingSync = next;
                 _pendingRequests.Add(next);
                 next.Runner = RunDebouncedSyncAsync(next);
@@ -210,7 +223,21 @@ namespace Cotton.Sync.App.RemoteChanges
                 while (true)
                 {
                     int observedChangeVersion = GetChangeVersion(request);
-                    await Task.Delay(_debounceInterval, request.Cancellation.Token).ConfigureAwait(false);
+                    TimeSpan remainingMaxDelay = GetRemainingMaxDebounceDelay(request);
+                    if (remainingMaxDelay <= TimeSpan.Zero)
+                    {
+                        if (!TryGetCurrentMethodName(request, out methodName))
+                        {
+                            return;
+                        }
+
+                        break;
+                    }
+
+                    TimeSpan delay = remainingMaxDelay < _debounceInterval
+                        ? remainingMaxDelay
+                        : _debounceInterval;
+                    await Task.Delay(delay, request.Cancellation.Token).ConfigureAwait(false);
                     if (TryGetQuietMethodName(request, observedChangeVersion, out methodName))
                     {
                         break;
@@ -245,6 +272,24 @@ namespace Cotton.Sync.App.RemoteChanges
             lock (_pendingGate)
             {
                 return request.ChangeVersion;
+            }
+        }
+
+        private TimeSpan GetRemainingMaxDebounceDelay(PendingRemoteSyncRequest request)
+        {
+            DateTimeOffset now = _timeProvider.GetUtcNow();
+            TimeSpan elapsed = now - request.CreatedAt;
+            return _maxDebounceDelay - elapsed;
+        }
+
+        private bool TryGetCurrentMethodName(
+            PendingRemoteSyncRequest request,
+            out string methodName)
+        {
+            lock (_pendingGate)
+            {
+                methodName = request.MethodName;
+                return ReferenceEquals(_pendingSync, request);
             }
         }
 

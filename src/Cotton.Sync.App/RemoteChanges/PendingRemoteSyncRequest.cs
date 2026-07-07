@@ -5,13 +5,19 @@ namespace Cotton.Sync.App.RemoteChanges
 {
     internal class PendingRemoteSyncRequest
     {
-        public PendingRemoteSyncRequest(CancellationTokenSource cancellation, string methodName)
+        public PendingRemoteSyncRequest(
+            CancellationTokenSource cancellation,
+            string methodName,
+            DateTimeOffset createdAt)
         {
             Cancellation = cancellation;
             MethodName = methodName;
+            CreatedAt = createdAt;
         }
 
         public CancellationTokenSource Cancellation { get; }
+
+        public DateTimeOffset CreatedAt { get; }
 
         public string MethodName { get; private set; }
 

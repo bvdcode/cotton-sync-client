@@ -188,6 +188,50 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task LocalChangeStorm_MaxDebounceDelayForcesSync()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true);
+            FakeWatcherFactory watcherFactory = new();
+            FakeSyncSupervisor supervisor = new()
+            {
+                BlockSyncNow = true,
+            };
+            LocalChangeSyncCoordinator coordinator = new(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                TimeSpan.FromMilliseconds(50),
+                maxDebounceDelay: TimeSpan.FromMilliseconds(120));
+            using CancellationTokenSource stormCancellation = new();
+            await coordinator.StartAsync();
+
+            Task storm = Task.Run(async () =>
+            {
+                int index = 0;
+                while (!stormCancellation.IsCancellationRequested)
+                {
+                    watcherFactory.CreatedWatchers[syncPair.Id].Raise($"/home/user/Cotton/storm/file-{index}.txt");
+                    index++;
+                    await Task.Delay(TimeSpan.FromMilliseconds(10), stormCancellation.Token).ConfigureAwait(false);
+                }
+            }, stormCancellation.Token);
+
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
+            await stormCancellation.CancelAsync();
+            await WaitForCanceledStormAsync(storm);
+            supervisor.ReleaseSyncNow();
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(1));
+                Assert.That(supervisor.LastRequest?.IsFull, Is.False);
+                Assert.That(supervisor.LastRequest?.LocalChangedPaths, Is.Not.Empty);
+            });
+        }
+
+        [Test]
         public async Task LocalChangeStorm_AboveScopedLimitDoesNotKeepEveryChangedPath()
         {
             const int ChangeCount = 60_000;
@@ -760,6 +804,17 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             return Path.Combine(
                 syncPair.LocalRootPath,
                 relativePath.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        private static async Task WaitForCanceledStormAsync(Task storm)
+        {
+            try
+            {
+                await storm.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
         }
 
         private sealed class MutableTimeProvider : TimeProvider

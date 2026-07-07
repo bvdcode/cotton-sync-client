@@ -65,6 +65,45 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
         }
 
         [Test]
+        public async Task RemoteChangeStorm_MaxDebounceDelayForcesSync()
+        {
+            FakeCottonRealtimeClient realtime = new();
+            FakeSyncSupervisor supervisor = new()
+            {
+                BlockSyncAll = true,
+            };
+            RealtimeRemoteChangeSyncCoordinator coordinator = new(
+                realtime,
+                supervisor,
+                TimeSpan.FromMilliseconds(50),
+                maxDebounceDelay: TimeSpan.FromMilliseconds(120));
+            using CancellationTokenSource stormCancellation = new();
+            await coordinator.StartAsync();
+
+            Task storm = Task.Run(async () =>
+            {
+                int index = 0;
+                while (!stormCancellation.IsCancellationRequested)
+                {
+                    realtime.RaiseRemoteFileTreeChanged($"FileUpdated{index}");
+                    index++;
+                    await Task.Delay(TimeSpan.FromMilliseconds(10), stormCancellation.Token).ConfigureAwait(false);
+                }
+            }, stormCancellation.Token);
+
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
+            await stormCancellation.CancelAsync();
+            await WaitForCanceledStormAsync(storm);
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.SyncAllCallCount, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
         public async Task StopAsync_CancelsPendingSyncRequest()
         {
             var realtime = new FakeCottonRealtimeClient();
@@ -324,6 +363,17 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
             {
                 Task completed = await Task.WhenAny(StopRequested.Task, Task.Delay(timeout)).ConfigureAwait(false);
                 return completed == StopRequested.Task;
+            }
+        }
+
+        private static async Task WaitForCanceledStormAsync(Task storm)
+        {
+            try
+            {
+                await storm.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
             }
         }
 

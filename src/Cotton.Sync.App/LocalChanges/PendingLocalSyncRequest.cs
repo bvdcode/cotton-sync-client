@@ -8,14 +8,20 @@ namespace Cotton.Sync.App.LocalChanges
         public const int MaxScopedChangedPaths = 1024;
         public const int MaxWindowsVirtualFilesScopedChangedPaths = 65_536;
 
-        public PendingLocalSyncRequest(CancellationTokenSource cancellation, string changedPath)
+        public PendingLocalSyncRequest(
+            CancellationTokenSource cancellation,
+            string changedPath,
+            DateTimeOffset createdAt)
         {
             Cancellation = cancellation;
             ChangedPath = changedPath;
+            CreatedAt = createdAt;
             ChangedPaths.Add(changedPath);
         }
 
         public CancellationTokenSource Cancellation { get; }
+
+        public DateTimeOffset CreatedAt { get; }
 
         public string ChangedPath { get; private set; }
 

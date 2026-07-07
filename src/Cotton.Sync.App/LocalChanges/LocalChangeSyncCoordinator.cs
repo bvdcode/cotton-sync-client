@@ -15,10 +15,13 @@ namespace Cotton.Sync.App.LocalChanges
     public class LocalChangeSyncCoordinator : ILocalChangeSyncCoordinator
     {
         private static readonly TimeSpan DefaultDebounceInterval = TimeSpan.FromMilliseconds(750);
+        private static readonly TimeSpan DefaultMaxDebounceDelay = TimeSpan.FromSeconds(5);
 
         private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
         private readonly object _pendingGate = new();
         private readonly TimeSpan _debounceInterval;
+        private readonly TimeSpan _maxDebounceDelay;
+        private readonly TimeProvider _timeProvider;
         private readonly ILogger<LocalChangeSyncCoordinator> _logger;
         private readonly ILocalChangeSuppression? _changeSuppression;
         private readonly ISyncPairSettingsStore _syncPairs;
@@ -62,7 +65,9 @@ namespace Cotton.Sync.App.LocalChanges
             ILocalSyncRootWatcherFactory watcherFactory,
             TimeSpan? debounceInterval = null,
             ILogger<LocalChangeSyncCoordinator>? logger = null,
-            ILocalChangeSuppression? changeSuppression = null)
+            ILocalChangeSuppression? changeSuppression = null,
+            TimeSpan? maxDebounceDelay = null,
+            TimeProvider? timeProvider = null)
         {
             _syncPairs = syncPairs ?? throw new ArgumentNullException(nameof(syncPairs));
             _supervisor = supervisor ?? throw new ArgumentNullException(nameof(supervisor));
@@ -74,6 +79,13 @@ namespace Cotton.Sync.App.LocalChanges
                 throw new ArgumentOutOfRangeException(nameof(debounceInterval), "Debounce interval cannot be negative.");
             }
 
+            _maxDebounceDelay = maxDebounceDelay ?? DefaultMaxDebounceDelay;
+            if (_maxDebounceDelay < TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maxDebounceDelay), "Maximum debounce delay cannot be negative.");
+            }
+
+            _timeProvider = timeProvider ?? TimeProvider.System;
             _logger = logger ?? NullLogger<LocalChangeSyncCoordinator>.Instance;
         }
 
@@ -182,7 +194,8 @@ namespace Cotton.Sync.App.LocalChanges
 
                 var next = new PendingLocalSyncRequest(
                     CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token),
-                    change.FullPath);
+                    change.FullPath,
+                    _timeProvider.GetUtcNow());
                 RecordChange(change.SyncPairId, next, change);
                 _pendingSyncs.Add(change.SyncPairId, next);
                 _pendingRequests.Add(next);
@@ -198,7 +211,21 @@ namespace Cotton.Sync.App.LocalChanges
                 while (true)
                 {
                     int observedChangeVersion = GetChangeVersion(request);
-                    await Task.Delay(_debounceInterval, request.Cancellation.Token).ConfigureAwait(false);
+                    TimeSpan remainingMaxDelay = GetRemainingMaxDebounceDelay(request);
+                    if (remainingMaxDelay <= TimeSpan.Zero)
+                    {
+                        if (!TryGetCurrentChangedPath(syncPairId, request, out changedPath))
+                        {
+                            return;
+                        }
+
+                        break;
+                    }
+
+                    TimeSpan delay = remainingMaxDelay < _debounceInterval
+                        ? remainingMaxDelay
+                        : _debounceInterval;
+                    await Task.Delay(delay, request.Cancellation.Token).ConfigureAwait(false);
                     if (TryGetQuietChangedPath(syncPairId, request, observedChangeVersion, out changedPath))
                     {
                         break;
@@ -235,6 +262,26 @@ namespace Cotton.Sync.App.LocalChanges
             lock (_pendingGate)
             {
                 return request.ChangeVersion;
+            }
+        }
+
+        private TimeSpan GetRemainingMaxDebounceDelay(PendingLocalSyncRequest request)
+        {
+            DateTimeOffset now = _timeProvider.GetUtcNow();
+            TimeSpan elapsed = now - request.CreatedAt;
+            return _maxDebounceDelay - elapsed;
+        }
+
+        private bool TryGetCurrentChangedPath(
+            Guid syncPairId,
+            PendingLocalSyncRequest request,
+            out string changedPath)
+        {
+            lock (_pendingGate)
+            {
+                changedPath = request.ChangedPath;
+                return _pendingSyncs.TryGetValue(syncPairId, out PendingLocalSyncRequest? current)
+                    && ReferenceEquals(current, request);
             }
         }
 
