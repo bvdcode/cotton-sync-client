@@ -55,34 +55,44 @@ namespace Cotton.Sync.App.SyncPairs
         public async Task UpsertAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(syncPair);
-            await using SyncAppDbContext context = _contextFactory.Create();
-            SyncPairSettingsEntity? entity = await context.SyncPairSettings
-                .SingleOrDefaultAsync(item => item.Id == syncPair.Id, cancellationToken)
-                .ConfigureAwait(false);
-            if (entity is null)
-            {
-                entity = new SyncPairSettingsEntity { Id = syncPair.Id };
-                context.SyncPairSettings.Add(entity);
-            }
+            await _contextFactory.ExecuteWriteAsync(
+                    async (context, token) =>
+                    {
+                        SyncPairSettingsEntity? entity = await context.SyncPairSettings
+                            .SingleOrDefaultAsync(item => item.Id == syncPair.Id, token)
+                            .ConfigureAwait(false);
+                        if (entity is null)
+                        {
+                            entity = new SyncPairSettingsEntity { Id = syncPair.Id };
+                            context.SyncPairSettings.Add(entity);
+                        }
 
-            UpdateEntity(entity, syncPair);
-            await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+                        UpdateEntity(entity, syncPair);
+                        await context.SaveChangesAsync(token).ConfigureAwait(false);
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
 
         /// <inheritdoc />
         public async Task DeleteAsync(Guid syncPairId, CancellationToken cancellationToken = default)
         {
-            await using SyncAppDbContext context = _contextFactory.Create();
-            SyncPairSettingsEntity? entity = await context.SyncPairSettings
-                .SingleOrDefaultAsync(item => item.Id == syncPairId, cancellationToken)
-                .ConfigureAwait(false);
-            if (entity is null)
-            {
-                return;
-            }
+            await _contextFactory.ExecuteWriteAsync(
+                    async (context, token) =>
+                    {
+                        SyncPairSettingsEntity? entity = await context.SyncPairSettings
+                            .SingleOrDefaultAsync(item => item.Id == syncPairId, token)
+                            .ConfigureAwait(false);
+                        if (entity is null)
+                        {
+                            return;
+                        }
 
-            context.SyncPairSettings.Remove(entity);
-            await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+                        context.SyncPairSettings.Remove(entity);
+                        await context.SaveChangesAsync(token).ConfigureAwait(false);
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
 
         private static void UpdateEntity(SyncPairSettingsEntity entity, SyncPairSettings syncPair)

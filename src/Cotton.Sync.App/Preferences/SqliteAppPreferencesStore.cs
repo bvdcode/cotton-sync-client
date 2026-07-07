@@ -45,18 +45,23 @@ namespace Cotton.Sync.App.Preferences
         {
             ArgumentNullException.ThrowIfNull(preferences);
             EnsureSupportedServerUrl(preferences.RememberedServerUrl);
-            await using SyncAppDbContext context = _contextFactory.Create();
-            AppPreferencesEntity? entity = await context.AppPreferences
-                .SingleOrDefaultAsync(item => item.Id == PreferencesId, cancellationToken)
-                .ConfigureAwait(false);
-            if (entity is null)
-            {
-                entity = new AppPreferencesEntity { Id = PreferencesId };
-                context.AppPreferences.Add(entity);
-            }
+            await _contextFactory.ExecuteWriteAsync(
+                    async (context, token) =>
+                    {
+                        AppPreferencesEntity? entity = await context.AppPreferences
+                            .SingleOrDefaultAsync(item => item.Id == PreferencesId, token)
+                            .ConfigureAwait(false);
+                        if (entity is null)
+                        {
+                            entity = new AppPreferencesEntity { Id = PreferencesId };
+                            context.AppPreferences.Add(entity);
+                        }
 
-            UpdateEntity(entity, preferences);
-            await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+                        UpdateEntity(entity, preferences);
+                        await context.SaveChangesAsync(token).ConfigureAwait(false);
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
 
         private static void UpdateEntity(AppPreferencesEntity entity, AppPreferences preferences)

@@ -1,8 +1,10 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using System.Data.Common;
 using Cotton.Sync.App.Preferences;
 using Cotton.Sync.App.SyncPairs;
+using Cotton.Sync.App.State;
 
 namespace Cotton.Sync.App.Tests.Preferences
 {
@@ -155,6 +157,55 @@ namespace Cotton.Sync.App.Tests.Preferences
                 Assert.That(persistedSyncPair, Is.Not.Null);
                 Assert.That(persistedPreferences.RememberedServerUrl, Is.EqualTo(new Uri("https://cotton.example.test/")));
             });
+        }
+
+        [Test]
+        public void DbContextFactory_UsesBusyTimeoutAndDisablesPooling()
+        {
+            SqliteSyncAppDbContextFactory contextFactory = new(DatabasePath());
+            DbConnectionStringBuilder connectionString = new()
+            {
+                ConnectionString = contextFactory.CreateConnectionString(),
+            };
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(connectionString["Data Source"], Is.EqualTo(DatabasePath()));
+                Assert.That(connectionString["Default Timeout"], Is.EqualTo("5"));
+                Assert.That(connectionString["Pooling"], Is.EqualTo("False"));
+            });
+        }
+
+        [Test]
+        public async Task DbContextFactory_SerializesConcurrentWritesForSameDatabase()
+        {
+            SqliteSyncAppDbContextFactory contextFactory = new(DatabasePath());
+            TaskCompletionSource firstEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource releaseFirst = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource secondEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            Task firstWrite = contextFactory.ExecuteWriteAsync(
+                async (_, _) =>
+                {
+                    firstEntered.TrySetResult();
+                    await releaseFirst.Task.ConfigureAwait(false);
+                },
+                CancellationToken.None);
+            await firstEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Task secondWrite = contextFactory.ExecuteWriteAsync(
+                (_, _) =>
+                {
+                    secondEntered.TrySetResult();
+                    return Task.CompletedTask;
+                },
+                CancellationToken.None);
+
+            await Task.Delay(100);
+            Assert.That(secondEntered.Task.IsCompleted, Is.False);
+
+            releaseFirst.TrySetResult();
+            await Task.WhenAll(firstWrite, secondWrite).WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.That(secondEntered.Task.IsCompleted, Is.True);
         }
 
         [Test]
