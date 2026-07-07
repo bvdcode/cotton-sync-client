@@ -122,6 +122,26 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
         }
 
         [Test]
+        public async Task StopAsync_DuringRemoteChangeDoesNotRaceLifetimeDispose()
+        {
+            for (int index = 0; index < 100; index++)
+            {
+                FakeCottonRealtimeClient realtime = new();
+                FakeSyncSupervisor supervisor = new();
+                RealtimeRemoteChangeSyncCoordinator coordinator = new(
+                    realtime,
+                    supervisor,
+                    TimeSpan.FromMilliseconds(100));
+                await coordinator.StartAsync();
+
+                Task raiseTask = Task.Run(() => realtime.RaiseRemoteFileTreeChanged("FileUpdated"));
+                Task stopTask = coordinator.StopAsync();
+
+                await Task.WhenAll(raiseTask, stopTask).WaitAsync(TimeSpan.FromSeconds(2));
+            }
+        }
+
+        [Test]
         public async Task StopAsync_CancelsAndWaitsForRunningSyncRequest()
         {
             var realtime = new FakeCottonRealtimeClient();

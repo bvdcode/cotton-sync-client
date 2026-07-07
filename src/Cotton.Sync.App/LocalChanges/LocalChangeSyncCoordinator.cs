@@ -139,14 +139,13 @@ namespace Cotton.Sync.App.LocalChanges
 
         private async Task StopCoreAsync(CancellationToken cancellationToken)
         {
-            CancellationTokenSource? lifetime = _lifetime;
-            _lifetime = null;
-            lifetime?.Cancel();
-            lifetime?.Dispose();
-
             List<PendingLocalSyncRequest> pendingSyncs;
+            CancellationTokenSource? lifetime;
             lock (_pendingGate)
             {
+                lifetime = _lifetime;
+                _lifetime = null;
+                lifetime?.Cancel();
                 pendingSyncs = _pendingRequests.ToList();
                 foreach (PendingLocalSyncRequest pendingSync in pendingSyncs)
                 {
@@ -158,6 +157,7 @@ namespace Cotton.Sync.App.LocalChanges
             }
 
             await WaitForPendingSyncsAsync(pendingSyncs, cancellationToken).ConfigureAwait(false);
+            lifetime?.Dispose();
 
             foreach (ILocalSyncRootWatcher watcher in _watchers.Values)
             {
@@ -173,12 +173,6 @@ namespace Cotton.Sync.App.LocalChanges
 
         private void OnLocalChange(object? sender, LocalSyncRootChange change)
         {
-            CancellationTokenSource? lifetime = _lifetime;
-            if (lifetime is null || lifetime.IsCancellationRequested)
-            {
-                return;
-            }
-
             if (_changeSuppression?.ShouldSuppress(change) == true)
             {
                 return;
@@ -186,6 +180,12 @@ namespace Cotton.Sync.App.LocalChanges
 
             lock (_pendingGate)
             {
+                CancellationTokenSource? lifetime = _lifetime;
+                if (lifetime is null || lifetime.IsCancellationRequested)
+                {
+                    return;
+                }
+
                 if (_pendingSyncs.TryGetValue(change.SyncPairId, out PendingLocalSyncRequest? pendingSync))
                 {
                     RecordChange(change.SyncPairId, pendingSync, change);

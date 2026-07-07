@@ -118,14 +118,13 @@ namespace Cotton.Sync.App.RemoteChanges
 
         private async Task StopCoreAsync(CancellationToken cancellationToken)
         {
-            CancellationTokenSource? lifetime = _lifetime;
-            _lifetime = null;
-            lifetime?.Cancel();
-            lifetime?.Dispose();
-
             List<PendingRemoteSyncRequest> pendingSyncs;
+            CancellationTokenSource? lifetime;
             lock (_pendingGate)
             {
+                lifetime = _lifetime;
+                _lifetime = null;
+                lifetime?.Cancel();
                 pendingSyncs = _pendingRequests.ToList();
                 foreach (PendingRemoteSyncRequest pendingSync in pendingSyncs)
                 {
@@ -137,6 +136,7 @@ namespace Cotton.Sync.App.RemoteChanges
             }
 
             await WaitForPendingSyncsAsync(pendingSyncs, cancellationToken).ConfigureAwait(false);
+            lifetime?.Dispose();
 
             if (_isSubscribed)
             {
@@ -149,14 +149,14 @@ namespace Cotton.Sync.App.RemoteChanges
 
         private void OnRemoteFileTreeChanged(object? sender, CottonRealtimeEvent change)
         {
-            CancellationTokenSource? lifetime = _lifetime;
-            if (lifetime is null || lifetime.IsCancellationRequested)
-            {
-                return;
-            }
-
             lock (_pendingGate)
             {
+                CancellationTokenSource? lifetime = _lifetime;
+                if (lifetime is null || lifetime.IsCancellationRequested)
+                {
+                    return;
+                }
+
                 if (_pendingSync is not null)
                 {
                     _pendingSync.RecordChange(change.MethodName);
@@ -175,10 +175,16 @@ namespace Cotton.Sync.App.RemoteChanges
 
         private void OnSessionRevoked(object? sender, CottonRealtimeEvent change)
         {
-            CancellationTokenSource? lifetime = _lifetime;
-            if (lifetime is null || lifetime.IsCancellationRequested)
+            CancellationToken lifetimeToken;
+            lock (_pendingGate)
             {
-                return;
+                CancellationTokenSource? lifetime = _lifetime;
+                if (lifetime is null || lifetime.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                lifetimeToken = lifetime.Token;
             }
 
             if (Interlocked.Exchange(ref _sessionRevocationRequested, 1) == 1)
@@ -187,7 +193,7 @@ namespace Cotton.Sync.App.RemoteChanges
             }
 
             CancelPendingSyncRequests();
-            _ = HandleSessionRevokedAsync(change.MethodName, lifetime.Token);
+            _ = HandleSessionRevokedAsync(change.MethodName, lifetimeToken);
         }
 
         private async Task HandleSessionRevokedAsync(string methodName, CancellationToken cancellationToken)

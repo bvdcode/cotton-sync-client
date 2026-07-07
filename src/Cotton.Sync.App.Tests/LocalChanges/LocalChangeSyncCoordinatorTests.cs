@@ -358,6 +358,32 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task StopAsync_DuringSuppressionDoesNotRaceLifetimeDispose()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true);
+            FakeWatcherFactory watcherFactory = new();
+            FakeSyncSupervisor supervisor = new();
+            BlockingLocalChangeSuppression suppression = new();
+            LocalChangeSyncCoordinator coordinator = new(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval,
+                changeSuppression: suppression);
+            await coordinator.StartAsync();
+
+            Task raiseTask = Task.Run(() => watcherFactory.CreatedWatchers[syncPair.Id].Raise(
+                "/home/user/Cotton/user-edit.txt"));
+            await suppression.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            await coordinator.StopAsync();
+            suppression.Release();
+            await raiseTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.That(supervisor.SyncNowCallCount, Is.Zero);
+        }
+
+        [Test]
         public async Task ProviderSuppressedChangeStorm_DoesNotWritePerFileDebugLogs()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
@@ -829,6 +855,43 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             public void Advance(TimeSpan duration)
             {
                 _utcNow = _utcNow.Add(duration);
+            }
+        }
+
+        private sealed class BlockingLocalChangeSuppression : ILocalChangeSuppression
+        {
+            private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            public void SuppressProviderWrite(Guid syncPairId, string localRootPath, string relativePath)
+            {
+            }
+
+            public IDisposable SuppressProviderWriteBurst(Guid syncPairId, string localRootPath)
+            {
+                return NoopDisposable.Instance;
+            }
+
+            public bool ShouldSuppress(LocalSyncRootChange change)
+            {
+                Entered.TrySetResult();
+                _release.Task.GetAwaiter().GetResult();
+                return false;
+            }
+
+            public void Release()
+            {
+                _release.TrySetResult();
+            }
+        }
+
+        private sealed class NoopDisposable : IDisposable
+        {
+            public static NoopDisposable Instance { get; } = new();
+
+            public void Dispose()
+            {
             }
         }
 
