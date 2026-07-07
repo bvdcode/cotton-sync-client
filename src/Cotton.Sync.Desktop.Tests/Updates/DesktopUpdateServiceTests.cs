@@ -38,6 +38,71 @@ namespace Cotton.Sync.Desktop.Tests.Updates
         }
 
         [Test]
+        public void Constructor_RejectsHttpManifestUrlBeforeRequest()
+        {
+            using HttpClient httpClient = CreateHttpClient([]);
+
+            InvalidDataException? exception = Assert.Throws<InvalidDataException>(() => new DesktopUpdateService(
+                httpClient,
+                "0.0.1",
+                _tempDirectory,
+                new Uri("http://github.com/bvdcode/cotton-sync-client/releases/latest/download/release-manifest.json"),
+                DesktopUpdatePlatform.WindowsX64));
+
+            Assert.That(exception?.Message, Does.Contain("manifest URL must use HTTPS"));
+        }
+
+        [Test]
+        public void CheckAsync_RejectsUnexpectedReleaseHost()
+        {
+            byte[] installerBytes = Encoding.UTF8.GetBytes("installer-v2");
+            Uri manifestUri = DesktopUpdateService.DefaultManifestUri;
+            using HttpClient httpClient = CreateHttpClient(new Dictionary<string, byte[]>
+            {
+                [manifestUri.AbsolutePath] = Encoding.UTF8.GetBytes(CreateManifestJson(
+                    "0.0.2",
+                    installerBytes,
+                    releaseUrl: "https://example.com/bvdcode/cotton-sync-client/releases/tag/v0.0.2",
+                    assetUrl: "https://github.com/bvdcode/cotton-sync-client/releases/download/v0.0.2/CottonSync-Windows-Setup.exe")),
+            });
+            DesktopUpdateService service = new(
+                httpClient,
+                "0.0.1",
+                _tempDirectory,
+                manifestUri,
+                DesktopUpdatePlatform.WindowsX64);
+
+            InvalidDataException? exception = Assert.ThrowsAsync<InvalidDataException>(() => service.CheckAsync());
+
+            Assert.That(exception?.Message, Does.Contain("release URL uses an unexpected host"));
+        }
+
+        [Test]
+        public void CheckAsync_RejectsUnexpectedAssetHost()
+        {
+            byte[] installerBytes = Encoding.UTF8.GetBytes("installer-v2");
+            Uri manifestUri = DesktopUpdateService.DefaultManifestUri;
+            using HttpClient httpClient = CreateHttpClient(new Dictionary<string, byte[]>
+            {
+                [manifestUri.AbsolutePath] = Encoding.UTF8.GetBytes(CreateManifestJson(
+                    "0.0.2",
+                    installerBytes,
+                    releaseUrl: "https://github.com/bvdcode/cotton-sync-client/releases/tag/v0.0.2",
+                    assetUrl: "https://example.com/bvdcode/cotton-sync-client/releases/download/v0.0.2/CottonSync-Windows-Setup.exe")),
+            });
+            DesktopUpdateService service = new(
+                httpClient,
+                "0.0.1",
+                _tempDirectory,
+                manifestUri,
+                DesktopUpdatePlatform.WindowsX64);
+
+            InvalidDataException? exception = Assert.ThrowsAsync<InvalidDataException>(() => service.CheckAsync());
+
+            Assert.That(exception?.Message, Does.Contain("asset URL uses an unexpected host"));
+        }
+
+        [Test]
         public void ReleaseManifest_FromJson_ParsesReleaseMetadata()
         {
             byte[] installerBytes = Encoding.UTF8.GetBytes("installer");
@@ -65,12 +130,7 @@ namespace Cotton.Sync.Desktop.Tests.Updates
             {
                 ["/manifest.json"] = Encoding.UTF8.GetBytes(CreateManifestJson("0.0.2", installerBytes)),
             });
-            var service = new DesktopUpdateService(
-                httpClient,
-                "0.0.1",
-                _tempDirectory,
-                new Uri("https://updates.local/manifest.json"),
-                DesktopUpdatePlatform.WindowsX64);
+            DesktopUpdateService service = CreateLocalUpdateService(httpClient);
 
             DesktopUpdateCheckResult result = await service.CheckAsync();
 
@@ -92,12 +152,7 @@ namespace Cotton.Sync.Desktop.Tests.Updates
             {
                 ["/manifest.json"] = Encoding.UTF8.GetBytes(CreateManifestJson("0.0.1", installerBytes)),
             });
-            var service = new DesktopUpdateService(
-                httpClient,
-                "0.0.1",
-                _tempDirectory,
-                new Uri("https://updates.local/manifest.json"),
-                DesktopUpdatePlatform.WindowsX64);
+            DesktopUpdateService service = CreateLocalUpdateService(httpClient);
 
             DesktopUpdateCheckResult result = await service.CheckAsync();
 
@@ -117,12 +172,8 @@ namespace Cotton.Sync.Desktop.Tests.Updates
             {
                 BaseAddress = new Uri("https://updates.local"),
             };
-            var service = new DesktopUpdateService(
+            DesktopUpdateService service = CreateLocalUpdateService(
                 httpClient,
-                "0.0.1",
-                _tempDirectory,
-                new Uri("https://updates.local/manifest.json"),
-                DesktopUpdatePlatform.WindowsX64,
                 retryBaseDelay: TimeSpan.Zero);
 
             DesktopUpdateCheckResult result = await service.CheckAsync();
@@ -152,12 +203,8 @@ namespace Cotton.Sync.Desktop.Tests.Updates
             {
                 BaseAddress = new Uri("https://updates.local"),
             };
-            var service = new DesktopUpdateService(
+            DesktopUpdateService service = CreateLocalUpdateService(
                 httpClient,
-                "0.0.1",
-                _tempDirectory,
-                new Uri("https://updates.local/manifest.json"),
-                DesktopUpdatePlatform.WindowsX64,
                 retryBaseDelay: TimeSpan.Zero);
 
             DesktopUpdateCheckResult check = await service.CheckAsync();
@@ -178,12 +225,9 @@ namespace Cotton.Sync.Desktop.Tests.Updates
             {
                 ["/manifest.json"] = Encoding.UTF8.GetBytes(CreateManifestJson("0.0.2", installerBytes)),
             });
-            var service = new DesktopUpdateService(
+            DesktopUpdateService service = CreateLocalUpdateService(
                 httpClient,
-                "0.0.1",
-                _tempDirectory,
-                new Uri("https://updates.local/manifest.json"),
-                DesktopUpdatePlatform.Unsupported);
+                platform: DesktopUpdatePlatform.Unsupported);
 
             DesktopUpdateCheckResult result = await service.CheckAsync();
 
@@ -204,12 +248,7 @@ namespace Cotton.Sync.Desktop.Tests.Updates
                 ["/manifest.json"] = Encoding.UTF8.GetBytes(CreateManifestJson("0.0.2", installerBytes)),
                 ["/CottonSync-Windows-Setup.exe"] = installerBytes,
             });
-            var service = new DesktopUpdateService(
-                httpClient,
-                "0.0.1",
-                _tempDirectory,
-                new Uri("https://updates.local/manifest.json"),
-                DesktopUpdatePlatform.WindowsX64);
+            DesktopUpdateService service = CreateLocalUpdateService(httpClient);
 
             DesktopUpdateCheckResult check = await service.CheckAsync();
             var progressReports = new List<DesktopUpdateDownloadProgress>();
@@ -241,12 +280,7 @@ namespace Cotton.Sync.Desktop.Tests.Updates
                 ["/manifest.json"] = Encoding.UTF8.GetBytes(CreateManifestJson("0.0.2", installerBytes)),
                 ["/CottonSync-Windows-Setup.exe"] = installerBytes,
             });
-            var service = new DesktopUpdateService(
-                httpClient,
-                "0.0.1",
-                _tempDirectory,
-                new Uri("https://updates.local/manifest.json"),
-                DesktopUpdatePlatform.WindowsX64);
+            DesktopUpdateService service = CreateLocalUpdateService(httpClient);
             using var writer = new StringWriter(System.Globalization.CultureInfo.InvariantCulture);
             var listener = new TextWriterTraceListener(writer);
             Trace.Listeners.Add(listener);
@@ -285,17 +319,29 @@ namespace Cotton.Sync.Desktop.Tests.Updates
                 ["/manifest.json"] = Encoding.UTF8.GetBytes(CreateManifestJson("0.0.2", manifestBytes)),
                 ["/CottonSync-Windows-Setup.exe"] = downloadedBytes,
             });
-            var service = new DesktopUpdateService(
-                httpClient,
-                "0.0.1",
-                _tempDirectory,
-                new Uri("https://updates.local/manifest.json"),
-                DesktopUpdatePlatform.WindowsX64);
+            DesktopUpdateService service = CreateLocalUpdateService(httpClient);
 
             DesktopUpdateCheckResult check = await service.CheckAsync();
 
             Assert.ThrowsAsync<InvalidDataException>(() => service.DownloadInstallerAsync(check));
             Assert.That(Directory.EnumerateFiles(_tempDirectory, "*", SearchOption.AllDirectories), Is.Empty);
+        }
+
+        private DesktopUpdateService CreateLocalUpdateService(
+            HttpClient httpClient,
+            string currentVersion = "0.0.1",
+            DesktopUpdatePlatform platform = DesktopUpdatePlatform.WindowsX64,
+            TimeSpan? retryBaseDelay = null)
+        {
+            Uri manifestUri = new("https://updates.local/manifest.json");
+            return new DesktopUpdateService(
+                httpClient,
+                currentVersion,
+                _tempDirectory,
+                manifestUri,
+                platform,
+                DesktopUpdateSourceTrustPolicy.CreateForHost(manifestUri),
+                retryBaseDelay: retryBaseDelay ?? TimeSpan.FromSeconds(1));
         }
 
         private static HttpClient CreateHttpClient(Dictionary<string, byte[]> responses)
@@ -306,8 +352,16 @@ namespace Cotton.Sync.Desktop.Tests.Updates
             };
         }
 
-        private static string CreateManifestJson(string version, byte[] installerBytes)
+        private static string CreateManifestJson(
+            string version,
+            byte[] installerBytes,
+            string? releaseUrl = null,
+            string? assetUrl = null)
         {
+            string effectiveReleaseUrl = releaseUrl
+                ?? "https://updates.local/releases/tag/v" + version;
+            string effectiveAssetUrl = assetUrl
+                ?? "https://updates.local/CottonSync-Windows-Setup.exe";
             return """
             {
               "schemaVersion": 1,
@@ -316,18 +370,20 @@ namespace Cotton.Sync.Desktop.Tests.Updates
               "tag": "v__VERSION__",
               "commit": "0123456789abcdef",
               "branch": "main",
-              "releaseUrl": "https://github.com/bvdcode/cotton-sync-client/releases/tag/v__VERSION__",
+              "releaseUrl": "__RELEASE_URL__",
               "assets": [
                 {
                   "name": "CottonSync-Windows-Setup.exe",
                   "sha256": "__SHA256__",
                   "sizeBytes": __SIZE_BYTES__,
-                  "url": "https://updates.local/CottonSync-Windows-Setup.exe"
+                  "url": "__ASSET_URL__"
                 }
               ]
             }
             """
             .Replace("__VERSION__", version, StringComparison.Ordinal)
+            .Replace("__RELEASE_URL__", effectiveReleaseUrl, StringComparison.Ordinal)
+            .Replace("__ASSET_URL__", effectiveAssetUrl, StringComparison.Ordinal)
             .Replace("__SHA256__", Sha256(installerBytes), StringComparison.Ordinal)
             .Replace("__SIZE_BYTES__", installerBytes.Length.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
         }

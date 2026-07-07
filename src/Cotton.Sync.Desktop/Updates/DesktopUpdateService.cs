@@ -21,6 +21,7 @@ namespace Cotton.Sync.Desktop.Updates
         private readonly string _updateCacheDirectory;
         private readonly Uri _manifestUri;
         private readonly DesktopUpdatePlatform _platform;
+        private readonly DesktopUpdateSourceTrustPolicy _sourceTrustPolicy;
         private readonly int _maxAttempts;
         private readonly TimeSpan _retryBaseDelay;
         private readonly bool _disposeHttpClient;
@@ -31,6 +32,7 @@ namespace Cotton.Sync.Desktop.Updates
             string updateCacheDirectory,
             Uri? manifestUri = null,
             DesktopUpdatePlatform? platform = null,
+            DesktopUpdateSourceTrustPolicy? sourceTrustPolicy = null,
             int maxAttempts = 3,
             TimeSpan? retryBaseDelay = null,
             bool disposeHttpClient = false)
@@ -49,6 +51,8 @@ namespace Cotton.Sync.Desktop.Updates
             }
 
             _platform = platform ?? GetCurrentPlatform();
+            _sourceTrustPolicy = sourceTrustPolicy ?? DesktopUpdateSourceTrustPolicy.CreateDefault();
+            _sourceTrustPolicy.ValidateManifestUri(_manifestUri);
             ArgumentOutOfRangeException.ThrowIfLessThan(maxAttempts, 1);
             _maxAttempts = maxAttempts;
             _retryBaseDelay = retryBaseDelay ?? TimeSpan.FromSeconds(1);
@@ -79,6 +83,7 @@ namespace Cotton.Sync.Desktop.Updates
             response.EnsureSuccessStatusCode();
             string json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             DesktopReleaseManifest manifest = DesktopReleaseManifest.FromJson(json);
+            _sourceTrustPolicy.ValidateManifest(manifest);
             DesktopSemanticVersion currentVersion = DesktopSemanticVersion.Parse(_currentVersion);
             DesktopSemanticVersion latestVersion = manifest.ParsedVersion;
             bool updateAvailable = latestVersion.CompareTo(currentVersion) > 0;
@@ -112,6 +117,7 @@ namespace Cotton.Sync.Desktop.Updates
 
             DesktopReleaseAsset asset = checkResult.InstallerAsset
                 ?? throw new InvalidOperationException("The latest Cotton Sync release does not include a Windows installer.");
+            _sourceTrustPolicy.ValidateAsset(asset);
             string versionDirectory = Path.Combine(_updateCacheDirectory, SanitizePathSegment(checkResult.LatestVersion.ToString()));
             Directory.CreateDirectory(versionDirectory);
             string finalPath = Path.Combine(versionDirectory, asset.Name);

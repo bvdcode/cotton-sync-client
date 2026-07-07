@@ -1,13 +1,29 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
-using System.Diagnostics;
-
 namespace Cotton.Sync.Desktop.Updates
 {
     internal sealed class DesktopUpdateInstaller : IDesktopUpdateInstaller
     {
         private static readonly TimeSpan EarlyFailureProbeTimeout = TimeSpan.FromSeconds(2);
+
+        private readonly IDesktopUpdateAuthenticodeVerifier _authenticodeVerifier;
+        private readonly IDesktopUpdateInstallerProcessLauncher _processLauncher;
+
+        public DesktopUpdateInstaller()
+            : this(
+                new WindowsAuthenticodeUpdateVerifier(),
+                new DesktopUpdateInstallerProcessLauncher(EarlyFailureProbeTimeout))
+        {
+        }
+
+        internal DesktopUpdateInstaller(
+            IDesktopUpdateAuthenticodeVerifier authenticodeVerifier,
+            IDesktopUpdateInstallerProcessLauncher processLauncher)
+        {
+            _authenticodeVerifier = authenticodeVerifier ?? throw new ArgumentNullException(nameof(authenticodeVerifier));
+            _processLauncher = processLauncher ?? throw new ArgumentNullException(nameof(processLauncher));
+        }
 
         public DesktopUpdateInstallResult StartSilentInstall(
             string installerPath,
@@ -19,7 +35,9 @@ namespace Cotton.Sync.Desktop.Updates
                 throw new FileNotFoundException("Cotton Sync update installer was not found.", installerPath);
             }
 
-            using Process? process = Process.Start(new ProcessStartInfo
+            _authenticodeVerifier.VerifyTrustedInstaller(installerPath);
+
+            return _processLauncher.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = installerPath,
                 Arguments = BuildSilentInstallArguments(launchAfterUpdate),
@@ -27,23 +45,6 @@ namespace Cotton.Sync.Desktop.Updates
                 ErrorDialog = false,
                 WorkingDirectory = Path.GetDirectoryName(installerPath) ?? AppContext.BaseDirectory,
             });
-            if (process is null)
-            {
-                throw new InvalidOperationException("Cotton Sync update installer could not be started.");
-            }
-
-            int processId = process.Id;
-            bool exitedDuringProbe = process.WaitForExit((int)EarlyFailureProbeTimeout.TotalMilliseconds);
-            int? exitCode = exitedDuringProbe ? process.ExitCode : null;
-            if (exitedDuringProbe && process.ExitCode != 0)
-            {
-                throw new InvalidOperationException(
-                    "Cotton Sync update installer exited before installing the update. Exit code: "
-                    + process.ExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                    + ".");
-            }
-
-            return new DesktopUpdateInstallResult(processId, exitedDuringProbe, exitCode);
         }
 
         internal static string BuildSilentInstallArguments(bool launchAfterUpdate)

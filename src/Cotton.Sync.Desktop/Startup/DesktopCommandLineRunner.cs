@@ -802,6 +802,7 @@ namespace Cotton.Sync.Desktop.Startup
                 paths.UpdateCacheDirectory,
                 startupOptions.UpdateManifestUri,
                 DesktopUpdatePlatform.WindowsX64,
+                DesktopUpdateSourceTrustPolicy.CreateForSmokeManifest(startupOptions.UpdateManifestUri!),
                 disposeHttpClient: true);
             IDisposable? updateServiceLifetime = updateService is null ? effectiveUpdateService as IDisposable : null;
 
