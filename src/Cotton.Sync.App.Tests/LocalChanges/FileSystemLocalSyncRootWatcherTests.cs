@@ -118,5 +118,45 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 Assert.That(localChange.Kind, Is.EqualTo(LocalSyncRootChangeKind.Renamed));
             });
         }
+
+        [Test]
+        public void Publish_ReportsErrorWhenFilterThrows()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var watcher = new FileSystemLocalSyncRootWatcher(syncPairId, _root);
+            var observed = new List<LocalSyncRootChange>();
+            watcher.Changed += (_, change) => observed.Add(change);
+
+            Assert.DoesNotThrow(() => watcher.Publish(string.Empty, LocalSyncRootChangeKind.Changed));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Has.Count.EqualTo(1));
+                Assert.That(observed[0].SyncPairId, Is.EqualTo(syncPairId));
+                Assert.That(observed[0].FullPath, Is.EqualTo(_root));
+                Assert.That(observed[0].Kind, Is.EqualTo(LocalSyncRootChangeKind.Error));
+            });
+        }
+
+        [Test]
+        public void Publish_ContinuesAfterSubscriberException()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            string changedPath = Path.Combine(_root, "file.txt");
+            var watcher = new FileSystemLocalSyncRootWatcher(syncPairId, _root);
+            var observed = new List<LocalSyncRootChange>();
+            watcher.Changed += (_, _) => throw new InvalidOperationException("Subscriber failed.");
+            watcher.Changed += (_, change) => observed.Add(change);
+
+            Assert.DoesNotThrow(() => watcher.Publish(changedPath, LocalSyncRootChangeKind.Changed));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Has.Count.EqualTo(1));
+                Assert.That(observed[0].SyncPairId, Is.EqualTo(syncPairId));
+                Assert.That(observed[0].FullPath, Is.EqualTo(changedPath));
+                Assert.That(observed[0].Kind, Is.EqualTo(LocalSyncRootChangeKind.Changed));
+            });
+        }
     }
 }

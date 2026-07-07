@@ -130,9 +130,25 @@ namespace Cotton.Sync.App.LocalChanges
             Publish(_localRootPath, LocalSyncRootChangeKind.Error);
         }
 
-        private void Publish(string fullPath, LocalSyncRootChangeKind kind)
+        internal void Publish(string fullPath, LocalSyncRootChangeKind kind)
         {
-            if (!_changeFilter.ShouldPublish(fullPath))
+            bool shouldPublish;
+            try
+            {
+                shouldPublish = _changeFilter.ShouldPublish(fullPath);
+            }
+            catch (Exception exception)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Local sync root watcher filter failed for {SyncPairId} at {ChangedPath}. A full reconcile will be requested.",
+                    _syncPairId,
+                    fullPath);
+                PublishChange(new LocalSyncRootChange(_syncPairId, _localRootPath, LocalSyncRootChangeKind.Error));
+                return;
+            }
+
+            if (!shouldPublish)
             {
                 _logger.LogDebug(
                     "Ignoring local sync root watcher event for {SyncPairId} at {ChangedPath}.",
@@ -141,12 +157,29 @@ namespace Cotton.Sync.App.LocalChanges
                 return;
             }
 
-            Changed?.Invoke(this, new LocalSyncRootChange(_syncPairId, fullPath, kind));
+            PublishChange(new LocalSyncRootChange(_syncPairId, fullPath, kind));
         }
 
-        private void PublishRename(string oldFullPath, string newFullPath)
+        internal void PublishRename(string oldFullPath, string newFullPath)
         {
-            if (!_changeFilter.ShouldPublishRename(oldFullPath, newFullPath))
+            bool shouldPublish;
+            try
+            {
+                shouldPublish = _changeFilter.ShouldPublishRename(oldFullPath, newFullPath);
+            }
+            catch (Exception exception)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Local sync root watcher rename filter failed for {SyncPairId} from {OldPath} to {ChangedPath}. A full reconcile will be requested.",
+                    _syncPairId,
+                    oldFullPath,
+                    newFullPath);
+                PublishChange(new LocalSyncRootChange(_syncPairId, _localRootPath, LocalSyncRootChangeKind.Error));
+                return;
+            }
+
+            if (!shouldPublish)
             {
                 _logger.LogDebug(
                     "Ignoring local sync root rename watcher event for {SyncPairId} from {OldPath} to {ChangedPath}.",
@@ -156,11 +189,41 @@ namespace Cotton.Sync.App.LocalChanges
                 return;
             }
 
-            Changed?.Invoke(this, new LocalSyncRootChange(
+            PublishChange(new LocalSyncRootChange(
                 _syncPairId,
                 newFullPath,
                 LocalSyncRootChangeKind.Renamed,
                 oldFullPath));
+        }
+
+        private void PublishChange(LocalSyncRootChange change)
+        {
+            EventHandler<LocalSyncRootChange>? changed = Changed;
+            if (changed is null)
+            {
+                return;
+            }
+
+            foreach (Delegate subscriber in changed.GetInvocationList())
+            {
+                if (subscriber is not EventHandler<LocalSyncRootChange> handler)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    handler(this, change);
+                }
+                catch (Exception exception)
+                {
+                    _logger.LogWarning(
+                        exception,
+                        "Local sync root watcher subscriber failed for {SyncPairId} at {ChangedPath}.",
+                        _syncPairId,
+                        change.FullPath);
+                }
+            }
         }
     }
 }
