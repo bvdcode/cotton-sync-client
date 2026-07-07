@@ -2346,7 +2346,7 @@ namespace Cotton.Sync.Tests
         {
             const string relativePath = "remote-deleted-placeholder.txt";
             WriteFile(relativePath, string.Empty);
-            LocalFileSnapshot local = LocalFile(relativePath, string.Empty);
+            LocalFileSnapshot local = CloudFilesPlaceholderLocal(relativePath, 1024);
             NodeFileManifestDto baselineRemote = RemoteFile(relativePath, HashText("remote-content"), sizeBytes: 1024);
             var remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(
@@ -2375,6 +2375,45 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesPreservesMaterializedLocalWhenRemotePlaceholderIsDeleted()
+        {
+            const string relativePath = "remote-deleted-materialized.txt";
+            const string localContent = "local replacement";
+            WriteFile(relativePath, localContent);
+            LocalFileSnapshot local = LocalFile(relativePath, localContent);
+            local.IsCloudFilesPlaceholder = true;
+            local.IsCloudFilesOnlineOnlyPlaceholder = false;
+            NodeFileManifestDto baselineRemote = RemoteFile(relativePath, HashText("remote-content"), sizeBytes: 1024);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(local),
+                EmptyRemoteTree(),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore);
+            await InsertPlaceholderBaselineAsync(stateStore, relativePath, baselineRemote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            string fullPath = Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(remoteFiles.Uploads, Has.Count.EqualTo(1));
+                Assert.That(remoteFiles.Uploads[0].RelativePath, Is.EqualTo(relativePath));
+                Assert.That(remoteFiles.Uploads[0].ExistingRemoteFile, Is.Null);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Conflict }));
+                Assert.That(File.Exists(fullPath), Is.True);
+                Assert.That(File.ReadAllText(fullPath), Is.EqualTo(localContent));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.None));
+                Assert.That(entry.PlaceholderIdentity, Is.Null);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesMovesRemoteOnlyPlaceholderWhenRemotePathChanges()
         {
             const string oldPath = "Docs/old-name.txt";
@@ -2383,7 +2422,7 @@ namespace Cotton.Sync.Tests
             NodeFileManifestDto baselineRemote = RemoteFile(oldPath, HashText("remote-content"), remoteFileId, sizeBytes: 1024);
             NodeFileManifestDto movedRemote = RemoteFile(newPath, baselineRemote.ContentHash, remoteFileId, sizeBytes: 1024);
             WriteFile(oldPath, string.Empty);
-            LocalFileSnapshot oldLocalPlaceholder = LocalFile(oldPath, string.Empty);
+            LocalFileSnapshot oldLocalPlaceholder = CloudFilesPlaceholderLocal(oldPath, baselineRemote.SizeBytes);
             var remoteFiles = new FakeRemoteFileSynchronizer();
             var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
             SyncEngine engine = CreateEngine(

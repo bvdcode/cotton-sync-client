@@ -2492,7 +2492,13 @@ namespace Cotton.Sync
                     return;
                 }
 
-                await DeleteLocalAsync(syncPair, options, result, deleteGuard, relativePath, cancellationToken).ConfigureAwait(false);
+                if (IsLocalOnlineOnlyPlaceholderBaseline(syncPair, local, state))
+                {
+                    await DeleteLocalAsync(syncPair, options, result, deleteGuard, relativePath, cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
+                await PreserveConflictAsync(syncPair, options, result, relativePath, local, null, cancellationToken).ConfigureAwait(false);
                 return;
             }
 
