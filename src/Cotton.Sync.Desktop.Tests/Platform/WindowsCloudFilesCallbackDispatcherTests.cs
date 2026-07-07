@@ -208,6 +208,63 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             });
         }
 
+        [Test]
+        public async Task Dispose_WaitsForRunningFetchWorkerAndClearsPendingRequests()
+        {
+            BlockingCallbackHandler handler = new();
+            WindowsCloudFilesCallbackDispatcher dispatcher = new(
+                handler,
+                _ => { },
+                new WindowsCloudFilesCallbackDispatcherOptions(
+                    MaxConcurrentFetches: 1,
+                    QueueCapacity: 4,
+                    ShutdownTimeout: TimeSpan.FromSeconds(2)));
+            WindowsCloudFilesFetchDataRequest running = CreateRequest(50);
+            WindowsCloudFilesFetchDataRequest queued = CreateRequest(51);
+
+            Assert.That(dispatcher.QueueFetchData(running), Is.True);
+            await handler.WaitForStartedCountAsync(1);
+            Assert.That(dispatcher.QueueFetchData(queued), Is.True);
+
+            dispatcher.Dispose();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(dispatcher.PendingFetchCount, Is.Zero);
+                Assert.That(handler.CanceledRequestKeys, Is.EqualTo(new[] { running.RequestKey.Value }));
+                Assert.That(dispatcher.QueueFetchData(CreateRequest(52)), Is.False);
+            });
+        }
+
+        [Test]
+        public async Task Dispose_WaitsForRunningDehydrateWorkerAndClearsPendingRequests()
+        {
+            BlockingCallbackHandler handler = new();
+            WindowsCloudFilesCallbackDispatcher dispatcher = new(
+                handler,
+                _ => { },
+                _ => { },
+                new WindowsCloudFilesCallbackDispatcherOptions(
+                    MaxConcurrentFetches: 1,
+                    QueueCapacity: 4,
+                    ShutdownTimeout: TimeSpan.FromSeconds(2)));
+            WindowsCloudFilesDehydrateRequest running = CreateDehydrateRequest(60);
+            WindowsCloudFilesDehydrateRequest queued = CreateDehydrateRequest(61);
+
+            Assert.That(dispatcher.QueueDehydrate(running), Is.True);
+            await handler.WaitForDehydrateStartedCountAsync(1);
+            Assert.That(dispatcher.QueueDehydrate(queued), Is.True);
+
+            dispatcher.Dispose();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(dispatcher.PendingDehydrateCount, Is.Zero);
+                Assert.That(handler.CanceledDehydrateRequestKeys, Is.EqualTo(new[] { running.RequestKey.Value }));
+                Assert.That(dispatcher.QueueDehydrate(CreateDehydrateRequest(62)), Is.False);
+            });
+        }
+
         private static WindowsCloudFilesFetchDataRequest CreateRequest(long key)
         {
             return new WindowsCloudFilesFetchDataRequest(
@@ -257,6 +314,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<long> CanceledRequestKeys { get; } = [];
 
+            public List<long> CanceledDehydrateRequestKeys { get; } = [];
+
             public List<WindowsCloudFilesCancelFetchDataRequest> CancelRequests { get; } = [];
 
             public async Task HandleFetchDataAsync(
@@ -302,7 +361,19 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     _dehydrateStarted.Release();
                 }
 
-                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    lock (_gate)
+                    {
+                        CanceledDehydrateRequestKeys.Add(request.RequestKey.Value);
+                    }
+
+                    throw;
+                }
             }
 
             public void NotifyDehydrateCompleted(WindowsCloudFilesDehydrateCompletionNotification notification)

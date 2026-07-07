@@ -16,6 +16,8 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly Channel<PendingFetchData> _fetchQueue;
         private readonly Channel<PendingDehydrateData> _dehydrateQueue;
         private readonly CancellationTokenSource _lifetime = new();
+        private readonly object _lifecycleGate = new();
+        private readonly TimeSpan _shutdownTimeout;
         private readonly Task[] _fetchWorkers;
         private readonly Task[] _dehydrateWorkers;
         private int _disposed;
@@ -39,6 +41,7 @@ namespace Cotton.Sync.Desktop.Platform
             _ackDehydrate = ackDehydrate ?? throw new ArgumentNullException(nameof(ackDehydrate));
             WindowsCloudFilesCallbackDispatcherOptions normalized =
                 (options ?? WindowsCloudFilesCallbackDispatcherOptions.Default).Normalize();
+            _shutdownTimeout = normalized.ShutdownTimeout;
             _fetchQueue = Channel.CreateBounded<PendingFetchData>(
                 new BoundedChannelOptions(normalized.QueueCapacity)
                 {
@@ -77,27 +80,44 @@ namespace Cotton.Sync.Desktop.Platform
                 return false;
             }
 
-            var pending = new PendingFetchData(
-                request,
-                CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token));
-            if (!_pendingFetches.TryAdd(request.RequestKey.Value, pending))
+            PendingFetchData pending;
+            bool transferFailure;
+            lock (_lifecycleGate)
             {
-                pending.Dispose();
+                if (_disposed != 0)
+                {
+                    return false;
+                }
+
+                transferFailure = false;
+                pending = new PendingFetchData(
+                    request,
+                    CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token));
+                if (!_pendingFetches.TryAdd(request.RequestKey.Value, pending))
+                {
+                    pending.Dispose();
+                    transferFailure = true;
+                }
+                else if (_fetchQueue.Writer.TryWrite(pending))
+                {
+                    return true;
+                }
+                else
+                {
+                    if (_pendingFetches.TryRemove(request.RequestKey.Value, out PendingFetchData? rejected))
+                    {
+                        rejected.Dispose();
+                    }
+
+                    transferFailure = true;
+                }
+            }
+
+            if (transferFailure)
+            {
                 TryTransferFailure(request);
-                return false;
             }
 
-            if (_fetchQueue.Writer.TryWrite(pending))
-            {
-                return true;
-            }
-
-            if (_pendingFetches.TryRemove(request.RequestKey.Value, out PendingFetchData? rejected))
-            {
-                rejected.Dispose();
-            }
-
-            TryTransferFailure(request);
             return false;
         }
 
@@ -120,27 +140,44 @@ namespace Cotton.Sync.Desktop.Platform
                 return false;
             }
 
-            var pending = new PendingDehydrateData(
-                request,
-                CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token));
-            if (!_pendingDehydrates.TryAdd(request.RequestKey.Value, pending))
+            PendingDehydrateData pending;
+            bool ackFailure;
+            lock (_lifecycleGate)
             {
-                pending.Dispose();
+                if (_disposed != 0)
+                {
+                    return false;
+                }
+
+                ackFailure = false;
+                pending = new PendingDehydrateData(
+                    request,
+                    CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token));
+                if (!_pendingDehydrates.TryAdd(request.RequestKey.Value, pending))
+                {
+                    pending.Dispose();
+                    ackFailure = true;
+                }
+                else if (_dehydrateQueue.Writer.TryWrite(pending))
+                {
+                    return true;
+                }
+                else
+                {
+                    if (_pendingDehydrates.TryRemove(request.RequestKey.Value, out PendingDehydrateData? rejected))
+                    {
+                        rejected.Dispose();
+                    }
+
+                    ackFailure = true;
+                }
+            }
+
+            if (ackFailure)
+            {
                 TryAckDehydrateFailure(request);
-                return false;
             }
 
-            if (_dehydrateQueue.Writer.TryWrite(pending))
-            {
-                return true;
-            }
-
-            if (_pendingDehydrates.TryRemove(request.RequestKey.Value, out PendingDehydrateData? rejected))
-            {
-                rejected.Dispose();
-            }
-
-            TryAckDehydrateFailure(request);
             return false;
         }
 
@@ -157,17 +194,57 @@ namespace Cotton.Sync.Desktop.Platform
                 return;
             }
 
-            _fetchQueue.Writer.TryComplete();
-            _dehydrateQueue.Writer.TryComplete();
-            _lifetime.Cancel();
+            lock (_lifecycleGate)
+            {
+                _fetchQueue.Writer.TryComplete();
+                _dehydrateQueue.Writer.TryComplete();
+                _lifetime.Cancel();
+                CancelPendingFetches();
+                CancelPendingDehydrates();
+            }
+
+            Task allWorkers = Task.WhenAll(_fetchWorkers.Concat(_dehydrateWorkers));
+            allWorkers.Wait(_shutdownTimeout);
+            DisposeRemainingFetches();
+            DisposeRemainingDehydrates();
+            _lifetime.Dispose();
+        }
+
+        private void CancelPendingFetches()
+        {
             foreach (PendingFetchData pending in _pendingFetches.Values)
             {
                 pending.Cancel();
             }
+        }
 
+        private void CancelPendingDehydrates()
+        {
             foreach (PendingDehydrateData pending in _pendingDehydrates.Values)
             {
                 pending.Cancel();
+            }
+        }
+
+        private void DisposeRemainingFetches()
+        {
+            foreach (KeyValuePair<long, PendingFetchData> pair in _pendingFetches.ToArray())
+            {
+                if (_pendingFetches.TryRemove(pair.Key, out PendingFetchData? pending))
+                {
+                    pending.Dispose();
+                }
+            }
+        }
+
+        private void DisposeRemainingDehydrates()
+        {
+            foreach (KeyValuePair<long, PendingDehydrateData> pair in _pendingDehydrates.ToArray())
+            {
+                if (_pendingDehydrates.TryRemove(pair.Key, out PendingDehydrateData? pending))
+                {
+                    pending.Dispose();
+                }
             }
         }
 
