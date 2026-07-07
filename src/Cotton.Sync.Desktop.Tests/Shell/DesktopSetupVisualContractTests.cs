@@ -355,12 +355,28 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             Assert.Multiple(() =>
             {
-                Assert.That(openedHandler, Does.Contain("await InitializeShellOnceAsync(viewModel).ConfigureAwait(true);"));
+                Assert.That(openedHandler, Does.Contain("await InitializeShellOnceAsync(_viewModel).ConfigureAwait(true);"));
                 Assert.That(openedHandler, Does.Not.Contain("viewModel.InitializeAsync()"));
                 Assert.That(oneShotInitializer, Does.Contain("if (_hasInitializedShell)"));
                 Assert.That(oneShotInitializer, Does.Contain("_hasInitializedShell = true;"));
                 Assert.That(oneShotInitializer, Does.Contain("await viewModel.InitializeAsync().ConfigureAwait(true);"));
                 Assert.That(oneShotInitializer, Does.Contain("ApplyVisualSmokeScenarioAsync"));
+            });
+        }
+
+        [Test]
+        public void MainWindow_UsesExplicitClosedShutdownPath()
+        {
+            string mainWindowCode = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(mainWindowCode, Does.Contain("Closed += OnClosed;"));
+                Assert.That(mainWindowCode, Does.Not.Contain("Closed += async"));
+                Assert.That(mainWindowCode, Does.Contain("private void OnClosed"));
+                Assert.That(mainWindowCode, Does.Contain("_ = ShutdownShellAsync();"));
+                Assert.That(mainWindowCode, Does.Contain("private async Task ShutdownShellAsync()"));
+                Assert.That(mainWindowCode, Does.Contain("_logger.LogError(exception, \"Failed to shut down the desktop shell.\");"));
             });
         }
 

@@ -9,10 +9,12 @@ using Avalonia.Input;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Cotton.Sync.Desktop.Diagnostics;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Shell;
 using Cotton.Sync.Desktop.Startup;
 using Cotton.Sync.Desktop.ViewModels;
+using Microsoft.Extensions.Logging;
 
 namespace Cotton.Sync.Desktop
 {
@@ -32,10 +34,13 @@ namespace Cotton.Sync.Desktop
         private const double SetupMinWidth = 316;
         private const double SetupWidth = 336;
 
+        private readonly ILogger _logger;
         private readonly DesktopWindowLifecyclePolicy _lifecyclePolicy;
         private readonly DesktopVisualSmokeScenario? _visualSmokeScenario;
+        private readonly ShellViewModel _viewModel;
         private bool _hasOpened;
         private bool _hasInitializedShell;
+        private bool _hasStartedShutdown;
         private WindowProfile? _windowProfile;
 
         /// <summary>
@@ -53,21 +58,22 @@ namespace Cotton.Sync.Desktop
             DesktopVisualSmokeScenario? visualSmokeScenario = null)
         {
             ArgumentNullException.ThrowIfNull(controller);
+            _logger = new DesktopTraceLoggerFactory().CreateLogger(nameof(MainWindow));
             _lifecyclePolicy = new DesktopWindowLifecyclePolicy(startMinimizedToTray, canHideToTray);
             _visualSmokeScenario = visualSmokeScenario;
             InitializeComponent();
             bool notifyOnSessionRestore = !startMinimizedToTray && visualSmokeScenario is null;
-            var viewModel = new ShellViewModel(
+            _viewModel = new ShellViewModel(
                 controller,
                 new WindowLocalFolderPicker(this),
                 DesktopNotificationServiceFactory.CreateDefault(),
                 new AvaloniaDesktopThemeService(),
                 checkForUpdatesOnStartup: visualSmokeScenario is null,
                 notifyOnSessionRestore: notifyOnSessionRestore);
-            DataContext = viewModel;
-            viewModel.UpdateInstallShutdownRequested += OnUpdateInstallShutdownRequested;
-            ApplyWindowMode(viewModel);
-            viewModel.PropertyChanged += OnViewModelPropertyChanged;
+            DataContext = _viewModel;
+            _viewModel.UpdateInstallShutdownRequested += OnUpdateInstallShutdownRequested;
+            ApplyWindowMode(_viewModel);
+            _viewModel.PropertyChanged += OnViewModelPropertyChanged;
             Opened += async (_, _) =>
             {
                 _hasOpened = true;
@@ -77,20 +83,14 @@ namespace Cotton.Sync.Desktop
                     HideForTrayStartup();
                 }
 
-                await InitializeShellOnceAsync(viewModel).ConfigureAwait(true);
+                await InitializeShellOnceAsync(_viewModel).ConfigureAwait(true);
                 if (_lifecyclePolicy.ShouldHideAfterStartup())
                 {
                     HideForTrayStartup();
                 }
             };
             Closing += OnClosing;
-            Closed += async (_, _) =>
-            {
-                Closing -= OnClosing;
-                viewModel.PropertyChanged -= OnViewModelPropertyChanged;
-                viewModel.UpdateInstallShutdownRequested -= OnUpdateInstallShutdownRequested;
-                await viewModel.DisposeAsync().ConfigureAwait(true);
-            };
+            Closed += OnClosed;
         }
 
         internal void RequestQuit()
@@ -114,15 +114,10 @@ namespace Cotton.Sync.Desktop
 
         internal void StartHiddenToTray()
         {
-            if (DataContext is not ShellViewModel viewModel)
-            {
-                return;
-            }
-
             HideForTrayStartup();
             Dispatcher.UIThread.Post(async () =>
             {
-                await InitializeShellOnceAsync(viewModel).ConfigureAwait(true);
+                await InitializeShellOnceAsync(_viewModel).ConfigureAwait(true);
             });
         }
 
@@ -143,6 +138,33 @@ namespace Cotton.Sync.Desktop
 
             e.Cancel = true;
             Hide();
+        }
+
+        private void OnClosed(object? sender, EventArgs e)
+        {
+            if (_hasStartedShutdown)
+            {
+                return;
+            }
+
+            _hasStartedShutdown = true;
+            Closing -= OnClosing;
+            Closed -= OnClosed;
+            _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            _viewModel.UpdateInstallShutdownRequested -= OnUpdateInstallShutdownRequested;
+            _ = ShutdownShellAsync();
+        }
+
+        private async Task ShutdownShellAsync()
+        {
+            try
+            {
+                await _viewModel.DisposeAsync().ConfigureAwait(true);
+            }
+            catch (Exception exception)
+            {
+                _logger.LogError(exception, "Failed to shut down the desktop shell.");
+            }
         }
 
         private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
