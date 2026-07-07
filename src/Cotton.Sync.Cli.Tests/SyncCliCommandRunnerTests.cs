@@ -533,6 +533,70 @@ namespace Cotton.Sync.Cli.Tests
         }
 
         [Test]
+        public void SyncCrudSmoke_InitialConvergenceLinePassesOnlyWhenBothClientsConverged()
+        {
+            SyncCliConvergenceResult first = CreateCrudSmokeConvergence(converged: true);
+            SyncCliConvergenceResult second = CreateCrudSmokeConvergence(converged: true);
+
+            string line = SyncCliCrudSmokeCommandRunner.FormatInitialConvergenceLine(first, second);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(line, Does.StartWith("PASS: Initial sync reached idle/up-to-date."));
+                Assert.That(line, Does.Contain("clientAActivities=0"));
+                Assert.That(line, Does.Contain("clientADeferredLocalPaths=0"));
+                Assert.That(line, Does.Contain("clientAConverged=yes"));
+                Assert.That(line, Does.Contain("clientBActivities=0"));
+                Assert.That(line, Does.Contain("clientBDeferredLocalPaths=0"));
+                Assert.That(line, Does.Contain("clientBConverged=yes"));
+            });
+        }
+
+        [Test]
+        public void SyncCrudSmoke_InitialConvergenceLineFailsWhenActivitiesRemain()
+        {
+            SyncRunResult activeResult = new();
+            activeResult.RecordActivity(
+                new SyncActivity
+                {
+                    Kind = SyncActivityKind.Uploaded,
+                    RelativePath = "still-changing.txt",
+                },
+                maximumStoredActivities: 1);
+            SyncCliConvergenceResult first = new(new SyncCliPassResult(activeResult, []), Converged: false, Passes: 6);
+            SyncCliConvergenceResult second = CreateCrudSmokeConvergence(converged: true);
+
+            string line = SyncCliCrudSmokeCommandRunner.FormatInitialConvergenceLine(first, second);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(line, Does.StartWith("FAIL: Initial sync reached idle/up-to-date."));
+                Assert.That(line, Does.Contain("clientAActivities=1"));
+                Assert.That(line, Does.Contain("clientAConverged=no"));
+                Assert.That(line, Does.Contain("clientBConverged=yes"));
+            });
+        }
+
+        [Test]
+        public void SyncCrudSmoke_InitialConvergenceLineFailsWhenDeferredLocalPathsRemain()
+        {
+            SyncRunResult deferredResult = new();
+            deferredResult.RecordDeferredLocalPath("fresh-file.txt");
+            SyncCliConvergenceResult first = new(new SyncCliPassResult(deferredResult, []), Converged: false, Passes: 6);
+            SyncCliConvergenceResult second = CreateCrudSmokeConvergence(converged: true);
+
+            string line = SyncCliCrudSmokeCommandRunner.FormatInitialConvergenceLine(first, second);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(line, Does.StartWith("FAIL: Initial sync reached idle/up-to-date."));
+                Assert.That(line, Does.Contain("clientAActivities=0"));
+                Assert.That(line, Does.Contain("clientADeferredLocalPaths=1"));
+                Assert.That(line, Does.Contain("clientAConverged=no"));
+            });
+        }
+
+        [Test]
         public async Task RunAsync_ReturnsErrorForInvalidSyncSoakProbeFile()
         {
             using var output = new StringWriter();
@@ -2184,6 +2248,14 @@ namespace Cotton.Sync.Cli.Tests
                 "--database",
                 databasePath,
             ];
+        }
+
+        private static SyncCliConvergenceResult CreateCrudSmokeConvergence(bool converged)
+        {
+            return new SyncCliConvergenceResult(
+                new SyncCliPassResult(new SyncRunResult(), []),
+                converged,
+                Passes: 1);
         }
 
         private static Process StartCliProcess(IEnumerable<string> args)

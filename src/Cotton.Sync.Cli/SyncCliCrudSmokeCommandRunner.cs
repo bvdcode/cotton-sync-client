@@ -85,13 +85,13 @@ namespace Cotton.Sync.Cli
                 failures += await RunClientBDeleteAsync(firstOptions, secondOptions, firstRuntime, secondRuntime, output, cancellationToken)
                     .ConfigureAwait(false);
 
-                SyncCliPassResult finalFirst = await RunFinalConvergenceAsync(firstRuntime, cancellationToken)
+                SyncCliConvergenceResult finalFirst = await RunConvergenceAsync(firstRuntime, cancellationToken)
                     .ConfigureAwait(false);
-                SyncCliPassResult finalSecond = await RunFinalConvergenceAsync(secondRuntime, cancellationToken)
+                SyncCliConvergenceResult finalSecond = await RunConvergenceAsync(secondRuntime, cancellationToken)
                     .ConfigureAwait(false);
-                int finalActivities = GetActivityCount(finalFirst) + GetActivityCount(finalSecond);
-                int finalStateEntries = finalFirst.StateEntries.Count + finalSecond.StateEntries.Count;
-                if (finalActivities != 0)
+                int finalActivities = GetActivityCount(finalFirst.Pass) + GetActivityCount(finalSecond.Pass);
+                int finalStateEntries = finalFirst.Pass.StateEntries.Count + finalSecond.Pass.StateEntries.Count;
+                if (!finalFirst.Converged || !finalSecond.Converged)
                 {
                     failures++;
                 }
@@ -144,14 +144,12 @@ namespace Cotton.Sync.Cli
             TextWriter output,
             CancellationToken cancellationToken)
         {
-            SyncCliPassResult first = await SyncCliRuntimeFactory.RunSinglePassAsync(firstRuntime, cancellationToken)
+            SyncCliConvergenceResult first = await RunConvergenceAsync(firstRuntime, cancellationToken)
                 .ConfigureAwait(false);
-            SyncCliPassResult second = await SyncCliRuntimeFactory.RunSinglePassAsync(secondRuntime, cancellationToken)
+            SyncCliConvergenceResult second = await RunConvergenceAsync(secondRuntime, cancellationToken)
                 .ConfigureAwait(false);
-            int activities = GetActivityCount(first) + GetActivityCount(second);
-            await output.WriteLineAsync("PASS: Initial sync reached idle/up-to-date. activities=" + activities.ToStringInvariant())
-                .ConfigureAwait(false);
-            return 0;
+            await output.WriteLineAsync(FormatInitialConvergenceLine(first, second)).ConfigureAwait(false);
+            return first.Converged && second.Converged ? 0 : 1;
         }
 
         private static async Task<int> RunClientACreateAsync(
@@ -291,17 +289,28 @@ namespace Cotton.Sync.Cli
             SyncCliRuntime runtime,
             CancellationToken cancellationToken)
         {
+            SyncCliConvergenceResult result = await RunConvergenceAsync(runtime, cancellationToken).ConfigureAwait(false);
+            return result.Pass;
+        }
+
+        private static async Task<SyncCliConvergenceResult> RunConvergenceAsync(
+            SyncCliRuntime runtime,
+            CancellationToken cancellationToken)
+        {
             SyncCliPassResult? lastPass = null;
             for (int pass = 1; pass <= MaxFinalConvergencePasses; pass++)
             {
                 lastPass = await SyncCliRuntimeFactory.RunSinglePassAsync(runtime, cancellationToken).ConfigureAwait(false);
                 if (IsIdle(lastPass))
                 {
-                    return lastPass;
+                    return new SyncCliConvergenceResult(lastPass, Converged: true, pass);
                 }
             }
 
-            return lastPass ?? throw new InvalidOperationException("Final convergence pass did not run.");
+            return new SyncCliConvergenceResult(
+                lastPass ?? throw new InvalidOperationException("Final convergence pass did not run."),
+                Converged: false,
+                MaxFinalConvergencePasses);
         }
 
         private static async Task WriteFileAsync(
@@ -375,6 +384,24 @@ namespace Cotton.Sync.Cli
         private static string FormatCheck(bool passed, string label)
         {
             return (passed ? "PASS: " : "FAIL: ") + label;
+        }
+
+        internal static string FormatInitialConvergenceLine(
+            SyncCliConvergenceResult first,
+            SyncCliConvergenceResult second)
+        {
+            bool passed = first.Converged && second.Converged;
+            return FormatCheck(passed, "Initial sync reached idle/up-to-date.")
+                + " clientAActivities=" + GetActivityCount(first.Pass).ToStringInvariant()
+                + ", clientADeferredLocalPaths=" + GetDeferredLocalPathCount(first.Pass).ToStringInvariant()
+                + ", clientAStateEntries=" + first.Pass.StateEntries.Count.ToStringInvariant()
+                + ", clientAPasses=" + first.Passes.ToStringInvariant()
+                + ", clientAConverged=" + FormatYesNo(first.Converged)
+                + ", clientBActivities=" + GetActivityCount(second.Pass).ToStringInvariant()
+                + ", clientBDeferredLocalPaths=" + GetDeferredLocalPathCount(second.Pass).ToStringInvariant()
+                + ", clientBStateEntries=" + second.Pass.StateEntries.Count.ToStringInvariant()
+                + ", clientBPasses=" + second.Passes.ToStringInvariant()
+                + ", clientBConverged=" + FormatYesNo(second.Converged);
         }
 
         private static string FullPath(string localRoot, string relativePath)
@@ -513,6 +540,16 @@ namespace Cotton.Sync.Cli
         private static int GetActivityCount(SyncCliPassResult pass)
         {
             return pass.Result.TotalActivityCount;
+        }
+
+        private static int GetDeferredLocalPathCount(SyncCliPassResult pass)
+        {
+            return pass.Result.DeferredLocalPaths.Count;
+        }
+
+        private static string FormatYesNo(bool value)
+        {
+            return value ? "yes" : "no";
         }
     }
 }
