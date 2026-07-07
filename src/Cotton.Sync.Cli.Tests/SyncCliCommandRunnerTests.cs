@@ -55,6 +55,41 @@ namespace Cotton.Sync.Cli.Tests
         }
 
         [Test]
+        public async Task Program_MapsOperationCanceledExceptionToStableExitCode()
+        {
+            using StringWriter error = new();
+
+            int exitCode = await Program.RunWithTopLevelExceptionMappingAsync(
+                () => Task.FromException<int>(new OperationCanceledException("stop requested")),
+                error);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(130));
+                Assert.That(error.ToString(), Does.Contain("Operation canceled."));
+                Assert.That(error.ToString(), Does.Not.Contain("OperationCanceledException"));
+                Assert.That(error.ToString(), Does.Not.Contain(" at "));
+            });
+        }
+
+        [Test]
+        public async Task Program_MapsUnexpectedExceptionToStableError()
+        {
+            using StringWriter error = new();
+
+            int exitCode = await Program.RunWithTopLevelExceptionMappingAsync(
+                () => Task.FromException<int>(new InvalidOperationException("boom")),
+                error);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(1));
+                Assert.That(error.ToString(), Does.Contain("Unexpected error: InvalidOperationException: boom"));
+                Assert.That(error.ToString(), Does.Not.Contain(" at "));
+            });
+        }
+
+        [Test]
         public async Task SyncOnceSuccess_PrintsTotalActivitiesWhenRetainedActivityListIsTruncated()
         {
             using var output = new StringWriter();
