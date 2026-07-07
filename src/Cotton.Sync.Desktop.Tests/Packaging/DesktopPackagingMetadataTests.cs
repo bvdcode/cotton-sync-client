@@ -2458,10 +2458,16 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         [Test]
         public void DesktopWorkflow_PublishesGitHubReleaseAssets()
         {
-            string workflow = GetDesktopWorkflow();
+            string workflow = GetDesktopWorkflow().Replace("\r\n", "\n", StringComparison.Ordinal);
 
             Assert.Multiple(() =>
             {
+                Assert.That(workflow, Does.Contain("tests:"));
+                Assert.That(workflow, Does.Contain("Solution Tests"));
+                Assert.That(workflow, Does.Contain("dotnet restore src/Cotton.sln"));
+                Assert.That(workflow, Does.Contain("dotnet test src/Cotton.sln --no-restore -p:UseSharedCompilation=false"));
+                Assert.That(workflow, Does.Contain("needs:\n      - tests\n    outputs:"));
+                Assert.That(workflow, Does.Contain("needs:\n      - tests\n      - linux\n      - windows\n      - cli-windows"));
                 Assert.That(workflow, Does.Contain("Publish Sync Client Release"));
                 Assert.That(workflow, Does.Contain("contents: write"));
                 Assert.That(workflow, Does.Contain("branches:"));
