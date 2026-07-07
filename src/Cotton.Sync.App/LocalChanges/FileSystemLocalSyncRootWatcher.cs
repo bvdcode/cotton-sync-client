@@ -24,6 +24,7 @@ namespace Cotton.Sync.App.LocalChanges
         private readonly string _localRootPath;
         private readonly LocalSyncRootChangeFilter _changeFilter;
         private readonly ILogger<FileSystemLocalSyncRootWatcher> _logger;
+        private readonly object _watcherGate = new();
         private FileSystemWatcher? _watcher;
 
         /// <summary>
@@ -58,18 +59,27 @@ namespace Cotton.Sync.App.LocalChanges
                 throw new DirectoryNotFoundException($"Local sync root does not exist: {_localRootPath}.");
             }
 
-            _watcher = new FileSystemWatcher(_localRootPath)
+            FileSystemWatcher watcher = CreateWatcher();
+            try
             {
-                IncludeSubdirectories = true,
-                NotifyFilter = WatchedNotifyFilters,
-                InternalBufferSize = InternalBufferSizeBytes,
-            };
-            _watcher.Created += OnCreated;
-            _watcher.Changed += OnChanged;
-            _watcher.Deleted += OnDeleted;
-            _watcher.Renamed += OnRenamed;
-            _watcher.Error += OnError;
-            _watcher.EnableRaisingEvents = true;
+                watcher.EnableRaisingEvents = true;
+                lock (_watcherGate)
+                {
+                    if (_watcher is not null)
+                    {
+                        DisposeWatcher(watcher);
+                        return Task.CompletedTask;
+                    }
+
+                    _watcher = watcher;
+                }
+            }
+            catch
+            {
+                DisposeWatcher(watcher);
+                throw;
+            }
+
             return Task.CompletedTask;
         }
 
@@ -77,20 +87,19 @@ namespace Cotton.Sync.App.LocalChanges
         public Task StopAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            FileSystemWatcher? watcher = _watcher;
+            FileSystemWatcher? watcher;
+            lock (_watcherGate)
+            {
+                watcher = _watcher;
+                _watcher = null;
+            }
+
             if (watcher is null)
             {
                 return Task.CompletedTask;
             }
 
-            watcher.EnableRaisingEvents = false;
-            watcher.Created -= OnCreated;
-            watcher.Changed -= OnChanged;
-            watcher.Deleted -= OnDeleted;
-            watcher.Renamed -= OnRenamed;
-            watcher.Error -= OnError;
-            watcher.Dispose();
-            _watcher = null;
+            DisposeWatcher(watcher);
             return Task.CompletedTask;
         }
 
@@ -122,12 +131,17 @@ namespace Cotton.Sync.App.LocalChanges
 
         private void OnError(object sender, ErrorEventArgs e)
         {
-            Exception exception = e.GetException();
+            HandleError(e.GetException());
+        }
+
+        internal void HandleError(Exception exception)
+        {
             _logger.LogWarning(
                 exception,
                 "Local sync root watcher failed for {SyncPairId}. A full reconcile will be requested.",
                 _syncPairId);
-            Publish(_localRootPath, LocalSyncRootChangeKind.Error);
+            PublishChange(new LocalSyncRootChange(_syncPairId, _localRootPath, LocalSyncRootChangeKind.Error));
+            RestartWatcherAfterError();
         }
 
         internal void Publish(string fullPath, LocalSyncRootChangeKind kind)
@@ -224,6 +238,82 @@ namespace Cotton.Sync.App.LocalChanges
                         change.FullPath);
                 }
             }
+        }
+
+        private FileSystemWatcher CreateWatcher()
+        {
+            FileSystemWatcher watcher = new(_localRootPath)
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = WatchedNotifyFilters,
+                InternalBufferSize = InternalBufferSizeBytes,
+            };
+            watcher.Created += OnCreated;
+            watcher.Changed += OnChanged;
+            watcher.Deleted += OnDeleted;
+            watcher.Renamed += OnRenamed;
+            watcher.Error += OnError;
+            return watcher;
+        }
+
+        private void RestartWatcherAfterError()
+        {
+            if (!Directory.Exists(_localRootPath))
+            {
+                _logger.LogWarning(
+                    "Local sync root watcher for {SyncPairId} cannot restart because the root no longer exists.",
+                    _syncPairId);
+                return;
+            }
+
+            FileSystemWatcher? replacement = null;
+            try
+            {
+                replacement = CreateWatcher();
+                replacement.EnableRaisingEvents = true;
+            }
+            catch (Exception restartException)
+            {
+                if (replacement is not null)
+                {
+                    DisposeWatcher(replacement);
+                }
+
+                _logger.LogWarning(
+                    restartException,
+                    "Local sync root watcher restart failed for {SyncPairId}.",
+                    _syncPairId);
+                return;
+            }
+
+            FileSystemWatcher? previous;
+            lock (_watcherGate)
+            {
+                if (_watcher is null)
+                {
+                    DisposeWatcher(replacement);
+                    return;
+                }
+
+                previous = _watcher;
+                _watcher = replacement;
+            }
+
+            DisposeWatcher(previous);
+            _logger.LogInformation(
+                "Local sync root watcher restarted for {SyncPairId}.",
+                _syncPairId);
+        }
+
+        private void DisposeWatcher(FileSystemWatcher watcher)
+        {
+            watcher.EnableRaisingEvents = false;
+            watcher.Created -= OnCreated;
+            watcher.Changed -= OnChanged;
+            watcher.Deleted -= OnDeleted;
+            watcher.Renamed -= OnRenamed;
+            watcher.Error -= OnError;
+            watcher.Dispose();
         }
     }
 }
