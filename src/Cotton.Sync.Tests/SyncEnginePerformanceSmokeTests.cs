@@ -446,6 +446,7 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        [Explicit("Timing-sensitive upload smoke; run manually before release or on dedicated Windows performance verification.")]
         public async Task RunOnceAsync_UploadsOneThousandSmallFilesWithinSmokeTarget()
         {
             await VerifyInitialUploadFileSetCompletesWithinSmokeTargetAsync(
@@ -456,6 +457,7 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        [Explicit("Timing-sensitive upload smoke; run manually before release or on dedicated Windows performance verification.")]
         public async Task RunOnceAsync_UploadsThreeThousandSmallFilesWithinSmokeTarget()
         {
             await VerifyInitialUploadFileSetCompletesWithinSmokeTargetAsync(

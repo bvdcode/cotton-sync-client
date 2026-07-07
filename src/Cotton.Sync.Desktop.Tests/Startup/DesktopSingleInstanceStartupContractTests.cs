@@ -149,7 +149,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             int hiddenStartupIndex = app.IndexOf("window.StartHiddenToTray();", StringComparison.Ordinal);
             int mainWindowAssignmentIndex = app.IndexOf("desktop.MainWindow = window;", StringComparison.Ordinal);
             int hideBeforeInitializeIndex = mainWindow.IndexOf("HideForTrayStartup();", StringComparison.Ordinal);
-            int initializeIndex = mainWindow.IndexOf("InitializeShellOnceAsync(viewModel)", StringComparison.Ordinal);
+            int initializeIndex = mainWindow.IndexOf("InitializeShellOnceAsync(_viewModel)", StringComparison.Ordinal);
 
             Assert.Multiple(() =>
             {
@@ -166,7 +166,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(mainWindow, Does.Contain("Opacity = 1"));
                 Assert.That(hideBeforeInitializeIndex, Is.GreaterThanOrEqualTo(0));
                 Assert.That(initializeIndex, Is.GreaterThan(hideBeforeInitializeIndex));
-                Assert.That(mainWindow, Does.Contain("InitializeShellOnceAsync(viewModel)"));
+                Assert.That(mainWindow, Does.Contain("InitializeShellOnceAsync(_viewModel)"));
             });
         }
 

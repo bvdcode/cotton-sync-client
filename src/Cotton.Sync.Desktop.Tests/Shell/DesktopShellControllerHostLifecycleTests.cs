@@ -864,6 +864,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             SyncPairSettings syncPair = CreateSyncPair(isEnabled: true);
             await syncPairStore.UpsertAsync(syncPair);
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
+            host.App.StartSyncStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory, syncPairStore: syncPairStore);
             await controller.SignInAsync(new DesktopSignInRequest(
@@ -871,6 +872,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 "desktop@example.test",
                 "password",
                 null));
+            await host.App.StartSyncStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
             await controller.RemoveSyncPairAsync(syncPair.Id);
 

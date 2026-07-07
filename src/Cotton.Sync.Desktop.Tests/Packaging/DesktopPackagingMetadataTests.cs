@@ -1980,7 +1980,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(updateDiscoverySmokeIndex, Is.LessThan(uploadInstallerIndex));
                 Assert.That(
                     normalizedWorkflow,
-                    Does.Match("(?s)\\n  release:\\n    name: Publish Sync Client Release\\n    runs-on: ubuntu-latest\\n    needs:\\n      - linux\\n      - windows\\n      - cli-windows\\n      - release-checksums"));
+                    Does.Match("(?s)\\n  release:\\n    name: Publish Sync Client Release\\n    runs-on: ubuntu-latest\\n    needs:\\n      - tests\\n      - linux\\n      - windows\\n      - cli-windows\\n      - release-checksums"));
             });
         }
 
@@ -2043,7 +2043,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(notificationIdentitySmokeIndex, Is.LessThan(uploadInstallerIndex));
                 Assert.That(
                     normalizedWorkflow,
-                    Does.Match("(?s)\\n  release:\\n    name: Publish Sync Client Release\\n    runs-on: ubuntu-latest\\n    needs:\\n      - linux\\n      - windows\\n      - cli-windows\\n      - release-checksums"));
+                    Does.Match("(?s)\\n  release:\\n    name: Publish Sync Client Release\\n    runs-on: ubuntu-latest\\n    needs:\\n      - tests\\n      - linux\\n      - windows\\n      - cli-windows\\n      - release-checksums"));
             });
         }
 
@@ -2066,7 +2066,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(cloudFilesTruthfulnessSmokeIndex, Is.LessThan(uploadInstallerIndex));
                 Assert.That(
                     normalizedWorkflow,
-                    Does.Match("(?s)\\n  release:\\n    name: Publish Sync Client Release\\n    runs-on: ubuntu-latest\\n    needs:\\n      - linux\\n      - windows\\n      - cli-windows\\n      - release-checksums"));
+                    Does.Match("(?s)\\n  release:\\n    name: Publish Sync Client Release\\n    runs-on: ubuntu-latest\\n    needs:\\n      - tests\\n      - linux\\n      - windows\\n      - cli-windows\\n      - release-checksums"));
             });
         }
 
