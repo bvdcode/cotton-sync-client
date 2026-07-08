@@ -36,6 +36,7 @@ namespace Cotton.Sync.Desktop.Shell
         private const string SyncCoreStateStarting = "starting";
         private const string SyncCoreStateRunning = "running";
         private const string SyncCoreStateStartFailed = "startFailed";
+        private const string LocalRootUnavailableError = "Local folder is unavailable.";
 
         private static readonly TimeSpan SavedSessionRestoreTimeout = TimeSpan.FromSeconds(15);
         private static readonly TimeSpan SavedSessionRestoreRetryBaseDelay = TimeSpan.FromSeconds(1);
@@ -55,11 +56,13 @@ namespace Cotton.Sync.Desktop.Shell
         private readonly TimeSpan _savedSessionRestoreTimeout;
         private readonly TimeSpan _savedSessionRestoreRetryBaseDelay;
         private readonly TimeSpan _serverProbeTimeout;
+        private readonly object _syncPairSettingsGate = new();
         private readonly SqliteSyncPairSettingsStore _syncPairStore;
         private readonly TimeSpan _tokenStorageVerificationTimeout;
         private readonly IDesktopUpdateService _updateService;
         private readonly IDisposable? _updateServiceLifetime;
         private readonly IDesktopUpdateInstaller _updateInstaller;
+        private Dictionary<Guid, (bool IsEnabled, string LocalRootPath)> _knownSyncPairSettings = [];
         private DesktopUpdateDiagnosticsSnapshot _lastUpdateDiagnostics =
             DesktopUpdateDiagnosticsSnapshot.NotChecked(DesktopAppVersion.Current);
         private IDisposable? _activitySubscription;
@@ -146,6 +149,7 @@ namespace Cotton.Sync.Desktop.Shell
             }
 
             IReadOnlyList<SyncPairSettings> syncPairs = await _syncPairStore.ListAsync(cancellationToken).ConfigureAwait(false);
+            ReplaceKnownSyncPairSettings(syncPairs);
             Uri? serverUrl = _startupOptions.ServerUrl ?? preferences.RememberedServerUrl;
             string? startupErrorMessage = null;
             AuthSession? session = null;
@@ -351,6 +355,7 @@ namespace Cotton.Sync.Desktop.Shell
                 throw new SyncPairValidationException(result.Validation.Errors);
             }
 
+            UpsertKnownSyncPairSettings(syncPair);
             StartInitialSyncInBackground(host, syncPair.Id, syncPair.LocalRootPath);
             return syncPair;
         }
@@ -484,6 +489,7 @@ namespace Cotton.Sync.Desktop.Shell
             {
                 await _syncPairStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
                 await _syncPairStore.DeleteAsync(syncPairId, cancellationToken).ConfigureAwait(false);
+                RemoveKnownSyncPairSettings(syncPairId);
                 var stateStore = new SqliteSyncStateStore(_paths.SyncStateDatabasePath);
                 await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
                 await stateStore.DeletePairAsync(syncPairId.ToString(), cancellationToken).ConfigureAwait(false);
@@ -491,6 +497,7 @@ namespace Cotton.Sync.Desktop.Shell
             }
 
             await host.App.DeleteSyncPairAsync(syncPairId, cancellationToken).ConfigureAwait(false);
+            RemoveKnownSyncPairSettings(syncPairId);
             await UpdateSyncCoreStateAfterSyncPairDeletionAsync(host, cancellationToken).ConfigureAwait(false);
         }
 
@@ -1532,9 +1539,11 @@ namespace Cotton.Sync.Desktop.Shell
         {
             if (settings.Count == 0)
             {
+                ReplaceKnownSyncPairSettings(settings);
                 return [];
             }
 
+            ReplaceKnownSyncPairSettings(settings);
             var stateStore = new SqliteSyncStateStore(_paths.SyncStateDatabasePath);
             await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
             SyncAppStatus? currentStatus = _host?.StatusPublisher.Current;
@@ -1564,17 +1573,77 @@ namespace Cotton.Sync.Desktop.Shell
         {
             DateTime? lastSyncedAtUtc = status?.LastSuccessfulSyncAtUtc;
             lastSyncedAtUtc ??= persistedLastSyncedAtUtc;
+            string? localRootError = GetLocalRootUnavailableError(settings);
+            string statusText = localRootError is null
+                ? status is null ? settings.IsEnabled ? "Idle" : "Disabled" : ToStatusText(status)
+                : "Error";
             return new DesktopSyncPairSnapshot(
                 settings.Id,
                 settings.DisplayName,
                 settings.LocalRootPath,
                 settings.RemoteDisplayPath,
-                status is null ? settings.IsEnabled ? "Idle" : "Disabled" : ToStatusText(status),
+                statusText,
                 settings.RemoteRootNodeId,
                 lastSyncedAtUtc,
                 cursor?.LastCursor,
-                status?.LastError,
+                localRootError ?? status?.LastError,
                 settings.Mode);
+        }
+
+        private void ReplaceKnownSyncPairSettings(IReadOnlyList<SyncPairSettings> settings)
+        {
+            lock (_syncPairSettingsGate)
+            {
+                _knownSyncPairSettings = settings.ToDictionary(
+                    static syncPair => syncPair.Id,
+                    static syncPair => (syncPair.IsEnabled, syncPair.LocalRootPath));
+            }
+        }
+
+        private void UpsertKnownSyncPairSettings(SyncPairSettings settings)
+        {
+            lock (_syncPairSettingsGate)
+            {
+                _knownSyncPairSettings[settings.Id] = (settings.IsEnabled, settings.LocalRootPath);
+            }
+        }
+
+        private void RemoveKnownSyncPairSettings(Guid syncPairId)
+        {
+            lock (_syncPairSettingsGate)
+            {
+                _knownSyncPairSettings.Remove(syncPairId);
+            }
+        }
+
+        private IReadOnlyDictionary<Guid, (bool IsEnabled, string LocalRootPath)> GetKnownSyncPairSettingsSnapshot()
+        {
+            lock (_syncPairSettingsGate)
+            {
+                return new Dictionary<Guid, (bool IsEnabled, string LocalRootPath)>(_knownSyncPairSettings);
+            }
+        }
+
+        private static string? GetLocalRootUnavailableError(SyncPairSettings settings)
+        {
+            return GetLocalRootUnavailableError(settings.IsEnabled, settings.LocalRootPath);
+        }
+
+        private static string? GetLocalRootUnavailableError(bool isEnabled, string localRootPath)
+        {
+            if (!isEnabled)
+            {
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(localRootPath))
+            {
+                return LocalRootUnavailableError;
+            }
+
+            return Directory.Exists(localRootPath)
+                ? null
+                : LocalRootUnavailableError;
         }
 
         private static Uri ParseServerUrl(string serverUrl)
@@ -1715,17 +1784,42 @@ namespace Cotton.Sync.Desktop.Shell
             }
         }
 
-        private static DesktopSyncStatusSnapshot ToStatusSnapshot(SyncAppStatus status)
+        private DesktopSyncStatusSnapshot ToStatusSnapshot(SyncAppStatus status)
         {
+            IReadOnlyDictionary<Guid, (bool IsEnabled, string LocalRootPath)> knownSyncPairSettings =
+                GetKnownSyncPairSettingsSnapshot();
             return new DesktopSyncStatusSnapshot(
                 status.SyncPairs
-                    .Select(static syncPair => new DesktopSyncPairStatusSnapshot(
-                        syncPair.SyncPairId,
-                        ToStatusText(syncPair),
-                        syncPair.LastError,
-                        syncPair.CurrentOperation,
-                        syncPair.LastSuccessfulSyncAtUtc))
+                    .Select(syncPair => ToStatusSnapshot(syncPair, knownSyncPairSettings))
                     .ToList());
+        }
+
+        private static DesktopSyncPairStatusSnapshot ToStatusSnapshot(
+            SyncPairStatus syncPair,
+            IReadOnlyDictionary<Guid, (bool IsEnabled, string LocalRootPath)> knownSyncPairSettings)
+        {
+            if (knownSyncPairSettings.TryGetValue(
+                    syncPair.SyncPairId,
+                    out (bool IsEnabled, string LocalRootPath) settings))
+            {
+                string? localRootError = GetLocalRootUnavailableError(settings.IsEnabled, settings.LocalRootPath);
+                if (localRootError is not null)
+                {
+                    return new DesktopSyncPairStatusSnapshot(
+                        syncPair.SyncPairId,
+                        "Error",
+                        localRootError,
+                        "Action required: " + localRootError,
+                        syncPair.LastSuccessfulSyncAtUtc);
+                }
+            }
+
+            return new DesktopSyncPairStatusSnapshot(
+                syncPair.SyncPairId,
+                ToStatusText(syncPair),
+                syncPair.LastError,
+                syncPair.CurrentOperation,
+                syncPair.LastSuccessfulSyncAtUtc);
         }
 
         private static string ToStatusText(SyncPairStatus status)

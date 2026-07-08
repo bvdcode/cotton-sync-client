@@ -400,6 +400,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             DateTime lastSyncedAtUtc = new(2026, 6, 3, 12, 30, 0, DateTimeKind.Utc);
             var syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
             await syncPairStore.InitializeAsync();
+            Directory.CreateDirectory(Path.Combine(_tempDirectory, "Documents"));
             await syncPairStore.UpsertAsync(new SyncPairSettings
             {
                 Id = syncPairId,
