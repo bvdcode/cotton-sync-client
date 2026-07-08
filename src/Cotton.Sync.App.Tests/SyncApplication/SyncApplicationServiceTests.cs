@@ -1047,6 +1047,48 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         }
 
         [Test]
+        public async Task SaveSyncPairAsync_RestartsSyncCoreAfterFailedStartupAndLastPairDeletion()
+        {
+            List<string> calls = [];
+            InvalidOperationException startupError = new("Cloud Files connect failed.");
+            var store = new InMemorySyncPairSettingsStore();
+            var lifecycle = new FakeSyncCoreLifecycleComponent("cloud-files", calls)
+            {
+                StartException = startupError,
+            };
+            var supervisor = new FakeSyncSupervisor(calls);
+            var localChanges = new FakeLocalChangeSyncCoordinator(calls);
+            var remoteChanges = new FakeRemoteChangeSyncCoordinator(calls);
+            var periodicSync = new FakePeriodicSyncCoordinator(calls);
+            SyncApplicationService service = CreateService(
+                store,
+                supervisor: supervisor,
+                localChanges: localChanges,
+                remoteChanges: remoteChanges,
+                periodicSync: periodicSync,
+                syncCoreLifecycleComponents: [lifecycle]);
+            SyncPairSettings firstPair = CreatePair("/home/user/Cotton");
+            await service.SaveSyncPairAsync(firstPair);
+            InvalidOperationException error = Assert.ThrowsAsync<InvalidOperationException>(
+                () => service.StartSyncAsync())!;
+            lifecycle.StartException = null;
+            await service.DeleteSyncPairAsync(firstPair.Id);
+
+            SyncPairSaveResult result = await service.SaveSyncPairAsync(CreatePair("/home/user/Pictures"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(error, Is.SameAs(startupError));
+                Assert.That(result.IsSaved, Is.True);
+                Assert.That(lifecycle.StartCallCount, Is.EqualTo(2));
+                Assert.That(supervisor.StartCallCount, Is.EqualTo(1));
+                Assert.That(localChanges.StartCallCount, Is.EqualTo(1));
+                Assert.That(remoteChanges.StartCallCount, Is.EqualTo(1));
+                Assert.That(periodicSync.StartCallCount, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
         public async Task DeleteSyncPairAsync_RunsDeletionHandlerAfterStoppingSyncCore()
         {
             var calls = new List<string>();
@@ -1640,7 +1682,7 @@ namespace Cotton.Sync.App.Tests.SyncApplication
                 _calls = calls;
             }
 
-            public Exception? StartException { get; init; }
+            public Exception? StartException { get; set; }
 
             public int StartCallCount { get; private set; }
 

@@ -261,6 +261,11 @@ namespace Cotton.Sync.App.SyncApplication
                         _startSyncCoreWhenSyncPairsExist = true;
                     }
                 }
+                else if (syncPairSettingsDeleted
+                    && !await HasConfiguredSyncPairsAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    _startSyncCoreWhenSyncPairsExist = true;
+                }
             }
             finally
             {
@@ -473,6 +478,11 @@ namespace Cotton.Sync.App.SyncApplication
                 _logger.LogError(exception, "Failed to start sync background components.");
                 await RollBackStartedComponentsAsync(startedComponents).ConfigureAwait(false);
                 _isSyncCoreStarted = false;
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    _startSyncCoreWhenSyncPairsExist = true;
+                }
+
                 throw;
             }
         }
