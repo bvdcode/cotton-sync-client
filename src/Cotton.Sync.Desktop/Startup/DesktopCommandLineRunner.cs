@@ -1242,7 +1242,9 @@ namespace Cotton.Sync.Desktop.Startup
 
         private static DesktopUpdateInstaller CreateUpdateInstallSmokeInstaller()
         {
-            return new DesktopUpdateInstaller(new DesktopUpdateInstallerProcessLauncher(TimeSpan.FromSeconds(2)));
+            return new DesktopUpdateInstaller(
+                new UpdateInstallSmokeAuthenticodeVerifier(),
+                new DesktopUpdateInstallerProcessLauncher(TimeSpan.FromSeconds(2)));
         }
 
         private static string? ValidateUpdateDiscoverySmokeOptions(DesktopStartupOptions startupOptions)
@@ -1299,6 +1301,14 @@ namespace Cotton.Sync.Desktop.Startup
         {
             await output.WriteLineAsync(FormatCheck(passed, label) + " " + details).ConfigureAwait(false);
             return passed ? 0 : 1;
+        }
+
+        private class UpdateInstallSmokeAuthenticodeVerifier : IDesktopUpdateAuthenticodeVerifier
+        {
+            public void VerifyTrustedInstaller(string installerPath)
+            {
+                ArgumentException.ThrowIfNullOrWhiteSpace(installerPath);
+            }
         }
 
         private static string? ValidateLiveSyncSmokeOptions(

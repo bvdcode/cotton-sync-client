@@ -41,18 +41,20 @@ namespace Cotton.Sync.Desktop.Tests.Updates
         }
 
         [Test]
-        public void StartSilentInstall_LaunchesInstaller()
+        public void StartSilentInstall_VerifiesTrustedInstallerBeforeLaunch()
         {
             string installerPath = CreateUnsignedInstallerPath();
             try
             {
+                FakeAuthenticodeVerifier verifier = new();
                 FakeInstallerProcessLauncher launcher = new(new DesktopUpdateInstallResult(1234, false, null));
-                DesktopUpdateInstaller installer = new(launcher);
+                DesktopUpdateInstaller installer = new(verifier, launcher);
 
                 DesktopUpdateInstallResult result = installer.StartSilentInstall(installerPath, launchAfterUpdate: true);
 
                 Assert.Multiple(() =>
                 {
+                    Assert.That(verifier.VerifiedPath, Is.EqualTo(installerPath));
                     Assert.That(launcher.StartCount, Is.EqualTo(1));
                     Assert.That(launcher.LastStartInfo?.FileName, Is.EqualTo(installerPath));
                     Assert.That(launcher.LastStartInfo?.UseShellExecute, Is.True);
@@ -67,6 +69,53 @@ namespace Cotton.Sync.Desktop.Tests.Updates
             }
         }
 
+        [Test]
+        public void StartSilentInstall_DoesNotLaunchWhenTrustVerificationFails()
+        {
+            string installerPath = CreateUnsignedInstallerPath();
+            try
+            {
+                InvalidDataException failure = new("signature rejected");
+                FakeAuthenticodeVerifier verifier = new(failure);
+                FakeInstallerProcessLauncher launcher = new(new DesktopUpdateInstallResult(1234, false, null));
+                DesktopUpdateInstaller installer = new(verifier, launcher);
+
+                InvalidDataException? exception = Assert.Throws<InvalidDataException>(() =>
+                    installer.StartSilentInstall(installerPath, launchAfterUpdate: true));
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(exception, Is.SameAs(failure));
+                    Assert.That(verifier.VerifiedPath, Is.EqualTo(installerPath));
+                    Assert.That(launcher.StartCount, Is.EqualTo(0));
+                });
+            }
+            finally
+            {
+                File.Delete(installerPath);
+            }
+        }
+
+        [Test]
+        [Platform(Include = "Win")]
+        public void WindowsAuthenticodeUpdateVerifier_RejectsUnsignedInstallerFile()
+        {
+            string installerPath = CreateUnsignedInstallerPath();
+            try
+            {
+                WindowsAuthenticodeUpdateVerifier verifier = new();
+
+                InvalidDataException? exception = Assert.Throws<InvalidDataException>(() =>
+                    verifier.VerifyTrustedInstaller(installerPath));
+
+                Assert.That(exception?.Message, Does.Contain("not signed by a trusted publisher"));
+            }
+            finally
+            {
+                File.Delete(installerPath);
+            }
+        }
+
         private static string CreateUnsignedInstallerPath()
         {
             string installerPath = Path.Combine(
@@ -74,6 +123,27 @@ namespace Cotton.Sync.Desktop.Tests.Updates
                 "cotton-update-installer-" + Guid.NewGuid().ToString("N") + ".exe");
             File.WriteAllText(installerPath, "unsigned");
             return installerPath;
+        }
+
+        private class FakeAuthenticodeVerifier : IDesktopUpdateAuthenticodeVerifier
+        {
+            private readonly Exception? _failure;
+
+            public FakeAuthenticodeVerifier(Exception? failure = null)
+            {
+                _failure = failure;
+            }
+
+            public string? VerifiedPath { get; private set; }
+
+            public void VerifyTrustedInstaller(string installerPath)
+            {
+                VerifiedPath = installerPath;
+                if (_failure is not null)
+                {
+                    throw _failure;
+                }
+            }
         }
 
         private class FakeInstallerProcessLauncher : IDesktopUpdateInstallerProcessLauncher

@@ -7,15 +7,21 @@ namespace Cotton.Sync.Desktop.Updates
     {
         private static readonly TimeSpan EarlyFailureProbeTimeout = TimeSpan.FromSeconds(2);
 
+        private readonly IDesktopUpdateAuthenticodeVerifier _authenticodeVerifier;
         private readonly IDesktopUpdateInstallerProcessLauncher _processLauncher;
 
         public DesktopUpdateInstaller()
-            : this(new DesktopUpdateInstallerProcessLauncher(EarlyFailureProbeTimeout))
+            : this(
+                new WindowsAuthenticodeUpdateVerifier(),
+                new DesktopUpdateInstallerProcessLauncher(EarlyFailureProbeTimeout))
         {
         }
 
-        internal DesktopUpdateInstaller(IDesktopUpdateInstallerProcessLauncher processLauncher)
+        internal DesktopUpdateInstaller(
+            IDesktopUpdateAuthenticodeVerifier authenticodeVerifier,
+            IDesktopUpdateInstallerProcessLauncher processLauncher)
         {
+            _authenticodeVerifier = authenticodeVerifier ?? throw new ArgumentNullException(nameof(authenticodeVerifier));
             _processLauncher = processLauncher ?? throw new ArgumentNullException(nameof(processLauncher));
         }
 
@@ -28,6 +34,8 @@ namespace Cotton.Sync.Desktop.Updates
             {
                 throw new FileNotFoundException("Cotton Sync update installer was not found.", installerPath);
             }
+
+            _authenticodeVerifier.VerifyTrustedInstaller(installerPath);
 
             return _processLauncher.Start(new System.Diagnostics.ProcessStartInfo
             {

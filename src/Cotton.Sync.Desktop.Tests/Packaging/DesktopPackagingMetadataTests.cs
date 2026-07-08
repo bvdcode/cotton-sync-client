@@ -1826,6 +1826,11 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("/DAppVersion=${{ steps.gitversion.outputs.SemVer }}"));
                 Assert.That(workflow, Does.Contain("/DOutputBaseFilename=cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}-setup"));
                 Assert.That(workflow, Does.Contain("cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}-setup.exe"));
+                Assert.That(workflow, Does.Contain("Sign desktop Windows installer"));
+                Assert.That(workflow, Does.Contain("WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64"));
+                Assert.That(workflow, Does.Contain("WINDOWS_SIGNING_CERTIFICATE_PASSWORD"));
+                Assert.That(workflow, Does.Contain("signtool.exe"));
+                Assert.That(workflow, Does.Contain("Get-AuthenticodeSignature"));
                 Assert.That(workflow, Does.Contain("Upload desktop Windows installer artifact"));
                 Assert.That(workflow, Does.Contain("name: desktop-windows-installer"));
             });
