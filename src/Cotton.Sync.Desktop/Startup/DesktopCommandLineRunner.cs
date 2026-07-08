@@ -913,7 +913,7 @@ namespace Cotton.Sync.Desktop.Startup
                 await using DesktopShellController controller = CreateUpdateSmokeController(
                     paths,
                     startupOptions,
-                    updateInstaller: updateInstaller);
+                    updateInstaller: updateInstaller ?? CreateUpdateInstallSmokeInstaller());
                 await output.WriteLineAsync("Cotton Sync Desktop update install smoke").ConfigureAwait(false);
 
                 DesktopUpdateInstallResult result = await controller
@@ -1240,6 +1240,13 @@ namespace Cotton.Sync.Desktop.Startup
                 updateInstaller: updateInstaller);
         }
 
+        private static DesktopUpdateInstaller CreateUpdateInstallSmokeInstaller()
+        {
+            return new DesktopUpdateInstaller(
+                new UpdateInstallSmokeAuthenticodeVerifier(),
+                new DesktopUpdateInstallerProcessLauncher(TimeSpan.FromSeconds(2)));
+        }
+
         private static string? ValidateUpdateDiscoverySmokeOptions(DesktopStartupOptions startupOptions)
         {
             if (startupOptions.DataDirectory is null)
@@ -1294,6 +1301,14 @@ namespace Cotton.Sync.Desktop.Startup
         {
             await output.WriteLineAsync(FormatCheck(passed, label) + " " + details).ConfigureAwait(false);
             return passed ? 0 : 1;
+        }
+
+        private class UpdateInstallSmokeAuthenticodeVerifier : IDesktopUpdateAuthenticodeVerifier
+        {
+            public void VerifyTrustedInstaller(string installerPath)
+            {
+                ArgumentException.ThrowIfNullOrWhiteSpace(installerPath);
+            }
         }
 
         private static string? ValidateLiveSyncSmokeOptions(

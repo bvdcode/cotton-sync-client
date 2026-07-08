@@ -853,6 +853,39 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             });
         }
 
+        [Test]
+        [Platform(Include = "Win")]
+        public async Task RunUpdateInstallSmokeAsync_DefaultInstallerAllowsLocalSmokeCommand()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            string installerPath = Path.Combine(_tempDirectory, "CottonSync-Windows-Setup.cmd");
+            File.WriteAllText(installerPath, "@echo off\r\nexit /b 0\r\n");
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--update-install-smoke",
+                    "--data-dir",
+                    _tempDirectory,
+                    "--update-installer-path",
+                    installerPath,
+                ]);
+            using StringWriter output = new();
+
+            int exitCode = await DesktopCommandLineRunner.RunUpdateInstallSmokeAsync(
+                paths,
+                options,
+                output);
+
+            string report = output.ToString();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(0));
+                Assert.That(report, Does.Contain("PASS: Update installer launch returns a process id"));
+                Assert.That(report, Does.Contain("PASS: Update installer startup probe does not fail"));
+                Assert.That(report, Does.Contain("Result: passed"));
+            });
+        }
+
         private static SyncPairSettings CreateSyncPair(string displayName, SyncPairMode mode, string localRootPath)
         {
             return new SyncPairSettings
