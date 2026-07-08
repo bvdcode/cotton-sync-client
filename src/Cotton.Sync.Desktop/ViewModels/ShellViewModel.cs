@@ -2757,7 +2757,10 @@ namespace Cotton.Sync.Desktop.ViewModels
             RefreshCurrentProgressText();
             try
             {
-                await _controller.RemoveSyncPairAsync(selected.Id).ConfigureAwait(true);
+                await Task.Yield();
+                await Task.Run(
+                        async () => await _controller.RemoveSyncPairAsync(selected.Id).ConfigureAwait(false))
+                    .ConfigureAwait(true);
                 int removedIndex = SyncPairs.IndexOf(selected);
                 SyncPairs.Remove(selected);
                 ClearRemoveSyncPairConfirmation();

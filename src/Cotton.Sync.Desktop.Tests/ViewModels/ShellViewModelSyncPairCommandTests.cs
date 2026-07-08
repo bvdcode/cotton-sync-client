@@ -223,6 +223,34 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task ConfirmRemoveSelectedSyncPairCommand_RunsRemovalAwayFromCallerThread()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(
+                CreateSignedInSnapshot(CreatePair(syncPairId, "Desktop", "Idle", mode: SyncPairMode.WindowsVirtualFiles)))
+            {
+                RemoveSyncPairStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
+                RemoveSyncPairCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            await ExecuteAsync(viewModel.RemoveSelectedSyncPairCommand);
+
+            int callerThreadId = Environment.CurrentManagedThreadId;
+            viewModel.ConfirmRemoveSelectedSyncPairCommand.Execute(null);
+            await controller.RemoveSyncPairStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.IsRemovingSyncPair, Is.True);
+                Assert.That(controller.RemoveSyncPairThreadId, Is.Not.EqualTo(callerThreadId));
+            });
+
+            controller.RemoveSyncPairCompletion.SetResult();
+            await WaitForAsync(() => !viewModel.ConfirmRemoveSelectedSyncPairCommand.IsRunning);
+        }
+
+        [Test]
         public async Task ShowSelectedSyncPairEditorCommand_OpensControlsForCommandParameter()
         {
             Guid firstSyncPairId = Guid.NewGuid();
@@ -6704,6 +6732,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             public TaskCompletionSource? RemoveSyncPairCompletion { get; set; }
 
+            public int? RemoveSyncPairThreadId { get; private set; }
+
             public TaskCompletionSource<SyncPairSettings>? AddSyncPairCompletion { get; set; }
 
             public string? OpenedFolderPath { get; private set; }
@@ -6800,6 +6830,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             public async Task RemoveSyncPairAsync(Guid syncPairId, CancellationToken cancellationToken = default)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                RemoveSyncPairThreadId = Environment.CurrentManagedThreadId;
                 RemovedSyncPairId = syncPairId;
                 RemoveSyncPairStarted?.TrySetResult();
                 if (RemoveSyncPairCompletion is not null)
