@@ -126,6 +126,7 @@ namespace Cotton.Sync.Desktop.Shell
             if (e.PropertyName is nameof(ShellViewModel.PauseResumeTrayLabel)
                 or nameof(ShellViewModel.CanSyncNow)
                 or nameof(ShellViewModel.CanTogglePauseResumeSync)
+                or nameof(ShellViewModel.CanShowPauseResumeTrayAction)
                 or nameof(ShellViewModel.CanOpenTrayFolder)
                 or nameof(ShellViewModel.TrayOpenFolderLabel))
             {
@@ -185,13 +186,14 @@ namespace Cotton.Sync.Desktop.Shell
             if (_pauseResumeMenuItem is not null)
             {
                 _pauseResumeMenuItem.Header = _viewModel.PauseResumeTrayLabel;
+                _pauseResumeMenuItem.IsEnabled = _viewModel.PauseResumeCommand.CanExecute(null);
             }
 
             RebuildTrayMenu(
                 _viewModel.CanOpenTrayFolder && _viewModel.OpenTrayFolderCommand.CanExecute(null),
                 _viewModel.OpenWebCommand.CanExecute(null),
                 _viewModel.SyncNowCommand.CanExecute(null),
-                _viewModel.PauseResumeCommand.CanExecute(null),
+                _viewModel.CanShowPauseResumeTrayAction,
                 _viewModel.ShowSettingsCommand.CanExecute(null));
         }
 

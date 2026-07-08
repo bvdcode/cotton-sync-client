@@ -1087,6 +1087,8 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public bool CanTogglePauseResumeSync => CanPauseSync || CanResumeSync;
 
+        public bool CanShowPauseResumeTrayAction => IsSignedIn && HasEnabledSyncPairs;
+
         public string PauseResumeSyncLabel => IsSyncPausePending ? "Pausing sync" : IsSyncPaused ? "Resume sync" : "Pause sync";
 
         public string PauseResumeTrayLabel => IsSyncPausePending ? "Pausing" : IsSyncPaused ? "Resume" : "Pause";
@@ -4897,6 +4899,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             OnPropertyChanged(nameof(CanPauseSync));
             OnPropertyChanged(nameof(CanResumeSync));
             OnPropertyChanged(nameof(CanTogglePauseResumeSync));
+            OnPropertyChanged(nameof(CanShowPauseResumeTrayAction));
             OnPropertyChanged(nameof(PauseResumeSyncLabel));
             OnPropertyChanged(nameof(PauseResumeTrayLabel));
             OnPropertyChanged(nameof(IsSyncPaused));

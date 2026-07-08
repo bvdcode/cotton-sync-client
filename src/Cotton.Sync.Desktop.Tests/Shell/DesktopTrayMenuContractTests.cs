@@ -46,7 +46,12 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(trayController, Does.Contain("AddMenuItemIf(showSettings, _settingsMenuItem)"));
                 Assert.That(trayController, Does.Contain("nameof(ShellViewModel.CanOpenTrayFolder)"));
                 Assert.That(trayController, Does.Contain("nameof(ShellViewModel.TrayOpenFolderLabel)"));
+                Assert.That(trayController, Does.Contain("nameof(ShellViewModel.CanShowPauseResumeTrayAction)"));
                 Assert.That(trayController, Does.Contain("nameof(ShellViewModel.HasCurrentWorkProgress)"));
+                Assert.That(
+                    trayController,
+                    Does.Contain("_pauseResumeMenuItem.IsEnabled = _viewModel.PauseResumeCommand.CanExecute(null)"));
+                Assert.That(trayController, Does.Contain("_viewModel.CanShowPauseResumeTrayAction"));
                 Assert.That(trayController, Does.Not.Contain("menuItem.IsEnabled = isAvailable"));
                 Assert.That(trayController, Does.Not.Contain("menuItem.IsVisible = isAvailable"));
                 Assert.That(trayController, Does.Not.Contain("SetMenuItemAvailability"));
