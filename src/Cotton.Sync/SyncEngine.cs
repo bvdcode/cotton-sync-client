@@ -217,6 +217,9 @@ namespace Cotton.Sync
 
             if (hasLocalDirectoryDeleteCandidates || hasRemoteDirectoryDeleteCandidates || hasStaleDirectoryState)
             {
+                IReadOnlySet<string>? scopedDirectoryDeleteKeys = options.Scope.IsFull
+                    ? null
+                    : BuildExactScopedPathKeys(options.Scope.LocalChangedPaths);
                 await ReconcileDirectoryDeletesAsync(
                     syncPair,
                     options,
@@ -228,6 +231,7 @@ namespace Cotton.Sync
                     directoryStateByPath,
                     localDirectoryContentIndex,
                     remoteDirectoryContentIndex,
+                    scopedDirectoryDeleteKeys,
                     cancellationToken).ConfigureAwait(false);
             }
 
@@ -2326,11 +2330,17 @@ namespace Cotton.Sync
             IReadOnlyDictionary<string, SyncStateEntry> stateByPath,
             DirectoryContentIndex localDirectoryContentIndex,
             DirectoryContentIndex remoteDirectoryContentIndex,
+            IReadOnlySet<string>? scopedDirectoryDeleteKeys,
             CancellationToken cancellationToken)
         {
             foreach (string key in EnumerateDirectoryDeleteKeys(pathKeys))
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (scopedDirectoryDeleteKeys is not null && !scopedDirectoryDeleteKeys.Contains(key))
+                {
+                    continue;
+                }
+
                 if (!stateByPath.TryGetValue(key, out SyncStateEntry? state))
                 {
                     continue;
@@ -4535,6 +4545,23 @@ namespace Cotton.Sync
                 ArgumentNullException.ThrowIfNull(plan);
                 return new InitialVirtualFilesStreamingPlanDecision(plan);
             }
+        }
+
+        private static IReadOnlySet<string> BuildExactScopedPathKeys(IEnumerable<string> relativePaths)
+        {
+            HashSet<string> keys = new(PathComparer);
+            foreach (string relativePath in relativePaths)
+            {
+                string normalizedPath = SyncPath.Normalize(relativePath);
+                if (string.IsNullOrWhiteSpace(normalizedPath) || SyncPathIgnoreRules.ShouldIgnore(normalizedPath))
+                {
+                    continue;
+                }
+
+                keys.Add(SyncPath.ToKey(normalizedPath));
+            }
+
+            return keys;
         }
 
         private readonly record struct InitialVirtualFilesPlaceholderBaseline(

@@ -49,15 +49,16 @@ namespace Cotton.Sync.App.Runners
             RemoteChangeFeedBatch remoteBatch = remoteRead.Batch;
 
             bool skippedInnerSync = CanSkipInnerSync(syncPair, request, remoteRead);
+            InnerRequestPlan? innerPlan = null;
             if (!skippedInnerSync)
             {
-                SyncRunRequest plannedRequest = await CreateInnerRequestAsync(
+                innerPlan = await CreateInnerRequestAsync(
                         syncPair,
                         request,
                         remoteRead,
                         cancellationToken)
                     .ConfigureAwait(false);
-                await _inner.RunOnceAsync(syncPair, plannedRequest, cancellationToken).ConfigureAwait(false);
+                await _inner.RunOnceAsync(syncPair, innerPlan.Request, cancellationToken).ConfigureAwait(false);
             }
 
             if (remoteBatch.CursorExpired)
@@ -66,7 +67,12 @@ namespace Cotton.Sync.App.Runners
                 return;
             }
 
-            if (ShouldAcknowledgeRemoteBatch(syncPair, request, remoteRead, skippedInnerSync))
+            if (ShouldAcknowledgeRemoteBatch(
+                    syncPair,
+                    request,
+                    remoteRead,
+                    skippedInnerSync,
+                    innerPlan?.RemoteChangesCovered ?? true))
             {
                 await _remoteChanges.AcknowledgeAsync(remoteBatch, cancellationToken).ConfigureAwait(false);
             }
@@ -121,7 +127,7 @@ namespace Cotton.Sync.App.Runners
             return true;
         }
 
-        private async Task<SyncRunRequest> CreateInnerRequestAsync(
+        private async Task<InnerRequestPlan> CreateInnerRequestAsync(
             SyncPairSettings syncPair,
             SyncRunRequest request,
             RemoteChangeFeedReadResult remoteRead,
@@ -133,21 +139,32 @@ namespace Cotton.Sync.App.Runners
                 || remoteRead.Batch.HasMore
                 || _scopedSyncPlanner is null)
             {
-                return request;
+                return new InnerRequestPlan(request, RemoteChangesCovered: true);
             }
 
             SyncRunRequest? scopedRequest = await _scopedSyncPlanner
                 .TryCreateScopedRequestAsync(syncPair, request, remoteRead.Snapshot, cancellationToken)
                 .ConfigureAwait(false);
-            return scopedRequest ?? SyncRunRequest.Full;
+            if (scopedRequest is not null)
+            {
+                return new InnerRequestPlan(scopedRequest, RemoteChangesCovered: true);
+            }
+
+            return new InnerRequestPlan(request, RemoteChangesCovered: request.IsFull);
         }
 
         private static bool ShouldAcknowledgeRemoteBatch(
             SyncPairSettings syncPair,
             SyncRunRequest request,
             RemoteChangeFeedReadResult remoteRead,
-            bool skippedInnerSync)
+            bool skippedInnerSync,
+            bool remoteChangesCovered)
         {
+            if (!remoteChangesCovered)
+            {
+                return false;
+            }
+
             if (syncPair.Mode != SyncPairMode.WindowsVirtualFiles
                 || remoteRead.HasObservedChanges
                 || (request.IsFull && !skippedInnerSync))
@@ -164,5 +181,7 @@ namespace Cotton.Sync.App.Runners
         {
             public bool HasObservedChanges => !Snapshot.IsEmpty;
         }
+
+        private record InnerRequestPlan(SyncRunRequest Request, bool RemoteChangesCovered);
     }
 }

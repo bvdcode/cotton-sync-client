@@ -27,6 +27,7 @@ namespace Cotton.Sync.Local
         private const int HashBufferSize = 1024 * 128;
         private static readonly TimeSpan HashProgressReportInterval = TimeSpan.FromMilliseconds(250);
         private const int ReparseDataBufferSize = 16 * 1024;
+        private const uint FileFlagBackupSemantics = 0x02000000;
         private const uint FileFlagOpenReparsePoint = 0x00200000;
         private const uint FileShareRead = 0x00000001;
         private const uint FileShareWrite = 0x00000002;
@@ -184,8 +185,10 @@ namespace Cotton.Sync.Local
                     continue;
                 }
 
-                var directoryInfo = new DirectoryInfo(fullPath);
-                if ((directoryInfo.Attributes & FileAttributes.ReparsePoint) != 0)
+                DirectoryInfo directoryInfo = new(fullPath);
+                FileAttributes directoryAttributes = directoryInfo.Attributes;
+                bool isCloudFilesDirectoryPlaceholder = IsCloudFilesPlaceholder(directoryInfo, directoryAttributes);
+                if (!ShouldIncludeScopedDirectory(directoryAttributes, isCloudFilesDirectoryPlaceholder))
                 {
                     continue;
                 }
@@ -197,7 +200,9 @@ namespace Cotton.Sync.Local
                 });
                 directoriesScanned++;
                 ReportDirectoryScanProgress(progress, filesScanned, directoriesScanned, normalizedPath);
-                if (!includeDirectoryDescendants || !targetKeys.Contains(SyncPath.ToKey(normalizedPath)))
+                if (isCloudFilesDirectoryPlaceholder
+                    || !includeDirectoryDescendants
+                    || !targetKeys.Contains(SyncPath.ToKey(normalizedPath)))
                 {
                     continue;
                 }
@@ -689,7 +694,7 @@ namespace Cotton.Sync.Local
                 return false;
             }
 
-            if (OperatingSystem.IsWindows() && TryReadReparseTag(file.FullName, out uint reparseTag))
+            if (OperatingSystem.IsWindows() && TryReadReparseTag(file.FullName, isDirectory: false, out uint reparseTag))
             {
                 return IsCloudFilesReparseTag(reparseTag);
             }
@@ -697,6 +702,30 @@ namespace Cotton.Sync.Local
             return HasRawAttribute(attributes, FileAttributeRecallOnOpen)
                 || HasRawAttribute(attributes, FileAttributeRecallOnDataAccess)
                 || (attributes & FileAttributes.Offline) != 0;
+        }
+
+        private static bool IsCloudFilesPlaceholder(DirectoryInfo directory, FileAttributes attributes)
+        {
+            if ((attributes & FileAttributes.ReparsePoint) == 0)
+            {
+                return false;
+            }
+
+            if (OperatingSystem.IsWindows() && TryReadReparseTag(directory.FullName, isDirectory: true, out uint reparseTag))
+            {
+                return IsCloudFilesReparseTag(reparseTag);
+            }
+
+            return HasRawAttribute(attributes, FileAttributeRecallOnOpen)
+                || HasRawAttribute(attributes, FileAttributeRecallOnDataAccess)
+                || (attributes & FileAttributes.Offline) != 0;
+        }
+
+        internal static bool ShouldIncludeScopedDirectory(
+            FileAttributes attributes,
+            bool isCloudFilesPlaceholder)
+        {
+            return (attributes & FileAttributes.ReparsePoint) == 0 || isCloudFilesPlaceholder;
         }
 
         internal static bool IsCloudFilesReparseTag(uint reparseTag)
@@ -717,16 +746,17 @@ namespace Cotton.Sync.Local
                 || (attributes & FileAttributes.Offline) != 0;
         }
 
-        private static bool TryReadReparseTag(string fullPath, out uint reparseTag)
+        private static bool TryReadReparseTag(string fullPath, bool isDirectory, out uint reparseTag)
         {
             reparseTag = 0;
+            uint openFlags = FileFlagOpenReparsePoint | (isDirectory ? FileFlagBackupSemantics : 0);
             using SafeFileHandle handle = CreateFile(
                 fullPath,
                 0,
                 FileShareRead | FileShareWrite | FileShareDelete,
                 IntPtr.Zero,
                 OpenExisting,
-                FileFlagOpenReparsePoint,
+                openFlags,
                 IntPtr.Zero);
             if (handle.IsInvalid)
             {

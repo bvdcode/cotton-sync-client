@@ -818,6 +818,44 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithScopedFileChangeDoesNotDeleteImplicitRemoteParentDirectory()
+        {
+            const string parentPath = "Recordings/Calls";
+            const string relativePath = "Recordings/Calls/subtitle.srt";
+            RemoteDirectorySnapshot remoteDirectory = RemoteDirectory(parentPath);
+            RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
+            remoteTree.Directories.Add(remoteDirectory);
+            FakeLocalFileScanner scanner = new(LocalFile(relativePath, "subtitle"));
+            PathOnlyRemoteTreeCrawler crawler = new(remoteTree);
+            FakeRemoteFileSynchronizer remoteFiles = new()
+            {
+                EmptyLocalHashUploadContentHash = HashText("subtitle"),
+            };
+            FakeRemoteDirectorySynchronizer remoteDirectories = new();
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            SyncEngine engine = new(
+                scanner,
+                crawler,
+                remoteFiles,
+                stateStore,
+                remoteDirectories: remoteDirectories);
+            await InsertDirectoryBaselineAsync(stateStore, parentPath, remoteDirectory.Node);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { Scope = SyncRunScope.ForLocalChangedPaths([relativePath]) });
+
+            SyncStateEntry? parentState = await stateStore.GetAsync("pair-a", parentPath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteDirectories.Deletes, Is.Empty);
+                Assert.That(remoteFiles.Uploads.Select(upload => upload.RelativePath), Is.EqualTo(new[] { relativePath }));
+                Assert.That(parentState, Is.Not.Null);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_ReportsDirectoryReconcileProgressWithFolderCounts()
         {
             var scanner = new FakeLocalFileScanner

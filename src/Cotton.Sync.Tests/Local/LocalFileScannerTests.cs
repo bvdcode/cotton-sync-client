@@ -352,6 +352,29 @@ namespace Cotton.Sync.Tests.Local
         }
 
         [Test]
+        public void ShouldIncludeScopedDirectory_AllowsCloudFilesReparsePointsOnly()
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    LocalFileScanner.ShouldIncludeScopedDirectory(
+                        FileAttributes.Directory | FileAttributes.ReparsePoint,
+                        isCloudFilesPlaceholder: true),
+                    Is.True);
+                Assert.That(
+                    LocalFileScanner.ShouldIncludeScopedDirectory(
+                        FileAttributes.Directory | FileAttributes.ReparsePoint,
+                        isCloudFilesPlaceholder: false),
+                    Is.False);
+                Assert.That(
+                    LocalFileScanner.ShouldIncludeScopedDirectory(
+                        FileAttributes.Directory,
+                        isCloudFilesPlaceholder: false),
+                    Is.True);
+            });
+        }
+
+        [Test]
         public async Task ScanAsync_ThrowsForLockedFile()
         {
             WriteFile("keep.txt", "keep");
