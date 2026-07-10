@@ -18,9 +18,6 @@ namespace Cotton.Sync.App.Runners
         /// <summary>
         /// Runs one synchronization pass with an explicit sync surface.
         /// </summary>
-        Task RunOnceAsync(SyncPairSettings syncPair, SyncRunRequest request, CancellationToken cancellationToken = default)
-        {
-            return RunOnceAsync(syncPair, cancellationToken);
-        }
+        Task RunOnceAsync(SyncPairSettings syncPair, SyncRunRequest request, CancellationToken cancellationToken = default);
     }
 }

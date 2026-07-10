@@ -524,6 +524,8 @@ namespace Cotton.Sync.App.Tests.Supervision
 
             public int SyncNowCallCount { get; private set; }
 
+            public SyncRunRequest? LastSyncRequest { get; private set; }
+
             public bool BlockSyncNow { get; set; }
 
             public Exception? StartException { get; set; }
@@ -586,6 +588,14 @@ namespace Cotton.Sync.App.Tests.Supervision
                 {
                     _state = SyncPairRunState.Idle;
                 }
+            }
+
+            public Task SyncNowAsync(
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                LastSyncRequest = request;
+                return SyncNowAsync(cancellationToken);
             }
 
             public Task StopAsync(CancellationToken cancellationToken = default)
@@ -686,6 +696,13 @@ namespace Cotton.Sync.App.Tests.Supervision
             public Task SyncNowAsync(CancellationToken cancellationToken = default)
             {
                 return Task.CompletedTask;
+            }
+
+            public Task SyncNowAsync(
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return SyncNowAsync(cancellationToken);
             }
 
             public Task StopAsync(CancellationToken cancellationToken = default)

@@ -7,6 +7,7 @@ using Cotton.Sync.App.LocalChanges;
 using Cotton.Sync.App.Platform;
 using Cotton.Sync.App.Preferences;
 using Cotton.Sync.App.RemoteChanges;
+using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.SyncApplication;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.App.Status;
@@ -1510,6 +1511,14 @@ namespace Cotton.Sync.App.Tests.SyncApplication
                 SyncNowCallCount++;
                 LastSyncNowPairId = syncPairId;
                 return Task.CompletedTask;
+            }
+
+            public Task SyncNowAsync(
+                Guid syncPairId,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return SyncNowAsync(syncPairId, cancellationToken);
             }
 
             public Task PauseAllAsync(CancellationToken cancellationToken = default)

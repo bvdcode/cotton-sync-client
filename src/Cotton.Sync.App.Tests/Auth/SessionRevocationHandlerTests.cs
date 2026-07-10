@@ -4,6 +4,7 @@
 using Cotton.Sync.App.Auth;
 using Cotton.Sync.App.Continuous;
 using Cotton.Sync.App.LocalChanges;
+using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.Status;
 using Cotton.Sync.App.Supervision;
 using Cotton.Sync.App.Tests.TestSupport;
@@ -188,6 +189,14 @@ namespace Cotton.Sync.App.Tests.Auth
             }
 
             public Task SyncNowAsync(Guid syncPairId, CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task SyncNowAsync(
+                Guid syncPairId,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
             {
                 throw new NotSupportedException();
             }

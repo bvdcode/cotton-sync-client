@@ -2852,6 +2852,34 @@ namespace Cotton.Sync
                     cancellationToken).ConfigureAwait(false);
                 return;
             }
+            catch (HttpRequestException exception) when (existingRemoteFile is null && IsRemoteConflict(exception))
+            {
+                NodeFileManifestDto? latestRemoteFile = await FindLatestRemoteFileAsync(syncPair, relativePath, cancellationToken).ConfigureAwait(false);
+                if (latestRemoteFile is null)
+                {
+                    throw;
+                }
+
+                if (!ContentMatches(local.ContentHash, latestRemoteFile.ContentHash)
+                    || local.SizeBytes != latestRemoteFile.SizeBytes)
+                {
+                    await PreserveConflictAsync(
+                        syncPair,
+                        options,
+                        result,
+                        relativePath,
+                        local,
+                        latestRemoteFile,
+                        cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
+                uploaded = latestRemoteFile;
+                _logger.LogInformation(
+                    "Remote file create for {RelativePath} hit conflict after matching content was committed; reusing file {RemoteFileId}.",
+                    relativePath,
+                    uploaded.Id);
+            }
             catch (LocalFileUnavailableException exception)
             {
                 Report(result, options, SyncActivityKind.Skipped, relativePath, exception.Reason);
@@ -3183,9 +3211,23 @@ namespace Cotton.Sync
             string relativePath,
             CancellationToken cancellationToken)
         {
-            RemoteTreeSnapshot latestTree = await _remoteCrawler.CrawlAsync(syncPair.RemoteRootNodeId, cancellationToken).ConfigureAwait(false);
+            if (_remotePathLookupCrawler is null)
+            {
+                throw new InvalidOperationException("Remote mutation recovery requires path lookup capability.");
+            }
+
+            string normalizedPath = SyncPath.Normalize(relativePath);
+            RemoteTreeLookupSnapshot latestTree = await _remotePathLookupCrawler
+                .CrawlPathLookupsAsync(
+                    syncPair.RemoteRootNodeId,
+                    [normalizedPath],
+                    progress: null,
+                    cancellationToken)
+                .ConfigureAwait(false);
             string key = SyncPath.ToKey(relativePath);
-            return latestTree.Files.FirstOrDefault(file => PathComparer.Equals(SyncPath.ToKey(file.RelativePath), key))?.File;
+            return latestTree.FilesByPath.TryGetValue(key, out RemoteFileSnapshot? remoteFile)
+                ? remoteFile.File
+                : null;
         }
 
         private static SyncStateEntry BuildBaseline(
@@ -4182,6 +4224,11 @@ namespace Cotton.Sync
         private static bool IsRemotePreconditionFailed(HttpRequestException exception)
         {
             return exception.StatusCode == HttpStatusCode.PreconditionFailed;
+        }
+
+        private static bool IsRemoteConflict(HttpRequestException exception)
+        {
+            return exception.StatusCode == HttpStatusCode.Conflict;
         }
 
         private static Dictionary<string, T> ToDictionary<T>(IEnumerable<T> entries, Func<T, string> pathSelector)

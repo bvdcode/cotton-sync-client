@@ -39,10 +39,7 @@ namespace Cotton.Sync.App.Supervision
         /// <summary>
         /// Requests one sync pass for a runner with an explicit sync surface.
         /// </summary>
-        Task SyncNowAsync(Guid syncPairId, SyncRunRequest request, CancellationToken cancellationToken = default)
-        {
-            return SyncNowAsync(syncPairId, cancellationToken);
-        }
+        Task SyncNowAsync(Guid syncPairId, SyncRunRequest request, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Pauses every runner.

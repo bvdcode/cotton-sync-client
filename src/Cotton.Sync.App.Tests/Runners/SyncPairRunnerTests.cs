@@ -68,6 +68,18 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task SyncNowAsync_PreservesExplicitScopedRequest()
+        {
+            FakeSyncPairWork work = new();
+            SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
+            SyncRunRequest request = SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]);
+
+            await runner.SyncNowAsync(request);
+
+            Assert.That(work.LastRequest, Is.SameAs(request));
+        }
+
+        [Test]
         public async Task StartAsync_DoesNotMarkPairAsSuccessfullySynced()
         {
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true));
@@ -782,6 +794,8 @@ namespace Cotton.Sync.App.Tests.Runners
 
             public SyncPairSettings? LastSyncPair { get; private set; }
 
+            public SyncRunRequest? LastRequest { get; private set; }
+
             public int RunCount { get; private set; }
 
             public Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
@@ -799,6 +813,15 @@ namespace Cotton.Sync.App.Tests.Runners
                 }
 
                 return Task.CompletedTask;
+            }
+
+            public Task RunOnceAsync(
+                SyncPairSettings syncPair,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                LastRequest = request;
+                return RunOnceAsync(syncPair, cancellationToken);
             }
         }
 
@@ -858,6 +881,14 @@ namespace Cotton.Sync.App.Tests.Runners
                     throw;
                 }
             }
+
+            public Task RunOnceAsync(
+                SyncPairSettings syncPair,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return RunOnceAsync(syncPair, cancellationToken);
+            }
         }
 
         private class RestoringMissingRootSyncPairWork : ISyncPairWork
@@ -892,6 +923,14 @@ namespace Cotton.Sync.App.Tests.Runners
                     throw;
                 }
             }
+
+            public Task RunOnceAsync(
+                SyncPairSettings syncPair,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return RunOnceAsync(syncPair, cancellationToken);
+            }
         }
 
         private class CancellationObservingSyncPairWork : ISyncPairWork
@@ -914,6 +953,14 @@ namespace Cotton.Sync.App.Tests.Runners
                     _cancellationObserved.TrySetResult();
                     throw;
                 }
+            }
+
+            public Task RunOnceAsync(
+                SyncPairSettings syncPair,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return RunOnceAsync(syncPair, cancellationToken);
             }
 
             public async Task<bool> WaitForCancellationAsync(TimeSpan timeout)
@@ -968,6 +1015,14 @@ namespace Cotton.Sync.App.Tests.Runners
                 }
             }
 
+            public Task RunOnceAsync(
+                SyncPairSettings syncPair,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return RunOnceAsync(syncPair, cancellationToken);
+            }
+
             public async Task<bool> WaitForCancellationAsync(TimeSpan timeout)
             {
                 try
@@ -1007,6 +1062,14 @@ namespace Cotton.Sync.App.Tests.Runners
                 {
                     await _releaseRun.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
                 }
+            }
+
+            public Task RunOnceAsync(
+                SyncPairSettings syncPair,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return RunOnceAsync(syncPair, cancellationToken);
             }
 
             public void ReleaseRun()
@@ -1049,6 +1112,14 @@ namespace Cotton.Sync.App.Tests.Runners
                 }
 
                 await release.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            public Task RunOnceAsync(
+                SyncPairSettings syncPair,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return RunOnceAsync(syncPair, cancellationToken);
             }
 
             public void ReleaseCurrentRun()

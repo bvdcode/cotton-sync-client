@@ -48,6 +48,13 @@ namespace Cotton.Sync.App.Runners
                 .ConfigureAwait(false);
             RemoteChangeFeedBatch remoteBatch = remoteRead.Batch;
 
+            if (remoteBatch.CursorExpired)
+            {
+                await _inner.RunOnceAsync(syncPair, SyncRunRequest.Full, cancellationToken).ConfigureAwait(false);
+                await _remoteChanges.AcknowledgeFullResyncAsync(remoteBatch, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
             bool skippedInnerSync = CanSkipInnerSync(syncPair, request, remoteRead);
             InnerRequestPlan? innerPlan = null;
             if (!skippedInnerSync)
@@ -59,12 +66,16 @@ namespace Cotton.Sync.App.Runners
                         cancellationToken)
                     .ConfigureAwait(false);
                 await _inner.RunOnceAsync(syncPair, innerPlan.Request, cancellationToken).ConfigureAwait(false);
-            }
-
-            if (remoteBatch.CursorExpired)
-            {
-                await _remoteChanges.AcknowledgeFullResyncAsync(remoteBatch, cancellationToken).ConfigureAwait(false);
-                return;
+                if (!innerPlan.RemoteChangesCovered)
+                {
+                    SyncRunRequest replayRequest = await CreateRemoteReplayRequestAsync(
+                            syncPair,
+                            remoteRead,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    await _inner.RunOnceAsync(syncPair, replayRequest, cancellationToken).ConfigureAwait(false);
+                    innerPlan = new InnerRequestPlan(replayRequest, RemoteChangesCovered: true);
+                }
             }
 
             if (ShouldAcknowledgeRemoteBatch(
@@ -151,6 +162,29 @@ namespace Cotton.Sync.App.Runners
             }
 
             return new InnerRequestPlan(request, RemoteChangesCovered: request.IsFull);
+        }
+
+        private async Task<SyncRunRequest> CreateRemoteReplayRequestAsync(
+            SyncPairSettings syncPair,
+            RemoteChangeFeedReadResult remoteRead,
+            CancellationToken cancellationToken)
+        {
+            if (_scopedSyncPlanner is null)
+            {
+                throw new SyncActionRequiredException(
+                    "Remote changes are pending, but scoped recovery is unavailable. Refresh the sync folder to rebuild its state.");
+            }
+
+            SyncRunRequest? replayRequest = await _scopedSyncPlanner
+                .TryCreateScopedRequestAsync(
+                    syncPair,
+                    SyncRunRequest.Full,
+                    remoteRead.Snapshot,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return replayRequest
+                ?? throw new SyncActionRequiredException(
+                    "Remote changes could not be mapped to local paths. Refresh the sync folder to rebuild its state.");
         }
 
         private static bool ShouldAcknowledgeRemoteBatch(

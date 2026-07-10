@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.Continuous;
+using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.Status;
 using Cotton.Sync.App.Supervision;
 
@@ -116,6 +117,14 @@ namespace Cotton.Sync.App.Tests.Continuous
             public Task SyncNowAsync(Guid syncPairId, CancellationToken cancellationToken = default)
             {
                 return Task.CompletedTask;
+            }
+
+            public Task SyncNowAsync(
+                Guid syncPairId,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return SyncNowAsync(syncPairId, cancellationToken);
             }
 
             public async Task<bool> WaitForSyncAsync(TimeSpan timeout)

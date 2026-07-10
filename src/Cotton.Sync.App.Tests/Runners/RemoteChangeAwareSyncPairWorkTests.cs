@@ -480,7 +480,7 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
-        public async Task RunOnceAsync_WithWindowsVirtualFilesKeepsScopedLocalRequestWhenRemotePathCannotBeResolved()
+        public void RunOnceAsync_WithWindowsVirtualFilesReportsUnresolvedRemotePathWithoutFullFallback()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
             FakeSyncPairWork inner = new();
@@ -509,14 +509,78 @@ namespace Cotton.Sync.App.Tests.Runners
             RemoteChangeAwareSyncPairWork work = new(inner, remoteChanges, stateStore);
             SyncRunRequest request = SyncRunRequest.ForLocalChangedPaths(["Recordings/subtitle.srt"]);
 
-            await work.RunOnceAsync(syncPair, request);
+            SyncActionRequiredException? exception = Assert.ThrowsAsync<SyncActionRequiredException>(
+                () => work.RunOnceAsync(syncPair, request));
 
             Assert.Multiple(() =>
             {
                 Assert.That(inner.RunCallCount, Is.EqualTo(1));
                 Assert.That(inner.LastRequest, Is.SameAs(request));
                 Assert.That(inner.LastRequest?.IsFull, Is.False);
+                Assert.That(stateStore.RemoteIdLookupCallCount, Is.EqualTo(2));
                 Assert.That(remoteChanges.AcknowledgedBatches, Is.Empty);
+                Assert.That(exception?.Message, Does.Contain("could not be mapped"));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesReplansUnresolvedRemotePathAfterLocalStateMutation()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            Guid parentNodeId = Guid.NewGuid();
+            FakeSyncStateStore stateStore = new();
+            FakeSyncPairWork inner = new()
+            {
+                OnRunAsync = async (runNumber, _) =>
+                {
+                    if (runNumber != 1)
+                    {
+                        return;
+                    }
+
+                    await stateStore.UpsertAsync(new SyncStateEntry
+                    {
+                        SyncPairId = syncPair.Id.ToString("D"),
+                        RelativePath = "Recordings",
+                        Kind = SyncEntryKind.Directory,
+                        RemoteNodeId = parentNodeId,
+                    });
+                },
+            };
+            RemoteChangeFeedBatch batch = new(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 12,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes:
+                [
+                    new SyncChangeDto
+                    {
+                        Id = 11,
+                        Kind = SyncChangeKind.FolderCreated,
+                        LayoutId = Guid.NewGuid(),
+                        ItemId = Guid.NewGuid(),
+                        ParentNodeId = parentNodeId,
+                        Name = "Nested",
+                        CreatedAt = DateTime.UtcNow,
+                    },
+                ]);
+            FakeRemoteChangeFeedReader remoteChanges = new(batch);
+            RemoteChangeAwareSyncPairWork work = new(inner, remoteChanges, stateStore);
+            SyncRunRequest request = SyncRunRequest.ForLocalChangedPaths(["Recordings/subtitle.srt"]);
+
+            await work.RunOnceAsync(syncPair, request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(2));
+                Assert.That(inner.Requests[0], Is.SameAs(request));
+                Assert.That(inner.Requests[1].IsFull, Is.False);
+                Assert.That(inner.Requests[1].LocalChangedPaths, Is.EqualTo(new[] { "Recordings/Nested" }));
+                Assert.That(stateStore.RemoteIdLookupCallCount, Is.EqualTo(2));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
             });
         }
 
@@ -832,11 +896,13 @@ namespace Cotton.Sync.App.Tests.Runners
             var remoteChanges = new FakeRemoteChangeFeedReader(expiredBatch);
             var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
 
-            await work.RunOnceAsync(syncPair);
+            SyncRunRequest scopedRequest = SyncRunRequest.ForLocalChangedPaths(["local-change.txt"]);
+            await work.RunOnceAsync(syncPair, scopedRequest);
 
             Assert.Multiple(() =>
             {
                 Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.True);
                 Assert.That(remoteChanges.AcknowledgedBatches, Is.Empty);
                 Assert.That(remoteChanges.FullResyncAcknowledgedBatches, Is.EqualTo(new[] { expiredBatch }));
             });
@@ -888,26 +954,34 @@ namespace Cotton.Sync.App.Tests.Runners
 
             public SyncRunRequest? LastRequest { get; private set; }
 
+            public List<SyncRunRequest> Requests { get; } = [];
+
             public bool ThrowOnRun { get; set; }
+
+            public Func<int, SyncRunRequest, Task>? OnRunAsync { get; set; }
 
             public Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
             {
                 return RunOnceAsync(syncPair, SyncRunRequest.Full, cancellationToken);
             }
 
-            public Task RunOnceAsync(
+            public async Task RunOnceAsync(
                 SyncPairSettings syncPair,
                 SyncRunRequest request,
                 CancellationToken cancellationToken = default)
             {
                 RunCallCount++;
                 LastRequest = request;
+                Requests.Add(request);
                 if (ThrowOnRun)
                 {
                     throw new InvalidOperationException("Inner work failed.");
                 }
 
-                return Task.CompletedTask;
+                if (OnRunAsync is not null)
+                {
+                    await OnRunAsync(RunCallCount, request).ConfigureAwait(false);
+                }
             }
         }
 

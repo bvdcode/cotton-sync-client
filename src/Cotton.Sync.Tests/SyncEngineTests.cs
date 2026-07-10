@@ -171,6 +171,38 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_ReusesMatchingRemoteFileAfterCreateConflictWithoutFullRecoveryCrawl()
+        {
+            const string relativePath = "Docs/local.txt";
+            LocalFileSnapshot local = LocalFile(relativePath, "local-content");
+            NodeFileManifestDto committedRemote = RemoteFile(
+                relativePath,
+                local.ContentHash,
+                sizeBytes: local.SizeBytes);
+            FakeLocalFileScanner scanner = new(local);
+            FakeRemoteFileSynchronizer remoteFiles = new();
+            remoteFiles.CreateConflictRelativePaths.Add(relativePath);
+            FakeRemoteTreeCrawler remoteCrawler = new(EmptyRemoteTree(), RemoteTree(committedRemote));
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            SyncEngine engine = new(scanner, remoteCrawler, remoteFiles, stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(remoteCrawler.CrawlCalls, Is.EqualTo(1));
+                Assert.That(remoteCrawler.PathCrawlCalls, Is.EqualTo(1));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(committedRemote.ContentHash));
+                Assert.That(entry.RemoteFileId, Is.EqualTo(committedRemote.Id));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_UsesMetadataLookupScannerWhenAvailable()
         {
             var local = new LocalFileSnapshot
@@ -821,7 +853,7 @@ namespace Cotton.Sync.Tests
         public void RunOnceAsync_WithScopedRequestRejectsMissingPathLookupCapabilities()
         {
             MetadataOnlyLocalFileScanner scanner = new();
-            FakeRemoteTreeCrawler crawler = new(EmptyRemoteTree());
+            LookupOnlyRemoteTreeCrawler crawler = new(EmptyRemoteTree());
             FakeRemoteFileSynchronizer remoteFiles = new();
             SqliteSyncStateStore stateStore = new(_databasePath);
             SyncEngine engine = new(scanner, crawler, remoteFiles, stateStore);
@@ -833,7 +865,9 @@ namespace Cotton.Sync.Tests
             Assert.Multiple(() =>
             {
                 Assert.That(exception?.Message, Does.Contain("Scoped sync requires"));
-                Assert.That(crawler.CrawlCalls, Is.Zero);
+                Assert.That(crawler.LookupCrawlCalls, Is.Zero);
+                Assert.That(crawler.ProgressCrawlCalls, Is.Zero);
+                Assert.That(crawler.SnapshotCrawlCalls, Is.Zero);
             });
         }
 
@@ -5042,12 +5076,14 @@ namespace Cotton.Sync.Tests
             }
         }
 
-        private class FakeRemoteTreeCrawler : IRemoteTreeCrawler
+        private class FakeRemoteTreeCrawler : IRemoteTreeCrawler, IRemotePathLookupCrawler
         {
             private readonly Queue<RemoteTreeSnapshot> _snapshots;
             private RemoteTreeSnapshot _lastSnapshot;
 
             public int CrawlCalls { get; private set; }
+
+            public int PathCrawlCalls { get; private set; }
 
             public FakeRemoteTreeCrawler(params RemoteTreeSnapshot[] snapshots)
             {
@@ -5063,12 +5099,48 @@ namespace Cotton.Sync.Tests
             public Task<RemoteTreeSnapshot> CrawlAsync(Guid rootNodeId, CancellationToken cancellationToken = default)
             {
                 CrawlCalls++;
+                return Task.FromResult(TakeNextSnapshot());
+            }
+
+            public Task<RemoteTreeLookupSnapshot> CrawlPathLookupsAsync(
+                Guid rootNodeId,
+                IReadOnlyCollection<string> relativePaths,
+                IProgress<RemoteTreeScanProgress>? progress,
+                CancellationToken cancellationToken = default)
+            {
+                PathCrawlCalls++;
+                RemoteTreeSnapshot source = TakeNextSnapshot();
+                RemoteTreeLookupSnapshot result = new()
+                {
+                    RootNode = source.RootNode,
+                };
+                foreach (RemoteDirectorySnapshot directory in source.Directories)
+                {
+                    if (relativePaths.Contains(directory.RelativePath, StringComparer.OrdinalIgnoreCase))
+                    {
+                        result.DirectoriesByPath[SyncPath.ToKey(directory.RelativePath)] = directory;
+                    }
+                }
+
+                foreach (RemoteFileSnapshot file in source.Files)
+                {
+                    if (relativePaths.Contains(file.RelativePath, StringComparer.OrdinalIgnoreCase))
+                    {
+                        result.FilesByPath[SyncPath.ToKey(file.RelativePath)] = file;
+                    }
+                }
+
+                return Task.FromResult(result);
+            }
+
+            private RemoteTreeSnapshot TakeNextSnapshot()
+            {
                 if (_snapshots.Count > 0)
                 {
                     _lastSnapshot = _snapshots.Dequeue();
                 }
 
-                return Task.FromResult(_lastSnapshot);
+                return _lastSnapshot;
             }
         }
 
@@ -5616,6 +5688,8 @@ namespace Cotton.Sync.Tests
 
             public HashSet<string> UploadFailureRelativePaths { get; } = [];
 
+            public HashSet<string> CreateConflictRelativePaths { get; } = new(StringComparer.OrdinalIgnoreCase);
+
             public HashSet<Guid> DownloadFailureIds { get; } = [];
 
             public HashSet<Guid> DeleteFailureIds { get; } = [];
@@ -5637,6 +5711,14 @@ namespace Cotton.Sync.Tests
                 NodeFileManifestDto? existingRemoteFile = null,
                 CancellationToken cancellationToken = default)
             {
+                if (existingRemoteFile is null && CreateConflictRelativePaths.Contains(relativePath))
+                {
+                    throw new HttpRequestException(
+                        "Remote file already exists.",
+                        inner: null,
+                        HttpStatusCode.Conflict);
+                }
+
                 if (existingRemoteFile is not null && PreconditionFailedUploadIds.Contains(existingRemoteFile.Id))
                 {
                     throw new HttpRequestException(

@@ -6387,6 +6387,14 @@ namespace Cotton.Sync.Desktop.Startup
                 return Task.CompletedTask;
             }
 
+            public Task SyncNowAsync(
+                Guid syncPairId,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return SyncNowAsync(syncPairId, cancellationToken);
+            }
+
             public Task PauseAllAsync(CancellationToken cancellationToken = default)
             {
                 return Task.CompletedTask;
