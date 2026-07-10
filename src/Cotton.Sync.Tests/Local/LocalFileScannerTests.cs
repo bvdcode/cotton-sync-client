@@ -325,6 +325,28 @@ namespace Cotton.Sync.Tests.Local
         }
 
         [Test]
+        public void ScanPathMetadataLookupsAsync_RejectsUnsupportedFileReparsePoint()
+        {
+            WriteFile("target.txt", "target");
+            string linkPath = FullPath("target-link.txt");
+            TryCreateFileSymlink(linkPath, FullPath("target.txt"));
+            LocalFileScanner scanner = new();
+
+            LocalFileUnavailableException? exception = Assert.ThrowsAsync<LocalFileUnavailableException>(() =>
+                scanner.ScanPathMetadataLookupsAsync(
+                    _root,
+                    ["target-link.txt"],
+                    progress: null,
+                    includeDirectoryDescendants: false));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception?.RelativePath, Is.EqualTo("target-link.txt"));
+                Assert.That(exception?.Reason, Does.Contain("unsupported file reparse point"));
+            });
+        }
+
+        [Test]
         public void IsCloudFilesReparseTag_RecognizesWindowsCloudFilesFamilyOnly()
         {
             Assert.Multiple(() =>

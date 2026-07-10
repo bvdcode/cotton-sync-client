@@ -415,9 +415,8 @@ namespace Cotton.Sync
         {
             if (_localMetadataPathLookupScanner is null || _localContentHasher is null || _remotePathLookupCrawler is null)
             {
-                SyncRunOptions fullOptions = CloneAsFullScope(options);
-                return await ScanTreesAndBuildLookupsAsync(syncPair, fullOptions, startedAtUtc, cancellationToken)
-                    .ConfigureAwait(false);
+                throw new InvalidOperationException(
+                    "Scoped sync requires local path lookup, local content hashing, and remote path lookup capabilities.");
             }
 
             IReadOnlyList<string> scopedPaths = BuildScopedRelativePaths(options.Scope.LocalChangedPaths);
@@ -2378,6 +2377,7 @@ namespace Cotton.Sync
                         result,
                         deleteGuard,
                         relativePath,
+                        local,
                         localDirectoryContentIndex,
                         cancellationToken).ConfigureAwait(false);
                 }
@@ -3010,10 +3010,12 @@ namespace Cotton.Sync
             SyncRunResult result,
             SyncDeleteGuard deleteGuard,
             string relativePath,
+            LocalDirectorySnapshot localDirectory,
             DirectoryContentIndex localDirectoryContentIndex,
             CancellationToken cancellationToken)
         {
-            if (localDirectoryContentIndex.HasChildren(relativePath))
+            if (localDirectoryContentIndex.HasChildren(relativePath)
+                || DirectoryHasFileSystemEntries(localDirectory.FullPath))
             {
                 Report(result, options, SyncActivityKind.Skipped, relativePath, "Local folder delete skipped because the folder is not empty.");
                 return;
@@ -4098,27 +4100,6 @@ namespace Cotton.Sync
                 && string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
         }
 
-        private static SyncRunOptions CloneAsFullScope(SyncRunOptions options)
-        {
-            return new SyncRunOptions
-            {
-                Scope = SyncRunScope.Full,
-                DeleteRemotePermanently = options.DeleteRemotePermanently,
-                MinimumLocalUploadAge = options.MinimumLocalUploadAge,
-                MaximumLocalDeletesPerRun = options.MaximumLocalDeletesPerRun,
-                MaximumRemoteDeletesPerRun = options.MaximumRemoteDeletesPerRun,
-                MaximumStoredResultActivities = options.MaximumStoredResultActivities,
-                InitialVirtualFilesPopulationQueueCapacity = options.InitialVirtualFilesPopulationQueueCapacity,
-                InitialVirtualFilesStateBatchSize = options.InitialVirtualFilesStateBatchSize,
-                InitialVirtualFilesPlaceholderConcurrency = options.InitialVirtualFilesPlaceholderConcurrency,
-                InitialVirtualFilesPlaceholderBatchSize = options.InitialVirtualFilesPlaceholderBatchSize,
-                ActivityProgress = options.ActivityProgress,
-                TransferProgress = options.TransferProgress,
-                RunProgress = options.RunProgress,
-                CooperativeYieldAsync = options.CooperativeYieldAsync,
-            };
-        }
-
         private static SyncRunOptions CloneWithoutRunProgress(SyncRunOptions options)
         {
             return new SyncRunOptions
@@ -4137,6 +4118,18 @@ namespace Cotton.Sync
                 TransferProgress = options.TransferProgress,
                 CooperativeYieldAsync = options.CooperativeYieldAsync,
             };
+        }
+
+        private static bool DirectoryHasFileSystemEntries(string fullPath)
+        {
+            try
+            {
+                return Directory.EnumerateFileSystemEntries(fullPath).Any();
+            }
+            catch (DirectoryNotFoundException)
+            {
+                return false;
+            }
         }
 
         private static bool ShouldDeferLocalUpload(

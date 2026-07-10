@@ -152,17 +152,24 @@ namespace Cotton.Sync.Local
 
                 string normalizedPath = SyncPath.Normalize(relativePath);
                 string fullPath = GetScopedFullPath(fullRoot, normalizedPath);
-                if (File.Exists(fullPath))
+                if (!TryReadScopedPathAttributes(fullPath, out FileAttributes attributes))
                 {
-                    var file = new FileInfo(fullPath);
-                    FileAttributes attributes = file.Attributes;
+                    continue;
+                }
+
+                if ((attributes & FileAttributes.Directory) == 0)
+                {
+                    FileInfo file = new(fullPath);
                     bool isCloudFilesPlaceholder = IsCloudFilesPlaceholder(file, attributes);
                     bool isCloudFilesOnlineOnlyPlaceholder =
                         isCloudFilesPlaceholder && IsCloudFilesOnlineOnlyPlaceholder(attributes);
                     if ((attributes & FileAttributes.ReparsePoint) != 0
                         && !isCloudFilesPlaceholder)
                     {
-                        continue;
+                        throw new LocalFileUnavailableException(
+                            normalizedPath,
+                            file.FullName,
+                            "the scoped path is an unsupported file reparse point.");
                     }
 
                     AddFile(
@@ -180,17 +187,14 @@ namespace Cotton.Sync.Local
                     continue;
                 }
 
-                if (!Directory.Exists(fullPath))
-                {
-                    continue;
-                }
-
                 DirectoryInfo directoryInfo = new(fullPath);
-                FileAttributes directoryAttributes = directoryInfo.Attributes;
-                bool isCloudFilesDirectoryPlaceholder = IsCloudFilesPlaceholder(directoryInfo, directoryAttributes);
-                if (!ShouldIncludeScopedDirectory(directoryAttributes, isCloudFilesDirectoryPlaceholder))
+                bool isCloudFilesDirectoryPlaceholder = IsCloudFilesPlaceholder(directoryInfo, attributes);
+                if (!ShouldIncludeScopedDirectory(attributes, isCloudFilesDirectoryPlaceholder))
                 {
-                    continue;
+                    throw new LocalFileUnavailableException(
+                        normalizedPath,
+                        directoryInfo.FullName,
+                        "the scoped path contains an unsupported directory reparse point.");
                 }
 
                 AddDirectory(tree, new LocalDirectorySnapshot
@@ -228,6 +232,25 @@ namespace Cotton.Sync.Local
 
             progress?.Report(new LocalTreeScanProgress(filesScanned, directoriesScanned, currentPath: null));
             return tree;
+        }
+
+        private static bool TryReadScopedPathAttributes(string fullPath, out FileAttributes attributes)
+        {
+            try
+            {
+                attributes = File.GetAttributes(fullPath);
+                return true;
+            }
+            catch (FileNotFoundException)
+            {
+                attributes = default;
+                return false;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                attributes = default;
+                return false;
+            }
         }
 
         /// <inheritdoc />

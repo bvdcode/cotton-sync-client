@@ -2,6 +2,8 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Buffers;
+using System.Collections.Concurrent;
+using System.Net;
 using System.Security.Cryptography;
 using Cotton.Files;
 using Cotton.Nodes;
@@ -21,7 +23,7 @@ namespace Cotton.Sync.Remote
         private const int MaximumInitialChunkCollectionCapacity = 65_536;
         private readonly ICottonCloudClient _client;
         private readonly SdkRemoteFileSynchronizerOptions _options;
-        private readonly Dictionary<string, Guid> _directoryCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, Guid> _directoryCache = new(StringComparer.OrdinalIgnoreCase);
         private int? _resolvedChunkSizeBytes;
 
         /// <summary>
@@ -492,9 +494,15 @@ namespace Cotton.Sync.Remote
                 string segment = segments[index];
                 currentPath = string.IsNullOrEmpty(currentPath) ? segment : currentPath + "/" + segment;
                 string cacheKey = rootNodeId.ToString("D") + ":" + SyncPath.ToKey(currentPath);
-                if (_directoryCache.TryGetValue(cacheKey, out Guid cachedNodeId))
+                Guid? cachedNodeId = await TryGetCurrentCachedDirectoryAsync(
+                        cacheKey,
+                        currentNodeId,
+                        segment,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (cachedNodeId.HasValue)
                 {
-                    currentNodeId = cachedNodeId;
+                    currentNodeId = cachedNodeId.Value;
                     continue;
                 }
 
@@ -505,6 +513,38 @@ namespace Cotton.Sync.Remote
             }
 
             return currentNodeId;
+        }
+
+        private async Task<Guid?> TryGetCurrentCachedDirectoryAsync(
+            string cacheKey,
+            Guid expectedParentNodeId,
+            string expectedName,
+            CancellationToken cancellationToken)
+        {
+            if (!_directoryCache.TryGetValue(cacheKey, out Guid cachedNodeId))
+            {
+                return null;
+            }
+
+            NodeDto cachedNode;
+            try
+            {
+                cachedNode = await _client.Nodes.GetAsync(cachedNodeId, cancellationToken).ConfigureAwait(false);
+            }
+            catch (CottonApiException exception) when (exception.StatusCode == HttpStatusCode.NotFound)
+            {
+                _directoryCache.TryRemove(cacheKey, out _);
+                return null;
+            }
+
+            if (cachedNode.ParentId != expectedParentNodeId
+                || !string.Equals(cachedNode.Name, expectedName, StringComparison.OrdinalIgnoreCase))
+            {
+                _directoryCache.TryRemove(cacheKey, out _);
+                return null;
+            }
+
+            return cachedNode.Id;
         }
 
         private async Task<NodeDto?> FindChildDirectoryAsync(Guid parentNodeId, string name, CancellationToken cancellationToken)

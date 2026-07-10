@@ -237,7 +237,15 @@ namespace Cotton.Sync.App.LocalChanges
                     "Requesting local-change sync for {SyncPairId} after change at {ChangedPath}.",
                     syncPairId,
                     changedPath);
-                SyncRunRequest syncRequest = CreateSyncRunRequest(syncPairId, request);
+                SyncRunRequest? syncRequest = CreateSyncRunRequest(syncPairId, request);
+                if (syncRequest is null)
+                {
+                    _logger.LogWarning(
+                        "Ignoring local-change sync for {SyncPairId} because no changed path belongs to its local root.",
+                        syncPairId);
+                    return;
+                }
+
                 await _supervisor.SyncNowAsync(syncPairId, syncRequest, request.Cancellation.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (request.Cancellation.IsCancellationRequested)
@@ -342,11 +350,16 @@ namespace Cotton.Sync.App.LocalChanges
             await Task.WhenAll(runners).WaitAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        private SyncRunRequest CreateSyncRunRequest(Guid syncPairId, PendingLocalSyncRequest request)
+        private SyncRunRequest? CreateSyncRunRequest(Guid syncPairId, PendingLocalSyncRequest request)
         {
-            if (request.RequiresFullSync || !_localRootPaths.TryGetValue(syncPairId, out string? localRootPath))
+            if (request.RequiresFullSync)
             {
                 return SyncRunRequest.Full;
+            }
+
+            if (!_localRootPaths.TryGetValue(syncPairId, out string? localRootPath))
+            {
+                return null;
             }
 
             List<string> relativePaths = [];
@@ -358,7 +371,9 @@ namespace Cotton.Sync.App.LocalChanges
                 }
             }
 
-            return SyncRunRequest.ForLocalChangedPaths(relativePaths);
+            return relativePaths.Count == 0
+                ? null
+                : SyncRunRequest.ForLocalChangedPaths(relativePaths);
         }
 
         private void RecordChange(Guid syncPairId, PendingLocalSyncRequest pendingSync, LocalSyncRootChange change)

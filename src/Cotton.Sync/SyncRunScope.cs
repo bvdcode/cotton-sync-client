@@ -43,7 +43,12 @@ namespace Cotton.Sync
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
                 .ToList();
-            return paths.Count == 0 ? Full : new SyncRunScope(false, paths);
+            if (paths.Count == 0)
+            {
+                throw new ArgumentException("At least one changed path is required for a scoped sync run.", nameof(relativePaths));
+            }
+
+            return new SyncRunScope(false, paths);
         }
     }
 }

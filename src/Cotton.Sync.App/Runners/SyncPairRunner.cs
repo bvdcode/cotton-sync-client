@@ -274,7 +274,8 @@ namespace Cotton.Sync.App.Runners
         {
             lock (_syncRequestGate)
             {
-                return _activeSyncRequest ?? SyncRunRequest.Full;
+                return _activeSyncRequest
+                    ?? throw new InvalidOperationException("A running sync loop must have an active request.");
             }
         }
 

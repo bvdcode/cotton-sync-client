@@ -1,6 +1,7 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using Cotton.Auth;
@@ -87,6 +88,30 @@ namespace Cotton.Sync.Tests.Remote
                 Assert.That(client.FilesClient.CreateRequests, Has.Count.EqualTo(1));
                 Assert.That(client.FilesClient.CreateRequests[0].Hash, Is.EqualTo(expectedHash));
                 Assert.That(created.ContentHash, Is.EqualTo(expectedHash));
+            });
+        }
+
+        [Test]
+        public async Task UploadFileAsync_RevalidatesCachedParentAfterRemoteFolderReplacement()
+        {
+            Guid originalParentId = Guid.NewGuid();
+            Guid replacementParentId = Guid.NewGuid();
+            LocalFileSnapshot first = WriteLocalFile("Docs/first.txt", Encoding.UTF8.GetBytes("first"));
+            LocalFileSnapshot second = WriteLocalFile("Docs/second.txt", Encoding.UTF8.GetBytes("second"));
+            FakeCottonCloudClient client = new(chunkSizeBytes: 1024);
+            client.NodesClient.Children[_rootNodeId] = [Node(originalParentId, _rootNodeId, "Docs")];
+            SdkRemoteFileSynchronizer synchronizer = new(client);
+
+            await synchronizer.UploadFileAsync(_rootNodeId, first.RelativePath, first);
+            client.NodesClient.Children[_rootNodeId] = [Node(replacementParentId, _rootNodeId, "Docs")];
+            await synchronizer.UploadFileAsync(_rootNodeId, second.RelativePath, second);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(client.NodesClient.GetRequests, Does.Contain(originalParentId));
+                Assert.That(client.FilesClient.CreateRequests, Has.Count.EqualTo(2));
+                Assert.That(client.FilesClient.CreateRequests[0].NodeId, Is.EqualTo(originalParentId));
+                Assert.That(client.FilesClient.CreateRequests[1].NodeId, Is.EqualTo(replacementParentId));
             });
         }
 
@@ -869,6 +894,8 @@ namespace Cotton.Sync.Tests.Remote
 
             public List<NodeDto> CreatedNodes { get; } = [];
 
+            public List<Guid> GetRequests { get; } = [];
+
             public Task<NodeDto> ResolveAsync(string? path = null, CancellationToken cancellationToken = default)
             {
                 throw new NotSupportedException();
@@ -876,7 +903,19 @@ namespace Cotton.Sync.Tests.Remote
 
             public Task<NodeDto> GetAsync(Guid nodeId, CancellationToken cancellationToken = default)
             {
-                throw new NotSupportedException();
+                GetRequests.Add(nodeId);
+                NodeDto? node = Children.Values
+                    .SelectMany(static children => children)
+                    .FirstOrDefault(item => item.Id == nodeId);
+                if (node is null)
+                {
+                    throw new CottonApiException(
+                        HttpStatusCode.NotFound,
+                        "{\"message\":\"Node not found.\"}",
+                        "Cotton API request GET /api/v1/layouts/nodes failed with status 404 (NotFound).");
+                }
+
+                return Task.FromResult(node);
             }
 
             public Task<NodeContentDto> GetChildrenAsync(

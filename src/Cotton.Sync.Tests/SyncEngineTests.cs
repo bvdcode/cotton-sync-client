@@ -818,6 +818,26 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public void RunOnceAsync_WithScopedRequestRejectsMissingPathLookupCapabilities()
+        {
+            MetadataOnlyLocalFileScanner scanner = new();
+            FakeRemoteTreeCrawler crawler = new(EmptyRemoteTree());
+            FakeRemoteFileSynchronizer remoteFiles = new();
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            SyncEngine engine = new(scanner, crawler, remoteFiles, stateStore);
+
+            InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(() => engine.RunOnceAsync(
+                Pair(),
+                new SyncRunOptions { Scope = SyncRunScope.ForLocalChangedPaths(["changed.txt"]) }));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception?.Message, Does.Contain("Scoped sync requires"));
+                Assert.That(crawler.CrawlCalls, Is.Zero);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithScopedFileChangeDoesNotDeleteImplicitRemoteParentDirectory()
         {
             const string parentPath = "Recordings/Calls";
@@ -852,6 +872,40 @@ namespace Cotton.Sync.Tests
                 Assert.That(remoteFiles.Uploads.Select(upload => upload.RelativePath), Is.EqualTo(new[] { relativePath }));
                 Assert.That(parentState, Is.Not.Null);
                 Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithScopedRemoteFolderDeletePreservesUnobservedLocalChildren()
+        {
+            const string relativePath = "Projects";
+            WriteFile("Projects/local.txt", "local");
+            RemoteDirectorySnapshot remoteDirectory = RemoteDirectory(relativePath);
+            FakeLocalFileScanner scanner = new()
+            {
+                Directories =
+                {
+                    LocalDirectory(relativePath),
+                },
+            };
+            PathOnlyRemoteTreeCrawler crawler = new(EmptyRemoteTree());
+            FakeRemoteFileSynchronizer remoteFiles = new();
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            SyncEngine engine = new(scanner, crawler, remoteFiles, stateStore);
+            await InsertDirectoryBaselineAsync(stateStore, relativePath, remoteDirectory.Node);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { Scope = SyncRunScope.ForLocalChangedPaths([relativePath]) });
+
+            SyncStateEntry? directoryState = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(Directory.Exists(Path.Combine(_root, relativePath)), Is.True);
+                Assert.That(File.Exists(Path.Combine(_root, "Projects", "local.txt")), Is.True);
+                Assert.That(directoryState, Is.Not.Null);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Skipped }));
+                Assert.That(result.Activities[0].Details, Does.Contain("not empty"));
             });
         }
 
@@ -4993,6 +5047,8 @@ namespace Cotton.Sync.Tests
             private readonly Queue<RemoteTreeSnapshot> _snapshots;
             private RemoteTreeSnapshot _lastSnapshot;
 
+            public int CrawlCalls { get; private set; }
+
             public FakeRemoteTreeCrawler(params RemoteTreeSnapshot[] snapshots)
             {
                 if (snapshots.Length == 0)
@@ -5006,6 +5062,7 @@ namespace Cotton.Sync.Tests
 
             public Task<RemoteTreeSnapshot> CrawlAsync(Guid rootNodeId, CancellationToken cancellationToken = default)
             {
+                CrawlCalls++;
                 if (_snapshots.Count > 0)
                 {
                     _lastSnapshot = _snapshots.Dequeue();

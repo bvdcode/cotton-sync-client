@@ -188,6 +188,31 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task LocalChangeOutsideRoot_DoesNotRequestFullSync()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true);
+            FakeWatcherFactory watcherFactory = new();
+            FakeSyncSupervisor supervisor = new();
+            LocalChangeSyncCoordinator coordinator = new(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval);
+            await coordinator.StartAsync();
+
+            watcherFactory.CreatedWatchers[syncPair.Id].Raise("/home/user/outside.txt");
+
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromMilliseconds(250));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.False);
+                Assert.That(supervisor.SyncNowCallCount, Is.Zero);
+            });
+        }
+
+        [Test]
         public async Task LocalChangeStorm_MaxDebounceDelayForcesSync()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
