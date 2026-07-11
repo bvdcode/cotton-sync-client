@@ -19,7 +19,7 @@ namespace Cotton.Sync.App.Runners
             _stateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
         }
 
-        public async Task<SyncRunRequest?> TryCreateScopedRequestAsync(
+        public async Task<RemoteChangeScopedSyncPlan> CreatePlanAsync(
             SyncPairSettings syncPair,
             SyncRunRequest request,
             RemoteChangeFeedSnapshot snapshot,
@@ -30,29 +30,41 @@ namespace Cotton.Sync.App.Runners
             ArgumentNullException.ThrowIfNull(snapshot);
             if (snapshot.IsEmpty)
             {
-                return request;
+                return new RemoteChangeScopedSyncPlan(request, HasUnresolvedChanges: false);
             }
 
             RemoteChangeStateIndex stateIndex =
                 await LoadStateIndexAsync(syncPair, snapshot, cancellationToken).ConfigureAwait(false);
             var remoteChangedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            bool hasUnresolvedChanges = false;
             foreach (RemoteChangeImpact change in snapshot.Changes)
             {
-                if (!TryAddChangePaths(syncPair, stateIndex, change, remoteChangedPaths))
+                var changePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                RemoteChangePathDisposition disposition = ResolveChangePaths(syncPair, stateIndex, change, changePaths);
+                if (disposition == RemoteChangePathDisposition.Mapped)
                 {
-                    return null;
+                    remoteChangedPaths.UnionWith(changePaths);
+                }
+                else if (disposition == RemoteChangePathDisposition.Unresolved)
+                {
+                    hasUnresolvedChanges = true;
                 }
             }
 
-            if (remoteChangedPaths.Count == 0)
+            SyncRunRequest? plannedRequest = null;
+            if (remoteChangedPaths.Count > 0)
             {
-                return null;
+                SyncRunRequest remoteRequest = SyncRunRequest.ForLocalChangedPaths(
+                    remoteChangedPaths,
+                    request.Causes | SyncRunCause.RealtimeRemoteChange);
+                plannedRequest = request.IsFull ? remoteRequest : request.Merge(remoteRequest);
+            }
+            else if (!request.IsFull)
+            {
+                plannedRequest = request;
             }
 
-            SyncRunRequest remoteRequest = SyncRunRequest.ForLocalChangedPaths(
-                remoteChangedPaths,
-                request.Causes | SyncRunCause.RealtimeRemoteChange);
-            return request.IsFull ? remoteRequest : request.Merge(remoteRequest);
+            return new RemoteChangeScopedSyncPlan(plannedRequest, hasUnresolvedChanges);
         }
 
         private async Task<RemoteChangeStateIndex> LoadStateIndexAsync(
@@ -119,9 +131,9 @@ namespace Cotton.Sync.App.Runners
                 || change.NodeId.Value == syncPair.RemoteRootNodeId
                 || !change.ParentNodeId.HasValue
                 || stateIndex.TryGetNodePath(change.NodeId.Value, out _)
-                || !stateIndex.TryGetNodePath(change.ParentNodeId.Value, out string? parentPath)
-                || parentPath is null
-                || !TryCombinePath(parentPath, change.Name, out string? relativePath))
+                || ResolveNamedPath(stateIndex, change.ParentNodeId, change.Name, out string? relativePath)
+                    != RemoteNamedPathStatus.Resolved
+                || relativePath is null)
             {
                 return false;
             }
@@ -130,7 +142,7 @@ namespace Cotton.Sync.App.Runners
             return true;
         }
 
-        private static bool TryAddChangePaths(
+        private static RemoteChangePathDisposition ResolveChangePaths(
             SyncPairSettings syncPair,
             RemoteChangeStateIndex stateIndex,
             RemoteChangeImpact change,
@@ -138,74 +150,177 @@ namespace Cotton.Sync.App.Runners
         {
             return change.TargetKind switch
             {
-                RemoteChangeTargetKind.File => TryAddFileChangePaths(syncPair, stateIndex, change, paths),
-                RemoteChangeTargetKind.Folder => TryAddFolderChangePaths(syncPair, stateIndex, change, paths),
-                _ => false,
+                RemoteChangeTargetKind.File => ResolveFileChangePaths(stateIndex, change, paths),
+                RemoteChangeTargetKind.Folder => ResolveFolderChangePaths(syncPair, stateIndex, change, paths),
+                _ => RemoteChangePathDisposition.Unresolved,
             };
         }
 
-        private static bool TryAddFileChangePaths(
+        private static RemoteChangePathDisposition ResolveFileChangePaths(
+            RemoteChangeStateIndex stateIndex,
+            RemoteChangeImpact change,
+            HashSet<string> paths)
+        {
+            bool hasExistingPath = TryGetExistingFilePath(stateIndex, change, out string? existingPath);
+            RemoteNamedPathStatus currentStatus = ResolveNamedPath(
+                stateIndex,
+                change.ParentNodeId,
+                change.Name,
+                out string? currentPath);
+            RemoteNamedPathStatus previousStatus = change.Action is RemoteChangeAction.Moved or RemoteChangeAction.Deleted
+                ? ResolveNamedPath(stateIndex, change.PreviousParentNodeId, change.Name, out string? previousPath)
+                : ResolveWithoutPath(out previousPath);
+
+            return ResolveActionPaths(
+                change.Action,
+                hasExistingPath,
+                existingPath,
+                currentStatus,
+                currentPath,
+                previousStatus,
+                previousPath,
+                paths);
+        }
+
+        private static RemoteChangePathDisposition ResolveFolderChangePaths(
             SyncPairSettings syncPair,
             RemoteChangeStateIndex stateIndex,
             RemoteChangeImpact change,
             HashSet<string> paths)
         {
-            bool hasOldPath = TryAddExistingFilePath(stateIndex, change, paths);
-            if (change.Action == RemoteChangeAction.Deleted)
-            {
-                return hasOldPath || TryAddCurrentNamedPath(syncPair, stateIndex, change, paths);
-            }
+            bool hasExistingPath = TryGetExistingFolderPath(syncPair, stateIndex, change, out string? existingPath);
+            RemoteNamedPathStatus currentStatus = ResolveNamedPath(
+                stateIndex,
+                change.ParentNodeId,
+                change.Name,
+                out string? currentPath);
+            RemoteNamedPathStatus previousStatus = change.Action is RemoteChangeAction.Moved or RemoteChangeAction.Deleted
+                ? ResolveNamedPath(stateIndex, change.PreviousParentNodeId, change.Name, out string? previousPath)
+                : ResolveWithoutPath(out previousPath);
+            bool isRemoteRoot = change.NodeId == syncPair.RemoteRootNodeId;
 
-            if (!TryAddCurrentNamedPath(syncPair, stateIndex, change, paths))
-            {
-                return false;
-            }
-
-            return true;
+            return ResolveActionPaths(
+                change.Action,
+                hasExistingPath,
+                existingPath,
+                currentStatus,
+                currentPath,
+                previousStatus,
+                previousPath,
+                paths,
+                hasAdditionalRelation: isRemoteRoot);
         }
 
-        private static bool TryAddFolderChangePaths(
-            SyncPairSettings syncPair,
-            RemoteChangeStateIndex stateIndex,
-            RemoteChangeImpact change,
-            HashSet<string> paths)
+        private static RemoteChangePathDisposition ResolveActionPaths(
+            RemoteChangeAction action,
+            bool hasExistingPath,
+            string? existingPath,
+            RemoteNamedPathStatus currentStatus,
+            string? currentPath,
+            RemoteNamedPathStatus previousStatus,
+            string? previousPath,
+            HashSet<string> paths,
+            bool hasAdditionalRelation = false)
         {
-            bool hasOldPath = TryAddExistingFolderPath(syncPair, stateIndex, change, paths);
-            if (change.Action == RemoteChangeAction.Deleted)
+            bool currentResolved = currentStatus == RemoteNamedPathStatus.Resolved && currentPath is not null;
+            bool previousResolved = previousStatus == RemoteNamedPathStatus.Resolved && previousPath is not null;
+            bool hasRelation = hasAdditionalRelation
+                || hasExistingPath
+                || currentStatus != RemoteNamedPathStatus.UnknownParent
+                || previousStatus != RemoteNamedPathStatus.UnknownParent;
+            bool hasIgnoredPath = currentStatus == RemoteNamedPathStatus.Ignored
+                || previousStatus == RemoteNamedPathStatus.Ignored;
+
+            if (action is RemoteChangeAction.Created or RemoteChangeAction.Restored)
             {
-                return hasOldPath || TryAddCurrentNamedPath(syncPair, stateIndex, change, paths);
+                if (currentResolved)
+                {
+                    paths.Add(currentPath!);
+                    return RemoteChangePathDisposition.Mapped;
+                }
+
+                return hasIgnoredPath
+                    ? RemoteChangePathDisposition.Ignored
+                    : hasRelation
+                        ? RemoteChangePathDisposition.Unresolved
+                        : RemoteChangePathDisposition.OutsidePair;
             }
 
-            if (!TryAddCurrentNamedPath(syncPair, stateIndex, change, paths))
+            if (action == RemoteChangeAction.Renamed)
             {
-                return false;
+                if (currentResolved)
+                {
+                    AddPathIfPresent(paths, existingPath);
+                    paths.Add(currentPath!);
+                    return RemoteChangePathDisposition.Mapped;
+                }
+
+                if (currentStatus == RemoteNamedPathStatus.Ignored)
+                {
+                    if (hasExistingPath)
+                    {
+                        paths.Add(existingPath!);
+                        return RemoteChangePathDisposition.Mapped;
+                    }
+
+                    return RemoteChangePathDisposition.Ignored;
+                }
+
+                return hasRelation
+                    ? RemoteChangePathDisposition.Unresolved
+                    : RemoteChangePathDisposition.OutsidePair;
             }
 
-            return true;
+            if (hasExistingPath)
+            {
+                paths.Add(existingPath!);
+            }
+
+            if (currentResolved)
+            {
+                paths.Add(currentPath!);
+            }
+
+            if (previousResolved)
+            {
+                paths.Add(previousPath!);
+            }
+
+            if (paths.Count > 0)
+            {
+                return RemoteChangePathDisposition.Mapped;
+            }
+
+            return hasIgnoredPath
+                ? RemoteChangePathDisposition.Ignored
+                : hasRelation
+                    ? RemoteChangePathDisposition.Unresolved
+                    : RemoteChangePathDisposition.OutsidePair;
         }
 
-        private static bool TryAddExistingFilePath(
+        private static bool TryGetExistingFilePath(
             RemoteChangeStateIndex stateIndex,
             RemoteChangeImpact change,
-            HashSet<string> paths)
+            out string? existingPath)
         {
+            existingPath = null;
             if (!change.NodeFileId.HasValue
-                || !stateIndex.TryGetFilePath(change.NodeFileId.Value, out string? existingPath)
+                || !stateIndex.TryGetFilePath(change.NodeFileId.Value, out existingPath)
                 || existingPath is null)
             {
                 return false;
             }
 
-            paths.Add(existingPath);
             return true;
         }
 
-        private static bool TryAddExistingFolderPath(
+        private static bool TryGetExistingFolderPath(
             SyncPairSettings syncPair,
             RemoteChangeStateIndex stateIndex,
             RemoteChangeImpact change,
-            HashSet<string> paths)
+            out string? existingPath)
         {
+            existingPath = null;
             if (!change.NodeId.HasValue)
             {
                 return false;
@@ -216,65 +331,65 @@ namespace Cotton.Sync.App.Runners
                 return false;
             }
 
-            if (!stateIndex.TryGetNodePath(change.NodeId.Value, out string? existingPath)
+            if (!stateIndex.TryGetNodePath(change.NodeId.Value, out existingPath)
                 || existingPath is null)
             {
                 return false;
             }
 
-            paths.Add(existingPath);
             return true;
         }
 
-        private static bool TryAddCurrentNamedPath(
-            SyncPairSettings syncPair,
+        private static RemoteNamedPathStatus ResolveNamedPath(
             RemoteChangeStateIndex stateIndex,
-            RemoteChangeImpact change,
-            HashSet<string> paths)
+            Guid? parentNodeId,
+            string name,
+            out string? relativePath)
         {
-            if (!change.ParentNodeId.HasValue)
-            {
-                return false;
-            }
-
-            if (!stateIndex.TryGetNodePath(change.ParentNodeId.Value, out string? parentPath)
+            relativePath = null;
+            if (!parentNodeId.HasValue
+                || !stateIndex.TryGetNodePath(parentNodeId.Value, out string? parentPath)
                 || parentPath is null)
             {
-                return false;
+                return RemoteNamedPathStatus.UnknownParent;
             }
 
-            if (!TryCombinePath(parentPath, change.Name, out string? relativePath))
-            {
-                return false;
-            }
-
-            if (change.TargetKind == RemoteChangeTargetKind.Folder
-                && change.NodeId == syncPair.RemoteRootNodeId)
-            {
-                return false;
-            }
-
-            paths.Add(relativePath);
-            return true;
-        }
-
-        private static bool TryCombinePath(string parentPath, string name, out string relativePath)
-        {
-            relativePath = string.Empty;
             if (string.IsNullOrWhiteSpace(name))
             {
-                return false;
+                return RemoteNamedPathStatus.Invalid;
             }
 
             string combined = string.IsNullOrEmpty(parentPath) ? name : parentPath + "/" + name;
             try
             {
                 relativePath = SyncPath.Normalize(combined);
-                return !SyncPathIgnoreRules.ShouldIgnore(relativePath);
             }
             catch (ArgumentException)
             {
-                return false;
+                relativePath = null;
+                return RemoteNamedPathStatus.Invalid;
+            }
+
+            if (SyncPathIgnoreRules.ShouldIgnore(relativePath))
+            {
+                relativePath = null;
+                return RemoteNamedPathStatus.Ignored;
+            }
+
+            return RemoteNamedPathStatus.Resolved;
+        }
+
+        private static RemoteNamedPathStatus ResolveWithoutPath(out string? relativePath)
+        {
+            relativePath = null;
+            return RemoteNamedPathStatus.UnknownParent;
+        }
+
+        private static void AddPathIfPresent(HashSet<string> paths, string? path)
+        {
+            if (path is not null)
+            {
+                paths.Add(path);
             }
         }
 

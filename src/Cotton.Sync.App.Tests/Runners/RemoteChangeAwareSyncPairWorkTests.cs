@@ -399,7 +399,7 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
-        public async Task RunOnceAsync_WithWindowsVirtualFilesKeepsFullRunWhenRemotePathCannotBeResolved()
+        public async Task RunOnceAsync_WithWindowsVirtualFilesSkipsChangeOutsideSyncPairWithoutFullRun()
         {
             var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
             var inner = new FakeSyncPairWork();
@@ -431,11 +431,59 @@ namespace Cotton.Sync.App.Tests.Runners
 
             Assert.Multiple(() =>
             {
-                Assert.That(inner.RunCallCount, Is.EqualTo(1));
-                Assert.That(inner.LastRequest?.IsFull, Is.True);
+                Assert.That(inner.RunCallCount, Is.Zero);
                 Assert.That(stateStore.LoadPairEntriesCallCount, Is.Zero);
                 Assert.That(stateStore.RemoteIdLookupCallCount, Is.EqualTo(1));
                 Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
+            });
+        }
+
+        [Test]
+        public void RunOnceAsync_WithWindowsVirtualFilesRejectsRelatedInvalidPathWithoutFullRun()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            Guid folderId = Guid.NewGuid();
+            FakeSyncPairWork inner = new();
+            FakeSyncStateStore stateStore = new(
+                new SyncStateEntry
+                {
+                    SyncPairId = syncPair.Id.ToString("D"),
+                    RelativePath = "Existing",
+                    Kind = SyncEntryKind.Directory,
+                    RemoteNodeId = folderId,
+                });
+            RemoteChangeFeedBatch batch = new(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 12,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes:
+                [
+                    new SyncChangeDto
+                    {
+                        Id = 11,
+                        Kind = SyncChangeKind.FolderRenamed,
+                        LayoutId = Guid.NewGuid(),
+                        ItemId = folderId,
+                        ParentNodeId = syncPair.RemoteRootNodeId,
+                        Name = "../Invalid",
+                        CreatedAt = DateTime.UtcNow,
+                    },
+                ]);
+            FakeRemoteChangeFeedReader remoteChanges = new(batch);
+            RemoteChangeAwareSyncPairWork work = new(inner, remoteChanges, stateStore);
+
+            SyncActionRequiredException? exception = Assert.ThrowsAsync<SyncActionRequiredException>(
+                () => work.RunOnceAsync(syncPair));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.Zero);
+                Assert.That(stateStore.RemoteIdLookupCallCount, Is.EqualTo(1));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.Empty);
+                Assert.That(exception?.Message, Does.Contain("could not be mapped"));
             });
         }
 
@@ -524,7 +572,15 @@ namespace Cotton.Sync.App.Tests.Runners
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
             FakeSyncPairWork inner = new();
-            FakeSyncStateStore stateStore = new();
+            Guid folderId = Guid.NewGuid();
+            FakeSyncStateStore stateStore = new(
+                new SyncStateEntry
+                {
+                    SyncPairId = syncPair.Id.ToString("D"),
+                    RelativePath = "Existing",
+                    Kind = SyncEntryKind.Directory,
+                    RemoteNodeId = folderId,
+                });
             RemoteChangeFeedBatch batch = new(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
@@ -537,11 +593,11 @@ namespace Cotton.Sync.App.Tests.Runners
                     new SyncChangeDto
                     {
                         Id = 11,
-                        Kind = SyncChangeKind.FolderCreated,
+                        Kind = SyncChangeKind.FolderRenamed,
                         LayoutId = Guid.NewGuid(),
-                        ItemId = Guid.NewGuid(),
-                        ParentNodeId = Guid.NewGuid(),
-                        Name = "Nested",
+                        ItemId = folderId,
+                        ParentNodeId = syncPair.RemoteRootNodeId,
+                        Name = "../Invalid",
                         CreatedAt = DateTime.UtcNow,
                     },
                 ]);
@@ -564,29 +620,27 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
-        public async Task RunOnceAsync_WithWindowsVirtualFilesReplansUnresolvedRemotePathAfterLocalStateMutation()
+        public async Task RunOnceAsync_WithWindowsVirtualFilesScopesKnownFolderMovedOutsidePairToOldPath()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            Guid parentNodeId = Guid.NewGuid();
-            FakeSyncStateStore stateStore = new();
-            FakeSyncPairWork inner = new()
-            {
-                OnRunAsync = async (runNumber, _) =>
+            Guid folderId = Guid.NewGuid();
+            Guid previousParentNodeId = Guid.NewGuid();
+            FakeSyncStateStore stateStore = new(
+                new SyncStateEntry
                 {
-                    if (runNumber != 1)
-                    {
-                        return;
-                    }
-
-                    await stateStore.UpsertAsync(new SyncStateEntry
-                    {
-                        SyncPairId = syncPair.Id.ToString("D"),
-                        RelativePath = "Recordings",
-                        Kind = SyncEntryKind.Directory,
-                        RemoteNodeId = parentNodeId,
-                    });
+                    SyncPairId = syncPair.Id.ToString("D"),
+                    RelativePath = "Recordings",
+                    Kind = SyncEntryKind.Directory,
+                    RemoteNodeId = previousParentNodeId,
                 },
-            };
+                new SyncStateEntry
+                {
+                    SyncPairId = syncPair.Id.ToString("D"),
+                    RelativePath = "Recordings/Archive",
+                    Kind = SyncEntryKind.Directory,
+                    RemoteNodeId = folderId,
+                });
+            FakeSyncPairWork inner = new();
             RemoteChangeFeedBatch batch = new(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
@@ -599,30 +653,26 @@ namespace Cotton.Sync.App.Tests.Runners
                     new SyncChangeDto
                     {
                         Id = 11,
-                        Kind = SyncChangeKind.FolderCreated,
+                        Kind = SyncChangeKind.FolderMoved,
                         LayoutId = Guid.NewGuid(),
-                        ItemId = Guid.NewGuid(),
-                        ParentNodeId = parentNodeId,
-                        Name = "Nested",
+                        ItemId = folderId,
+                        ParentNodeId = Guid.NewGuid(),
+                        PreviousParentNodeId = previousParentNodeId,
+                        Name = "Archive",
                         CreatedAt = DateTime.UtcNow,
                     },
                 ]);
             FakeRemoteChangeFeedReader remoteChanges = new(batch);
             RemoteChangeAwareSyncPairWork work = new(inner, remoteChanges, stateStore);
-            SyncRunRequest request = SyncRunRequest.ForLocalChangedPaths(["Recordings/subtitle.srt"]);
 
-            await work.RunOnceAsync(syncPair, request);
+            await work.RunOnceAsync(syncPair);
 
             Assert.Multiple(() =>
             {
-                Assert.That(inner.RunCallCount, Is.EqualTo(2));
-                Assert.That(inner.Requests[0], Is.SameAs(request));
-                Assert.That(inner.Requests[1].IsFull, Is.False);
-                Assert.That(inner.Requests[1].LocalChangedPaths, Is.EqualTo(new[] { "Recordings/Nested" }));
-                Assert.That(
-                    inner.Requests[1].Causes,
-                    Is.EqualTo(SyncRunCause.LocalChange | SyncRunCause.RealtimeRemoteChange));
-                Assert.That(stateStore.RemoteIdLookupCallCount, Is.EqualTo(2));
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.False);
+                Assert.That(inner.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { "Recordings/Archive" }));
+                Assert.That(stateStore.RemoteIdLookupCallCount, Is.EqualTo(1));
                 Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
             });
         }
@@ -655,12 +705,12 @@ namespace Cotton.Sync.App.Tests.Runners
                         Kind = SyncChangeKind.FileCreated,
                         LayoutId = Guid.NewGuid(),
                         ItemId = Guid.NewGuid(),
-                        ParentNodeId = Guid.NewGuid(),
+                        ParentNodeId = syncPair.RemoteRootNodeId,
                         Name = "remote-origin.txt",
                     },
                 ]);
             var remoteChanges = new FakeRemoteChangeFeedReader(emptyBatch, delayedBatch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, new FakeSyncStateStore());
 
             await work.RunOnceAsync(syncPair);
             await work.RunOnceAsync(syncPair);
@@ -743,7 +793,7 @@ namespace Cotton.Sync.App.Tests.Runners
                         Kind = SyncChangeKind.FileCreated,
                         LayoutId = Guid.NewGuid(),
                         ItemId = Guid.NewGuid(),
-                        ParentNodeId = Guid.NewGuid(),
+                        ParentNodeId = syncPair.RemoteRootNodeId,
                         Name = "report.txt",
                     },
                 ]);
@@ -756,7 +806,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 earliestAvailableCursor: 5,
                 changes: Array.Empty<SyncChangeDto>());
             var remoteChanges = new FakeRemoteChangeFeedReader(firstBatch, secondBatch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, new FakeSyncStateStore());
 
             await work.RunOnceAsync(syncPair);
 

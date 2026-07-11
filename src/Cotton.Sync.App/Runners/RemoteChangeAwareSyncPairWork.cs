@@ -70,16 +70,29 @@ namespace Cotton.Sync.App.Runners
                         remoteRead,
                         cancellationToken)
                     .ConfigureAwait(false);
-                await _inner.RunOnceAsync(syncPair, innerPlan.Request, cancellationToken).ConfigureAwait(false);
+                if (innerPlan.Request is not null)
+                {
+                    await _inner.RunOnceAsync(syncPair, innerPlan.Request, cancellationToken).ConfigureAwait(false);
+                }
+
                 if (!innerPlan.RemoteChangesCovered)
                 {
-                    SyncRunRequest replayRequest = await CreateRemoteReplayRequestAsync(
+                    if (innerPlan.Request is null)
+                    {
+                        throw CreateUnresolvedRemotePathException();
+                    }
+
+                    SyncRunRequest? replayRequest = await CreateRemoteReplayRequestAsync(
                             syncPair,
                             request,
                             remoteRead,
                             cancellationToken)
                         .ConfigureAwait(false);
-                    await _inner.RunOnceAsync(syncPair, replayRequest, cancellationToken).ConfigureAwait(false);
+                    if (replayRequest is not null)
+                    {
+                        await _inner.RunOnceAsync(syncPair, replayRequest, cancellationToken).ConfigureAwait(false);
+                    }
+
                     innerPlan = new InnerRequestPlan(replayRequest, RemoteChangesCovered: true);
                 }
             }
@@ -154,23 +167,24 @@ namespace Cotton.Sync.App.Runners
                 || !remoteRead.HasObservedChanges
                 || remoteRead.Batch.CursorExpired
                 || remoteRead.Batch.HasMore
-                || _scopedSyncPlanner is null)
+                || remoteRead.Batch.SinceCursor == 0)
             {
                 return new InnerRequestPlan(request, RemoteChangesCovered: true);
             }
 
-            SyncRunRequest? scopedRequest = await _scopedSyncPlanner
-                .TryCreateScopedRequestAsync(syncPair, request, remoteRead.Snapshot, cancellationToken)
-                .ConfigureAwait(false);
-            if (scopedRequest is not null)
+            if (_scopedSyncPlanner is null)
             {
-                return new InnerRequestPlan(scopedRequest, RemoteChangesCovered: true);
+                throw new SyncActionRequiredException(
+                    "Remote changes are pending, but scoped VFS planning is unavailable.");
             }
 
-            return new InnerRequestPlan(request, RemoteChangesCovered: request.IsFull);
+            RemoteChangeScopedSyncPlan scopedPlan = await _scopedSyncPlanner
+                .CreatePlanAsync(syncPair, request, remoteRead.Snapshot, cancellationToken)
+                .ConfigureAwait(false);
+            return new InnerRequestPlan(scopedPlan.Request, !scopedPlan.HasUnresolvedChanges);
         }
 
-        private async Task<SyncRunRequest> CreateRemoteReplayRequestAsync(
+        private async Task<SyncRunRequest?> CreateRemoteReplayRequestAsync(
             SyncPairSettings syncPair,
             SyncRunRequest originalRequest,
             RemoteChangeFeedReadResult remoteRead,
@@ -182,16 +196,26 @@ namespace Cotton.Sync.App.Runners
                     "Remote changes are pending, but scoped recovery is unavailable. Refresh the sync folder to rebuild its state.");
             }
 
-            SyncRunRequest? replayRequest = await _scopedSyncPlanner
-                .TryCreateScopedRequestAsync(
+            RemoteChangeScopedSyncPlan replayPlan = await _scopedSyncPlanner
+                .CreatePlanAsync(
                     syncPair,
                     SyncRunRequest.ForFull(originalRequest.Causes),
                     remoteRead.Snapshot,
                     cancellationToken)
                 .ConfigureAwait(false);
-            return replayRequest
-                ?? throw new SyncActionRequiredException(
-                    "Remote changes could not be mapped to local paths. Refresh the sync folder to rebuild its state.");
+            if (replayPlan.HasUnresolvedChanges)
+            {
+                throw CreateUnresolvedRemotePathException();
+            }
+
+            return replayPlan.Request;
+        }
+
+        private static SyncActionRequiredException CreateUnresolvedRemotePathException()
+        {
+            return new SyncActionRequiredException(
+                "Remote changes inside this sync folder could not be mapped to local paths. "
+                + "Refresh the sync folder to rebuild its state.");
         }
 
         private static bool ShouldAcknowledgeRemoteBatch(
@@ -223,6 +247,6 @@ namespace Cotton.Sync.App.Runners
             public bool HasObservedChanges => !Snapshot.IsEmpty;
         }
 
-        private record InnerRequestPlan(SyncRunRequest Request, bool RemoteChangesCovered);
+        private record InnerRequestPlan(SyncRunRequest? Request, bool RemoteChangesCovered);
     }
 }
