@@ -220,6 +220,29 @@
         </StackPanel>
 
         <StackPanel Spacing="8"
+                    IsVisible="{Binding IsStoredSessionRestoreVisible}">
+          <TextBlock Text="{Binding StoredSessionRestoreMessage}"
+                     Classes="secondary"
+                     FontSize="12"
+                     TextWrapping="Wrap"
+                     IsVisible="{Binding HasStoredSessionRestoreMessage}" />
+          <Button Classes="primary"
+                  HorizontalAlignment="Stretch"
+                  Command="{Binding RetryStoredSessionCommand}">
+            <StackPanel Orientation="Horizontal"
+                        Spacing="6"
+                        HorizontalAlignment="Center">
+              <materialIcons:MaterialIcon Kind="Refresh"
+                                          Width="15"
+                                          Height="15"
+                                          VerticalAlignment="Center" />
+              <TextBlock Text="Retry"
+                         VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+
+        <StackPanel Spacing="8"
                     IsVisible="{Binding IsSignInStepVisible}">
           <Border Padding="8"
                   CornerRadius="6"

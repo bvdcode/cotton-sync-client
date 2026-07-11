@@ -18,5 +18,6 @@ namespace Cotton.Sync.Desktop.Shell
         bool IsSignedIn,
         IReadOnlyList<DesktopSyncPairSnapshot> SyncPairs,
         string DeviceName = "Cotton Sync Desktop",
-        string? StartupErrorMessage = null);
+        string? StartupErrorMessage = null,
+        bool HasStoredSession = false);
 }

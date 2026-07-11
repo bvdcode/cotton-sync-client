@@ -51,7 +51,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             Assert.Multiple(() =>
             {
                 Assert.That(mainWindowXaml, Does.Not.Contain("Kind=\"RefreshCircle\""));
-                Assert.That(CountOccurrences(mainWindowXaml, "Kind=\"Refresh\""), Is.EqualTo(3));
+                Assert.That(CountOccurrences(mainWindowXaml, "Kind=\"Refresh\""), Is.EqualTo(4));
                 Assert.That(CountOccurrences(mainWindowXaml, "Classes=\"icon flatIcon\""), Is.EqualTo(2));
                 Assert.That(CountOccurrences(mainWindowXaml, "Foreground=\"{DynamicResource CottonPrimaryBrush}\""), Is.EqualTo(3));
                 Assert.That(appXaml, Does.Contain("Style Selector=\"Button.flatIcon\""));

@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using Cotton.Sdk;
+using Cotton.Sync.App.Runners;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Local;
 using Cotton.Sync.VirtualFiles;
@@ -12,7 +13,10 @@ namespace Cotton.Sync.Desktop.Shell
     internal static class DesktopActionRequiredMessageResolver
     {
         internal const string MissingDesktopSyncChangesApiMessage =
-            "This Cotton server needs an update before desktop sync can continue. Contact the server admin, then retry sync.";
+            "Cotton Cloud desktop change feed is unavailable. Check the server deployment; Cotton Sync will retry automatically.";
+
+        internal const string TemporaryServerUnavailableMessage =
+            "Cotton Cloud is temporarily unavailable. Cotton Sync will retry automatically.";
 
         private const string HtmlInsteadOfJsonMessage =
             "Cotton API returned a web page instead of JSON. Check the server URL or backend deployment and retry.";
@@ -36,6 +40,9 @@ namespace Cotton.Sync.Desktop.Shell
 
         private const string CottonApiRejectedRequestMessage =
             "Cotton API rejected the request. Check diagnostics and retry.";
+
+        private const string ServerLockedMessage =
+            "Cotton Cloud reports that the server is locked. Unlock it in the web app; Cotton Sync will retry automatically.";
 
         private const string LocalPermissionDeniedMessage =
             "Cotton Sync cannot access one of the local files. Grant file permissions and retry sync.";
@@ -144,6 +151,21 @@ namespace Cotton.Sync.Desktop.Shell
 
         private static string? NormalizeApiException(CottonApiException exception)
         {
+            if (LooksLikeMissingDesktopSyncChangesApi(exception.Message, exception.ResponseBody))
+            {
+                return MissingDesktopSyncChangesApiMessage;
+            }
+
+            if (exception.StatusCode == System.Net.HttpStatusCode.Locked)
+            {
+                return ServerLockedMessage;
+            }
+
+            if (SyncFailureClassifier.IsTransientConnectionFailure(exception))
+            {
+                return TemporaryServerUnavailableMessage;
+            }
+
             if (IsQuotaExceededStatus(exception.StatusCode))
             {
                 return RemoteQuotaExceededMessage;
@@ -416,7 +438,9 @@ namespace Cotton.Sync.Desktop.Shell
         private static bool LooksLikeMissingDesktopSyncChangesApi(string message, string? responseBody)
         {
             return message.Contains("GET /api/v1/sync/changes", StringComparison.Ordinal)
-                && LooksLikeHtmlInsteadOfJson(message, responseBody);
+                && (LooksLikeHtmlInsteadOfJson(message, responseBody)
+                    || message.Contains("status 404", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(responseBody?.Trim(), "404 page not found", StringComparison.OrdinalIgnoreCase));
         }
 
         private static bool LooksLikeHtmlInsteadOfJson(string message, string? responseBody)

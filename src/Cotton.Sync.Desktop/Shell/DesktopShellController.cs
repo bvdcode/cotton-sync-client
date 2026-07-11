@@ -12,6 +12,7 @@ using Cotton.Sync.App.Activities;
 using Cotton.Sync.App.Platform;
 using Cotton.Sync.App.Preferences;
 using Cotton.Sync.App.Progress;
+using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.Status;
 using Cotton.Sync.App.SyncApplication;
 using Cotton.Sync.App.SyncPairs;
@@ -151,20 +152,13 @@ namespace Cotton.Sync.Desktop.Shell
             IReadOnlyList<SyncPairSettings> syncPairs = await _syncPairStore.ListAsync(cancellationToken).ConfigureAwait(false);
             ReplaceKnownSyncPairSettings(syncPairs);
             Uri? serverUrl = _startupOptions.ServerUrl ?? preferences.RememberedServerUrl;
-            string? startupErrorMessage = null;
-            AuthSession? session = null;
+            DesktopStoredSessionRestoreSnapshot sessionRestore = new(null, false, null);
             if (serverUrl is not null)
             {
-                try
-                {
-                    session = await TryRestoreSessionAsync(serverUrl, cancellationToken).ConfigureAwait(false);
-                }
-                catch (Exception exception) when (exception is not OperationCanceledException)
-                {
-                    Trace.TraceWarning("Failed to restore desktop session for {0}: {1}", serverUrl, exception);
-                    startupErrorMessage = DesktopActionRequiredMessageResolver.FromException(exception);
-                }
+                sessionRestore = await TryRestoreSessionAsync(serverUrl, cancellationToken).ConfigureAwait(false);
             }
+
+            AuthSession? session = sessionRestore.Session;
             DesktopPlatformCapabilitySnapshot platformCapabilities = DesktopPlatformCapabilities.CreateSnapshot();
             IReadOnlyList<DesktopSyncPairSnapshot> syncPairSnapshots = await BuildSyncPairSnapshotsAsync(
                 syncPairs,
@@ -181,7 +175,16 @@ namespace Cotton.Sync.Desktop.Shell
                 session is not null,
                 syncPairSnapshots,
                 DesktopDeviceIdentity.CreateDeviceName(),
-                startupErrorMessage);
+                sessionRestore.ErrorMessage,
+                sessionRestore.HasStoredSession);
+        }
+
+        public Task<DesktopStoredSessionRestoreSnapshot> RestoreStoredSessionAsync(
+            string serverUrl,
+            CancellationToken cancellationToken = default)
+        {
+            Uri parsedServerUrl = ParseServerUrl(serverUrl);
+            return TryRestoreSessionAsync(parsedServerUrl, cancellationToken);
         }
 
         public async Task<DesktopServerProbeResult> ProbeServerAsync(
@@ -1900,28 +1903,33 @@ namespace Cotton.Sync.Desktop.Shell
                 progress.IsCompleted,
                 progress.OccurredAtUtc,
                 progress.BytesCompleted,
-                progress.BytesTotal);
+                progress.BytesTotal,
+                progress.Causes,
+                progress.IsFull,
+                progress.RequestedPathCount);
         }
 
-        private async Task<AuthSession?> TryRestoreSessionAsync(
+        private async Task<DesktopStoredSessionRestoreSnapshot> TryRestoreSessionAsync(
             Uri serverUrl,
             CancellationToken cancellationToken)
         {
             if (!await CanUseStoredSessionAsync(cancellationToken).ConfigureAwait(false))
             {
-                return null;
+                return new DesktopStoredSessionRestoreSnapshot(null, false, null);
             }
 
             DesktopSyncApplicationHost host = _factory.Create(serverUrl);
+            bool hasStoredSession = false;
             try
             {
                 if (await host.TokenStore.GetAsync(cancellationToken).ConfigureAwait(false) is null)
                 {
                     DesktopAuthDiagnosticsState.RecordSessionRestoreSkipped("skippedNoStoredTokens");
                     await host.DisposeAsync().ConfigureAwait(false);
-                    return null;
+                    return new DesktopStoredSessionRestoreSnapshot(null, false, null);
                 }
 
+                hasStoredSession = true;
                 using CancellationTokenSource restoreCancellation =
                     CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 restoreCancellation.CancelAfter(_savedSessionRestoreTimeout);
@@ -1933,7 +1941,7 @@ namespace Cotton.Sync.Desktop.Shell
                 DesktopAuthDiagnosticsState.RecordSessionRestoreSucceeded(restoredSession.Attempts);
                 await ReplaceHostAsync(host, cancellationToken).ConfigureAwait(false);
                 StartSessionSyncInBackground(host, "session restore");
-                return restoredSession.Session;
+                return new DesktopStoredSessionRestoreSnapshot(restoredSession.Session, true, null);
             }
             catch (Cotton.Sdk.CottonApiException exception) when (IsAuthSessionRejected(exception))
             {
@@ -1941,14 +1949,13 @@ namespace Cotton.Sync.Desktop.Shell
                 DesktopAuthDiagnosticsState.RecordSessionRestoreRejected(attempts: 1, exception);
                 await host.TokenStore.ClearAsync(cancellationToken).ConfigureAwait(false);
                 await host.DisposeAsync().ConfigureAwait(false);
-                return null;
+                return new DesktopStoredSessionRestoreSnapshot(
+                    null,
+                    false,
+                    "Saved session expired. Sign in again to continue syncing.");
             }
-            catch (Cotton.Sdk.CottonApiException exception)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                DesktopAuthDiagnosticsState.RecordSessionRestoreFailed(
-                    "failed",
-                    attempts: 1,
-                    exception);
                 await host.DisposeAsync().ConfigureAwait(false);
                 throw;
             }
@@ -1963,13 +1970,23 @@ namespace Cotton.Sync.Desktop.Shell
                     attempts: 1,
                     new TimeoutException("Saved session restore timed out."));
                 await host.DisposeAsync().ConfigureAwait(false);
-                throw new TimeoutException("Saved session could not be restored. Check connection to Cotton Cloud and retry.");
+                return new DesktopStoredSessionRestoreSnapshot(
+                    null,
+                    hasStoredSession,
+                    "Saved session could not be restored. Cotton Sync will retry automatically.");
             }
-            catch (HttpRequestException)
+            catch (Exception exception)
             {
-                Trace.TraceWarning("Failed to restore desktop session because the server is unreachable: {0}", serverUrl);
+                Trace.TraceWarning("Failed to restore desktop session for {0}: {1}", serverUrl, exception);
+                DesktopAuthDiagnosticsState.RecordSessionRestoreFailed(
+                    "failed",
+                    attempts: 1,
+                    exception);
                 await host.DisposeAsync().ConfigureAwait(false);
-                throw;
+                return new DesktopStoredSessionRestoreSnapshot(
+                    null,
+                    hasStoredSession,
+                    DesktopActionRequiredMessageResolver.FromException(exception));
             }
         }
 
@@ -2024,15 +2041,31 @@ namespace Cotton.Sync.Desktop.Shell
                 return false;
             }
 
-            return exception is HttpRequestException
-                or IOException
-                or TimeoutException
-                or TaskCanceledException;
+            return exception switch
+            {
+                Cotton.Sdk.CottonApiException apiException => IsTransientSessionRestoreStatus(apiException.StatusCode),
+                HttpRequestException requestException => IsTransientSessionRestoreStatus(requestException.StatusCode),
+                IOException => true,
+                TimeoutException => true,
+                TaskCanceledException => true,
+                _ => false,
+            };
+        }
+
+        private static bool IsTransientSessionRestoreStatus(HttpStatusCode? statusCode)
+        {
+            return statusCode is null
+                or HttpStatusCode.RequestTimeout
+                or HttpStatusCode.TooManyRequests
+                or HttpStatusCode.InternalServerError
+                or HttpStatusCode.BadGateway
+                or HttpStatusCode.ServiceUnavailable
+                or HttpStatusCode.GatewayTimeout;
         }
 
         private static bool IsAuthSessionRejected(Cotton.Sdk.CottonApiException exception)
         {
-            return exception.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden;
+            return exception.StatusCode == HttpStatusCode.Unauthorized;
         }
 
         private void StartSessionSyncInBackground(DesktopSyncApplicationHost host, string source)
@@ -2084,7 +2117,12 @@ namespace Cotton.Sync.Desktop.Shell
                         return;
                     }
 
-                    await host.App.SyncNowAsync(syncPairId, CancellationToken.None).ConfigureAwait(false);
+                    await host.App
+                        .SyncNowAsync(
+                            syncPairId,
+                            SyncRunRequest.ForFull(SyncRunCause.InitialPopulation),
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
                 }
                 catch (Exception exception)
                 {

@@ -7,6 +7,7 @@ using Cotton.Sync.App.LocalChanges;
 using Cotton.Sync.App.Platform;
 using Cotton.Sync.App.Preferences;
 using Cotton.Sync.App.RemoteChanges;
+using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.Supervision;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.State;
@@ -328,6 +329,15 @@ namespace Cotton.Sync.App.SyncApplication
         public Task SyncNowAsync(Guid syncPairId, CancellationToken cancellationToken = default)
         {
             return _supervisor.SyncNowAsync(syncPairId, cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public Task SyncNowAsync(
+            Guid syncPairId,
+            SyncRunRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return _supervisor.SyncNowAsync(syncPairId, request, cancellationToken);
         }
 
         /// <inheritdoc />

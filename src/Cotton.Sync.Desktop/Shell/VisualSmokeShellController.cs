@@ -91,6 +91,19 @@ namespace Cotton.Sync.Desktop.Shell
             return Task.FromResult(new DesktopServerProbeResult(url, true, "Cotton Cloud", "visual-smoke"));
         }
 
+        public Task<DesktopStoredSessionRestoreSnapshot> RestoreStoredSessionAsync(
+            string serverUrl,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            AuthSession session = new(
+                Guid.Parse("7ab1a10f-5fa8-4e4e-8d4d-db3ea720aeef"),
+                "qa@cottoncloud.dev",
+                "qa@cottoncloud.dev",
+                isTotpEnabled: true);
+            return Task.FromResult(new DesktopStoredSessionRestoreSnapshot(session, true, null));
+        }
+
         public Task<AuthSession> SignInAsync(
             DesktopSignInRequest request,
             CancellationToken cancellationToken = default)

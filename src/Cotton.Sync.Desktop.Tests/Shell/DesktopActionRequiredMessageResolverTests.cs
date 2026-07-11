@@ -42,7 +42,37 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             Assert.That(
                 message,
-                Is.EqualTo("This Cotton server needs an update before desktop sync can continue. Contact the server admin, then retry sync."));
+                Is.EqualTo("Cotton Cloud desktop change feed is unavailable. Check the server deployment; Cotton Sync will retry automatically."));
+        }
+
+        [Test]
+        public void FromException_ExplainsTemporaryChangeFeedRoute404()
+        {
+            var exception = new CottonApiException(
+                HttpStatusCode.NotFound,
+                "404 page not found",
+                "Cotton API request GET /api/v1/sync/changes?since=9828&limit=500 failed with status 404 (NotFound).");
+
+            string message = DesktopActionRequiredMessageResolver.FromException(exception);
+
+            Assert.That(
+                message,
+                Is.EqualTo("Cotton Cloud desktop change feed is unavailable. Check the server deployment; Cotton Sync will retry automatically."));
+        }
+
+        [Test]
+        public void FromException_ExplainsTemporarilyLockedServer()
+        {
+            var exception = new CottonApiException(
+                HttpStatusCode.Locked,
+                "{\"locked\":true,\"message\":\"Cotton is locked until the master key is provided.\"}",
+                "Cotton API request GET /api/v1/auth/me failed with status 423 (Locked).");
+
+            string message = DesktopActionRequiredMessageResolver.FromException(exception);
+
+            Assert.That(
+                message,
+                Is.EqualTo("Cotton Cloud reports that the server is locked. Unlock it in the web app; Cotton Sync will retry automatically."));
         }
 
         [Test]

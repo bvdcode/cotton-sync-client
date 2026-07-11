@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.Auth;
+using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.Preferences;
 using Cotton.Sync.App.SyncPairs;
 
@@ -80,6 +81,14 @@ namespace Cotton.Sync.App.SyncApplication
         /// Requests one sync pass for a runner.
         /// </summary>
         Task SyncNowAsync(Guid syncPairId, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Requests one sync pass for a runner with an explicit sync surface and cause.
+        /// </summary>
+        Task SyncNowAsync(
+            Guid syncPairId,
+            SyncRunRequest request,
+            CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Pauses every runner.

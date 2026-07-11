@@ -7,8 +7,10 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
+using Cotton.Sdk;
 using Cotton.Sync.App.Auth;
 using Cotton.Sync.App.Preferences;
+using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Shell;
@@ -42,6 +44,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private static readonly TimeSpan MinimumRunProgressEstimateDuration = TimeSpan.FromSeconds(1);
         private static readonly TimeSpan RunProgressEstimateSmoothingPeriod = TimeSpan.FromSeconds(10);
         private static readonly TimeSpan DefaultPeriodicUpdateCheckInterval = TimeSpan.FromHours(6);
+        private static readonly TimeSpan DefaultStoredSessionRetryInterval = TimeSpan.FromSeconds(15);
 
         private readonly IDesktopShellController _controller;
         private readonly DesktopFeatureFlags _featureFlags;
@@ -50,6 +53,8 @@ namespace Cotton.Sync.Desktop.ViewModels
         private readonly bool _checkForUpdatesOnStartup;
         private readonly TimeSpan _periodicUpdateCheckInterval;
         private readonly Func<TimeSpan, CancellationToken, Task> _updateDelayAsync;
+        private readonly TimeSpan _storedSessionRetryInterval;
+        private readonly Func<TimeSpan, CancellationToken, Task> _storedSessionRetryDelayAsync;
         private readonly bool _notifyOnSessionRestore;
         private readonly IDesktopThemeService _themeService;
         private readonly IDesktopUiDispatcher _uiDispatcher;
@@ -109,6 +114,8 @@ namespace Cotton.Sync.Desktop.ViewModels
         private bool _isCurrentRunProgressIndeterminate;
         private bool _isCurrentTransferIndeterminate;
         private bool _isSignedIn;
+        private bool _hasStoredSession;
+        private string _storedSessionRestoreMessage = string.Empty;
         private string _lastDiagnosticsBundlePath = string.Empty;
         private string _localFolderPath = string.Empty;
         private string _newRemoteFolderName = string.Empty;
@@ -158,6 +165,8 @@ namespace Cotton.Sync.Desktop.ViewModels
         private CancellationTokenSource? _browserSignInCancellation;
         private CancellationTokenSource? _startupUpdateCancellation;
         private CancellationTokenSource? _periodicUpdateCancellation;
+        private CancellationTokenSource? _storedSessionRetryCancellation;
+        private Task? _storedSessionRetryTask;
         private ConflictRowViewModel? _selectedConflict;
         private RemoteFolderRowViewModel? _selectedRemoteFolder;
         private SyncPairRowViewModel? _selectedSyncPair;
@@ -194,7 +203,9 @@ namespace Cotton.Sync.Desktop.ViewModels
             bool checkForUpdatesOnStartup = true,
             bool notifyOnSessionRestore = false,
             TimeSpan? periodicUpdateCheckInterval = null,
-            Func<TimeSpan, CancellationToken, Task>? updateDelayAsync = null)
+            Func<TimeSpan, CancellationToken, Task>? updateDelayAsync = null,
+            TimeSpan? storedSessionRetryInterval = null,
+            Func<TimeSpan, CancellationToken, Task>? storedSessionRetryDelayAsync = null)
         {
             _controller = controller ?? throw new ArgumentNullException(nameof(controller));
             _featureFlags = featureFlags ?? DesktopFeatureFlags.Default;
@@ -204,6 +215,9 @@ namespace Cotton.Sync.Desktop.ViewModels
             _periodicUpdateCheckInterval = periodicUpdateCheckInterval ?? DefaultPeriodicUpdateCheckInterval;
             ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_periodicUpdateCheckInterval, TimeSpan.Zero);
             _updateDelayAsync = updateDelayAsync ?? Task.Delay;
+            _storedSessionRetryInterval = storedSessionRetryInterval ?? DefaultStoredSessionRetryInterval;
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_storedSessionRetryInterval, TimeSpan.Zero);
+            _storedSessionRetryDelayAsync = storedSessionRetryDelayAsync ?? Task.Delay;
             _notifyOnSessionRestore = notifyOnSessionRestore;
             _themeService = themeService ?? throw new ArgumentNullException(nameof(themeService));
             _uiDispatcher = uiDispatcher ?? new AvaloniaDesktopUiDispatcher();
@@ -226,6 +240,10 @@ namespace Cotton.Sync.Desktop.ViewModels
             CancelBrowserSignInCommand = new AsyncRelayCommand(
                 CancelBrowserSignInAsync,
                 CanCancelBrowserSignIn,
+                HandleCommandError);
+            RetryStoredSessionCommand = new AsyncRelayCommand(
+                RetryStoredSessionAsync,
+                CanRetryStoredSession,
                 HandleCommandError);
             ChangeServerCommand = new AsyncRelayCommand(ChangeServerAsync, () => !IsBusy, HandleCommandError);
             AddSyncPairCommand = new AsyncRelayCommand(AddSyncPairAsync, CanAddSyncPair, HandleCommandError);
@@ -402,6 +420,8 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public AsyncRelayCommand RemoteFolderUpCommand { get; }
 
+        public AsyncRelayCommand RetryStoredSessionCommand { get; }
+
         public AsyncRelayCommand SignInCommand { get; }
 
         public AsyncRelayCommand SignInWithBrowserCommand { get; }
@@ -431,6 +451,8 @@ namespace Cotton.Sync.Desktop.ViewModels
         internal Task? StartupUpdateTask => _startupUpdateTask;
 
         internal Task? PeriodicUpdateTask => _periodicUpdateTask;
+
+        internal Task? StoredSessionRetryTask => _storedSessionRetryTask;
 
         public string AccountName
         {
@@ -994,6 +1016,35 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
         }
 
+        public bool HasStoredSession
+        {
+            get => _hasStoredSession;
+            private set
+            {
+                if (SetProperty(ref _hasStoredSession, value))
+                {
+                    OnPropertyChanged(nameof(IsStoredSessionRestoreVisible));
+                    RetryStoredSessionCommand.RaiseCanExecuteChanged();
+                    RaiseSetupStateProperties();
+                    RefreshCurrentProgressText();
+                }
+            }
+        }
+
+        public string StoredSessionRestoreMessage
+        {
+            get => _storedSessionRestoreMessage;
+            private set
+            {
+                if (SetProperty(ref _storedSessionRestoreMessage, value))
+                {
+                    OnPropertyChanged(nameof(HasStoredSessionRestoreMessage));
+                }
+            }
+        }
+
+        public bool HasStoredSessionRestoreMessage => !string.IsNullOrWhiteSpace(StoredSessionRestoreMessage);
+
         public bool HasNoSyncPairs => SyncPairs.Count == 0;
 
         public bool HasNoActivities => Activities.Count == 0;
@@ -1146,15 +1197,21 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public bool IsSetupVisible => !IsSignedIn && !IsStartupLoadingVisible;
 
-        public bool IsServerStepVisible => IsSetupVisible && !IsServerVerified;
+        public bool IsStoredSessionRestoreVisible => IsSetupVisible && HasStoredSession;
 
-        public bool IsSignInStepVisible => IsSetupVisible && IsServerVerified;
+        public bool IsServerStepVisible => IsSetupVisible && !HasStoredSession && !IsServerVerified;
 
-        public string SetupTitle => IsServerVerified ? "Sign in" : "Connect Cotton Sync";
+        public bool IsSignInStepVisible => IsSetupVisible && !HasStoredSession && IsServerVerified;
 
-        public string SetupSubtitle => IsServerVerified
-            ? "Use your Cotton Cloud account."
-            : "Choose the Cotton Cloud server for this computer.";
+        public string SetupTitle => HasStoredSession
+            ? "Reconnecting Cotton Sync"
+            : IsServerVerified ? "Sign in" : "Connect Cotton Sync";
+
+        public string SetupSubtitle => HasStoredSession
+            ? "Your saved session is waiting for Cotton Cloud."
+            : IsServerVerified
+                ? "Use your Cotton Cloud account."
+                : "Choose the Cotton Cloud server for this computer.";
 
         public bool StartWithOperatingSystem
         {
@@ -1825,6 +1882,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             _periodicUpdateCancellation?.Cancel();
             _periodicUpdateCancellation?.Dispose();
             _periodicUpdateCancellation = null;
+            CancelStoredSessionRetry();
         }
 
         public async Task InitializeAsync()
@@ -1858,13 +1916,16 @@ namespace Cotton.Sync.Desktop.ViewModels
                 }
 
                 SelectedSyncPair = SyncPairs.FirstOrDefault();
+                HasStoredSession = snapshot.HasStoredSession;
                 IsSignedIn = snapshot.IsSignedIn;
                 AccountName = snapshot.IsSignedIn
                     ? ResolveAccountDisplayName(snapshot.AccountName, snapshot.RememberedUsername)
                     : "Signed out";
                 GlobalStatus = snapshot.IsSignedIn
                     ? "Connected"
-                    : SyncPairs.Count == 0 ? "Ready to connect" : "Ready";
+                    : snapshot.HasStoredSession
+                        ? "Waiting to reconnect"
+                        : SyncPairs.Count == 0 ? "Ready to connect" : "Ready";
                 RefreshCurrentProgressText();
                 AddActivity("App", string.Empty, "Settings loaded");
                 if (snapshot.IsSignedIn)
@@ -1877,8 +1938,17 @@ namespace Cotton.Sync.Desktop.ViewModels
                 }
                 else if (!string.IsNullOrWhiteSpace(snapshot.StartupErrorMessage))
                 {
-                    ActionRequiredMessage = snapshot.StartupErrorMessage;
-                    AddActivity("Error", string.Empty, snapshot.StartupErrorMessage);
+                    if (snapshot.HasStoredSession)
+                    {
+                        StoredSessionRestoreMessage = snapshot.StartupErrorMessage;
+                        ActionRequiredMessage = string.Empty;
+                        AddActivity("Warning", string.Empty, snapshot.StartupErrorMessage);
+                    }
+                    else
+                    {
+                        ActionRequiredMessage = snapshot.StartupErrorMessage;
+                        AddActivity("Error", string.Empty, snapshot.StartupErrorMessage);
+                    }
                 }
 
                 RefreshDiagnosticsItems();
@@ -1893,6 +1963,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             {
                 SetSnapshotLoading(false);
                 IsBusy = false;
+                BeginStoredSessionRetry();
             }
         }
 
@@ -2866,6 +2937,134 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
         }
 
+        private bool CanRetryStoredSession()
+        {
+            return !IsBusy
+                && !IsSignedIn
+                && HasStoredSession
+                && !string.IsNullOrWhiteSpace(ServerUrl);
+        }
+
+        private async Task RetryStoredSessionAsync()
+        {
+            Task previousRetry = CancelStoredSessionRetry();
+            await IgnoreStoredSessionRetryCancellationAsync(previousRetry).ConfigureAwait(true);
+            IsBusy = true;
+            GlobalStatus = "Reconnecting";
+            try
+            {
+                DesktopStoredSessionRestoreSnapshot result = await _controller
+                    .RestoreStoredSessionAsync(ServerUrl)
+                    .ConfigureAwait(true);
+                ApplyStoredSessionRestoreResult(result, "Session restored");
+            }
+            finally
+            {
+                IsBusy = false;
+                BeginStoredSessionRetry();
+            }
+        }
+
+        private void ApplyStoredSessionRestoreResult(
+            DesktopStoredSessionRestoreSnapshot result,
+            string activityDetails)
+        {
+            HasStoredSession = result.HasStoredSession;
+            if (result.Session is not null)
+            {
+                ApplySignedInSession(result.Session, activityDetails);
+                return;
+            }
+
+            GlobalStatus = result.HasStoredSession ? "Waiting to reconnect" : "Session expired";
+            if (result.HasStoredSession)
+            {
+                StoredSessionRestoreMessage = result.ErrorMessage
+                    ?? "Saved session is temporarily unavailable. Cotton Sync will retry automatically.";
+                ActionRequiredMessage = string.Empty;
+                return;
+            }
+
+            StoredSessionRestoreMessage = string.Empty;
+            ActionRequiredMessage = result.ErrorMessage
+                ?? "Saved session expired. Sign in again to continue syncing.";
+        }
+
+        private void BeginStoredSessionRetry()
+        {
+            if (IsSignedIn || !HasStoredSession || string.IsNullOrWhiteSpace(ServerUrl))
+            {
+                return;
+            }
+
+            CancelStoredSessionRetry();
+            var cancellation = new CancellationTokenSource();
+            _storedSessionRetryCancellation = cancellation;
+            _storedSessionRetryTask = RetryStoredSessionUntilResolvedAsync(cancellation);
+        }
+
+        private async Task RetryStoredSessionUntilResolvedAsync(CancellationTokenSource retryCancellation)
+        {
+            CancellationToken cancellationToken = retryCancellation.Token;
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    await _storedSessionRetryDelayAsync(_storedSessionRetryInterval, cancellationToken)
+                        .ConfigureAwait(false);
+                    DesktopStoredSessionRestoreSnapshot result = await _controller
+                        .RestoreStoredSessionAsync(ServerUrl, cancellationToken)
+                        .ConfigureAwait(false);
+                    bool shouldContinue = result.Session is null && result.HasStoredSession;
+                    await _uiDispatcher.InvokeAsync(
+                        () => ApplyStoredSessionRestoreResult(result, "Session restored automatically"),
+                        cancellationToken).ConfigureAwait(false);
+                    if (!shouldContinue)
+                    {
+                        return;
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+            catch (Exception exception)
+            {
+                Trace.TraceWarning("Automatic stored session restore failed: {0}", exception);
+            }
+            finally
+            {
+                if (ReferenceEquals(_storedSessionRetryCancellation, retryCancellation))
+                {
+                    _storedSessionRetryCancellation = null;
+                    _storedSessionRetryTask = null;
+                }
+
+                retryCancellation.Dispose();
+            }
+        }
+
+        private Task CancelStoredSessionRetry()
+        {
+            CancellationTokenSource? cancellation = _storedSessionRetryCancellation;
+            Task retryTask = _storedSessionRetryTask ?? Task.CompletedTask;
+            _storedSessionRetryCancellation = null;
+            _storedSessionRetryTask = null;
+            cancellation?.Cancel();
+            return retryTask;
+        }
+
+        private static async Task IgnoreStoredSessionRetryCancellationAsync(Task retryTask)
+        {
+            try
+            {
+                await retryTask.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
         private async Task SignInWithBrowserAsync()
         {
             using var cancellation = new CancellationTokenSource();
@@ -2910,6 +3109,9 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private void ApplySignedInSession(AuthSession session, string activityDetails)
         {
+            CancelStoredSessionRetry();
+            HasStoredSession = true;
+            StoredSessionRestoreMessage = string.Empty;
             IsSignedIn = true;
             AccountName = ResolveAccountDisplayName(session.Email, session.Username);
             Username = AccountName;
@@ -2940,6 +3142,9 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private void ApplySignedOutState(string globalStatus)
         {
+            CancelStoredSessionRetry();
+            HasStoredSession = false;
+            StoredSessionRestoreMessage = string.Empty;
             IsSignedIn = false;
             AccountName = "Signed out";
             GlobalStatus = globalStatus;
@@ -3627,12 +3832,35 @@ namespace Cotton.Sync.Desktop.ViewModels
         private void HandleCommandError(Exception exception)
         {
             Trace.TraceError(exception.ToString());
+            if (SyncFailureClassifier.IsTransientConnectionFailure(exception))
+            {
+                string message = ResolveTransientConnectionMessage(exception);
+                GlobalStatus = "Offline";
+                ActionRequiredMessage = string.Empty;
+                AddActivity("Warning", string.Empty, message);
+                RefreshCurrentProgressText();
+                IsBusy = false;
+                return;
+            }
+
             GlobalStatus = ResolveCommandFailureStatus();
             string actionRequiredMessage = DesktopActionRequiredMessageResolver.FromException(exception);
             ActionRequiredMessage = actionRequiredMessage;
             AddActivity("Error", string.Empty, actionRequiredMessage);
             RefreshCurrentProgressText();
             IsBusy = false;
+        }
+
+        private static string ResolveTransientConnectionMessage(Exception exception)
+        {
+            if (exception is AggregateException aggregateException && aggregateException.InnerExceptions.Count == 1)
+            {
+                return DesktopActionRequiredMessageResolver.FromException(aggregateException.InnerExceptions[0]);
+            }
+
+            return exception is CottonApiException
+                ? DesktopActionRequiredMessageResolver.FromException(exception)
+                : DesktopActionRequiredMessageResolver.TemporaryServerUnavailableMessage;
         }
 
         private string ResolveCommandFailureStatus()
@@ -4837,6 +5065,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             SignInCommand.RaiseCanExecuteChanged();
             SignInWithBrowserCommand.RaiseCanExecuteChanged();
             CancelBrowserSignInCommand.RaiseCanExecuteChanged();
+            RetryStoredSessionCommand.RaiseCanExecuteChanged();
             SignOutCommand.RaiseCanExecuteChanged();
             AddSyncPairCommand.RaiseCanExecuteChanged();
             BrowseLocalFolderCommand.RaiseCanExecuteChanged();
@@ -4942,6 +5171,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private void RaiseSetupStateProperties()
         {
+            OnPropertyChanged(nameof(IsStoredSessionRestoreVisible));
             OnPropertyChanged(nameof(IsServerStepVisible));
             OnPropertyChanged(nameof(IsSignInStepVisible));
             OnPropertyChanged(nameof(SetupTitle));
@@ -5000,6 +5230,12 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private void RefreshCurrentProgressText()
         {
+            if (!IsSignedIn && HasStoredSession)
+            {
+                CurrentProgressText = "Waiting for Cotton Cloud to reconnect.";
+                return;
+            }
+
             if (HasActionRequired && !IsSignedIn)
             {
                 CurrentProgressText = "Sign in to continue.";
@@ -5985,22 +6221,101 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             string label = GetRunStageLabel(progress.Stage);
             string details = CreateRunProgressDetails(progress);
+            string stageDetails;
             if (string.IsNullOrWhiteSpace(details))
             {
-                return label;
+                stageDetails = label;
             }
-
-            if (!progress.FilesTotal.HasValue && progress.FilesCompleted <= 0)
+            else if (!progress.FilesTotal.HasValue && progress.FilesCompleted <= 0)
             {
-                return details;
+                stageDetails = details;
             }
-
-            if (IsStartingCountedRunProgress(progress))
+            else if (IsStartingCountedRunProgress(progress))
             {
-                return details;
+                stageDetails = details;
+            }
+            else
+            {
+                stageDetails = label + " · " + details;
             }
 
-            return label + " · " + details;
+            string context = CreateRunContextDetails(progress);
+            return string.IsNullOrWhiteSpace(context)
+                ? stageDetails
+                : context + " · " + stageDetails;
+        }
+
+        private static string CreateRunContextDetails(DesktopRunProgressSnapshot progress)
+        {
+            if (progress.Causes == SyncRunCause.InternalMaintenance)
+            {
+                return string.Empty;
+            }
+
+            string cause = GetRunCauseLabel(progress.Causes);
+            string scope = progress.IsFull
+                ? "full folder scope"
+                : progress.RequestedPathCount == 1
+                    ? "1 changed path"
+                    : progress.RequestedPathCount.ToString(CultureInfo.CurrentCulture) + " changed paths";
+            return cause + " · " + scope;
+        }
+
+        private static string GetRunCauseLabel(SyncRunCause causes)
+        {
+            if ((causes & SyncRunCause.RemoteCursorExpired) != 0)
+            {
+                return "Recovering missed cloud changes";
+            }
+
+            if ((causes & SyncRunCause.LocalWatcherError) != 0)
+            {
+                return "Recovering local change tracking";
+            }
+
+            if ((causes & SyncRunCause.LocalChangeOverflow) != 0)
+            {
+                return "Recovering a local change burst";
+            }
+
+            if ((causes & SyncRunCause.LocalRenameRecovery) != 0)
+            {
+                return "Recovering a local rename";
+            }
+
+            bool hasLocalChange = (causes & SyncRunCause.LocalChange) != 0;
+            bool hasRemoteChange = (causes & SyncRunCause.RealtimeRemoteChange) != 0;
+            if (hasLocalChange && hasRemoteChange)
+            {
+                return "Local and cloud changes";
+            }
+
+            if (hasLocalChange)
+            {
+                return "Local change";
+            }
+
+            if (hasRemoteChange)
+            {
+                return "Cloud change";
+            }
+
+            if ((causes & SyncRunCause.InitialPopulation) != 0)
+            {
+                return "Initial sync";
+            }
+
+            if ((causes & SyncRunCause.Resume) != 0)
+            {
+                return "Resume check";
+            }
+
+            if ((causes & SyncRunCause.Periodic) != 0)
+            {
+                return "Scheduled check";
+            }
+
+            return "Manual refresh";
         }
 
         private static string CreateRunProgressOperation(DesktopRunProgressSnapshot progress)

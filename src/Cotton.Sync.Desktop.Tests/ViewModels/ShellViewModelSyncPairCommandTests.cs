@@ -7,6 +7,7 @@ using System.Reflection;
 using Cotton.Sdk;
 using Cotton.Sync.App.Auth;
 using Cotton.Sync.App.Preferences;
+using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Diagnostics;
 using Cotton.Sync.Desktop.Platform;
@@ -512,8 +513,36 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsStatusCardVisible, Is.False);
                 Assert.That(
                     viewModel.ActionRequiredMessage,
-                    Is.EqualTo("This Cotton server needs an update before desktop sync can continue. Contact the server admin, then retry sync."));
+                    Is.EqualTo("Cotton Cloud desktop change feed is unavailable. Check the server deployment; Cotton Sync will retry automatically."));
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Fix the issue below to continue syncing."));
+            });
+        }
+
+        [Test]
+        public async Task CommandTransientServerFailure_ShowsOfflineWithoutActionRequired()
+        {
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            {
+                SyncAllException = new AggregateException(
+                    new CottonApiException(
+                        HttpStatusCode.BadGateway,
+                        "502 Bad Gateway",
+                        "Cotton API request failed with status 502.")),
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            viewModel.SyncNowCommand.Execute(null);
+            await WaitForAsync(() => string.Equals(viewModel.GlobalStatus, "Offline", StringComparison.Ordinal));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.HasActionRequired, Is.False);
+                Assert.That(viewModel.ActionRequiredMessage, Is.Empty);
+                Assert.That(viewModel.CurrentProgressText, Is.Not.EqualTo("Fix the issue below to continue syncing."));
+                Assert.That(
+                    viewModel.Activities.First().Details,
+                    Is.EqualTo("Cotton Cloud is temporarily unavailable. Cotton Sync will retry automatically."));
             });
         }
 
@@ -688,7 +717,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Fix the issue below to continue syncing."));
                 Assert.That(
                     viewModel.ActionRequiredMessage,
-                    Is.EqualTo("This Cotton server needs an update before desktop sync can continue. Contact the server admin, then retry sync."));
+                    Is.EqualTo("Cotton Cloud desktop change feed is unavailable. Check the server deployment; Cotton Sync will retry automatically."));
             });
         }
 
@@ -1306,6 +1335,38 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Waiting for connection to recover."));
                 Assert.That(row.Status, Is.EqualTo("Offline"));
                 Assert.That(row.LastError, Is.EqualTo("Cannot reach Cotton Cloud"));
+            });
+        }
+
+        [Test]
+        public async Task StatusChanged_ClearsOfflineStateAfterConnectionRecovers()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            controller.ReportStatus(new DesktopSyncStatusSnapshot(
+            [
+                new DesktopSyncPairStatusSnapshot(
+                    syncPairId,
+                    "Offline",
+                    "Cotton Cloud is temporarily unavailable. Cotton Sync will retry automatically."),
+            ]));
+            controller.ReportStatus(new DesktopSyncStatusSnapshot(
+            [
+                new DesktopSyncPairStatusSnapshot(syncPairId, "Idle", null, LastSyncedAtUtc: DateTime.UtcNow),
+            ]));
+
+            Assert.Multiple(() =>
+            {
+                SyncPairRowViewModel row = viewModel.SyncPairs.Single();
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Connected"));
+                Assert.That(viewModel.HasOfflineStatus, Is.False);
+                Assert.That(viewModel.HasActionRequired, Is.False);
+                Assert.That(viewModel.ActionRequiredMessage, Is.Empty);
+                Assert.That(row.Status, Is.EqualTo("Idle"));
+                Assert.That(row.LastError, Is.Null);
             });
         }
 
@@ -2281,6 +2342,33 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressDetails, Does.Not.Contain("500000 cloud files queued"));
                 Assert.That(viewModel.CurrentWorkProgressDetails, Does.Not.Contain("cloud items queued"));
             });
+        }
+
+        [Test]
+        public async Task RunProgressChanged_ShowsWhyAFullCloudPassStarted()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            FakeDesktopShellController controller = new(
+                CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.CreatingPlaceholders,
+                FilesCompleted: 100,
+                FilesTotal: 500_000,
+                CurrentPath: "remote-only.txt",
+                StartedAtUtc: new DateTime(2026, 7, 9, 9, 0, 0, DateTimeKind.Utc),
+                IsCompleted: false,
+                OccurredAtUtc: new DateTime(2026, 7, 9, 9, 0, 5, DateTimeKind.Utc),
+                Causes: SyncRunCause.Periodic,
+                IsFull: true));
+
+            Assert.That(
+                viewModel.CurrentRunProgressDetails,
+                Is.EqualTo(
+                    "Scheduled check · full folder scope · Making cloud files available · 100 cloud items ready · scanning cloud · saving state"));
         }
 
         [Test]
@@ -4559,7 +4647,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Action required"));
                 Assert.That(
                     viewModel.ActionRequiredMessage,
-                    Is.EqualTo("This Cotton server needs an update before desktop sync can continue. Contact the server admin, then retry sync."));
+                    Is.EqualTo("Cotton Cloud desktop change feed is unavailable. Check the server deployment; Cotton Sync will retry automatically."));
             });
 
             await ExecuteAsync(viewModel.ExportDiagnosticsCommand);
@@ -4572,7 +4660,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Action required"));
                 Assert.That(
                     viewModel.ActionRequiredMessage,
-                    Is.EqualTo("This Cotton server needs an update before desktop sync can continue. Contact the server admin, then retry sync."));
+                    Is.EqualTo("Cotton Cloud desktop change feed is unavailable. Check the server deployment; Cotton Sync will retry automatically."));
                 Assert.That(viewModel.HasLastDiagnosticsBundlePath, Is.True);
             });
         }
@@ -4672,7 +4760,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Action required"));
                 Assert.That(
                     viewModel.ActionRequiredMessage,
-                    Is.EqualTo("This Cotton server needs an update before desktop sync can continue. Contact the server admin, then retry sync."));
+                    Is.EqualTo("Cotton Cloud desktop change feed is unavailable. Check the server deployment; Cotton Sync will retry automatically."));
                 Assert.That(viewModel.ShowAddSyncPairCommand.CanExecute(null), Is.False);
                 Assert.That(viewModel.AddSyncPairCommand.CanExecute(null), Is.False);
             });
@@ -6213,6 +6301,91 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task InitializeAsync_WithTemporarilyUnavailableStoredSessionHidesSignInAndOffersRetry()
+        {
+            DesktopShellSnapshot snapshot = CreateStoredSessionWaitingSnapshot();
+            var controller = new FakeDesktopShellController(snapshot)
+            {
+                ServerProbeResult = new DesktopServerProbeResult(
+                    new Uri("https://cotton.example.test/"),
+                    true,
+                    "Cotton Cloud",
+                    "instance"),
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+
+            await viewModel.InitializeAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.IsSignedIn, Is.False);
+                Assert.That(viewModel.HasStoredSession, Is.True);
+                Assert.That(viewModel.IsStoredSessionRestoreVisible, Is.True);
+                Assert.That(viewModel.IsServerStepVisible, Is.False);
+                Assert.That(viewModel.IsSignInStepVisible, Is.False);
+                Assert.That(viewModel.SetupTitle, Is.EqualTo("Reconnecting Cotton Sync"));
+                Assert.That(viewModel.RetryStoredSessionCommand.CanExecute(null), Is.True);
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Waiting to reconnect"));
+                Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Waiting for Cotton Cloud to reconnect."));
+                Assert.That(viewModel.ActionRequiredMessage, Is.Empty);
+                Assert.That(viewModel.StoredSessionRestoreMessage, Does.Contain("server is locked"));
+            });
+        }
+
+        [Test]
+        public async Task RetryStoredSessionCommand_RestoresDashboardWithoutNewSignIn()
+        {
+            AuthSession session = new(Guid.NewGuid(), "restored", "restored@example.test", false);
+            var controller = new FakeDesktopShellController(CreateStoredSessionWaitingSnapshot())
+            {
+                StoredSessionRestoreSnapshot = new DesktopStoredSessionRestoreSnapshot(session, true, null),
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            await ExecuteAsync(viewModel.RetryStoredSessionCommand);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(controller.RestoreStoredSessionCalls, Is.EqualTo(1));
+                Assert.That(controller.RestoredSessionServerUrl, Is.EqualTo("https://cotton.example.test/"));
+                Assert.That(controller.SignInRequest, Is.Null);
+                Assert.That(controller.BrowserSignInServerUrl, Is.Null);
+                Assert.That(viewModel.IsSignedIn, Is.True);
+                Assert.That(viewModel.IsDashboardVisible, Is.True);
+                Assert.That(viewModel.AccountName, Is.EqualTo("restored@example.test"));
+                Assert.That(viewModel.ActionRequiredMessage, Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task StoredSessionRetry_AutomaticallyRestoresAfterServerUnlocks()
+        {
+            AuthSession session = new(Guid.NewGuid(), "restored", "restored@example.test", false);
+            var controller = new FakeDesktopShellController(CreateStoredSessionWaitingSnapshot())
+            {
+                StoredSessionRestoreSnapshot = new DesktopStoredSessionRestoreSnapshot(session, true, null),
+            };
+            using var retryDelay = new ManualPeriodicUpdateDelay();
+            using ShellViewModel viewModel = CreateViewModel(
+                controller,
+                storedSessionRetryInterval: TimeSpan.FromSeconds(15),
+                storedSessionRetryDelayAsync: retryDelay.DelayAsync);
+            await viewModel.InitializeAsync();
+            await WaitForAsync(() => retryDelay.RequestedDelays.Count == 1);
+
+            retryDelay.ReleaseNextDelay();
+            await WaitForAsync(() => viewModel.IsSignedIn);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(controller.RestoreStoredSessionCalls, Is.EqualTo(1));
+                Assert.That(viewModel.IsDashboardVisible, Is.True);
+                Assert.That(viewModel.ActionRequiredMessage, Is.Empty);
+            });
+        }
+
+        [Test]
         public async Task InstallUpdateCommand_ShowsInstallingStateBeforeInstallerLaunchCompletes()
         {
             string installerPath = @"C:\CottonSyncUpdateCache\0.0.2\CottonSync-Windows-Setup.exe";
@@ -6453,6 +6626,24 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 CreatePlatformCapabilities(),
                 false,
                 []);
+        }
+
+        private static DesktopShellSnapshot CreateStoredSessionWaitingSnapshot()
+        {
+            return new DesktopShellSnapshot(
+                new Uri("https://cotton.example.test/"),
+                null,
+                "restored@example.test",
+                false,
+                true,
+                AppThemeMode.System,
+                CreateTestDataPathSnapshot(),
+                CreatePlatformCapabilities(),
+                false,
+                [],
+                StartupErrorMessage:
+                    "Cotton Cloud reports that the server is locked. Unlock it in the web app; Cotton Sync will retry automatically.",
+                HasStoredSession: true);
         }
 
         private static DesktopShellSnapshot CreateSignedInSnapshot(
@@ -6744,6 +6935,15 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             public Exception? SignInException { get; set; }
 
+            public DesktopStoredSessionRestoreSnapshot StoredSessionRestoreSnapshot { get; set; } =
+                new(null, false, null);
+
+            public TaskCompletionSource<DesktopStoredSessionRestoreSnapshot>? StoredSessionRestoreCompletion { get; set; }
+
+            public int RestoreStoredSessionCalls { get; private set; }
+
+            public string? RestoredSessionServerUrl { get; private set; }
+
             public void ReportActivity(DesktopActivitySnapshot activity)
             {
                 ActivityReported?.Invoke(this, activity);
@@ -6883,6 +7083,18 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 }
 
                 return ServerProbeResult ?? throw new NotSupportedException();
+            }
+
+            public Task<DesktopStoredSessionRestoreSnapshot> RestoreStoredSessionAsync(
+                string serverUrl,
+                CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                RestoreStoredSessionCalls++;
+                RestoredSessionServerUrl = serverUrl;
+                return StoredSessionRestoreCompletion is null
+                    ? Task.FromResult(StoredSessionRestoreSnapshot)
+                    : StoredSessionRestoreCompletion.Task.WaitAsync(cancellationToken);
             }
 
             public Task<AuthSession> SignInAsync(
@@ -7193,7 +7405,9 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             bool checkForUpdatesOnStartup = false,
             bool notifyOnSessionRestore = false,
             TimeSpan? periodicUpdateCheckInterval = null,
-            Func<TimeSpan, CancellationToken, Task>? updateDelayAsync = null)
+            Func<TimeSpan, CancellationToken, Task>? updateDelayAsync = null,
+            TimeSpan? storedSessionRetryInterval = null,
+            Func<TimeSpan, CancellationToken, Task>? storedSessionRetryDelayAsync = null)
         {
             return new ShellViewModel(
                 controller,
@@ -7205,7 +7419,9 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 checkForUpdatesOnStartup,
                 notifyOnSessionRestore,
                 periodicUpdateCheckInterval,
-                updateDelayAsync);
+                updateDelayAsync,
+                storedSessionRetryInterval,
+                storedSessionRetryDelayAsync);
         }
 
         private sealed class ManualPeriodicUpdateDelay : IDisposable

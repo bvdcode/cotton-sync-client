@@ -1,6 +1,8 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using Cotton.Sync.App.Runners;
+
 namespace Cotton.Sync.Desktop.Shell
 {
     internal record DesktopRunProgressSnapshot(
@@ -13,5 +15,8 @@ namespace Cotton.Sync.Desktop.Shell
         bool IsCompleted,
         DateTime OccurredAtUtc,
         long BytesCompleted = 0,
-        long? BytesTotal = null);
+        long? BytesTotal = null,
+        SyncRunCause Causes = SyncRunCause.InternalMaintenance,
+        bool IsFull = false,
+        int RequestedPathCount = 0);
 }

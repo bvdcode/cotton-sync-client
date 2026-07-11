@@ -18,6 +18,7 @@ using Cotton.Sync.App.Auth;
 using Cotton.Sync.App.Platform;
 using Cotton.Sync.App.Preferences;
 using Cotton.Sync.App.Progress;
+using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.Status;
 using Cotton.Sync.App.SyncApplication;
 using Cotton.Sync.App.SyncPairs;
@@ -315,6 +316,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                     Assert.That(syncPair.Mode, Is.EqualTo(SyncPairMode.WindowsVirtualFiles));
                     Assert.That(host.App.SaveSyncPairCalls, Is.EqualTo(1));
                     Assert.That(host.App.SyncNowCalls, Is.EqualTo(1));
+                    Assert.That(host.App.LastSyncNowRequest?.Causes, Is.EqualTo(SyncRunCause.InitialPopulation));
                     Assert.That(host.App.DeleteSyncPairCalls, Is.Zero);
                 });
             }
@@ -445,8 +447,86 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             Assert.Multiple(() =>
             {
                 Assert.That(snapshot.IsSignedIn, Is.False);
+                Assert.That(snapshot.HasStoredSession, Is.False);
                 Assert.That(host.TokenStore.ClearAsyncCalls, Is.EqualTo(1));
                 Assert.That(host.AsyncResource.DisposeAsyncCalls, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
+        public async Task LoadAsync_PreservesStoredSessionWhenServerIsLocked()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            Uri serverUrl = new("https://cotton.example.test/");
+            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            await preferencesStore.InitializeAsync();
+            await preferencesStore.SaveAsync(new AppPreferences
+            {
+                RememberedServerUrl = serverUrl,
+            });
+            FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
+            host.App.RestoreSessionException = new CottonApiException(
+                HttpStatusCode.Locked,
+                "{\"locked\":true,\"message\":\"Cotton is locked until the master key is provided.\"}",
+                "Cotton API request GET /api/v1/auth/me failed with status 423 (Locked).");
+            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            using DesktopShellController controller = CreateController(
+                paths,
+                factory,
+                savedSessionRestoreRetryBaseDelay: TimeSpan.Zero);
+
+            DesktopShellSnapshot snapshot = await controller.LoadAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(snapshot.IsSignedIn, Is.False);
+                Assert.That(snapshot.HasStoredSession, Is.True);
+                Assert.That(
+                    snapshot.StartupErrorMessage,
+                    Is.EqualTo("Cotton Cloud reports that the server is locked. Unlock it in the web app; Cotton Sync will retry automatically."));
+                Assert.That(host.App.RestoreSessionCalls, Is.EqualTo(1));
+                Assert.That(host.TokenStore.ClearAsyncCalls, Is.Zero);
+                Assert.That(host.AsyncResource.DisposeAsyncCalls, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
+        public async Task RestoreStoredSessionAsync_ReconnectsAfterTemporaryServerLock()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            Uri serverUrl = new("https://cotton.example.test/");
+            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            await preferencesStore.InitializeAsync();
+            await preferencesStore.SaveAsync(new AppPreferences
+            {
+                RememberedServerUrl = serverUrl,
+            });
+            var tokenStore = new FakeCottonTokenStore();
+            FakeDesktopApplicationHost lockedHost = FakeDesktopApplicationHost.Create(serverUrl, tokenStore);
+            lockedHost.App.RestoreSessionException = new CottonApiException(
+                HttpStatusCode.Locked,
+                "{\"locked\":true}",
+                "Cotton API request GET /api/v1/auth/me failed with status 423 (Locked).");
+            FakeDesktopApplicationHost restoredHost = FakeDesktopApplicationHost.Create(serverUrl, tokenStore);
+            var factory = new QueueingDesktopSyncApplicationFactory(lockedHost.Host, restoredHost.Host);
+            await using DesktopShellController controller = CreateController(
+                paths,
+                factory,
+                savedSessionRestoreRetryBaseDelay: TimeSpan.Zero);
+
+            DesktopShellSnapshot initial = await controller.LoadAsync();
+            DesktopStoredSessionRestoreSnapshot restored = await controller
+                .RestoreStoredSessionAsync(serverUrl.AbsoluteUri);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(initial.HasStoredSession, Is.True);
+                Assert.That(initial.IsSignedIn, Is.False);
+                Assert.That(restored.HasStoredSession, Is.True);
+                Assert.That(restored.Session, Is.Not.Null);
+                Assert.That(restored.Session!.Username, Is.EqualTo("restored"));
+                Assert.That(tokenStore.ClearAsyncCalls, Is.Zero);
+                Assert.That(factory.CreatedServerUrls, Is.EqualTo(new[] { serverUrl, serverUrl }));
             });
         }
 
@@ -1302,6 +1382,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             public int SyncNowCalls { get; private set; }
 
+            public SyncRunRequest? LastSyncNowRequest { get; private set; }
+
             public SyncPairSettings? SavedSyncPair { get; private set; }
 
             public Guid? DeletedSyncPairId { get; private set; }
@@ -1448,6 +1530,15 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 }
 
                 return SyncNowRelease?.Task ?? Task.CompletedTask;
+            }
+
+            public Task SyncNowAsync(
+                Guid syncPairId,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                LastSyncNowRequest = request;
+                return SyncNowAsync(syncPairId, cancellationToken);
             }
 
             public Task PauseAllAsync(CancellationToken cancellationToken = default)
