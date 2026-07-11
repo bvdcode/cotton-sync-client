@@ -180,7 +180,7 @@ namespace Cotton.Sync.Desktop.Platform
                 DateTime.UtcNow,
                 causes: request.Causes,
                 isFull: request.IsFull,
-                requestedPathCount: request.LocalChangedPaths.Count));
+                requestedPathCount: request.IsFull ? 0 : request.LocalChangedPaths.Count));
         }
 
         private void RecordRepairSummary(

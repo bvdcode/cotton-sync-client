@@ -167,6 +167,33 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_WithMergedFullRequestPublishesFullProgressWithoutRequestedPaths()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            RecordingSyncPairWork inner = new();
+            FakeSyncStateStore stateStore = new();
+            stateStore.UpsertDirectory(syncPair, "Docs", Guid.Parse("33333333-3333-3333-3333-333333333333"));
+            RecordingRunProgressPublisher progressPublisher = new();
+            WindowsVirtualFilesDirectoryPlaceholderRepairPairWork work = new(
+                inner,
+                stateStore,
+                new RecordingCloudFilesAdapter(),
+                runProgressPublisher: progressPublisher);
+            SyncRunRequest request = SyncRunRequest
+                .ForLocalChangedPaths(["Docs/report.txt"])
+                .Merge(SyncRunRequest.ForFull(SyncRunCause.Periodic));
+
+            await work.RunOnceAsync(syncPair, request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(progressPublisher.Progress, Is.Not.Empty);
+                Assert.That(progressPublisher.Progress.Select(static progress => progress.IsFull), Is.All.EqualTo(true));
+                Assert.That(progressPublisher.Progress.Select(static progress => progress.RequestedPathCount), Is.All.EqualTo(0));
+            });
+        }
+
+        [Test]
         public async Task SyncPairRunner_WhenDirectoryRepairFailsDoesNotReportIdleSuccess()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
