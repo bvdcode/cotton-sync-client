@@ -199,6 +199,12 @@ namespace Cotton.Sync
                 ? DirectoryContentIndex.Create(remoteDirectoriesByPath.Keys, remoteByPath.Keys)
                 : DirectoryContentIndex.Empty;
 
+            IReadOnlySet<string>? scopedFileDeleteKeys = options.Scope.IsFull
+                ? null
+                : BuildExactScopedPathKeys(options.Scope.LocalChangedPaths);
+            IReadOnlySet<string>? scopedDirectoryDeleteKeys = options.Scope.IsFull
+                ? null
+                : BuildExactScopedPathKeys(options.Scope.LocalChangedPaths);
             SyncDeleteGuard deleteGuard = BuildDeleteGuard(
                 options,
                 localByPath,
@@ -208,7 +214,9 @@ namespace Cotton.Sync
                 remoteDirectoriesByPath,
                 directoryStateByPath,
                 localDirectoryContentIndex,
-                remoteDirectoryContentIndex);
+                remoteDirectoryContentIndex,
+                scopedFileDeleteKeys,
+                scopedDirectoryDeleteKeys);
             bool hasMissingRemoteOnlyPlaceholder = HasMissingRemoteOnlyPlaceholder(
                 syncPair,
                 localByPath,
@@ -217,9 +225,6 @@ namespace Cotton.Sync
 
             if (hasLocalDirectoryDeleteCandidates || hasRemoteDirectoryDeleteCandidates || hasStaleDirectoryState)
             {
-                IReadOnlySet<string>? scopedDirectoryDeleteKeys = options.Scope.IsFull
-                    ? null
-                    : BuildExactScopedPathKeys(options.Scope.LocalChangedPaths);
                 await ReconcileDirectoryDeletesAsync(
                     syncPair,
                     options,
@@ -308,7 +313,17 @@ namespace Cotton.Sync
                     continue;
                 }
 
-                await ReconcileWithBaselineAsync(syncPair, options, result, deleteGuard, state, relativePath, local, remote, cancellationToken)
+                await ReconcileWithBaselineAsync(
+                        syncPair,
+                        options,
+                        result,
+                        deleteGuard,
+                        scopedFileDeleteKeys,
+                        state,
+                        relativePath,
+                        local,
+                        remote,
+                        cancellationToken)
                     .ConfigureAwait(false);
                 filesCompleted++;
                 completedTransferBytes += plannedTransferBytes;
@@ -2447,6 +2462,7 @@ namespace Cotton.Sync
             SyncRunOptions options,
             SyncRunResult result,
             SyncDeleteGuard deleteGuard,
+            IReadOnlySet<string>? scopedFileDeleteKeys,
             SyncStateEntry state,
             string relativePath,
             LocalFileSnapshot? local,
@@ -2464,6 +2480,12 @@ namespace Cotton.Sync
             bool localChanged = local is not null && !ContentMatches(local.ContentHash, state.LocalContentHash);
             bool remoteChanged = remote is not null && !RemoteMatchesBaseline(remote.File, state);
             bool baselineDiverged = !ContentMatches(state.LocalContentHash, state.RemoteContentHash);
+
+            if ((localDeleted || remoteDeleted)
+                && !IsScopedDeleteAllowed(scopedFileDeleteKeys, SyncPath.ToKey(relativePath)))
+            {
+                return;
+            }
 
             if (local is null && remote is null)
             {
@@ -3885,7 +3907,9 @@ namespace Cotton.Sync
             IReadOnlyDictionary<string, RemoteDirectorySnapshot> remoteDirectoriesByPath,
             IReadOnlyDictionary<string, SyncStateEntry> directoryStateByPath,
             DirectoryContentIndex localDirectoryContentIndex,
-            DirectoryContentIndex remoteDirectoryContentIndex)
+            DirectoryContentIndex remoteDirectoryContentIndex,
+            IReadOnlySet<string>? scopedFileDeleteKeys,
+            IReadOnlySet<string>? scopedDirectoryDeleteKeys)
         {
             if (stateByPath.Count == 0 && directoryStateByPath.Count == 0)
             {
@@ -3903,9 +3927,19 @@ namespace Cotton.Sync
                 switch (GetPlannedDeleteDirection(state.Value, local, remote))
                 {
                     case SyncDeleteDirection.Local:
+                        if (!IsScopedDeleteAllowed(scopedFileDeleteKeys, state.Key))
+                        {
+                            break;
+                        }
+
                         plannedLocalDeletes++;
                         break;
                     case SyncDeleteDirection.Remote:
+                        if (!IsScopedDeleteAllowed(scopedFileDeleteKeys, state.Key))
+                        {
+                            break;
+                        }
+
                         plannedRemoteDeletes++;
                         break;
                 }
@@ -3924,15 +3958,30 @@ namespace Cotton.Sync
                     remoteDirectoryContentIndex))
                 {
                     case SyncDeleteDirection.Local:
+                        if (!IsScopedDeleteAllowed(scopedDirectoryDeleteKeys, state.Key))
+                        {
+                            break;
+                        }
+
                         plannedLocalDeletes++;
                         break;
                     case SyncDeleteDirection.Remote:
+                        if (!IsScopedDeleteAllowed(scopedDirectoryDeleteKeys, state.Key))
+                        {
+                            break;
+                        }
+
                         plannedRemoteDeletes++;
                         break;
                 }
             }
 
             return new SyncDeleteGuard(options, plannedLocalDeletes, plannedRemoteDeletes);
+        }
+
+        private static bool IsScopedDeleteAllowed(IReadOnlySet<string>? scopedDeleteKeys, string pathKey)
+        {
+            return scopedDeleteKeys is null || scopedDeleteKeys.Contains(pathKey);
         }
 
         private static bool HasLocalDirectoryDeleteCandidates(

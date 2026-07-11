@@ -499,6 +499,56 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithScopedWindowsVirtualFilesFolderChangeDoesNotPlanRemoteDeletesForUnscannedMaterializedDescendants()
+        {
+            const string relativePath = "Music";
+            NodeFileManifestDto firstRemote = RemoteFile("Music/Album/one.mp3", HashText("one"), sizeBytes: 3);
+            NodeFileManifestDto secondRemote = RemoteFile("Music/Album/two.mp3", HashText("two"), sizeBytes: 3);
+            RemoteDirectorySnapshot musicDirectory = RemoteDirectory(relativePath);
+            RemoteDirectorySnapshot albumDirectory = RemoteDirectory("Music/Album", musicDirectory.Node.Id);
+            RemoteTreeSnapshot remoteTree = RemoteTree(firstRemote, secondRemote);
+            remoteTree.Directories.Add(musicDirectory);
+            remoteTree.Directories.Add(albumDirectory);
+            FakeLocalFileScanner scanner = new();
+            scanner.Directories.Add(new LocalDirectorySnapshot
+            {
+                RelativePath = relativePath,
+                FullPath = Path.Combine(_root, relativePath),
+            });
+            DescendantPathRemoteTreeCrawler crawler = new(remoteTree);
+            FakeRemoteFileSynchronizer remoteFiles = new();
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            await InsertBaselineAsync(stateStore, "Music/Album/one.mp3", firstRemote.ContentHash, firstRemote, firstRemote.SizeBytes);
+            await InsertBaselineAsync(stateStore, "Music/Album/two.mp3", secondRemote.ContentHash, secondRemote, secondRemote.SizeBytes);
+            SyncEngine engine = new(scanner, crawler, remoteFiles, stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions
+                {
+                    MaximumRemoteDeletesPerRun = 1,
+                    Scope = SyncRunScope.ForLocalChangedPaths([relativePath]),
+                });
+
+            SyncStateEntry? firstEntry = await stateStore.GetAsync("pair-a", "Music/Album/one.mp3");
+            SyncStateEntry? secondEntry = await stateStore.GetAsync("pair-a", "Music/Album/two.mp3");
+            Assert.Multiple(() =>
+            {
+                Assert.That(scanner.ScanCalls, Is.Zero);
+                Assert.That(scanner.PathLookupCalls, Is.EqualTo(1));
+                Assert.That(scanner.LastIncludeDirectoryDescendants, Is.False);
+                Assert.That(crawler.PathCrawlCalls, Is.EqualTo(1));
+                Assert.That(crawler.FullCrawlCalls, Is.Zero);
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Does.Not.Contain(SyncActivityKind.DeletedRemote));
+                Assert.That(result.Activities.Select(activity => activity.RequiresUserAction), Is.All.False);
+                Assert.That(firstEntry, Is.Not.Null);
+                Assert.That(secondEntry, Is.Not.Null);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesPreservesRemoteOnlyPlaceholderStateAfterEngineRestart()
         {
             const string relativePath = "remote-only-restart.txt";
@@ -5490,6 +5540,65 @@ namespace Cotton.Sync.Tests
                 }
 
                 return Task.FromResult(snapshot);
+            }
+        }
+
+        private class DescendantPathRemoteTreeCrawler : IRemoteTreeCrawler, IRemotePathLookupCrawler
+        {
+            private readonly RemoteTreeSnapshot _snapshot;
+
+            public DescendantPathRemoteTreeCrawler(RemoteTreeSnapshot snapshot)
+            {
+                _snapshot = snapshot;
+            }
+
+            public int FullCrawlCalls { get; private set; }
+
+            public int PathCrawlCalls { get; private set; }
+
+            public Task<RemoteTreeSnapshot> CrawlAsync(Guid rootNodeId, CancellationToken cancellationToken = default)
+            {
+                FullCrawlCalls++;
+                return Task.FromResult(_snapshot);
+            }
+
+            public Task<RemoteTreeLookupSnapshot> CrawlPathLookupsAsync(
+                Guid rootNodeId,
+                IReadOnlyCollection<string> relativePaths,
+                IProgress<RemoteTreeScanProgress>? progress,
+                CancellationToken cancellationToken = default)
+            {
+                PathCrawlCalls++;
+                RemoteTreeLookupSnapshot snapshot = new()
+                {
+                    RootNode = _snapshot.RootNode,
+                };
+                string[] requestedPaths = relativePaths.Select(SyncPath.Normalize).ToArray();
+                foreach (RemoteDirectorySnapshot directory in _snapshot.Directories)
+                {
+                    if (requestedPaths.Any(path => ContainsRequestedPath(directory.RelativePath, path)))
+                    {
+                        snapshot.DirectoriesByPath[SyncPath.ToKey(directory.RelativePath)] = directory;
+                    }
+                }
+
+                foreach (RemoteFileSnapshot file in _snapshot.Files)
+                {
+                    if (requestedPaths.Any(path => ContainsRequestedPath(file.RelativePath, path)))
+                    {
+                        snapshot.FilesByPath[SyncPath.ToKey(file.RelativePath)] = file;
+                    }
+                }
+
+                return Task.FromResult(snapshot);
+            }
+
+            private static bool ContainsRequestedPath(string relativePath, string requestedPath)
+            {
+                string normalizedPath = SyncPath.Normalize(relativePath);
+                string normalizedRequestedPath = SyncPath.Normalize(requestedPath).TrimEnd('/');
+                return normalizedPath.Equals(normalizedRequestedPath, StringComparison.OrdinalIgnoreCase)
+                    || normalizedPath.StartsWith(normalizedRequestedPath + "/", StringComparison.OrdinalIgnoreCase);
             }
         }
 
