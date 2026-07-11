@@ -301,13 +301,16 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             await work.RunOnceAsync(
                 syncPair,
-                SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt", "Docs/edited.txt"]));
+                SyncRunRequest.ForLocalChangedPaths(
+                    ["Docs/report.txt", "Docs/edited.txt"],
+                    SyncRunCause.RealtimeRemoteChange));
 
             Assert.Multiple(() =>
             {
                 Assert.That(cloudFiles.DehydratedPaths, Is.EqualTo(new[] { "Docs/report.txt" }));
                 Assert.That(inner.Requests, Has.Count.EqualTo(1));
                 Assert.That(inner.Requests[0].LocalChangedPaths, Is.EqualTo(new[] { "Docs/edited.txt" }));
+                Assert.That(inner.Requests[0].Causes, Is.EqualTo(SyncRunCause.RealtimeRemoteChange));
             });
         }
 

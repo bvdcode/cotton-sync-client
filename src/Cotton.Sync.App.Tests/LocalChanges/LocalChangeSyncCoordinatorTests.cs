@@ -359,7 +359,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
-        public async Task WindowsVirtualFilesLocalChangeStorm_AboveVfsLimitFlushesScopedWithoutFullFallback()
+        public async Task WindowsVirtualFilesLocalChangeStorm_AboveVfsLimitRequestsFullSync()
         {
             int changeCount = PendingLocalSyncRequest.MaxWindowsVirtualFilesScopedChangedPaths + 100;
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
@@ -383,8 +383,8 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             Assert.Multiple(() =>
             {
                 Assert.That(observed, Is.True);
-                Assert.That(supervisor.LastRequest?.IsFull, Is.False);
-                Assert.That(supervisor.LastRequest?.LocalChangedPaths, Has.Count.EqualTo(changeCount));
+                Assert.That(supervisor.LastRequest?.IsFull, Is.True);
+                Assert.That(supervisor.LastRequest?.LocalChangedPaths, Is.Empty);
                 Assert.That(
                     supervisor.LastRequest?.Causes,
                     Is.EqualTo(SyncRunCause.LocalChange | SyncRunCause.LocalChangeOverflow));

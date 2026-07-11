@@ -72,8 +72,18 @@ namespace Cotton.Sync.App.Runners
             {
                 plannedRequest = request;
             }
+            else if (!hasUnresolvedChanges && !CanSkipFullRequestWithoutMappedRemoteChanges(request.Causes))
+            {
+                plannedRequest = request;
+            }
 
             return new RemoteChangeScopedSyncPlan(plannedRequest, hasUnresolvedChanges);
+        }
+
+        private static bool CanSkipFullRequestWithoutMappedRemoteChanges(SyncRunCause causes)
+        {
+            const SyncRunCause safeCauses = SyncRunCause.Periodic | SyncRunCause.Resume;
+            return (causes & ~safeCauses) == SyncRunCause.None;
         }
 
         private async Task AddTrackedFolderSubtreePathsAsync(

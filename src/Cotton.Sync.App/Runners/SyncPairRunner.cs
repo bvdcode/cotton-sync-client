@@ -353,16 +353,19 @@ namespace Cotton.Sync.App.Runners
 
         private SyncRunRequest? TakeNextPendingRequest()
         {
-            if (_pendingScopedSyncRequest is not null)
+            if (_pendingFullSyncRequest is not null)
             {
-                SyncRunRequest request = _pendingScopedSyncRequest;
+                SyncRunRequest request = _pendingScopedSyncRequest is null
+                    ? _pendingFullSyncRequest
+                    : _pendingFullSyncRequest.Merge(_pendingScopedSyncRequest);
+                _pendingFullSyncRequest = null;
                 _pendingScopedSyncRequest = null;
                 return request;
             }
 
-            SyncRunRequest? fullRequest = _pendingFullSyncRequest;
-            _pendingFullSyncRequest = null;
-            return fullRequest;
+            SyncRunRequest? scopedRequest = _pendingScopedSyncRequest;
+            _pendingScopedSyncRequest = null;
+            return scopedRequest;
         }
 
         private async Task RunWorkWithRetryAsync(SyncRunRequest request, CancellationToken cancellationToken)

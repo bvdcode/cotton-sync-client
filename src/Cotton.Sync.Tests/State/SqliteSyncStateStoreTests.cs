@@ -239,6 +239,27 @@ namespace Cotton.Sync.Tests.State
             });
             await store.UpsertAsync(new SyncStateEntry
             {
+                SyncPairId = "pair-a",
+                RelativePath = "Music %_Live",
+                Kind = SyncEntryKind.Directory,
+                RemoteNodeId = Guid.NewGuid(),
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "Music %_Live/set.mp3",
+                Kind = SyncEntryKind.File,
+                RemoteFileId = Guid.NewGuid(),
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "Music aaLive/other.mp3",
+                Kind = SyncEntryKind.File,
+                RemoteFileId = Guid.NewGuid(),
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
                 SyncPairId = "pair-b",
                 RelativePath = "Music/Album/other.mp3",
                 Kind = SyncEntryKind.File,
@@ -257,6 +278,12 @@ namespace Cotton.Sync.Tests.State
                 bracketEntries.Add(entry);
             }
 
+            var likeWildcardEntries = new List<SyncStateEntry>();
+            await foreach (SyncStateEntry entry in store.LoadEntriesByPathPrefixAsync("pair-a", "music %_live"))
+            {
+                likeWildcardEntries.Add(entry);
+            }
+
             Assert.Multiple(() =>
             {
                 Assert.That(
@@ -268,6 +295,9 @@ namespace Cotton.Sync.Tests.State
                 Assert.That(
                     bracketEntries.Select(entry => entry.RelativePath),
                     Is.EqualTo(new[] { "Music [Live]", "Music [Live]/set.mp3" }));
+                Assert.That(
+                    likeWildcardEntries.Select(entry => entry.RelativePath),
+                    Is.EqualTo(new[] { "Music %_Live", "Music %_Live/set.mp3" }));
             });
         }
 

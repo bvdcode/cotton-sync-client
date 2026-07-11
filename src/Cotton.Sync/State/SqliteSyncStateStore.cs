@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Data.Common;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 
 namespace Cotton.Sync.State
@@ -19,6 +20,8 @@ namespace Cotton.Sync.State
         private const int DefaultSqliteTimeoutSeconds = 30;
         private const int MaintenanceSqliteTimeoutSeconds = 120;
         private const int DefaultPathKeyLookupBatchSize = 500;
+        private const string SqlLikeEscapeCharacter = "\\";
+        private const char SqlLikeEscapeCharacterValue = '\\';
         private const long MinimumFreelistBytesForVacuum = 4L * 1024 * 1024;
         private const double MinimumFreelistRatioForVacuum = 0.25d;
 
@@ -101,7 +104,7 @@ namespace Cotton.Sync.State
             ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
             ArgumentException.ThrowIfNullOrWhiteSpace(relativePathPrefix);
             string prefixKey = SyncPath.ToKey(relativePathPrefix);
-            string childPattern = CreateChildPathGlobPattern(prefixKey);
+            string childPattern = CreateChildPathLikePattern(prefixKey);
             await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
             await using SyncStateDbContext context = CreateContext();
             SyncStateEntity? exactEntry = await context.SyncEntries
@@ -121,7 +124,7 @@ namespace Cotton.Sync.State
                 .AsNoTracking()
                 .Where(entry => entry.SyncPairId == syncPairId
                     && entry.Kind == SyncEntryKind.Directory
-                    && EF.Functions.Glob(entry.RelativePathKey, childPattern))
+                    && EF.Functions.Like(entry.RelativePathKey, childPattern, SqlLikeEscapeCharacter))
                 .OrderBy(entry => entry.RelativePathKey)
                 .AsAsyncEnumerable();
             await foreach (SyncStateEntity entity in entities.WithCancellation(cancellationToken).ConfigureAwait(false))
@@ -139,7 +142,7 @@ namespace Cotton.Sync.State
             ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
             ArgumentException.ThrowIfNullOrWhiteSpace(relativePathPrefix);
             string prefixKey = SyncPath.ToKey(relativePathPrefix);
-            string childPattern = CreateChildPathGlobPattern(prefixKey);
+            string childPattern = CreateChildPathLikePattern(prefixKey);
             await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
             await using SyncStateDbContext context = CreateContext();
             SyncStateEntity? exactEntry = await context.SyncEntries
@@ -156,7 +159,7 @@ namespace Cotton.Sync.State
             IAsyncEnumerable<SyncStateEntity> entities = context.SyncEntries
                 .AsNoTracking()
                 .Where(entry => entry.SyncPairId == syncPairId
-                    && EF.Functions.Glob(entry.RelativePathKey, childPattern))
+                    && EF.Functions.Like(entry.RelativePathKey, childPattern, SqlLikeEscapeCharacter))
                 .OrderBy(entry => entry.RelativePathKey)
                 .AsAsyncEnumerable();
             await foreach (SyncStateEntity entity in entities.WithCancellation(cancellationToken).ConfigureAwait(false))
@@ -764,9 +767,25 @@ namespace Cotton.Sync.State
             return new SyncStateDbContext(options);
         }
 
-        private static string CreateChildPathGlobPattern(string prefixKey)
+        private static string CreateChildPathLikePattern(string prefixKey)
         {
-            return prefixKey.Replace("[", "[[]", StringComparison.Ordinal) + "/*";
+            return EscapeSqlLikePattern(prefixKey + "/") + "%";
+        }
+
+        private static string EscapeSqlLikePattern(string value)
+        {
+            StringBuilder builder = new(value.Length);
+            foreach (char character in value)
+            {
+                if (character == SqlLikeEscapeCharacterValue || character == '%' || character == '_')
+                {
+                    builder.Append(SqlLikeEscapeCharacterValue);
+                }
+
+                builder.Append(character);
+            }
+
+            return builder.ToString();
         }
 
         private static IEnumerable<IReadOnlyCollection<T>> CreateBatches<T>(IReadOnlyList<T> items, int batchSize)

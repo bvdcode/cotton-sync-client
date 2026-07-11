@@ -62,9 +62,6 @@ namespace Cotton.Sync.App.LocalChanges
                 if (preserveScopeOnOverflow)
                 {
                     FlushRequested = true;
-                    ChangedPaths.Add(changedPath);
-                    ChangeVersion++;
-                    return;
                 }
 
                 RequiresFullSync = true;

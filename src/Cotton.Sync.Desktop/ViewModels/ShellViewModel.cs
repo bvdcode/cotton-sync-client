@@ -53,11 +53,10 @@ namespace Cotton.Sync.Desktop.ViewModels
         private readonly bool _checkForUpdatesOnStartup;
         private readonly TimeSpan _periodicUpdateCheckInterval;
         private readonly Func<TimeSpan, CancellationToken, Task> _updateDelayAsync;
-        private readonly TimeSpan _storedSessionRetryInterval;
-        private readonly Func<TimeSpan, CancellationToken, Task> _storedSessionRetryDelayAsync;
         private readonly bool _notifyOnSessionRestore;
         private readonly IDesktopThemeService _themeService;
         private readonly IDesktopUiDispatcher _uiDispatcher;
+        private readonly StoredSessionRestoreRetryCoordinator _storedSessionRetryCoordinator;
         private readonly object _statusDispatchGate = new();
         private readonly object _activityDispatchGate = new();
         private readonly object _progressDispatchGate = new();
@@ -165,8 +164,6 @@ namespace Cotton.Sync.Desktop.ViewModels
         private CancellationTokenSource? _browserSignInCancellation;
         private CancellationTokenSource? _startupUpdateCancellation;
         private CancellationTokenSource? _periodicUpdateCancellation;
-        private CancellationTokenSource? _storedSessionRetryCancellation;
-        private Task? _storedSessionRetryTask;
         private ConflictRowViewModel? _selectedConflict;
         private RemoteFolderRowViewModel? _selectedRemoteFolder;
         private SyncPairRowViewModel? _selectedSyncPair;
@@ -215,12 +212,15 @@ namespace Cotton.Sync.Desktop.ViewModels
             _periodicUpdateCheckInterval = periodicUpdateCheckInterval ?? DefaultPeriodicUpdateCheckInterval;
             ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_periodicUpdateCheckInterval, TimeSpan.Zero);
             _updateDelayAsync = updateDelayAsync ?? Task.Delay;
-            _storedSessionRetryInterval = storedSessionRetryInterval ?? DefaultStoredSessionRetryInterval;
-            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_storedSessionRetryInterval, TimeSpan.Zero);
-            _storedSessionRetryDelayAsync = storedSessionRetryDelayAsync ?? Task.Delay;
             _notifyOnSessionRestore = notifyOnSessionRestore;
             _themeService = themeService ?? throw new ArgumentNullException(nameof(themeService));
             _uiDispatcher = uiDispatcher ?? new AvaloniaDesktopUiDispatcher();
+            _storedSessionRetryCoordinator = new StoredSessionRestoreRetryCoordinator(
+                _controller.RestoreStoredSessionAsync,
+                _uiDispatcher,
+                storedSessionRetryInterval ?? DefaultStoredSessionRetryInterval,
+                storedSessionRetryDelayAsync ?? Task.Delay,
+                ApplyStoredSessionRestoreResult);
             Activities.CollectionChanged += OnActivitiesChanged;
             Conflicts.CollectionChanged += OnConflictsChanged;
             SyncPairs.CollectionChanged += OnSyncPairsChanged;
@@ -452,7 +452,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         internal Task? PeriodicUpdateTask => _periodicUpdateTask;
 
-        internal Task? StoredSessionRetryTask => _storedSessionRetryTask;
+        internal Task? StoredSessionRetryTask => _storedSessionRetryCoordinator.RetryTask;
 
         public string AccountName
         {
@@ -2948,7 +2948,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private async Task RetryStoredSessionAsync()
         {
             Task previousRetry = CancelStoredSessionRetry();
-            await IgnoreStoredSessionRetryCancellationAsync(previousRetry).ConfigureAwait(true);
+            await StoredSessionRestoreRetryCoordinator.IgnoreCancellationAsync(previousRetry).ConfigureAwait(true);
             IsBusy = true;
             GlobalStatus = "Reconnecting";
             try
@@ -2997,72 +2997,12 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return;
             }
 
-            CancelStoredSessionRetry();
-            var cancellation = new CancellationTokenSource();
-            _storedSessionRetryCancellation = cancellation;
-            _storedSessionRetryTask = RetryStoredSessionUntilResolvedAsync(cancellation);
-        }
-
-        private async Task RetryStoredSessionUntilResolvedAsync(CancellationTokenSource retryCancellation)
-        {
-            CancellationToken cancellationToken = retryCancellation.Token;
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested)
-                {
-                    await _storedSessionRetryDelayAsync(_storedSessionRetryInterval, cancellationToken)
-                        .ConfigureAwait(false);
-                    DesktopStoredSessionRestoreSnapshot result = await _controller
-                        .RestoreStoredSessionAsync(ServerUrl, cancellationToken)
-                        .ConfigureAwait(false);
-                    bool shouldContinue = result.Session is null && result.HasStoredSession;
-                    await _uiDispatcher.InvokeAsync(
-                        () => ApplyStoredSessionRestoreResult(result, "Session restored automatically"),
-                        cancellationToken).ConfigureAwait(false);
-                    if (!shouldContinue)
-                    {
-                        return;
-                    }
-                }
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-            }
-            catch (Exception exception)
-            {
-                Trace.TraceWarning("Automatic stored session restore failed: {0}", exception);
-            }
-            finally
-            {
-                if (ReferenceEquals(_storedSessionRetryCancellation, retryCancellation))
-                {
-                    _storedSessionRetryCancellation = null;
-                    _storedSessionRetryTask = null;
-                }
-
-                retryCancellation.Dispose();
-            }
+            _storedSessionRetryCoordinator.Begin(ServerUrl);
         }
 
         private Task CancelStoredSessionRetry()
         {
-            CancellationTokenSource? cancellation = _storedSessionRetryCancellation;
-            Task retryTask = _storedSessionRetryTask ?? Task.CompletedTask;
-            _storedSessionRetryCancellation = null;
-            _storedSessionRetryTask = null;
-            cancellation?.Cancel();
-            return retryTask;
-        }
-
-        private static async Task IgnoreStoredSessionRetryCancellationAsync(Task retryTask)
-        {
-            try
-            {
-                await retryTask.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-            }
+            return _storedSessionRetryCoordinator.Cancel();
         }
 
         private async Task SignInWithBrowserAsync()

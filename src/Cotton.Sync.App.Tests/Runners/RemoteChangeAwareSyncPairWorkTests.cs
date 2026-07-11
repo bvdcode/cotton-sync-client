@@ -483,7 +483,7 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
-        public async Task RunOnceAsync_WithWindowsVirtualFilesSkipsChangeOutsideSyncPairWithoutFullRun()
+        public async Task RunOnceAsync_WithWindowsVirtualFilesRunsManualFullForChangeOutsideSyncPair()
         {
             var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
             var inner = new FakeSyncPairWork();
@@ -515,7 +515,9 @@ namespace Cotton.Sync.App.Tests.Runners
 
             Assert.Multiple(() =>
             {
-                Assert.That(inner.RunCallCount, Is.Zero);
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.True);
+                Assert.That(inner.LastRequest?.Causes, Is.EqualTo(SyncRunCause.Manual));
                 Assert.That(stateStore.LoadPairEntriesCallCount, Is.Zero);
                 Assert.That(stateStore.RemoteIdLookupCallCount, Is.EqualTo(1));
                 Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));

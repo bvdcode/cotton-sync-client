@@ -109,7 +109,7 @@ namespace Cotton.Sync.Desktop.Platform
 
             SyncRunRequest remainingRequest = remainingPaths.Count == request.LocalChangedPaths.Count
                 ? request
-                : SyncRunRequest.ForLocalChangedPaths(remainingPaths);
+                : SyncRunRequest.ForLocalChangedPaths(remainingPaths, request.Causes);
             await _inner.RunOnceAsync(syncPair, remainingRequest, cancellationToken).ConfigureAwait(false);
         }
 

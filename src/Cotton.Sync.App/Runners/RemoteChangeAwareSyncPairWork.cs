@@ -249,7 +249,7 @@ namespace Cotton.Sync.App.Runners
             return false;
         }
 
-        private sealed record RemoteChangeFeedReadResult(RemoteChangeFeedBatch Batch, RemoteChangeFeedSnapshot Snapshot)
+        private record RemoteChangeFeedReadResult(RemoteChangeFeedBatch Batch, RemoteChangeFeedSnapshot Snapshot)
         {
             public bool HasObservedChanges => !Snapshot.IsEmpty;
         }

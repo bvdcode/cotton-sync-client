@@ -6,7 +6,7 @@ namespace Cotton.Sync.App.Runners
     /// <summary>
     /// Describes the sync surface requested by an application coordinator.
     /// </summary>
-    public sealed class SyncRunRequest
+    public class SyncRunRequest
     {
         private SyncRunRequest(
             bool isFull,

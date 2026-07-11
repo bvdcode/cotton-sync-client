@@ -892,7 +892,7 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
-        public async Task SyncNowAsync_PreservesFailedAndQueuedScopedRequestsBeforeLaterFullCheck()
+        public async Task SyncNowAsync_MergesQueuedScopedRequestsIntoLaterFullCheck()
         {
             var work = new BlockingFirstFailureSyncPairWork();
             SyncPairRunner runner = CreateRunner(
@@ -912,12 +912,11 @@ namespace Cotton.Sync.App.Tests.Runners
 
             Assert.Multiple(() =>
             {
-                Assert.That(work.Requests, Has.Count.EqualTo(4));
+                Assert.That(work.Requests, Has.Count.EqualTo(3));
                 Assert.That(work.Requests[0].LocalChangedPaths, Is.EqualTo(new[] { "Docs/first.txt" }));
                 Assert.That(work.Requests[1].LocalChangedPaths, Is.EqualTo(new[] { "Docs/first.txt" }));
-                Assert.That(work.Requests[2].LocalChangedPaths, Is.EqualTo(new[] { "Docs/second.txt" }));
-                Assert.That(work.Requests[3].IsFull, Is.True);
-                Assert.That(work.Requests[3].Causes, Is.EqualTo(SyncRunCause.Periodic));
+                Assert.That(work.Requests[2].IsFull, Is.True);
+                Assert.That(work.Requests[2].Causes, Is.EqualTo(SyncRunCause.Periodic | SyncRunCause.LocalChange));
                 Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Idle));
             });
         }
