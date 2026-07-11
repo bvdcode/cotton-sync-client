@@ -3242,15 +3242,12 @@ namespace Cotton.Sync.Desktop.ViewModels
                 }
 
                 var progress = new ActionProgress<DesktopUpdateDownloadProgress>(ApplyUpdateDownloadProgress);
-                ShowPreparingUpdateDownloadProgress();
-                UpdateDetailsText = "Preparing update download.";
                 await RunUpdateActionAsync(
-                        "Downloading update",
+                        "Checking for updates",
                         () => _controller.DownloadUpdateAsync(
                             DesktopUpdateCheckSource.Startup,
                             progress,
                             cancellationToken: cancellationToken),
-                        updateGlobalStatusOnStart: true,
                         updateGlobalStatusOnFailure: false,
                         notifyWhenInstallerReady: true)
                     .ConfigureAwait(true);
@@ -3367,7 +3364,15 @@ namespace Cotton.Sync.Desktop.ViewModels
             try
             {
                 DesktopUpdateStatusSnapshot result = await updateActionAsync().ConfigureAwait(true);
+                bool updateOwnedGlobalStatus = updateGlobalStatusOnStart || IsUpdateOperationGlobalStatus(GlobalStatus);
                 ApplyUpdateStatus(result);
+                if (updateOwnedGlobalStatus)
+                {
+                    GlobalStatus = result.IsUpdateAvailable
+                        ? UpdateStatusText
+                        : previousGlobalStatus;
+                }
+
                 AddActivity("Update", result.ReleaseUrl?.AbsoluteUri ?? string.Empty, result.Details);
                 if (notifyWhenInstallerReady && result.IsInstallerReady)
                 {
@@ -3409,6 +3414,12 @@ namespace Cotton.Sync.Desktop.ViewModels
                 ? "Update ready"
                 : status.IsUpdateAvailable ? "Update available" : "Up to date";
             UpdateDetailsText = status.Details;
+        }
+
+        private static bool IsUpdateOperationGlobalStatus(string status)
+        {
+            return string.Equals(status, "Checking for updates", StringComparison.Ordinal)
+                || string.Equals(status, "Downloading update", StringComparison.Ordinal);
         }
 
         private static string ResolveUpdateFailureMessage(Exception exception)

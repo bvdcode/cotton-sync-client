@@ -86,7 +86,9 @@ namespace Cotton.Sync.App.Runners
 
         private static bool CanSkipFullRequestWithoutMappedRemoteChanges(SyncRunCause causes)
         {
-            const SyncRunCause safeCauses = SyncRunCause.Periodic | SyncRunCause.Resume;
+            const SyncRunCause safeCauses = SyncRunCause.Periodic
+                | SyncRunCause.RealtimeRemoteChange
+                | SyncRunCause.Resume;
             return (causes & ~safeCauses) == SyncRunCause.None;
         }
 

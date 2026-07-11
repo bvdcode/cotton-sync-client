@@ -6014,6 +6014,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(controller.DownloadUpdateCalls, Is.EqualTo(1));
                 Assert.That(controller.DownloadUpdateSources, Is.EqualTo(new[] { DesktopUpdateCheckSource.Download }));
                 Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Update ready"));
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Update ready"));
                 Assert.That(viewModel.IsUpdateReady, Is.True);
                 Assert.That(viewModel.CanInstallUpdate, Is.True);
                 Assert.That(viewModel.IsUpdateDownloadVisible, Is.False);
@@ -6161,11 +6162,46 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(controller.DownloadUpdateSources, Is.EqualTo(new[] { DesktopUpdateCheckSource.Startup }));
                 Assert.That(controller.CheckForUpdateCalls, Is.EqualTo(0));
                 Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Update ready"));
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Update ready"));
                 Assert.That(viewModel.IsUpdateReady, Is.True);
                 Assert.That(viewModel.CanInstallUpdate, Is.True);
                 Assert.That(viewModel.CanSyncNow, Is.True);
                 Assert.That(notificationService.Notifications, Has.Count.EqualTo(1));
                 Assert.That(notificationService.Notifications[0].Title, Is.EqualTo("Update ready"));
+            });
+        }
+
+        [Test]
+        public async Task InitializeAsync_WhenStartupUpdateIsCurrentDoesNotShowDownloadProgress()
+        {
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            {
+                UpdateDownloadSnapshot = new DesktopUpdateStatusSnapshot(
+                    "0.0.2",
+                    "0.0.2",
+                    false,
+                    false,
+                    "Cotton Sync is up to date.",
+                    null,
+                    new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/v0.0.2")),
+                SuppressDownloadProgress = true,
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller, checkForUpdatesOnStartup: true);
+
+            await viewModel.InitializeAsync();
+            await viewModel.StartupUpdateTask!;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(controller.DownloadUpdateCalls, Is.EqualTo(1));
+                Assert.That(controller.DownloadUpdateSources, Is.EqualTo(new[] { DesktopUpdateCheckSource.Startup }));
+                Assert.That(viewModel.UpdateStatusText, Is.EqualTo("Up to date"));
+                Assert.That(viewModel.UpdateDetailsText, Is.EqualTo("Cotton Sync is up to date."));
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Connected"));
+                Assert.That(viewModel.IsUpdateReady, Is.False);
+                Assert.That(viewModel.IsUpdateDownloadProgressVisible, Is.False);
+                Assert.That(viewModel.IsUpdateDownloadProgressIndeterminate, Is.False);
+                Assert.That(viewModel.UpdateDownloadProgressValue, Is.EqualTo(0d));
             });
         }
 
@@ -6202,6 +6238,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             downloadCompletion.SetResult(controller.UpdateDownloadSnapshot!);
             await viewModel.StartupUpdateTask!;
+
+            Assert.That(viewModel.GlobalStatus, Is.EqualTo("Update ready"));
         }
 
         [Test]

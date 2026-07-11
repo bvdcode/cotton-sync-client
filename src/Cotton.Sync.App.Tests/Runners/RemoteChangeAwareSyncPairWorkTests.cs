@@ -156,6 +156,48 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesScopesRealtimeRemoteFileCreate()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new();
+            FakeSyncStateStore stateStore = new();
+            Guid remoteFileId = Guid.NewGuid();
+            RemoteChangeFeedBatch batch = new(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 12,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes:
+                [
+                    new SyncChangeDto
+                    {
+                        Id = 11,
+                        Kind = SyncChangeKind.FileCreated,
+                        LayoutId = Guid.NewGuid(),
+                        ItemId = remoteFileId,
+                        ParentNodeId = syncPair.RemoteRootNodeId,
+                        Name = "remote-origin.txt",
+                        CreatedAt = DateTime.UtcNow,
+                    },
+                ]);
+            FakeRemoteChangeFeedReader remoteChanges = new(batch);
+            RemoteChangeAwareSyncPairWork work = new(inner, remoteChanges, stateStore);
+
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.RealtimeRemoteChange));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.False);
+                Assert.That(inner.LastRequest?.Causes, Is.EqualTo(SyncRunCause.RealtimeRemoteChange));
+                Assert.That(inner.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { "remote-origin.txt" }));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesScopesRemoteRenameToOldAndNewPaths()
         {
             var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
@@ -744,6 +786,33 @@ namespace Cotton.Sync.App.Tests.Runners
             await work.RunOnceAsync(
                 syncPair,
                 SyncRunRequest.ForFull(SyncRunCause.Periodic));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.Zero);
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithEmptyVfsFeedSkipsRealtimeFullSync()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            var inner = new FakeSyncPairWork();
+            var batch = new RemoteChangeFeedBatch(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 9_828,
+                nextCursor: 9_828,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes: Array.Empty<SyncChangeDto>());
+            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForFull(SyncRunCause.RealtimeRemoteChange));
 
             Assert.Multiple(() =>
             {
