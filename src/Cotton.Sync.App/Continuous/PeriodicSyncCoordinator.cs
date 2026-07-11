@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.Supervision;
+using Cotton.Sync.App.Runners;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -17,7 +18,14 @@ namespace Cotton.Sync.App.Continuous
         /// </summary>
         public static readonly TimeSpan DefaultInterval = TimeSpan.FromMinutes(10);
 
+        /// <summary>
+        /// Default retry interval while Cotton Cloud is temporarily unavailable.
+        /// </summary>
+        public static readonly TimeSpan DefaultConnectionRetryInterval = TimeSpan.FromSeconds(15);
+
         private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
+        private readonly TimeSpan _connectionRetryInterval;
+        private readonly Func<TimeSpan, CancellationToken, Task> _delayAsync;
         private readonly TimeSpan _interval;
         private readonly ILogger<PeriodicSyncCoordinator> _logger;
         private readonly bool _runImmediately;
@@ -32,7 +40,9 @@ namespace Cotton.Sync.App.Continuous
             ISyncSupervisor supervisor,
             TimeSpan? interval = null,
             bool runImmediately = true,
-            ILogger<PeriodicSyncCoordinator>? logger = null)
+            ILogger<PeriodicSyncCoordinator>? logger = null,
+            TimeSpan? connectionRetryInterval = null,
+            Func<TimeSpan, CancellationToken, Task>? delayAsync = null)
         {
             _supervisor = supervisor ?? throw new ArgumentNullException(nameof(supervisor));
             _interval = interval ?? DefaultInterval;
@@ -41,8 +51,17 @@ namespace Cotton.Sync.App.Continuous
                 throw new ArgumentOutOfRangeException(nameof(interval), "Periodic sync interval must be positive.");
             }
 
+            _connectionRetryInterval = connectionRetryInterval ?? DefaultConnectionRetryInterval;
+            if (_connectionRetryInterval <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(connectionRetryInterval),
+                    "Connection retry interval must be positive.");
+            }
+
             _runImmediately = runImmediately;
             _logger = logger ?? NullLogger<PeriodicSyncCoordinator>.Instance;
+            _delayAsync = delayAsync ?? Task.Delay;
         }
 
         /// <inheritdoc />
@@ -108,17 +127,20 @@ namespace Cotton.Sync.App.Continuous
 
         private async Task RunLoopAsync(CancellationToken cancellationToken)
         {
-            using var timer = new PeriodicTimer(_interval);
             try
             {
+                TimeSpan nextDelay = _interval;
                 if (_runImmediately)
                 {
-                    await RunSyncAsync(cancellationToken).ConfigureAwait(false);
+                    bool transientFailure = await RunSyncAsync(cancellationToken).ConfigureAwait(false);
+                    nextDelay = transientFailure ? _connectionRetryInterval : _interval;
                 }
 
-                while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
+                while (true)
                 {
-                    await RunSyncAsync(cancellationToken).ConfigureAwait(false);
+                    await _delayAsync(nextDelay, cancellationToken).ConfigureAwait(false);
+                    bool transientFailure = await RunSyncAsync(cancellationToken).ConfigureAwait(false);
+                    nextDelay = transientFailure ? _connectionRetryInterval : _interval;
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -126,12 +148,15 @@ namespace Cotton.Sync.App.Continuous
             }
         }
 
-        private async Task RunSyncAsync(CancellationToken cancellationToken)
+        private async Task<bool> RunSyncAsync(CancellationToken cancellationToken)
         {
             try
             {
                 _logger.LogDebug("Requesting periodic safety sync.");
-                await _supervisor.SyncAllAsync(cancellationToken).ConfigureAwait(false);
+                await _supervisor
+                    .SyncAllAsync(SyncRunRequest.ForFull(SyncRunCause.Periodic), cancellationToken)
+                    .ConfigureAwait(false);
+                return false;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -139,7 +164,20 @@ namespace Cotton.Sync.App.Continuous
             }
             catch (Exception exception)
             {
-                _logger.LogError(exception, "Periodic safety sync failed.");
+                bool transientFailure = SyncFailureClassifier.IsTransientConnectionFailure(exception);
+                if (transientFailure)
+                {
+                    _logger.LogWarning(
+                        exception,
+                        "Periodic safety sync could not reach Cotton Cloud; retrying after {RetryInterval}.",
+                        _connectionRetryInterval);
+                }
+                else
+                {
+                    _logger.LogError(exception, "Periodic safety sync failed.");
+                }
+
+                return transientFailure;
             }
         }
     }

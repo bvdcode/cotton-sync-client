@@ -20,6 +20,7 @@ namespace Cotton.Sync.App.Runners
     {
         private static readonly TimeSpan BackgroundMinimumLocalUploadAge = TimeSpan.FromSeconds(2);
         private readonly IAppActivityPublisher? _activityPublisher;
+        private readonly Func<TimeSpan, CancellationToken, Task> _delayAsync;
         private readonly IAppTransferProgressPublisher? _progressPublisher;
         private readonly IAppRunProgressPublisher? _runProgressPublisher;
         private readonly CoreSyncEngine _syncEngine;
@@ -31,12 +32,14 @@ namespace Cotton.Sync.App.Runners
             CoreSyncEngine syncEngine,
             IAppActivityPublisher? activityPublisher = null,
             IAppTransferProgressPublisher? progressPublisher = null,
-            IAppRunProgressPublisher? runProgressPublisher = null)
+            IAppRunProgressPublisher? runProgressPublisher = null,
+            Func<TimeSpan, CancellationToken, Task>? delayAsync = null)
         {
             _syncEngine = syncEngine ?? throw new ArgumentNullException(nameof(syncEngine));
             _activityPublisher = activityPublisher;
             _progressPublisher = progressPublisher;
             _runProgressPublisher = runProgressPublisher;
+            _delayAsync = delayAsync ?? Task.Delay;
         }
 
         /// <inheritdoc />
@@ -50,20 +53,54 @@ namespace Cotton.Sync.App.Runners
         {
             ArgumentNullException.ThrowIfNull(syncPair);
             ArgumentNullException.ThrowIfNull(request);
-            CoreSyncRunOptions? options = _activityPublisher is null && _progressPublisher is null && _runProgressPublisher is null
-                    && request.IsFull
-                ? null
-                : CreateOptions(syncPair, request);
-            CoreSyncRunResult result = await _syncEngine
-                .RunOnceAsync(ToCorePair(syncPair), options, cancellationToken)
-                .ConfigureAwait(false);
-            if (result.RequiresUserAction)
+            SyncRunRequest currentRequest = request;
+            while (true)
             {
-                throw new SyncActionRequiredException(CreateActionRequiredMessage(result));
+                AppRunProgressReporter? runProgressReporter = _runProgressPublisher is null
+                    ? null
+                    : new AppRunProgressReporter(syncPair.Id, _runProgressPublisher, currentRequest);
+                AppTransferProgressReporter? transferProgressReporter = _progressPublisher is null
+                    ? null
+                    : new AppTransferProgressReporter(syncPair.Id, _progressPublisher);
+                CoreSyncRunOptions? options = _activityPublisher is null && _progressPublisher is null && _runProgressPublisher is null
+                        && currentRequest.IsFull
+                    ? null
+                    : CreateOptions(syncPair, currentRequest, runProgressReporter, transferProgressReporter);
+                CoreSyncRunResult result;
+                try
+                {
+                    result = await _syncEngine
+                        .RunOnceAsync(ToCorePair(syncPair), options, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                finally
+                {
+                    transferProgressReporter?.Complete();
+                    runProgressReporter?.Complete();
+                }
+
+                if (result.RequiresUserAction)
+                {
+                    throw new SyncActionRequiredException(CreateActionRequiredMessage(result));
+                }
+
+                if (!result.HasDeferredLocalPaths)
+                {
+                    return;
+                }
+
+                currentRequest = SyncRunRequest.ForLocalChangedPaths(
+                    result.DeferredLocalPaths,
+                    request.Causes | SyncRunCause.LocalChange);
+                await _delayAsync(BackgroundMinimumLocalUploadAge, cancellationToken).ConfigureAwait(false);
             }
         }
 
-        private CoreSyncRunOptions CreateOptions(SyncPairSettings syncPair, SyncRunRequest request)
+        private CoreSyncRunOptions CreateOptions(
+            SyncPairSettings syncPair,
+            SyncRunRequest request,
+            AppRunProgressReporter? runProgressReporter,
+            AppTransferProgressReporter? transferProgressReporter)
         {
             return new CoreSyncRunOptions
             {
@@ -72,8 +109,8 @@ namespace Cotton.Sync.App.Runners
                     : CoreSyncRunScope.ForLocalChangedPaths(request.LocalChangedPaths),
                 MinimumLocalUploadAge = BackgroundMinimumLocalUploadAge,
                 ActivityProgress = _activityPublisher is null ? null : new AppActivityProgressReporter(syncPair.Id, _activityPublisher),
-                TransferProgress = _progressPublisher is null ? null : new AppTransferProgressReporter(syncPair.Id, _progressPublisher),
-                RunProgress = _runProgressPublisher is null ? null : new AppRunProgressReporter(syncPair.Id, _runProgressPublisher),
+                TransferProgress = transferProgressReporter,
+                RunProgress = runProgressReporter,
             };
         }
 

@@ -1506,6 +1506,13 @@ namespace Cotton.Sync.App.Tests.SyncApplication
                 return Task.CompletedTask;
             }
 
+            public Task SyncAllAsync(
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return SyncAllAsync(cancellationToken);
+            }
+
             public Task SyncNowAsync(Guid syncPairId, CancellationToken cancellationToken = default)
             {
                 SyncNowCallCount++;

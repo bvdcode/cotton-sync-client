@@ -32,6 +32,11 @@ namespace Cotton.Sync.App.Supervision
         Task SyncAllAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Requests one sync pass for every runner with an explicit sync surface and cause.
+        /// </summary>
+        Task SyncAllAsync(SyncRunRequest request, CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Requests one sync pass for a runner.
         /// </summary>
         Task SyncNowAsync(Guid syncPairId, CancellationToken cancellationToken = default);

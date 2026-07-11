@@ -39,17 +39,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         public async Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
         {
-            ArgumentNullException.ThrowIfNull(syncPair);
-            if (syncPair.Mode != SyncPairMode.WindowsVirtualFiles)
-            {
-                await _inner.RunOnceAsync(syncPair, cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            await RunAndFinalizeUploadsAsync(
-                syncPair,
-                () => _inner.RunOnceAsync(syncPair, cancellationToken),
-                cancellationToken).ConfigureAwait(false);
+            await RunOnceAsync(syncPair, SyncRunRequest.Full, cancellationToken).ConfigureAwait(false);
         }
 
         public async Task RunOnceAsync(
@@ -67,54 +57,69 @@ namespace Cotton.Sync.Desktop.Platform
 
             await RunAndFinalizeUploadsAsync(
                 syncPair,
+                request,
                 () => _inner.RunOnceAsync(syncPair, request, cancellationToken),
                 cancellationToken).ConfigureAwait(false);
         }
 
         private async Task RunAndFinalizeUploadsAsync(
             SyncPairSettings syncPair,
+            SyncRunRequest request,
             Func<Task> runInnerAsync,
             CancellationToken cancellationToken)
         {
-            var collector = new UploadedActivityCollector(syncPair.Id);
+            CloudFilesFinalizationActivityCollector collector = new(syncPair.Id);
             using IDisposable subscription = _activityPublisher.Subscribe(collector);
             await runInnerAsync().ConfigureAwait(false);
 
             var finalizedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            IReadOnlyList<string> uploadedPaths = collector.GetUploadedPaths();
-            if (uploadedPaths.Count == 0)
+            IReadOnlyList<string> finalizationPaths = collector.GetPaths();
+            if (finalizationPaths.Count == 0)
             {
                 return;
             }
 
             DateTime startedAtUtc = DateTime.UtcNow;
             int finalizedCount = 0;
-            int totalCount = CountFinalizationItems(uploadedPaths);
-            PublishFinalizationProgress(syncPair.Id, startedAtUtc, finalizedCount, totalCount, isCompleted: false);
-            foreach (string relativePath in uploadedPaths)
+            int totalCount = CountFinalizationItems(finalizationPaths);
+            PublishFinalizationProgress(syncPair.Id, request, startedAtUtc, finalizedCount, totalCount, isCompleted: false);
+            try
             {
-                await FinalizeUploadedPathAsync(
-                        syncPair,
-                        relativePath,
-                        finalizedPaths,
-                        () =>
-                        {
-                            finalizedCount++;
-                            PublishFinalizationProgress(
-                                syncPair.Id,
-                                startedAtUtc,
-                                finalizedCount,
-                                totalCount,
-                                isCompleted: false);
-                        },
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
+                foreach (string relativePath in finalizationPaths)
+                {
+                    await FinalizeUploadedPathAsync(
+                            syncPair,
+                            relativePath,
+                            finalizedPaths,
+                            () =>
+                            {
+                                finalizedCount++;
+                                PublishFinalizationProgress(
+                                    syncPair.Id,
+                                    request,
+                                    startedAtUtc,
+                                    finalizedCount,
+                                    totalCount,
+                                    isCompleted: false);
+                            },
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
 
-            cancellationToken.ThrowIfCancellationRequested();
-            _cloudFiles.SetSyncRootInSyncState(syncPair);
-            finalizedCount++;
-            PublishFinalizationProgress(syncPair.Id, startedAtUtc, finalizedCount, totalCount, isCompleted: true);
+                cancellationToken.ThrowIfCancellationRequested();
+                _cloudFiles.SetSyncRootInSyncState(syncPair);
+                finalizedCount++;
+            }
+            finally
+            {
+                PublishFinalizationProgress(
+                    syncPair.Id,
+                    request,
+                    startedAtUtc,
+                    finalizedCount,
+                    totalCount,
+                    isCompleted: true);
+            }
         }
 
         private async Task FinalizeUploadedPathAsync(
@@ -201,6 +206,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         private void PublishFinalizationProgress(
             Guid syncPairId,
+            SyncRunRequest request,
             DateTime startedAtUtc,
             int finalizedCount,
             int totalCount,
@@ -214,16 +220,19 @@ namespace Cotton.Sync.Desktop.Platform
                 string.Empty,
                 startedAtUtc,
                 isCompleted,
-                DateTime.UtcNow));
+                DateTime.UtcNow,
+                causes: request.Causes,
+                isFull: request.IsFull,
+                requestedPathCount: request.LocalChangedPaths.Count));
         }
 
-        private static int CountFinalizationItems(IReadOnlyList<string> uploadedPaths)
+        private static int CountFinalizationItems(IReadOnlyList<string> paths)
         {
             var finalizationPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string uploadedPath in uploadedPaths)
+            foreach (string path in paths)
             {
-                finalizationPaths.Add(uploadedPath);
-                foreach (string directoryPath in CreateAncestorDirectoryPaths(uploadedPath))
+                finalizationPaths.Add(path);
+                foreach (string directoryPath in CreateAncestorDirectoryPaths(path))
                 {
                     finalizationPaths.Add(directoryPath);
                 }
@@ -241,13 +250,13 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
-        private class UploadedActivityCollector : IObserver<AppSyncActivity>
+        private class CloudFilesFinalizationActivityCollector : IObserver<AppSyncActivity>
         {
             private readonly Guid _syncPairId;
             private readonly object _gate = new();
             private readonly HashSet<string> _uploadedPaths = new(StringComparer.OrdinalIgnoreCase);
 
-            public UploadedActivityCollector(Guid syncPairId)
+            public CloudFilesFinalizationActivityCollector(Guid syncPairId)
             {
                 _syncPairId = syncPairId;
             }
@@ -264,7 +273,7 @@ namespace Cotton.Sync.Desktop.Platform
             {
                 ArgumentNullException.ThrowIfNull(value);
                 if (value.SyncPairId != _syncPairId
-                    || value.Type != SyncActivityKind.Uploaded
+                    || value.Type is not (SyncActivityKind.Uploaded or SyncActivityKind.Converged)
                     || string.IsNullOrWhiteSpace(value.ItemPath))
                 {
                     return;
@@ -286,7 +295,7 @@ namespace Cotton.Sync.Desktop.Platform
                 }
             }
 
-            public IReadOnlyList<string> GetUploadedPaths()
+            public IReadOnlyList<string> GetPaths()
             {
                 lock (_gate)
                 {

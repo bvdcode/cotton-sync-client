@@ -6,6 +6,7 @@ using Cotton.Sdk;
 using Cotton.Sync.App.Status;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Local;
+using Cotton.Sync.Remote;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -27,7 +28,9 @@ namespace Cotton.Sync.App.Runners
         private ActiveSyncCancellationReason _activeSyncCancellationReason;
         private bool _isSyncInProgress;
         private SyncRunRequest? _activeSyncRequest;
-        private SyncRunRequest? _pendingSyncRequest;
+        private SyncRunRequest? _failedSyncRequest;
+        private SyncRunRequest? _pendingFullSyncRequest;
+        private SyncRunRequest? _pendingScopedSyncRequest;
         private bool _syncRequestsBlocked;
         private DateTime? _lastSuccessfulSyncAtUtc;
         private SyncPairStatus _status;
@@ -70,7 +73,7 @@ namespace Cotton.Sync.App.Runners
             await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                SetState(_syncPair.IsEnabled ? SyncPairRunState.Idle : SyncPairRunState.Disabled);
+                SetReadyState();
                 SetSyncRequestsBlocked(!_syncPair.IsEnabled);
             }
             finally
@@ -114,7 +117,7 @@ namespace Cotton.Sync.App.Runners
             await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                SetState(_syncPair.IsEnabled ? SyncPairRunState.Idle : SyncPairRunState.Disabled);
+                SetReadyState();
                 SetSyncRequestsBlocked(!_syncPair.IsEnabled);
             }
             finally
@@ -176,6 +179,12 @@ namespace Cotton.Sync.App.Runners
                 SetActiveSyncCancellation(activeSyncCancellation);
                 try
                 {
+                    _logger.LogInformation(
+                        "Starting {SyncScope} sync for {SyncPairId}; causes={SyncCauses}; requested paths={RequestedPathCount}.",
+                        request.IsFull ? "full" : "scoped",
+                        _syncPair.Id,
+                        request.Causes,
+                        request.LocalChangedPaths.Count);
                     SetState(SyncPairRunState.Syncing);
                     await RunWorkWithRetryAsync(request, syncCancellation.Token).ConfigureAwait(false);
                     SetState(SyncPairRunState.Idle, lastSuccessfulSyncAtUtc: DateTime.UtcNow);
@@ -227,7 +236,9 @@ namespace Cotton.Sync.App.Runners
                 catch (Exception exception)
                 {
                     SetState(
-                        IsTransientNetworkFailure(exception) ? SyncPairRunState.Offline : SyncPairRunState.Error,
+                        SyncFailureClassifier.IsTransientConnectionFailure(exception)
+                            ? SyncPairRunState.Offline
+                            : SyncPairRunState.Error,
                         CreateFailureMessage(exception));
                     _logger.LogError(
                         exception,
@@ -257,15 +268,28 @@ namespace Cotton.Sync.App.Runners
 
                 if (_isSyncInProgress)
                 {
-                    _pendingSyncRequest = _pendingSyncRequest is null
-                        ? request
-                        : _pendingSyncRequest.Merge(request);
+                    QueuePendingRequest(request);
                     return false;
                 }
 
                 _isSyncInProgress = true;
-                _activeSyncRequest = request;
-                _pendingSyncRequest = null;
+                if (_failedSyncRequest is not null)
+                {
+                    _activeSyncRequest = _failedSyncRequest.IsFull && request.IsFull
+                        ? _failedSyncRequest.Merge(request)
+                        : _failedSyncRequest;
+                    bool requestMergedIntoFailed = _failedSyncRequest.IsFull && request.IsFull;
+                    _failedSyncRequest = null;
+                    if (!requestMergedIntoFailed)
+                    {
+                        QueuePendingRequest(request);
+                    }
+                }
+                else
+                {
+                    _activeSyncRequest = request;
+                }
+
                 return true;
             }
         }
@@ -283,10 +307,10 @@ namespace Cotton.Sync.App.Runners
         {
             lock (_syncRequestGate)
             {
-                if (_pendingSyncRequest is not null)
+                SyncRunRequest? nextRequest = TakeNextPendingRequest();
+                if (nextRequest is not null)
                 {
-                    _activeSyncRequest = _pendingSyncRequest;
-                    _pendingSyncRequest = null;
+                    _activeSyncRequest = nextRequest;
                     return true;
                 }
 
@@ -300,10 +324,45 @@ namespace Cotton.Sync.App.Runners
         {
             lock (_syncRequestGate)
             {
+                _failedSyncRequest = _activeSyncRequest;
+                if (_failedSyncRequest?.IsFull == true && _pendingFullSyncRequest is not null)
+                {
+                    _failedSyncRequest = _failedSyncRequest.Merge(_pendingFullSyncRequest);
+                    _pendingFullSyncRequest = null;
+                }
+
                 _isSyncInProgress = false;
                 _activeSyncRequest = null;
-                _pendingSyncRequest = null;
             }
+        }
+
+        private void QueuePendingRequest(SyncRunRequest request)
+        {
+            if (request.IsFull)
+            {
+                _pendingFullSyncRequest = _pendingFullSyncRequest is null
+                    ? request
+                    : _pendingFullSyncRequest.Merge(request);
+                return;
+            }
+
+            _pendingScopedSyncRequest = _pendingScopedSyncRequest is null
+                ? request
+                : _pendingScopedSyncRequest.Merge(request);
+        }
+
+        private SyncRunRequest? TakeNextPendingRequest()
+        {
+            if (_pendingScopedSyncRequest is not null)
+            {
+                SyncRunRequest request = _pendingScopedSyncRequest;
+                _pendingScopedSyncRequest = null;
+                return request;
+            }
+
+            SyncRunRequest? fullRequest = _pendingFullSyncRequest;
+            _pendingFullSyncRequest = null;
+            return fullRequest;
         }
 
         private async Task RunWorkWithRetryAsync(SyncRunRequest request, CancellationToken cancellationToken)
@@ -445,7 +504,9 @@ namespace Cotton.Sync.App.Runners
                 _syncRequestsBlocked = isBlocked;
                 if (isBlocked)
                 {
-                    _pendingSyncRequest = null;
+                    _failedSyncRequest = null;
+                    _pendingFullSyncRequest = null;
+                    _pendingScopedSyncRequest = null;
                 }
             }
         }
@@ -469,6 +530,51 @@ namespace Cotton.Sync.App.Runners
                 }
 
                 _status = CreateStatus(state, lastError);
+            }
+        }
+
+        private void SetReadyState()
+        {
+            if (!_syncPair.IsEnabled)
+            {
+                SetState(SyncPairRunState.Disabled);
+                return;
+            }
+
+            string? localRootError = GetLocalRootError(_syncPair.LocalRootPath);
+            SetState(
+                localRootError is null ? SyncPairRunState.Idle : SyncPairRunState.Error,
+                localRootError);
+        }
+
+        private static string? GetLocalRootError(string localRootPath)
+        {
+            try
+            {
+                FileAttributes attributes = File.GetAttributes(localRootPath);
+                return (attributes & FileAttributes.Directory) != 0
+                    ? null
+                    : "The configured local sync path is not a folder.";
+            }
+            catch (FileNotFoundException)
+            {
+                return "Cotton Sync cannot find the local sync folder. Restore or reconnect the folder, then retry sync.";
+            }
+            catch (DirectoryNotFoundException)
+            {
+                return "Cotton Sync cannot find the local sync folder. Restore or reconnect the folder, then retry sync.";
+            }
+            catch (DriveNotFoundException)
+            {
+                return "Cotton Sync cannot find the local sync folder. Restore or reconnect the folder, then retry sync.";
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return "Permission denied while accessing the local sync folder. Check folder permissions and retry.";
+            }
+            catch (IOException exception)
+            {
+                return "Cotton Sync cannot access the local sync folder: " + exception.Message;
             }
         }
 
@@ -515,21 +621,16 @@ namespace Cotton.Sync.App.Runners
             return TimeSpan.FromMilliseconds(milliseconds);
         }
 
-        private static bool IsTransientNetworkFailure(Exception exception)
-        {
-            return exception switch
-            {
-                HttpRequestException requestException => IsTransientStatusCode(requestException.StatusCode),
-                TimeoutException => true,
-                TaskCanceledException => true,
-                _ => false,
-            };
-        }
-
         private static string CreateFailureMessage(Exception exception)
         {
             return exception switch
             {
+                RemoteChangeFeedUnavailableException unavailableException
+                    => unavailableException.Message,
+                CottonApiException apiException when apiException.StatusCode == HttpStatusCode.Locked
+                    => "Cotton Cloud reports that the server is locked. Cotton Sync will retry automatically.",
+                _ when SyncFailureClassifier.IsTransientConnectionFailure(exception)
+                    => "Cotton Cloud is temporarily unavailable. Cotton Sync will retry automatically.",
                 CottonApiException apiException when apiException.StatusCode == HttpStatusCode.Unauthorized
                     => "Session expired. Sign in again to continue syncing.",
                 CottonApiException apiException when apiException.StatusCode == HttpStatusCode.Forbidden
@@ -567,25 +668,16 @@ namespace Cotton.Sync.App.Runners
 
         private static bool IsRetriableSyncFailure(Exception exception)
         {
-            return IsTransientNetworkFailure(exception)
+            return SyncFailureClassifier.IsTransientConnectionFailure(exception)
                 || exception is DirectoryNotFoundException
                 || exception is LocalFileUnavailableException;
         }
 
         private static SyncPairRunState GetRetriableFailureState(Exception exception)
         {
-            return IsTransientNetworkFailure(exception) ? SyncPairRunState.Offline : SyncPairRunState.Error;
-        }
-
-        private static bool IsTransientStatusCode(HttpStatusCode? statusCode)
-        {
-            return statusCode is null
-                or HttpStatusCode.RequestTimeout
-                or HttpStatusCode.TooManyRequests
-                or HttpStatusCode.InternalServerError
-                or HttpStatusCode.BadGateway
-                or HttpStatusCode.ServiceUnavailable
-                or HttpStatusCode.GatewayTimeout;
+            return SyncFailureClassifier.IsTransientConnectionFailure(exception)
+                ? SyncPairRunState.Offline
+                : SyncPairRunState.Error;
         }
 
         private enum ActiveSyncCancellationReason

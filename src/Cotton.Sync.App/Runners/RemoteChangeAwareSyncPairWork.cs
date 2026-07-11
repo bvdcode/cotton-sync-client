@@ -50,7 +50,12 @@ namespace Cotton.Sync.App.Runners
 
             if (remoteBatch.CursorExpired)
             {
-                await _inner.RunOnceAsync(syncPair, SyncRunRequest.Full, cancellationToken).ConfigureAwait(false);
+                await _inner
+                    .RunOnceAsync(
+                        syncPair,
+                        SyncRunRequest.ForFull(request.Causes | SyncRunCause.RemoteCursorExpired),
+                        cancellationToken)
+                    .ConfigureAwait(false);
                 await _remoteChanges.AcknowledgeFullResyncAsync(remoteBatch, cancellationToken).ConfigureAwait(false);
                 return;
             }
@@ -70,6 +75,7 @@ namespace Cotton.Sync.App.Runners
                 {
                     SyncRunRequest replayRequest = await CreateRemoteReplayRequestAsync(
                             syncPair,
+                            request,
                             remoteRead,
                             cancellationToken)
                         .ConfigureAwait(false);
@@ -166,6 +172,7 @@ namespace Cotton.Sync.App.Runners
 
         private async Task<SyncRunRequest> CreateRemoteReplayRequestAsync(
             SyncPairSettings syncPair,
+            SyncRunRequest originalRequest,
             RemoteChangeFeedReadResult remoteRead,
             CancellationToken cancellationToken)
         {
@@ -178,7 +185,7 @@ namespace Cotton.Sync.App.Runners
             SyncRunRequest? replayRequest = await _scopedSyncPlanner
                 .TryCreateScopedRequestAsync(
                     syncPair,
-                    SyncRunRequest.Full,
+                    SyncRunRequest.ForFull(originalRequest.Causes),
                     remoteRead.Snapshot,
                     cancellationToken)
                 .ConfigureAwait(false);

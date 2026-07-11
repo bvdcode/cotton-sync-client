@@ -48,6 +48,7 @@ namespace Cotton.Sync.App.Runners
                 CoreSyncActivityKind.Uploaded => "Uploaded",
                 CoreSyncActivityKind.Downloaded => "Downloaded",
                 CoreSyncActivityKind.PlaceholderCreated => VirtualFileUserFacingCopy.CloudFileAvailableActivityVerb,
+                CoreSyncActivityKind.Converged => "Synchronized",
                 CoreSyncActivityKind.Moved => "Moved",
                 CoreSyncActivityKind.DeletedLocal => "Deleted local copy",
                 CoreSyncActivityKind.DeletedRemote => "Deleted remote copy",

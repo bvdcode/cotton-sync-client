@@ -9,23 +9,53 @@ namespace Cotton.Sync.App.Runners
     internal class AppRunProgressReporter : IProgress<CoreSyncRunProgress>
     {
         private readonly IAppRunProgressPublisher _publisher;
+        private readonly SyncRunRequest _request;
         private readonly Guid _syncPairId;
+        private CoreSyncRunProgress? _latest;
+        private bool _isCompleted;
 
-        public AppRunProgressReporter(Guid syncPairId, IAppRunProgressPublisher publisher)
+        public AppRunProgressReporter(
+            Guid syncPairId,
+            IAppRunProgressPublisher publisher,
+            SyncRunRequest request)
         {
             _syncPairId = syncPairId;
             _publisher = publisher ?? throw new ArgumentNullException(nameof(publisher));
+            _request = request ?? throw new ArgumentNullException(nameof(request));
         }
 
         public void Report(CoreSyncRunProgress value)
         {
             ArgumentNullException.ThrowIfNull(value);
-            _publisher.Publish(ToAppRunProgress(_syncPairId, value));
+            _latest = value;
+            _isCompleted = value.IsCompleted;
+            _publisher.Publish(ToAppRunProgress(_syncPairId, value, _request));
+        }
+
+        public void Complete()
+        {
+            if (_isCompleted)
+            {
+                return;
+            }
+
+            CoreSyncRunProgress? latest = _latest;
+            var completed = new CoreSyncRunProgress(
+                SyncRunProgressStage.Completed,
+                latest?.FilesCompleted ?? 0,
+                latest?.FilesTotal,
+                currentPath: null,
+                latest?.StartedAtUtc ?? DateTime.UtcNow,
+                isCompleted: true,
+                latest?.BytesCompleted ?? 0,
+                latest?.BytesTotal);
+            Report(completed);
         }
 
         private static AppRunProgress ToAppRunProgress(
             Guid syncPairId,
-            CoreSyncRunProgress progress)
+            CoreSyncRunProgress progress,
+            SyncRunRequest request)
         {
             return new AppRunProgress(
                 syncPairId,
@@ -37,7 +67,10 @@ namespace Cotton.Sync.App.Runners
                 progress.IsCompleted,
                 progress.OccurredAtUtc,
                 progress.BytesCompleted,
-                progress.BytesTotal);
+                progress.BytesTotal,
+                request.Causes,
+                request.IsFull,
+                request.LocalChangedPaths.Count);
         }
     }
 }

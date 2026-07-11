@@ -2,8 +2,10 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync;
+using Cotton.Sdk;
 using Cotton.Sdk.Sync;
 using Cotton.Sync.State;
+using System.Net;
 
 namespace Cotton.Sync.Remote
 {
@@ -58,9 +60,17 @@ namespace Cotton.Sync.Remote
                 throw new ArgumentOutOfRangeException(nameof(limit), limit, "Limit must be positive.");
             }
 
-            SyncChangesResponseDto response = await _syncClient
-                .GetChangesAsync(sinceCursor, limit, cancellationToken)
-                .ConfigureAwait(false);
+            SyncChangesResponseDto response;
+            try
+            {
+                response = await _syncClient
+                    .GetChangesAsync(sinceCursor, limit, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (CottonApiException exception) when (exception.StatusCode == HttpStatusCode.NotFound)
+            {
+                throw new RemoteChangeFeedUnavailableException(exception);
+            }
             if (response.SinceCursor != sinceCursor)
             {
                 throw new InvalidOperationException("Remote change feed response cursor does not match the requested cursor.");

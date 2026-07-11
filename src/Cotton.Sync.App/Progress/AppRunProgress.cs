@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.State;
+using Cotton.Sync.App.Runners;
 
 namespace Cotton.Sync.App.Progress
 {
@@ -23,7 +24,10 @@ namespace Cotton.Sync.App.Progress
             bool isCompleted,
             DateTime occurredAtUtc,
             long bytesCompleted = 0,
-            long? bytesTotal = null)
+            long? bytesTotal = null,
+            SyncRunCause causes = SyncRunCause.InternalMaintenance,
+            bool isFull = false,
+            int requestedPathCount = 0)
         {
             if (stage == SyncRunProgressStage.Unknown)
             {
@@ -41,6 +45,17 @@ namespace Cotton.Sync.App.Progress
             }
 
             ArgumentOutOfRangeException.ThrowIfNegative(bytesCompleted);
+            ArgumentOutOfRangeException.ThrowIfNegative(requestedPathCount);
+            if (causes == SyncRunCause.None)
+            {
+                throw new ArgumentOutOfRangeException(nameof(causes), "At least one sync run cause is required.");
+            }
+
+            if (isFull && requestedPathCount != 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(requestedPathCount), "Full sync progress cannot have requested paths.");
+            }
+
             if (bytesTotal.HasValue)
             {
                 ArgumentOutOfRangeException.ThrowIfNegative(bytesTotal.Value);
@@ -60,6 +75,9 @@ namespace Cotton.Sync.App.Progress
             OccurredAtUtc = UtcDateTime.Normalize(occurredAtUtc);
             BytesCompleted = bytesCompleted;
             BytesTotal = bytesTotal;
+            Causes = causes;
+            IsFull = isFull;
+            RequestedPathCount = requestedPathCount;
         }
 
         /// <summary>
@@ -106,6 +124,21 @@ namespace Cotton.Sync.App.Progress
         /// Gets the total transfer bytes planned for this pass when known.
         /// </summary>
         public long? BytesTotal { get; }
+
+        /// <summary>
+        /// Gets the events that requested this pass.
+        /// </summary>
+        public SyncRunCause Causes { get; }
+
+        /// <summary>
+        /// Gets a value indicating whether this pass covers the whole sync pair.
+        /// </summary>
+        public bool IsFull { get; }
+
+        /// <summary>
+        /// Gets the number of explicitly requested paths for a scoped pass.
+        /// </summary>
+        public int RequestedPathCount { get; }
 
         /// <summary>
         /// Gets the UTC timestamp when this progress sample was produced.

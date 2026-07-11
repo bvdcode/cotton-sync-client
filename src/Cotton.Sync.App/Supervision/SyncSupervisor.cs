@@ -94,8 +94,17 @@ namespace Cotton.Sync.App.Supervision
         }
 
         /// <inheritdoc />
-        public async Task SyncAllAsync(CancellationToken cancellationToken = default)
+        public Task SyncAllAsync(CancellationToken cancellationToken = default)
         {
+            return SyncAllAsync(SyncRunRequest.Full, cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public async Task SyncAllAsync(
+            SyncRunRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
             IReadOnlyList<ISyncPairRunner> runners;
             await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
@@ -107,7 +116,7 @@ namespace Cotton.Sync.App.Supervision
                 _operationGate.Release();
             }
 
-            IReadOnlyList<Exception> failures = await SyncRunnersAndCollectFailuresAsync(runners, cancellationToken)
+            IReadOnlyList<Exception> failures = await SyncRunnersAndCollectFailuresAsync(runners, request, cancellationToken)
                 .ConfigureAwait(false);
 
             _statusPublisher.Publish(CreateAppStatusSnapshot());
@@ -204,7 +213,11 @@ namespace Cotton.Sync.App.Supervision
             }
 
             _statusPublisher.Publish(status);
-            await SyncRunnersAsync(resumedRunners, cancellationToken).ConfigureAwait(false);
+            await SyncRunnersAsync(
+                    resumedRunners,
+                    SyncRunRequest.ForFull(SyncRunCause.Resume),
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
 
         /// <inheritdoc />
@@ -228,7 +241,11 @@ namespace Cotton.Sync.App.Supervision
             _statusPublisher.Publish(status);
             if (resumedRunner is not null)
             {
-                await SyncRunnerAndPublishActiveStatusAsync(resumedRunner, cancellationToken).ConfigureAwait(false);
+                await SyncRunnerAndPublishActiveStatusAsync(
+                        resumedRunner,
+                        SyncRunRequest.ForFull(SyncRunCause.Resume),
+                        cancellationToken)
+                    .ConfigureAwait(false);
                 _statusPublisher.Publish(CreateAppStatusSnapshot());
             }
         }
@@ -266,9 +283,10 @@ namespace Cotton.Sync.App.Supervision
 
         private async Task SyncRunnersAsync(
             IReadOnlyList<ISyncPairRunner> runners,
+            SyncRunRequest request,
             CancellationToken cancellationToken)
         {
-            IReadOnlyList<Exception> failures = await SyncRunnersAndCollectFailuresAsync(runners, cancellationToken)
+            IReadOnlyList<Exception> failures = await SyncRunnersAndCollectFailuresAsync(runners, request, cancellationToken)
                 .ConfigureAwait(false);
 
             if (runners.Count > 0)
@@ -281,6 +299,7 @@ namespace Cotton.Sync.App.Supervision
 
         private async Task<IReadOnlyList<Exception>> SyncRunnersAndCollectFailuresAsync(
             IReadOnlyList<ISyncPairRunner> runners,
+            SyncRunRequest request,
             CancellationToken cancellationToken)
         {
             List<Exception>? failures = null;
@@ -288,7 +307,7 @@ namespace Cotton.Sync.App.Supervision
             {
                 try
                 {
-                    await SyncRunnerAndPublishActiveStatusAsync(runner, cancellationToken).ConfigureAwait(false);
+                    await SyncRunnerAndPublishActiveStatusAsync(runner, request, cancellationToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -305,13 +324,6 @@ namespace Cotton.Sync.App.Supervision
             }
 
             return failures is null ? Array.Empty<Exception>() : failures;
-        }
-
-        private Task SyncRunnerAndPublishActiveStatusAsync(
-            ISyncPairRunner runner,
-            CancellationToken cancellationToken)
-        {
-            return SyncRunnerAndPublishActiveStatusAsync(runner, SyncRunRequest.Full, cancellationToken);
         }
 
         private async Task SyncRunnerAndPublishActiveStatusAsync(

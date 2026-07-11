@@ -101,6 +101,7 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
             {
                 Assert.That(observed, Is.True);
                 Assert.That(supervisor.SyncAllCallCount, Is.EqualTo(1));
+                Assert.That(supervisor.LastSyncAllRequest?.Causes, Is.EqualTo(SyncRunCause.RealtimeRemoteChange));
             });
         }
 
@@ -410,6 +411,8 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
 
             public int SyncAllCallCount { get; private set; }
 
+            public SyncRunRequest? LastSyncAllRequest { get; private set; }
+
             public Task PauseAllAsync(CancellationToken cancellationToken = default)
             {
                 return Task.CompletedTask;
@@ -453,6 +456,14 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
                 return BlockSyncAll
                     ? WaitForBlockedSyncAllAsync(cancellationToken)
                     : Task.CompletedTask;
+            }
+
+            public Task SyncAllAsync(
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                LastSyncAllRequest = request;
+                return SyncAllAsync(cancellationToken);
             }
 
             public Task SyncNowAsync(Guid syncPairId, CancellationToken cancellationToken = default)

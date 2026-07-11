@@ -188,6 +188,13 @@ namespace Cotton.Sync.App.Tests.Auth
                 throw new NotSupportedException();
             }
 
+            public Task SyncAllAsync(
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
             public Task SyncNowAsync(Guid syncPairId, CancellationToken cancellationToken = default)
             {
                 throw new NotSupportedException();

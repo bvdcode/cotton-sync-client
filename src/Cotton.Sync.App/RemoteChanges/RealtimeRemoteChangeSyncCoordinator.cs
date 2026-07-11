@@ -4,6 +4,7 @@
 using Cotton.Sync.App.Auth;
 using Cotton.Sdk.Realtime;
 using Cotton.Sync.App.Supervision;
+using Cotton.Sync.App.Runners;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -254,7 +255,11 @@ namespace Cotton.Sync.App.RemoteChanges
                 _logger.LogDebug(
                     "Requesting remote-change sync after realtime event {MethodName}.",
                     methodName);
-                await _supervisor.SyncAllAsync(request.Cancellation.Token).ConfigureAwait(false);
+                await _supervisor
+                    .SyncAllAsync(
+                        SyncRunRequest.ForFull(SyncRunCause.RealtimeRemoteChange),
+                        request.Cancellation.Token)
+                    .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (request.Cancellation.IsCancellationRequested)
             {

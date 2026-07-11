@@ -49,7 +49,9 @@ namespace Cotton.Sync.App.Runners
                 return null;
             }
 
-            SyncRunRequest remoteRequest = SyncRunRequest.ForLocalChangedPaths(remoteChangedPaths);
+            SyncRunRequest remoteRequest = SyncRunRequest.ForLocalChangedPaths(
+                remoteChangedPaths,
+                request.Causes | SyncRunCause.RealtimeRemoteChange);
             return request.IsFull ? remoteRequest : request.Merge(remoteRequest);
         }
 

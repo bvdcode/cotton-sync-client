@@ -171,6 +171,33 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesReportsMatchingMaterializedFileForFinalization()
+        {
+            const string relativePath = "Docs/already-uploaded.txt";
+            LocalFileSnapshot local = LocalFile(relativePath, "matching-content");
+            NodeFileManifestDto remote = RemoteFile(
+                relativePath,
+                local.ContentHash,
+                sizeBytes: local.SizeBytes);
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(local),
+                RemoteTree(remote),
+                new FakeRemoteFileSynchronizer(),
+                out SqliteSyncStateStore stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Converged }));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entry.RemoteContentHash, Is.EqualTo(remote.ContentHash));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_ReusesMatchingRemoteFileAfterCreateConflictWithoutFullRecoveryCrawl()
         {
             const string relativePath = "Docs/local.txt";

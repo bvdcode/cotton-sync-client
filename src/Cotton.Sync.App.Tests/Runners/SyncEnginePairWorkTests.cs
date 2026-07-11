@@ -201,9 +201,11 @@ namespace Cotton.Sync.App.Tests.Runners
 
             await work.RunOnceAsync(syncPair);
 
-            AppSyncTransferProgress progress = observer.Values.Single();
+            AppSyncTransferProgress progress = observer.Values[0];
+            AppSyncTransferProgress completed = observer.Values[1];
             Assert.Multiple(() =>
             {
+                Assert.That(observer.Values, Has.Count.EqualTo(2));
                 Assert.That(engine.LastOptions?.TransferProgress, Is.Not.Null);
                 Assert.That(progress.SyncPairId, Is.EqualTo(syncPairId));
                 Assert.That(progress.Direction, Is.EqualTo(SyncTransferDirection.Upload));
@@ -211,6 +213,8 @@ namespace Cotton.Sync.App.Tests.Runners
                 Assert.That(progress.TransferredBytes, Is.EqualTo(512));
                 Assert.That(progress.TotalBytes, Is.EqualTo(1024));
                 Assert.That(progress.IsCompleted, Is.False);
+                Assert.That(completed.IsCompleted, Is.True);
+                Assert.That(completed.TransferredBytes, Is.EqualTo(512));
             });
         }
 
@@ -235,9 +239,11 @@ namespace Cotton.Sync.App.Tests.Runners
 
             await work.RunOnceAsync(syncPair);
 
-            AppSyncRunProgress progress = observer.Values.Single();
+            AppSyncRunProgress progress = observer.Values[0];
+            AppSyncRunProgress completed = observer.Values[1];
             Assert.Multiple(() =>
             {
+                Assert.That(observer.Values, Has.Count.EqualTo(2));
                 Assert.That(engine.LastOptions?.RunProgress, Is.Not.Null);
                 Assert.That(progress.SyncPairId, Is.EqualTo(syncPairId));
                 Assert.That(progress.Stage, Is.EqualTo(SyncRunProgressStage.ReconcilingFiles));
@@ -245,6 +251,74 @@ namespace Cotton.Sync.App.Tests.Runners
                 Assert.That(progress.FilesTotal, Is.EqualTo(10));
                 Assert.That(progress.CurrentPath, Is.EqualTo("Documents/report.txt"));
                 Assert.That(progress.IsCompleted, Is.False);
+                Assert.That(progress.Causes, Is.EqualTo(SyncRunCause.Manual));
+                Assert.That(progress.IsFull, Is.True);
+                Assert.That(progress.RequestedPathCount, Is.Zero);
+                Assert.That(completed.Stage, Is.EqualTo(SyncRunProgressStage.Completed));
+                Assert.That(completed.IsCompleted, Is.True);
+            });
+        }
+
+        [Test]
+        public void RunOnceAsync_PublishesTerminalRunProgressWhenCoreFails()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var engine = new FakeSyncEngine
+            {
+                RunProgressToReport = new CoreSyncRunProgress(
+                    CoreSyncRunProgressStage.CreatingPlaceholders,
+                    filesCompleted: 391_639,
+                    filesTotal: 503_447,
+                    currentPath: "Cloud/item.bin",
+                    startedAtUtc: new DateTime(2026, 7, 10, 21, 44, 0, DateTimeKind.Utc)),
+                Failure = new HttpRequestException("Bad Gateway"),
+            };
+            var publisher = new InMemoryAppRunProgressPublisher();
+            var observer = new RecordingObserver<AppSyncRunProgress>();
+            using IDisposable subscription = publisher.Subscribe(observer);
+            var work = new SyncEnginePairWork(engine, runProgressPublisher: publisher);
+
+            Assert.ThrowsAsync<HttpRequestException>(
+                async () => await work.RunOnceAsync(CreateSyncPair(syncPairId)));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observer.Values, Has.Count.EqualTo(2));
+                Assert.That(observer.Values[0].IsCompleted, Is.False);
+                Assert.That(observer.Values[1].Stage, Is.EqualTo(SyncRunProgressStage.Completed));
+                Assert.That(observer.Values[1].IsCompleted, Is.True);
+                Assert.That(observer.Values[1].FilesCompleted, Is.EqualTo(391_639));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_RetriesOnlyDeferredLocalPathsAfterQuietWindow()
+        {
+            CoreSyncRunResult deferredResult = new();
+            deferredResult.RecordDeferredLocalPath("Docs/report.txt");
+            FakeSyncEngine engine = new();
+            engine.ResultsToReturn.Enqueue(deferredResult);
+            engine.ResultsToReturn.Enqueue(new CoreSyncRunResult());
+            List<TimeSpan> delays = [];
+            SyncEnginePairWork work = new(
+                engine,
+                delayAsync: (delay, _) =>
+                {
+                    delays.Add(delay);
+                    return Task.CompletedTask;
+                });
+            SyncPairSettings syncPair = CreateSyncPair(Guid.NewGuid());
+            SyncRunRequest request = SyncRunRequest.ForFull(SyncRunCause.InitialPopulation);
+
+            await work.RunOnceAsync(syncPair, request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(engine.RunOnceCallCount, Is.EqualTo(2));
+                Assert.That(delays, Is.EqualTo(new[] { TimeSpan.FromSeconds(2) }));
+                Assert.That(engine.OptionsHistory[0], Is.Null);
+                Assert.That(engine.OptionsHistory[1]?.Scope.IsFull, Is.False);
+                Assert.That(engine.OptionsHistory[1]?.Scope.LocalChangedPaths, Is.EqualTo(new[] { "Docs/report.txt" }));
             });
         }
 
@@ -299,11 +373,17 @@ namespace Cotton.Sync.App.Tests.Runners
 
             public CoreSyncRunProgress? RunProgressToReport { get; set; }
 
+            public Exception? Failure { get; set; }
+
             public CoreSyncRunOptions? LastOptions { get; private set; }
+
+            public List<CoreSyncRunOptions?> OptionsHistory { get; } = [];
 
             public CoreSyncPair? LastPair { get; private set; }
 
             public CoreSyncRunResult ResultToReturn { get; set; } = new();
+
+            public Queue<CoreSyncRunResult> ResultsToReturn { get; } = [];
 
             public int RunOnceCallCount { get; private set; }
 
@@ -315,6 +395,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 RunOnceCallCount++;
                 LastPair = syncPair;
                 LastOptions = options;
+                OptionsHistory.Add(options);
                 if (ActivityToReport is not null)
                 {
                     options?.ActivityProgress?.Report(ActivityToReport);
@@ -330,7 +411,15 @@ namespace Cotton.Sync.App.Tests.Runners
                     options?.RunProgress?.Report(RunProgressToReport);
                 }
 
-                return Task.FromResult(ResultToReturn);
+                if (Failure is not null)
+                {
+                    throw Failure;
+                }
+
+                CoreSyncRunResult result = ResultsToReturn.Count > 0
+                    ? ResultsToReturn.Dequeue()
+                    : ResultToReturn;
+                return Task.FromResult(result);
             }
         }
 

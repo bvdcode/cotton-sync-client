@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using Cotton.Sync;
 using Cotton.Models.Enums;
+using Cotton.Sdk;
 using Cotton.Sdk.Sync;
 using Cotton.Sync.Remote;
 using Cotton.Sync.State;
@@ -120,6 +121,31 @@ namespace Cotton.Sync.Tests.Remote
 
             Assert.ThrowsAsync<InvalidOperationException>(
                 () => reader.ReadFromCursorAsync("pair-a", sinceCursor: 10, limit: 30));
+        }
+
+        [Test]
+        public async Task ReadAsync_ReportsMissingChangeFeedRouteAsTemporaryUnavailability()
+        {
+            SqliteSyncStateStore stateStore = CreateStore();
+            await stateStore.InitializeAsync();
+            var syncClient = new FakeCottonSyncClient
+            {
+                Failure = new CottonApiException(
+                    System.Net.HttpStatusCode.NotFound,
+                    "404 page not found",
+                    "Cotton API request GET /api/v1/sync/changes?since=10&limit=500 failed with status 404 (NotFound)."),
+            };
+            var reader = new RemoteChangeFeedReader(syncClient, stateStore);
+
+            RemoteChangeFeedUnavailableException? exception = Assert.ThrowsAsync<RemoteChangeFeedUnavailableException>(
+                async () => await reader.ReadAsync("pair-a"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(exception!.InnerException, Is.TypeOf<CottonApiException>());
+                Assert.That(exception.Message, Does.Contain("retry automatically"));
+            });
         }
 
         [Test]
@@ -300,12 +326,19 @@ namespace Cotton.Sync.Tests.Remote
 
             public List<(long SinceCursor, int Limit)> Requests { get; } = [];
 
+            public Exception? Failure { get; set; }
+
             public Task<SyncChangesResponseDto> GetChangesAsync(
                 long sinceCursor = 0,
                 int limit = 500,
                 CancellationToken cancellationToken = default)
             {
                 Requests.Add((sinceCursor, limit));
+                if (Failure is not null)
+                {
+                    throw Failure;
+                }
+
                 return Task.FromResult(_responses.Dequeue());
             }
         }

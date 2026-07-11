@@ -177,11 +177,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 DirectoryException = new InvalidOperationException("Cloud Files directory repair failed."),
             };
             var diagnostics = new WindowsCloudFilesDiagnostics();
+            var progressPublisher = new RecordingRunProgressPublisher();
             var work = new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
                 new RecordingSyncPairWork(),
                 stateStore,
                 cloudFiles,
-                diagnostics: diagnostics);
+                diagnostics: diagnostics,
+                runProgressPublisher: progressPublisher);
             var runner = new SyncPairRunner(
                 syncPair,
                 work,
@@ -200,6 +202,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(runner.Status.LastSuccessfulSyncAtUtc, Is.Null);
                 Assert.That(cloudFiles.DirectoryPlaceholders.Select(static request => request.RelativePath), Is.EqualTo(new[] { "Docs" }));
                 Assert.That(diagnostics.Snapshot().Single().Status, Is.EqualTo("failed"));
+                Assert.That(progressPublisher.Progress.Last().IsCompleted, Is.True);
             });
         }
 

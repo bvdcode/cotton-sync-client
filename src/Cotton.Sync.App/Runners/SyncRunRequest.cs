@@ -8,21 +8,35 @@ namespace Cotton.Sync.App.Runners
     /// </summary>
     public sealed class SyncRunRequest
     {
-        private SyncRunRequest(bool isFull, IReadOnlyList<string> localChangedPaths)
+        private SyncRunRequest(
+            bool isFull,
+            IReadOnlyList<string> localChangedPaths,
+            SyncRunCause causes)
         {
+            if (causes == SyncRunCause.None)
+            {
+                throw new ArgumentOutOfRangeException(nameof(causes), "At least one sync run cause is required.");
+            }
+
             IsFull = isFull;
             LocalChangedPaths = localChangedPaths;
+            Causes = causes;
         }
 
         /// <summary>
         /// Gets a request that reconciles the whole sync pair.
         /// </summary>
-        public static SyncRunRequest Full { get; } = new(true, Array.Empty<string>());
+        public static SyncRunRequest Full { get; } = ForFull(SyncRunCause.Manual);
 
         /// <summary>
         /// Gets a value indicating whether the whole sync pair must be reconciled.
         /// </summary>
         public bool IsFull { get; }
+
+        /// <summary>
+        /// Gets the events that requested this pass.
+        /// </summary>
+        public SyncRunCause Causes { get; }
 
         /// <summary>
         /// Gets local relative paths that should be reconciled.
@@ -32,7 +46,17 @@ namespace Cotton.Sync.App.Runners
         /// <summary>
         /// Creates a local-path request.
         /// </summary>
-        public static SyncRunRequest ForLocalChangedPaths(IEnumerable<string> relativePaths)
+        public static SyncRunRequest ForFull(SyncRunCause causes)
+        {
+            return new SyncRunRequest(true, Array.Empty<string>(), causes);
+        }
+
+        /// <summary>
+        /// Creates a local-path request.
+        /// </summary>
+        public static SyncRunRequest ForLocalChangedPaths(
+            IEnumerable<string> relativePaths,
+            SyncRunCause causes = SyncRunCause.LocalChange)
         {
             ArgumentNullException.ThrowIfNull(relativePaths);
             List<string> paths = relativePaths
@@ -45,7 +69,7 @@ namespace Cotton.Sync.App.Runners
                 throw new ArgumentException("At least one changed path is required for a scoped sync request.", nameof(relativePaths));
             }
 
-            return new SyncRunRequest(false, paths);
+            return new SyncRunRequest(false, paths, causes);
         }
 
         /// <summary>
@@ -56,10 +80,12 @@ namespace Cotton.Sync.App.Runners
             ArgumentNullException.ThrowIfNull(other);
             if (IsFull || other.IsFull)
             {
-                return Full;
+                return ForFull(Causes | other.Causes);
             }
 
-            return ForLocalChangedPaths(LocalChangedPaths.Concat(other.LocalChangedPaths));
+            return ForLocalChangedPaths(
+                LocalChangedPaths.Concat(other.LocalChangedPaths),
+                Causes | other.Causes);
         }
     }
 }

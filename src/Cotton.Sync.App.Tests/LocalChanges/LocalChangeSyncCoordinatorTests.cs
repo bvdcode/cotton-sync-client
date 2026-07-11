@@ -41,6 +41,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 Assert.That(supervisor.LastSyncNowPairId, Is.EqualTo(syncPair.Id));
                 Assert.That(supervisor.LastRequest?.IsFull, Is.False);
                 Assert.That(supervisor.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { "a.txt", "b.txt" }));
+                Assert.That(supervisor.LastRequest?.Causes, Is.EqualTo(SyncRunCause.LocalChange));
             });
         }
 
@@ -126,6 +127,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 Assert.That(observed, Is.True);
                 Assert.That(supervisor.LastRequest?.IsFull, Is.True);
                 Assert.That(supervisor.LastRequest?.LocalChangedPaths, Is.Empty);
+                Assert.That(supervisor.LastRequest?.Causes, Is.EqualTo(SyncRunCause.LocalRenameRecovery));
             });
         }
 
@@ -155,6 +157,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(1));
                 Assert.That(supervisor.LastRequest?.IsFull, Is.True);
                 Assert.That(supervisor.LastRequest?.LocalChangedPaths, Is.Empty);
+                Assert.That(supervisor.LastRequest?.Causes, Is.EqualTo(SyncRunCause.LocalWatcherError));
             });
         }
 
@@ -315,6 +318,9 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(1));
                 Assert.That(supervisor.LastRequest?.IsFull, Is.True);
                 Assert.That(supervisor.LastRequest?.LocalChangedPaths, Is.Empty);
+                Assert.That(
+                    supervisor.LastRequest?.Causes,
+                    Is.EqualTo(SyncRunCause.LocalChange | SyncRunCause.LocalChangeOverflow));
             });
         }
 
@@ -348,6 +354,40 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 Assert.That(supervisor.LastRequest?.LocalChangedPaths, Has.Count.EqualTo(changeCount));
                 Assert.That(supervisor.LastRequest?.LocalChangedPaths, Does.Contain("storm/file-0.txt"));
                 Assert.That(supervisor.LastRequest?.LocalChangedPaths, Does.Contain($"storm/file-{changeCount - 1}.txt"));
+                Assert.That(supervisor.LastRequest?.Causes, Is.EqualTo(SyncRunCause.LocalChange));
+            });
+        }
+
+        [Test]
+        public async Task WindowsVirtualFilesLocalChangeStorm_AboveVfsLimitFlushesScopedWithoutFullFallback()
+        {
+            int changeCount = PendingLocalSyncRequest.MaxWindowsVirtualFilesScopedChangedPaths + 100;
+            SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            FakeWatcherFactory watcherFactory = new();
+            FakeSyncSupervisor supervisor = new();
+            LocalChangeSyncCoordinator coordinator = new(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval);
+            await coordinator.StartAsync();
+
+            for (int index = 0; index < changeCount; index++)
+            {
+                watcherFactory.CreatedWatchers[syncPair.Id].Raise($"/home/user/Cotton/storm/file-{index}.txt");
+            }
+
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.LastRequest?.IsFull, Is.False);
+                Assert.That(supervisor.LastRequest?.LocalChangedPaths, Has.Count.EqualTo(changeCount));
+                Assert.That(
+                    supervisor.LastRequest?.Causes,
+                    Is.EqualTo(SyncRunCause.LocalChange | SyncRunCause.LocalChangeOverflow));
             });
         }
 
@@ -1088,6 +1128,13 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             public Task SyncAllAsync(CancellationToken cancellationToken = default)
             {
                 return Task.CompletedTask;
+            }
+
+            public Task SyncAllAsync(
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return SyncAllAsync(cancellationToken);
             }
 
             public Task SyncNowAsync(Guid syncPairId, CancellationToken cancellationToken = default)

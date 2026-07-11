@@ -99,6 +99,9 @@ namespace Cotton.Sync.App.Tests.Runners
             {
                 Assert.That(inner.RunCallCount, Is.EqualTo(1));
                 Assert.That(inner.LastRequest?.IsFull, Is.False);
+                Assert.That(
+                    inner.LastRequest?.Causes,
+                    Is.EqualTo(SyncRunCause.Manual | SyncRunCause.RealtimeRemoteChange));
                 Assert.That(inner.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { "remote-origin.txt" }));
                 Assert.That(stateStore.LoadPairEntriesCallCount, Is.Zero);
                 Assert.That(stateStore.RemoteIdLookupCallCount, Is.EqualTo(1));
@@ -475,7 +478,44 @@ namespace Cotton.Sync.App.Tests.Runners
                 Assert.That(
                     inner.LastRequest?.LocalChangedPaths,
                     Is.EquivalentTo(new[] { "Docs/report.txt", "remote-origin.txt" }));
+                Assert.That(
+                    inner.LastRequest?.Causes,
+                    Is.EqualTo(SyncRunCause.LocalChange | SyncRunCause.RealtimeRemoteChange));
                 Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_AfterTemporaryFeedFailureDoesNotRestartFullVfsPopulation()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            var inner = new FakeSyncPairWork();
+            var remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 9_828,
+                nextCursor: 9_828,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes: Array.Empty<SyncChangeDto>()));
+            remoteChanges.ReadFailures.Enqueue(
+                new RemoteChangeFeedUnavailableException(new HttpRequestException("404 page not found")));
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+
+            Assert.ThrowsAsync<RemoteChangeFeedUnavailableException>(
+                async () => await work.RunOnceAsync(
+                    syncPair,
+                    SyncRunRequest.ForFull(SyncRunCause.Periodic)));
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForFull(SyncRunCause.Manual));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteChanges.ReadSyncPairIds, Has.Count.EqualTo(2));
+                Assert.That(inner.RunCallCount, Is.Zero);
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.Empty);
+                Assert.That(remoteChanges.FullResyncAcknowledgedBatches, Is.Empty);
             });
         }
 
@@ -579,6 +619,9 @@ namespace Cotton.Sync.App.Tests.Runners
                 Assert.That(inner.Requests[0], Is.SameAs(request));
                 Assert.That(inner.Requests[1].IsFull, Is.False);
                 Assert.That(inner.Requests[1].LocalChangedPaths, Is.EqualTo(new[] { "Recordings/Nested" }));
+                Assert.That(
+                    inner.Requests[1].Causes,
+                    Is.EqualTo(SyncRunCause.LocalChange | SyncRunCause.RealtimeRemoteChange));
                 Assert.That(stateStore.RemoteIdLookupCallCount, Is.EqualTo(2));
                 Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
             });
@@ -903,6 +946,9 @@ namespace Cotton.Sync.App.Tests.Runners
             {
                 Assert.That(inner.RunCallCount, Is.EqualTo(1));
                 Assert.That(inner.LastRequest?.IsFull, Is.True);
+                Assert.That(
+                    inner.LastRequest?.Causes,
+                    Is.EqualTo(SyncRunCause.LocalChange | SyncRunCause.RemoteCursorExpired));
                 Assert.That(remoteChanges.AcknowledgedBatches, Is.Empty);
                 Assert.That(remoteChanges.FullResyncAcknowledgedBatches, Is.EqualTo(new[] { expiredBatch }));
             });
@@ -1146,12 +1192,19 @@ namespace Cotton.Sync.App.Tests.Runners
 
             public List<RemoteChangeFeedBatch> FullResyncAcknowledgedBatches { get; } = [];
 
+            public Queue<Exception> ReadFailures { get; } = [];
+
             public Task<RemoteChangeFeedBatch> ReadAsync(
                 string syncPairId,
                 int limit = RemoteChangeFeedDefaults.PageSize,
                 CancellationToken cancellationToken = default)
             {
                 ReadSyncPairIds.Add(syncPairId);
+                if (ReadFailures.TryDequeue(out Exception? failure))
+                {
+                    throw failure;
+                }
+
                 return Task.FromResult(_batches.Dequeue());
             }
 

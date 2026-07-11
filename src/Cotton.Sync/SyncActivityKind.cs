@@ -52,5 +52,10 @@ namespace Cotton.Sync
         /// A remote-only file was exposed locally as a virtual-files placeholder without downloading content.
         /// </summary>
         PlaceholderCreated = 8,
+
+        /// <summary>
+        /// A materialized local file already matched the remote content and needs local provider finalization.
+        /// </summary>
+        Converged = 9,
     }
 }

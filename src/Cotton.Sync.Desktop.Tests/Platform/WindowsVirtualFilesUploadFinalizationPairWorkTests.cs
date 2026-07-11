@@ -67,6 +67,33 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesConvergedActivityMarksCloudFilesPathInSync()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            InMemoryAppActivityPublisher activityPublisher = new();
+            PublishingSyncPairWork inner = new(
+                activityPublisher,
+                "Docs/report.txt",
+                SyncActivityKind.Converged);
+            FakeSyncStateStore stateStore = new();
+            stateStore.UpsertFile(syncPair, "Docs/report.txt");
+            stateStore.UpsertDirectory(
+                syncPair,
+                "Docs",
+                Guid.Parse("33333333-3333-3333-3333-333333333333"));
+            RecordingCloudFilesAdapter cloudFiles = new();
+            WindowsVirtualFilesUploadFinalizationPairWork work = new(
+                inner,
+                activityPublisher,
+                stateStore,
+                cloudFiles);
+
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]));
+
+            Assert.That(cloudFiles.InSyncPaths, Is.EqualTo(new[] { "Docs/report.txt" }));
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesUploadedDirectoryActivityFinalizesDirectoryPlaceholder()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
@@ -179,11 +206,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             };
             var stateStore = new FakeSyncStateStore();
             stateStore.UpsertFile(syncPair, "Docs/report.txt");
+            var progressPublisher = new RecordingRunProgressPublisher();
             var work = new WindowsVirtualFilesUploadFinalizationPairWork(
                 inner,
                 activityPublisher,
                 stateStore,
-                cloudFiles);
+                cloudFiles,
+                runProgressPublisher: progressPublisher);
             var runner = new SyncPairRunner(
                 syncPair,
                 work,
@@ -201,6 +230,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Error));
                 Assert.That(runner.Status.LastSuccessfulSyncAtUtc, Is.Null);
                 Assert.That(cloudFiles.InSyncPaths, Is.EqualTo(new[] { "Docs/report.txt" }));
+                Assert.That(progressPublisher.Progress.Last().IsCompleted, Is.True);
             });
         }
 
@@ -262,12 +292,17 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         private class PublishingSyncPairWork : ISyncPairWork
         {
             private readonly IAppActivityPublisher _activityPublisher;
+            private readonly SyncActivityKind _activityKind;
             private readonly string _uploadedPath;
 
-            public PublishingSyncPairWork(IAppActivityPublisher activityPublisher, string uploadedPath)
+            public PublishingSyncPairWork(
+                IAppActivityPublisher activityPublisher,
+                string uploadedPath,
+                SyncActivityKind activityKind = SyncActivityKind.Uploaded)
             {
                 _activityPublisher = activityPublisher;
                 _uploadedPath = uploadedPath;
+                _activityKind = activityKind;
             }
 
             public List<SyncRunRequest> Requests { get; } = [];
@@ -286,7 +321,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 _activityPublisher.Publish(new AppSyncActivity(
                     Guid.NewGuid(),
                     syncPair.Id,
-                    SyncActivityKind.Uploaded,
+                    _activityKind,
                     _uploadedPath,
                     "Uploaded " + _uploadedPath,
                     DateTime.UtcNow));

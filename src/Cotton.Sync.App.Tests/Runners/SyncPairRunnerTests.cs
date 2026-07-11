@@ -6,6 +6,7 @@ using Cotton.Sync.App.Status;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sdk;
 using Cotton.Sync.Local;
+using Cotton.Sync.Remote;
 using Microsoft.Extensions.Logging;
 
 namespace Cotton.Sync.App.Tests.Runners
@@ -30,6 +31,22 @@ namespace Cotton.Sync.App.Tests.Runners
             await runner.StartAsync();
 
             Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Disabled));
+        }
+
+        [Test]
+        public async Task StartAsync_ReportsMissingLocalRootInsteadOfIdle()
+        {
+            string missingRoot = Path.Combine(Path.GetTempPath(), "cotton-missing-root", Guid.NewGuid().ToString("N"));
+            SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true, localRootPath: missingRoot));
+
+            await runner.StartAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Error));
+                Assert.That(runner.Status.LastError, Does.Contain("cannot find the local sync folder"));
+                Assert.That(runner.Status.CurrentOperation, Does.Contain("Action required"));
+            });
         }
 
         [Test]
@@ -434,6 +451,7 @@ namespace Cotton.Sync.App.Tests.Runners
 
         [TestCase(System.Net.HttpStatusCode.InternalServerError)]
         [TestCase(System.Net.HttpStatusCode.ServiceUnavailable)]
+        [TestCase(System.Net.HttpStatusCode.Locked)]
         public async Task SyncNowAsync_RetriesTransientServerFailureAndReturnsIdleOnRecovery(System.Net.HttpStatusCode statusCode)
         {
             var work = new FakeSyncPairWork
@@ -672,7 +690,139 @@ namespace Cotton.Sync.App.Tests.Runners
                 Assert.That(exception, Is.Not.Null);
                 Assert.That(work.RunCount, Is.EqualTo(2));
                 Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Offline));
-                Assert.That(runner.Status.LastError, Is.EqualTo("network down"));
+                Assert.That(
+                    runner.Status.LastError,
+                    Is.EqualTo("Cotton Cloud is temporarily unavailable. Cotton Sync will retry automatically."));
+            });
+        }
+
+        [TestCase(System.Net.HttpStatusCode.InternalServerError)]
+        [TestCase(System.Net.HttpStatusCode.BadGateway)]
+        [TestCase(System.Net.HttpStatusCode.ServiceUnavailable)]
+        [TestCase(System.Net.HttpStatusCode.GatewayTimeout)]
+        public async Task SyncNowAsync_RetriesTransientApiFailureAndReturnsIdleOnRecovery(
+            System.Net.HttpStatusCode statusCode)
+        {
+            var work = new FakeSyncPairWork
+            {
+                Failures =
+                [
+                    new CottonApiException(statusCode, "temporary server response", "request failed"),
+                ],
+            };
+            SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work, NoDelayRetryOptions());
+
+            await runner.SyncNowAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(work.RunCount, Is.EqualTo(2));
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Idle));
+                Assert.That(runner.Status.LastError, Is.Null);
+            });
+        }
+
+        [Test]
+        public void SyncNowAsync_TreatsMissingChangeFeedRouteAsTemporaryOfflineState()
+        {
+            var failure = new RemoteChangeFeedUnavailableException(
+                new CottonApiException(
+                    System.Net.HttpStatusCode.NotFound,
+                    "404 page not found",
+                    "Cotton API request GET /api/v1/sync/changes failed with status 404."));
+            var work = new FakeSyncPairWork
+            {
+                Failures = [failure, failure],
+            };
+            SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work, NoDelayRetryOptions(maxAttempts: 2));
+
+            RemoteChangeFeedUnavailableException? exception = Assert.ThrowsAsync<RemoteChangeFeedUnavailableException>(
+                async () => await runner.SyncNowAsync());
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(work.RunCount, Is.EqualTo(2));
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Offline));
+                Assert.That(
+                    runner.Status.LastError,
+                    Is.EqualTo("Cotton Cloud desktop change feed is temporarily unavailable. Cotton Sync will retry automatically."));
+                Assert.That(runner.Status.CurrentOperation, Does.StartWith("Waiting for connection:"));
+            });
+        }
+
+        [Test]
+        public void SyncNowAsync_TreatsPersistentBadGatewayAsTemporaryOfflineState()
+        {
+            var failure = new CottonApiException(
+                System.Net.HttpStatusCode.BadGateway,
+                "502 Bad Gateway",
+                "Cotton API request failed with status 502.");
+            var work = new FakeSyncPairWork
+            {
+                Failures = [failure, failure],
+            };
+            SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work, NoDelayRetryOptions(maxAttempts: 2));
+
+            CottonApiException? exception = Assert.ThrowsAsync<CottonApiException>(
+                async () => await runner.SyncNowAsync());
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(work.RunCount, Is.EqualTo(2));
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Offline));
+                Assert.That(
+                    runner.Status.LastError,
+                    Is.EqualTo("Cotton Cloud is temporarily unavailable. Cotton Sync will retry automatically."));
+                Assert.That(runner.Status.CurrentOperation, Does.StartWith("Waiting for connection:"));
+            });
+        }
+
+        [Test]
+        public void SyncNowAsync_TreatsGenericProxyNotFoundAsTemporaryOfflineState()
+        {
+            var failure = new CottonApiException(
+                System.Net.HttpStatusCode.NotFound,
+                "404 page not found",
+                "Cotton API request failed with status 404.");
+            var work = new FakeSyncPairWork
+            {
+                Failures = [failure, failure],
+            };
+            SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work, NoDelayRetryOptions(maxAttempts: 2));
+
+            Assert.ThrowsAsync<CottonApiException>(async () => await runner.SyncNowAsync());
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(work.RunCount, Is.EqualTo(2));
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Offline));
+                Assert.That(
+                    runner.Status.LastError,
+                    Is.EqualTo("Cotton Cloud is temporarily unavailable. Cotton Sync will retry automatically."));
+            });
+        }
+
+        [Test]
+        public void SyncNowAsync_KeepsStructuredNotFoundAsActionRequiredState()
+        {
+            var failure = new CottonApiException(
+                System.Net.HttpStatusCode.NotFound,
+                "{\"error\":\"node not found\"}",
+                "Cotton API request failed with status 404.");
+            var work = new FakeSyncPairWork
+            {
+                Failure = failure,
+            };
+            SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work, NoDelayRetryOptions());
+
+            Assert.ThrowsAsync<CottonApiException>(async () => await runner.SyncNowAsync());
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(work.RunCount, Is.EqualTo(1));
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Error));
             });
         }
 
@@ -741,6 +891,37 @@ namespace Cotton.Sync.App.Tests.Runners
             Assert.That(work.RunCount, Is.EqualTo(2));
         }
 
+        [Test]
+        public async Task SyncNowAsync_PreservesFailedAndQueuedScopedRequestsBeforeLaterFullCheck()
+        {
+            var work = new BlockingFirstFailureSyncPairWork();
+            SyncPairRunner runner = CreateRunner(
+                CreatePair(isEnabled: true),
+                work,
+                NoDelayRetryOptions(maxAttempts: 1));
+            SyncRunRequest firstRequest = SyncRunRequest.ForLocalChangedPaths(["Docs/first.txt"]);
+            SyncRunRequest secondRequest = SyncRunRequest.ForLocalChangedPaths(["Docs/second.txt"]);
+
+            Task first = runner.SyncNowAsync(firstRequest);
+            await work.WaitForFirstRunAsync(TimeSpan.FromSeconds(2));
+            await runner.SyncNowAsync(secondRequest);
+            work.ReleaseFirstRun();
+            Assert.ThrowsAsync<HttpRequestException>(async () => await first);
+
+            await runner.SyncNowAsync(SyncRunRequest.ForFull(SyncRunCause.Periodic));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(work.Requests, Has.Count.EqualTo(4));
+                Assert.That(work.Requests[0].LocalChangedPaths, Is.EqualTo(new[] { "Docs/first.txt" }));
+                Assert.That(work.Requests[1].LocalChangedPaths, Is.EqualTo(new[] { "Docs/first.txt" }));
+                Assert.That(work.Requests[2].LocalChangedPaths, Is.EqualTo(new[] { "Docs/second.txt" }));
+                Assert.That(work.Requests[3].IsFull, Is.True);
+                Assert.That(work.Requests[3].Causes, Is.EqualTo(SyncRunCause.Periodic));
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Idle));
+            });
+        }
+
         private static SyncPairRunner CreateRunner(
             SyncPairSettings syncPair,
             ISyncPairWork? work = null,
@@ -766,7 +947,7 @@ namespace Cotton.Sync.App.Tests.Runners
             {
                 Id = Guid.NewGuid(),
                 DisplayName = "Documents",
-                LocalRootPath = localRootPath ?? "/home/user/Cotton",
+                LocalRootPath = localRootPath ?? Path.GetTempPath(),
                 RemoteRootNodeId = Guid.NewGuid(),
                 RemoteDisplayPath = "/Documents",
                 IsEnabled = isEnabled,
@@ -1151,6 +1332,50 @@ namespace Cotton.Sync.App.Tests.Runners
                 }
 
                 await _secondRunStarted.Task.WaitAsync(timeout).ConfigureAwait(false);
+            }
+
+            private static TaskCompletionSource CreateCompletionSource()
+            {
+                return new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+        }
+
+        private class BlockingFirstFailureSyncPairWork : ISyncPairWork
+        {
+            private readonly TaskCompletionSource _firstRunStarted = CreateCompletionSource();
+            private readonly TaskCompletionSource _releaseFirstRun = CreateCompletionSource();
+
+            public List<SyncRunRequest> Requests { get; } = [];
+
+            public Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
+            {
+                return RunOnceAsync(syncPair, SyncRunRequest.Full, cancellationToken);
+            }
+
+            public async Task RunOnceAsync(
+                SyncPairSettings syncPair,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                Requests.Add(request);
+                if (Requests.Count != 1)
+                {
+                    return;
+                }
+
+                _firstRunStarted.TrySetResult();
+                await _releaseFirstRun.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                throw new HttpRequestException("network down");
+            }
+
+            public void ReleaseFirstRun()
+            {
+                _releaseFirstRun.TrySetResult();
+            }
+
+            public Task WaitForFirstRunAsync(TimeSpan timeout)
+            {
+                return _firstRunStarted.Task.WaitAsync(timeout);
             }
 
             private static TaskCompletionSource CreateCompletionSource()

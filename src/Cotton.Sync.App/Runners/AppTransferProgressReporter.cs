@@ -11,6 +11,7 @@ namespace Cotton.Sync.App.Runners
         private readonly AppTransferProgressEstimator _estimator = new();
         private readonly IAppTransferProgressPublisher _publisher;
         private readonly Guid _syncPairId;
+        private CoreSyncTransferProgress? _latest;
 
         public AppTransferProgressReporter(Guid syncPairId, IAppTransferProgressPublisher publisher)
         {
@@ -21,6 +22,7 @@ namespace Cotton.Sync.App.Runners
         public void Report(CoreSyncTransferProgress value)
         {
             ArgumentNullException.ThrowIfNull(value);
+            _latest = value;
             AppTransferProgressEstimate estimate = _estimator.AddSample(
                 value.Direction,
                 value.RelativePath,
@@ -29,6 +31,22 @@ namespace Cotton.Sync.App.Runners
                 value.IsCompleted,
                 value.OccurredAtUtc);
             _publisher.Publish(ToAppProgress(_syncPairId, value, estimate));
+        }
+
+        public void Complete()
+        {
+            CoreSyncTransferProgress? latest = _latest;
+            if (latest is null || latest.IsCompleted)
+            {
+                return;
+            }
+
+            Report(new CoreSyncTransferProgress(
+                latest.Direction,
+                latest.RelativePath,
+                latest.TransferredBytes,
+                latest.TotalBytes,
+                isCompleted: true));
         }
 
         private static AppTransferProgress ToAppProgress(

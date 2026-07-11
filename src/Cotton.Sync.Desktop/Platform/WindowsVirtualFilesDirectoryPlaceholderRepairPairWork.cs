@@ -39,9 +39,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         public async Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
         {
-            ArgumentNullException.ThrowIfNull(syncPair);
-            await _inner.RunOnceAsync(syncPair, cancellationToken).ConfigureAwait(false);
-            await RepairAfterFullWindowsVirtualFilesRunAsync(syncPair, cancellationToken).ConfigureAwait(false);
+            await RunOnceAsync(syncPair, SyncRunRequest.Full, cancellationToken).ConfigureAwait(false);
         }
 
         public async Task RunOnceAsync(
@@ -53,17 +51,6 @@ namespace Cotton.Sync.Desktop.Platform
             ArgumentNullException.ThrowIfNull(request);
             await _inner.RunOnceAsync(syncPair, request, cancellationToken).ConfigureAwait(false);
             await RepairAfterWindowsVirtualFilesRunAsync(syncPair, request, cancellationToken).ConfigureAwait(false);
-        }
-
-        private async Task RepairAfterFullWindowsVirtualFilesRunAsync(
-            SyncPairSettings syncPair,
-            CancellationToken cancellationToken)
-        {
-            await RepairAfterWindowsVirtualFilesRunAsync(
-                    syncPair,
-                    SyncRunRequest.Full,
-                    cancellationToken)
-                .ConfigureAwait(false);
         }
 
         private async Task RepairAfterWindowsVirtualFilesRunAsync(
@@ -84,7 +71,7 @@ namespace Cotton.Sync.Desktop.Platform
             if (directories.Count == 0)
             {
                 DateTime rootRepairStartedAtUtc = DateTime.UtcNow;
-                PublishRepairProgress(syncPair.Id, rootRepairStartedAtUtc, repairedCount: 0, totalCount: 1, isCompleted: false);
+                PublishRepairProgress(syncPair.Id, request, rootRepairStartedAtUtc, repairedCount: 0, totalCount: 1, isCompleted: false);
                 try
                 {
                     _cloudFiles.SetSyncRootInSyncState(syncPair);
@@ -92,6 +79,13 @@ namespace Cotton.Sync.Desktop.Platform
                 catch (Exception exception)
                 {
                     stopwatch.Stop();
+                    PublishRepairProgress(
+                        syncPair.Id,
+                        request,
+                        rootRepairStartedAtUtc,
+                        repairedCount: 0,
+                        totalCount: 1,
+                        isCompleted: true);
                     RecordRepairSummary(
                         syncPair,
                         status: "failed",
@@ -103,7 +97,7 @@ namespace Cotton.Sync.Desktop.Platform
                 }
 
                 stopwatch.Stop();
-                PublishRepairProgress(syncPair.Id, rootRepairStartedAtUtc, repairedCount: 1, totalCount: 1, isCompleted: true);
+                PublishRepairProgress(syncPair.Id, request, rootRepairStartedAtUtc, repairedCount: 1, totalCount: 1, isCompleted: true);
                 RecordRepairSummary(
                     syncPair,
                     status: "completed-root-only",
@@ -115,7 +109,7 @@ namespace Cotton.Sync.Desktop.Platform
 
             int repairedCount = 0;
             DateTime startedAtUtc = DateTime.UtcNow;
-            PublishRepairProgress(syncPair.Id, startedAtUtc, repairedCount, directories.Count, isCompleted: false);
+            PublishRepairProgress(syncPair.Id, request, startedAtUtc, repairedCount, directories.Count, isCompleted: false);
             try
             {
                 using IDisposable? burst = _localChangeSuppression?.SuppressProviderWriteBurst(
@@ -132,7 +126,7 @@ namespace Cotton.Sync.Desktop.Platform
                         directory.RelativePath);
                     _cloudFiles.CreateDirectoryPlaceholder(CreateRequest(syncPair, directory));
                     repairedCount++;
-                    PublishRepairProgress(syncPair.Id, startedAtUtc, repairedCount, directories.Count, isCompleted: false);
+                    PublishRepairProgress(syncPair.Id, request, startedAtUtc, repairedCount, directories.Count, isCompleted: false);
                 }
 
                 _cloudFiles.SetSyncRootInSyncState(syncPair);
@@ -140,6 +134,13 @@ namespace Cotton.Sync.Desktop.Platform
             catch (Exception exception)
             {
                 stopwatch.Stop();
+                PublishRepairProgress(
+                    syncPair.Id,
+                    request,
+                    startedAtUtc,
+                    repairedCount,
+                    directories.Count,
+                    isCompleted: true);
                 RecordRepairSummary(
                     syncPair,
                     status: "failed",
@@ -151,7 +152,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             stopwatch.Stop();
-            PublishRepairProgress(syncPair.Id, startedAtUtc, repairedCount, directories.Count, isCompleted: true);
+            PublishRepairProgress(syncPair.Id, request, startedAtUtc, repairedCount, directories.Count, isCompleted: true);
             RecordRepairSummary(
                 syncPair,
                 status: "completed",
@@ -162,6 +163,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         private void PublishRepairProgress(
             Guid syncPairId,
+            SyncRunRequest request,
             DateTime startedAtUtc,
             int repairedCount,
             int totalCount,
@@ -175,7 +177,10 @@ namespace Cotton.Sync.Desktop.Platform
                 string.Empty,
                 startedAtUtc,
                 isCompleted,
-                DateTime.UtcNow));
+                DateTime.UtcNow,
+                causes: request.Causes,
+                isFull: request.IsFull,
+                requestedPathCount: request.LocalChangedPaths.Count));
         }
 
         private void RecordRepairSummary(

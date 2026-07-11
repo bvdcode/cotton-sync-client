@@ -276,6 +276,14 @@ namespace Cotton.Sync.App.LocalChanges
         private TimeSpan GetRemainingMaxDebounceDelay(PendingLocalSyncRequest request)
         {
             DateTimeOffset now = _timeProvider.GetUtcNow();
+            lock (_pendingGate)
+            {
+                if (request.FlushRequested)
+                {
+                    return TimeSpan.Zero;
+                }
+            }
+
             TimeSpan elapsed = now - request.CreatedAt;
             return _maxDebounceDelay - elapsed;
         }
@@ -354,7 +362,7 @@ namespace Cotton.Sync.App.LocalChanges
         {
             if (request.RequiresFullSync)
             {
-                return SyncRunRequest.Full;
+                return SyncRunRequest.ForFull(request.Causes);
             }
 
             if (!_localRootPaths.TryGetValue(syncPairId, out string? localRootPath))
@@ -373,32 +381,52 @@ namespace Cotton.Sync.App.LocalChanges
 
             return relativePaths.Count == 0
                 ? null
-                : SyncRunRequest.ForLocalChangedPaths(relativePaths);
+                : SyncRunRequest.ForLocalChangedPaths(relativePaths, request.Causes);
         }
 
         private void RecordChange(Guid syncPairId, PendingLocalSyncRequest pendingSync, LocalSyncRootChange change)
         {
-            bool requiresFullSync = RequiresFullSync(change);
+            SyncRunCause fullSyncCause = GetFullSyncCause(change);
             int maxScopedChangedPaths = GetMaxScopedChangedPaths(syncPairId);
-            pendingSync.RecordChange(change.FullPath, requiresFullSync, maxScopedChangedPaths);
-            if (!requiresFullSync && !string.IsNullOrWhiteSpace(change.OldFullPath))
+            bool preserveScopeOnOverflow = IsWindowsVirtualFilesPair(syncPairId);
+            pendingSync.RecordChange(
+                change.FullPath,
+                fullSyncCause,
+                maxScopedChangedPaths,
+                preserveScopeOnOverflow);
+            if (fullSyncCause == SyncRunCause.None && !string.IsNullOrWhiteSpace(change.OldFullPath))
             {
-                pendingSync.RecordChange(change.OldFullPath, requiresFullSync: false, maxScopedChangedPaths);
+                pendingSync.RecordChange(
+                    change.OldFullPath,
+                    SyncRunCause.None,
+                    maxScopedChangedPaths,
+                    preserveScopeOnOverflow);
             }
         }
 
         private int GetMaxScopedChangedPaths(Guid syncPairId)
         {
-            return _syncPairModes.TryGetValue(syncPairId, out SyncPairMode mode)
-                && mode == SyncPairMode.WindowsVirtualFiles
+            return IsWindowsVirtualFilesPair(syncPairId)
                 ? PendingLocalSyncRequest.MaxWindowsVirtualFilesScopedChangedPaths
                 : PendingLocalSyncRequest.MaxScopedChangedPaths;
         }
 
-        private static bool RequiresFullSync(LocalSyncRootChange change)
+        private bool IsWindowsVirtualFilesPair(Guid syncPairId)
         {
-            return change.Kind is LocalSyncRootChangeKind.Error
-                || (change.Kind == LocalSyncRootChangeKind.Renamed && string.IsNullOrWhiteSpace(change.OldFullPath));
+            return _syncPairModes.TryGetValue(syncPairId, out SyncPairMode mode)
+                && mode == SyncPairMode.WindowsVirtualFiles;
+        }
+
+        private static SyncRunCause GetFullSyncCause(LocalSyncRootChange change)
+        {
+            if (change.Kind == LocalSyncRootChangeKind.Error)
+            {
+                return SyncRunCause.LocalWatcherError;
+            }
+
+            return change.Kind == LocalSyncRootChangeKind.Renamed && string.IsNullOrWhiteSpace(change.OldFullPath)
+                ? SyncRunCause.LocalRenameRecovery
+                : SyncRunCause.None;
         }
 
         private static bool TryGetRelativePath(string localRootPath, string fullPath, out string relativePath)

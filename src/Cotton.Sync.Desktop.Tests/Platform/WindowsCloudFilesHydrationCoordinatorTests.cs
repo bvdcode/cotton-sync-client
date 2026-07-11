@@ -322,16 +322,19 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 "remote-only.txt",
                 transferredBytes: 4,
                 totalBytes: 16));
+            reporter.Complete();
 
-            AppTransferProgress appProgress = observer.Values.Single();
+            AppTransferProgress appProgress = observer.Values[0];
             Assert.Multiple(() =>
             {
+                Assert.That(observer.Values, Has.Count.EqualTo(2));
                 Assert.That(appProgress.SyncPairId, Is.EqualTo(syncPairId));
                 Assert.That(appProgress.Direction, Is.EqualTo(SyncTransferDirection.Download));
                 Assert.That(appProgress.RelativePath, Is.EqualTo("remote-only.txt"));
                 Assert.That(appProgress.TransferredBytes, Is.EqualTo(4));
                 Assert.That(appProgress.TotalBytes, Is.EqualTo(16));
                 Assert.That(appProgress.IsCompleted, Is.False);
+                Assert.That(observer.Values[1].IsCompleted, Is.True);
             });
         }
 

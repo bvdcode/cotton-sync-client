@@ -11,6 +11,7 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly AppTransferProgressEstimator _estimator = new();
         private readonly IAppTransferProgressPublisher _publisher;
         private readonly Guid _syncPairId;
+        private SyncTransferProgress? _latest;
 
         public WindowsCloudFilesAppTransferProgressReporter(
             Guid syncPairId,
@@ -23,6 +24,7 @@ namespace Cotton.Sync.Desktop.Platform
         public void Report(SyncTransferProgress value)
         {
             ArgumentNullException.ThrowIfNull(value);
+            _latest = value;
             AppTransferProgressEstimate estimate = _estimator.AddSample(
                 value.Direction,
                 value.RelativePath,
@@ -41,6 +43,22 @@ namespace Cotton.Sync.Desktop.Platform
                     value.OccurredAtUtc,
                     estimate.SpeedBytesPerSecond,
                     estimate.EstimatedTimeRemaining));
+        }
+
+        public void Complete()
+        {
+            SyncTransferProgress? latest = _latest;
+            if (latest is null || latest.IsCompleted)
+            {
+                return;
+            }
+
+            Report(new SyncTransferProgress(
+                latest.Direction,
+                latest.RelativePath,
+                latest.TransferredBytes,
+                latest.TotalBytes,
+                isCompleted: true));
         }
     }
 }

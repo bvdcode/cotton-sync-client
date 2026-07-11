@@ -39,6 +39,7 @@ namespace Cotton.Sync.Desktop.Platform
             ArgumentNullException.ThrowIfNull(request);
             WindowsCloudFilesPlaceholderIdentity? identity = null;
             string? tempPath = null;
+            IProgress<SyncTransferProgress>? transferProgress = null;
 
             try
             {
@@ -59,7 +60,7 @@ namespace Cotton.Sync.Desktop.Platform
                     TransferBufferSize,
                     FileOptions.Asynchronous | FileOptions.SequentialScan | FileOptions.DeleteOnClose);
 
-                IProgress<SyncTransferProgress>? transferProgress = _transferProgressFactory(identity.SyncPairId);
+                transferProgress = _transferProgressFactory(identity.SyncPairId);
                 await _contentProvider
                     .DownloadAsync(identity, stream, transferProgress, cancellationToken)
                     .ConfigureAwait(false);
@@ -84,6 +85,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
             finally
             {
+                CompleteTransferProgress(transferProgress);
                 if (tempPath is not null)
                 {
                     TryDeleteTempFile(tempPath);
@@ -219,6 +221,7 @@ namespace Cotton.Sync.Desktop.Platform
 
             string tempPath = CreateTempPath();
             Directory.CreateDirectory(Path.GetDirectoryName(tempPath)!);
+            IProgress<SyncTransferProgress>? transferProgress = null;
             try
             {
                 await using var stream = new FileStream(
@@ -229,7 +232,7 @@ namespace Cotton.Sync.Desktop.Platform
                     TransferBufferSize,
                     FileOptions.Asynchronous | FileOptions.SequentialScan | FileOptions.DeleteOnClose);
 
-                IProgress<SyncTransferProgress>? transferProgress = _transferProgressFactory(identity.SyncPairId);
+                transferProgress = _transferProgressFactory(identity.SyncPairId);
                 await rangeProvider
                     .DownloadVerifiedRangeAsync(identity, stream, start, length, transferProgress, cancellationToken)
                     .ConfigureAwait(false);
@@ -244,7 +247,16 @@ namespace Cotton.Sync.Desktop.Platform
             }
             finally
             {
+                CompleteTransferProgress(transferProgress);
                 TryDeleteTempFile(tempPath);
+            }
+        }
+
+        private static void CompleteTransferProgress(IProgress<SyncTransferProgress>? transferProgress)
+        {
+            if (transferProgress is WindowsCloudFilesAppTransferProgressReporter appProgress)
+            {
+                appProgress.Complete();
             }
         }
 

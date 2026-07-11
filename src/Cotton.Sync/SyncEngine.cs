@@ -2425,6 +2425,16 @@ namespace Cotton.Sync
                 {
                     await _stateStore.UpsertAsync(BuildBaseline(syncPair, relativePath, local.ContentHash, local.LastWriteUtc, local.SizeBytes, remote.File), cancellationToken)
                         .ConfigureAwait(false);
+                    if (ShouldFinalizeConvergedLocalFile(syncPair, local))
+                    {
+                        Report(
+                            result,
+                            options,
+                            SyncActivityKind.Converged,
+                            relativePath,
+                            "Local and remote content already matched.");
+                    }
+
                     return;
                 }
 
@@ -2552,6 +2562,16 @@ namespace Cotton.Sync
                 {
                     await _stateStore.UpsertAsync(BuildBaseline(syncPair, relativePath, local.ContentHash, local.LastWriteUtc, local.SizeBytes, remote.File), cancellationToken)
                         .ConfigureAwait(false);
+                }
+
+                if (ShouldFinalizeConvergedLocalFile(syncPair, local))
+                {
+                    Report(
+                        result,
+                        options,
+                        SyncActivityKind.Converged,
+                        relativePath,
+                        "Local and remote content are synchronized.");
                 }
 
                 return;
@@ -4140,6 +4160,12 @@ namespace Cotton.Sync
             return !string.IsNullOrWhiteSpace(left)
                 && !string.IsNullOrWhiteSpace(right)
                 && string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool ShouldFinalizeConvergedLocalFile(SyncPair syncPair, LocalFileSnapshot local)
+        {
+            return syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
+                && !local.IsCloudFilesOnlineOnlyPlaceholder;
         }
 
         private static SyncRunOptions CloneWithoutRunProgress(SyncRunOptions options)
