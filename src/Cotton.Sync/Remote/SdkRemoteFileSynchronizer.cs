@@ -507,12 +507,34 @@ namespace Cotton.Sync.Remote
                 }
 
                 NodeDto? existing = await FindChildDirectoryAsync(currentNodeId, segment, cancellationToken).ConfigureAwait(false);
-                NodeDto node = existing ?? await _client.Nodes.CreateAsync(currentNodeId, segment, cancellationToken).ConfigureAwait(false);
+                NodeDto node = existing
+                    ?? await CreateOrReuseDirectoryAsync(currentNodeId, segment, cancellationToken).ConfigureAwait(false);
                 currentNodeId = node.Id;
                 _directoryCache[cacheKey] = currentNodeId;
             }
 
             return currentNodeId;
+        }
+
+        private async Task<NodeDto> CreateOrReuseDirectoryAsync(
+            Guid parentNodeId,
+            string name,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                return await _client.Nodes.CreateAsync(parentNodeId, name, cancellationToken).ConfigureAwait(false);
+            }
+            catch (CottonApiException exception) when (exception.StatusCode == HttpStatusCode.Conflict)
+            {
+                NodeDto? existing = await FindChildDirectoryAsync(parentNodeId, name, cancellationToken).ConfigureAwait(false);
+                if (existing is null)
+                {
+                    throw;
+                }
+
+                return existing;
+            }
         }
 
         private async Task<Guid?> TryGetCurrentCachedDirectoryAsync(

@@ -102,6 +102,26 @@ namespace Cotton.Sync.Tests.Local
         }
 
         [Test]
+        public async Task DeleteFileAsync_IsIdempotentOnlyWhenTargetIsConfirmedMissing()
+        {
+            AtomicLocalFileSyncWriter writer = new();
+
+            await writer.DeleteFileAsync(_root, "Docs/missing.txt");
+
+            Assert.That(Directory.Exists(Path.Combine(_root, ".cotton-sync", "deleted")), Is.False);
+        }
+
+        [Test]
+        public void DeleteFileAsync_RejectsDirectoryTarget()
+        {
+            Directory.CreateDirectory(FullPath("Docs/Folder"));
+            AtomicLocalFileSyncWriter writer = new();
+
+            Assert.ThrowsAsync<IOException>(() => writer.DeleteFileAsync(_root, "Docs/Folder"));
+            Assert.That(Directory.Exists(FullPath("Docs/Folder")), Is.True);
+        }
+
+        [Test]
         public async Task CreateDirectoryAsync_CreatesLocalDirectory()
         {
             var writer = new AtomicLocalFileSyncWriter();
@@ -150,6 +170,16 @@ namespace Cotton.Sync.Tests.Local
                 Assert.That(File.ReadAllText(deletedFiles[0]), Is.EqualTo("keep"));
                 Assert.That(Directory.Exists(FullPath("Docs")), Is.True);
             });
+        }
+
+        [Test]
+        public void DeleteDirectoryAsync_RejectsFileTarget()
+        {
+            WriteFile("Docs/file.txt", "keep");
+            AtomicLocalFileSyncWriter writer = new();
+
+            Assert.ThrowsAsync<IOException>(() => writer.DeleteDirectoryAsync(_root, "Docs/file.txt"));
+            Assert.That(File.Exists(FullPath("Docs/file.txt")), Is.True);
         }
 
         [Test]

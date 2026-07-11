@@ -80,18 +80,25 @@ namespace Cotton.Sync.Local
             string normalizedPath = NormalizeWritablePath(relativePath);
             string fullRoot = Path.GetFullPath(rootPath);
             string targetPath = Path.Combine(fullRoot, normalizedPath.Replace('/', Path.DirectorySeparatorChar));
-            if (File.Exists(targetPath))
+            if (!TryGetExistingAttributes(targetPath, out FileAttributes attributes))
             {
-                string preservedPath = CreateDeletedPath(fullRoot, normalizedPath);
-                string? preservedDirectory = Path.GetDirectoryName(preservedPath);
-                if (!string.IsNullOrWhiteSpace(preservedDirectory))
-                {
-                    SyncMetadataDirectory.Ensure(fullRoot);
-                    Directory.CreateDirectory(preservedDirectory);
-                }
-
-                File.Move(targetPath, preservedPath, overwrite: false);
+                return Task.CompletedTask;
             }
+
+            if ((attributes & FileAttributes.Directory) != 0)
+            {
+                throw new IOException("Local file delete target is a directory: " + normalizedPath);
+            }
+
+            string preservedPath = CreateDeletedPath(fullRoot, normalizedPath);
+            string? preservedDirectory = Path.GetDirectoryName(preservedPath);
+            if (!string.IsNullOrWhiteSpace(preservedDirectory))
+            {
+                SyncMetadataDirectory.Ensure(fullRoot);
+                Directory.CreateDirectory(preservedDirectory);
+            }
+
+            File.Move(targetPath, preservedPath, overwrite: false);
 
             return Task.CompletedTask;
         }
@@ -115,18 +122,25 @@ namespace Cotton.Sync.Local
             string normalizedPath = NormalizeWritablePath(relativePath);
             string fullRoot = Path.GetFullPath(rootPath);
             string targetPath = Path.Combine(fullRoot, normalizedPath.Replace('/', Path.DirectorySeparatorChar));
-            if (Directory.Exists(targetPath))
+            if (!TryGetExistingAttributes(targetPath, out FileAttributes attributes))
             {
-                string preservedPath = CreateDeletedPath(fullRoot, normalizedPath);
-                string? preservedParentDirectory = Path.GetDirectoryName(preservedPath);
-                if (!string.IsNullOrWhiteSpace(preservedParentDirectory))
-                {
-                    SyncMetadataDirectory.Ensure(fullRoot);
-                    Directory.CreateDirectory(preservedParentDirectory);
-                }
-
-                Directory.Move(targetPath, preservedPath);
+                return Task.CompletedTask;
             }
+
+            if ((attributes & FileAttributes.Directory) == 0)
+            {
+                throw new IOException("Local directory delete target is a file: " + normalizedPath);
+            }
+
+            string preservedPath = CreateDeletedPath(fullRoot, normalizedPath);
+            string? preservedParentDirectory = Path.GetDirectoryName(preservedPath);
+            if (!string.IsNullOrWhiteSpace(preservedParentDirectory))
+            {
+                SyncMetadataDirectory.Ensure(fullRoot);
+                Directory.CreateDirectory(preservedParentDirectory);
+            }
+
+            Directory.Move(targetPath, preservedPath);
 
             return Task.CompletedTask;
         }
@@ -168,6 +182,25 @@ namespace Cotton.Sync.Local
             }
 
             return normalizedPath;
+        }
+
+        private static bool TryGetExistingAttributes(string fullPath, out FileAttributes attributes)
+        {
+            try
+            {
+                attributes = File.GetAttributes(fullPath);
+                return true;
+            }
+            catch (FileNotFoundException)
+            {
+                attributes = default;
+                return false;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                attributes = default;
+                return false;
+            }
         }
 
         private static void CleanupTemporaryDownloads(string temporaryDirectory)

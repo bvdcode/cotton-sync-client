@@ -116,6 +116,26 @@ namespace Cotton.Sync.Tests.Remote
         }
 
         [Test]
+        public async Task UploadFileAsync_ReusesParentCreatedByConcurrentRequest()
+        {
+            LocalFileSnapshot local = WriteLocalFile("Docs/file.txt", Encoding.UTF8.GetBytes("content"));
+            FakeCottonCloudClient client = new(chunkSizeBytes: 1024);
+            client.NodesClient.ConflictCreates.Add((_rootNodeId, "Docs"));
+            SdkRemoteFileSynchronizer synchronizer = new(client);
+
+            await synchronizer.UploadFileAsync(_rootNodeId, local.RelativePath, local);
+
+            NodeDto concurrentDirectory = client.NodesClient.Children[_rootNodeId].Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(client.NodesClient.CreatedNodes, Is.Empty);
+                Assert.That(concurrentDirectory.Name, Is.EqualTo("Docs"));
+                Assert.That(client.FilesClient.CreateRequests, Has.Count.EqualTo(1));
+                Assert.That(client.FilesClient.CreateRequests[0].NodeId, Is.EqualTo(concurrentDirectory.Id));
+            });
+        }
+
+        [Test]
         public async Task UploadFileAsync_ReusesExistingFolderAndUpdatesExistingFile()
         {
             Guid docsId = Guid.NewGuid();
@@ -894,6 +914,8 @@ namespace Cotton.Sync.Tests.Remote
 
             public List<NodeDto> CreatedNodes { get; } = [];
 
+            public List<(Guid ParentId, string Name)> ConflictCreates { get; } = [];
+
             public List<Guid> GetRequests { get; } = [];
 
             public Task<NodeDto> ResolveAsync(string? path = null, CancellationToken cancellationToken = default)
@@ -944,6 +966,18 @@ namespace Cotton.Sync.Tests.Remote
                 }
 
                 children.Add(node);
+                int conflictIndex = ConflictCreates.FindIndex(item =>
+                    item.ParentId == parentId
+                    && string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
+                if (conflictIndex >= 0)
+                {
+                    ConflictCreates.RemoveAt(conflictIndex);
+                    throw new CottonApiException(
+                        HttpStatusCode.Conflict,
+                        "{\"message\":\"A folder with the same name already exists.\"}",
+                        "Cotton API request PUT /api/v1/layouts/nodes failed with status 409 (Conflict).");
+                }
+
                 CreatedNodes.Add(node);
                 return Task.FromResult(node);
             }
