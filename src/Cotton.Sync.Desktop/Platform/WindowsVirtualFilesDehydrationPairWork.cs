@@ -6,11 +6,13 @@ using Cotton.Sync.App.LocalChanges;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Local;
 using Cotton.Sync.State;
+using System.Collections.Concurrent;
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal sealed class WindowsVirtualFilesDehydrationPairWork : ISyncPairWork
+    internal class WindowsVirtualFilesDehydrationPairWork : ISyncPairWork
     {
+        private const int AvailabilityStateWriteBatchSize = 128;
         private const int FileAttributePinned = 0x00080000;
         private const int FileAttributeUnpinned = 0x00100000;
         private const int FileAttributeRecallOnDataAccess = 0x00400000;
@@ -22,6 +24,7 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly IWindowsCloudFilesDiagnostics _diagnostics;
         private readonly ILocalChangeSuppression? _localChangeSuppression;
         private readonly Func<string, WindowsVirtualFileDiskState?> _readDiskState;
+        private readonly ConcurrentDictionary<Guid, byte> _availabilityRecoveryCompleted = new();
 
         public WindowsVirtualFilesDehydrationPairWork(
             ISyncPairWork inner,
@@ -53,10 +56,24 @@ namespace Cotton.Sync.Desktop.Platform
         {
             ArgumentNullException.ThrowIfNull(syncPair);
             ArgumentNullException.ThrowIfNull(request);
-            if (syncPair.Mode != SyncPairMode.WindowsVirtualFiles || request.IsFull)
+            if (syncPair.Mode != SyncPairMode.WindowsVirtualFiles)
             {
                 await _inner.RunOnceAsync(syncPair, request, cancellationToken).ConfigureAwait(false);
                 return;
+            }
+
+            bool startupRecoveryRequired = request.IsFull
+                && RequiresStartupAvailabilityRecovery(request.Causes)
+                && !_availabilityRecoveryCompleted.ContainsKey(syncPair.Id);
+            bool lostAvailabilityRecoveryRequired = request.IsFull
+                && RequiresLostAvailabilityRecovery(request.Causes);
+            if (startupRecoveryRequired || lostAvailabilityRecoveryRequired)
+            {
+                await RecoverPersistedAvailabilityAsync(syncPair, cancellationToken).ConfigureAwait(false);
+                if (startupRecoveryRequired)
+                {
+                    _availabilityRecoveryCompleted.TryAdd(syncPair.Id, 0);
+                }
             }
 
             List<string> remainingPaths = [];
@@ -73,8 +90,22 @@ namespace Cotton.Sync.Desktop.Platform
 
                 if (IsRootRelativePath(relativePath))
                 {
-                    handledRootAvailability = await TryHandleManualRootHydrationAsync(syncPair, cancellationToken)
-                        .ConfigureAwait(false);
+                    if (RequiresStartupAvailabilityRecovery(request.Causes))
+                    {
+                        if (!_availabilityRecoveryCompleted.ContainsKey(syncPair.Id))
+                        {
+                            await RecoverPersistedAvailabilityAsync(syncPair, cancellationToken).ConfigureAwait(false);
+                            _availabilityRecoveryCompleted.TryAdd(syncPair.Id, 0);
+                        }
+
+                        handledRootAvailability = true;
+                    }
+                    else
+                    {
+                        handledRootAvailability = await TryHandleManualRootHydrationAsync(syncPair, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
                     if (!handledRootAvailability)
                     {
                         requiresFullPass = true;
@@ -110,7 +141,7 @@ namespace Cotton.Sync.Desktop.Platform
 
             if (remainingPaths.Count == 0)
             {
-                if (!requiresFullPass)
+                if (!request.IsFull && !requiresFullPass)
                 {
                     return;
                 }
@@ -121,12 +152,114 @@ namespace Cotton.Sync.Desktop.Platform
                 return;
             }
 
-            SyncRunRequest remainingRequest = requiresFullPass
+            SyncRunRequest remainingRequest = request.IsFull || requiresFullPass
                 ? SyncRunRequest.ForFull(request.Causes)
                 : remainingPaths.Count == request.LocalChangedPaths.Count
                     ? request
                     : SyncRunRequest.ForLocalChangedPaths(remainingPaths, request.Causes);
             await _inner.RunOnceAsync(syncPair, remainingRequest, cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task RecoverPersistedAvailabilityAsync(
+            SyncPairSettings syncPair,
+            CancellationToken cancellationToken)
+        {
+            using IDisposable? providerWriteBurst = _localChangeSuppression?
+                .SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath);
+            var hydratedEntries = new List<SyncStateEntry>(AvailabilityStateWriteBatchSize);
+            var directoryEntries = new Dictionary<string, SyncStateEntry>(StringComparer.OrdinalIgnoreCase);
+            var completedDirectoryKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            int hydratedFiles = 0;
+            int alreadyHydratedFiles = 0;
+
+            await foreach (SyncStateEntry entry in _stateStore
+                               .LoadPairEntriesAsync(syncPair.Id.ToString("D"), cancellationToken)
+                               .WithCancellation(cancellationToken)
+                               .ConfigureAwait(false))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (SyncPathIgnoreRules.ShouldIgnore(entry.RelativePath))
+                {
+                    continue;
+                }
+
+                if (entry.Kind == SyncEntryKind.Directory)
+                {
+                    directoryEntries[SyncPath.ToKey(entry.RelativePath)] = entry;
+                    continue;
+                }
+
+                if (!IsTrackedVirtualFile(entry))
+                {
+                    continue;
+                }
+
+                string filePath = ResolveFullPath(syncPair.LocalRootPath, entry.RelativePath);
+                WindowsVirtualFileDiskState? fileState = TryReadDiskState(filePath);
+                if (fileState is null || !HasRawAttribute(fileState.Attributes, FileAttributePinned))
+                {
+                    continue;
+                }
+
+                if (IsHydrationComplete(fileState.Attributes, entry.PlaceholderHydrationState))
+                {
+                    alreadyHydratedFiles++;
+                    AddAncestorDirectoryKeys(entry.RelativePath, completedDirectoryKeys);
+                    continue;
+                }
+
+                if (!IsManualAlwaysKeepCandidate(fileState.Attributes, entry.PlaceholderHydrationState))
+                {
+                    continue;
+                }
+
+                await HydrateTrackedPlaceholderAsync(
+                        syncPair,
+                        entry.RelativePath,
+                        filePath,
+                        entry,
+                        persistState: false,
+                        cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                hydratedEntries.Add(entry);
+                hydratedFiles++;
+                AddAncestorDirectoryKeys(entry.RelativePath, completedDirectoryKeys);
+                if (hydratedEntries.Count >= AvailabilityStateWriteBatchSize)
+                {
+                    await _stateStore.UpsertManyAsync(hydratedEntries, cancellationToken).ConfigureAwait(false);
+                    hydratedEntries.Clear();
+                }
+            }
+
+            if (hydratedEntries.Count > 0)
+            {
+                await _stateStore.UpsertManyAsync(hydratedEntries, cancellationToken).ConfigureAwait(false);
+            }
+
+            SyncStateEntry[] completedDirectories = completedDirectoryKeys
+                .Select(key => directoryEntries.GetValueOrDefault(key))
+                .OfType<SyncStateEntry>()
+                .OrderByDescending(static entry => GetPathDepth(entry.RelativePath))
+                .ToArray();
+            foreach (SyncStateEntry entry in completedDirectories)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _cloudFiles.SetInSyncState(syncPair, entry.RelativePath);
+            }
+
+            _diagnostics.Record(
+                "manual-always-keep-recovery",
+                "completed",
+                syncPair.Id.ToString("D"),
+                syncPair.LocalRootPath,
+                ".",
+                "Hydrated "
+                + hydratedFiles
+                + " persisted pinned files; "
+                + alreadyHydratedFiles
+                + " were already available; completed "
+                + completedDirectories.Length
+                + " tracked directories.");
         }
 
         private async Task<bool> TryHandleManualRootHydrationAsync(
@@ -640,6 +773,28 @@ namespace Cotton.Sync.Desktop.Platform
                 && (attributes & FileAttributes.Offline) == 0;
         }
 
+        private static bool RequiresStartupAvailabilityRecovery(SyncRunCause causes)
+        {
+            return (causes & (SyncRunCause.Periodic | SyncRunCause.Resume)) != SyncRunCause.None;
+        }
+
+        private static bool RequiresLostAvailabilityRecovery(SyncRunCause causes)
+        {
+            return (causes & (SyncRunCause.LocalChangeOverflow | SyncRunCause.LocalWatcherError)) != SyncRunCause.None;
+        }
+
+        private static void AddAncestorDirectoryKeys(string relativePath, ISet<string> directoryKeys)
+        {
+            string ancestorPath = SyncPath.Normalize(relativePath);
+            int separatorIndex = ancestorPath.LastIndexOf('/');
+            while (separatorIndex > 0)
+            {
+                ancestorPath = ancestorPath[..separatorIndex];
+                directoryKeys.Add(SyncPath.ToKey(ancestorPath));
+                separatorIndex = ancestorPath.LastIndexOf('/');
+            }
+        }
+
         private static bool HasRawAttribute(FileAttributes attributes, int attribute)
         {
             return (((int)attributes) & attribute) == attribute;
@@ -734,7 +889,7 @@ namespace Cotton.Sync.Desktop.Platform
         }
     }
 
-    internal sealed record WindowsVirtualFileDiskState(
+    internal record WindowsVirtualFileDiskState(
         FileAttributes Attributes,
         long Length,
         DateTime LastWriteUtc);

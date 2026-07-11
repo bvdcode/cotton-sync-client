@@ -96,7 +96,7 @@ namespace Cotton.Sync.App.Runners
         {
             return CanSkipFullRequestWithoutMappedRemoteChanges(request.Causes)
                 ? remoteRequest
-                : SyncRunRequest.ForFull(request.Causes | SyncRunCause.RealtimeRemoteChange);
+                : request.Merge(remoteRequest);
         }
 
         private async Task AddTrackedFolderSubtreePathsAsync(

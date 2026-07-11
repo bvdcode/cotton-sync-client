@@ -102,7 +102,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 Assert.That(
                     inner.LastRequest?.Causes,
                     Is.EqualTo(SyncRunCause.Manual | SyncRunCause.RealtimeRemoteChange));
-                Assert.That(inner.LastRequest?.LocalChangedPaths, Is.Empty);
+                Assert.That(inner.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { "remote-origin.txt" }));
                 Assert.That(stateStore.LoadPairEntriesCallCount, Is.Zero);
                 Assert.That(stateStore.RemoteIdLookupCallCount, Is.EqualTo(1));
                 Assert.That(stateStore.LastRemoteNodeIds, Does.Contain(syncPair.RemoteRootNodeId));

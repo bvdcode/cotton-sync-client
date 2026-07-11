@@ -99,26 +99,26 @@ namespace Cotton.Sync.Desktop.Composition
                 remoteDirectories: remoteDirectorySynchronizer,
                 remoteFilePlaceholderWriter: remoteFilePlaceholderWriter,
                 logger: _loggerFactory.CreateLogger<HeadlessSyncEngine>());
-            ISyncPairWork pairWork = new RemoteChangeAwareSyncPairWork(
-                new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
-                    new WindowsVirtualFilesUploadFinalizationPairWork(
-                        new WindowsVirtualFilesDehydrationPairWork(
+            ISyncPairWork pairWork = new WindowsVirtualFilesDehydrationPairWork(
+                new RemoteChangeAwareSyncPairWork(
+                    new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
+                        new WindowsVirtualFilesUploadFinalizationPairWork(
                             new SyncEnginePairWork(syncEngine, activityPublisher, transferProgressPublisher, runProgressPublisher),
+                            activityPublisher,
                             stateStore,
                             cloudFilesAdapter,
-                            new LocalFileScanner(),
-                            localChangeSuppression: localChangeSuppression),
-                        activityPublisher,
+                            localChangeSuppression,
+                            runProgressPublisher),
                         stateStore,
                         cloudFilesAdapter,
                         localChangeSuppression,
-                        runProgressPublisher),
-                    stateStore,
-                    cloudFilesAdapter,
-                    localChangeSuppression,
-                    runProgressPublisher: runProgressPublisher),
-                remoteChangeFeed,
-                stateStore);
+                        runProgressPublisher: runProgressPublisher),
+                    remoteChangeFeed,
+                    stateStore),
+                stateStore,
+                cloudFilesAdapter,
+                new LocalFileScanner(),
+                localChangeSuppression: localChangeSuppression);
             var runnerFactory = new SyncPairRunnerFactory(pairWork, loggerFactory: _loggerFactory);
             var statusPublisher = new InMemoryAppStatusPublisher();
             var supervisor = new SyncSupervisor(syncPairStore, runnerFactory, statusPublisher);

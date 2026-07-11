@@ -80,12 +80,23 @@ namespace Cotton.Sync.App.Runners
             ArgumentNullException.ThrowIfNull(other);
             if (IsFull || other.IsFull)
             {
-                return ForFull(Causes | other.Causes);
+                IReadOnlyList<string> mergedPaths = NormalizeLocalChangedPaths(
+                    LocalChangedPaths.Concat(other.LocalChangedPaths));
+                return new SyncRunRequest(true, mergedPaths, Causes | other.Causes);
             }
 
             return ForLocalChangedPaths(
                 LocalChangedPaths.Concat(other.LocalChangedPaths),
                 Causes | other.Causes);
+        }
+
+        private static IReadOnlyList<string> NormalizeLocalChangedPaths(IEnumerable<string> relativePaths)
+        {
+            return relativePaths
+                .Where(static path => !string.IsNullOrWhiteSpace(path))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
         }
     }
 }

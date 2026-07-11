@@ -367,6 +367,118 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             });
         }
 
+        [Test]
+        public async Task RunOnceAsync_HydratesPinnedPathPreservedOnMergedFullRequest()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            var stateStore = new FakeSyncStateStore();
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Docs/report.txt"));
+            var cloudFiles = new FakeCloudFilesAdapter();
+            var inner = new RecordingSyncPairWork();
+            int diskReads = 0;
+            var work = new WindowsVirtualFilesDehydrationPairWork(
+                inner,
+                stateStore,
+                cloudFiles,
+                new FakeContentHasher("remote-hash"),
+                readDiskState: _ => diskReads++ == 0
+                    ? CreatePinnedRemoteOnlyDiskState()
+                    : CreatePinnedHydratedDiskState());
+            SyncRunRequest request = SyncRunRequest
+                .ForLocalChangedPaths(["Docs/report.txt"])
+                .Merge(SyncRunRequest.ForFull(SyncRunCause.Periodic));
+
+            await work.RunOnceAsync(syncPair, request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(cloudFiles.HydratedPaths, Is.EqualTo(new[] { "Docs/report.txt" }));
+                Assert.That(inner.Requests, Has.Count.EqualTo(1));
+                Assert.That(inner.Requests[0].IsFull, Is.True);
+                Assert.That(
+                    inner.Requests[0].Causes,
+                    Is.EqualTo(SyncRunCause.LocalChange | SyncRunCause.Periodic));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_PeriodicRecoveryHydratesPersistedPinnedOfflineFilesOnce()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            var stateStore = new FakeSyncStateStore();
+            stateStore.UpsertEntry(CreateDirectoryState(syncPair, "Music"));
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Music/pinned.mp3"));
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Music/online-only.mp3"));
+            var cloudFiles = new FakeCloudFilesAdapter();
+            var inner = new RecordingSyncPairWork();
+            var diskReads = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var work = new WindowsVirtualFilesDehydrationPairWork(
+                inner,
+                stateStore,
+                cloudFiles,
+                new FakeContentHasher("remote-hash"),
+                readDiskState: path =>
+                {
+                    if (path.EndsWith("online-only.mp3", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return CreateUnpinnedRemoteOnlyDiskState();
+                    }
+
+                    diskReads.TryGetValue(path, out int readCount);
+                    diskReads[path] = readCount + 1;
+                    return readCount == 0
+                        ? CreatePinnedRemoteOnlyDiskState()
+                        : CreatePinnedHydratedDiskState();
+                });
+            SyncRunRequest recoveryRequest = SyncRunRequest.ForFull(SyncRunCause.Periodic);
+
+            await work.RunOnceAsync(syncPair, recoveryRequest);
+            await work.RunOnceAsync(syncPair, recoveryRequest);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(cloudFiles.HydratedPaths, Is.EqualTo(new[] { "Music/pinned.mp3" }));
+                Assert.That(cloudFiles.HydratedPaths, Does.Not.Contain("Music/online-only.mp3"));
+                Assert.That(cloudFiles.InSyncPaths, Is.EqualTo(new[] { "Music" }));
+                Assert.That(inner.Requests, Has.Count.EqualTo(2));
+                Assert.That(inner.Requests, Has.All.Matches<SyncRunRequest>(request => request.IsFull));
+                Assert.That(stateStore.UpsertManyCallCount, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_PeriodicRecoveryRunsOnceForEachVirtualFilesPair()
+        {
+            SyncPairSettings firstPair = CreateVirtualFilesPair();
+            SyncPairSettings secondPair = CreateVirtualFilesPair();
+            secondPair.Id = Guid.Parse("55555555-5555-5555-5555-555555555555");
+            secondPair.LocalRootPath = Path.Combine(Path.GetTempPath(), "cotton-vfs-second-root");
+            var stateStore = new FakeSyncStateStore();
+            stateStore.UpsertEntry(CreatePlaceholderState(firstPair, "pinned.txt"));
+            stateStore.UpsertEntry(CreatePlaceholderState(secondPair, "pinned.txt"));
+            var cloudFiles = new FakeCloudFilesAdapter();
+            var diskReads = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var work = new WindowsVirtualFilesDehydrationPairWork(
+                new RecordingSyncPairWork(),
+                stateStore,
+                cloudFiles,
+                new FakeContentHasher("remote-hash"),
+                readDiskState: path =>
+                {
+                    diskReads.TryGetValue(path, out int readCount);
+                    diskReads[path] = readCount + 1;
+                    return readCount == 0
+                        ? CreatePinnedRemoteOnlyDiskState()
+                        : CreatePinnedHydratedDiskState();
+                });
+            SyncRunRequest recoveryRequest = SyncRunRequest.ForFull(SyncRunCause.Periodic);
+
+            await work.RunOnceAsync(firstPair, recoveryRequest);
+            await work.RunOnceAsync(secondPair, recoveryRequest);
+
+            Assert.That(cloudFiles.HydratedPaths, Is.EqualTo(new[] { "pinned.txt", "pinned.txt" }));
+        }
+
         private static WindowsVirtualFileDiskState CreateUnpinnedHydratedDiskState()
         {
             FileAttributes attributes = FileAttributes.Archive
@@ -400,6 +512,19 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 attributes,
                 Length: 12,
                 LastWriteUtc: new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc));
+        }
+
+        private static WindowsVirtualFileDiskState CreateUnpinnedRemoteOnlyDiskState()
+        {
+            FileAttributes attributes = FileAttributes.Archive
+                | FileAttributes.ReparsePoint
+                | FileAttributes.Offline
+                | (FileAttributes)FileAttributeUnpinned
+                | (FileAttributes)FileAttributeRecallOnDataAccess;
+            return new WindowsVirtualFileDiskState(
+                attributes,
+                Length: 12,
+                LastWriteUtc: new DateTime(2026, 06, 16, 10, 05, 00, DateTimeKind.Utc));
         }
 
         private static WindowsVirtualFileDiskState CreatePinnedDirectoryDiskState()

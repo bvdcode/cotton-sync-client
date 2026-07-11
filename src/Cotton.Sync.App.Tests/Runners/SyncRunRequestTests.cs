@@ -27,7 +27,7 @@ namespace Cotton.Sync.App.Tests.Runners
             Assert.Multiple(() =>
             {
                 Assert.That(merged.IsFull, Is.True);
-                Assert.That(merged.LocalChangedPaths, Is.Empty);
+                Assert.That(merged.LocalChangedPaths, Is.EqualTo(new[] { "Docs/report.txt" }));
                 Assert.That(
                     merged.Causes,
                     Is.EqualTo(SyncRunCause.LocalChange | SyncRunCause.RealtimeRemoteChange));

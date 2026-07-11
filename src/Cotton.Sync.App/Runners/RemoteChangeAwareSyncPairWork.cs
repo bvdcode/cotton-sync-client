@@ -53,7 +53,7 @@ namespace Cotton.Sync.App.Runners
                 await _inner
                     .RunOnceAsync(
                         syncPair,
-                        SyncRunRequest.ForFull(request.Causes | SyncRunCause.RemoteCursorExpired),
+                        request.Merge(SyncRunRequest.ForFull(SyncRunCause.RemoteCursorExpired)),
                         cancellationToken)
                     .ConfigureAwait(false);
                 await _remoteChanges.AcknowledgeFullResyncAsync(remoteBatch, cancellationToken).ConfigureAwait(false);
@@ -136,6 +136,7 @@ namespace Cotton.Sync.App.Runners
         {
             return syncPair.Mode == SyncPairMode.WindowsVirtualFiles
                 && request.IsFull
+                && request.LocalChangedPaths.Count == 0
                 && CanSkipEmptyFeedFullSync(request.Causes)
                 && remoteRead.Batch.SinceCursor > 0
                 && !remoteRead.Batch.CursorExpired
