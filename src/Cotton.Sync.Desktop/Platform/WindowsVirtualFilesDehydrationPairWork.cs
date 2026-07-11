@@ -62,6 +62,7 @@ namespace Cotton.Sync.Desktop.Platform
             List<string> remainingPaths = [];
             var handledAvailabilityPathKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             bool handledRootAvailability = false;
+            bool requiresFullPass = false;
             foreach (string relativePath in request.LocalChangedPaths)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -74,6 +75,11 @@ namespace Cotton.Sync.Desktop.Platform
                 {
                     handledRootAvailability = await TryHandleManualRootHydrationAsync(syncPair, cancellationToken)
                         .ConfigureAwait(false);
+                    if (!handledRootAvailability)
+                    {
+                        requiresFullPass = true;
+                    }
+
                     continue;
                 }
 
@@ -104,12 +110,22 @@ namespace Cotton.Sync.Desktop.Platform
 
             if (remainingPaths.Count == 0)
             {
+                if (!requiresFullPass)
+                {
+                    return;
+                }
+
+                await _inner
+                    .RunOnceAsync(syncPair, SyncRunRequest.ForFull(request.Causes), cancellationToken)
+                    .ConfigureAwait(false);
                 return;
             }
 
-            SyncRunRequest remainingRequest = remainingPaths.Count == request.LocalChangedPaths.Count
-                ? request
-                : SyncRunRequest.ForLocalChangedPaths(remainingPaths, request.Causes);
+            SyncRunRequest remainingRequest = requiresFullPass
+                ? SyncRunRequest.ForFull(request.Causes)
+                : remainingPaths.Count == request.LocalChangedPaths.Count
+                    ? request
+                    : SyncRunRequest.ForLocalChangedPaths(remainingPaths, request.Causes);
             await _inner.RunOnceAsync(syncPair, remainingRequest, cancellationToken).ConfigureAwait(false);
         }
 

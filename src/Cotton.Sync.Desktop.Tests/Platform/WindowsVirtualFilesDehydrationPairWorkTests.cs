@@ -183,6 +183,40 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_ForwardsRootScopedRequestAsFullWhenRootHydrationIsNotHandled()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            FakeCloudFilesAdapter cloudFiles = new();
+            RecordingSyncPairWork inner = new();
+            string rootPath = Path.GetFullPath(syncPair.LocalRootPath)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            WindowsVirtualFilesDehydrationPairWork work = new(
+                inner,
+                new FakeSyncStateStore(),
+                cloudFiles,
+                readDiskState: path =>
+                {
+                    string normalizedPath = Path.GetFullPath(path)
+                        .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                    return string.Equals(normalizedPath, rootPath, StringComparison.OrdinalIgnoreCase)
+                        ? CreateUnpinnedDirectoryDiskState()
+                        : null;
+                });
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForLocalChangedPaths(["."], SyncRunCause.LocalChange));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(cloudFiles.HydratedPaths, Is.Empty);
+                Assert.That(inner.Requests, Has.Count.EqualTo(1));
+                Assert.That(inner.Requests[0].IsFull, Is.True);
+                Assert.That(inner.Requests[0].Causes, Is.EqualTo(SyncRunCause.LocalChange));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_PreservesUntrackedChildEventWhileHydratingPinnedDirectory()
         {
             SyncPairSettings syncPair = CreateVirtualFilesPair();
@@ -373,6 +407,16 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             FileAttributes attributes = FileAttributes.Directory
                 | FileAttributes.ReparsePoint
                 | (FileAttributes)FileAttributePinned;
+            return new WindowsVirtualFileDiskState(
+                attributes,
+                Length: 0,
+                LastWriteUtc: new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc));
+        }
+
+        private static WindowsVirtualFileDiskState CreateUnpinnedDirectoryDiskState()
+        {
+            FileAttributes attributes = FileAttributes.Directory
+                | FileAttributes.ReparsePoint;
             return new WindowsVirtualFileDiskState(
                 attributes,
                 Length: 0,

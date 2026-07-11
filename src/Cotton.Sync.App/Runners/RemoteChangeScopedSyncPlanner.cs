@@ -58,6 +58,8 @@ namespace Cotton.Sync.App.Runners
                 {
                     hasUnresolvedChanges = true;
                 }
+
+                TryUpdateBatchFolderPath(syncPair, stateIndex, change);
             }
 
             SyncRunRequest? plannedRequest = null;
@@ -66,7 +68,9 @@ namespace Cotton.Sync.App.Runners
                 SyncRunRequest remoteRequest = SyncRunRequest.ForLocalChangedPaths(
                     remoteChangedPaths,
                     request.Causes | SyncRunCause.RealtimeRemoteChange);
-                plannedRequest = request.IsFull ? remoteRequest : request.Merge(remoteRequest);
+                plannedRequest = request.IsFull
+                    ? CreateFullRequestPlan(request, remoteRequest)
+                    : request.Merge(remoteRequest);
             }
             else if (!request.IsFull)
             {
@@ -84,6 +88,13 @@ namespace Cotton.Sync.App.Runners
         {
             const SyncRunCause safeCauses = SyncRunCause.Periodic | SyncRunCause.Resume;
             return (causes & ~safeCauses) == SyncRunCause.None;
+        }
+
+        private static SyncRunRequest CreateFullRequestPlan(SyncRunRequest request, SyncRunRequest remoteRequest)
+        {
+            return CanSkipFullRequestWithoutMappedRemoteChanges(request.Causes)
+                ? remoteRequest
+                : SyncRunRequest.ForFull(request.Causes | SyncRunCause.RealtimeRemoteChange);
         }
 
         private async Task AddTrackedFolderSubtreePathsAsync(
@@ -157,7 +168,6 @@ namespace Cotton.Sync.App.Runners
                 index.Add(entry);
             }
 
-            AddCreatedFolderPaths(syncPair, snapshot.Changes, index);
             return index;
         }
 
@@ -181,39 +191,19 @@ namespace Cotton.Sync.App.Runners
             }
         }
 
-        private static void AddCreatedFolderPaths(
-            SyncPairSettings syncPair,
-            IReadOnlyList<RemoteChangeImpact> changes,
-            RemoteChangeStateIndex stateIndex)
-        {
-            bool added;
-            do
-            {
-                added = false;
-                foreach (RemoteChangeImpact change in changes)
-                {
-                    if (!TryAddCreatedFolderPath(syncPair, stateIndex, change))
-                    {
-                        continue;
-                    }
-
-                    added = true;
-                }
-            }
-            while (added);
-        }
-
-        private static bool TryAddCreatedFolderPath(
+        private static bool TryUpdateBatchFolderPath(
             SyncPairSettings syncPair,
             RemoteChangeStateIndex stateIndex,
             RemoteChangeImpact change)
         {
             if (change.TargetKind != RemoteChangeTargetKind.Folder
-                || change.Action is not (RemoteChangeAction.Created or RemoteChangeAction.Restored)
+                || change.Action is not (RemoteChangeAction.Created
+                    or RemoteChangeAction.Restored
+                    or RemoteChangeAction.Moved
+                    or RemoteChangeAction.Renamed)
                 || !change.NodeId.HasValue
                 || change.NodeId.Value == syncPair.RemoteRootNodeId
                 || !change.ParentNodeId.HasValue
-                || stateIndex.TryGetNodePath(change.NodeId.Value, out _)
                 || ResolveNamedPath(stateIndex, change.ParentNodeId, change.Name, out string? relativePath)
                     != RemoteNamedPathStatus.Resolved
                 || relativePath is null)

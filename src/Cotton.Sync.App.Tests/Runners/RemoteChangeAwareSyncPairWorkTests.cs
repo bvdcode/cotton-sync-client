@@ -39,7 +39,7 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
-        public async Task RunOnceAsync_WithWindowsVirtualFilesSkipsInnerFullRunWithoutAcknowledgingEmptyBatch()
+        public async Task RunOnceAsync_WithWindowsVirtualFilesSkipsPeriodicFullRunWithoutAcknowledgingEmptyBatch()
         {
             var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
             var inner = new FakeSyncPairWork();
@@ -64,7 +64,7 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
-        public async Task RunOnceAsync_WithWindowsVirtualFilesScopesRemoteFileCreateFromChangeFeed()
+        public async Task RunOnceAsync_WithWindowsVirtualFilesRunsManualFullForMappedRemoteFileCreate()
         {
             var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
             var inner = new FakeSyncPairWork();
@@ -98,15 +98,59 @@ namespace Cotton.Sync.App.Tests.Runners
             Assert.Multiple(() =>
             {
                 Assert.That(inner.RunCallCount, Is.EqualTo(1));
-                Assert.That(inner.LastRequest?.IsFull, Is.False);
+                Assert.That(inner.LastRequest?.IsFull, Is.True);
                 Assert.That(
                     inner.LastRequest?.Causes,
                     Is.EqualTo(SyncRunCause.Manual | SyncRunCause.RealtimeRemoteChange));
-                Assert.That(inner.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { "remote-origin.txt" }));
+                Assert.That(inner.LastRequest?.LocalChangedPaths, Is.Empty);
                 Assert.That(stateStore.LoadPairEntriesCallCount, Is.Zero);
                 Assert.That(stateStore.RemoteIdLookupCallCount, Is.EqualTo(1));
                 Assert.That(stateStore.LastRemoteNodeIds, Does.Contain(syncPair.RemoteRootNodeId));
                 Assert.That(stateStore.LastRemoteFileIds, Does.Contain(remoteFileId));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesScopesPeriodicRemoteFileCreate()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new();
+            FakeSyncStateStore stateStore = new();
+            Guid remoteFileId = Guid.NewGuid();
+            RemoteChangeFeedBatch batch = new(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 12,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes:
+                [
+                    new SyncChangeDto
+                    {
+                        Id = 11,
+                        Kind = SyncChangeKind.FileCreated,
+                        LayoutId = Guid.NewGuid(),
+                        ItemId = remoteFileId,
+                        ParentNodeId = syncPair.RemoteRootNodeId,
+                        Name = "remote-origin.txt",
+                        CreatedAt = DateTime.UtcNow,
+                    },
+                ]);
+            FakeRemoteChangeFeedReader remoteChanges = new(batch);
+            RemoteChangeAwareSyncPairWork work = new(inner, remoteChanges, stateStore);
+
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.False);
+                Assert.That(
+                    inner.LastRequest?.Causes,
+                    Is.EqualTo(SyncRunCause.Periodic | SyncRunCause.RealtimeRemoteChange));
+                Assert.That(inner.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { "remote-origin.txt" }));
                 Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
             });
         }
@@ -149,7 +193,7 @@ namespace Cotton.Sync.App.Tests.Runners
             var remoteChanges = new FakeRemoteChangeFeedReader(batch);
             var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
-            await work.RunOnceAsync(syncPair);
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
 
             Assert.Multiple(() =>
             {
@@ -214,7 +258,7 @@ namespace Cotton.Sync.App.Tests.Runners
             var remoteChanges = new FakeRemoteChangeFeedReader(batch);
             var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
-            await work.RunOnceAsync(syncPair);
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
 
             Assert.Multiple(() =>
             {
@@ -225,6 +269,68 @@ namespace Cotton.Sync.App.Tests.Runners
                     Is.EquivalentTo(new[] { "Parent", "Parent/Child", "Parent/Child/remote.txt" }));
                 Assert.That(stateStore.LoadPairEntriesCallCount, Is.Zero);
                 Assert.That(stateStore.RemoteIdLookupCallCount, Is.EqualTo(1));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesScopesChildChangeAfterFolderRenameInSameBatch()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            Guid folderId = Guid.NewGuid();
+            Guid fileId = Guid.NewGuid();
+            FakeSyncStateStore stateStore = new(
+                new SyncStateEntry
+                {
+                    SyncPairId = syncPair.Id.ToString("D"),
+                    RelativePath = "Old",
+                    Kind = SyncEntryKind.Directory,
+                    RemoteNodeId = folderId,
+                });
+            FakeSyncPairWork inner = new();
+            RemoteChangeFeedBatch batch = new(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 13,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes:
+                [
+                    new SyncChangeDto
+                    {
+                        Id = 11,
+                        Kind = SyncChangeKind.FolderRenamed,
+                        LayoutId = Guid.NewGuid(),
+                        ItemId = folderId,
+                        ParentNodeId = syncPair.RemoteRootNodeId,
+                        Name = "New",
+                        CreatedAt = DateTime.UtcNow,
+                    },
+                    new SyncChangeDto
+                    {
+                        Id = 12,
+                        Kind = SyncChangeKind.FileCreated,
+                        LayoutId = Guid.NewGuid(),
+                        ItemId = fileId,
+                        ParentNodeId = folderId,
+                        Name = "child.txt",
+                        CreatedAt = DateTime.UtcNow,
+                    },
+                ]);
+            FakeRemoteChangeFeedReader remoteChanges = new(batch);
+            RemoteChangeAwareSyncPairWork work = new(inner, remoteChanges, stateStore);
+
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.False);
+                Assert.That(
+                    inner.LastRequest?.LocalChangedPaths,
+                    Is.EquivalentTo(new[] { "Old", "New", "New/child.txt" }));
+                Assert.That(inner.LastRequest?.LocalChangedPaths, Does.Not.Contain("Old/child.txt"));
                 Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
             });
         }
@@ -259,7 +365,7 @@ namespace Cotton.Sync.App.Tests.Runners
             var remoteChanges = new FakeRemoteChangeFeedReader(batch);
             var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
-            await work.RunOnceAsync(syncPair);
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
 
             Assert.Multiple(() =>
             {
@@ -301,7 +407,7 @@ namespace Cotton.Sync.App.Tests.Runners
             var remoteChanges = new FakeRemoteChangeFeedReader(batch);
             var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
-            await work.RunOnceAsync(syncPair);
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
 
             Assert.Multiple(() =>
             {
@@ -427,7 +533,7 @@ namespace Cotton.Sync.App.Tests.Runners
             var remoteChanges = new FakeRemoteChangeFeedReader(batch);
             var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
-            await work.RunOnceAsync(syncPair);
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
 
             Assert.Multiple(() =>
             {
@@ -469,7 +575,7 @@ namespace Cotton.Sync.App.Tests.Runners
             var remoteChanges = new FakeRemoteChangeFeedReader(batch);
             var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
-            await work.RunOnceAsync(syncPair);
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
 
             Assert.Multiple(() =>
             {
@@ -999,7 +1105,7 @@ namespace Cotton.Sync.App.Tests.Runners
             var remoteChanges = new FakeRemoteChangeFeedReader(firstBatch, secondBatch);
             var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
-            await work.RunOnceAsync(syncPair);
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
 
             Assert.Multiple(() =>
             {
