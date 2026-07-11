@@ -121,6 +121,68 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_HydratesPinnedRootSubtreeAndSuppressesChildEvents()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            var stateStore = new FakeSyncStateStore();
+            stateStore.UpsertEntry(CreateDirectoryState(syncPair, "Music"));
+            stateStore.UpsertEntry(CreateDirectoryState(syncPair, "Docs"));
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Music/track-one.mp3"));
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Docs/report.txt"));
+            var cloudFiles = new FakeCloudFilesAdapter();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var inner = new RecordingSyncPairWork();
+            var suppression = new RecordingLocalChangeSuppression();
+            var fileReads = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            string rootPath = Path.GetFullPath(syncPair.LocalRootPath)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var work = new WindowsVirtualFilesDehydrationPairWork(
+                inner,
+                stateStore,
+                cloudFiles,
+                new FakeContentHasher("remote-hash"),
+                diagnostics,
+                path =>
+                {
+                    string normalizedPath = Path.GetFullPath(path)
+                        .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                    if (string.Equals(normalizedPath, rootPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return CreatePinnedDirectoryDiskState();
+                    }
+
+                    fileReads.TryGetValue(path, out int readCount);
+                    fileReads[path] = readCount + 1;
+                    return readCount == 0 ? CreatePinnedRemoteOnlyDiskState() : CreatePinnedHydratedDiskState();
+                },
+                suppression);
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForLocalChangedPaths([".", "Music/track-one.mp3"]));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Is.Empty);
+                Assert.That(
+                    cloudFiles.HydratedPaths,
+                    Is.EquivalentTo(new[] { "Music/track-one.mp3", "Docs/report.txt" }));
+                Assert.That(cloudFiles.InSyncPaths, Is.EquivalentTo(new[] { "Music", "Docs" }));
+                Assert.That(
+                    stateStore.GetRequired(syncPair.Id, "Music/track-one.mp3").PlaceholderHydrationState,
+                    Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+                Assert.That(
+                    stateStore.GetRequired(syncPair.Id, "Docs/report.txt").PlaceholderHydrationState,
+                    Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+                Assert.That(
+                    diagnostics.Snapshot().Select(static item => item.Operation),
+                    Does.Contain("manual-always-keep-root"));
+                Assert.That(suppression.ProviderWriteBurstCount, Is.EqualTo(1));
+                Assert.That(stateStore.UpsertManyCallCount, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_PreservesUntrackedChildEventWhileHydratingPinnedDirectory()
         {
             SyncPairSettings syncPair = CreateVirtualFilesPair();

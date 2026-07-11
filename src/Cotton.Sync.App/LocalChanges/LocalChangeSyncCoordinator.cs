@@ -371,9 +371,10 @@ namespace Cotton.Sync.App.LocalChanges
             }
 
             List<string> relativePaths = [];
+            bool allowRootRelativePath = IsWindowsVirtualFilesPair(syncPairId);
             foreach (string changedPath in request.ChangedPaths)
             {
-                if (TryGetRelativePath(localRootPath, changedPath, out string relativePath))
+                if (TryGetRelativePath(localRootPath, changedPath, allowRootRelativePath, out string relativePath))
                 {
                     relativePaths.Add(relativePath);
                 }
@@ -431,14 +432,29 @@ namespace Cotton.Sync.App.LocalChanges
 
         private static bool TryGetRelativePath(string localRootPath, string fullPath, out string relativePath)
         {
+            return TryGetRelativePath(localRootPath, fullPath, allowRootRelativePath: false, out relativePath);
+        }
+
+        private static bool TryGetRelativePath(
+            string localRootPath,
+            string fullPath,
+            bool allowRootRelativePath,
+            out string relativePath)
+        {
             try
             {
-                string fullRoot = Path.GetFullPath(localRootPath);
-                string fullChangedPath = Path.GetFullPath(fullPath);
-                string rootWithSeparator = fullRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                    + Path.DirectorySeparatorChar;
-                if (!fullChangedPath.Equals(fullRoot, StringComparison.OrdinalIgnoreCase)
-                    && !fullChangedPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
+                string fullRoot = Path.GetFullPath(localRootPath)
+                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                string fullChangedPath = Path.GetFullPath(fullPath)
+                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if (fullChangedPath.Equals(fullRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    relativePath = allowRootRelativePath ? "." : string.Empty;
+                    return allowRootRelativePath;
+                }
+
+                string rootWithSeparator = fullRoot + Path.DirectorySeparatorChar;
+                if (!fullChangedPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
                 {
                     relativePath = string.Empty;
                     return false;

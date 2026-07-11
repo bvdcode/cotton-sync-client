@@ -61,9 +61,22 @@ namespace Cotton.Sync.Desktop.Platform
 
             List<string> remainingPaths = [];
             var handledAvailabilityPathKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            bool handledRootAvailability = false;
             foreach (string relativePath in request.LocalChangedPaths)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (handledRootAvailability)
+                {
+                    continue;
+                }
+
+                if (IsRootRelativePath(relativePath))
+                {
+                    handledRootAvailability = await TryHandleManualRootHydrationAsync(syncPair, cancellationToken)
+                        .ConfigureAwait(false);
+                    continue;
+                }
+
                 if (IsHandledAvailabilityPath(relativePath, handledAvailabilityPathKeys))
                 {
                     continue;
@@ -98,6 +111,90 @@ namespace Cotton.Sync.Desktop.Platform
                 ? request
                 : SyncRunRequest.ForLocalChangedPaths(remainingPaths);
             await _inner.RunOnceAsync(syncPair, remainingRequest, cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task<bool> TryHandleManualRootHydrationAsync(
+            SyncPairSettings syncPair,
+            CancellationToken cancellationToken)
+        {
+            string fullPath = Path.GetFullPath(syncPair.LocalRootPath)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            WindowsVirtualFileDiskState? diskState = TryReadDiskState(fullPath);
+            if (diskState is null || !IsManualAlwaysKeepDirectoryCandidate(diskState.Attributes))
+            {
+                return false;
+            }
+
+            using IDisposable? providerWriteBurst = _localChangeSuppression?
+                .SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath);
+            var subtreeEntries = new List<SyncStateEntry>();
+            await foreach (SyncStateEntry entry in _stateStore
+                               .LoadPairEntriesAsync(syncPair.Id.ToString("D"), cancellationToken)
+                               .WithCancellation(cancellationToken)
+                               .ConfigureAwait(false))
+            {
+                if (!SyncPathIgnoreRules.ShouldIgnore(entry.RelativePath))
+                {
+                    subtreeEntries.Add(entry);
+                }
+            }
+
+            int hydratedFiles = 0;
+            int alreadyHydratedFiles = 0;
+            var hydratedEntries = new List<SyncStateEntry>();
+            foreach (SyncStateEntry entry in subtreeEntries)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!IsTrackedVirtualFile(entry))
+                {
+                    continue;
+                }
+
+                string filePath = ResolveFullPath(syncPair.LocalRootPath, entry.RelativePath);
+                WindowsVirtualFileDiskState? fileState = TryReadDiskState(filePath);
+                if (fileState is not null && IsHydrationComplete(fileState.Attributes, entry.PlaceholderHydrationState))
+                {
+                    alreadyHydratedFiles++;
+                    continue;
+                }
+
+                await HydrateTrackedPlaceholderAsync(
+                        syncPair,
+                        entry.RelativePath,
+                        filePath,
+                        entry,
+                        persistState: false,
+                        cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                hydratedEntries.Add(entry);
+                hydratedFiles++;
+            }
+
+            await _stateStore.UpsertManyAsync(hydratedEntries, cancellationToken).ConfigureAwait(false);
+            SyncStateEntry[] directoryEntries = subtreeEntries
+                .Where(static entry => entry.Kind == SyncEntryKind.Directory)
+                .OrderByDescending(static entry => GetPathDepth(entry.RelativePath))
+                .ToArray();
+            foreach (SyncStateEntry entry in directoryEntries)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _cloudFiles.SetInSyncState(syncPair, entry.RelativePath);
+            }
+
+            _diagnostics.Record(
+                "manual-always-keep-root",
+                "completed",
+                syncPair.Id.ToString("D"),
+                syncPair.LocalRootPath,
+                ".",
+                "Hydrated "
+                + hydratedFiles
+                + " tracked files; "
+                + alreadyHydratedFiles
+                + " were already available; completed "
+                + directoryEntries.Length
+                + " tracked directories.");
+            return true;
         }
 
         private async Task<bool> TryHandleManualDirectoryHydrationAsync(
@@ -542,6 +639,12 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             return handledAvailabilityPathKeys.Contains(SyncPath.ToKey(normalizedPath));
+        }
+
+        private static bool IsRootRelativePath(string relativePath)
+        {
+            string trimmed = relativePath.Trim();
+            return trimmed == "." || trimmed == "/" || trimmed == "\\";
         }
 
         private static bool TryNormalizePath(string relativePath, out string normalizedPath)

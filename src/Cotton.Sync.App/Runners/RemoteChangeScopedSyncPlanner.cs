@@ -36,6 +36,7 @@ namespace Cotton.Sync.App.Runners
             RemoteChangeStateIndex stateIndex =
                 await LoadStateIndexAsync(syncPair, snapshot, cancellationToken).ConfigureAwait(false);
             var remoteChangedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var expandedSubtreePathKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             bool hasUnresolvedChanges = false;
             foreach (RemoteChangeImpact change in snapshot.Changes)
             {
@@ -44,6 +45,14 @@ namespace Cotton.Sync.App.Runners
                 if (disposition == RemoteChangePathDisposition.Mapped)
                 {
                     remoteChangedPaths.UnionWith(changePaths);
+                    await AddTrackedFolderSubtreePathsAsync(
+                            syncPair,
+                            change,
+                            changePaths,
+                            remoteChangedPaths,
+                            expandedSubtreePathKeys,
+                            cancellationToken)
+                        .ConfigureAwait(false);
                 }
                 else if (disposition == RemoteChangePathDisposition.Unresolved)
                 {
@@ -65,6 +74,50 @@ namespace Cotton.Sync.App.Runners
             }
 
             return new RemoteChangeScopedSyncPlan(plannedRequest, hasUnresolvedChanges);
+        }
+
+        private async Task AddTrackedFolderSubtreePathsAsync(
+            SyncPairSettings syncPair,
+            RemoteChangeImpact change,
+            IEnumerable<string> candidatePaths,
+            HashSet<string> paths,
+            HashSet<string> expandedSubtreePathKeys,
+            CancellationToken cancellationToken)
+        {
+            if (!ShouldExpandTrackedFolderSubtree(change))
+            {
+                return;
+            }
+
+            foreach (string candidatePath in candidatePaths.ToArray())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!TryNormalizeSyncPath(candidatePath, out string normalizedPath))
+                {
+                    continue;
+                }
+
+                string prefixKey = SyncPath.ToKey(normalizedPath);
+                if (!expandedSubtreePathKeys.Add(prefixKey))
+                {
+                    continue;
+                }
+
+                await foreach (SyncStateEntry entry in _stateStore
+                                   .LoadEntriesByPathPrefixAsync(
+                                       syncPair.Id.ToString("D"),
+                                       normalizedPath,
+                                       cancellationToken)
+                                   .WithCancellation(cancellationToken)
+                                   .ConfigureAwait(false))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (!SyncPathIgnoreRules.ShouldIgnore(entry.RelativePath))
+                    {
+                        paths.Add(entry.RelativePath);
+                    }
+                }
+            }
         }
 
         private async Task<RemoteChangeStateIndex> LoadStateIndexAsync(
@@ -96,6 +149,26 @@ namespace Cotton.Sync.App.Runners
 
             AddCreatedFolderPaths(syncPair, snapshot.Changes, index);
             return index;
+        }
+
+        private static bool ShouldExpandTrackedFolderSubtree(RemoteChangeImpact change)
+        {
+            return change.TargetKind == RemoteChangeTargetKind.Folder
+                && change.Action is RemoteChangeAction.Deleted or RemoteChangeAction.Moved or RemoteChangeAction.Renamed;
+        }
+
+        private static bool TryNormalizeSyncPath(string relativePath, out string normalizedPath)
+        {
+            try
+            {
+                normalizedPath = SyncPath.Normalize(relativePath);
+                return !string.IsNullOrWhiteSpace(normalizedPath);
+            }
+            catch (ArgumentException)
+            {
+                normalizedPath = string.Empty;
+                return false;
+            }
         }
 
         private static void AddCreatedFolderPaths(

@@ -53,7 +53,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 changes: Array.Empty<SyncChangeDto>()));
             var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
 
-            await work.RunOnceAsync(syncPair);
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
 
             Assert.Multiple(() =>
             {
@@ -315,6 +315,90 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesScopesRemoteFolderDeleteToTrackedSubtree()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            Guid folderId = Guid.NewGuid();
+            Guid subFolderId = Guid.NewGuid();
+            Guid rootFileId = Guid.NewGuid();
+            Guid childFileId = Guid.NewGuid();
+            var inner = new FakeSyncPairWork();
+            var stateStore = new FakeSyncStateStore(
+                new SyncStateEntry
+                {
+                    SyncPairId = syncPair.Id.ToString("D"),
+                    RelativePath = "DeletedFolder",
+                    Kind = SyncEntryKind.Directory,
+                    RemoteNodeId = folderId,
+                },
+                new SyncStateEntry
+                {
+                    SyncPairId = syncPair.Id.ToString("D"),
+                    RelativePath = "DeletedFolder/Sub",
+                    Kind = SyncEntryKind.Directory,
+                    RemoteNodeId = subFolderId,
+                },
+                new SyncStateEntry
+                {
+                    SyncPairId = syncPair.Id.ToString("D"),
+                    RelativePath = "DeletedFolder/root.txt",
+                    Kind = SyncEntryKind.File,
+                    RemoteNodeId = folderId,
+                    RemoteFileId = rootFileId,
+                },
+                new SyncStateEntry
+                {
+                    SyncPairId = syncPair.Id.ToString("D"),
+                    RelativePath = "DeletedFolder/Sub/child.txt",
+                    Kind = SyncEntryKind.File,
+                    RemoteNodeId = subFolderId,
+                    RemoteFileId = childFileId,
+                });
+            var batch = new RemoteChangeFeedBatch(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 12,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes:
+                [
+                    new SyncChangeDto
+                    {
+                        Id = 11,
+                        Kind = SyncChangeKind.FolderDeleted,
+                        LayoutId = Guid.NewGuid(),
+                        ItemId = folderId,
+                        ParentNodeId = syncPair.RemoteRootNodeId,
+                        Name = "DeletedFolder",
+                        CreatedAt = DateTime.UtcNow,
+                    },
+                ]);
+            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.False);
+                Assert.That(
+                    inner.LastRequest?.LocalChangedPaths,
+                    Is.EquivalentTo(new[]
+                    {
+                        "DeletedFolder",
+                        "DeletedFolder/Sub",
+                        "DeletedFolder/root.txt",
+                        "DeletedFolder/Sub/child.txt",
+                    }));
+                Assert.That(stateStore.RemoteIdLookupCallCount, Is.EqualTo(1));
+                Assert.That(stateStore.PathPrefixLookupCallCount, Is.EqualTo(1));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesScopesRemoteFileRenameWithoutExistingState()
         {
             var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
@@ -534,18 +618,46 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
-        public async Task RunOnceAsync_AfterTemporaryFeedFailureDoesNotRestartFullVfsPopulation()
+        public async Task RunOnceAsync_WithEmptyVfsFeedSkipsPeriodicFullSync()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
             var inner = new FakeSyncPairWork();
-            var remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
+            var batch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 9_828,
                 nextCursor: 9_828,
                 hasMore: false,
                 cursorExpired: false,
                 earliestAvailableCursor: 5,
-                changes: Array.Empty<SyncChangeDto>()));
+                changes: Array.Empty<SyncChangeDto>());
+            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForFull(SyncRunCause.Periodic));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.Zero);
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_AfterTemporaryFeedFailureRunsManualVfsRecovery()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            var inner = new FakeSyncPairWork();
+            var batch = new RemoteChangeFeedBatch(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 9_828,
+                nextCursor: 9_828,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes: Array.Empty<SyncChangeDto>());
+            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
             remoteChanges.ReadFailures.Enqueue(
                 new RemoteChangeFeedUnavailableException(new HttpRequestException("404 page not found")));
             var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
@@ -561,9 +673,40 @@ namespace Cotton.Sync.App.Tests.Runners
             Assert.Multiple(() =>
             {
                 Assert.That(remoteChanges.ReadSyncPairIds, Has.Count.EqualTo(2));
-                Assert.That(inner.RunCallCount, Is.Zero);
-                Assert.That(remoteChanges.AcknowledgedBatches, Is.Empty);
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.True);
+                Assert.That(inner.LastRequest?.Causes, Is.EqualTo(SyncRunCause.Manual));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
                 Assert.That(remoteChanges.FullResyncAcknowledgedBatches, Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithEmptyVfsFeedRunsLocalWatcherRecovery()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            var inner = new FakeSyncPairWork();
+            var batch = new RemoteChangeFeedBatch(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 9_828,
+                nextCursor: 9_828,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes: Array.Empty<SyncChangeDto>());
+            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForFull(SyncRunCause.LocalWatcherError));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.True);
+                Assert.That(inner.LastRequest?.Causes, Is.EqualTo(SyncRunCause.LocalWatcherError));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
             });
         }
 
@@ -665,7 +808,7 @@ namespace Cotton.Sync.App.Tests.Runners
             FakeRemoteChangeFeedReader remoteChanges = new(batch);
             RemoteChangeAwareSyncPairWork work = new(inner, remoteChanges, stateStore);
 
-            await work.RunOnceAsync(syncPair);
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
 
             Assert.Multiple(() =>
             {
@@ -712,8 +855,8 @@ namespace Cotton.Sync.App.Tests.Runners
             var remoteChanges = new FakeRemoteChangeFeedReader(emptyBatch, delayedBatch);
             var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, new FakeSyncStateStore());
 
-            await work.RunOnceAsync(syncPair);
-            await work.RunOnceAsync(syncPair);
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
 
             Assert.Multiple(() =>
             {
@@ -1094,6 +1237,8 @@ namespace Cotton.Sync.App.Tests.Runners
 
             public int RemoteIdLookupCallCount { get; private set; }
 
+            public int PathPrefixLookupCallCount { get; private set; }
+
             public IReadOnlyList<Guid> LastRemoteNodeIds { get; private set; } = [];
 
             public IReadOnlyList<Guid> LastRemoteFileIds { get; private set; } = [];
@@ -1147,6 +1292,27 @@ namespace Cotton.Sync.App.Tests.Runners
                         || (entry.Kind == SyncEntryKind.File
                             && entry.RemoteFileId.HasValue
                             && fileIds.Contains(entry.RemoteFileId.Value)))
+                    {
+                        yield return entry;
+                    }
+                }
+            }
+
+            public async IAsyncEnumerable<SyncStateEntry> LoadEntriesByPathPrefixAsync(
+                string syncPairId,
+                string relativePathPrefix,
+                [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+            {
+                PathPrefixLookupCallCount++;
+                string prefixKey = SyncPath.ToKey(relativePathPrefix);
+                string childPrefix = prefixKey + "/";
+                await Task.Yield();
+                foreach (SyncStateEntry entry in _entries.Where(entry => entry.SyncPairId == syncPairId))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    string entryKey = SyncPath.ToKey(entry.RelativePath);
+                    if (string.Equals(entryKey, prefixKey, StringComparison.OrdinalIgnoreCase)
+                        || entryKey.StartsWith(childPrefix, StringComparison.OrdinalIgnoreCase))
                     {
                         yield return entry;
                     }

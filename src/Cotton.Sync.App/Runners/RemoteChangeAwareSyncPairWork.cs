@@ -136,10 +136,17 @@ namespace Cotton.Sync.App.Runners
         {
             return syncPair.Mode == SyncPairMode.WindowsVirtualFiles
                 && request.IsFull
+                && CanSkipEmptyFeedFullSync(request.Causes)
                 && remoteRead.Batch.SinceCursor > 0
                 && !remoteRead.Batch.CursorExpired
                 && !remoteRead.Batch.HasMore
                 && !remoteRead.HasObservedChanges;
+        }
+
+        private static bool CanSkipEmptyFeedFullSync(SyncRunCause causes)
+        {
+            const SyncRunCause safeCauses = SyncRunCause.Periodic | SyncRunCause.Resume;
+            return (causes & ~safeCauses) == SyncRunCause.None;
         }
 
         private static bool ShouldReadNextPage(RemoteChangeFeedBatch batch)
