@@ -60,9 +60,26 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             List<string> remainingPaths = [];
+            var handledAvailabilityPathKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (string relativePath in request.LocalChangedPaths)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (IsHandledAvailabilityPath(relativePath, handledAvailabilityPathKeys))
+                {
+                    continue;
+                }
+
+                bool hydratedDirectory = await TryHandleManualDirectoryHydrationAsync(
+                        syncPair,
+                        relativePath,
+                        handledAvailabilityPathKeys,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (hydratedDirectory)
+                {
+                    continue;
+                }
+
                 if (!await TryHandleManualHydrationAsync(syncPair, relativePath, cancellationToken)
                         .ConfigureAwait(false)
                     && !await TryHandleManualDehydrationAsync(syncPair, relativePath, cancellationToken)
@@ -83,17 +100,125 @@ namespace Cotton.Sync.Desktop.Platform
             await _inner.RunOnceAsync(syncPair, remainingRequest, cancellationToken).ConfigureAwait(false);
         }
 
+        private async Task<bool> TryHandleManualDirectoryHydrationAsync(
+            SyncPairSettings syncPair,
+            string relativePath,
+            HashSet<string> handledAvailabilityPathKeys,
+            CancellationToken cancellationToken)
+        {
+            if (!TryNormalizePath(relativePath, out string normalizedPath))
+            {
+                return false;
+            }
+
+            SyncStateEntry? directoryState = await _stateStore
+                .GetAsync(syncPair.Id.ToString("D"), normalizedPath, cancellationToken)
+                .ConfigureAwait(false);
+            if (!IsTrackedVirtualDirectory(directoryState))
+            {
+                return false;
+            }
+
+            string fullPath;
+            try
+            {
+                fullPath = ResolveFullPath(syncPair.LocalRootPath, normalizedPath);
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+            catch (NotSupportedException)
+            {
+                return false;
+            }
+
+            WindowsVirtualFileDiskState? diskState = TryReadDiskState(fullPath);
+            if (diskState is null || !IsManualAlwaysKeepDirectoryCandidate(diskState.Attributes))
+            {
+                return false;
+            }
+
+            using IDisposable? providerWriteBurst = _localChangeSuppression?
+                .SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath);
+            var subtreeEntries = new List<SyncStateEntry>();
+            await foreach (SyncStateEntry entry in _stateStore
+                               .LoadEntriesByPathPrefixAsync(
+                                   syncPair.Id.ToString("D"),
+                                   normalizedPath,
+                                   cancellationToken)
+                               .WithCancellation(cancellationToken)
+                               .ConfigureAwait(false))
+            {
+                subtreeEntries.Add(entry);
+            }
+
+            int hydratedFiles = 0;
+            int alreadyHydratedFiles = 0;
+            var hydratedEntries = new List<SyncStateEntry>();
+            foreach (SyncStateEntry entry in subtreeEntries)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                handledAvailabilityPathKeys.Add(SyncPath.ToKey(entry.RelativePath));
+                if (!IsTrackedVirtualFile(entry))
+                {
+                    continue;
+                }
+
+                string filePath = ResolveFullPath(syncPair.LocalRootPath, entry.RelativePath);
+                WindowsVirtualFileDiskState? fileState = TryReadDiskState(filePath);
+                if (fileState is not null && IsHydrationComplete(fileState.Attributes, entry.PlaceholderHydrationState))
+                {
+                    alreadyHydratedFiles++;
+                    continue;
+                }
+
+                await HydrateTrackedPlaceholderAsync(
+                        syncPair,
+                        entry.RelativePath,
+                        filePath,
+                        entry,
+                        persistState: false,
+                        cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                hydratedEntries.Add(entry);
+                hydratedFiles++;
+            }
+
+            await _stateStore.UpsertManyAsync(hydratedEntries, cancellationToken).ConfigureAwait(false);
+            SyncStateEntry[] directoryEntries = subtreeEntries
+                .Where(static entry => entry.Kind == SyncEntryKind.Directory)
+                .OrderByDescending(static entry => GetPathDepth(entry.RelativePath))
+                .ToArray();
+            foreach (SyncStateEntry entry in directoryEntries)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _cloudFiles.SetInSyncState(syncPair, entry.RelativePath);
+            }
+
+            handledAvailabilityPathKeys.Add(SyncPath.ToKey(normalizedPath));
+            _diagnostics.Record(
+                "manual-always-keep-directory",
+                "completed",
+                syncPair.Id.ToString("D"),
+                syncPair.LocalRootPath,
+                normalizedPath,
+                "Hydrated "
+                + hydratedFiles
+                + " tracked files; "
+                + alreadyHydratedFiles
+                + " were already available; completed "
+                + directoryEntries.Length
+                + " tracked directories.");
+            return true;
+        }
+
         private async Task<bool> TryHandleManualHydrationAsync(
             SyncPairSettings syncPair,
             string relativePath,
             CancellationToken cancellationToken)
         {
-            string normalizedPath;
-            try
-            {
-                normalizedPath = SyncPath.Normalize(relativePath);
-            }
-            catch (ArgumentException)
+            if (!TryNormalizePath(relativePath, out string normalizedPath))
             {
                 return false;
             }
@@ -139,6 +264,25 @@ namespace Cotton.Sync.Desktop.Platform
                 return false;
             }
 
+            await HydrateTrackedPlaceholderAsync(
+                    syncPair,
+                    normalizedPath,
+                    fullPath,
+                    state!,
+                    persistState: true,
+                    cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            return true;
+        }
+
+        private async Task HydrateTrackedPlaceholderAsync(
+            SyncPairSettings syncPair,
+            string normalizedPath,
+            string fullPath,
+            SyncStateEntry state,
+            bool persistState,
+            CancellationToken cancellationToken)
+        {
             _localChangeSuppression?.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, normalizedPath);
             try
             {
@@ -158,14 +302,14 @@ namespace Cotton.Sync.Desktop.Platform
                 throw new InvalidOperationException(details);
             }
 
-            if (!SizeMatchesBaseline(state!, hydratedState.Length))
+            if (!SizeMatchesBaseline(state, hydratedState.Length))
             {
                 const string details = "Hydrated local size differs from the tracked remote file.";
                 RecordFailed(syncPair, normalizedPath, details);
                 throw new InvalidOperationException(details);
             }
 
-            if (!await ContentMatchesRemoteAsync(state!, normalizedPath, fullPath, hydratedState, cancellationToken)
+            if (!await ContentMatchesRemoteAsync(state, normalizedPath, fullPath, hydratedState, cancellationToken)
                     .ConfigureAwait(false))
             {
                 const string details = "Hydrated local content differs from the tracked remote file.";
@@ -173,12 +317,16 @@ namespace Cotton.Sync.Desktop.Platform
                 throw new InvalidOperationException(details);
             }
 
-            state!.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
+            state.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
             state.LocalContentHash = state.RemoteContentHash;
             state.LocalLastWriteUtc = hydratedState.LastWriteUtc;
             state.LocalSizeBytes = hydratedState.Length;
             state.SyncedAtUtc = DateTime.UtcNow;
-            await _stateStore.UpsertAsync(state, cancellationToken).ConfigureAwait(false);
+            if (persistState)
+            {
+                await _stateStore.UpsertAsync(state, cancellationToken).ConfigureAwait(false);
+            }
+
             _diagnostics.Record(
                 "manual-always-keep",
                 "completed",
@@ -186,7 +334,6 @@ namespace Cotton.Sync.Desktop.Platform
                 syncPair.LocalRootPath,
                 normalizedPath,
                 "Explorer Always keep on this device hydrated the tracked placeholder.");
-            return true;
         }
 
         private async Task<bool> TryHandleManualDehydrationAsync(
@@ -330,6 +477,15 @@ namespace Cotton.Sync.Desktop.Platform
             };
         }
 
+        private static bool IsTrackedVirtualDirectory(SyncStateEntry? state)
+        {
+            return state is
+            {
+                Kind: SyncEntryKind.Directory,
+                RemoteNodeId: not null,
+            };
+        }
+
         private static bool SizeMatchesBaseline(SyncStateEntry state, long localLength)
         {
             long? expectedLength = state.RemoteSizeBytes ?? state.LocalSizeBytes;
@@ -355,9 +511,72 @@ namespace Cotton.Sync.Desktop.Platform
                     || (attributes & FileAttributes.Offline) != 0);
         }
 
+        private static bool IsManualAlwaysKeepDirectoryCandidate(FileAttributes attributes)
+        {
+            return (attributes & FileAttributes.Directory) != 0
+                && (attributes & FileAttributes.ReparsePoint) != 0
+                && HasRawAttribute(attributes, FileAttributePinned);
+        }
+
+        private static bool IsHydrationComplete(
+            FileAttributes attributes,
+            SyncPlaceholderHydrationState hydrationState)
+        {
+            return hydrationState == SyncPlaceholderHydrationState.Hydrated
+                && !HasRawAttribute(attributes, FileAttributeRecallOnDataAccess)
+                && (attributes & FileAttributes.Offline) == 0;
+        }
+
         private static bool HasRawAttribute(FileAttributes attributes, int attribute)
         {
             return (((int)attributes) & attribute) == attribute;
+        }
+
+        private static bool IsHandledAvailabilityPath(
+            string relativePath,
+            IReadOnlySet<string> handledAvailabilityPathKeys)
+        {
+            if (!TryNormalizePath(relativePath, out string normalizedPath))
+            {
+                return false;
+            }
+
+            return handledAvailabilityPathKeys.Contains(SyncPath.ToKey(normalizedPath));
+        }
+
+        private static bool TryNormalizePath(string relativePath, out string normalizedPath)
+        {
+            try
+            {
+                normalizedPath = SyncPath.Normalize(relativePath);
+                return true;
+            }
+            catch (ArgumentException)
+            {
+                normalizedPath = string.Empty;
+                return false;
+            }
+        }
+
+        private WindowsVirtualFileDiskState? TryReadDiskState(string fullPath)
+        {
+            try
+            {
+                return _readDiskState(fullPath);
+            }
+            catch (IOException)
+            {
+                return null;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
+
+        private static int GetPathDepth(string relativePath)
+        {
+            return relativePath.Count(static character => character == '/');
         }
 
         private static string ResolveFullPath(string localRootPath, string normalizedRelativePath)
@@ -378,14 +597,21 @@ namespace Cotton.Sync.Desktop.Platform
 
         private static WindowsVirtualFileDiskState? ReadDiskState(string fullPath)
         {
-            if (!File.Exists(fullPath))
+            if (File.Exists(fullPath))
             {
-                return null;
+                var file = new FileInfo(fullPath);
+                file.Refresh();
+                return new WindowsVirtualFileDiskState(file.Attributes, file.Length, file.LastWriteTimeUtc);
             }
 
-            var info = new FileInfo(fullPath);
-            info.Refresh();
-            return new WindowsVirtualFileDiskState(info.Attributes, info.Length, info.LastWriteTimeUtc);
+            if (Directory.Exists(fullPath))
+            {
+                var directory = new DirectoryInfo(fullPath);
+                directory.Refresh();
+                return new WindowsVirtualFileDiskState(directory.Attributes, 0, directory.LastWriteTimeUtc);
+            }
+
+            return null;
         }
     }
 

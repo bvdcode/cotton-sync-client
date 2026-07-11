@@ -101,14 +101,62 @@ namespace Cotton.Sync.State
             ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
             ArgumentException.ThrowIfNullOrWhiteSpace(relativePathPrefix);
             string prefixKey = SyncPath.ToKey(relativePathPrefix);
-            string childPrefix = prefixKey + "/";
+            string childPattern = CreateChildPathGlobPattern(prefixKey);
             await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
             await using SyncStateDbContext context = CreateContext();
+            SyncStateEntity? exactEntry = await context.SyncEntries
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    entry => entry.SyncPairId == syncPairId
+                        && entry.Kind == SyncEntryKind.Directory
+                        && entry.RelativePathKey == prefixKey,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (exactEntry is not null)
+            {
+                yield return ToModel(exactEntry);
+            }
+
             IAsyncEnumerable<SyncStateEntity> entities = context.SyncEntries
                 .AsNoTracking()
                 .Where(entry => entry.SyncPairId == syncPairId
                     && entry.Kind == SyncEntryKind.Directory
-                    && (entry.RelativePathKey == prefixKey || entry.RelativePathKey.StartsWith(childPrefix)))
+                    && EF.Functions.Glob(entry.RelativePathKey, childPattern))
+                .OrderBy(entry => entry.RelativePathKey)
+                .AsAsyncEnumerable();
+            await foreach (SyncStateEntity entity in entities.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                yield return ToModel(entity);
+            }
+        }
+
+        /// <inheritdoc />
+        public async IAsyncEnumerable<SyncStateEntry> LoadEntriesByPathPrefixAsync(
+            string syncPairId,
+            string relativePathPrefix,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
+            ArgumentException.ThrowIfNullOrWhiteSpace(relativePathPrefix);
+            string prefixKey = SyncPath.ToKey(relativePathPrefix);
+            string childPattern = CreateChildPathGlobPattern(prefixKey);
+            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+            await using SyncStateDbContext context = CreateContext();
+            SyncStateEntity? exactEntry = await context.SyncEntries
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    entry => entry.SyncPairId == syncPairId && entry.RelativePathKey == prefixKey,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (exactEntry is not null)
+            {
+                yield return ToModel(exactEntry);
+            }
+
+            IAsyncEnumerable<SyncStateEntity> entities = context.SyncEntries
+                .AsNoTracking()
+                .Where(entry => entry.SyncPairId == syncPairId
+                    && EF.Functions.Glob(entry.RelativePathKey, childPattern))
                 .OrderBy(entry => entry.RelativePathKey)
                 .AsAsyncEnumerable();
             await foreach (SyncStateEntity entity in entities.WithCancellation(cancellationToken).ConfigureAwait(false))
@@ -714,6 +762,11 @@ namespace Cotton.Sync.State
                 .UseSqlite(connectionString)
                 .Options;
             return new SyncStateDbContext(options);
+        }
+
+        private static string CreateChildPathGlobPattern(string prefixKey)
+        {
+            return prefixKey.Replace("[", "[[]", StringComparison.Ordinal) + "/*";
         }
 
         private static IEnumerable<IReadOnlyCollection<T>> CreateBatches<T>(IReadOnlyList<T> items, int batchSize)

@@ -59,6 +59,102 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_HydratesOnlyPinnedDirectorySubtreeAndSuppressesChildEvents()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            var stateStore = new FakeSyncStateStore();
+            stateStore.UpsertEntry(CreateDirectoryState(syncPair, "Music"));
+            stateStore.UpsertEntry(CreateDirectoryState(syncPair, "Music/Album"));
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Music/track-one.mp3"));
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Music/Album/track-two.mp3"));
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Other/outside.mp3"));
+            var cloudFiles = new FakeCloudFilesAdapter();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var inner = new RecordingSyncPairWork();
+            var suppression = new RecordingLocalChangeSuppression();
+            var fileReads = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var work = new WindowsVirtualFilesDehydrationPairWork(
+                inner,
+                stateStore,
+                cloudFiles,
+                new FakeContentHasher("remote-hash"),
+                diagnostics,
+                path =>
+                {
+                    if (path.EndsWith(Path.DirectorySeparatorChar + "Music", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return CreatePinnedDirectoryDiskState();
+                    }
+
+                    fileReads.TryGetValue(path, out int readCount);
+                    fileReads[path] = readCount + 1;
+                    return readCount == 0 ? CreatePinnedRemoteOnlyDiskState() : CreatePinnedHydratedDiskState();
+                },
+                suppression);
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForLocalChangedPaths(
+                    ["Music", "Music/track-one.mp3", "Music/Album/track-two.mp3"]));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Is.Empty);
+                Assert.That(
+                    cloudFiles.HydratedPaths,
+                    Is.EquivalentTo(new[] { "Music/Album/track-two.mp3", "Music/track-one.mp3" }));
+                Assert.That(cloudFiles.InSyncPaths, Is.EqualTo(new[] { "Music/Album", "Music" }));
+                Assert.That(cloudFiles.HydratedPaths, Does.Not.Contain("Other/outside.mp3"));
+                Assert.That(
+                    stateStore.GetRequired(syncPair.Id, "Music/track-one.mp3").PlaceholderHydrationState,
+                    Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+                Assert.That(
+                    stateStore.GetRequired(syncPair.Id, "Music/Album/track-two.mp3").PlaceholderHydrationState,
+                    Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+                Assert.That(
+                    diagnostics.Snapshot().Last().Operation,
+                    Is.EqualTo("manual-always-keep-directory"));
+                Assert.That(suppression.SuppressedWrites, Has.Count.EqualTo(2));
+                Assert.That(suppression.ProviderWriteBurstCount, Is.EqualTo(1));
+                Assert.That(stateStore.UpsertManyCallCount, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_PreservesUntrackedChildEventWhileHydratingPinnedDirectory()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            var stateStore = new FakeSyncStateStore();
+            stateStore.UpsertEntry(CreateDirectoryState(syncPair, "Music"));
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Music/tracked.mp3"));
+            var cloudFiles = new FakeCloudFilesAdapter();
+            var inner = new RecordingSyncPairWork();
+            int fileReads = 0;
+            var work = new WindowsVirtualFilesDehydrationPairWork(
+                inner,
+                stateStore,
+                cloudFiles,
+                new FakeContentHasher("remote-hash"),
+                readDiskState: path => path.EndsWith(Path.DirectorySeparatorChar + "Music", StringComparison.OrdinalIgnoreCase)
+                    ? CreatePinnedDirectoryDiskState()
+                    : fileReads++ == 0
+                        ? CreatePinnedRemoteOnlyDiskState()
+                        : CreatePinnedHydratedDiskState());
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForLocalChangedPaths(["Music", "Music/new-local.txt", "Music/tracked.mp3"]));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(cloudFiles.HydratedPaths, Is.EqualTo(new[] { "Music/tracked.mp3" }));
+                Assert.That(inner.Requests, Has.Count.EqualTo(1));
+                Assert.That(inner.Requests[0].IsFull, Is.False);
+                Assert.That(inner.Requests[0].LocalChangedPaths, Is.EqualTo(new[] { "Music/new-local.txt" }));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_DehydratesSafeUnpinnedPlaceholderAndSuppressesInnerSync()
         {
             SyncPairSettings syncPair = CreateVirtualFilesPair();
@@ -207,6 +303,17 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 LastWriteUtc: new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc));
         }
 
+        private static WindowsVirtualFileDiskState CreatePinnedDirectoryDiskState()
+        {
+            FileAttributes attributes = FileAttributes.Directory
+                | FileAttributes.ReparsePoint
+                | (FileAttributes)FileAttributePinned;
+            return new WindowsVirtualFileDiskState(
+                attributes,
+                Length: 0,
+                LastWriteUtc: new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc));
+        }
+
         private static SyncPairSettings CreateVirtualFilesPair()
         {
             return new SyncPairSettings
@@ -233,6 +340,19 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 RemoteContentHash = "remote-hash",
                 RemoteSizeBytes = 12,
                 PlaceholderIdentity = [1, 2, 3],
+                PlaceholderHydrationState = SyncPlaceholderHydrationState.RemoteOnly,
+                SyncedAtUtc = new DateTime(2026, 06, 16, 10, 05, 00, DateTimeKind.Utc),
+            };
+        }
+
+        private static SyncStateEntry CreateDirectoryState(SyncPairSettings syncPair, string relativePath)
+        {
+            return new SyncStateEntry
+            {
+                SyncPairId = syncPair.Id.ToString("D"),
+                RelativePath = relativePath,
+                Kind = SyncEntryKind.Directory,
+                RemoteNodeId = Guid.NewGuid(),
                 PlaceholderHydrationState = SyncPlaceholderHydrationState.RemoteOnly,
                 SyncedAtUtc = new DateTime(2026, 06, 16, 10, 05, 00, DateTimeKind.Utc),
             };
@@ -281,6 +401,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             public List<SuppressedWrite> SuppressedWrites { get; } = [];
 
+            public int ProviderWriteBurstCount { get; private set; }
+
             public void SuppressProviderWrite(Guid syncPairId, string localRootPath, string relativePath)
             {
                 SuppressedWrites.Add(new SuppressedWrite(syncPairId, localRootPath, relativePath));
@@ -288,6 +410,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public IDisposable SuppressProviderWriteBurst(Guid syncPairId, string localRootPath)
             {
+                ProviderWriteBurstCount++;
                 return NoopDisposable.Instance;
             }
 
@@ -312,6 +435,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<string> HydratedPaths { get; } = [];
 
+            public List<string> InSyncPaths { get; } = [];
+
             public RemoteFilePlaceholderResult CreateFilePlaceholder(RemoteFilePlaceholderRequest request)
             {
                 throw new NotSupportedException();
@@ -334,7 +459,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public void SetInSyncState(SyncPairSettings syncPair, string relativePath)
             {
-                throw new NotSupportedException();
+                InSyncPaths.Add(relativePath);
             }
 
             public WindowsCloudFilesConnection ConnectSyncRoot(
@@ -353,6 +478,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         private sealed class FakeSyncStateStore : ISyncStateStore
         {
             private readonly Dictionary<string, SyncStateEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
+
+            public int UpsertManyCallCount { get; private set; }
 
             public void UpsertEntry(SyncStateEntry entry)
             {
@@ -421,6 +548,20 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public Task UpsertAsync(SyncStateEntry entry, CancellationToken cancellationToken = default)
             {
                 UpsertEntry(entry);
+                return Task.CompletedTask;
+            }
+
+            public Task UpsertManyAsync(
+                IReadOnlyCollection<SyncStateEntry> entries,
+                CancellationToken cancellationToken = default)
+            {
+                UpsertManyCallCount++;
+                foreach (SyncStateEntry entry in entries)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    UpsertEntry(entry);
+                }
+
                 return Task.CompletedTask;
             }
 

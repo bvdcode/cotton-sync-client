@@ -191,6 +191,87 @@ namespace Cotton.Sync.Tests.State
         }
 
         [Test]
+        public async Task LoadEntriesByPathPrefixAsync_StreamsOnlyMatchingFileAndDirectorySubtree()
+        {
+            SqliteSyncStateStore store = CreateStore();
+            await store.InitializeAsync();
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "Music",
+                Kind = SyncEntryKind.Directory,
+                RemoteNodeId = Guid.NewGuid(),
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "Music/Album",
+                Kind = SyncEntryKind.Directory,
+                RemoteNodeId = Guid.NewGuid(),
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "Music/Album/track.mp3",
+                Kind = SyncEntryKind.File,
+                RemoteFileId = Guid.NewGuid(),
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "Music-old/other.mp3",
+                Kind = SyncEntryKind.File,
+                RemoteFileId = Guid.NewGuid(),
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "Music [Live]",
+                Kind = SyncEntryKind.Directory,
+                RemoteNodeId = Guid.NewGuid(),
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = "Music [Live]/set.mp3",
+                Kind = SyncEntryKind.File,
+                RemoteFileId = Guid.NewGuid(),
+            });
+            await store.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-b",
+                RelativePath = "Music/Album/other.mp3",
+                Kind = SyncEntryKind.File,
+                RemoteFileId = Guid.NewGuid(),
+            });
+
+            var entries = new List<SyncStateEntry>();
+            await foreach (SyncStateEntry entry in store.LoadEntriesByPathPrefixAsync("pair-a", "music"))
+            {
+                entries.Add(entry);
+            }
+
+            var bracketEntries = new List<SyncStateEntry>();
+            await foreach (SyncStateEntry entry in store.LoadEntriesByPathPrefixAsync("pair-a", "music [live]"))
+            {
+                bracketEntries.Add(entry);
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    entries.Select(entry => entry.RelativePath),
+                    Is.EqualTo(new[] { "Music", "Music/Album", "Music/Album/track.mp3" }));
+                Assert.That(
+                    entries.Select(entry => entry.Kind),
+                    Is.EqualTo(new[] { SyncEntryKind.Directory, SyncEntryKind.Directory, SyncEntryKind.File }));
+                Assert.That(
+                    bracketEntries.Select(entry => entry.RelativePath),
+                    Is.EqualTo(new[] { "Music [Live]", "Music [Live]/set.mp3" }));
+            });
+        }
+
+        [Test]
         public async Task LoadEntriesByPathKeysAsync_LoadsOnlyRequestedKeysInPathOrder()
         {
             var store = CreateStore();
