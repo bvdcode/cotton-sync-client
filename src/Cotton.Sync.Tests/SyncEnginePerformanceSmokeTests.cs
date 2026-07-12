@@ -962,7 +962,7 @@ namespace Cotton.Sync.Tests
                 baselineEntries.Add(stateEntryCustomizer?.Invoke(baselineEntry, index) ?? baselineEntry);
             }
 
-            var localScanner = new FailOnFullScanLocalFileScanner();
+            FailOnFullScanLocalFileScanner localScanner = new(baselineEntries);
             var remoteCrawler = new StaticRemoteTreeCrawler(remoteFiles);
             var remoteFilesClient = new GuardedRemoteFileSynchronizer();
             var stateStore = new CountingVirtualPlaceholderStateStore(baselineEntries);
@@ -995,11 +995,12 @@ namespace Cotton.Sync.Tests
                 .Where(progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders)
                 .ToList();
             TestContext.WriteLine(
-                "Virtual-files repeat pass for {0:N0} persisted placeholders completed in {1:N0} ms; state entries loaded {2:N0}; local full scans {3}; streaming crawls {4}; placeholder writes {5}; retained activities {6:N0}/{7:N0}; progress samples {8:N0}.",
+                "Virtual-files repeat pass for {0:N0} persisted placeholders completed in {1:N0} ms; state entries loaded {2:N0}; local full scans {3}; local path lookups {4}; streaming crawls {5}; placeholder writes {6}; retained activities {7:N0}/{8:N0}; progress samples {9:N0}.",
                 fileCount,
                 stopwatch.Elapsed.TotalMilliseconds,
                 stateStore.LoadPairEntriesYieldCount,
                 localScanner.ScanCalls,
+                localScanner.PathLookupCalls,
                 remoteCrawler.StreamingCrawlCalls,
                 placeholderWriter.Count,
                 result.Activities.Count,
@@ -1017,12 +1018,12 @@ namespace Cotton.Sync.Tests
                 Assert.That(stateStore.LoadPairEntriesCalls, Is.EqualTo(1));
                 Assert.That(stateStore.LoadPairEntriesYieldCount, Is.EqualTo(fileCount));
                 Assert.That(localScanner.ScanCalls, Is.Zero);
+                Assert.That(localScanner.PathLookupCalls, Is.EqualTo(1));
                 Assert.That(placeholderWriter.Count, Is.Zero);
                 Assert.That(result.TotalActivityCount, Is.Zero);
                 Assert.That(result.Activities, Is.Empty);
                 Assert.That(result.IsActivityListTruncated, Is.False);
-                Assert.That(placeholderProgress, Is.Not.Empty);
-                Assert.That(placeholderProgress.Last().FilesTotal, Is.EqualTo(fileCount));
+                Assert.That(placeholderProgress, Is.Empty);
                 Assert.That(stopwatch.Elapsed, Is.LessThan(smokeTarget));
             });
 
@@ -1269,9 +1270,31 @@ namespace Cotton.Sync.Tests
             }
         }
 
-        private sealed class FailOnFullScanLocalFileScanner : ILocalFileScanner
+        private sealed class FailOnFullScanLocalFileScanner :
+            ILocalFileScanner,
+            ILocalFileMetadataPathLookupScanner
         {
+            private readonly Dictionary<string, LocalFileSnapshot> _filesByPath;
+
+            public FailOnFullScanLocalFileScanner(IEnumerable<SyncStateEntry> baselineEntries)
+            {
+                _filesByPath = baselineEntries.ToDictionary(
+                    entry => SyncPath.ToKey(entry.RelativePath),
+                    entry => new LocalFileSnapshot
+                    {
+                        RelativePath = entry.RelativePath,
+                        FullPath = Path.Combine("virtual-root", entry.RelativePath.Replace('/', Path.DirectorySeparatorChar)),
+                        SizeBytes = entry.RemoteSizeBytes ?? 0,
+                        LastWriteUtc = entry.SyncedAtUtc,
+                        IsCloudFilesPlaceholder = true,
+                        IsCloudFilesOnlineOnlyPlaceholder = true,
+                    },
+                    StringComparer.OrdinalIgnoreCase);
+            }
+
             public int ScanCalls { get; private set; }
+
+            public int PathLookupCalls { get; private set; }
 
             public Task<IReadOnlyList<LocalFileSnapshot>> ScanAsync(
                 string rootPath,
@@ -1279,6 +1302,28 @@ namespace Cotton.Sync.Tests
             {
                 ScanCalls++;
                 throw new InvalidOperationException("VFS repeat-pass performance smoke must not run a full local placeholder-tree scan.");
+            }
+
+            public Task<LocalTreeLookupSnapshot> ScanPathMetadataLookupsAsync(
+                string rootPath,
+                IReadOnlyCollection<string> relativePaths,
+                IProgress<LocalTreeScanProgress>? progress,
+                bool includeDirectoryDescendants,
+                CancellationToken cancellationToken = default)
+            {
+                PathLookupCalls++;
+                LocalTreeLookupSnapshot snapshot = new();
+                foreach (string relativePath in relativePaths)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    string key = SyncPath.ToKey(relativePath);
+                    if (_filesByPath.TryGetValue(key, out LocalFileSnapshot? file))
+                    {
+                        snapshot.FilesByPath[key] = file;
+                    }
+                }
+
+                return Task.FromResult(snapshot);
             }
         }
 

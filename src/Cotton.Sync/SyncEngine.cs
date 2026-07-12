@@ -776,9 +776,13 @@ namespace Cotton.Sync
                 remoteScanProgress,
                 options,
                 startedAtUtc,
+                publishRunProgress: !streamingPlan.SkipCurrentPlaceholders,
                 () => Volatile.Read(ref completedFiles),
                 () => Volatile.Read(ref completedDirectories));
-            ReportRunProgress(options, SyncRunProgressStage.CreatingPlaceholders, 0, null, null, startedAtUtc);
+            if (!streamingPlan.SkipCurrentPlaceholders)
+            {
+                ReportRunProgress(options, SyncRunProgressStage.CreatingPlaceholders, 0, null, null, startedAtUtc);
+            }
 
             using IDisposable? providerWriteBurst = _remoteFilePlaceholderPopulationObserver
                 ?.BeginPopulation(syncPair.SyncPairId, syncPair.LocalRootPath);
@@ -883,13 +887,16 @@ namespace Cotton.Sync
                 Volatile.Read(ref discoveredFiles),
                 Volatile.Read(ref discoveredDirectories));
             int totalItems = Math.Max(completedItems, discoveredItems);
-            ReportRunProgress(
-                options,
-                SyncRunProgressStage.CreatingPlaceholders,
-                completedItems,
-                totalItems,
-                null,
-                startedAtUtc);
+            if (!streamingPlan.SkipCurrentPlaceholders || lastPlaceholderProgressReportedAtUtc.HasValue)
+            {
+                ReportRunProgress(
+                    options,
+                    SyncRunProgressStage.CreatingPlaceholders,
+                    completedItems,
+                    totalItems,
+                    null,
+                    startedAtUtc);
+            }
             ReportRunProgress(
                 options,
                 SyncRunProgressStage.Completed,
@@ -1984,17 +1991,20 @@ namespace Cotton.Sync
 
             int completedFiles = getCompletedFiles() + 1;
             setCompletedFiles(completedFiles);
-            ReportStreamingVirtualFilesProgress(
-                options,
-                completedFiles,
-                getDiscoveredFiles(),
-                getCompletedDirectories(),
-                getDiscoveredDirectories(),
-                getExpectedItems(),
-                workResult.RelativePath,
-                startedAtUtc,
-                getLastPlaceholderProgressReportedAtUtc(),
-                setLastPlaceholderProgressReportedAtUtc);
+            if (ShouldReportInitialVirtualFilesFileProgress(workResult))
+            {
+                ReportStreamingVirtualFilesProgress(
+                    options,
+                    completedFiles,
+                    getDiscoveredFiles(),
+                    getCompletedDirectories(),
+                    getDiscoveredDirectories(),
+                    getExpectedItems(),
+                    workResult.RelativePath,
+                    startedAtUtc,
+                    getLastPlaceholderProgressReportedAtUtc(),
+                    setLastPlaceholderProgressReportedAtUtc);
+            }
             if (workResult.ReportActivity)
             {
                 Report(
@@ -2178,6 +2188,13 @@ namespace Cotton.Sync
             return local.IsCloudFilesOnlineOnlyPlaceholder
                 && local.SizeBytes == remoteFile.SizeBytes
                 && DateTimesMatchWithinCloudFilesMetadataTolerance(local.LastWriteUtc, remoteFile.UpdatedAt);
+        }
+
+        private static bool ShouldReportInitialVirtualFilesFileProgress(InitialVirtualFilesFileWorkResult workResult)
+        {
+            return workResult.State is not null
+                || workResult.ReportActivity
+                || workResult.ActivityKind != SyncActivityKind.Skipped;
         }
 
         private static bool ReportStreamingVirtualFilesProgress(
@@ -5036,6 +5053,7 @@ namespace Cotton.Sync
             private readonly IProgress<RemoteTreeScanProgress> _inner;
             private readonly SyncRunOptions _options;
             private readonly DateTime _startedAtUtc;
+            private readonly bool _publishRunProgress;
             private readonly Func<int> _getCompletedFiles;
             private readonly Func<int> _getCompletedDirectories;
 
@@ -5043,12 +5061,14 @@ namespace Cotton.Sync
                 IProgress<RemoteTreeScanProgress> inner,
                 SyncRunOptions options,
                 DateTime startedAtUtc,
+                bool publishRunProgress,
                 Func<int> getCompletedFiles,
                 Func<int> getCompletedDirectories)
             {
                 _inner = inner;
                 _options = options;
                 _startedAtUtc = startedAtUtc;
+                _publishRunProgress = publishRunProgress;
                 _getCompletedFiles = getCompletedFiles;
                 _getCompletedDirectories = getCompletedDirectories;
             }
@@ -5057,6 +5077,11 @@ namespace Cotton.Sync
             {
                 ArgumentNullException.ThrowIfNull(value);
                 _inner.Report(value);
+                if (!_publishRunProgress)
+                {
+                    return;
+                }
+
                 int itemsDiscovered = GetInitialVirtualFilesItemCount(value.FilesScanned, value.DirectoriesScanned);
                 if (itemsDiscovered == 0)
                 {
