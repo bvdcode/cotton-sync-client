@@ -4908,9 +4908,8 @@ namespace Cotton.Sync.Desktop.Startup
             {
                 ShellItemStatusSnapshot status = await ReadExplorerShellStatusAsync(itemPath, cancellationToken)
                     .ConfigureAwait(false);
-                bool hasAvailability = status.Columns.Any(static column =>
-                    column.Index is 298 or 305 && !string.IsNullOrWhiteSpace(column.Value));
-                bool hasActiveStatus = status.Columns.Any(static column => IsActiveExplorerShellStatus(column.Value));
+                bool hasAvailability = status.Columns.Any(IsExplorerAvailabilityStatus);
+                bool hasActiveStatus = status.Columns.Any(IsActiveExplorerShellStatusColumn);
                 if (hasAvailability && !hasActiveStatus)
                 {
                     await output.WriteLineAsync(
@@ -4958,10 +4957,10 @@ namespace Cotton.Sync.Desktop.Startup
                 + "if ($null -eq $folder) { throw 'Shell namespace was not available.' }; "
                 + "$item=$folder.ParseName($name); "
                 + "if ($null -eq $item) { throw 'Shell item was not available.' }; "
-                + "$indexes=@(148,149,298,305); "
-                + "foreach($index in $indexes) { "
+                + "for($index=0; $index -le 330; $index++) { "
                 + "$header=[string]$folder.GetDetailsOf($null,$index); "
                 + "$value=[string]$folder.GetDetailsOf($item,$index); "
+                + "if ([string]::IsNullOrWhiteSpace($header) -and [string]::IsNullOrWhiteSpace($value)) { continue }; "
                 + "$headerBytes=[System.Text.Encoding]::UTF8.GetBytes($header); "
                 + "$valueBytes=[System.Text.Encoding]::UTF8.GetBytes($value); "
                 + "$headerEncoded=[Convert]::ToBase64String($headerBytes); "
@@ -5013,6 +5012,63 @@ namespace Cotton.Sync.Desktop.Startup
                 || ContainsShellStatusTerm(value, "\u0441\u0438\u043d\u0445")
                 || ContainsShellStatusTerm(value, "\u043e\u0436\u0438\u0434")
                 || ContainsShellStatusTerm(value, "\u043e\u0448\u0438\u0431");
+        }
+
+        private static bool IsActiveExplorerShellStatusColumn(ShellStatusColumn column)
+        {
+            return IsShellStatusColumnName(column.Name)
+                && IsActiveExplorerShellStatus(column.Value);
+        }
+
+        private static bool IsExplorerAvailabilityStatus(ShellStatusColumn column)
+        {
+            if (string.IsNullOrWhiteSpace(column.Value))
+            {
+                return false;
+            }
+
+            return IsAvailabilityColumnName(column.Name)
+                || IsKnownAvailabilityValue(column.Value);
+        }
+
+        private static bool IsAvailabilityColumnName(string value)
+        {
+            return ContainsShellStatusTerm(value, "availability")
+                || ContainsShellStatusTerm(value, "\u0434\u043e\u0441\u0442\u0443\u043f");
+        }
+
+        private static bool IsShellStatusColumnName(string value)
+        {
+            return IsAvailabilityColumnName(value)
+                || ContainsShellStatusTerm(value, "status")
+                || ContainsShellStatusTerm(value, "\u0441\u0442\u0430\u0442\u0443\u0441");
+        }
+
+        private static bool IsKnownAvailabilityValue(string value)
+        {
+            string normalized = value.Trim();
+            return string.Equals(normalized, "Available", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "Available when online", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "Available on this device", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "Always available on this device", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "Online-only", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "Locally available", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(
+                    normalized,
+                    "\u0414\u043e\u0441\u0442\u0443\u043f\u043d\u043e",
+                    StringComparison.OrdinalIgnoreCase)
+                || string.Equals(
+                    normalized,
+                    "\u0414\u043e\u0441\u0442\u0443\u043f\u043d\u043e \u043f\u0440\u0438 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0438 \u043a \u0418\u043d\u0442\u0435\u0440\u043d\u0435\u0442\u0443",
+                    StringComparison.OrdinalIgnoreCase)
+                || string.Equals(
+                    normalized,
+                    "\u0414\u043e\u0441\u0442\u0443\u043f\u043d\u043e \u043d\u0430 \u044d\u0442\u043e\u043c \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0435",
+                    StringComparison.OrdinalIgnoreCase)
+                || string.Equals(
+                    normalized,
+                    "\u0412\u0441\u0435\u0433\u0434\u0430 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e \u043d\u0430 \u044d\u0442\u043e\u043c \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0435",
+                    StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool ContainsShellStatusTerm(string value, string term)
@@ -5148,10 +5204,23 @@ namespace Cotton.Sync.Desktop.Startup
             {
                 return string.Join(
                     ";",
-                    Columns.Select(static column =>
+                    Columns.Where(static column => IsShellStatusDiagnosticColumn(column))
+                        .Select(static column =>
                         column.Index.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + "["
+                        + (string.IsNullOrWhiteSpace(column.Name) ? "<empty>" : CleanSingleLine(column.Name))
+                        + "]"
                         + "="
                         + (string.IsNullOrWhiteSpace(column.Value) ? "<empty>" : CleanSingleLine(column.Value))));
+            }
+
+            private static bool IsShellStatusDiagnosticColumn(ShellStatusColumn column)
+            {
+                return column.Index is 7 or 8 or 148 or 149 or 298 or 299 or 300 or 305 or 307 or 308
+                    || IsAvailabilityColumnName(column.Name)
+                    || IsShellStatusColumnName(column.Name)
+                    || IsKnownAvailabilityValue(column.Value)
+                    || IsActiveExplorerShellStatus(column.Value);
             }
         }
 
