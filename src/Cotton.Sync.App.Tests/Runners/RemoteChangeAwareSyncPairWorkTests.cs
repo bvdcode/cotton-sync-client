@@ -1182,6 +1182,58 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesProcessesChangeAfterEmptyIntermediatePage()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new();
+            FakeSyncStateStore stateStore = new();
+            RemoteChangeFeedBatch emptyPage = new(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 12,
+                hasMore: true,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes: Array.Empty<SyncChangeDto>());
+            RemoteChangeFeedBatch changePage = new(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 12,
+                nextCursor: 13,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes:
+                [
+                    new SyncChangeDto
+                    {
+                        Id = 13,
+                        Kind = SyncChangeKind.FileCreated,
+                        LayoutId = Guid.NewGuid(),
+                        ItemId = Guid.NewGuid(),
+                        ParentNodeId = syncPair.RemoteRootNodeId,
+                        Name = "remote-after-gap.txt",
+                        CreatedAt = DateTime.UtcNow,
+                    },
+                ]);
+            FakeRemoteChangeFeedReader remoteChanges = new(emptyPage, changePage);
+            RemoteChangeAwareSyncPairWork work = new(inner, remoteChanges, stateStore);
+
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.False);
+                Assert.That(inner.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { "remote-after-gap.txt" }));
+                Assert.That(
+                    remoteChanges.ReadFromCursorRequests,
+                    Is.EqualTo(new[] { (SyncPairId: syncPair.Id.ToString("D"), SinceCursor: 12L) }));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { changePage }));
+                Assert.That(remoteChanges.FullResyncAcknowledgedBatches, Is.Empty);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesScopesChangesObservedBeforeFinalDrainedPage()
         {
             var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
