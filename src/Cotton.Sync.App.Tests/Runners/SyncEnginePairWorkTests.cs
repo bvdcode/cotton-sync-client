@@ -260,6 +260,38 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task RunOnceAsync_PublishesFullRunProgressWithoutRequestedPathCount()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            FakeSyncEngine engine = new()
+            {
+                RunProgressToReport = new CoreSyncRunProgress(
+                    CoreSyncRunProgressStage.ReconcilingFiles,
+                    filesCompleted: 1,
+                    filesTotal: 2,
+                    currentPath: "Documents/report.txt",
+                    startedAtUtc: new DateTime(2026, 7, 11, 23, 0, 0, DateTimeKind.Utc)),
+            };
+            InMemoryAppRunProgressPublisher publisher = new();
+            RecordingObserver<AppSyncRunProgress> observer = new();
+            using IDisposable subscription = publisher.Subscribe(observer);
+            SyncEnginePairWork work = new(engine, runProgressPublisher: publisher);
+            SyncPairSettings syncPair = CreateSyncPair(syncPairId);
+            SyncRunRequest request = SyncRunRequest
+                .ForFull(SyncRunCause.Manual)
+                .Merge(SyncRunRequest.ForLocalChangedPaths(["Documents/report.txt"]));
+
+            await work.RunOnceAsync(syncPair, request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observer.Values, Has.Count.EqualTo(2));
+                Assert.That(observer.Values.Select(static progress => progress.IsFull), Is.All.True);
+                Assert.That(observer.Values.Select(static progress => progress.RequestedPathCount), Is.All.EqualTo(0));
+            });
+        }
+
+        [Test]
         public void RunOnceAsync_PublishesTerminalRunProgressWhenCoreFails()
         {
             Guid syncPairId = Guid.NewGuid();

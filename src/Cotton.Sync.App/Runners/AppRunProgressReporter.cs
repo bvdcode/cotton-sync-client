@@ -40,7 +40,7 @@ namespace Cotton.Sync.App.Runners
             }
 
             CoreSyncRunProgress? latest = _latest;
-            var completed = new CoreSyncRunProgress(
+            CoreSyncRunProgress completed = new(
                 SyncRunProgressStage.Completed,
                 latest?.FilesCompleted ?? 0,
                 latest?.FilesTotal,
@@ -57,6 +57,7 @@ namespace Cotton.Sync.App.Runners
             CoreSyncRunProgress progress,
             SyncRunRequest request)
         {
+            int requestedPathCount = request.IsFull ? 0 : request.LocalChangedPaths.Count;
             return new AppRunProgress(
                 syncPairId,
                 progress.Stage,
@@ -70,7 +71,7 @@ namespace Cotton.Sync.App.Runners
                 progress.BytesTotal,
                 request.Causes,
                 request.IsFull,
-                request.LocalChangedPaths.Count);
+                requestedPathCount);
         }
     }
 }

@@ -1926,6 +1926,85 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesFallsBackWhenResumeStateHasMaterializedFile()
+        {
+            string relativePath = "hydrated.txt";
+            LocalFileSnapshot local = LocalFile(relativePath, "remote");
+            NodeFileManifestDto previousRemote = RemoteFile(relativePath, local.ContentHash, sizeBytes: local.SizeBytes);
+            FakeLocalFileScanner scanner = new(local);
+            BlockingStreamingRemoteTreeCrawler remoteCrawler = new(
+                _remoteRootNodeId,
+                [],
+                snapshotCrawlResult: RemoteTree(previousRemote));
+            FakeRemoteFileSynchronizer remoteFileSynchronizer = new();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new();
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            await InsertPlaceholderBaselineAsync(
+                stateStore,
+                relativePath,
+                previousRemote,
+                SyncPlaceholderHydrationState.Hydrated);
+            SyncEngine engine = new(
+                scanner,
+                remoteCrawler,
+                remoteFileSynchronizer,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { InitialVirtualFilesPopulationQueueCapacity = 1 });
+
+            IReadOnlyList<SyncStateEntry> entries = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.Zero);
+                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.EqualTo(1));
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(entries, Has.Count.EqualTo(1));
+                Assert.That(entries[0].RelativePath, Is.EqualTo(relativePath));
+                Assert.That(entries[0].LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(entries[0].RemoteContentHash, Is.EqualTo(previousRemote.ContentHash));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesDoesNotResumeStreamingWhenTrackedPlaceholderIsMissing()
+        {
+            string relativePath = "Desktop/missing-online-only.txt";
+            NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote"), sizeBytes: 1024);
+            FakeLocalFileScanner scanner = new();
+            BlockingStreamingRemoteTreeCrawler remoteCrawler = new(
+                _remoteRootNodeId,
+                [new RemoteFileSnapshot { RelativePath = relativePath, File = remote }],
+                snapshotCrawlResult: RemoteTree(remote));
+            FakeRemoteFileSynchronizer remoteFileSynchronizer = new();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new();
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            await InsertPlaceholderBaselineAsync(stateStore, relativePath, remote);
+            SyncEngine engine = new(
+                scanner,
+                remoteCrawler,
+                remoteFileSynchronizer,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { InitialVirtualFilesPopulationQueueCapacity = 1 });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.Zero);
+                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.EqualTo(1));
+                Assert.That(placeholderWriter.Requests, Is.Empty);
+                Assert.That(remoteFileSynchronizer.Deletes, Is.Empty);
+                Assert.That(result.RequiresUserAction, Is.True);
+                Assert.That(result.ActionRequiredMessage, Does.Contain("online-only file"));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesAdoptsCurrentUntrackedCloudFilesPlaceholder()
         {
             string relativePath = "Desktop/orphaned-placeholder.txt";

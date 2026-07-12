@@ -182,6 +182,11 @@ namespace Cotton.Sync.App.Runners
                 return new InnerRequestPlan(request, RemoteChangesCovered: true);
             }
 
+            if (RequiresFullReconcileForWindowsVirtualFiles(request))
+            {
+                return new InnerRequestPlan(request, RemoteChangesCovered: true);
+            }
+
             if (_scopedSyncPlanner is null)
             {
                 throw new SyncActionRequiredException(
@@ -226,6 +231,12 @@ namespace Cotton.Sync.App.Runners
             return new SyncActionRequiredException(
                 "Remote changes inside this sync folder could not be mapped to local paths. "
                 + "Refresh the sync folder to rebuild its state.");
+        }
+
+        private static bool RequiresFullReconcileForWindowsVirtualFiles(SyncRunRequest request)
+        {
+            return request.IsFull
+                && (request.Causes & SyncRunCause.InitialPopulation) != SyncRunCause.None;
         }
 
         private static bool ShouldAcknowledgeRemoteBatch(

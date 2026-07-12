@@ -957,12 +957,12 @@ namespace Cotton.Sync
                 return InitialVirtualFilesStreamingPlanDecision.NotApplicable;
             }
 
-            InitialVirtualFilesStreamingPlan? stateFirstPlan =
+            InitialVirtualFilesStreamingPlanDecision? stateFirstDecision =
                 await TryCreateStateFirstWindowsVirtualFilesStreamingPlanAsync(syncPair, cancellationToken)
                     .ConfigureAwait(false);
-            if (stateFirstPlan is not null)
+            if (stateFirstDecision is not null)
             {
-                return InitialVirtualFilesStreamingPlanDecision.FromPlan(stateFirstPlan);
+                return stateFirstDecision;
             }
 
             return await InspectLocalTreeForInitialWindowsVirtualFilesStreamingDecisionAsync(
@@ -980,7 +980,7 @@ namespace Cotton.Sync
                 && _remoteFilePlaceholderWriter is not null;
         }
 
-        private async Task<InitialVirtualFilesStreamingPlan?> TryCreateStateFirstWindowsVirtualFilesStreamingPlanAsync(
+        private async Task<InitialVirtualFilesStreamingPlanDecision?> TryCreateStateFirstWindowsVirtualFilesStreamingPlanAsync(
             SyncPair syncPair,
             CancellationToken cancellationToken)
         {
@@ -990,8 +990,10 @@ namespace Cotton.Sync
             int fileEntries = 0;
             int onlineOnlyFileEntries = 0;
             int materializedFileEntries = 0;
-            var fileBaselineByPath = new Dictionary<string, InitialVirtualFilesPlaceholderBaseline>(PathComparer);
-            InitialVirtualFilesStreamingPlan? FallBackToLocalTreeInspection(string reason)
+            HashSet<string> directoryStateKeys = new(PathComparer);
+            Dictionary<string, InitialVirtualFilesPlaceholderBaseline> fileBaselineByPath = new(PathComparer);
+            List<string> stateRelativePaths = [];
+            InitialVirtualFilesStreamingPlanDecision? InspectLocalTree(string reason)
             {
                 stopwatch.Stop();
                 _logger.LogInformation(
@@ -1005,6 +1007,22 @@ namespace Cotton.Sync
                     materializedFileEntries,
                     stopwatch.ElapsedMilliseconds);
                 return null;
+            }
+
+            InitialVirtualFilesStreamingPlanDecision DisableStreaming(string reason)
+            {
+                stopwatch.Stop();
+                _logger.LogInformation(
+                    "Skipping Windows virtual-files state-first resume plan for pair {SyncPairId}: {Reason}. Entries seen={EntryStateCount}, directories={DirectoryStateCount}, files={FileStateCount}, online-only files={OnlineOnlyFileStateCount}, materialized files={MaterializedFileStateCount}, elapsed={ElapsedMilliseconds} ms.",
+                    syncPair.SyncPairId,
+                    reason,
+                    entriesSeen,
+                    directoryEntries,
+                    fileEntries,
+                    onlineOnlyFileEntries,
+                    materializedFileEntries,
+                    stopwatch.ElapsedMilliseconds);
+                return InitialVirtualFilesStreamingPlanDecision.NotApplicable;
             }
 
             await foreach (SyncStateEntry entry in _stateStore
@@ -1025,16 +1043,18 @@ namespace Cotton.Sync
                     case SyncEntryKind.Directory:
                         if (entry.RemoteNodeId is null)
                         {
-                            return FallBackToLocalTreeInspection("directory state is missing a remote folder id");
+                            return DisableStreaming("directory state is missing a remote folder id");
                         }
 
                         directoryEntries++;
+                        directoryStateKeys.Add(SyncPath.ToKey(entry.RelativePath));
+                        stateRelativePaths.Add(entry.RelativePath);
                         break;
                     case SyncEntryKind.File:
                         fileEntries++;
                         if (!HasRemoteFileBaseline(entry))
                         {
-                            return FallBackToLocalTreeInspection("file state is missing a remote baseline");
+                            return DisableStreaming("file state is missing a remote baseline");
                         }
 
                         if (IsOnlineOnlyPlaceholderState(entry))
@@ -1046,20 +1066,56 @@ namespace Cotton.Sync
                             materializedFileEntries++;
                         }
 
-                        fileBaselineByPath[SyncPath.ToKey(entry.RelativePath)] =
-                            InitialVirtualFilesPlaceholderBaseline.FromState(entry);
+                        string fileKey = SyncPath.ToKey(entry.RelativePath);
+                        fileBaselineByPath[fileKey] = InitialVirtualFilesPlaceholderBaseline.FromState(entry);
+                        stateRelativePaths.Add(entry.RelativePath);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(entry), entry.Kind, "Unknown sync state entry kind.");
                 }
             }
 
-            stopwatch.Stop();
             if (entriesSeen == 0)
             {
-                return FallBackToLocalTreeInspection("no persisted state entries");
+                return InspectLocalTree("no persisted state entries");
             }
 
+            if (materializedFileEntries > 0)
+            {
+                return DisableStreaming("file state includes materialized files");
+            }
+
+            if (_localMetadataPathLookupScanner is null)
+            {
+                return DisableStreaming("local path metadata lookup is unavailable");
+            }
+
+            LocalTreeLookupSnapshot localStateLookups = await _localMetadataPathLookupScanner
+                .ScanPathMetadataLookupsAsync(
+                    syncPair.LocalRootPath,
+                    stateRelativePaths,
+                    progress: null,
+                    includeDirectoryDescendants: false,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            foreach (string directoryKey in directoryStateKeys)
+            {
+                if (!localStateLookups.DirectoriesByPath.ContainsKey(directoryKey))
+                {
+                    return DisableStreaming("tracked directory placeholder is missing locally");
+                }
+            }
+
+            foreach ((string fileKey, InitialVirtualFilesPlaceholderBaseline baseline) in fileBaselineByPath)
+            {
+                if (!localStateLookups.FilesByPath.TryGetValue(fileKey, out LocalFileSnapshot? local)
+                    || !IsResumeCompatibleVirtualFilesPlaceholder(local, baseline))
+                {
+                    return DisableStreaming("tracked file placeholder is missing or no longer online-only locally");
+                }
+            }
+
+            stopwatch.Stop();
             _logger.LogInformation(
                 "Loaded Windows virtual-files state-first resume plan for pair {SyncPairId} with {DirectoryStateCount} directories and {FileStateCount} files ({OnlineOnlyFileStateCount} online-only, {MaterializedFileStateCount} materialized) in {ElapsedMilliseconds} ms without scanning the local placeholder tree.",
                 syncPair.SyncPairId,
@@ -1068,10 +1124,11 @@ namespace Cotton.Sync
                 onlineOnlyFileEntries,
                 materializedFileEntries,
                 stopwatch.ElapsedMilliseconds);
-            return new InitialVirtualFilesStreamingPlan(
-                SkipCurrentPlaceholders: true,
-                CurrentPlaceholderBaselineByPath: fileBaselineByPath,
-                AdoptableUntrackedPlaceholderByPath: new Dictionary<string, LocalFileSnapshot>(PathComparer));
+            return InitialVirtualFilesStreamingPlanDecision.FromPlan(
+                new InitialVirtualFilesStreamingPlan(
+                    SkipCurrentPlaceholders: true,
+                    CurrentPlaceholderBaselineByPath: fileBaselineByPath,
+                    AdoptableUntrackedPlaceholderByPath: new Dictionary<string, LocalFileSnapshot>(PathComparer)));
         }
 
         private async Task<InitialVirtualFilesStreamingPlanDecision> InspectLocalTreeForInitialWindowsVirtualFilesStreamingDecisionAsync(

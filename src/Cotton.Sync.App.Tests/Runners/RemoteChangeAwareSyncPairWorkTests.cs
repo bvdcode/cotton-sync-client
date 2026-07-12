@@ -198,6 +198,50 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesRunsInitialPopulationFullForUnmappedRemoteRootChange()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new();
+            FakeSyncStateStore stateStore = new();
+            RemoteChangeFeedBatch batch = new(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 12,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes:
+                [
+                    new SyncChangeDto
+                    {
+                        Id = 11,
+                        Kind = SyncChangeKind.FolderCreated,
+                        LayoutId = Guid.NewGuid(),
+                        ItemId = syncPair.RemoteRootNodeId,
+                        ParentNodeId = Guid.NewGuid(),
+                        Name = "Documents",
+                        CreatedAt = DateTime.UtcNow,
+                    },
+                ]);
+            FakeRemoteChangeFeedReader remoteChanges = new(batch);
+            RemoteChangeAwareSyncPairWork work = new(inner, remoteChanges, stateStore);
+            SyncRunRequest request = SyncRunRequest.ForFull(SyncRunCause.InitialPopulation);
+
+            await work.RunOnceAsync(syncPair, request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest, Is.SameAs(request));
+                Assert.That(inner.LastRequest?.IsFull, Is.True);
+                Assert.That(inner.LastRequest?.Causes, Is.EqualTo(SyncRunCause.InitialPopulation));
+                Assert.That(inner.LastRequest?.LocalChangedPaths, Is.Empty);
+                Assert.That(stateStore.RemoteIdLookupCallCount, Is.Zero);
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesScopesRemoteRenameToOldAndNewPaths()
         {
             var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
