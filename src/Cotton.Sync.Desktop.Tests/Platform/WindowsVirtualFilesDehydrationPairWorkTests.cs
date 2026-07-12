@@ -349,6 +349,36 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_RemovesHandledPathsAndPreservesRemainingDeletedPaths()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            var stateStore = new FakeSyncStateStore();
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Docs/report.txt"));
+            var inner = new RecordingSyncPairWork();
+            var work = new WindowsVirtualFilesDehydrationPairWork(
+                inner,
+                stateStore,
+                new FakeCloudFilesAdapter(),
+                new FakeContentHasher("remote-hash"),
+                readDiskState: path => path.EndsWith("report.txt", StringComparison.OrdinalIgnoreCase)
+                    ? CreateUnpinnedHydratedDiskState()
+                    : null);
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForLocalChangedPaths(
+                    ["Docs/report.txt", "Docs/deleted.txt"],
+                    ["Docs/deleted.txt"]));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Has.Count.EqualTo(1));
+                Assert.That(inner.Requests[0].LocalChangedPaths, Is.EqualTo(new[] { "Docs/deleted.txt" }));
+                Assert.That(inner.Requests[0].LocalDeletedPaths, Is.EqualTo(new[] { "Docs/deleted.txt" }));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_PassesFullRequestsThrough()
         {
             SyncPairSettings syncPair = CreateVirtualFilesPair();

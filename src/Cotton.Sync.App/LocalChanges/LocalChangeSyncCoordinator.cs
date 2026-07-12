@@ -380,9 +380,18 @@ namespace Cotton.Sync.App.LocalChanges
                 }
             }
 
+            List<string> deletedRelativePaths = [];
+            foreach (string deletedPath in request.DeletedPaths)
+            {
+                if (TryGetRelativePath(localRootPath, deletedPath, allowRootRelativePath, out string relativePath))
+                {
+                    deletedRelativePaths.Add(relativePath);
+                }
+            }
+
             return relativePaths.Count == 0
                 ? null
-                : SyncRunRequest.ForLocalChangedPaths(relativePaths, request.Causes);
+                : SyncRunRequest.ForLocalChangedPaths(relativePaths, deletedRelativePaths, request.Causes);
         }
 
         private void RecordChange(Guid syncPairId, PendingLocalSyncRequest pendingSync, LocalSyncRootChange change)
@@ -394,7 +403,8 @@ namespace Cotton.Sync.App.LocalChanges
                 change.FullPath,
                 fullSyncCause,
                 maxScopedChangedPaths,
-                preserveScopeOnOverflow);
+                preserveScopeOnOverflow,
+                change.Kind == LocalSyncRootChangeKind.Deleted);
             if (fullSyncCause == SyncRunCause.None && !string.IsNullOrWhiteSpace(change.OldFullPath))
             {
                 pendingSync.RecordChange(

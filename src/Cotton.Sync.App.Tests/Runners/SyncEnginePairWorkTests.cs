@@ -75,13 +75,18 @@ namespace Cotton.Sync.App.Tests.Runners
             var work = new SyncEnginePairWork(engine);
             SyncPairSettings syncPair = CreateSyncPair(Guid.NewGuid());
 
-            await work.RunOnceAsync(syncPair, SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]));
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForLocalChangedPaths(
+                    ["Docs/report.txt", "Docs/deleted.txt"],
+                    ["Docs/deleted.txt"]));
 
             Assert.Multiple(() =>
             {
                 Assert.That(engine.LastOptions, Is.Not.Null);
                 Assert.That(engine.LastOptions!.Scope.IsFull, Is.False);
-                Assert.That(engine.LastOptions.Scope.LocalChangedPaths, Is.EqualTo(new[] { "Docs/report.txt" }));
+                Assert.That(engine.LastOptions.Scope.LocalChangedPaths, Is.EqualTo(new[] { "Docs/deleted.txt", "Docs/report.txt" }));
+                Assert.That(engine.LastOptions.Scope.LocalDeletedPaths, Is.EqualTo(new[] { "Docs/deleted.txt" }));
             });
         }
 

@@ -29,6 +29,8 @@ namespace Cotton.Sync.App.LocalChanges
 
         public HashSet<string> ChangedPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+        public HashSet<string> DeletedPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
+
         public int ChangeVersion { get; private set; }
 
         public SyncRunCause Causes { get; private set; }
@@ -43,7 +45,8 @@ namespace Cotton.Sync.App.LocalChanges
             string changedPath,
             SyncRunCause fullSyncCause,
             int maxScopedChangedPaths = MaxScopedChangedPaths,
-            bool preserveScopeOnOverflow = false)
+            bool preserveScopeOnOverflow = false,
+            bool isDeleted = false)
         {
             ChangedPath = changedPath;
             if (fullSyncCause != SyncRunCause.None || RequiresFullSync)
@@ -51,6 +54,7 @@ namespace Cotton.Sync.App.LocalChanges
                 RequiresFullSync = true;
                 Causes |= fullSyncCause;
                 ChangedPaths.Clear();
+                DeletedPaths.Clear();
                 ChangeVersion++;
                 return;
             }
@@ -66,11 +70,17 @@ namespace Cotton.Sync.App.LocalChanges
 
                 RequiresFullSync = true;
                 ChangedPaths.Clear();
+                DeletedPaths.Clear();
                 ChangeVersion++;
                 return;
             }
 
             ChangedPaths.Add(changedPath);
+            if (isDeleted)
+            {
+                DeletedPaths.Add(changedPath);
+            }
+
             ChangeVersion++;
         }
     }

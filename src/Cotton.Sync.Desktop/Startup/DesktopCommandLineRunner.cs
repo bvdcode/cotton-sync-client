@@ -1529,13 +1529,26 @@ namespace Cotton.Sync.Desktop.Startup
             TextWriter output,
             CancellationToken cancellationToken)
         {
+            const string label = "Desktop local rename propagated to the second client.";
+            int materializationFailure = await EnsureRenameSourceReadableAsync(
+                startupOptions.LocalRoot!,
+                LocalUploadPath,
+                label,
+                output,
+                cancellationToken).ConfigureAwait(false);
+            if (materializationFailure != 0)
+            {
+                return materializationFailure;
+            }
+
             File.Move(FullPath(startupOptions.LocalRoot!, LocalUploadPath), FullPath(startupOptions.LocalRoot!, LocalRenamedPath));
+            await WaitForDesktopQuietWindowAsync(output, cancellationToken).ConfigureAwait(false);
             return await WaitForRenameAsync(
                 startupOptions.LocalRoot!,
                 startupOptions.SecondLocalRoot!,
                 LocalUploadPath,
                 LocalRenamedPath,
-                "Desktop local rename propagated to the second client.",
+                label,
                 firstController,
                 secondController,
                 output,
@@ -1549,15 +1562,28 @@ namespace Cotton.Sync.Desktop.Startup
             TextWriter output,
             CancellationToken cancellationToken)
         {
+            const string label = "Desktop remote-origin rename propagated to the first client.";
+            int materializationFailure = await EnsureRenameSourceReadableAsync(
+                startupOptions.SecondLocalRoot!,
+                RemoteOriginPath,
+                label,
+                output,
+                cancellationToken).ConfigureAwait(false);
+            if (materializationFailure != 0)
+            {
+                return materializationFailure;
+            }
+
             File.Move(
                 FullPath(startupOptions.SecondLocalRoot!, RemoteOriginPath),
                 FullPath(startupOptions.SecondLocalRoot!, RemoteRenamedPath));
+            await WaitForDesktopQuietWindowAsync(output, cancellationToken).ConfigureAwait(false);
             return await WaitForRenameAsync(
                 startupOptions.LocalRoot!,
                 startupOptions.SecondLocalRoot!,
                 RemoteOriginPath,
                 RemoteRenamedPath,
-                "Desktop remote-origin rename propagated to the first client.",
+                label,
                 secondController,
                 firstController,
                 output,
@@ -1581,6 +1607,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
 
             File.Delete(FullPath(startupOptions.LocalRoot!, LocalRenamedPath));
+            await WaitForDesktopQuietWindowAsync(output, cancellationToken).ConfigureAwait(false);
             return await WaitForAbsentAsync(
                 startupOptions.LocalRoot!,
                 startupOptions.SecondLocalRoot!,
@@ -1609,6 +1636,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
 
             File.Delete(FullPath(startupOptions.SecondLocalRoot!, RemoteRenamedPath));
+            await WaitForDesktopQuietWindowAsync(output, cancellationToken).ConfigureAwait(false);
             return await WaitForAbsentAsync(
                 startupOptions.LocalRoot!,
                 startupOptions.SecondLocalRoot!,
@@ -1662,6 +1690,30 @@ namespace Cotton.Sync.Desktop.Startup
                 + DesktopLocalQuietWindow.TotalSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
                 + " seconds for the desktop local-change quiet window.").ConfigureAwait(false);
             await Task.Delay(DesktopLocalQuietWindow, cancellationToken).ConfigureAwait(false);
+        }
+
+        private static async Task<int> EnsureRenameSourceReadableAsync(
+            string localRoot,
+            string relativePath,
+            string label,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            TextReadSnapshot source = await TryReadAllTextForLiveSmokeAsync(
+                FullPath(localRoot, relativePath),
+                cancellationToken).ConfigureAwait(false);
+            if (source.Exists && source.Read)
+            {
+                return 0;
+            }
+
+            output.WriteLine(
+                FormatCheck(false, label)
+                + " path=" + relativePath
+                + ", prerequisite="
+                + (source.Exists ? "unreadable" : "missing")
+                + (source.Details.Length == 0 ? string.Empty : ", details=" + source.Details));
+            return 1;
         }
 
         private static async Task<int> WaitForPresentAsync(

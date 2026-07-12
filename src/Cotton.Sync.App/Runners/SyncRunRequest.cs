@@ -11,6 +11,7 @@ namespace Cotton.Sync.App.Runners
         private SyncRunRequest(
             bool isFull,
             IReadOnlyList<string> localChangedPaths,
+            IReadOnlyList<string> localDeletedPaths,
             SyncRunCause causes)
         {
             if (causes == SyncRunCause.None)
@@ -20,6 +21,7 @@ namespace Cotton.Sync.App.Runners
 
             IsFull = isFull;
             LocalChangedPaths = localChangedPaths;
+            LocalDeletedPaths = localDeletedPaths;
             Causes = causes;
         }
 
@@ -44,11 +46,16 @@ namespace Cotton.Sync.App.Runners
         public IReadOnlyList<string> LocalChangedPaths { get; }
 
         /// <summary>
+        /// Gets local relative paths that were reported as deleted by the filesystem watcher.
+        /// </summary>
+        public IReadOnlyList<string> LocalDeletedPaths { get; }
+
+        /// <summary>
         /// Creates a local-path request.
         /// </summary>
         public static SyncRunRequest ForFull(SyncRunCause causes)
         {
-            return new SyncRunRequest(true, Array.Empty<string>(), causes);
+            return new SyncRunRequest(true, Array.Empty<string>(), Array.Empty<string>(), causes);
         }
 
         /// <summary>
@@ -58,18 +65,27 @@ namespace Cotton.Sync.App.Runners
             IEnumerable<string> relativePaths,
             SyncRunCause causes = SyncRunCause.LocalChange)
         {
+            return ForLocalChangedPaths(relativePaths, Array.Empty<string>(), causes);
+        }
+
+        /// <summary>
+        /// Creates a local-path request.
+        /// </summary>
+        public static SyncRunRequest ForLocalChangedPaths(
+            IEnumerable<string> relativePaths,
+            IEnumerable<string> localDeletedPaths,
+            SyncRunCause causes = SyncRunCause.LocalChange)
+        {
             ArgumentNullException.ThrowIfNull(relativePaths);
-            List<string> paths = relativePaths
-                .Where(static path => !string.IsNullOrWhiteSpace(path))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            ArgumentNullException.ThrowIfNull(localDeletedPaths);
+            IReadOnlyList<string> deletedPaths = NormalizeLocalChangedPaths(localDeletedPaths);
+            IReadOnlyList<string> paths = NormalizeLocalChangedPaths(relativePaths.Concat(deletedPaths));
             if (paths.Count == 0)
             {
                 throw new ArgumentException("At least one changed path is required for a scoped sync request.", nameof(relativePaths));
             }
 
-            return new SyncRunRequest(false, paths, causes);
+            return new SyncRunRequest(false, paths, deletedPaths, causes);
         }
 
         /// <summary>
@@ -82,11 +98,14 @@ namespace Cotton.Sync.App.Runners
             {
                 IReadOnlyList<string> mergedPaths = NormalizeLocalChangedPaths(
                     LocalChangedPaths.Concat(other.LocalChangedPaths));
-                return new SyncRunRequest(true, mergedPaths, Causes | other.Causes);
+                IReadOnlyList<string> mergedDeletedPaths = NormalizeLocalChangedPaths(
+                    LocalDeletedPaths.Concat(other.LocalDeletedPaths));
+                return new SyncRunRequest(true, mergedPaths, mergedDeletedPaths, Causes | other.Causes);
             }
 
             return ForLocalChangedPaths(
                 LocalChangedPaths.Concat(other.LocalChangedPaths),
+                LocalDeletedPaths.Concat(other.LocalDeletedPaths),
                 Causes | other.Causes);
         }
 

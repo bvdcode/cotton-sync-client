@@ -70,6 +70,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 Assert.That(observed, Is.True);
                 Assert.That(supervisor.LastRequest?.IsFull, Is.False);
                 Assert.That(supervisor.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { "deleted.txt" }));
+                Assert.That(supervisor.LastRequest?.LocalDeletedPaths, Is.EqualTo(new[] { "deleted.txt" }));
             });
         }
 
@@ -99,6 +100,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 Assert.That(observed, Is.True);
                 Assert.That(supervisor.LastRequest?.IsFull, Is.False);
                 Assert.That(supervisor.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { "old.txt", "renamed.txt" }));
+                Assert.That(supervisor.LastRequest?.LocalDeletedPaths, Is.Empty);
             });
         }
 

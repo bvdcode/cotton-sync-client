@@ -205,6 +205,7 @@ namespace Cotton.Sync
             IReadOnlySet<string>? scopedDirectoryDeleteKeys = options.Scope.IsFull
                 ? null
                 : BuildExactScopedPathKeys(options.Scope.LocalChangedPaths);
+            IReadOnlySet<string> scopedLocalDeletedFileKeys = BuildExactScopedPathKeys(options.Scope.LocalDeletedPaths);
             SyncDeleteGuard deleteGuard = BuildDeleteGuard(
                 options,
                 localByPath,
@@ -216,7 +217,8 @@ namespace Cotton.Sync
                 localDirectoryContentIndex,
                 remoteDirectoryContentIndex,
                 scopedFileDeleteKeys,
-                scopedDirectoryDeleteKeys);
+                scopedDirectoryDeleteKeys,
+                scopedLocalDeletedFileKeys);
             bool hasMissingRemoteOnlyPlaceholder = HasMissingRemoteOnlyPlaceholder(
                 syncPair,
                 localByPath,
@@ -319,6 +321,7 @@ namespace Cotton.Sync
                         result,
                         deleteGuard,
                         scopedFileDeleteKeys,
+                        scopedLocalDeletedFileKeys,
                         state,
                         relativePath,
                         local,
@@ -1393,6 +1396,7 @@ namespace Cotton.Sync
                 _remoteDirectoryTreePopulationObserver is null
                     ? null
                     : new Dictionary<string, RemoteDirectoryMaterializationRequest>(PathComparer);
+            HashSet<string> streamedRemoteFileKeys = new(PathComparer);
             try
             {
                 await foreach (InitialVirtualFilesPopulationItem item in reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
@@ -1470,6 +1474,7 @@ namespace Cotton.Sync
                             break;
 
                         case InitialVirtualFilesFilePopulationItem fileItem:
+                            streamedRemoteFileKeys.Add(SyncPath.ToKey(fileItem.File.RelativePath));
                             InitialVirtualFilesFileWorkResult? currentPlaceholderWorkResult =
                                 TryCreateCurrentInitialVirtualFilesFileWorkResult(syncPair, fileItem.File, streamingPlan);
                             if (currentPlaceholderWorkResult is null)
@@ -1565,6 +1570,15 @@ namespace Cotton.Sync
                         .ConfigureAwait(false);
                 }
 
+                await DeleteMissingInitialVirtualFilesRemoteDeletesAsync(
+                        syncPair,
+                        options,
+                        result,
+                        streamingPlan,
+                        streamedRemoteFileKeys,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
                 int finalFlushedFileRows =
                     await FlushInitialVirtualFilesStateBatchAsync(pendingFileStates, cancellationToken).ConfigureAwait(false);
                 recordFileStateWrite(finalFlushedFileRows);
@@ -1607,6 +1621,47 @@ namespace Cotton.Sync
                 int flushedDirectoryRows =
                     await FlushInitialVirtualFilesStateBatchAsync(pendingDirectoryStates, cancellationToken).ConfigureAwait(false);
                 recordDirectoryStateWrite(flushedDirectoryRows);
+            }
+        }
+
+        private async Task DeleteMissingInitialVirtualFilesRemoteDeletesAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            SyncRunResult result,
+            InitialVirtualFilesStreamingPlan streamingPlan,
+            IReadOnlySet<string> streamedRemoteFileKeys,
+            CancellationToken cancellationToken)
+        {
+            if (streamingPlan.CurrentPlaceholderBaselineByPath.Count == 0)
+            {
+                return;
+            }
+
+            List<InitialVirtualFilesPlaceholderBaseline> missingBaselines = [];
+            foreach ((string pathKey, InitialVirtualFilesPlaceholderBaseline baseline) in streamingPlan.CurrentPlaceholderBaselineByPath)
+            {
+                if (!streamedRemoteFileKeys.Contains(pathKey))
+                {
+                    missingBaselines.Add(baseline);
+                }
+            }
+
+            if (missingBaselines.Count == 0)
+            {
+                return;
+            }
+
+            SyncDeleteGuard deleteGuard = new(options, plannedLocalDeletes: missingBaselines.Count, plannedRemoteDeletes: 0);
+            foreach (InitialVirtualFilesPlaceholderBaseline baseline in missingBaselines)
+            {
+                await DeleteLocalAsync(
+                        syncPair,
+                        options,
+                        result,
+                        deleteGuard,
+                        baseline.RelativePath,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
 
@@ -2520,6 +2575,7 @@ namespace Cotton.Sync
             SyncRunResult result,
             SyncDeleteGuard deleteGuard,
             IReadOnlySet<string>? scopedFileDeleteKeys,
+            IReadOnlySet<string> scopedLocalDeletedFileKeys,
             SyncStateEntry state,
             string relativePath,
             LocalFileSnapshot? local,
@@ -2537,9 +2593,11 @@ namespace Cotton.Sync
             bool localChanged = local is not null && !ContentMatches(local.ContentHash, state.LocalContentHash);
             bool remoteChanged = remote is not null && !RemoteMatchesBaseline(remote.File, state);
             bool baselineDiverged = !ContentMatches(state.LocalContentHash, state.RemoteContentHash);
+            string pathKey = SyncPath.ToKey(relativePath);
+            bool exactLocalDelete = scopedLocalDeletedFileKeys.Contains(pathKey);
 
             if ((localDeleted || remoteDeleted)
-                && !IsScopedDeleteAllowed(scopedFileDeleteKeys, SyncPath.ToKey(relativePath)))
+                && !IsScopedDeleteAllowed(scopedFileDeleteKeys, pathKey))
             {
                 return;
             }
@@ -2554,6 +2612,20 @@ namespace Cotton.Sync
                 && remote is not null
                 && IsOnlineOnlyPlaceholderBaseline(syncPair, state))
             {
+                if (exactLocalDelete && remoteChanged)
+                {
+                    await PreserveConflictAsync(syncPair, options, result, relativePath, null, remote.File, cancellationToken)
+                        .ConfigureAwait(false);
+                    return;
+                }
+
+                if (exactLocalDelete)
+                {
+                    await DeleteRemoteAsync(syncPair, options, result, deleteGuard, relativePath, remote.File, cancellationToken)
+                        .ConfigureAwait(false);
+                    return;
+                }
+
                 if (remoteChanged)
                 {
                     await MaterializeRemoteOnlyFileAsync(
@@ -3966,7 +4038,8 @@ namespace Cotton.Sync
             DirectoryContentIndex localDirectoryContentIndex,
             DirectoryContentIndex remoteDirectoryContentIndex,
             IReadOnlySet<string>? scopedFileDeleteKeys,
-            IReadOnlySet<string>? scopedDirectoryDeleteKeys)
+            IReadOnlySet<string>? scopedDirectoryDeleteKeys,
+            IReadOnlySet<string> scopedLocalDeletedFileKeys)
         {
             if (stateByPath.Count == 0 && directoryStateByPath.Count == 0)
             {
@@ -3981,7 +4054,8 @@ namespace Cotton.Sync
                 localByPath.TryGetValue(state.Key, out LocalFileSnapshot? local);
                 remoteByPath.TryGetValue(state.Key, out RemoteFileSnapshot? remote);
 
-                switch (GetPlannedDeleteDirection(state.Value, local, remote))
+                bool exactLocalDelete = scopedLocalDeletedFileKeys.Contains(state.Key);
+                switch (GetPlannedDeleteDirection(state.Value, local, remote, exactLocalDelete))
                 {
                     case SyncDeleteDirection.Local:
                         if (!IsScopedDeleteAllowed(scopedFileDeleteKeys, state.Key))
@@ -4128,7 +4202,8 @@ namespace Cotton.Sync
         private static SyncDeleteDirection GetPlannedDeleteDirection(
             SyncStateEntry? state,
             LocalFileSnapshot? local,
-            RemoteFileSnapshot? remote)
+            RemoteFileSnapshot? remote,
+            bool exactLocalDelete)
         {
             if (state is null)
             {
@@ -4142,7 +4217,7 @@ namespace Cotton.Sync
 
             if (local is null && remote is not null && IsOnlineOnlyPlaceholderState(state))
             {
-                return SyncDeleteDirection.None;
+                return exactLocalDelete ? SyncDeleteDirection.Remote : SyncDeleteDirection.None;
             }
 
             if (local is not null && remote is not null && ContentMatches(local.ContentHash, remote.File.ContentHash))
@@ -4737,6 +4812,7 @@ namespace Cotton.Sync
         }
 
         private readonly record struct InitialVirtualFilesPlaceholderBaseline(
+            string RelativePath,
             Guid? RemoteFileId,
             string? RemoteContentHash,
             string? RemoteETag,
@@ -4746,6 +4822,7 @@ namespace Cotton.Sync
             public static InitialVirtualFilesPlaceholderBaseline FromState(SyncStateEntry state)
             {
                 return new InitialVirtualFilesPlaceholderBaseline(
+                    state.RelativePath,
                     state.RemoteFileId,
                     state.RemoteContentHash,
                     state.RemoteETag,
@@ -4757,6 +4834,7 @@ namespace Cotton.Sync
                 SyncVirtualFilesResumeEntry entry)
             {
                 return new InitialVirtualFilesPlaceholderBaseline(
+                    entry.RelativePath,
                     entry.RemoteFileId,
                     entry.RemoteContentHash,
                     entry.RemoteETag,

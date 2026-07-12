@@ -427,6 +427,76 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithScopedWindowsVirtualFilesLocalDeletedRemoteOnlyPlaceholderDeletesRemote()
+        {
+            const string relativePath = "remote-only-deleted.txt";
+            NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote-content"), sizeBytes: 1024);
+            FakeLocalFileScanner scanner = new();
+            PathOnlyRemoteTreeCrawler crawler = new(RemoteTree(remote));
+            FakeRemoteFileSynchronizer remoteFiles = new();
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            await InsertPlaceholderBaselineAsync(stateStore, relativePath, remote);
+            SyncEngine engine = new(scanner, crawler, remoteFiles, stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { Scope = SyncRunScope.ForLocalChangedPaths([relativePath], [relativePath]) });
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(crawler.PathCrawlCalls, Is.EqualTo(1));
+                Assert.That(crawler.FullCrawlCalls, Is.Zero);
+                Assert.That(remoteFiles.Deletes, Is.EqualTo(new[] { (remote.Id, false, remote.ETag) }));
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.DeletedRemote }));
+                Assert.That(entry, Is.Null);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithScopedWindowsVirtualFilesLocalDeletedRemoteOnlyPlaceholdersHonorsRemoteDeleteLimit()
+        {
+            const string firstPath = "remote-only-deleted-a.txt";
+            const string secondPath = "remote-only-deleted-b.txt";
+            NodeFileManifestDto firstRemote = RemoteFile(firstPath, HashText("remote-a"), sizeBytes: 1024);
+            NodeFileManifestDto secondRemote = RemoteFile(secondPath, HashText("remote-b"), sizeBytes: 1024);
+            FakeLocalFileScanner scanner = new();
+            PathOnlyRemoteTreeCrawler crawler = new(RemoteTree(firstRemote, secondRemote));
+            FakeRemoteFileSynchronizer remoteFiles = new();
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            await InsertPlaceholderBaselineAsync(stateStore, firstPath, firstRemote);
+            await InsertPlaceholderBaselineAsync(stateStore, secondPath, secondRemote);
+            SyncEngine engine = new(scanner, crawler, remoteFiles, stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions
+                {
+                    MaximumRemoteDeletesPerRun = 1,
+                    Scope = SyncRunScope.ForLocalChangedPaths([firstPath, secondPath], [firstPath, secondPath]),
+                });
+
+            SyncStateEntry? firstEntry = await stateStore.GetAsync("pair-a", firstPath);
+            SyncStateEntry? secondEntry = await stateStore.GetAsync("pair-a", secondPath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(result.RequiresUserAction, Is.True);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[]
+                {
+                    SyncActivityKind.Skipped,
+                    SyncActivityKind.Skipped,
+                }));
+                Assert.That(result.Activities.Select(activity => activity.RequiresUserAction), Is.All.True);
+                Assert.That(result.Activities[0].Details, Does.Contain("2 pending deletes exceed limit 1"));
+                Assert.That(result.Activities[1].Details, Does.Contain("2 pending deletes exceed limit 1"));
+                Assert.That(firstEntry, Is.Not.Null);
+                Assert.That(secondEntry, Is.Not.Null);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesRemoteCreateUsesPathLookupAndCreatesPlaceholder()
         {
             const string relativePath = "remote-created.txt";
@@ -1775,6 +1845,50 @@ namespace Cotton.Sync.Tests
                 Assert.That(state!.RemoteContentHash, Is.EqualTo(newRemote.ContentHash));
                 Assert.That(state.RemoteSizeBytes, Is.EqualTo(newRemote.SizeBytes));
                 Assert.That(state.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesStreamingRemovesTrackedPlaceholderWhenRemoteDeleted()
+        {
+            string relativePath = "Desktop/deleted-online-only.txt";
+            NodeFileManifestDto oldRemote = RemoteFile(
+                relativePath,
+                HashText("old"),
+                sizeBytes: 11);
+            BlockingStreamingRemoteTreeCrawler remoteCrawler = new(_remoteRootNodeId, []);
+            FakeRemoteFileSynchronizer remoteFileSynchronizer = new();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new();
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            await InsertPlaceholderBaselineAsync(stateStore, relativePath, oldRemote);
+            WriteFile(relativePath, "local placeholder");
+            FakeLocalFileScanner scanner = new(CloudFilesPlaceholderLocal(relativePath, oldRemote.SizeBytes));
+            SyncEngine engine = new(
+                scanner,
+                remoteCrawler,
+                remoteFileSynchronizer,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { InitialVirtualFilesPopulationQueueCapacity = 1 });
+
+            SyncStateEntry? state = await stateStore.GetAsync("pair-a", relativePath);
+            string fullPath = Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
+                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
+                Assert.That(scanner.ScanCalls, Is.Zero);
+                Assert.That(scanner.PathLookupCalls, Is.EqualTo(1));
+                Assert.That(placeholderWriter.Requests, Is.Empty);
+                Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
+                Assert.That(remoteFileSynchronizer.Deletes, Is.Empty);
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.DeletedLocal }));
+                Assert.That(state, Is.Null);
+                Assert.That(File.Exists(fullPath), Is.False);
             });
         }
 

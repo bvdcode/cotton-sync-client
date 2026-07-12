@@ -156,8 +156,21 @@ namespace Cotton.Sync.Desktop.Platform
                 ? SyncRunRequest.ForFull(request.Causes)
                 : remainingPaths.Count == request.LocalChangedPaths.Count
                     ? request
-                    : SyncRunRequest.ForLocalChangedPaths(remainingPaths, request.Causes);
+                    : SyncRunRequest.ForLocalChangedPaths(
+                        remainingPaths,
+                        FilterDeletedPaths(request.LocalDeletedPaths, remainingPaths),
+                        request.Causes);
             await _inner.RunOnceAsync(syncPair, remainingRequest, cancellationToken).ConfigureAwait(false);
+        }
+
+        private static IReadOnlyList<string> FilterDeletedPaths(
+            IReadOnlyList<string> deletedPaths,
+            IReadOnlyList<string> remainingPaths)
+        {
+            HashSet<string> remainingPathSet = new(remainingPaths, StringComparer.OrdinalIgnoreCase);
+            return deletedPaths
+                .Where(remainingPathSet.Contains)
+                .ToArray();
         }
 
         private async Task RecoverPersistedAvailabilityAsync(

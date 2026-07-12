@@ -106,7 +106,7 @@ namespace Cotton.Sync.App.Runners
             {
                 Scope = request.IsFull
                     ? CoreSyncRunScope.Full
-                    : CoreSyncRunScope.ForLocalChangedPaths(request.LocalChangedPaths),
+                    : CoreSyncRunScope.ForLocalChangedPaths(request.LocalChangedPaths, request.LocalDeletedPaths),
                 MinimumLocalUploadAge = BackgroundMinimumLocalUploadAge,
                 ActivityProgress = _activityPublisher is null ? null : new AppActivityProgressReporter(syncPair.Id, _activityPublisher),
                 TransferProgress = transferProgressReporter,
