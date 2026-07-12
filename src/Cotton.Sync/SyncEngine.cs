@@ -1090,11 +1090,6 @@ namespace Cotton.Sync
                 return InspectLocalTree("no persisted state entries");
             }
 
-            if (materializedFileEntries > 0)
-            {
-                return DisableStreaming("file state includes materialized files");
-            }
-
             if (_localMetadataPathLookupScanner is null)
             {
                 return DisableStreaming("local path metadata lookup is unavailable");
@@ -1339,7 +1334,7 @@ namespace Cotton.Sync
             InitialVirtualFilesPlaceholderBaseline baseline)
         {
             return local.IsCloudFilesOnlineOnlyPlaceholder
-                && IsOnlineOnlyPlaceholderState(baseline)
+                && IsVirtualFilesResumeCandidateState(baseline)
                 && baseline.RemoteFileId.HasValue;
         }
 
@@ -4342,6 +4337,14 @@ namespace Cotton.Sync
         private static bool IsOnlineOnlyPlaceholderState(InitialVirtualFilesPlaceholderBaseline baseline)
         {
             return (baseline.PlaceholderHydrationState == SyncPlaceholderHydrationState.RemoteOnly
+                    || baseline.PlaceholderHydrationState == SyncPlaceholderHydrationState.Dehydrated)
+                && baseline.HasPlaceholderIdentity;
+        }
+
+        private static bool IsVirtualFilesResumeCandidateState(InitialVirtualFilesPlaceholderBaseline baseline)
+        {
+            return (baseline.PlaceholderHydrationState == SyncPlaceholderHydrationState.RemoteOnly
+                    || baseline.PlaceholderHydrationState == SyncPlaceholderHydrationState.Hydrated
                     || baseline.PlaceholderHydrationState == SyncPlaceholderHydrationState.Dehydrated)
                 && baseline.HasPlaceholderIdentity;
         }
