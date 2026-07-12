@@ -47,5 +47,10 @@ namespace Cotton.Sync
         /// The sync engine is finalizing Windows Cloud Files shell status.
         /// </summary>
         FinalizingCloudFiles = 7,
+
+        /// <summary>
+        /// Windows Cloud Files are being downloaded for local availability.
+        /// </summary>
+        HydratingCloudFiles = 8,
     }
 }

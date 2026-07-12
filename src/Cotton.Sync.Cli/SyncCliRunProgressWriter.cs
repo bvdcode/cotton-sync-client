@@ -108,6 +108,7 @@ namespace Cotton.Sync.Cli
                 SyncRunProgressStage.ReconcilingFiles => "reconciling files",
                 SyncRunProgressStage.CreatingPlaceholders => VirtualFileUserFacingCopy.CreatingCloudFilesCliStage,
                 SyncRunProgressStage.FinalizingCloudFiles => "finalizing cloud files",
+                SyncRunProgressStage.HydratingCloudFiles => "making files available",
                 SyncRunProgressStage.Completed => "completed",
                 _ => "syncing",
             };
@@ -120,6 +121,7 @@ namespace Cotton.Sync.Cli
                 SyncRunProgressStage.ReconcilingDirectories => "folders",
                 SyncRunProgressStage.CreatingPlaceholders => VirtualFileUserFacingCopy.CloudItemsProgressUnit,
                 SyncRunProgressStage.FinalizingCloudFiles => "folders",
+                SyncRunProgressStage.HydratingCloudFiles => "files",
                 _ => "files",
             };
         }

@@ -2745,6 +2745,51 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task TransferProgressChanged_KeepsAvailabilityRunProgressPrimaryForOneFolder()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            FakeDesktopShellController controller = new(CreateSignedInSnapshot(
+                CreatePair(syncPairId, "Music", "Syncing", mode: SyncPairMode.WindowsVirtualFiles)));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            DateTime startedAtUtc = new(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc);
+
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.HydratingCloudFiles,
+                FilesCompleted: 100,
+                FilesTotal: 1000,
+                CurrentPath: "Albums/Track 101.flac",
+                StartedAtUtc: startedAtUtc,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc.AddSeconds(10),
+                Causes: SyncRunCause.LocalChange,
+                RequestedPathCount: 1));
+            controller.ReportTransferProgress(new DesktopTransferProgressSnapshot(
+                syncPairId,
+                SyncTransferDirection.Download,
+                "Albums/Track 101.flac",
+                TransferredBytes: 512,
+                TotalBytes: 1024,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc.AddSeconds(11),
+                SpeedBytesPerSecond: 256,
+                EstimatedTimeRemaining: TimeSpan.FromSeconds(2)));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.CurrentWorkProgressTitle, Is.EqualTo("Music"));
+                Assert.That(
+                    viewModel.CurrentWorkProgressDetails,
+                    Is.EqualTo("Local change · 1 changed path · Making files available · 100 of 1000 files"));
+                Assert.That(viewModel.CurrentWorkProgressDetails, Does.Not.Contain("Track 101.flac"));
+                Assert.That(viewModel.CurrentWorkProgressSecondaryDetails, Is.Empty);
+                Assert.That(viewModel.CurrentWorkProgressValue, Is.EqualTo(10.05).Within(0.01));
+                Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.False);
+            });
+        }
+
+        [Test]
         public async Task TransferProgressChanged_KeepsGlobalRunByteProgressPrimaryForOneFolder()
         {
             Guid syncPairId = Guid.NewGuid();

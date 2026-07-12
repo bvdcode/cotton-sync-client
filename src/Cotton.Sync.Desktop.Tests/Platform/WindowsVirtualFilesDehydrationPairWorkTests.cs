@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.LocalChanges;
+using Cotton.Sync.App.Progress;
 using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Platform;
@@ -117,6 +118,63 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(suppression.SuppressedWrites, Has.Count.EqualTo(2));
                 Assert.That(suppression.ProviderWriteBurstCount, Is.EqualTo(1));
                 Assert.That(stateStore.UpsertManyCallCount, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_HydratesPinnedDirectorySubtreePublishesAggregateProgress()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            FakeSyncStateStore stateStore = new();
+            stateStore.UpsertEntry(CreateDirectoryState(syncPair, "Music"));
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Music/track-one.mp3"));
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Music/track-two.mp3"));
+            RecordingRunProgressPublisher progressPublisher = new();
+            Dictionary<string, int> fileReads = new(StringComparer.OrdinalIgnoreCase);
+            WindowsVirtualFilesDehydrationPairWork work = new(
+                new RecordingSyncPairWork(),
+                stateStore,
+                new FakeCloudFilesAdapter(),
+                new FakeContentHasher("remote-hash"),
+                readDiskState: path =>
+                {
+                    if (path.EndsWith(Path.DirectorySeparatorChar + "Music", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return CreatePinnedDirectoryDiskState();
+                    }
+
+                    fileReads.TryGetValue(path, out int readCount);
+                    fileReads[path] = readCount + 1;
+                    return readCount == 0 ? CreatePinnedRemoteOnlyDiskState() : CreatePinnedHydratedDiskState();
+                },
+                runProgressPublisher: progressPublisher);
+            SyncRunRequest request = SyncRunRequest.ForLocalChangedPaths(
+                ["Music", "Music/track-one.mp3", "Music/track-two.mp3"],
+                SyncRunCause.LocalChange);
+
+            await work.RunOnceAsync(syncPair, request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    progressPublisher.Progress.Select(static progress => new
+                    {
+                        progress.Stage,
+                        progress.FilesCompleted,
+                        progress.FilesTotal,
+                        progress.IsCompleted,
+                    }),
+                    Is.EqualTo(new[]
+                    {
+                        new { Stage = SyncRunProgressStage.HydratingCloudFiles, FilesCompleted = 0, FilesTotal = (int?)2, IsCompleted = false },
+                        new { Stage = SyncRunProgressStage.HydratingCloudFiles, FilesCompleted = 0, FilesTotal = (int?)2, IsCompleted = false },
+                        new { Stage = SyncRunProgressStage.HydratingCloudFiles, FilesCompleted = 1, FilesTotal = (int?)2, IsCompleted = false },
+                        new { Stage = SyncRunProgressStage.HydratingCloudFiles, FilesCompleted = 1, FilesTotal = (int?)2, IsCompleted = false },
+                        new { Stage = SyncRunProgressStage.HydratingCloudFiles, FilesCompleted = 2, FilesTotal = (int?)2, IsCompleted = false },
+                        new { Stage = SyncRunProgressStage.HydratingCloudFiles, FilesCompleted = 2, FilesTotal = (int?)2, IsCompleted = true },
+                    }));
+                Assert.That(progressPublisher.Progress.Select(static progress => progress.Causes), Is.All.EqualTo(SyncRunCause.LocalChange));
+                Assert.That(progressPublisher.Progress.Select(static progress => progress.RequestedPathCount), Is.All.EqualTo(3));
             });
         }
 
@@ -681,6 +739,21 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public bool ShouldSuppress(LocalSyncRootChange change)
             {
                 return false;
+            }
+        }
+
+        private class RecordingRunProgressPublisher : IAppRunProgressPublisher
+        {
+            public List<AppRunProgress> Progress { get; } = [];
+
+            public IDisposable Subscribe(IObserver<AppRunProgress> observer)
+            {
+                return NoopDisposable.Instance;
+            }
+
+            public void Publish(AppRunProgress progress)
+            {
+                Progress.Add(progress);
             }
         }
 

@@ -4782,7 +4782,8 @@ namespace Cotton.Sync.Desktop.ViewModels
         private static bool ShouldSuppressInitialSyncCompleteForRunProgress(SyncRunProgressStage stage)
         {
             return stage is SyncRunProgressStage.CreatingPlaceholders
-                or SyncRunProgressStage.FinalizingCloudFiles;
+                or SyncRunProgressStage.FinalizingCloudFiles
+                or SyncRunProgressStage.HydratingCloudFiles;
         }
 
         private bool HasFreshDetailedProgress(Guid syncPairId)
@@ -6144,6 +6145,8 @@ namespace Cotton.Sync.Desktop.ViewModels
                         ? "Preparing file checks"
                         : progressValues.All(static progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders)
                             ? VirtualFileUserFacingCopy.PreparingCloudFilesProgressLabel
+                            : progressValues.All(static progress => progress.Stage == SyncRunProgressStage.HydratingCloudFiles)
+                                ? "Preparing files"
                             : "Preparing sync";
                 return prefix
                     + " across "
@@ -6345,6 +6348,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 SyncRunProgressStage.ReconcilingDirectories => "Preparing folders.",
                 SyncRunProgressStage.CreatingPlaceholders => PreparingCloudFilesProgressLabel + ".",
                 SyncRunProgressStage.FinalizingCloudFiles => "Finalizing cloud file status.",
+                SyncRunProgressStage.HydratingCloudFiles => "Making files available.",
                 SyncRunProgressStage.Completed => "Sync pass completed.",
                 _ => "Preparing sync.",
             };
@@ -6377,7 +6381,8 @@ namespace Cotton.Sync.Desktop.ViewModels
             return stage == SyncRunProgressStage.ReconcilingDirectories
                 || stage == SyncRunProgressStage.ReconcilingFiles
                 || stage == SyncRunProgressStage.CreatingPlaceholders
-                || stage == SyncRunProgressStage.FinalizingCloudFiles;
+                || stage == SyncRunProgressStage.FinalizingCloudFiles
+                || stage == SyncRunProgressStage.HydratingCloudFiles;
         }
 
         private static bool IsIndeterminateRunProgress(DesktopRunProgressSnapshot progress)
@@ -6487,6 +6492,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 SyncRunProgressStage.ReconcilingFiles => "Checking files",
                 SyncRunProgressStage.CreatingPlaceholders => CreatingCloudFilesProgressLabel,
                 SyncRunProgressStage.FinalizingCloudFiles => "Finalizing cloud file status",
+                SyncRunProgressStage.HydratingCloudFiles => "Making files available",
                 SyncRunProgressStage.Completed => "Finishing sync",
                 _ => "Syncing",
             };
@@ -6510,6 +6516,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 SyncRunProgressStage.ReconcilingFiles => "Preparing file checks",
                 SyncRunProgressStage.CreatingPlaceholders => PreparingCloudFilesProgressLabel,
                 SyncRunProgressStage.FinalizingCloudFiles => "Finalizing cloud file status",
+                SyncRunProgressStage.HydratingCloudFiles => "Preparing files",
                 _ => "Preparing sync",
             };
         }
