@@ -41,6 +41,9 @@ namespace Cotton.Sync.Desktop.Shell
         private const string CottonApiRejectedRequestMessage =
             "Cotton API rejected the request. Check diagnostics and retry.";
 
+        private const string RemoteMassDeleteGuardPrefix =
+            "Remote delete blocked by mass-delete guard.";
+
         private const string ServerLockedMessage =
             "Cotton Cloud reports that the server is locked. Unlock it in the web app; Cotton Sync will retry automatically.";
 
@@ -214,6 +217,12 @@ namespace Cotton.Sync.Desktop.Shell
                 return DiskFullMessage;
             }
 
+            string? remoteMassDeleteGuardMessage = NormalizeRemoteMassDeleteGuardMessage(message);
+            if (remoteMassDeleteGuardMessage is not null)
+            {
+                return remoteMassDeleteGuardMessage;
+            }
+
             if (LooksLikeLocalPermissionDenied(message))
             {
                 return CreateLocalPermissionDeniedMessage(ExtractSingleQuotedPath(message));
@@ -252,6 +261,41 @@ namespace Cotton.Sync.Desktop.Shell
             }
 
             return DesktopUserMessageFormatter.Compact(message);
+        }
+
+        private static string? NormalizeRemoteMassDeleteGuardMessage(string message)
+        {
+            if (!message.Contains(RemoteMassDeleteGuardPrefix, StringComparison.OrdinalIgnoreCase)
+                || !message.Contains("pending deletes exceed limit", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            string? details = ExtractRemoteMassDeleteGuardDetails(message);
+            string detailSuffix = string.IsNullOrWhiteSpace(details)
+                ? string.Empty
+                : " (" + details + ")";
+            return DesktopUserMessageFormatter.Compact(
+                "Cotton Sync blocked a large remote delete plan"
+                + detailSuffix
+                + ". Check local files and Cotton Cloud, then retry only if the deletes are intentional.");
+        }
+
+        private static string? ExtractRemoteMassDeleteGuardDetails(string message)
+        {
+            int markerIndex = message.IndexOf("pending deletes exceed limit", StringComparison.OrdinalIgnoreCase);
+            if (markerIndex < 0)
+            {
+                return null;
+            }
+
+            int detailStart = message.LastIndexOf(".", markerIndex, StringComparison.Ordinal);
+            int detailContentStart = detailStart >= 0 ? detailStart + 1 : 0;
+            int detailEnd = message.IndexOf(".", markerIndex, StringComparison.Ordinal);
+            string details = detailEnd > detailContentStart
+                ? message[detailContentStart..detailEnd].Trim()
+                : message[detailContentStart..].Trim();
+            return details;
         }
 
         private static string CreateLocalPermissionDeniedMessage(string? relativePath)

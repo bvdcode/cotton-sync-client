@@ -1397,6 +1397,38 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task StatusChanged_UsesHumanRemoteMassDeleteGuardActionRequiredMessage()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            const string expectedMessage =
+                "Cotton Sync blocked a large remote delete plan (2207 pending deletes exceed limit 100). "
+                + "Check local files and Cotton Cloud, then retry only if the deletes are intentional.";
+            var controller = new FakeDesktopShellController(
+                CreateSignedInSnapshotWithNotifications(
+                    enableNotifications: false,
+                    CreatePair(syncPairId, "Music", "Idle")));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            controller.ReportStatus(new DesktopSyncStatusSnapshot(
+            [
+                new DesktopSyncPairStatusSnapshot(
+                    syncPairId,
+                    "Error",
+                    "Remote delete blocked by mass-delete guard. 2207 pending deletes exceed limit 100."),
+            ]));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Action required"));
+                Assert.That(viewModel.HeaderStatusText, Is.EqualTo("Action required"));
+                Assert.That(viewModel.HasActionRequired, Is.True);
+                Assert.That(viewModel.ActionRequiredMessage, Is.EqualTo(expectedMessage));
+                Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Fix the issue below to continue syncing."));
+            });
+        }
+
+        [Test]
         public async Task StatusChanged_AddsHumanErrorActivityMessage()
         {
             Guid syncPairId = Guid.NewGuid();

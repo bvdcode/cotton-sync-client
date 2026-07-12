@@ -27,6 +27,41 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public void FromStatus_ExplainsRemoteMassDeleteGuard()
+        {
+            DesktopSyncStatusSnapshot status = new(
+            [
+                new DesktopSyncPairStatusSnapshot(
+                    Guid.NewGuid(),
+                    "Error",
+                    "Remote delete blocked by mass-delete guard. 2207 pending deletes exceed limit 100."),
+            ]);
+
+            string message = DesktopActionRequiredMessageResolver.FromStatus(status);
+
+            Assert.That(
+                message,
+                Is.EqualTo(
+                    "Cotton Sync blocked a large remote delete plan (2207 pending deletes exceed limit 100). "
+                    + "Check local files and Cotton Cloud, then retry only if the deletes are intentional."));
+        }
+
+        [Test]
+        public void FromException_ExplainsRemoteMassDeleteGuard()
+        {
+            InvalidOperationException exception = new(
+                "Remote delete blocked by mass-delete guard. 42 pending deletes exceed limit 10.");
+
+            string message = DesktopActionRequiredMessageResolver.FromException(exception);
+
+            Assert.That(
+                message,
+                Is.EqualTo(
+                    "Cotton Sync blocked a large remote delete plan (42 pending deletes exceed limit 10). "
+                    + "Check local files and Cotton Cloud, then retry only if the deletes are intentional."));
+        }
+
+        [Test]
         public void FromStatus_ExplainsMissingDesktopSyncChangesApi()
         {
             var status = new DesktopSyncStatusSnapshot(
