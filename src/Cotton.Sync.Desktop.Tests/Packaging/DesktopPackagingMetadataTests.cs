@@ -478,6 +478,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-desktop-session-restore\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-shell-share-link-targets\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-replace-cloud-only-upload\\cloud-files-vfs-smoke.stdout.log"));
+                Assert.That(script, Does.Contain("vfs-smoke\\phase-explorer-always-keep\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-leave-registered\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-reconnect-existing\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-initial-streaming-logging\\cloud-files-vfs-smoke.stdout.log"));
@@ -520,6 +521,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("privateMemoryBytes="));
                 Assert.That(script, Does.Contain("threadCount="));
                 Assert.That(script, Does.Contain("handleCount="));
+                Assert.That(script, Does.Contain("Repeating Explorer Always keep on this device was idempotent."));
+                Assert.That(script, Does.Contain("downloadsBeforeRepeat=1"));
+                Assert.That(script, Does.Contain("downloadsAfterRepeat=1"));
                 Assert.That(script, Does.Contain("Steady-state repeat pass used scoped path validation without local placeholder-tree scanning."));
                 Assert.That(script, Does.Contain("fullLocalScans=0"));
                 Assert.That(script, Does.Contain("metadataTreeScans=0"));
@@ -1880,7 +1884,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("-LocalRoot $vfsLocalRoot"));
                 Assert.That(
                     workflow,
-                    Does.Contain("-AdditionalVfsSmokePhases @(\"desktop-session-restore\", \"shell-share-link-targets\", \"initial-streaming-logging\", \"steady-state-repeat\", \"replace-cloud-only-upload\")"));
+                    Does.Contain("-AdditionalVfsSmokePhases @(\"desktop-session-restore\", \"shell-share-link-targets\", \"initial-streaming-logging\", \"steady-state-repeat\", \"replace-cloud-only-upload\", \"explorer-always-keep\")"));
                 Assert.That(workflow, Does.Contain("timeout-minutes: 20"));
                 Assert.That(workflow, Does.Contain("-InitialStreamingPlaceholderCount $ciVfsPlaceholderCount"));
                 Assert.That(workflow, Does.Contain("-SteadyStateRepeatPlaceholderCount $ciVfsPlaceholderCount"));
@@ -2742,6 +2746,22 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "PASS: Uploaded replacement sync root Cloud Files status was finalized.",
                     "PASS: Explorer shell status settled for uploaded replacement file.",
                     "PASS: Explorer shell status settled for uploaded replacement parent directory.",
+                    "Result: passed"
+                });
+            Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-explorer-always-keep"));
+            File.WriteAllLines(
+                Path.Combine(
+                    evidenceDirectory,
+                    "vfs-smoke",
+                    "phase-explorer-always-keep",
+                    "cloud-files-vfs-smoke.stdout.log"),
+                new[]
+                {
+                    "PASS: Explorer Always keep hydrated the placeholder and kept it pinned.",
+                    "PASS: Reading the Always-keep file used local hydrated content.",
+                    "PASS: Repeating Explorer Always keep on this device was idempotent. downloadsBeforeRepeat=1, downloadsAfterRepeat=1",
+                    "PASS: Always-keep placeholder Cloud Files status was finalized.",
+                    "PASS: Explorer shell status settled for always-keep placeholder.",
                     "Result: passed"
                 });
             File.WriteAllLines(

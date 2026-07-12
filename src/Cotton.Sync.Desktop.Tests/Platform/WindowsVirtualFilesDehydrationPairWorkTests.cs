@@ -60,6 +60,49 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_WithAlreadyHydratedPinnedPlaceholderSuppressesInnerSync()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            FakeSyncStateStore stateStore = new();
+            SyncStateEntry state = CreatePlaceholderState(syncPair, "Docs/report.txt");
+            state.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
+            state.LocalContentHash = "remote-hash";
+            state.LocalSizeBytes = 12;
+            state.LocalLastWriteUtc = new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc);
+            stateStore.UpsertEntry(state);
+            FakeCloudFilesAdapter cloudFiles = new();
+            WindowsCloudFilesDiagnostics diagnostics = new();
+            RecordingSyncPairWork inner = new();
+            RecordingLocalChangeSuppression suppression = new();
+            WindowsVirtualFilesDehydrationPairWork work = new(
+                inner,
+                stateStore,
+                cloudFiles,
+                new FakeContentHasher("remote-hash"),
+                diagnostics,
+                _ => CreatePinnedHydratedDiskState(),
+                suppression);
+
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]));
+
+            SyncStateEntry updated = stateStore.GetRequired(syncPair.Id, "Docs/report.txt");
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Is.Empty);
+                Assert.That(cloudFiles.HydratedPaths, Is.Empty);
+                Assert.That(suppression.SuppressedWrites, Is.Empty);
+                Assert.That(updated.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+                Assert.That(updated.LocalContentHash, Is.EqualTo("remote-hash"));
+                Assert.That(updated.LocalSizeBytes, Is.EqualTo(12));
+                Assert.That(updated.LocalLastWriteUtc, Is.EqualTo(new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc)));
+                Assert.That(diagnostic.Operation, Is.EqualTo("manual-always-keep"));
+                Assert.That(diagnostic.Status, Is.EqualTo("completed"));
+                Assert.That(diagnostic.Details, Does.Contain("already hydrated"));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_HydratesOnlyPinnedDirectorySubtreeAndSuppressesChildEvents()
         {
             SyncPairSettings syncPair = CreateVirtualFilesPair();

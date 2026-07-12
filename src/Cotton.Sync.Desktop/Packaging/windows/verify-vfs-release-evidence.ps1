@@ -315,6 +315,16 @@ Assert-Contains -Content $replaceCloudOnlyUpload -Expected "Explorer shell statu
 Assert-Contains -Content $replaceCloudOnlyUpload -Expected "Explorer shell status settled for uploaded replacement parent directory." -Label "vfs-smoke\phase-replace-cloud-only-upload\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $replaceCloudOnlyUpload -Expected "Result: passed" -Label "vfs-smoke\phase-replace-cloud-only-upload\cloud-files-vfs-smoke.stdout.log"
 
+$explorerAlwaysKeep = Read-EvidenceFile -RelativePath "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $explorerAlwaysKeep -Expected "Explorer Always keep hydrated the placeholder and kept it pinned." -Label "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $explorerAlwaysKeep -Expected "Reading the Always-keep file used local hydrated content." -Label "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $explorerAlwaysKeep -Expected "Repeating Explorer Always keep on this device was idempotent." -Label "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $explorerAlwaysKeep -Expected "downloadsBeforeRepeat=1" -Label "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $explorerAlwaysKeep -Expected "downloadsAfterRepeat=1" -Label "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $explorerAlwaysKeep -Expected "Always-keep placeholder Cloud Files status was finalized." -Label "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $explorerAlwaysKeep -Expected "Explorer shell status settled for always-keep placeholder." -Label "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $explorerAlwaysKeep -Expected "Result: passed" -Label "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
+
 $leaveRegistered = Read-EvidenceFile -RelativePath "vfs-smoke\phase-leave-registered\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $leaveRegistered -Expected "Cloud Files sync root left registered for process restart smoke." -Label "vfs-smoke\phase-leave-registered\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $leaveRegistered -Expected "Result: passed" -Label "vfs-smoke\phase-leave-registered\cloud-files-vfs-smoke.stdout.log"

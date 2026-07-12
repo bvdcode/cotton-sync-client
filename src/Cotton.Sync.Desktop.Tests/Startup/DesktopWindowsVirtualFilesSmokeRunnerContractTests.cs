@@ -203,6 +203,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(runner, Does.Contain("Production app Always keep handler processed the Cloud Files pin-state change."));
                 Assert.That(runner, Does.Contain("Explorer Always keep hydrated the placeholder and kept it pinned."));
                 Assert.That(runner, Does.Contain("Always-keep hydration updated sync-state as hydrated."));
+                Assert.That(runner, Does.Contain("Repeating Explorer Always keep on this device was idempotent."));
                 Assert.That(runner, Does.Contain("Always-keep placeholder Cloud Files status was finalized."));
                 Assert.That(runner, Does.Contain("VerifyExplorerShellSettledStatusAsync("));
             });

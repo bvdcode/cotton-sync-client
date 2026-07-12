@@ -485,6 +485,20 @@ namespace Cotton.Sync.Desktop.Platform
 
             if (diskState is null || !IsManualAlwaysKeepCandidate(diskState.Attributes, state!.PlaceholderHydrationState))
             {
+                if (diskState is not null
+                    && HasRawAttribute(diskState.Attributes, FileAttributePinned)
+                    && IsHydrationComplete(diskState.Attributes, state!.PlaceholderHydrationState))
+                {
+                    _diagnostics.Record(
+                        "manual-always-keep",
+                        "completed",
+                        syncPair.Id.ToString("D"),
+                        syncPair.LocalRootPath,
+                        normalizedPath,
+                        "Explorer Always keep on this device was already hydrated for the tracked placeholder.");
+                    return true;
+                }
+
                 return false;
             }
 

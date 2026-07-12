@@ -994,7 +994,7 @@ namespace Cotton.Sync.Desktop.Startup
                 }
 
                 var hydrationWork = new WindowsVirtualFilesDehydrationPairWork(
-                    NoopSyncPairWork.Instance,
+                    new FailOnInnerSyncPairWork("Explorer Always keep smoke must not run inner sync for availability-only changes."),
                     stateStore,
                     cloudFiles,
                     new LocalFileScanner(),
@@ -1093,6 +1093,45 @@ namespace Cotton.Sync.Desktop.Startup
                     + FormatStateSummary(state))
                     .ConfigureAwait(false);
                 if (!stateUpdated)
+                {
+                    failures++;
+                }
+
+                int downloadsBeforeRepeat = contentProvider.DownloadCount;
+                await hydrationWork
+                    .RunOnceAsync(
+                        syncPair,
+                        SyncRunRequest.ForLocalChangedPaths([RelativePlaceholderPath]),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                FileAttributes repeatAttributes = File.GetAttributes(placeholderPath);
+                SyncStateEntry? repeatedState = await stateStore
+                    .GetAsync(syncPair.Id.ToString("D"), RelativePlaceholderPath, cancellationToken)
+                    .ConfigureAwait(false);
+                bool repeatIdempotent = HasPinned(repeatAttributes)
+                    && !HasRecallOnDataAccess(repeatAttributes)
+                    && (repeatAttributes & FileAttributes.Offline) == 0
+                    && contentProvider.DownloadCount == downloadsBeforeRepeat
+                    && repeatedState is
+                    {
+                        PlaceholderHydrationState: SyncPlaceholderHydrationState.Hydrated,
+                        LocalContentHash: not null,
+                        LocalSizeBytes: not null,
+                    }
+                    && string.Equals(repeatedState.LocalContentHash, expectedHash, StringComparison.OrdinalIgnoreCase)
+                    && repeatedState.LocalSizeBytes == expectedContent.LongLength;
+                await output.WriteLineAsync(
+                    FormatCheck(repeatIdempotent, "Repeating Explorer Always keep on this device was idempotent.")
+                    + " attributes="
+                    + FormatAttributes(repeatAttributes)
+                    + ", downloadsBeforeRepeat="
+                    + downloadsBeforeRepeat.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", downloadsAfterRepeat="
+                    + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", state="
+                    + FormatStateSummary(repeatedState))
+                    .ConfigureAwait(false);
+                if (!repeatIdempotent)
                 {
                     failures++;
                 }
@@ -5948,6 +5987,29 @@ namespace Cotton.Sync.Desktop.Startup
                 CancellationToken cancellationToken = default)
             {
                 return Task.CompletedTask;
+            }
+        }
+
+        private sealed class FailOnInnerSyncPairWork : ISyncPairWork
+        {
+            private readonly string _message;
+
+            public FailOnInnerSyncPairWork(string message)
+            {
+                _message = message;
+            }
+
+            public Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
+            {
+                throw new InvalidOperationException(_message);
+            }
+
+            public Task RunOnceAsync(
+                SyncPairSettings syncPair,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                throw new InvalidOperationException(_message);
             }
         }
 
