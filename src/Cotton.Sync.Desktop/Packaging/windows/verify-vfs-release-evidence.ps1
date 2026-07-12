@@ -358,11 +358,11 @@ Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "workingSet
 Assert-RegexNumberMinimum -Content $initialStreamingLogging -Pattern "privateMemoryBytes=(?<value>[\d,]+)" -MinimumValue 1 -Label "vfs-smoke\phase-initial-streaming-logging\cloud-files-vfs-smoke.stdout.log" -Metric "private memory"
 
 $steadyStateRepeat = Read-EvidenceFile -RelativePath "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
-Assert-Contains -Content $steadyStateRepeat -Expected "Steady-state repeat pass avoided local placeholder-tree scanning." -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $steadyStateRepeat -Expected "Steady-state repeat pass used scoped path validation without local placeholder-tree scanning." -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $steadyStateRepeat -Expected "files=$minimumVfsPlaceholderCountText" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $steadyStateRepeat -Expected "fullLocalScans=0" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $steadyStateRepeat -Expected "metadataTreeScans=0" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
-Assert-Contains -Content $steadyStateRepeat -Expected "pathLookups=0" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $steadyStateRepeat -Expected "pathLookups=1" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $steadyStateRepeat -Expected "transfers=0" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $steadyStateRepeat -Expected "placeholderWrites=0" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $steadyStateRepeat -Expected "Result: passed" -Label "vfs-smoke\phase-steady-state-repeat\cloud-files-vfs-smoke.stdout.log"

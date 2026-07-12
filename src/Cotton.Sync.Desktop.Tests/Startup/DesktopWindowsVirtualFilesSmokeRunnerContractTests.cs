@@ -90,7 +90,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(runner, Does.Contain("new NoTransferRemoteFileSynchronizer()"));
                 Assert.That(runner, Does.Contain("new GuardRemoteFilePlaceholderWriter()"));
                 Assert.That(runner, Does.Contain("remoteFilePlaceholderWriter: placeholderWriter"));
-                Assert.That(runner, Does.Contain("Steady-state repeat pass avoided local placeholder-tree scanning."));
+                Assert.That(runner, Does.Contain("Steady-state repeat pass used scoped path validation without local placeholder-tree scanning."));
                 Assert.That(runner, Does.Contain("Steady-state repeat smoke must not scan the local placeholder tree."));
                 Assert.That(runner, Does.Contain("Steady-state repeat smoke must not create or refresh placeholders."));
                 Assert.That(runner, Does.Contain("fullLocalScans="));

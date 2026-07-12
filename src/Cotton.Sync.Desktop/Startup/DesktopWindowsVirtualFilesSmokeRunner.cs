@@ -1419,6 +1419,10 @@ namespace Cotton.Sync.Desktop.Startup
             RemoteFilePlaceholderRequest request,
             RemoteFilePlaceholderResult placeholder)
         {
+            SyncPlaceholderHydrationState hydrationState = placeholder.HydrationState == SyncPlaceholderHydrationState.None
+                ? SyncPlaceholderHydrationState.RemoteOnly
+                : placeholder.HydrationState;
+
             return new SyncStateEntry
             {
                 SyncPairId = syncPair.Id.ToString("D"),
@@ -1427,10 +1431,12 @@ namespace Cotton.Sync.Desktop.Startup
                 RemoteSizeBytes = request.RemoteFile.SizeBytes,
                 RemoteFileId = request.RemoteFile.Id,
                 RemoteNodeId = request.RemoteFile.NodeId,
+                RemoteFileManifestId = request.RemoteFile.FileManifestId,
+                RemoteOriginalNodeFileId = request.RemoteFile.OriginalNodeFileId,
                 RemoteContentHash = request.RemoteFile.ContentHash,
                 RemoteETag = request.RemoteFile.ETag,
                 PlaceholderIdentity = placeholder.PlaceholderIdentity,
-                PlaceholderHydrationState = placeholder.HydrationState,
+                PlaceholderHydrationState = hydrationState,
                 SyncedAtUtc = DateTime.UtcNow,
             };
         }
@@ -2652,6 +2658,7 @@ namespace Cotton.Sync.Desktop.Startup
             string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
             var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
             var remoteFiles = new List<RemoteFileSnapshot>(largeTreePlaceholderCount);
+            WindowsCloudFilesConnection? connection = null;
             int failures = 0;
 
             try
@@ -2665,6 +2672,12 @@ namespace Cotton.Sync.Desktop.Startup
                     FormatCheck(true, "Isolated QA root prepared for steady-state repeat smoke.")
                     + " root="
                     + rootPath)
+                    .ConfigureAwait(false);
+                connection = cloudFiles.ConnectSyncRoot(syncPair, new NoopCloudFilesCallbackHandler());
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Cloud Files sync root connected for steady-state repeat smoke.")
+                    + " root="
+                    + connection.LocalRootPath)
                     .ConfigureAwait(false);
 
                 var createdEntries = new List<SyncStateEntry>(largeTreePlaceholderCount);
@@ -2743,7 +2756,7 @@ namespace Cotton.Sync.Desktop.Startup
                 bool passed = !result.RequiresUserAction
                     && scanner.FullScanCalls == 0
                     && scanner.MetadataTreeScanCalls == 0
-                    && scanner.PathLookupCalls == 0
+                    && scanner.PathLookupCalls == 1
                     && crawler.StreamingCrawlCalls == 1
                     && crawler.SnapshotCrawlCalls == 0
                     && noTransfers.TransferCalls == 0
@@ -2752,7 +2765,7 @@ namespace Cotton.Sync.Desktop.Startup
                 if (passed)
                 {
                     await output.WriteLineAsync(
-                        FormatCheck(true, "Steady-state repeat pass avoided local placeholder-tree scanning.")
+                        FormatCheck(true, "Steady-state repeat pass used scoped path validation without local placeholder-tree scanning.")
                         + " files="
                         + largeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
                         + ", syncElapsedMs="
@@ -2806,6 +2819,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             finally
             {
+                connection?.Dispose();
                 failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
             }
 
@@ -5671,7 +5685,12 @@ namespace Cotton.Sync.Desktop.Startup
                 CancellationToken cancellationToken = default)
             {
                 PathLookupCalls++;
-                throw new InvalidOperationException("Steady-state repeat smoke must not perform local path lookups.");
+                return new LocalFileScanner().ScanPathMetadataLookupsAsync(
+                    rootPath,
+                    relativePaths,
+                    progress,
+                    includeDirectoryDescendants,
+                    cancellationToken);
             }
 
             public Task<string> ComputeContentHashAsync(

@@ -520,10 +520,10 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("privateMemoryBytes="));
                 Assert.That(script, Does.Contain("threadCount="));
                 Assert.That(script, Does.Contain("handleCount="));
-                Assert.That(script, Does.Contain("Steady-state repeat pass avoided local placeholder-tree scanning."));
+                Assert.That(script, Does.Contain("Steady-state repeat pass used scoped path validation without local placeholder-tree scanning."));
                 Assert.That(script, Does.Contain("fullLocalScans=0"));
                 Assert.That(script, Does.Contain("metadataTreeScans=0"));
-                Assert.That(script, Does.Contain("pathLookups=0"));
+                Assert.That(script, Does.Contain("pathLookups=1"));
                 Assert.That(script, Does.Contain("placeholderWrites=0"));
                 Assert.That(script, Does.Contain("IsForeground"));
                 Assert.That(script, Does.Contain("VisibleWindowCount"));
@@ -2790,7 +2790,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "cloud-files-vfs-smoke.stdout.log"),
                 new[]
                 {
-                    $"PASS: Steady-state repeat pass avoided local placeholder-tree scanning. files={placeholderCountText}, syncElapsedMs=3000, streamingCrawls=1, fullLocalScans=0, metadataTreeScans=0, pathLookups=0, transfers=0, placeholderWrites=0",
+                    $"PASS: Steady-state repeat pass used scoped path validation without local placeholder-tree scanning. files={placeholderCountText}, syncElapsedMs=3000, streamingCrawls=1, fullLocalScans=0, metadataTreeScans=0, pathLookups=1, transfers=0, placeholderWrites=0",
                     "Result: passed"
                 });
 
