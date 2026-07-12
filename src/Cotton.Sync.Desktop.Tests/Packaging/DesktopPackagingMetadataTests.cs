@@ -701,8 +701,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory);
 
                 Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                string normalizedOutput = NormalizePowerShellErrorOutput(output);
                 Assert.That(
-                    output,
+                    normalizedOutput,
                     Does.Contain("Desktop startup restore did not start a full sync or placeholder reseed pass."));
             }
             finally
@@ -3047,6 +3048,13 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         private static string NormalizeProfilePath(string? value)
         {
             return (value ?? string.Empty).Replace('\\', '/');
+        }
+
+        private static string NormalizePowerShellErrorOutput(string value)
+        {
+            string withoutAnsi = Regex.Replace(value, "\u001b\\[[0-9;]*m", string.Empty);
+            string withoutLineMarkers = Regex.Replace(withoutAnsi, "\\s+\\|\\s+", " ");
+            return Regex.Replace(withoutLineMarkers, "\\s+", " ");
         }
 
         private static void AssertCloudFilesImport(Type nativeApiType, string entryPoint)
