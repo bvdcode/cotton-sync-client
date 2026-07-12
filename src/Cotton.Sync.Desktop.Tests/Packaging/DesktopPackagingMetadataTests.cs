@@ -503,6 +503,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("VFS smoke logs: captured:"));
                 Assert.That(script, Does.Contain("Desktop startup restored the saved signed-in session."));
                 Assert.That(script, Does.Contain("Desktop startup reconnected the persisted Cloud Files sync root."));
+                Assert.That(script, Does.Contain("Desktop startup restore did not start a full sync or placeholder reseed pass."));
                 Assert.That(script, Does.Contain("Uploaded replacement parent directory Cloud Files status was finalized."));
                 Assert.That(script, Does.Contain("Explorer shell status settled for uploaded replacement parent directory."));
                 Assert.That(script, Does.Contain("Cloud Files sync root left registered for process restart smoke."));
@@ -670,6 +671,39 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(
                     output,
                     Does.Contain("vfs-smoke\\phase-desktop-session-restore\\cloud-files-vfs-smoke.stdout.log"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_RejectsMissingDesktopSessionNoReseedProof()
+        {
+            string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
+            try
+            {
+                File.WriteAllLines(
+                    Path.Combine(
+                        evidenceDirectory,
+                        "vfs-smoke",
+                        "phase-desktop-session-restore",
+                        "cloud-files-vfs-smoke.stdout.log"),
+                    new[]
+                    {
+                        "Desktop startup restored the saved signed-in session.",
+                        "Desktop startup used the remembered server for session restore.",
+                        "Desktop startup reconnected the persisted Cloud Files sync root.",
+                        "Result: passed",
+                    });
+
+                (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(
+                    output,
+                    Does.Contain("Desktop startup restore did not start a full sync or placeholder reseed pass."));
             }
             finally
             {
@@ -2724,7 +2758,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "Desktop startup restored the saved signed-in session.",
                     "Desktop startup used the remembered server for session restore.",
                     "Desktop startup reconnected the persisted Cloud Files sync root.",
-                    "Result: passed"
+                    "Desktop startup restore did not start a full sync or placeholder reseed pass.",
+                    "Result: passed",
                 });
             File.WriteAllText(
                 Path.Combine(

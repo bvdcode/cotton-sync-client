@@ -2114,12 +2114,14 @@ namespace Cotton.Sync.Desktop.Startup
                         + rootPath)
                     .ConfigureAwait(false);
 
+                FailOnInnerSyncPairWork sessionRestorePairWork = new(
+                    "Desktop session restore smoke must not start a sync/reseed pass.");
                 app = CreateDesktopRootLifecycleApplication(
                     pairStore,
                     stateStore,
                     cloudFiles,
                     new NoopCloudFilesCallbackHandler(),
-                    NoopSyncPairWork.Instance,
+                    sessionRestorePairWork,
                     statusPublisher,
                     diagnostics);
                 SessionRestoreMemoryTokenStore tokenStore = new();
@@ -2176,6 +2178,13 @@ namespace Cotton.Sync.Desktop.Startup
                         syncPair,
                         statusPublisher,
                         cancellationToken)
+                    .ConfigureAwait(false);
+                failures += await WriteCheckAsync(
+                        output,
+                        sessionRestorePairWork.RunCalls == 0,
+                        "Desktop startup restore did not start a full sync or placeholder reseed pass.",
+                        "syncRuns="
+                        + sessionRestorePairWork.RunCalls.ToString(System.Globalization.CultureInfo.InvariantCulture))
                     .ConfigureAwait(false);
 
                 await app.DeleteSyncPairAsync(syncPair.Id, cancellationToken).ConfigureAwait(false);
@@ -5999,8 +6008,11 @@ namespace Cotton.Sync.Desktop.Startup
                 _message = message;
             }
 
+            public int RunCalls { get; private set; }
+
             public Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
             {
+                RunCalls++;
                 throw new InvalidOperationException(_message);
             }
 
@@ -6009,6 +6021,7 @@ namespace Cotton.Sync.Desktop.Startup
                 SyncRunRequest request,
                 CancellationToken cancellationToken = default)
             {
+                RunCalls++;
                 throw new InvalidOperationException(_message);
             }
         }

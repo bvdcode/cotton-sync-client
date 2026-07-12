@@ -279,6 +279,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(runner, Does.Contain("Desktop startup used the remembered server for session restore."));
                 Assert.That(runner, Does.Contain("Desktop startup loaded the persisted virtual-files sync pair."));
                 Assert.That(runner, Does.Contain("Desktop startup reconnected the persisted Cloud Files sync root."));
+                Assert.That(runner, Does.Contain("Desktop startup restore did not start a full sync or placeholder reseed pass."));
                 Assert.That(runner, Does.Contain("Deleting the restored Desktop session pair removed the local placeholder root."));
                 Assert.That(runner, Does.Contain("SessionRestoreApplicationFactory"));
                 Assert.That(runner, Does.Contain("SessionRestoreMemoryTokenStore"));

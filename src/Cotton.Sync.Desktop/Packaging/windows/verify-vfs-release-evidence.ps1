@@ -302,6 +302,7 @@ $desktopSessionRestore = Read-EvidenceFile -RelativePath "vfs-smoke\phase-deskto
 Assert-Contains -Content $desktopSessionRestore -Expected "Desktop startup restored the saved signed-in session." -Label "vfs-smoke\phase-desktop-session-restore\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $desktopSessionRestore -Expected "Desktop startup used the remembered server for session restore." -Label "vfs-smoke\phase-desktop-session-restore\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $desktopSessionRestore -Expected "Desktop startup reconnected the persisted Cloud Files sync root." -Label "vfs-smoke\phase-desktop-session-restore\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $desktopSessionRestore -Expected "Desktop startup restore did not start a full sync or placeholder reseed pass." -Label "vfs-smoke\phase-desktop-session-restore\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $desktopSessionRestore -Expected "Result: passed" -Label "vfs-smoke\phase-desktop-session-restore\cloud-files-vfs-smoke.stdout.log"
 
 $shellShareLinkTargets = Read-EvidenceFile -RelativePath "vfs-smoke\phase-shell-share-link-targets\cloud-files-vfs-smoke.stdout.log"
