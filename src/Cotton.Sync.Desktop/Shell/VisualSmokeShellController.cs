@@ -15,25 +15,25 @@ namespace Cotton.Sync.Desktop.Shell
     {
         private static readonly Guid DocumentsPairId = Guid.Parse("8e40c25d-7a6d-4a8c-92cf-f7b5422a7e78");
         private static readonly Guid PhotosPairId = Guid.Parse("aa0c3835-2e86-4667-8bf9-81ce3bcd2bb8");
-        private static readonly TimeSpan DefaultHydrationAnimationInterval = TimeSpan.FromMilliseconds(100);
+        private static readonly TimeSpan DefaultProgressAnimationInterval = TimeSpan.FromMilliseconds(100);
         private readonly CancellationTokenSource _lifetimeCancellation = new();
-        private readonly TimeSpan _hydrationAnimationInterval;
+        private readonly TimeSpan _progressAnimationInterval;
         private readonly DesktopVisualSmokeScenario _scenario;
-        private Task? _hydrationAnimationTask;
-        private int _hydrationAnimationStarted;
+        private Task? _progressAnimationTask;
+        private int _progressAnimationStarted;
         private int _isDisposed;
 
         private VisualSmokeShellController(
             DesktopVisualSmokeScenario scenario,
-            TimeSpan hydrationAnimationInterval)
+            TimeSpan progressAnimationInterval)
         {
-            if (hydrationAnimationInterval <= TimeSpan.Zero)
+            if (progressAnimationInterval <= TimeSpan.Zero)
             {
-                throw new ArgumentOutOfRangeException(nameof(hydrationAnimationInterval));
+                throw new ArgumentOutOfRangeException(nameof(progressAnimationInterval));
             }
 
             _scenario = scenario;
-            _hydrationAnimationInterval = hydrationAnimationInterval;
+            _progressAnimationInterval = progressAnimationInterval;
         }
 
         public event EventHandler<DesktopSyncStatusSnapshot>? StatusChanged;
@@ -56,14 +56,14 @@ namespace Cotton.Sync.Desktop.Shell
 
         public static VisualSmokeShellController Create(DesktopVisualSmokeScenario scenario)
         {
-            return Create(scenario, DefaultHydrationAnimationInterval);
+            return Create(scenario, DefaultProgressAnimationInterval);
         }
 
         internal static VisualSmokeShellController Create(
             DesktopVisualSmokeScenario scenario,
-            TimeSpan hydrationAnimationInterval)
+            TimeSpan progressAnimationInterval)
         {
-            return new VisualSmokeShellController(scenario, hydrationAnimationInterval);
+            return new VisualSmokeShellController(scenario, progressAnimationInterval);
         }
 
         public Task<DesktopShellSnapshot> LoadAsync(CancellationToken cancellationToken = default)
@@ -89,7 +89,7 @@ namespace Cotton.Sync.Desktop.Shell
                 DesktopPlatformCapabilities.CreateSnapshot(),
                 isSignedIn,
                 pairs);
-            StartHydrationProgressAnimation();
+            StartProgressAnimation();
             return Task.FromResult(snapshot);
         }
 
@@ -400,9 +400,9 @@ namespace Cotton.Sync.Desktop.Shell
             _lifetimeCancellation.Cancel();
             try
             {
-                if (_hydrationAnimationTask is not null)
+                if (_progressAnimationTask is not null)
                 {
-                    await _hydrationAnimationTask.ConfigureAwait(false);
+                    await _progressAnimationTask.ConfigureAwait(false);
                 }
             }
             finally
@@ -411,15 +411,18 @@ namespace Cotton.Sync.Desktop.Shell
             }
         }
 
-        private void StartHydrationProgressAnimation()
+        private void StartProgressAnimation()
         {
-            if (_scenario != DesktopVisualSmokeScenario.HydrationProgress
-                || Interlocked.Exchange(ref _hydrationAnimationStarted, 1) != 0)
+            if ((_scenario is not DesktopVisualSmokeScenario.HydrationProgress
+                    and not DesktopVisualSmokeScenario.DehydrationProgress)
+                || Interlocked.Exchange(ref _progressAnimationStarted, 1) != 0)
             {
                 return;
             }
 
-            _hydrationAnimationTask = AnimateHydrationProgressAsync(_lifetimeCancellation.Token);
+            _progressAnimationTask = _scenario == DesktopVisualSmokeScenario.HydrationProgress
+                ? AnimateHydrationProgressAsync(_lifetimeCancellation.Token)
+                : AnimateDehydrationProgressAsync(_lifetimeCancellation.Token);
         }
 
         private async Task AnimateHydrationProgressAsync(CancellationToken cancellationToken)
@@ -533,9 +536,77 @@ namespace Cotton.Sync.Desktop.Shell
             }
         }
 
+        private async Task AnimateDehydrationProgressAsync(CancellationToken cancellationToken)
+        {
+            const int displayedFiles = 50;
+            const int totalFiles = 1000;
+            DateTime animationCompletedAtUtc = DateTime.UtcNow;
+            DateTime startedAtUtc = animationCompletedAtUtc.AddSeconds(-(displayedFiles * 10));
+
+            try
+            {
+                await DelayAnimationIntervalsAsync(30, cancellationToken).ConfigureAwait(false);
+                for (int index = 0; index < displayedFiles; index++)
+                {
+                    int completedBefore = index * totalFiles / displayedFiles;
+                    int completedAfter = (index + 1) * totalFiles / displayedFiles;
+                    string relativePath = "Music/Albums/Album "
+                        + (index + 1).ToString("000", System.Globalization.CultureInfo.InvariantCulture)
+                        + "/track-"
+                        + completedAfter.ToString("0000", System.Globalization.CultureInfo.InvariantCulture)
+                        + ".flac";
+                    DateTime occurredAtUtc = startedAtUtc.AddSeconds(index * 10);
+
+                    RunProgressChanged?.Invoke(this, new DesktopRunProgressSnapshot(
+                        DocumentsPairId,
+                        SyncRunProgressStage.DehydratingCloudFiles,
+                        completedBefore,
+                        totalFiles,
+                        relativePath,
+                        startedAtUtc,
+                        IsCompleted: false,
+                        occurredAtUtc));
+
+                    await DelayAnimationIntervalsAsync(2, cancellationToken).ConfigureAwait(false);
+                    occurredAtUtc = occurredAtUtc.AddSeconds(8);
+                    RunProgressChanged?.Invoke(this, new DesktopRunProgressSnapshot(
+                        DocumentsPairId,
+                        SyncRunProgressStage.DehydratingCloudFiles,
+                        completedAfter,
+                        totalFiles,
+                        relativePath,
+                        startedAtUtc,
+                        IsCompleted: false,
+                        occurredAtUtc));
+
+                    await DelayAnimationIntervalsAsync(1, cancellationToken).ConfigureAwait(false);
+                }
+
+                DateTime completedAtUtc = animationCompletedAtUtc;
+                RunProgressChanged?.Invoke(this, new DesktopRunProgressSnapshot(
+                    DocumentsPairId,
+                    SyncRunProgressStage.DehydratingCloudFiles,
+                    totalFiles,
+                    totalFiles,
+                    string.Empty,
+                    startedAtUtc,
+                    IsCompleted: true,
+                    completedAtUtc));
+                await DelayAnimationIntervalsAsync(5, cancellationToken).ConfigureAwait(false);
+                StatusChanged?.Invoke(this, new DesktopSyncStatusSnapshot(
+                [
+                    new DesktopSyncPairStatusSnapshot(DocumentsPairId, "Idle", null, LastSyncedAtUtc: completedAtUtc),
+                    new DesktopSyncPairStatusSnapshot(PhotosPairId, "Idle", null, LastSyncedAtUtc: completedAtUtc),
+                ]));
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+        }
+
         private Task DelayAnimationIntervalsAsync(int count, CancellationToken cancellationToken)
         {
-            TimeSpan delay = TimeSpan.FromTicks(_hydrationAnimationInterval.Ticks * count);
+            TimeSpan delay = TimeSpan.FromTicks(_progressAnimationInterval.Ticks * count);
             return Task.Delay(delay, cancellationToken);
         }
 
@@ -594,6 +665,7 @@ namespace Cotton.Sync.Desktop.Shell
                 DesktopVisualSmokeScenario.Progress => "Syncing",
                 DesktopVisualSmokeScenario.ManySmallDownload => "Syncing",
                 DesktopVisualSmokeScenario.HydrationProgress => "Syncing",
+                DesktopVisualSmokeScenario.DehydrationProgress => "Syncing",
                 DesktopVisualSmokeScenario.HighPressureStarting => "Syncing",
                 DesktopVisualSmokeScenario.VirtualFilesSeeding => "Syncing",
                 _ => "Idle",

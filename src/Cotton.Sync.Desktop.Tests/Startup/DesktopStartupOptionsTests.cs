@@ -275,6 +275,18 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void Parse_LoadsDehydrationProgressVisualSmokeScenario()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--visual-smoke",
+                    "dehydration-progress",
+                ]);
+
+            Assert.That(options.VisualSmokeScenario, Is.EqualTo(DesktopVisualSmokeScenario.DehydrationProgress));
+        }
+
+        [Test]
         public void Parse_LoadsHighPressureStartingVisualSmokeScenario()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(

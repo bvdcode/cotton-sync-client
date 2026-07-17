@@ -2032,6 +2032,9 @@ namespace Cotton.Sync.Desktop.ViewModels
                 case DesktopVisualSmokeScenario.HydrationProgress:
                     ApplyVisualSmokeHydrationProgressScenario();
                     break;
+                case DesktopVisualSmokeScenario.DehydrationProgress:
+                    ApplyVisualSmokeDehydrationProgressScenario();
+                    break;
                 case DesktopVisualSmokeScenario.HighPressureStarting:
                     ApplyVisualSmokeHighPressureStartingScenario();
                     break;
@@ -2302,6 +2305,29 @@ namespace Cotton.Sync.Desktop.ViewModels
                 IsCompleted: false,
                 startedAtUtc));
             AddActivity("Download", relativePath, "Downloading " + Path.GetFileName(relativePath));
+        }
+
+        private void ApplyVisualSmokeDehydrationProgressScenario()
+        {
+            SyncPairRowViewModel? syncPair = SyncPairs.FirstOrDefault();
+            if (syncPair is null)
+            {
+                return;
+            }
+
+            DateTime startedAtUtc = DateTime.UtcNow;
+            const string relativePath = "Music/Albums/Album 001/track-0020.flac";
+            GlobalStatus = "Syncing";
+            syncPair.Status = "Syncing";
+            ApplyRunProgress(new DesktopRunProgressSnapshot(
+                syncPair.Id,
+                SyncRunProgressStage.DehydratingCloudFiles,
+                FilesCompleted: 0,
+                FilesTotal: 1000,
+                relativePath,
+                startedAtUtc,
+                IsCompleted: false,
+                startedAtUtc));
         }
 
         private void ApplyVisualSmokeHighPressureStartingScenario()

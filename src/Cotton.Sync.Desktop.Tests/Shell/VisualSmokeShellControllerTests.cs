@@ -158,6 +158,61 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public async Task LoadAsync_DehydrationProgressEmitsMonotonicAggregateWithoutTransfers()
+        {
+            using VisualSmokeShellController controller = VisualSmokeShellController.Create(
+                DesktopVisualSmokeScenario.DehydrationProgress,
+                TimeSpan.FromMilliseconds(1));
+            var runProgress = new List<DesktopRunProgressSnapshot>();
+            var transferProgress = new List<DesktopTransferProgressSnapshot>();
+            var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            controller.RunProgressChanged += (_, progress) =>
+            {
+                lock (runProgress)
+                {
+                    runProgress.Add(progress);
+                }
+
+                if (progress.IsCompleted)
+                {
+                    completion.TrySetResult(true);
+                }
+            };
+            controller.TransferProgressChanged += (_, progress) => transferProgress.Add(progress);
+
+            DesktopShellSnapshot snapshot = await controller.LoadAsync();
+            await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            DesktopRunProgressSnapshot[] runSnapshots;
+            lock (runProgress)
+            {
+                runSnapshots = [.. runProgress];
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(snapshot.SyncPairs[0].Status, Is.EqualTo("Syncing"));
+                Assert.That(runSnapshots, Has.Length.EqualTo(101));
+                Assert.That(
+                    runSnapshots.Select(static progress => progress.Stage),
+                    Is.All.EqualTo(SyncRunProgressStage.DehydratingCloudFiles));
+                Assert.That(runSnapshots.Select(static progress => progress.FilesTotal), Is.All.EqualTo(1000));
+                Assert.That(
+                    runSnapshots.Select(static progress => progress.FilesCompleted),
+                    Is.Ordered.Ascending);
+                Assert.That(runSnapshots[^1].IsCompleted, Is.True);
+                Assert.That(runSnapshots[^1].FilesCompleted, Is.EqualTo(1000));
+                Assert.That(
+                    runSnapshots.Where(static progress => !string.IsNullOrWhiteSpace(progress.CurrentPath))
+                        .Select(static progress => progress.CurrentPath)
+                        .Distinct()
+                        .ToArray(),
+                    Has.Length.EqualTo(50));
+                Assert.That(transferProgress, Is.Empty);
+            });
+        }
+
+        [Test]
         public async Task LoadAsync_ReturnsSyncingPairForHighPressureStartingScenario()
         {
             using VisualSmokeShellController controller =
