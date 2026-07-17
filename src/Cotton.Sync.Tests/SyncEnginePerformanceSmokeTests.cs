@@ -323,6 +323,9 @@ namespace Cotton.Sync.Tests
                         if (index == 50_000)
                         {
                             entry.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
+                            entry.LocalContentHash = entry.RemoteContentHash;
+                            entry.LocalSizeBytes = entry.RemoteSizeBytes;
+                            entry.LocalLastWriteUtc = entry.SyncedAtUtc;
                         }
 
                         return entry;
@@ -1287,7 +1290,8 @@ namespace Cotton.Sync.Tests
                         SizeBytes = entry.RemoteSizeBytes ?? 0,
                         LastWriteUtc = entry.SyncedAtUtc,
                         IsCloudFilesPlaceholder = true,
-                        IsCloudFilesOnlineOnlyPlaceholder = true,
+                        IsCloudFilesOnlineOnlyPlaceholder =
+                            entry.PlaceholderHydrationState != SyncPlaceholderHydrationState.Hydrated,
                     },
                     StringComparer.OrdinalIgnoreCase);
             }

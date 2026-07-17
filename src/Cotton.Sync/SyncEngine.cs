@@ -1116,7 +1116,7 @@ namespace Cotton.Sync
                 if (!localStateLookups.FilesByPath.TryGetValue(fileKey, out LocalFileSnapshot? local)
                     || !IsResumeCompatibleVirtualFilesPlaceholder(local, baseline))
                 {
-                    return DisableStreaming("tracked file placeholder is missing or no longer online-only locally");
+                    return DisableStreaming("tracked file placeholder is missing or incompatible with its persisted availability state");
                 }
             }
 
@@ -1333,9 +1333,24 @@ namespace Cotton.Sync
             LocalFileSnapshot local,
             InitialVirtualFilesPlaceholderBaseline baseline)
         {
-            return local.IsCloudFilesOnlineOnlyPlaceholder
-                && IsVirtualFilesResumeCandidateState(baseline)
-                && baseline.RemoteFileId.HasValue;
+            if (!local.IsCloudFilesPlaceholder
+                || !IsVirtualFilesResumeCandidateState(baseline)
+                || !baseline.RemoteFileId.HasValue)
+            {
+                return false;
+            }
+
+            if (baseline.PlaceholderHydrationState != SyncPlaceholderHydrationState.Hydrated)
+            {
+                return local.IsCloudFilesOnlineOnlyPlaceholder;
+            }
+
+            return !local.IsCloudFilesOnlineOnlyPlaceholder
+                && !string.IsNullOrWhiteSpace(baseline.LocalContentHash)
+                && baseline.LocalSizeBytes.HasValue
+                && baseline.LocalSizeBytes.Value == local.SizeBytes
+                && baseline.LocalLastWriteUtc.HasValue
+                && baseline.LocalLastWriteUtc.Value.ToUniversalTime() == local.LastWriteUtc.ToUniversalTime();
         }
 
         private async Task ProduceInitialWindowsVirtualFilesPopulationAsync(
@@ -4836,6 +4851,9 @@ namespace Cotton.Sync
             Guid? RemoteFileId,
             string? RemoteContentHash,
             string? RemoteETag,
+            string? LocalContentHash,
+            long? LocalSizeBytes,
+            DateTime? LocalLastWriteUtc,
             SyncPlaceholderHydrationState PlaceholderHydrationState,
             bool HasPlaceholderIdentity)
         {
@@ -4846,6 +4864,9 @@ namespace Cotton.Sync
                     state.RemoteFileId,
                     state.RemoteContentHash,
                     state.RemoteETag,
+                    state.LocalContentHash,
+                    state.LocalSizeBytes,
+                    state.LocalLastWriteUtc,
                     state.PlaceholderHydrationState,
                     state.PlaceholderIdentity is { Length: > 0 });
             }
@@ -4858,6 +4879,9 @@ namespace Cotton.Sync
                     entry.RemoteFileId,
                     entry.RemoteContentHash,
                     entry.RemoteETag,
+                    LocalContentHash: null,
+                    LocalSizeBytes: null,
+                    LocalLastWriteUtc: null,
                     entry.PlaceholderHydrationState,
                     entry.HasPlaceholderIdentity);
             }

@@ -388,7 +388,9 @@ namespace Cotton.Sync.Local
                 }
 
                 DirectoryInfo directoryInfo = new(path);
-                if ((ReadDirectoryAttributes(fullRoot, directoryInfo, relativePath) & FileAttributes.ReparsePoint) != 0)
+                FileAttributes attributes = ReadDirectoryAttributes(fullRoot, directoryInfo, relativePath);
+                bool isCloudFilesPlaceholder = IsCloudFilesPlaceholder(directoryInfo, attributes);
+                if (!ShouldIncludeScopedDirectory(attributes, isCloudFilesPlaceholder))
                 {
                     continue;
                 }
