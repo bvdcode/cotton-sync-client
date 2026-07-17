@@ -52,5 +52,10 @@ namespace Cotton.Sync
         /// Windows Cloud Files are being downloaded for local availability.
         /// </summary>
         HydratingCloudFiles = 8,
+
+        /// <summary>
+        /// Windows Cloud Files are being dehydrated to free local disk space.
+        /// </summary>
+        DehydratingCloudFiles = 9,
     }
 }

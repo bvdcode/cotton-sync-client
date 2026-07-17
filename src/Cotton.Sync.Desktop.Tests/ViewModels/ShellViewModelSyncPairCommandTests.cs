@@ -2950,6 +2950,40 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task RunProgressChanged_ShowsFreeingUpSpaceProgress()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            FakeDesktopShellController controller = new(CreateSignedInSnapshot(
+                CreatePair(syncPairId, "Music", "Syncing", mode: SyncPairMode.WindowsVirtualFiles)));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            DateTime startedAtUtc = new(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc);
+
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.DehydratingCloudFiles,
+                FilesCompleted: 100,
+                FilesTotal: 1000,
+                CurrentPath: "Albums/Track 101.flac",
+                StartedAtUtc: startedAtUtc,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc.AddSeconds(10),
+                Causes: SyncRunCause.LocalChange,
+                RequestedPathCount: 1));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.CurrentWorkProgressTitle, Is.EqualTo("Music"));
+                Assert.That(
+                    viewModel.CurrentWorkProgressDetails,
+                    Is.EqualTo("Local change · 1 changed path · Freeing up space · 100 of 1000 files"));
+                Assert.That(viewModel.CurrentWorkProgressValue, Is.EqualTo(10).Within(0.01));
+                Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.False);
+                Assert.That(viewModel.SyncPairs.Single().CurrentOperation, Is.EqualTo("Freeing up space 100 of 1000"));
+            });
+        }
+
+        [Test]
         public async Task TransferProgressChanged_KeepsGlobalRunByteProgressPrimaryForOneFolder()
         {
             Guid syncPairId = Guid.NewGuid();

@@ -80,85 +80,181 @@ namespace Cotton.Sync.Desktop.Platform
                 }
             }
 
+            HashSet<string> manualDehydrationPathKeys = await FindManualDehydrationPathKeysAsync(
+                    syncPair,
+                    request.LocalChangedPaths,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            int completedManualDehydrations = 0;
+            int totalManualDehydrations = manualDehydrationPathKeys.Count;
+            bool manualDehydrationProgressStarted = false;
+            DateTime manualDehydrationStartedAtUtc = DateTime.UtcNow;
             List<string> remainingPaths = [];
             var handledAvailabilityPathKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             bool handledRootAvailability = false;
             bool requiresFullPass = false;
-            foreach (string relativePath in request.LocalChangedPaths
-                         .OrderBy(static path => GetAvailabilityPathDepth(path))
-                         .ThenBy(static path => path, StringComparer.OrdinalIgnoreCase))
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (handledRootAvailability)
+                foreach (string relativePath in request.LocalChangedPaths
+                             .OrderBy(static path => GetAvailabilityPathDepth(path))
+                             .ThenBy(static path => path, StringComparer.OrdinalIgnoreCase))
                 {
-                    continue;
-                }
-
-                if (IsRootRelativePath(relativePath))
-                {
-                    if (RequiresStartupAvailabilityRecovery(request.Causes))
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (handledRootAvailability)
                     {
-                        if (!_availabilityRecoveryCompleted.ContainsKey(syncPair.Id))
+                        continue;
+                    }
+
+                    if (IsRootRelativePath(relativePath))
+                    {
+                        if (RequiresStartupAvailabilityRecovery(request.Causes))
                         {
-                            await RecoverPersistedAvailabilityAsync(syncPair, cancellationToken).ConfigureAwait(false);
-                            _availabilityRecoveryCompleted.TryAdd(syncPair.Id, 0);
+                            if (!_availabilityRecoveryCompleted.ContainsKey(syncPair.Id))
+                            {
+                                await RecoverPersistedAvailabilityAsync(syncPair, cancellationToken).ConfigureAwait(false);
+                                _availabilityRecoveryCompleted.TryAdd(syncPair.Id, 0);
+                            }
+
+                            handledRootAvailability = true;
+                        }
+                        else
+                        {
+                            handledRootAvailability = await TryHandleManualRootHydrationAsync(syncPair, request, cancellationToken)
+                                .ConfigureAwait(false);
                         }
 
-                        handledRootAvailability = true;
+                        if (!handledRootAvailability)
+                        {
+                            requiresFullPass = request.LocalChangedPaths.Count == 1;
+                        }
+
+                        continue;
                     }
-                    else
+
+                    if (IsHandledAvailabilityPath(relativePath, handledAvailabilityPathKeys))
                     {
-                        handledRootAvailability = await TryHandleManualRootHydrationAsync(syncPair, request, cancellationToken)
-                            .ConfigureAwait(false);
+                        continue;
                     }
 
-                    if (!handledRootAvailability)
-                    {
-                        requiresFullPass = request.LocalChangedPaths.Count == 1;
-                    }
-
-                    continue;
-                }
-
-                if (IsHandledAvailabilityPath(relativePath, handledAvailabilityPathKeys))
-                {
-                    continue;
-                }
-
-                bool hydratedDirectory = await TryHandleManualDirectoryHydrationAsync(
-                        syncPair,
-                        request,
-                        relativePath,
-                        handledAvailabilityPathKeys,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                if (hydratedDirectory)
-                {
-                    continue;
-                }
-
-                if (await TryHandleManualDirectoryUnpinAsync(
+                    bool hydratedDirectory = await TryHandleManualDirectoryHydrationAsync(
                             syncPair,
+                            request,
                             relativePath,
                             handledAvailabilityPathKeys,
                             cancellationToken)
-                        .ConfigureAwait(false))
-                {
-                    continue;
-                }
+                        .ConfigureAwait(false);
+                    if (hydratedDirectory)
+                    {
+                        continue;
+                    }
 
-                if (await TryHandleManualDirectoryDehydrationAsync(syncPair, relativePath, cancellationToken)
-                        .ConfigureAwait(false))
-                {
-                    continue;
-                }
+                    if (await TryHandleManualDirectoryUnpinAsync(
+                                syncPair,
+                                relativePath,
+                                handledAvailabilityPathKeys,
+                                cancellationToken)
+                            .ConfigureAwait(false))
+                    {
+                        continue;
+                    }
 
-                if (!await TryHandleManualHydrationAsync(syncPair, relativePath, request, cancellationToken)
-                        .ConfigureAwait(false)
-                    && !await TryHandleManualDehydrationAsync(syncPair, relativePath, cancellationToken)
-                        .ConfigureAwait(false))
+                    if (await TryHandleManualDirectoryDehydrationAsync(syncPair, relativePath, cancellationToken)
+                            .ConfigureAwait(false))
+                    {
+                        continue;
+                    }
+
+                    string? normalizedManualDehydrationPath = TryNormalizePath(relativePath, out string normalizedPath)
+                        && manualDehydrationPathKeys.Contains(SyncPath.ToKey(normalizedPath))
+                            ? normalizedPath
+                            : null;
+                    bool hydratedFile = await TryHandleManualHydrationAsync(
+                            syncPair,
+                            relativePath,
+                            request,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    bool currentDehydrationStarted = false;
+                    Action<string>? onDehydrationStarting = normalizedManualDehydrationPath is null
+                        ? null
+                        : currentPath =>
+                        {
+                            currentDehydrationStarted = true;
+                            if (!manualDehydrationProgressStarted)
+                            {
+                                manualDehydrationProgressStarted = true;
+                                PublishDehydrationProgress(
+                                    syncPair.Id,
+                                    request,
+                                    manualDehydrationStartedAtUtc,
+                                    completedManualDehydrations,
+                                    totalManualDehydrations,
+                                    currentPath: string.Empty,
+                                    isCompleted: false);
+                            }
+
+                            PublishDehydrationProgress(
+                                syncPair.Id,
+                                request,
+                                manualDehydrationStartedAtUtc,
+                                completedManualDehydrations,
+                                totalManualDehydrations,
+                                currentPath,
+                                isCompleted: false);
+                        };
+                    bool dehydratedFile = !hydratedFile
+                        && await TryHandleManualDehydrationAsync(
+                                syncPair,
+                                relativePath,
+                                onDehydrationStarting,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                    if (dehydratedFile && currentDehydrationStarted)
+                    {
+                        completedManualDehydrations++;
+                        PublishDehydrationProgress(
+                            syncPair.Id,
+                            request,
+                            manualDehydrationStartedAtUtc,
+                            completedManualDehydrations,
+                            totalManualDehydrations,
+                            normalizedManualDehydrationPath!,
+                            isCompleted: false);
+                    }
+                    else if (normalizedManualDehydrationPath is not null && !currentDehydrationStarted)
+                    {
+                        totalManualDehydrations--;
+                        if (manualDehydrationProgressStarted)
+                        {
+                            PublishDehydrationProgress(
+                                syncPair.Id,
+                                request,
+                                manualDehydrationStartedAtUtc,
+                                completedManualDehydrations,
+                                totalManualDehydrations,
+                                currentPath: string.Empty,
+                                isCompleted: false);
+                        }
+                    }
+
+                    if (!hydratedFile && !dehydratedFile)
+                    {
+                        remainingPaths.Add(relativePath);
+                    }
+                }
+            }
+            finally
+            {
+                if (manualDehydrationProgressStarted)
                 {
-                    remainingPaths.Add(relativePath);
+                    PublishDehydrationProgress(
+                        syncPair.Id,
+                        request,
+                        manualDehydrationStartedAtUtc,
+                        completedManualDehydrations,
+                        totalManualDehydrations,
+                        currentPath: string.Empty,
+                        isCompleted: true);
                 }
             }
 
@@ -202,6 +298,72 @@ namespace Cotton.Sync.Desktop.Platform
             return deletedPaths
                 .Where(remainingPathSet.Contains)
                 .ToArray();
+        }
+
+        private async Task<HashSet<string>> FindManualDehydrationPathKeysAsync(
+            SyncPairSettings syncPair,
+            IReadOnlyList<string> relativePaths,
+            CancellationToken cancellationToken)
+        {
+            var snapshots = new List<(string PathKey, bool IsDirectory, FileAttributes Attributes)>();
+            foreach (string relativePath in relativePaths)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (IsRootRelativePath(relativePath)
+                    || !TryNormalizePath(relativePath, out string normalizedPath))
+                {
+                    continue;
+                }
+
+                SyncStateEntry? state = await _stateStore
+                    .GetAsync(syncPair.Id.ToString("D"), normalizedPath, cancellationToken)
+                    .ConfigureAwait(false);
+                bool isDirectory = IsTrackedVirtualDirectory(state);
+                if (!isDirectory && !IsTrackedVirtualFile(state))
+                {
+                    continue;
+                }
+
+                string fullPath;
+                try
+                {
+                    fullPath = ResolveFullPath(syncPair.LocalRootPath, normalizedPath);
+                }
+                catch (ArgumentException)
+                {
+                    continue;
+                }
+                catch (NotSupportedException)
+                {
+                    continue;
+                }
+
+                WindowsVirtualFileDiskState? diskState = TryReadDiskState(fullPath);
+                if (diskState is not null)
+                {
+                    snapshots.Add((SyncPath.ToKey(normalizedPath), isDirectory, diskState.Attributes));
+                }
+            }
+
+            string[] neutralDirectoryKeys = snapshots
+                .Where(static snapshot => snapshot.IsDirectory
+                    && IsManualPinRemovalDirectoryCandidate(snapshot.Attributes))
+                .Select(static snapshot => snapshot.PathKey)
+                .ToArray();
+            return snapshots
+                .Where(static snapshot => !snapshot.IsDirectory
+                    && (IsManualFreeUpSpaceCandidate(snapshot.Attributes)
+                        || IsCompletedManualFreeUpSpaceCandidate(snapshot.Attributes)))
+                .Where(snapshot => neutralDirectoryKeys.All(directoryKey =>
+                    !IsSameOrDescendantPathKey(snapshot.PathKey, directoryKey)))
+                .Select(static snapshot => snapshot.PathKey)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static bool IsSameOrDescendantPathKey(string pathKey, string directoryKey)
+        {
+            return string.Equals(pathKey, directoryKey, StringComparison.OrdinalIgnoreCase)
+                || pathKey.StartsWith(directoryKey.TrimEnd('/') + "/", StringComparison.OrdinalIgnoreCase);
         }
 
         private async Task RecoverPersistedAvailabilityAsync(
@@ -857,6 +1019,29 @@ namespace Cotton.Sync.Desktop.Platform
                 requestedPathCount: request.IsFull ? 0 : request.LocalChangedPaths.Count));
         }
 
+        private void PublishDehydrationProgress(
+            Guid syncPairId,
+            SyncRunRequest request,
+            DateTime startedAtUtc,
+            int completedFiles,
+            int totalFiles,
+            string currentPath,
+            bool isCompleted)
+        {
+            _runProgressPublisher?.Publish(new AppRunProgress(
+                syncPairId,
+                SyncRunProgressStage.DehydratingCloudFiles,
+                completedFiles,
+                totalFiles,
+                currentPath,
+                startedAtUtc,
+                isCompleted,
+                DateTime.UtcNow,
+                causes: request.Causes,
+                isFull: request.IsFull,
+                requestedPathCount: request.IsFull ? 0 : request.LocalChangedPaths.Count));
+        }
+
         private async Task HydrateTrackedPlaceholderAsync(
             SyncPairSettings syncPair,
             string normalizedPath,
@@ -925,6 +1110,7 @@ namespace Cotton.Sync.Desktop.Platform
         private async Task<bool> TryHandleManualDehydrationAsync(
             SyncPairSettings syncPair,
             string relativePath,
+            Action<string>? dehydrationStarting,
             CancellationToken cancellationToken)
         {
             string normalizedPath;
@@ -980,6 +1166,7 @@ namespace Cotton.Sync.Desktop.Platform
 
             if (IsCompletedManualFreeUpSpaceCandidate(diskState.Attributes))
             {
+                dehydrationStarting?.Invoke(normalizedPath);
                 await MarkDehydratedAsync(state!, cancellationToken).ConfigureAwait(false);
                 _diagnostics.Record(
                     "manual-free-up-space",
@@ -1047,6 +1234,7 @@ namespace Cotton.Sync.Desktop.Platform
                 return false;
             }
 
+            dehydrationStarting?.Invoke(normalizedPath);
             _localChangeSuppression?.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, normalizedPath);
             _cloudFiles.DehydratePlaceholder(syncPair, normalizedPath);
             await MarkDehydratedAsync(state!, cancellationToken).ConfigureAwait(false);

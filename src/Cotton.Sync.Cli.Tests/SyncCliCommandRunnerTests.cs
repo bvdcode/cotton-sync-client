@@ -1131,15 +1131,23 @@ namespace Cotton.Sync.Cli.Tests
                 filesTotal: 1_000,
                 currentPath: "remote-only.txt",
                 startedAtUtc: now.AddSeconds(-30)));
+            writer.Report(new SyncRunProgress(
+                SyncRunProgressStage.DehydratingCloudFiles,
+                filesCompleted: 300,
+                filesTotal: 1_000,
+                currentPath: "Music/track-00300.flac",
+                startedAtUtc: now.AddSeconds(-30)));
 
             string text = output.ToString();
             Assert.Multiple(() =>
             {
                 Assert.That(text, Does.Contain("Progress: reconciling files 125/10000 files"));
                 Assert.That(text, Does.Contain("Progress: making cloud files available 50/1000 cloud items"));
+                Assert.That(text, Does.Contain("Progress: freeing up space 300/1000 files"));
                 Assert.That(text, Does.Contain("2.500 KiB/195.312 KiB"));
                 Assert.That(text, Does.Contain("current: phase511-10k-small-upload/file-00125.txt"));
                 Assert.That(text, Does.Contain("current: remote-only.txt"));
+                Assert.That(text, Does.Contain("current: Music/track-00300.flac"));
                 Assert.That(text, Does.Contain("elapsed: 00:00:30"));
                 Assert.That(text, Does.Not.Contain("scanning local"));
             });

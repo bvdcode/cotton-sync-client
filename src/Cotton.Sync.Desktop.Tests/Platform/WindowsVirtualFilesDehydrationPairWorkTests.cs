@@ -355,6 +355,56 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_DehydratesTrackedFilesPublishesAggregateProgress()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            FakeSyncStateStore stateStore = new();
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Music/track-one.mp3"));
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Music/track-two.mp3"));
+            RecordingRunProgressPublisher progressPublisher = new();
+            WindowsVirtualFilesDehydrationPairWork work = new(
+                new RecordingSyncPairWork(),
+                stateStore,
+                new FakeCloudFilesAdapter(),
+                new FakeContentHasher("remote-hash"),
+                readDiskState: _ => CreateUnpinnedHydratedDiskState(),
+                runProgressPublisher: progressPublisher);
+            SyncRunRequest request = SyncRunRequest.ForLocalChangedPaths(
+                ["Music/track-one.mp3", "Music/track-two.mp3"],
+                SyncRunCause.LocalChange);
+
+            await work.RunOnceAsync(syncPair, request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    progressPublisher.Progress.Select(static progress => new
+                    {
+                        progress.Stage,
+                        progress.FilesCompleted,
+                        progress.FilesTotal,
+                        progress.CurrentPath,
+                        progress.IsCompleted,
+                    }),
+                    Is.EqualTo(new[]
+                    {
+                        new { Stage = SyncRunProgressStage.DehydratingCloudFiles, FilesCompleted = 0, FilesTotal = (int?)2, CurrentPath = string.Empty, IsCompleted = false },
+                        new { Stage = SyncRunProgressStage.DehydratingCloudFiles, FilesCompleted = 0, FilesTotal = (int?)2, CurrentPath = "Music/track-one.mp3", IsCompleted = false },
+                        new { Stage = SyncRunProgressStage.DehydratingCloudFiles, FilesCompleted = 1, FilesTotal = (int?)2, CurrentPath = "Music/track-one.mp3", IsCompleted = false },
+                        new { Stage = SyncRunProgressStage.DehydratingCloudFiles, FilesCompleted = 1, FilesTotal = (int?)2, CurrentPath = "Music/track-two.mp3", IsCompleted = false },
+                        new { Stage = SyncRunProgressStage.DehydratingCloudFiles, FilesCompleted = 2, FilesTotal = (int?)2, CurrentPath = "Music/track-two.mp3", IsCompleted = false },
+                        new { Stage = SyncRunProgressStage.DehydratingCloudFiles, FilesCompleted = 2, FilesTotal = (int?)2, CurrentPath = string.Empty, IsCompleted = true },
+                    }));
+                Assert.That(
+                    progressPublisher.Progress.Select(static progress => progress.Causes),
+                    Is.All.EqualTo(SyncRunCause.LocalChange));
+                Assert.That(
+                    progressPublisher.Progress.Select(static progress => progress.RequestedPathCount),
+                    Is.All.EqualTo(2));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_HydratesPinnedRootSubtreeAndSuppressesChildEvents()
         {
             SyncPairSettings syncPair = CreateVirtualFilesPair();
@@ -643,13 +693,15 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             fileState.LocalLastWriteUtc = new DateTime(2026, 06, 16, 10, 05, 00, DateTimeKind.Utc);
             stateStore.UpsertEntry(fileState);
             RecordingSyncPairWork inner = new();
+            RecordingRunProgressPublisher progressPublisher = new();
             WindowsVirtualFilesDehydrationPairWork work = new(
                 inner,
                 stateStore,
                 new FakeCloudFilesAdapter(),
                 readDiskState: path => path.EndsWith(Path.DirectorySeparatorChar + "Music", StringComparison.OrdinalIgnoreCase)
                     ? CreateNeutralDirectoryDiskState()
-                    : CreateNeutralHydratedDiskState());
+                    : CreateNeutralHydratedDiskState(),
+                runProgressPublisher: progressPublisher);
 
             await work.RunOnceAsync(
                 syncPair,
@@ -659,6 +711,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 Assert.That(inner.Requests, Is.Empty);
                 Assert.That(fileState.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+                Assert.That(progressPublisher.Progress, Is.Empty);
             });
         }
 
@@ -705,12 +758,14 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Docs/report.txt"));
             var cloudFiles = new FakeCloudFilesAdapter();
             var inner = new RecordingSyncPairWork();
+            RecordingRunProgressPublisher progressPublisher = new();
             var work = new WindowsVirtualFilesDehydrationPairWork(
                 inner,
                 stateStore,
                 cloudFiles,
                 new FakeContentHasher("edited-hash"),
-                readDiskState: _ => CreateUnpinnedHydratedDiskState());
+                readDiskState: _ => CreateUnpinnedHydratedDiskState(),
+                runProgressPublisher: progressPublisher);
 
             await work.RunOnceAsync(syncPair, SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]));
 
@@ -720,6 +775,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(inner.Requests, Has.Count.EqualTo(1));
                 Assert.That(inner.Requests[0].IsFull, Is.False);
                 Assert.That(inner.Requests[0].LocalChangedPaths, Is.EqualTo(new[] { "Docs/report.txt" }));
+                Assert.That(progressPublisher.Progress, Is.Empty);
             });
         }
 
