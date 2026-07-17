@@ -2029,6 +2029,9 @@ namespace Cotton.Sync.Desktop.ViewModels
                 case DesktopVisualSmokeScenario.ManySmallDownload:
                     ApplyVisualSmokeManySmallDownloadScenario();
                     break;
+                case DesktopVisualSmokeScenario.HydrationProgress:
+                    ApplyVisualSmokeHydrationProgressScenario();
+                    break;
                 case DesktopVisualSmokeScenario.HighPressureStarting:
                     ApplyVisualSmokeHighPressureStartingScenario();
                     break;
@@ -2261,6 +2264,43 @@ namespace Cotton.Sync.Desktop.ViewModels
                 startedAtUtc.AddSeconds(24),
                 SpeedBytesPerSecond: fileSize * 2,
                 EstimatedTimeRemaining: TimeSpan.FromSeconds(1)));
+            AddActivity("Download", relativePath, "Downloading " + Path.GetFileName(relativePath));
+        }
+
+        private void ApplyVisualSmokeHydrationProgressScenario()
+        {
+            SyncPairRowViewModel? syncPair = SyncPairs.FirstOrDefault();
+            if (syncPair is null)
+            {
+                return;
+            }
+
+            DateTime startedAtUtc = DateTime.UtcNow;
+            const string relativePath = "Music/Albums/Album 001/track-0040.flac";
+            const int totalFiles = 2000;
+            const long totalBytes = 8_388_608_000;
+            const long currentFileBytes = 3_145_728;
+            GlobalStatus = "Syncing";
+            syncPair.Status = "Syncing";
+            ApplyRunProgress(new DesktopRunProgressSnapshot(
+                syncPair.Id,
+                SyncRunProgressStage.ReconcilingFiles,
+                FilesCompleted: 0,
+                totalFiles,
+                relativePath,
+                startedAtUtc,
+                IsCompleted: false,
+                startedAtUtc,
+                BytesCompleted: 0,
+                totalBytes));
+            ApplyTransferProgress(new DesktopTransferProgressSnapshot(
+                syncPair.Id,
+                SyncTransferDirection.Download,
+                relativePath,
+                TransferredBytes: 0,
+                currentFileBytes,
+                IsCompleted: false,
+                startedAtUtc));
             AddActivity("Download", relativePath, "Downloading " + Path.GetFileName(relativePath));
         }
 

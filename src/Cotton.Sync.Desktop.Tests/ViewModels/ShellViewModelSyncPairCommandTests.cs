@@ -1454,6 +1454,30 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task ApplyVisualSmokeScenarioAsync_ShowsHydrationProgressStartingState()
+        {
+            var controller = new FakeDesktopShellController(
+                CreateSignedInSnapshot(
+                    CreatePair(Guid.NewGuid(), "Documents", "Syncing"),
+                    CreatePair(Guid.NewGuid(), "Camera uploads", "Idle")));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            await viewModel.ApplyVisualSmokeScenarioAsync(DesktopVisualSmokeScenario.HydrationProgress);
+
+            Assert.Multiple(() =>
+            {
+                SyncPairRowViewModel row = viewModel.SyncPairs.First();
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Syncing"));
+                Assert.That(viewModel.HasCurrentWorkProgress, Is.True);
+                Assert.That(viewModel.CurrentWorkProgressTitle, Is.EqualTo("Documents"));
+                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Checking files · 1 of 2000 files"));
+                Assert.That(row.CurrentOperation, Is.EqualTo("Downloading track-0040.flac"));
+                Assert.That(row.HasCurrentProgress, Is.True);
+            });
+        }
+
+        [Test]
         public async Task StatusChanged_UsesHumanRemoteMassDeleteGuardActionRequiredMessage()
         {
             Guid syncPairId = Guid.NewGuid();

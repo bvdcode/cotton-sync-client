@@ -15,18 +15,28 @@ namespace Cotton.Sync.Desktop.Shell
     {
         private static readonly Guid DocumentsPairId = Guid.Parse("8e40c25d-7a6d-4a8c-92cf-f7b5422a7e78");
         private static readonly Guid PhotosPairId = Guid.Parse("aa0c3835-2e86-4667-8bf9-81ce3bcd2bb8");
+        private static readonly TimeSpan DefaultHydrationAnimationInterval = TimeSpan.FromMilliseconds(100);
+        private readonly CancellationTokenSource _lifetimeCancellation = new();
+        private readonly TimeSpan _hydrationAnimationInterval;
         private readonly DesktopVisualSmokeScenario _scenario;
+        private Task? _hydrationAnimationTask;
+        private int _hydrationAnimationStarted;
+        private int _isDisposed;
 
-        private VisualSmokeShellController(DesktopVisualSmokeScenario scenario)
+        private VisualSmokeShellController(
+            DesktopVisualSmokeScenario scenario,
+            TimeSpan hydrationAnimationInterval)
         {
+            if (hydrationAnimationInterval <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(hydrationAnimationInterval));
+            }
+
             _scenario = scenario;
+            _hydrationAnimationInterval = hydrationAnimationInterval;
         }
 
-        public event EventHandler<DesktopSyncStatusSnapshot>? StatusChanged
-        {
-            add { }
-            remove { }
-        }
+        public event EventHandler<DesktopSyncStatusSnapshot>? StatusChanged;
 
         public event EventHandler<DesktopActivitySnapshot>? ActivityReported
         {
@@ -40,21 +50,20 @@ namespace Cotton.Sync.Desktop.Shell
             remove { }
         }
 
-        public event EventHandler<DesktopTransferProgressSnapshot>? TransferProgressChanged
-        {
-            add { }
-            remove { }
-        }
+        public event EventHandler<DesktopTransferProgressSnapshot>? TransferProgressChanged;
 
-        public event EventHandler<DesktopRunProgressSnapshot>? RunProgressChanged
-        {
-            add { }
-            remove { }
-        }
+        public event EventHandler<DesktopRunProgressSnapshot>? RunProgressChanged;
 
         public static VisualSmokeShellController Create(DesktopVisualSmokeScenario scenario)
         {
-            return new VisualSmokeShellController(scenario);
+            return Create(scenario, DefaultHydrationAnimationInterval);
+        }
+
+        internal static VisualSmokeShellController Create(
+            DesktopVisualSmokeScenario scenario,
+            TimeSpan hydrationAnimationInterval)
+        {
+            return new VisualSmokeShellController(scenario, hydrationAnimationInterval);
         }
 
         public Task<DesktopShellSnapshot> LoadAsync(CancellationToken cancellationToken = default)
@@ -80,6 +89,7 @@ namespace Cotton.Sync.Desktop.Shell
                 DesktopPlatformCapabilities.CreateSnapshot(),
                 isSignedIn,
                 pairs);
+            StartHydrationProgressAnimation();
             return Task.FromResult(snapshot);
         }
 
@@ -371,11 +381,162 @@ namespace Cotton.Sync.Desktop.Shell
 
         public void Dispose()
         {
+            if (Interlocked.Exchange(ref _isDisposed, 1) != 0)
+            {
+                return;
+            }
+
+            _lifetimeCancellation.Cancel();
+            _lifetimeCancellation.Dispose();
         }
 
-        public ValueTask DisposeAsync()
+        public async ValueTask DisposeAsync()
         {
-            return ValueTask.CompletedTask;
+            if (Interlocked.Exchange(ref _isDisposed, 1) != 0)
+            {
+                return;
+            }
+
+            _lifetimeCancellation.Cancel();
+            try
+            {
+                if (_hydrationAnimationTask is not null)
+                {
+                    await _hydrationAnimationTask.ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                _lifetimeCancellation.Dispose();
+            }
+        }
+
+        private void StartHydrationProgressAnimation()
+        {
+            if (_scenario != DesktopVisualSmokeScenario.HydrationProgress
+                || Interlocked.Exchange(ref _hydrationAnimationStarted, 1) != 0)
+            {
+                return;
+            }
+
+            _hydrationAnimationTask = AnimateHydrationProgressAsync(_lifetimeCancellation.Token);
+        }
+
+        private async Task AnimateHydrationProgressAsync(CancellationToken cancellationToken)
+        {
+            const int displayedFiles = 50;
+            const int totalFiles = 2000;
+            const long totalBytes = 8_388_608_000;
+            DateTime animationCompletedAtUtc = DateTime.UtcNow;
+            DateTime startedAtUtc = animationCompletedAtUtc.AddSeconds(-(displayedFiles * 20));
+
+            try
+            {
+                await DelayAnimationIntervalsAsync(30, cancellationToken).ConfigureAwait(false);
+                for (int index = 0; index < displayedFiles; index++)
+                {
+                    int completedBefore = index * totalFiles / displayedFiles;
+                    int completedAfter = (index + 1) * totalFiles / displayedFiles;
+                    long completedBytesBefore = completedBefore * totalBytes / totalFiles;
+                    long completedBytesAfter = completedAfter * totalBytes / totalFiles;
+                    long currentFileBytes = 3_145_728 + ((index % 5) * 786_432);
+                    string relativePath = "Music/Albums/Album "
+                        + (index + 1).ToString("000", System.Globalization.CultureInfo.InvariantCulture)
+                        + "/track-"
+                        + completedAfter.ToString("0000", System.Globalization.CultureInfo.InvariantCulture)
+                        + ".flac";
+                    DateTime occurredAtUtc = startedAtUtc.AddSeconds(index * 20);
+
+                    RunProgressChanged?.Invoke(this, new DesktopRunProgressSnapshot(
+                        DocumentsPairId,
+                        SyncRunProgressStage.ReconcilingFiles,
+                        completedBefore,
+                        totalFiles,
+                        relativePath,
+                        startedAtUtc,
+                        IsCompleted: false,
+                        occurredAtUtc,
+                        completedBytesBefore,
+                        totalBytes));
+                    TransferProgressChanged?.Invoke(this, new DesktopTransferProgressSnapshot(
+                        DocumentsPairId,
+                        SyncTransferDirection.Download,
+                        relativePath,
+                        TransferredBytes: 0,
+                        currentFileBytes,
+                        IsCompleted: false,
+                        occurredAtUtc,
+                        SpeedBytesPerSecond: 8_388_608,
+                        EstimatedTimeRemaining: TimeSpan.FromSeconds(1)));
+
+                    await DelayAnimationIntervalsAsync(1, cancellationToken).ConfigureAwait(false);
+                    occurredAtUtc = occurredAtUtc.AddSeconds(6);
+                    TransferProgressChanged?.Invoke(this, new DesktopTransferProgressSnapshot(
+                        DocumentsPairId,
+                        SyncTransferDirection.Download,
+                        relativePath,
+                        currentFileBytes / 2,
+                        currentFileBytes,
+                        IsCompleted: false,
+                        occurredAtUtc,
+                        SpeedBytesPerSecond: 8_388_608,
+                        EstimatedTimeRemaining: TimeSpan.FromSeconds(1)));
+
+                    await DelayAnimationIntervalsAsync(1, cancellationToken).ConfigureAwait(false);
+                    occurredAtUtc = occurredAtUtc.AddSeconds(6);
+                    TransferProgressChanged?.Invoke(this, new DesktopTransferProgressSnapshot(
+                        DocumentsPairId,
+                        SyncTransferDirection.Download,
+                        relativePath,
+                        currentFileBytes,
+                        currentFileBytes,
+                        IsCompleted: true,
+                        occurredAtUtc,
+                        SpeedBytesPerSecond: 8_388_608,
+                        EstimatedTimeRemaining: TimeSpan.Zero));
+                    RunProgressChanged?.Invoke(this, new DesktopRunProgressSnapshot(
+                        DocumentsPairId,
+                        SyncRunProgressStage.ReconcilingFiles,
+                        completedAfter,
+                        totalFiles,
+                        relativePath,
+                        startedAtUtc,
+                        IsCompleted: false,
+                        occurredAtUtc,
+                        completedBytesAfter,
+                        totalBytes));
+
+                    await DelayAnimationIntervalsAsync(1, cancellationToken).ConfigureAwait(false);
+                }
+
+                DateTime completedAtUtc = animationCompletedAtUtc;
+                RunProgressChanged?.Invoke(this, new DesktopRunProgressSnapshot(
+                    DocumentsPairId,
+                    SyncRunProgressStage.ReconcilingFiles,
+                    totalFiles,
+                    totalFiles,
+                    string.Empty,
+                    startedAtUtc,
+                    IsCompleted: true,
+                    completedAtUtc,
+                    totalBytes,
+                    totalBytes));
+                await DelayAnimationIntervalsAsync(5, cancellationToken).ConfigureAwait(false);
+                StatusChanged?.Invoke(this, new DesktopSyncStatusSnapshot(
+                [
+                    new DesktopSyncPairStatusSnapshot(DocumentsPairId, "Idle", null, LastSyncedAtUtc: completedAtUtc),
+                    new DesktopSyncPairStatusSnapshot(PhotosPairId, "Idle", null, LastSyncedAtUtc: completedAtUtc),
+                ]));
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+        }
+
+        private Task DelayAnimationIntervalsAsync(int count, CancellationToken cancellationToken)
+        {
+            TimeSpan delay = TimeSpan.FromTicks(_hydrationAnimationInterval.Ticks * count);
+            return Task.Delay(delay, cancellationToken);
         }
 
         private static string CreateLocalPath(params string[] segments)
@@ -432,6 +593,7 @@ namespace Cotton.Sync.Desktop.Shell
                 DesktopVisualSmokeScenario.Error => "Error",
                 DesktopVisualSmokeScenario.Progress => "Syncing",
                 DesktopVisualSmokeScenario.ManySmallDownload => "Syncing",
+                DesktopVisualSmokeScenario.HydrationProgress => "Syncing",
                 DesktopVisualSmokeScenario.HighPressureStarting => "Syncing",
                 DesktopVisualSmokeScenario.VirtualFilesSeeding => "Syncing",
                 _ => "Idle",

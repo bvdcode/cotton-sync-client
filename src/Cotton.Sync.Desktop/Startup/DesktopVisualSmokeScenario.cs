@@ -15,6 +15,7 @@ namespace Cotton.Sync.Desktop.Startup
         Progress,
         LongProgress,
         ManySmallDownload,
+        HydrationProgress,
         HighPressureStarting,
         VirtualFilesSeeding,
         UpdateDownloadProgress,
