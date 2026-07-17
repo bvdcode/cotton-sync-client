@@ -58,11 +58,16 @@ namespace Cotton.Sync.Desktop.Platform
 
         void SetInSyncState(SyncPairSettings syncPair, string relativePath);
 
-        void FinalizeUploadedFilePlaceholder(SyncPairSettings syncPair, SyncStateEntry fileState)
+        RemoteFilePlaceholderResult FinalizeUploadedFilePlaceholder(
+            SyncPairSettings syncPair,
+            SyncStateEntry fileState)
         {
             ArgumentNullException.ThrowIfNull(syncPair);
             ArgumentNullException.ThrowIfNull(fileState);
             SetInSyncState(syncPair, fileState.RelativePath);
+            return new RemoteFilePlaceholderResult(
+                fileState.PlaceholderIdentity,
+                SyncPlaceholderHydrationState.Hydrated);
         }
 
         void SetSyncRootInSyncState(SyncPairSettings syncPair)

@@ -36,6 +36,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             await work.RunOnceAsync(syncPair, SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]));
 
+            SyncStateEntry? finalizedState = await stateStore
+                .GetAsync(syncPair.Id.ToString("D"), "Docs/Reports/report.txt");
+
             Assert.Multiple(() =>
             {
                 Assert.That(inner.Requests, Has.Count.EqualTo(1));
@@ -63,6 +66,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                         new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs/Reports"),
                         new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs"),
                     }));
+                Assert.That(finalizedState, Is.Not.Null);
+                Assert.That(finalizedState!.PlaceholderIdentity, Is.Not.Null.And.Not.Empty);
+                Assert.That(finalizedState.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
             });
         }
 
@@ -417,6 +423,16 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 {
                     throw Exception;
                 }
+            }
+
+            public RemoteFilePlaceholderResult FinalizeUploadedFilePlaceholder(
+                SyncPairSettings syncPair,
+                SyncStateEntry fileState)
+            {
+                SetInSyncState(syncPair, fileState.RelativePath);
+                return new RemoteFilePlaceholderResult(
+                    [1, 2, 3],
+                    SyncPlaceholderHydrationState.Hydrated);
             }
 
             public void SetSyncRootInSyncState(SyncPairSettings syncPair)

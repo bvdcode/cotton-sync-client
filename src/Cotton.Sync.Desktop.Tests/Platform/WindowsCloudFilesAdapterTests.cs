@@ -484,7 +484,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             SyncPairSettings syncPair = CreateSyncPair(root);
             SyncStateEntry state = CreateUploadedFileState(syncPair, "Projects/report.txt");
 
-            adapter.FinalizeUploadedFilePlaceholder(syncPair, state);
+            RemoteFilePlaceholderResult result = adapter.FinalizeUploadedFilePlaceholder(syncPair, state);
 
             var converted = nativeApi.ConvertedPlaceholders.Single();
             WindowsCloudFilesPlaceholderIdentity identity =
@@ -503,6 +503,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(identity.SizeBytes, Is.EqualTo(state.RemoteSizeBytes));
                 Assert.That(identity.ContentHash, Is.EqualTo(state.RemoteContentHash));
                 Assert.That(identity.ETag, Is.EqualTo(state.RemoteETag));
+                Assert.That(result.PlaceholderIdentity, Is.EqualTo(converted.FileIdentity));
+                Assert.That(result.HydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
             });
         }
 
@@ -520,12 +522,16 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 isReparsePoint: path => string.Equals(Path.GetFullPath(path), target, StringComparison.OrdinalIgnoreCase));
             SyncPairSettings syncPair = CreateSyncPair(root);
 
-            adapter.FinalizeUploadedFilePlaceholder(syncPair, CreateUploadedFileState(syncPair, "Projects/report.txt"));
+            RemoteFilePlaceholderResult result = adapter.FinalizeUploadedFilePlaceholder(
+                syncPair,
+                CreateUploadedFileState(syncPair, "Projects/report.txt"));
 
             Assert.Multiple(() =>
             {
                 Assert.That(nativeApi.ConvertedPlaceholders, Is.Empty);
                 Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { target }));
+                Assert.That(result.PlaceholderIdentity, Is.Not.Null.And.Not.Empty);
+                Assert.That(result.HydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
             });
         }
 

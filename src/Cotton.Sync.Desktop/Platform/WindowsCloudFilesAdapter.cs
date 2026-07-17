@@ -790,7 +790,9 @@ namespace Cotton.Sync.Desktop.Platform
                 "Windows Cloud Files placeholder was marked in sync.");
         }
 
-        public void FinalizeUploadedFilePlaceholder(SyncPairSettings syncPair, SyncStateEntry fileState)
+        public RemoteFilePlaceholderResult FinalizeUploadedFilePlaceholder(
+            SyncPairSettings syncPair,
+            SyncStateEntry fileState)
         {
             ArgumentNullException.ThrowIfNull(syncPair);
             ArgumentNullException.ThrowIfNull(fileState);
@@ -811,12 +813,6 @@ namespace Cotton.Sync.Desktop.Platform
                 throw new FileNotFoundException(
                     "Uploaded Cloud Files placeholder finalization requires the uploaded local file.",
                     fullPlaceholderPath);
-            }
-
-            if (_isReparsePoint(fullPlaceholderPath))
-            {
-                SetInSyncState(syncPair, normalizedPath);
-                return;
             }
 
             if (fileState.RemoteFileId is not Guid remoteFileId
@@ -854,6 +850,14 @@ namespace Cotton.Sync.Desktop.Platform
                         Name = Path.GetFileName(normalizedPath),
                     }),
                 normalizedPath);
+
+            if (_isReparsePoint(fullPlaceholderPath))
+            {
+                SetInSyncState(syncPair, normalizedPath);
+                return new RemoteFilePlaceholderResult(
+                    fileIdentity,
+                    SyncPlaceholderHydrationState.Hydrated);
+            }
 
             try
             {
@@ -893,6 +897,9 @@ namespace Cotton.Sync.Desktop.Platform
                 registration.LocalRootPath,
                 normalizedPath,
                 "Uploaded local file was converted to a Cloud Files placeholder and marked in sync.");
+            return new RemoteFilePlaceholderResult(
+                fileIdentity,
+                SyncPlaceholderHydrationState.Hydrated);
         }
 
         public void SetSyncRootInSyncState(SyncPairSettings syncPair)

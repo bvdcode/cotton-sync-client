@@ -138,7 +138,20 @@ namespace Cotton.Sync.Desktop.Platform
                     .ConfigureAwait(false);
                 if (state is { Kind: SyncEntryKind.File })
                 {
-                    _cloudFiles.FinalizeUploadedFilePlaceholder(syncPair, state);
+                    RemoteFilePlaceholderResult placeholder =
+                        _cloudFiles.FinalizeUploadedFilePlaceholder(syncPair, state);
+                    if (placeholder.PlaceholderIdentity is not { Length: > 0 })
+                    {
+                        throw new InvalidOperationException(
+                            "Uploaded Cloud Files finalization did not return placeholder identity for "
+                            + relativePath
+                            + ".");
+                    }
+
+                    state.PlaceholderIdentity = placeholder.PlaceholderIdentity;
+                    state.PlaceholderHydrationState = placeholder.HydrationState;
+                    state.SyncedAtUtc = DateTime.UtcNow;
+                    await _stateStore.UpsertAsync(state, cancellationToken).ConfigureAwait(false);
                     recordFinalizedPath();
                 }
                 else if (state is { Kind: SyncEntryKind.Directory })
