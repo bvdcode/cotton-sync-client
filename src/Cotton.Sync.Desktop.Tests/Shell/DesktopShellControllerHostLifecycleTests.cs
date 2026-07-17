@@ -429,6 +429,55 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public async Task ExportDiagnosticsAsync_DuringActionRequiredCapturesErrorWithoutPrivateDetails()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            Uri serverUrl = new("https://cotton.example.test/");
+            var syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            await syncPairStore.InitializeAsync();
+            SyncPairSettings syncPair = CreateSyncPair(isEnabled: true);
+            syncPair.LocalRootPath = Path.Combine(_tempDirectory, "Cloud");
+            Directory.CreateDirectory(syncPair.LocalRootPath);
+            await syncPairStore.UpsertAsync(syncPair);
+            FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
+            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            using DesktopShellController controller = CreateController(
+                paths,
+                factory,
+                syncPairStore: syncPairStore);
+            const string actionRequiredMessage =
+                "Remote delete blocked by mass-delete guard. 2207 pending deletes exceed limit 100.";
+
+            await controller.SignInWithBrowserAsync(serverUrl.AbsoluteUri);
+            host.StatusPublisher.Publish(new SyncAppStatus(
+                isAuthenticated: true,
+                [
+                    new SyncPairStatus(
+                        syncPair.Id,
+                        syncPair.DisplayName,
+                        SyncPairRunState.Error,
+                        "Action required: " + actionRequiredMessage,
+                        actionRequiredMessage,
+                        DateTime.UtcNow),
+                ],
+                DateTime.UtcNow));
+
+            string archivePath = await controller.ExportDiagnosticsAsync();
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string diagnosticsJson = ReadEntry(archive, "diagnostics.json");
+            using JsonDocument document = JsonDocument.Parse(diagnosticsJson);
+            JsonElement exportedPair = document.RootElement.GetProperty("syncPairs")[0];
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(File.Exists(archivePath), Is.True);
+                Assert.That(exportedPair.GetProperty("status").GetString(), Is.EqualTo("Error"));
+                Assert.That(exportedPair.GetProperty("lastError").GetString(), Is.EqualTo("[sync-pair-error]"));
+                Assert.That(diagnosticsJson, Does.Not.Contain(actionRequiredMessage));
+            });
+        }
+
+        [Test]
         public async Task RemoveSyncPairAsync_MarksZeroPairBackgroundInactiveAfterLastPairDeletion()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
