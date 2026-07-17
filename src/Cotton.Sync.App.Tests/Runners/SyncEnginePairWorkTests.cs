@@ -91,6 +91,25 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task RunOnceAsync_DisablesStreamingFastPathForRemoteChangeFullRequest()
+        {
+            FakeSyncEngine engine = new();
+            SyncEnginePairWork work = new(engine);
+            SyncPairSettings syncPair = CreateSyncPair(Guid.NewGuid());
+            SyncRunRequest request = SyncRunRequest.ForFull(
+                SyncRunCause.Manual | SyncRunCause.RealtimeRemoteChange);
+
+            await work.RunOnceAsync(syncPair, request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(engine.LastOptions, Is.Not.Null);
+                Assert.That(engine.LastOptions!.Scope.IsFull, Is.True);
+                Assert.That(engine.LastOptions.AllowInitialVirtualFilesStreaming, Is.False);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_PublishesCoreSyncActivities()
         {
             Guid syncPairId = Guid.NewGuid();

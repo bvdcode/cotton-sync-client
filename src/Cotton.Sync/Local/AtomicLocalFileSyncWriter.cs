@@ -115,6 +115,78 @@ namespace Cotton.Sync.Local
         }
 
         /// <inheritdoc />
+        public Task MoveDirectoryAsync(
+            string rootPath,
+            string sourceRelativePath,
+            string targetRelativePath,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
+            cancellationToken.ThrowIfCancellationRequested();
+            string normalizedSourcePath = NormalizeWritablePath(sourceRelativePath);
+            string normalizedTargetPath = NormalizeWritablePath(targetRelativePath);
+            string fullRoot = Path.GetFullPath(rootPath);
+            string sourcePath = Path.Combine(
+                fullRoot,
+                normalizedSourcePath.Replace('/', Path.DirectorySeparatorChar));
+            string targetPath = Path.Combine(
+                fullRoot,
+                normalizedTargetPath.Replace('/', Path.DirectorySeparatorChar));
+            if (!TryGetExistingAttributes(sourcePath, out FileAttributes sourceAttributes))
+            {
+                throw new DirectoryNotFoundException("Local directory move source does not exist: " + normalizedSourcePath);
+            }
+
+            if ((sourceAttributes & FileAttributes.Directory) == 0)
+            {
+                throw new IOException("Local directory move source is a file: " + normalizedSourcePath);
+            }
+
+            bool samePathIgnoringCase = string.Equals(sourcePath, targetPath, StringComparison.OrdinalIgnoreCase);
+            if (!samePathIgnoringCase && TryGetExistingAttributes(targetPath, out _))
+            {
+                throw new IOException("Local directory move target already exists: " + normalizedTargetPath);
+            }
+
+            string? targetParent = Path.GetDirectoryName(targetPath);
+            if (!string.IsNullOrWhiteSpace(targetParent))
+            {
+                Directory.CreateDirectory(targetParent);
+            }
+
+            if (samePathIgnoringCase)
+            {
+                if (string.Equals(sourcePath, targetPath, StringComparison.Ordinal))
+                {
+                    return Task.CompletedTask;
+                }
+
+                string temporaryPath = Path.Combine(
+                    Path.GetDirectoryName(sourcePath)!,
+                    ".cotton-sync-case-rename-" + Guid.NewGuid().ToString("N"));
+                Directory.Move(sourcePath, temporaryPath);
+                try
+                {
+                    Directory.Move(temporaryPath, targetPath);
+                }
+                catch
+                {
+                    if (!Directory.Exists(sourcePath) && Directory.Exists(temporaryPath))
+                    {
+                        Directory.Move(temporaryPath, sourcePath);
+                    }
+
+                    throw;
+                }
+
+                return Task.CompletedTask;
+            }
+
+            Directory.Move(sourcePath, targetPath);
+            return Task.CompletedTask;
+        }
+
+        /// <inheritdoc />
         public Task DeleteDirectoryAsync(string rootPath, string relativePath, CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);

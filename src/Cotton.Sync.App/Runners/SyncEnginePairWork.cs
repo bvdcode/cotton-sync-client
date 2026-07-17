@@ -62,10 +62,17 @@ namespace Cotton.Sync.App.Runners
                 AppTransferProgressReporter? transferProgressReporter = _progressPublisher is null
                     ? null
                     : new AppTransferProgressReporter(syncPair.Id, _progressPublisher);
+                bool allowInitialVirtualFilesStreaming = CanUseInitialVirtualFilesStreaming(currentRequest);
                 CoreSyncRunOptions? options = _activityPublisher is null && _progressPublisher is null && _runProgressPublisher is null
                         && currentRequest.IsFull
+                        && allowInitialVirtualFilesStreaming
                     ? null
-                    : CreateOptions(syncPair, currentRequest, runProgressReporter, transferProgressReporter);
+                    : CreateOptions(
+                        syncPair,
+                        currentRequest,
+                        runProgressReporter,
+                        transferProgressReporter,
+                        allowInitialVirtualFilesStreaming);
                 CoreSyncRunResult result;
                 try
                 {
@@ -100,7 +107,8 @@ namespace Cotton.Sync.App.Runners
             SyncPairSettings syncPair,
             SyncRunRequest request,
             AppRunProgressReporter? runProgressReporter,
-            AppTransferProgressReporter? transferProgressReporter)
+            AppTransferProgressReporter? transferProgressReporter,
+            bool allowInitialVirtualFilesStreaming)
         {
             return new CoreSyncRunOptions
             {
@@ -108,10 +116,22 @@ namespace Cotton.Sync.App.Runners
                     ? CoreSyncRunScope.Full
                     : CoreSyncRunScope.ForLocalChangedPaths(request.LocalChangedPaths, request.LocalDeletedPaths),
                 MinimumLocalUploadAge = BackgroundMinimumLocalUploadAge,
+                AllowInitialVirtualFilesStreaming = allowInitialVirtualFilesStreaming,
                 ActivityProgress = _activityPublisher is null ? null : new AppActivityProgressReporter(syncPair.Id, _activityPublisher),
                 TransferProgress = transferProgressReporter,
                 RunProgress = runProgressReporter,
             };
+        }
+
+        private static bool CanUseInitialVirtualFilesStreaming(SyncRunRequest request)
+        {
+            const SyncRunCause fullReconciliationCauses = SyncRunCause.RealtimeRemoteChange
+                | SyncRunCause.LocalWatcherError
+                | SyncRunCause.LocalChangeOverflow
+                | SyncRunCause.LocalRenameRecovery
+                | SyncRunCause.RemoteCursorExpired;
+            return request.LocalChangedPaths.Count == 0
+                && (request.Causes & fullReconciliationCauses) == SyncRunCause.None;
         }
 
         private static CoreSyncPair ToCorePair(SyncPairSettings syncPair)

@@ -68,6 +68,12 @@ namespace Cotton.Sync
         public int InitialVirtualFilesPlaceholderBatchSize { get; set; } = DefaultInitialVirtualFilesPlaceholderBatchSize;
 
         /// <summary>
+        /// Gets or sets a value indicating whether a full Windows virtual-files pass may use the initial or resume streaming fast path.
+        /// Disable this when the request is known to require full tree reconciliation.
+        /// </summary>
+        public bool AllowInitialVirtualFilesStreaming { get; set; } = true;
+
+        /// <summary>
         /// Gets or sets the optional live activity reporter used by UI and CLI clients.
         /// </summary>
         public IProgress<SyncActivity>? ActivityProgress { get; set; }

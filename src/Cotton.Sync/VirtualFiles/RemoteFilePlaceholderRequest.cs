@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Files;
+using Cotton.Sync.State;
 
 namespace Cotton.Sync.VirtualFiles
 {
@@ -13,5 +14,6 @@ namespace Cotton.Sync.VirtualFiles
         string LocalRootPath,
         Guid RemoteRootNodeId,
         string RelativePath,
-        NodeFileManifestDto RemoteFile);
+        NodeFileManifestDto RemoteFile,
+        SyncPlaceholderHydrationState? ExistingHydrationState = null);
 }

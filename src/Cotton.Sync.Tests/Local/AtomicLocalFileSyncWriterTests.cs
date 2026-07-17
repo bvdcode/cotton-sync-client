@@ -132,6 +132,55 @@ namespace Cotton.Sync.Tests.Local
         }
 
         [Test]
+        public async Task MoveDirectoryAsync_MovesCompleteSubtreeWithoutChangingContent()
+        {
+            WriteFile("Projects/Source/file.txt", "move-content");
+            Directory.CreateDirectory(FullPath("Archive"));
+            var writer = new AtomicLocalFileSyncWriter();
+
+            await writer.MoveDirectoryAsync(_root, "Projects", "Archive/ProjectsRenamed");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(Directory.Exists(FullPath("Projects")), Is.False);
+                Assert.That(ReadFile("Archive/ProjectsRenamed/Source/file.txt"), Is.EqualTo("move-content"));
+            });
+        }
+
+        [Test]
+        public async Task MoveDirectoryAsync_RenamesDirectoryWhenOnlyCasingChanges()
+        {
+            WriteFile("Projects/file.txt", "case-content");
+            var writer = new AtomicLocalFileSyncWriter();
+
+            await writer.MoveDirectoryAsync(_root, "Projects", "projects");
+
+            string renamedDirectory = Directory.EnumerateDirectories(_root).Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(Path.GetFileName(renamedDirectory), Is.EqualTo("projects"));
+                Assert.That(ReadFile("projects/file.txt"), Is.EqualTo("case-content"));
+            });
+        }
+
+        [Test]
+        public void MoveDirectoryAsync_WhenTargetExistsLeavesBothTreesUnchanged()
+        {
+            WriteFile("Source/source.txt", "source-content");
+            WriteFile("Target/target.txt", "target-content");
+            var writer = new AtomicLocalFileSyncWriter();
+
+            Assert.That(
+                async () => await writer.MoveDirectoryAsync(_root, "Source", "Target"),
+                Throws.TypeOf<IOException>());
+            Assert.Multiple(() =>
+            {
+                Assert.That(ReadFile("Source/source.txt"), Is.EqualTo("source-content"));
+                Assert.That(ReadFile("Target/target.txt"), Is.EqualTo("target-content"));
+            });
+        }
+
+        [Test]
         public async Task DeleteDirectoryAsync_MovesEmptyDirectoryToDeletedQuarantine()
         {
             Directory.CreateDirectory(FullPath("Docs/Empty"));
@@ -203,6 +252,9 @@ namespace Cotton.Sync.Tests.Local
                     Throws.ArgumentException);
                 Assert.That(
                     async () => await writer.CreateDirectoryAsync(_root, ignoredDirectoryPath),
+                    Throws.ArgumentException);
+                Assert.That(
+                    async () => await writer.MoveDirectoryAsync(_root, ignoredDirectoryPath, "payload"),
                     Throws.ArgumentException);
                 Assert.That(
                     async () => await writer.DeleteDirectoryAsync(_root, ignoredDirectoryPath),

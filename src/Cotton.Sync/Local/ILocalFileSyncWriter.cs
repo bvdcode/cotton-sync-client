@@ -29,6 +29,15 @@ namespace Cotton.Sync.Local
         Task CreateDirectoryAsync(string rootPath, string relativePath, CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Moves a local directory and its complete subtree to a new relative path.
+        /// </summary>
+        Task MoveDirectoryAsync(
+            string rootPath,
+            string sourceRelativePath,
+            string targetRelativePath,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Moves a local directory out of the sync tree if it exists.
         /// </summary>
         Task DeleteDirectoryAsync(string rootPath, string relativePath, CancellationToken cancellationToken = default);

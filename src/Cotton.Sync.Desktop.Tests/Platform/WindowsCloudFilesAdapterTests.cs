@@ -469,6 +469,51 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void CreateFilePlaceholder_RefreshesPreviouslyHydratedPlaceholderWithoutPinAttributes()
+        {
+            FakeCloudFilesNativeApi nativeApi = new();
+            string root = Path.Combine(_tempDirectory, "root");
+            string target = Path.GetFullPath(Path.Combine(root, "Projects", "available-offline.txt"));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllText(target, "old remote content");
+            DateTime hydratedLastWriteUtc = new(2026, 07, 17, 13, 12, 34, DateTimeKind.Utc);
+            nativeApi.HydrateAction = path => File.SetLastWriteTimeUtc(path, hydratedLastWriteUtc);
+            WindowsCloudFilesAdapter adapter = new(
+                CreatePolicy(),
+                nativeApi,
+                isReparsePoint: path => string.Equals(
+                    Path.GetFullPath(path),
+                    target,
+                    StringComparison.OrdinalIgnoreCase),
+                readFileAttributes: _ => FileAttributes.Archive | FileAttributes.ReparsePoint);
+            RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/available-offline.txt") with
+            {
+                ExistingHydrationState = SyncPlaceholderHydrationState.Hydrated,
+            };
+
+            RemoteFilePlaceholderResult result = adapter.CreateFilePlaceholder(request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.HydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+                Assert.That(nativeApi.UpdatedPlaceholders, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.HydratedPaths, Is.EqualTo(new[] { target }));
+                Assert.That(nativeApi.PinStates, Is.Empty);
+                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { target }));
+                Assert.That(result.LocalSizeBytes, Is.EqualTo(new FileInfo(target).Length));
+                Assert.That(result.LocalLastWriteUtc, Is.EqualTo(hydratedLastWriteUtc));
+                Assert.That(
+                    nativeApi.CallLog,
+                    Is.EqualTo(new[]
+                    {
+                        "native-update",
+                        "native-hydrate",
+                        "native-set-in-sync-state",
+                    }));
+            });
+        }
+
+        [Test]
         public void CreateFilePlaceholder_WhenPinnedRefreshFailsRestoresPinnedState()
         {
             FakeCloudFilesNativeApi nativeApi = new()
@@ -1429,6 +1474,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<string> HydratedPaths { get; } = [];
 
+            public Action<string>? HydrateAction { get; set; }
+
             public Exception? RegisterException { get; set; }
 
             public Exception? UnregisterException { get; set; }
@@ -1552,6 +1599,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 CallLog.Add("native-hydrate");
                 HydratedPaths.Add(filePath);
+                HydrateAction?.Invoke(filePath);
             }
 
             public sealed record PinStateCall(string FilePath, WindowsCloudFilesPinState PinState);

@@ -10,5 +10,7 @@ namespace Cotton.Sync.VirtualFiles
     /// </summary>
     public sealed record RemoteFilePlaceholderResult(
         byte[]? PlaceholderIdentity,
-        SyncPlaceholderHydrationState HydrationState = SyncPlaceholderHydrationState.RemoteOnly);
+        SyncPlaceholderHydrationState HydrationState = SyncPlaceholderHydrationState.RemoteOnly,
+        long? LocalSizeBytes = null,
+        DateTime? LocalLastWriteUtc = null);
 }
