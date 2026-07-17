@@ -696,6 +696,83 @@ namespace Cotton.Sync.App.Tests.Runners
             });
         }
 
+        [Test]
+        public async Task SyncNowAsync_UsesCappedExponentialBackoffForNetworkTimeouts()
+        {
+            var work = new FakeSyncPairWork
+            {
+                Failures =
+                [
+                    new HttpRequestException("request timed out", new TimeoutException()),
+                    new HttpRequestException("request timed out", new TimeoutException()),
+                    new HttpRequestException("request timed out", new TimeoutException()),
+                ],
+            };
+            var logger = new RecordingLogger<SyncPairRunner>();
+            var retryOptions = new SyncPairRunnerRetryOptions
+            {
+                MaxAttempts = 4,
+                InitialDelay = TimeSpan.FromMilliseconds(1),
+                MaxDelay = TimeSpan.FromMilliseconds(2),
+            };
+            SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work, retryOptions, logger);
+
+            await runner.SyncNowAsync();
+
+            string[] retryMessages = logger.Entries
+                .Where(entry => entry.Level == LogLevel.Warning)
+                .Select(entry => entry.Message)
+                .ToArray();
+            Assert.Multiple(() =>
+            {
+                Assert.That(work.RunCount, Is.EqualTo(4));
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Idle));
+                Assert.That(retryMessages, Has.Length.EqualTo(3));
+                Assert.That(retryMessages[0], Does.Contain("after 00:00:00.001"));
+                Assert.That(retryMessages[1], Does.Contain("after 00:00:00.002"));
+                Assert.That(retryMessages[2], Does.Contain("after 00:00:00.002"));
+            });
+        }
+
+        [Test]
+        public async Task PauseAsync_CancelsNetworkRetryBackoffPromptly()
+        {
+            var work = new FakeSyncPairWork
+            {
+                Failures =
+                [
+                    new HttpRequestException("request timed out", new TimeoutException()),
+                ],
+            };
+            var retryOptions = new SyncPairRunnerRetryOptions
+            {
+                MaxAttempts = 3,
+                InitialDelay = TimeSpan.FromSeconds(30),
+                MaxDelay = TimeSpan.FromSeconds(30),
+            };
+            SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work, retryOptions);
+
+            Task activeSync = runner.SyncNowAsync();
+            Assert.Multiple(() =>
+            {
+                Assert.That(activeSync.IsCompleted, Is.False);
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Offline));
+            });
+
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            await runner.PauseAsync().WaitAsync(TimeSpan.FromSeconds(2));
+            await activeSync.WaitAsync(TimeSpan.FromSeconds(2));
+            stopwatch.Stop();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(2)));
+                Assert.That(work.RunCount, Is.EqualTo(1));
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Paused));
+                Assert.That(runner.Status.LastError, Is.Null);
+            });
+        }
+
         [TestCase(System.Net.HttpStatusCode.InternalServerError)]
         [TestCase(System.Net.HttpStatusCode.BadGateway)]
         [TestCase(System.Net.HttpStatusCode.ServiceUnavailable)]
