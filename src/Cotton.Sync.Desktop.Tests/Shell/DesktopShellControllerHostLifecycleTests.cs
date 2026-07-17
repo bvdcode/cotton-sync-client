@@ -53,7 +53,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
-        public async Task LoadAsync_StopsPreviousRestoredHostWhenSessionIsRestoredAgain()
+        public async Task LoadAsync_ReusesActiveRestoredHostWithoutRestartingSync()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
@@ -64,8 +64,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 RememberedServerUrl = serverUrl,
             });
             FakeDesktopApplicationHost firstHost = FakeDesktopApplicationHost.Create(serverUrl);
-            FakeDesktopApplicationHost secondHost = FakeDesktopApplicationHost.Create(serverUrl);
-            var factory = new QueueingDesktopSyncApplicationFactory(firstHost.Host, secondHost.Host);
+            QueueingDesktopSyncApplicationFactory factory = new(firstHost.Host);
             using DesktopShellController controller = CreateController(paths, factory);
 
             DesktopShellSnapshot firstSnapshot = await controller.LoadAsync();
@@ -75,13 +74,11 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             {
                 Assert.That(firstSnapshot.IsSignedIn, Is.True);
                 Assert.That(secondSnapshot.IsSignedIn, Is.True);
-                Assert.That(factory.CreatedServerUrls, Is.EqualTo(new[] { serverUrl, serverUrl }));
+                Assert.That(factory.CreatedServerUrls, Is.EqualTo(new[] { serverUrl }));
                 Assert.That(firstHost.App.RestoreSessionCalls, Is.EqualTo(1));
-                Assert.That(firstHost.App.StopSyncCalls, Is.EqualTo(1));
-                Assert.That(firstHost.AsyncResource.DisposeAsyncCalls, Is.EqualTo(1));
-                Assert.That(secondHost.App.RestoreSessionCalls, Is.EqualTo(1));
-                Assert.That(secondHost.App.StopSyncCalls, Is.Zero);
-                Assert.That(secondHost.AsyncResource.DisposeAsyncCalls, Is.Zero);
+                Assert.That(firstHost.App.StartSyncCalls, Is.EqualTo(1));
+                Assert.That(firstHost.App.StopSyncCalls, Is.Zero);
+                Assert.That(firstHost.AsyncResource.DisposeAsyncCalls, Is.Zero);
             });
         }
 

@@ -67,6 +67,7 @@ namespace Cotton.Sync.Desktop.Shell
         private DesktopUpdateDiagnosticsSnapshot _lastUpdateDiagnostics =
             DesktopUpdateDiagnosticsSnapshot.NotChecked(DesktopAppVersion.Current);
         private IDisposable? _activitySubscription;
+        private AuthSession? _activeSession;
         private DesktopSyncApplicationHost? _host;
         private IDisposable? _runProgressSubscription;
         private IDisposable? _sessionRevocationSubscription;
@@ -521,9 +522,12 @@ namespace Cotton.Sync.Desktop.Shell
                 if (ReferenceEquals(_host, host))
                 {
                     _host = null;
+                    _activeSession = null;
                     _syncCoreState = SyncCoreStateSignedOut;
                     _activitySubscription?.Dispose();
                     _activitySubscription = null;
+                    _sessionRevocationSubscription?.Dispose();
+                    _sessionRevocationSubscription = null;
                     _statusSubscription?.Dispose();
                     _statusSubscription = null;
                     _transferProgressSubscription?.Dispose();
@@ -549,7 +553,7 @@ namespace Cotton.Sync.Desktop.Shell
             preferences.RememberedUsername = rememberedUsername;
             await TryApplyPreferredAutostartAsync(preferences, cancellationToken).ConfigureAwait(false);
             await host.App.SavePreferencesAsync(preferences, cancellationToken).ConfigureAwait(false);
-            await ReplaceHostAsync(host, cancellationToken).ConfigureAwait(false);
+            await ReplaceHostAsync(host, session, cancellationToken).ConfigureAwait(false);
             StartSessionSyncInBackground(host, "sign-in");
         }
 
@@ -1735,6 +1739,7 @@ namespace Cotton.Sync.Desktop.Shell
         {
             DesktopSyncApplicationHost? host = _host;
             _host = null;
+            _activeSession = null;
             _syncCoreState = SyncCoreStateSignedOut;
             _activitySubscription?.Dispose();
             _activitySubscription = null;
@@ -1749,11 +1754,15 @@ namespace Cotton.Sync.Desktop.Shell
             return host;
         }
 
-        private async Task ReplaceHostAsync(DesktopSyncApplicationHost host, CancellationToken cancellationToken)
+        private async Task ReplaceHostAsync(
+            DesktopSyncApplicationHost host,
+            AuthSession session,
+            CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             DesktopSyncApplicationHost? previous = _host;
             _host = host;
+            _activeSession = session;
             _syncCoreState = SyncCoreStateStopped;
             _activitySubscription?.Dispose();
             _sessionRevocationSubscription?.Dispose();
@@ -1853,6 +1862,7 @@ namespace Cotton.Sync.Desktop.Shell
 
         private void OnSessionRevoked(SessionRevocationEvent sessionRevocation)
         {
+            _activeSession = null;
             DesktopAuthDiagnosticsState.RecordSessionRevoked(sessionRevocation.OccurredAtUtc);
             SessionRevoked?.Invoke(this, new DesktopSessionRevocationSnapshot(sessionRevocation.OccurredAtUtc));
         }
@@ -1913,6 +1923,15 @@ namespace Cotton.Sync.Desktop.Shell
             Uri serverUrl,
             CancellationToken cancellationToken)
         {
+            DesktopSyncApplicationHost? activeHost = _host;
+            AuthSession? activeSession = _activeSession;
+            if (activeHost is not null &&
+                activeSession is not null &&
+                activeHost.ServerUrl.Equals(serverUrl))
+            {
+                return new DesktopStoredSessionRestoreSnapshot(activeSession, true, null);
+            }
+
             if (!await CanUseStoredSessionAsync(cancellationToken).ConfigureAwait(false))
             {
                 return new DesktopStoredSessionRestoreSnapshot(null, false, null);
@@ -1939,7 +1958,7 @@ namespace Cotton.Sync.Desktop.Shell
                         restoreCancellation.Token)
                     .ConfigureAwait(false);
                 DesktopAuthDiagnosticsState.RecordSessionRestoreSucceeded(restoredSession.Attempts);
-                await ReplaceHostAsync(host, cancellationToken).ConfigureAwait(false);
+                await ReplaceHostAsync(host, restoredSession.Session, cancellationToken).ConfigureAwait(false);
                 StartSessionSyncInBackground(host, "session restore");
                 return new DesktopStoredSessionRestoreSnapshot(restoredSession.Session, true, null);
             }
