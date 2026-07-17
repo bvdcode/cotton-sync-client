@@ -215,6 +215,18 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void Parse_LoadsConnectingVisualSmokeScenario()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--visual-smoke",
+                    "connecting",
+                ]);
+
+            Assert.That(options.VisualSmokeScenario, Is.EqualTo(DesktopVisualSmokeScenario.Connecting));
+        }
+
+        [Test]
         public void Parse_LoadsProgressVisualSmokeScenario()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(

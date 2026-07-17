@@ -27,6 +27,21 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public async Task LoadAsync_ReturnsSignedOutEmptySnapshotForConnectingScenario()
+        {
+            using VisualSmokeShellController controller = VisualSmokeShellController.Create(DesktopVisualSmokeScenario.Connecting);
+
+            DesktopShellSnapshot snapshot = await controller.LoadAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(snapshot.IsSignedIn, Is.False);
+                Assert.That(snapshot.AccountName, Is.EqualTo("Signed out"));
+                Assert.That(snapshot.SyncPairs, Is.Empty);
+            });
+        }
+
+        [Test]
         public async Task LoadAsync_ReturnsErrorPairForErrorScenario()
         {
             using VisualSmokeShellController controller = VisualSmokeShellController.Create(DesktopVisualSmokeScenario.Error);

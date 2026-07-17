@@ -61,7 +61,8 @@ namespace Cotton.Sync.Desktop.Shell
         {
             cancellationToken.ThrowIfCancellationRequested();
             DateTime syncedAt = DateTime.UtcNow.AddMinutes(-7);
-            bool isSignedIn = _scenario != DesktopVisualSmokeScenario.SignInError;
+            bool isSignedIn = _scenario is not DesktopVisualSmokeScenario.Connecting
+                and not DesktopVisualSmokeScenario.SignInError;
             IReadOnlyList<DesktopSyncPairSnapshot> pairs = CreatePairs(syncedAt);
 
             var snapshot = new DesktopShellSnapshot(
@@ -387,7 +388,8 @@ namespace Cotton.Sync.Desktop.Shell
 
         private IReadOnlyList<DesktopSyncPairSnapshot> CreatePairs(DateTime syncedAt)
         {
-            return _scenario is DesktopVisualSmokeScenario.SignInError
+            return _scenario is DesktopVisualSmokeScenario.Connecting
+                or DesktopVisualSmokeScenario.SignInError
                 or DesktopVisualSmokeScenario.AddFolder
                 or DesktopVisualSmokeScenario.AddFolderManyRemoteFolders
                 or DesktopVisualSmokeScenario.EmptyDashboard

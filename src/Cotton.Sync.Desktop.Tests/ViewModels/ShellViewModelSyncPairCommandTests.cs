@@ -604,6 +604,23 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task ApplyVisualSmokeScenarioAsync_ShowsConnectingStartupState()
+        {
+            using ShellViewModel viewModel = CreateViewModel(new FakeDesktopShellController(CreateSignedOutSnapshot()));
+            await viewModel.InitializeAsync();
+
+            await viewModel.ApplyVisualSmokeScenarioAsync(DesktopVisualSmokeScenario.Connecting);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.IsStartupLoadingVisible, Is.True);
+                Assert.That(viewModel.IsSetupVisible, Is.False);
+                Assert.That(viewModel.IsDashboardVisible, Is.False);
+                Assert.That(viewModel.IsDashboardHeaderVisible, Is.False);
+            });
+        }
+
+        [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsSignInError()
         {
             using ShellViewModel viewModel = CreateViewModel(new FakeDesktopShellController(CreateSignedOutSnapshot()));

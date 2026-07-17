@@ -5,6 +5,7 @@ namespace Cotton.Sync.Desktop.Startup
 {
     internal enum DesktopVisualSmokeScenario
     {
+        Connecting,
         SignInError,
         AddFolder,
         AddFolderManyRemoteFolders,

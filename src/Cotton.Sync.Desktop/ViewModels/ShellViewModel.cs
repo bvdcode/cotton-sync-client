@@ -1976,6 +1976,9 @@ namespace Cotton.Sync.Desktop.ViewModels
 
             switch (scenario)
             {
+                case DesktopVisualSmokeScenario.Connecting:
+                    SetSnapshotLoading(true);
+                    break;
                 case DesktopVisualSmokeScenario.SignInError:
                     ServerUrl = "https://app.cottoncloud.dev/";
                     IsServerProbeChecking = false;
