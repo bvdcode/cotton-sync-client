@@ -677,6 +677,41 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public async Task RunLiveSyncSmokeAsync_RejectsSeedCountWithoutPreserveFlag()
+        {
+            string dataDirectory = Path.Combine(_tempDirectory, "smoke-state");
+            string firstLocalRoot = Path.Combine(_tempDirectory, "client-a");
+            string secondLocalRoot = Path.Combine(_tempDirectory, "client-b");
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--live-sync-smoke",
+                    "--server",
+                    "app.cottoncloud.dev",
+                    "--data-dir",
+                    dataDirectory,
+                    "--local-root",
+                    firstLocalRoot,
+                    "--second-local-root",
+                    secondLocalRoot,
+                    "--remote-path",
+                    "/CottonSyncQa/DesktopSmoke",
+                    "--live-sync-smoke-seed-file-count",
+                    "64",
+                ]);
+            using StringWriter output = new();
+
+            int exitCode = await DesktopCommandLineRunner.RunLiveSyncSmokeAsync(options, output);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(2));
+                Assert.That(output.ToString(), Does.Contain("--live-sync-smoke-preserve-existing-local-files"));
+                Assert.That(Directory.Exists(firstLocalRoot), Is.False);
+                Assert.That(Directory.Exists(secondLocalRoot), Is.False);
+            });
+        }
+
+        [Test]
         public async Task RunLiveSyncSmokeAsync_RejectsInvalidSyncModeBeforeTouchingRoots()
         {
             string dataDirectory = Path.Combine(_tempDirectory, "smoke-state");

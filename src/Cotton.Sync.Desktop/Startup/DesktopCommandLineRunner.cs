@@ -30,8 +30,10 @@ namespace Cotton.Sync.Desktop.Startup
         private const string PreExistingClientAPath = "pre-existing/client-a/original-a.txt";
         private const string PreExistingClientBPath = "pre-existing/client-b/original-b.txt";
         private static readonly TimeSpan DesktopLocalQuietWindow = TimeSpan.FromMilliseconds(2300);
+        private static readonly TimeSpan InitialConvergenceTimeout = TimeSpan.FromMinutes(2);
         private static readonly TimeSpan PropagationTimeout = TimeSpan.FromSeconds(45);
         private static readonly TimeSpan PropagationPollInterval = TimeSpan.FromSeconds(1);
+        private const int InitialConvergenceSyncRefreshInterval = 10;
 
         public static async Task<int> RunSelfTestAsync(
             DesktopStartupOptions startupOptions,
@@ -1055,6 +1057,15 @@ namespace Cotton.Sync.Desktop.Startup
                     new DesktopSyncPairRequest(startupOptions.SecondLocalRoot!, startupOptions.RemotePath!, startupOptions.SyncMode),
                     cancellationToken).ConfigureAwait(false);
 
+                failures += await WaitForLiveSmokeConvergenceAsync(
+                    startupOptions,
+                    seededLocalFiles,
+                    firstController,
+                    secondController,
+                    firstPair.Id,
+                    secondPair.Id,
+                    output,
+                    cancellationToken).ConfigureAwait(false);
                 failures += await VerifyIdleAsync(
                     firstController,
                     secondController,
@@ -1347,6 +1358,12 @@ namespace Cotton.Sync.Desktop.Startup
                 return "--live-sync-smoke requires --local-root and --second-local-root.";
             }
 
+            if (startupOptions.LiveSyncSmokeSeedFileCount.HasValue
+                && !startupOptions.LiveSyncSmokePreserveExistingLocalFiles)
+            {
+                return "--live-sync-smoke-seed-file-count requires --live-sync-smoke-preserve-existing-local-files.";
+            }
+
             if (Directory.Exists(paths.DataDirectory) && DataDirectoryHasUnexpectedEntries(paths.DataDirectory))
             {
                 return "--data-dir must be empty or contain only the current smoke log for --live-sync-smoke.";
@@ -1392,7 +1409,6 @@ namespace Cotton.Sync.Desktop.Startup
             TextWriter output,
             CancellationToken cancellationToken)
         {
-            await RunFinalConvergenceAsync(firstController, secondController, cancellationToken).ConfigureAwait(false);
             DesktopShellSnapshot firstSnapshot = await firstController.LoadAsync(cancellationToken).ConfigureAwait(false);
             DesktopShellSnapshot secondSnapshot = await secondController.LoadAsync(cancellationToken).ConfigureAwait(false);
             DesktopSyncPairSnapshot? firstPair = firstSnapshot.SyncPairs.FirstOrDefault(pair => pair.Id == firstPairId);
@@ -1410,11 +1426,155 @@ namespace Cotton.Sync.Desktop.Startup
             return passed ? 0 : 1;
         }
 
+        private static async Task<int> WaitForLiveSmokeConvergenceAsync(
+            DesktopStartupOptions startupOptions,
+            IReadOnlyList<LiveSyncSmokeSeededLocalFile> seededLocalFiles,
+            DesktopShellController firstController,
+            DesktopShellController secondController,
+            Guid firstPairId,
+            Guid secondPairId,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            DateTime deadlineUtc = DateTime.UtcNow + InitialConvergenceTimeout;
+            int attempts = 0;
+            int stableObservations = 0;
+            LiveSyncSmokeConvergenceSnapshot snapshot;
+            await firstController.SyncAllAsync(cancellationToken).ConfigureAwait(false);
+            await secondController.SyncAllAsync(cancellationToken).ConfigureAwait(false);
+            do
+            {
+                attempts++;
+                if (attempts > 1 && attempts % InitialConvergenceSyncRefreshInterval == 0)
+                {
+                    await firstController.SyncAllAsync(cancellationToken).ConfigureAwait(false);
+                    await secondController.SyncAllAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                snapshot = await CaptureLiveSmokeConvergenceAsync(
+                        startupOptions,
+                        seededLocalFiles,
+                        firstController,
+                        secondController,
+                        firstPairId,
+                        secondPairId,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                stableObservations = snapshot.Passed ? stableObservations + 1 : 0;
+                if (stableObservations >= 2)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Initial desktop sync reached stable convergence.")
+                        + " attempts=" + attempts.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", " + snapshot.Details).ConfigureAwait(false);
+                    return 0;
+                }
+
+                if (DateTime.UtcNow >= deadlineUtc)
+                {
+                    break;
+                }
+
+                await Task.Delay(PropagationPollInterval, cancellationToken).ConfigureAwait(false);
+            }
+            while (true);
+
+            await output.WriteLineAsync(
+                FormatCheck(false, "Initial desktop sync reached stable convergence.")
+                + " attempts=" + attempts.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", " + snapshot.Details).ConfigureAwait(false);
+            return 1;
+        }
+
+        private static async Task<LiveSyncSmokeConvergenceSnapshot> CaptureLiveSmokeConvergenceAsync(
+            DesktopStartupOptions startupOptions,
+            IReadOnlyList<LiveSyncSmokeSeededLocalFile> seededLocalFiles,
+            DesktopShellController firstController,
+            DesktopShellController secondController,
+            Guid firstPairId,
+            Guid secondPairId,
+            CancellationToken cancellationToken)
+        {
+            string[] localRoots = [startupOptions.LocalRoot!, startupOptions.SecondLocalRoot!];
+            Dictionary<string, string> expectedHashes = new(StringComparer.OrdinalIgnoreCase);
+            foreach (LiveSyncSmokeSeededLocalFile file in seededLocalFiles)
+            {
+                foreach (string localRoot in localRoots)
+                {
+                    string fullPath = FullPath(localRoot, file.RelativePath);
+                    if (!File.Exists(fullPath))
+                    {
+                        continue;
+                    }
+
+                    expectedHashes[fullPath] = file.Sha256;
+                }
+            }
+
+            IReadOnlyDictionary<string, LiveSyncSmokeFileHashReadResult> hashReads =
+                await LiveSyncSmokeFileHashReader.ReadAsync(expectedHashes.Keys, cancellationToken)
+                    .ConfigureAwait(false);
+            int availableFiles = 0;
+            int hashMismatches = 0;
+            int readFailures = 0;
+            foreach ((string fullPath, string expectedHash) in expectedHashes)
+            {
+                if (!hashReads.TryGetValue(fullPath, out LiveSyncSmokeFileHashReadResult? read)
+                    || read.Sha256 is null)
+                {
+                    readFailures++;
+                }
+                else if (string.Equals(read.Sha256, expectedHash, StringComparison.OrdinalIgnoreCase))
+                {
+                    availableFiles++;
+                }
+                else
+                {
+                    hashMismatches++;
+                }
+            }
+
+            DesktopShellSnapshot firstSnapshot = await firstController.LoadAsync(cancellationToken).ConfigureAwait(false);
+            DesktopShellSnapshot secondSnapshot = await secondController.LoadAsync(cancellationToken).ConfigureAwait(false);
+            DesktopSyncPairSnapshot? firstPair = firstSnapshot.SyncPairs.FirstOrDefault(pair => pair.Id == firstPairId);
+            DesktopSyncPairSnapshot? secondPair = secondSnapshot.SyncPairs.FirstOrDefault(pair => pair.Id == secondPairId);
+            bool pairsIdle = IsSuccessfullySyncedIdlePair(firstPair) && IsSuccessfullySyncedIdlePair(secondPair);
+            int expectedFiles = seededLocalFiles.Count * localRoots.Length;
+            bool filesConverged = availableFiles == expectedFiles && hashMismatches == 0 && readFailures == 0;
+            return new LiveSyncSmokeConvergenceSnapshot(
+                pairsIdle && filesConverged,
+                "availableSeedFiles="
+                + availableFiles.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + "/" + expectedFiles.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", hashMismatches=" + hashMismatches.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", readFailures=" + readFailures.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", firstStatus=" + (firstPair?.Status ?? "<missing>")
+                + ", secondStatus=" + (secondPair?.Status ?? "<missing>"));
+        }
+
+        private static bool IsSuccessfullySyncedIdlePair(DesktopSyncPairSnapshot? pair)
+        {
+            return pair is not null
+                && string.Equals(pair.Status, "Idle", StringComparison.Ordinal)
+                && pair.LastSyncedAtUtc.HasValue
+                && pair.LastError is null;
+        }
+
         private static async Task<IReadOnlyList<LiveSyncSmokeSeededLocalFile>> SeedExistingLocalFilesAsync(
             DesktopStartupOptions startupOptions,
             TextWriter output,
             CancellationToken cancellationToken)
         {
+            if (startupOptions.LiveSyncSmokeSeedFileCount.HasValue)
+            {
+                return await SeedExistingLocalBurstAsync(
+                        startupOptions,
+                        startupOptions.LiveSyncSmokeSeedFileCount.Value,
+                        output,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             string firstContent = "Cotton Sync Desktop live smoke pre-existing file from client A"
                 + Environment.NewLine
                 + DateTime.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture)
@@ -1439,6 +1599,37 @@ namespace Cotton.Sync.Desktop.Startup
             await output.WriteLineAsync(
                 "Seeded pre-existing local files before sync pair creation: "
                 + files.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)).ConfigureAwait(false);
+            return files;
+        }
+
+        private static async Task<IReadOnlyList<LiveSyncSmokeSeededLocalFile>> SeedExistingLocalBurstAsync(
+            DesktopStartupOptions startupOptions,
+            int fileCount,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyList<LiveSyncSmokeSeedFile> plan = LiveSyncSmokeSeedPlan.Build(fileCount, DateTime.UtcNow);
+            List<LiveSyncSmokeSeededLocalFile> files = new(plan.Count);
+            foreach (LiveSyncSmokeSeedFile plannedFile in plan)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                string localRoot = plannedFile.UseFirstClient
+                    ? startupOptions.LocalRoot!
+                    : startupOptions.SecondLocalRoot!;
+                files.Add(await WriteSeededLocalFileAsync(
+                        localRoot,
+                        plannedFile.RelativePath,
+                        plannedFile.Content,
+                        cancellationToken)
+                    .ConfigureAwait(false));
+            }
+
+            await output.WriteLineAsync(
+                "Seeded pre-existing local burst before sync pair creation: files="
+                + files.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", zeroByteFiles="
+                + plan.Count(static file => file.Content.Length == 0)
+                    .ToString(System.Globalization.CultureInfo.InvariantCulture)).ConfigureAwait(false);
             return files;
         }
 
@@ -2158,6 +2349,8 @@ namespace Cotton.Sync.Desktop.Startup
         private readonly record struct AbsentSnapshot(bool Passed, string Details);
 
         private readonly record struct TextReadSnapshot(bool Exists, bool Read, string? Content, string Details);
+
+        private readonly record struct LiveSyncSmokeConvergenceSnapshot(bool Passed, string Details);
 
         private record ShellShareLinkSmokeData(
             string SyncedFilePath,

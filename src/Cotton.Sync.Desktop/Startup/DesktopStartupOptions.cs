@@ -34,6 +34,7 @@ namespace Cotton.Sync.Desktop.Startup
             int? windowsVirtualFilesSmokePlaceholderCount,
             TimeSpan liveSyncSmokeApprovalHold,
             bool liveSyncSmokePreserveExistingLocalFiles,
+            int? liveSyncSmokeSeedFileCount,
             string? localRoot,
             string? secondLocalRoot,
             string? remotePath,
@@ -66,6 +67,7 @@ namespace Cotton.Sync.Desktop.Startup
             WindowsVirtualFilesSmokePlaceholderCount = windowsVirtualFilesSmokePlaceholderCount;
             LiveSyncSmokeApprovalHold = liveSyncSmokeApprovalHold;
             LiveSyncSmokePreserveExistingLocalFiles = liveSyncSmokePreserveExistingLocalFiles;
+            LiveSyncSmokeSeedFileCount = liveSyncSmokeSeedFileCount;
             LocalRoot = localRoot;
             SecondLocalRoot = secondLocalRoot;
             RemotePath = remotePath;
@@ -100,6 +102,7 @@ namespace Cotton.Sync.Desktop.Startup
             null,
             TimeSpan.Zero,
             false,
+            null,
             null,
             null,
             null,
@@ -158,6 +161,8 @@ namespace Cotton.Sync.Desktop.Startup
 
         public bool LiveSyncSmokePreserveExistingLocalFiles { get; }
 
+        public int? LiveSyncSmokeSeedFileCount { get; }
+
         public string? LocalRoot { get; }
 
         public string? SecondLocalRoot { get; }
@@ -182,6 +187,7 @@ namespace Cotton.Sync.Desktop.Startup
                 ReadOption(args, "--vfs-smoke-placeholder-count") ?? ReadOption(args, "--vfs-smoke-file-count");
             string? liveSyncSmokeApprovalHold = ReadOption(args, "--live-sync-smoke-approval-hold-seconds")
                 ?? ReadOption(args, "--desktop-live-sync-smoke-approval-hold-seconds");
+            string? liveSyncSmokeSeedFileCount = ReadOption(args, "--live-sync-smoke-seed-file-count");
             string? localRoot = ReadOption(args, "--local-root");
             string? secondLocalRoot = ReadOption(args, "--second-local-root");
             string? remotePath = ReadOption(args, "--remote-path");
@@ -254,6 +260,7 @@ namespace Cotton.Sync.Desktop.Startup
                 ParsePositiveInt32(windowsVirtualFilesSmokePlaceholderCount),
                 ParseNonNegativeSeconds(liveSyncSmokeApprovalHold),
                 liveSyncSmokePreserveExistingLocalFiles,
+                ParsePositiveInt32(liveSyncSmokeSeedFileCount),
                 NormalizeOptional(localRoot),
                 NormalizeOptional(secondLocalRoot),
                 NormalizeOptional(remotePath),

@@ -448,6 +448,8 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                     "--live-sync-smoke-approval-hold-seconds",
                     "7",
                     "--live-sync-smoke-preserve-existing-local-files",
+                    "--live-sync-smoke-seed-file-count",
+                    "64",
                 ]);
 
             Assert.Multiple(() =>
@@ -460,6 +462,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(options.RemotePath, Is.EqualTo("/CottonSyncQa/Desktop"));
                 Assert.That(options.LiveSyncSmokeApprovalHold, Is.EqualTo(TimeSpan.FromSeconds(7)));
                 Assert.That(options.LiveSyncSmokePreserveExistingLocalFiles, Is.True);
+                Assert.That(options.LiveSyncSmokeSeedFileCount, Is.EqualTo(64));
                 Assert.That(options.SyncMode, Is.EqualTo(SyncPairMode.FullMirror));
                 Assert.That(options.SyncModeError, Is.Null);
             });
