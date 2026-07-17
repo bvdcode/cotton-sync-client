@@ -892,6 +892,33 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task SyncNowAsync_CoalescesQueuedRealtimeAndPeriodicFullRequests()
+        {
+            BlockingSyncPairWork work = new();
+            SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
+
+            Task activeSync = runner.SyncNowAsync(SyncRunRequest.ForFull(SyncRunCause.Manual));
+            await work.WaitForRunAsync(TimeSpan.FromSeconds(2));
+            await runner.SyncNowAsync(SyncRunRequest.ForFull(SyncRunCause.RealtimeRemoteChange));
+            await runner.SyncNowAsync(SyncRunRequest.ForFull(SyncRunCause.Periodic));
+
+            work.ReleaseCurrentRun();
+            await work.WaitForRunCountAsync(2, TimeSpan.FromSeconds(2));
+            work.ReleaseCurrentRun();
+            await activeSync;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(work.Requests, Has.Count.EqualTo(2));
+                Assert.That(work.Requests[1].IsFull, Is.True);
+                Assert.That(
+                    work.Requests[1].Causes,
+                    Is.EqualTo(SyncRunCause.Periodic | SyncRunCause.RealtimeRemoteChange));
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Idle));
+            });
+        }
+
+        [Test]
         public async Task SyncNowAsync_CoalescesRepeatedScopedEditsWhileAnotherUploadIsActive()
         {
             BlockingSyncPairWork work = new();
