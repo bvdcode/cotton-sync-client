@@ -98,16 +98,41 @@ namespace Cotton.Sync.Desktop.Shell
             if (_viewModel is not null)
             {
                 _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+                DetachTrayCommandHandlers(_viewModel);
             }
 
             _viewModel = viewModel;
             if (_viewModel is not null)
             {
                 _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+                AttachTrayCommandHandlers(_viewModel);
             }
 
             UpdateTrayStatus();
             UpdateTrayActions();
+        }
+
+        private void AttachTrayCommandHandlers(ShellViewModel viewModel)
+        {
+            viewModel.OpenTrayFolderCommand.CanExecuteChanged += OnTrayCommandCanExecuteChanged;
+            viewModel.OpenWebCommand.CanExecuteChanged += OnTrayCommandCanExecuteChanged;
+            viewModel.SyncNowCommand.CanExecuteChanged += OnTrayCommandCanExecuteChanged;
+            viewModel.PauseResumeCommand.CanExecuteChanged += OnTrayCommandCanExecuteChanged;
+            viewModel.ShowSettingsCommand.CanExecuteChanged += OnTrayCommandCanExecuteChanged;
+        }
+
+        private void DetachTrayCommandHandlers(ShellViewModel viewModel)
+        {
+            viewModel.OpenTrayFolderCommand.CanExecuteChanged -= OnTrayCommandCanExecuteChanged;
+            viewModel.OpenWebCommand.CanExecuteChanged -= OnTrayCommandCanExecuteChanged;
+            viewModel.SyncNowCommand.CanExecuteChanged -= OnTrayCommandCanExecuteChanged;
+            viewModel.PauseResumeCommand.CanExecuteChanged -= OnTrayCommandCanExecuteChanged;
+            viewModel.ShowSettingsCommand.CanExecuteChanged -= OnTrayCommandCanExecuteChanged;
+        }
+
+        private void OnTrayCommandCanExecuteChanged(object? sender, EventArgs e)
+        {
+            RunOnUiThread(UpdateTrayActions);
         }
 
         private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)

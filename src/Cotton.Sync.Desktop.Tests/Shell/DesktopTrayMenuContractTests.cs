@@ -91,6 +91,25 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             });
         }
 
+        [Test]
+        public void TrayMenu_RefreshesAvailabilityWhenAsyncCommandsStartAndFinish()
+        {
+            string trayController = File.ReadAllText(GetDesktopShellFilePath("DesktopTrayController.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(trayController, Does.Contain("AttachTrayCommandHandlers(_viewModel)"));
+                Assert.That(trayController, Does.Contain("DetachTrayCommandHandlers(_viewModel)"));
+                Assert.That(
+                    trayController,
+                    Does.Contain("viewModel.PauseResumeCommand.CanExecuteChanged += OnTrayCommandCanExecuteChanged"));
+                Assert.That(
+                    trayController,
+                    Does.Contain("viewModel.PauseResumeCommand.CanExecuteChanged -= OnTrayCommandCanExecuteChanged"));
+                Assert.That(trayController, Does.Contain("RunOnUiThread(UpdateTrayActions)"));
+            });
+        }
+
         private static string GetDesktopShellFilePath(string fileName)
         {
             string directory = TestContext.CurrentContext.TestDirectory;
