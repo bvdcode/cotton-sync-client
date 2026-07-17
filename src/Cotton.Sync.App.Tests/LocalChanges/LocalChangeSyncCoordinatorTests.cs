@@ -652,6 +652,84 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task ProviderWriteBurst_RegisteredPathStormDoesNotExhaustEventBudget()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            FakeWatcherFactory watcherFactory = new();
+            FakeSyncSupervisor supervisor = new();
+            LocalChangeSuppression suppression = new(
+                _ => false,
+                eventBudget: 2,
+                maxEntriesPerPair: 4);
+            using IDisposable burst = suppression.SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath);
+            for (int index = 0; index < 20; index++)
+            {
+                suppression.SuppressProviderWrite(
+                    syncPair.Id,
+                    syncPair.LocalRootPath,
+                    $"Cloud/generated-{index}.txt");
+            }
+
+            LocalChangeSyncCoordinator coordinator = new(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval,
+                changeSuppression: suppression);
+            await coordinator.StartAsync();
+
+            for (int index = 0; index < 20; index++)
+            {
+                watcherFactory.CreatedWatchers[syncPair.Id].Raise(
+                    FullPath(syncPair, $"Cloud/generated-{index}.txt"),
+                    LocalSyncRootChangeKind.Changed);
+            }
+
+            bool observed = await supervisor.WaitForSyncAsync(DebounceInterval * 4);
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.False);
+                Assert.That(supervisor.SyncNowCallCount, Is.Zero);
+                Assert.That(coordinator.PendingRequestCount, Is.Zero);
+            });
+        }
+
+        [Test]
+        public void ProviderWriteBurst_RegisteredPathGraceStartsWhenBurstEnds()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            MutableTimeProvider timeProvider = new();
+            LocalChangeSuppression suppression = new(
+                _ => false,
+                entryLifetime: TimeSpan.FromSeconds(1),
+                eventBudget: 2,
+                timeProvider: timeProvider);
+            IDisposable burst = suppression.SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath);
+            suppression.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, "Cloud/hydrated.txt");
+            LocalSyncRootChange change = new(
+                syncPair.Id,
+                FullPath(syncPair, "Cloud/hydrated.txt"),
+                LocalSyncRootChangeKind.Changed);
+
+            timeProvider.Advance(TimeSpan.FromSeconds(10));
+            bool suppressedDuringLongBurst = suppression.ShouldSuppress(change);
+            burst.Dispose();
+            timeProvider.Advance(TimeSpan.FromMilliseconds(500));
+            bool suppressedDuringGrace = suppression.ShouldSuppress(change);
+            timeProvider.Advance(TimeSpan.FromSeconds(1));
+            bool suppressedAfterGrace = suppression.ShouldSuppress(change);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(suppressedDuringLongBurst, Is.True);
+                Assert.That(suppressedDuringGrace, Is.True);
+                Assert.That(suppressedAfterGrace, Is.False);
+            });
+        }
+
+        [Test]
         public void ProviderWriteBurstGrace_RecognizesRecallOnlyCloudFilesAttributes()
         {
             FileAttributes recallOnOpen = FileAttributes.Archive | (FileAttributes)0x00040000;
