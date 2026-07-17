@@ -103,6 +103,37 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_PinnedRegularFileEditRunsInnerSync()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            FakeSyncStateStore stateStore = new();
+            SyncStateEntry state = CreatePlaceholderState(syncPair, "Docs/report.txt");
+            state.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
+            state.LocalContentHash = "remote-hash";
+            state.LocalSizeBytes = 12;
+            state.LocalLastWriteUtc = new DateTime(2026, 06, 16, 10, 05, 00, DateTimeKind.Utc);
+            stateStore.UpsertEntry(state);
+            FakeCloudFilesAdapter cloudFiles = new();
+            RecordingSyncPairWork inner = new();
+            WindowsVirtualFilesDehydrationPairWork work = new(
+                inner,
+                stateStore,
+                cloudFiles,
+                new FakeContentHasher("edited-local-hash"),
+                readDiskState: _ => CreatePinnedRegularFileDiskState());
+            SyncRunRequest request = SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]);
+
+            await work.RunOnceAsync(syncPair, request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Is.EqualTo(new[] { request }));
+                Assert.That(cloudFiles.HydratedPaths, Is.Empty);
+                Assert.That(cloudFiles.DehydratedPaths, Is.Empty);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_RecordsCompletedOnDemandHydrationAndSuppressesInnerSync()
         {
             SyncPairSettings syncPair = CreateVirtualFilesPair();
@@ -952,6 +983,15 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             return new WindowsVirtualFileDiskState(
                 attributes,
                 Length: 0,
+                LastWriteUtc: new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc));
+        }
+
+        private static WindowsVirtualFileDiskState CreatePinnedRegularFileDiskState()
+        {
+            FileAttributes attributes = FileAttributes.Archive | (FileAttributes)FileAttributePinned;
+            return new WindowsVirtualFileDiskState(
+                attributes,
+                Length: 24,
                 LastWriteUtc: new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc));
         }
 

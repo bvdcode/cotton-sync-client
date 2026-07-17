@@ -1230,7 +1230,8 @@ namespace Cotton.Sync.Desktop.Platform
             FileAttributes attributes,
             SyncPlaceholderHydrationState hydrationState)
         {
-            return hydrationState == SyncPlaceholderHydrationState.Hydrated
+            return (attributes & FileAttributes.ReparsePoint) != 0
+                && hydrationState == SyncPlaceholderHydrationState.Hydrated
                 && !HasRawAttribute(attributes, FileAttributeRecallOnDataAccess)
                 && (attributes & FileAttributes.Offline) == 0;
         }
