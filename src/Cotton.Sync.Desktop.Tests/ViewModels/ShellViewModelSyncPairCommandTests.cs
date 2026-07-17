@@ -1550,6 +1550,53 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task StatusChanged_BoundsChangingErrorFloodAndNativeNotifications()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(
+                CreateSignedInSnapshotWithNotifications(
+                    enableNotifications: true,
+                    CreatePair(syncPairId, "Documents", "Idle")));
+            var notificationService = new CollectingDesktopNotificationService();
+            using ShellViewModel viewModel = CreateViewModel(controller, notificationService: notificationService);
+            await viewModel.InitializeAsync();
+
+            for (int index = 1; index <= 100; index++)
+            {
+                controller.ReportStatus(new DesktopSyncStatusSnapshot(
+                [
+                    new DesktopSyncPairStatusSnapshot(
+                        syncPairId,
+                        "Error",
+                        "Local file 'Locked/report-" + index + ".docx' cannot be read because permission was denied."),
+                ]));
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.Activities, Has.Count.EqualTo(30));
+                Assert.That(viewModel.Activities, Is.All.Matches<ActivityRowViewModel>(activity => activity.Kind == "Error"));
+                Assert.That(viewModel.ActionRequiredMessage, Does.Contain("report-100.docx"));
+                Assert.That(viewModel.Notifications, Has.Count.EqualTo(1));
+                Assert.That(notificationService.Notifications, Has.Count.EqualTo(1));
+            });
+
+            controller.ReportStatus(new DesktopSyncStatusSnapshot(
+            [
+                new DesktopSyncPairStatusSnapshot(syncPairId, "Idle", null),
+            ]));
+            controller.ReportStatus(new DesktopSyncStatusSnapshot(
+            [
+                new DesktopSyncPairStatusSnapshot(
+                    syncPairId,
+                    "Error",
+                    "Local file 'Locked/after-recovery.docx' cannot be read because permission was denied."),
+            ]));
+
+            Assert.That(notificationService.Notifications, Has.Count.EqualTo(2));
+        }
+
+        [Test]
         public async Task TransferProgressChanged_UpdatesCurrentTransferState()
         {
             Guid syncPairId = Guid.NewGuid();

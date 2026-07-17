@@ -221,6 +221,36 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             Assert.That(notifications, Is.Empty);
         }
 
+        [Test]
+        public void Apply_DoesNotFloodChangingErrorsUntilPairRecovers()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var tracker = new DesktopNotificationTracker();
+            var notifications = new List<DesktopNotificationRequest>();
+
+            for (int index = 1; index <= 100; index++)
+            {
+                notifications.AddRange(tracker.Apply(
+                    CreateStatus(
+                        syncPairId,
+                        "Error",
+                        "Local file 'Locked/report-" + index + ".docx' cannot be read because permission was denied."),
+                    DisplayNames(syncPairId)));
+            }
+
+            Assert.That(notifications, Has.Count.EqualTo(1));
+
+            _ = tracker.Apply(CreateStatus(syncPairId, "Idle"), DisplayNames(syncPairId));
+            IReadOnlyList<DesktopNotificationRequest> recoveredErrorNotifications = tracker.Apply(
+                CreateStatus(
+                    syncPairId,
+                    "Error",
+                    "Local file 'Locked/after-recovery.docx' cannot be read because permission was denied."),
+                DisplayNames(syncPairId));
+
+            Assert.That(recoveredErrorNotifications, Has.Count.EqualTo(1));
+        }
+
         private static DesktopSyncStatusSnapshot CreateStatus(
             Guid syncPairId,
             string status,

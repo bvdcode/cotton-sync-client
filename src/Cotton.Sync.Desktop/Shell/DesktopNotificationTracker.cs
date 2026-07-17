@@ -6,7 +6,6 @@ namespace Cotton.Sync.Desktop.Shell
     internal class DesktopNotificationTracker
     {
         private readonly HashSet<Guid> _initialSyncCompleted = [];
-        private readonly Dictionary<Guid, string?> _previousErrors = [];
         private readonly Dictionary<Guid, string> _previousStatuses = [];
 
         public IReadOnlyList<DesktopNotificationRequest> Apply(
@@ -28,7 +27,6 @@ namespace Cotton.Sync.Desktop.Shell
             {
                 string previousStatus = _previousStatuses.GetValueOrDefault(pair.Id, string.Empty);
                 string displayName = displayNames.GetValueOrDefault(pair.Id, "Sync folder");
-                string? previousError = _previousErrors.GetValueOrDefault(pair.Id);
                 string currentError = DesktopActionRequiredMessageResolver.FromSyncPairStatus(pair);
                 bool suppressInitialSyncComplete = ShouldSuppressInitialSyncComplete(
                     pair,
@@ -38,7 +36,6 @@ namespace Cotton.Sync.Desktop.Shell
                     notifications,
                     pair,
                     previousStatus,
-                    previousError,
                     currentError,
                     displayName,
                     suppressInitialSyncComplete);
@@ -46,8 +43,6 @@ namespace Cotton.Sync.Desktop.Shell
                 {
                     _previousStatuses[pair.Id] = pair.Status;
                 }
-
-                _previousErrors[pair.Id] = string.IsNullOrWhiteSpace(currentError) ? null : currentError;
             }
 
             return notifications;
@@ -56,7 +51,6 @@ namespace Cotton.Sync.Desktop.Shell
         public void Reset()
         {
             _initialSyncCompleted.Clear();
-            _previousErrors.Clear();
             _previousStatuses.Clear();
         }
 
@@ -76,7 +70,6 @@ namespace Cotton.Sync.Desktop.Shell
             List<DesktopNotificationRequest> notifications,
             DesktopSyncPairStatusSnapshot pair,
             string previousStatus,
-            string? previousError,
             string currentError,
             string displayName,
             bool suppressInitialSyncComplete)
@@ -84,8 +77,7 @@ namespace Cotton.Sync.Desktop.Shell
             if (string.Equals(pair.Status, "Error", StringComparison.Ordinal)
                 && !string.IsNullOrWhiteSpace(currentError))
             {
-                if (!string.Equals(previousStatus, pair.Status, StringComparison.Ordinal)
-                    || !string.Equals(previousError, currentError, StringComparison.Ordinal))
+                if (!string.Equals(previousStatus, pair.Status, StringComparison.Ordinal))
                 {
                     notifications.Add(new DesktopNotificationRequest(
                         DesktopNotificationKind.ActionRequiredError,
