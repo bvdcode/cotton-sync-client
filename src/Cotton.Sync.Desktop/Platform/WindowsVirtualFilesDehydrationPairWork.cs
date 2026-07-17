@@ -1004,6 +1004,31 @@ namespace Cotton.Sync.Desktop.Platform
                 return true;
             }
 
+            if (IsCompletedOnDemandHydrationCandidate(state!, diskState.Attributes))
+            {
+                if (!SizeMatchesBaseline(state!, diskState.Length)
+                    || !await ContentMatchesRemoteAsync(state!, normalizedPath, fullPath, diskState, cancellationToken)
+                        .ConfigureAwait(false))
+                {
+                    return false;
+                }
+
+                state!.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
+                state.LocalContentHash = state.RemoteContentHash;
+                state.LocalLastWriteUtc = diskState.LastWriteUtc;
+                state.LocalSizeBytes = diskState.Length;
+                state.SyncedAtUtc = DateTime.UtcNow;
+                await _stateStore.UpsertAsync(state, cancellationToken).ConfigureAwait(false);
+                _diagnostics.Record(
+                    "on-demand-hydration",
+                    "completed",
+                    syncPair.Id.ToString("D"),
+                    syncPair.LocalRootPath,
+                    normalizedPath,
+                    "Opening the tracked online-only placeholder completed on-demand hydration.");
+                return true;
+            }
+
             if (!IsManualFreeUpSpaceCandidate(diskState.Attributes))
             {
                 return false;
@@ -1172,6 +1197,15 @@ namespace Cotton.Sync.Desktop.Platform
                 && !HasRawAttribute(attributes, FileAttributeUnpinned)
                 && !HasRawAttribute(attributes, FileAttributeRecallOnDataAccess)
                 && (attributes & FileAttributes.Offline) == 0;
+        }
+
+        private static bool IsCompletedOnDemandHydrationCandidate(
+            SyncStateEntry state,
+            FileAttributes attributes)
+        {
+            return (state.PlaceholderHydrationState is SyncPlaceholderHydrationState.RemoteOnly
+                    or SyncPlaceholderHydrationState.Dehydrated)
+                && IsManualPinRemovalFileCandidate(attributes);
         }
 
         private static bool IsManualAlwaysKeepCandidate(

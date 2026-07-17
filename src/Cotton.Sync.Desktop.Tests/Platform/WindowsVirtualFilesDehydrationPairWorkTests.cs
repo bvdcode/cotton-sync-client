@@ -103,6 +103,73 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_RecordsCompletedOnDemandHydrationAndSuppressesInnerSync()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            FakeSyncStateStore stateStore = new();
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Docs/report.txt"));
+            FakeCloudFilesAdapter cloudFiles = new();
+            WindowsCloudFilesDiagnostics diagnostics = new();
+            RecordingSyncPairWork inner = new();
+            WindowsVirtualFilesDehydrationPairWork work = new(
+                inner,
+                stateStore,
+                cloudFiles,
+                new FakeContentHasher("remote-hash"),
+                diagnostics,
+                _ => CreateMaterializedDiskState());
+
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]));
+
+            SyncStateEntry updated = stateStore.GetRequired(syncPair.Id, "Docs/report.txt");
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Is.Empty);
+                Assert.That(cloudFiles.HydratedPaths, Is.Empty);
+                Assert.That(cloudFiles.DehydratedPaths, Is.Empty);
+                Assert.That(updated.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+                Assert.That(updated.LocalContentHash, Is.EqualTo("remote-hash"));
+                Assert.That(updated.LocalSizeBytes, Is.EqualTo(12));
+                Assert.That(updated.LocalLastWriteUtc, Is.EqualTo(new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc)));
+                Assert.That(diagnostic.Operation, Is.EqualTo("on-demand-hydration"));
+                Assert.That(diagnostic.Status, Is.EqualTo("completed"));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_PassesMaterializedPathToInnerSyncWhenContentDiffers()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            FakeSyncStateStore stateStore = new();
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Docs/report.txt"));
+            FakeCloudFilesAdapter cloudFiles = new();
+            WindowsCloudFilesDiagnostics diagnostics = new();
+            RecordingSyncPairWork inner = new();
+            WindowsVirtualFilesDehydrationPairWork work = new(
+                inner,
+                stateStore,
+                cloudFiles,
+                new FakeContentHasher("edited-hash"),
+                diagnostics,
+                _ => CreateMaterializedDiskState());
+
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]));
+
+            SyncStateEntry updated = stateStore.GetRequired(syncPair.Id, "Docs/report.txt");
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Has.Count.EqualTo(1));
+                Assert.That(inner.Requests[0].LocalChangedPaths, Is.EqualTo(new[] { "Docs/report.txt" }));
+                Assert.That(cloudFiles.HydratedPaths, Is.Empty);
+                Assert.That(cloudFiles.DehydratedPaths, Is.Empty);
+                Assert.That(updated.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+                Assert.That(updated.LocalContentHash, Is.Null);
+                Assert.That(diagnostics.Snapshot(), Is.Empty);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_HydratesOnlyPinnedDirectorySubtreeAndSuppressesChildEvents()
         {
             SyncPairSettings syncPair = CreateVirtualFilesPair();
@@ -895,6 +962,15 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 attributes,
                 Length: 12,
                 LastWriteUtc: new DateTime(2026, 06, 16, 10, 05, 00, DateTimeKind.Utc));
+        }
+
+        private static WindowsVirtualFileDiskState CreateMaterializedDiskState()
+        {
+            FileAttributes attributes = FileAttributes.Archive | FileAttributes.ReparsePoint;
+            return new WindowsVirtualFileDiskState(
+                attributes,
+                Length: 12,
+                LastWriteUtc: new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc));
         }
 
         private static WindowsVirtualFileDiskState CreateNeutralDirectoryDiskState()
