@@ -153,11 +153,12 @@ namespace Cotton.Sync.Desktop.Composition
                 supervisor,
                 sessionRevocationHandler: sessionRevocationHandler,
                 logger: _loggerFactory.CreateLogger<RealtimeRemoteChangeSyncCoordinator>());
-            var prerequisites = new SyncPairPrerequisiteValidator(
-                new FileSystemLocalSyncRootProbe(_loggerFactory.CreateLogger<FileSystemLocalSyncRootProbe>()),
-                new SdkRemoteSyncRootProbe(
-                    cottonClient.Nodes,
-                    _loggerFactory.CreateLogger<SdkRemoteSyncRootProbe>()));
+            ISyncPairPrerequisiteValidator prerequisites = new DesktopSyncPairPrerequisiteValidator(
+                new SyncPairPrerequisiteValidator(
+                    new FileSystemLocalSyncRootProbe(_loggerFactory.CreateLogger<FileSystemLocalSyncRootProbe>()),
+                    new SdkRemoteSyncRootProbe(
+                        cottonClient.Nodes,
+                        _loggerFactory.CreateLogger<SdkRemoteSyncRootProbe>())));
             var appService = new SyncApplicationService(
                 syncPairStore,
                 prerequisites,

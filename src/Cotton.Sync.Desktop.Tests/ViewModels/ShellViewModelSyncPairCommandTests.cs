@@ -4886,9 +4886,10 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task CancelAddSyncPairCommand_ClearsLocalFolderOverlapError()
         {
+            Guid existingPairId = Guid.NewGuid();
             var localFolderPicker = new FakeLocalFolderPicker("/home/user/Downloads");
             var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(
-                Guid.NewGuid(),
+                existingPairId,
                 "Downloads",
                 "Idle",
                 localPath: "/home/user/Downloads")));
@@ -4906,6 +4907,10 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.LocalFolderPath, Is.Empty);
                 Assert.That(viewModel.HasActionRequired, Is.False);
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Connected"));
+                Assert.That(viewModel.SyncPairs.Select(static pair => pair.Id), Is.EqualTo(new[] { existingPairId }));
+                Assert.That(controller.AddedSyncPairRequest, Is.Null);
+                Assert.That(controller.CreatedRemoteFolders, Is.Empty);
+                Assert.That(controller.ListRemoteFolderPaths, Is.Empty);
             });
         }
 
