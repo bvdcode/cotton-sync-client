@@ -517,7 +517,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
-        public async Task ProviderSuppressedChangeStorm_DoesNotWritePerFileDebugLogs()
+        public async Task ProviderSuppressedChangeStorm_LogsOneProviderOriginSummaryWithoutPerFileFlood()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
             var watcherFactory = new FakeWatcherFactory();
@@ -552,7 +552,41 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 Assert.That(observed, Is.False);
                 Assert.That(supervisor.SyncNowCallCount, Is.Zero);
                 Assert.That(coordinator.PendingRequestCount, Is.Zero);
-                Assert.That(logger.Entries, Is.Empty);
+                Assert.That(logger.Entries, Has.Count.EqualTo(1));
+                Assert.That(logger.Entries[0].Level, Is.EqualTo(LogLevel.Information));
+                Assert.That(logger.Entries[0].Message, Does.Contain("origin provider"));
+                Assert.That(logger.Entries[0].Message, Does.Contain("subsequent provider echoes are coalesced"));
+            });
+        }
+
+        [Test]
+        public async Task UserChange_LogsUserOrExternalOriginBeforeRequestingSync()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true);
+            var watcherFactory = new FakeWatcherFactory();
+            var supervisor = new FakeSyncSupervisor();
+            var logger = new RecordingLogger<LocalChangeSyncCoordinator>();
+            var coordinator = new LocalChangeSyncCoordinator(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval,
+                logger);
+            await coordinator.StartAsync();
+
+            watcherFactory.CreatedWatchers[syncPair.Id].Raise(FullPath(syncPair, "Cloud/user-edit.txt"));
+
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(1));
+                Assert.That(logger.Entries, Has.Count.EqualTo(1));
+                Assert.That(logger.Entries[0].Level, Is.EqualTo(LogLevel.Information));
+                Assert.That(logger.Entries[0].Message, Does.Contain("origin user-or-external"));
+                Assert.That(logger.Entries[0].Message, Does.Contain("Cloud" + Path.DirectorySeparatorChar + "user-edit.txt"));
             });
         }
 

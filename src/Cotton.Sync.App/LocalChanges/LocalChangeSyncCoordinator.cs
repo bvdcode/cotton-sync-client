@@ -32,6 +32,7 @@ namespace Cotton.Sync.App.LocalChanges
         private readonly Dictionary<Guid, ILocalSyncRootWatcher> _watchers = [];
         private readonly Dictionary<Guid, string> _localRootPaths = [];
         private readonly Dictionary<Guid, SyncPairMode> _syncPairModes = [];
+        private readonly HashSet<Guid> _loggedProviderSuppressionPairs = [];
         private CancellationTokenSource? _lifetime;
 
         internal int PendingRequestCount
@@ -154,6 +155,7 @@ namespace Cotton.Sync.App.LocalChanges
 
                 _pendingSyncs.Clear();
                 _pendingRequests.Clear();
+                _loggedProviderSuppressionPairs.Clear();
             }
 
             await WaitForPendingSyncsAsync(pendingSyncs, cancellationToken).ConfigureAwait(false);
@@ -175,6 +177,20 @@ namespace Cotton.Sync.App.LocalChanges
         {
             if (_changeSuppression?.ShouldSuppress(change) == true)
             {
+                bool shouldLog;
+                lock (_pendingGate)
+                {
+                    shouldLog = _loggedProviderSuppressionPairs.Add(change.SyncPairId);
+                }
+
+                if (shouldLog)
+                {
+                    _logger.LogInformation(
+                        "Suppressing filesystem watcher events for {SyncPairId} with origin {ChangeOrigin}; subsequent provider echoes are coalesced.",
+                        change.SyncPairId,
+                        "provider");
+                }
+
                 return;
             }
 
@@ -233,9 +249,10 @@ namespace Cotton.Sync.App.LocalChanges
                 }
 
                 RemoveCurrentPendingSync(syncPairId, request);
-                _logger.LogDebug(
-                    "Requesting local-change sync for {SyncPairId} after change at {ChangedPath}.",
+                _logger.LogInformation(
+                    "Requesting local-change sync for {SyncPairId} with origin {ChangeOrigin} after change at {ChangedPath}.",
                     syncPairId,
+                    "user-or-external",
                     changedPath);
                 SyncRunRequest? syncRequest = CreateSyncRunRequest(syncPairId, request);
                 if (syncRequest is null)
