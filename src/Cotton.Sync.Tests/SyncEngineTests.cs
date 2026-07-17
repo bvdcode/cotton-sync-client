@@ -2995,6 +2995,126 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithScopedWindowsVirtualFilesRenamesOnlineOnlyPlaceholderWithinDirectory()
+        {
+            const string oldPath = "Online/rename.bin";
+            const string newPath = "Online/renamed.bin";
+            Guid remoteFileId = Guid.NewGuid();
+            NodeFileManifestDto remote = RemoteFile(oldPath, HashText("remote-content"), remoteFileId, sizeBytes: 1024);
+            LocalFileSnapshot renamedLocalPlaceholder = CloudFilesPlaceholderLocal(newPath, remote.SizeBytes);
+            renamedLocalPlaceholder.LastWriteUtc = remote.UpdatedAt;
+            FakeLocalFileScanner scanner = new(renamedLocalPlaceholder);
+            PathOnlyRemoteTreeCrawler crawler = new(RemoteTree(remote));
+            FakeRemoteFileSynchronizer remoteFiles = new();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new();
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            SyncEngine engine = new(
+                scanner,
+                crawler,
+                remoteFiles,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+            await InsertPlaceholderBaselineAsync(stateStore, oldPath, remote);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions
+                {
+                    Scope = SyncRunScope.ForLocalChangedPaths([oldPath, newPath]),
+                });
+
+            SyncStateEntry? oldState = await stateStore.GetAsync("pair-a", oldPath);
+            SyncStateEntry? newState = await stateStore.GetAsync("pair-a", newPath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Moves, Has.Count.EqualTo(1));
+                Assert.That(remoteFiles.Moves[0].RelativePath, Is.EqualTo(newPath));
+                Assert.That(remoteFiles.Moves[0].ExistingRemoteFile.Id, Is.EqualTo(remoteFileId));
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Moved }));
+                Assert.That(oldState, Is.Null);
+                Assert.That(newState, Is.Not.Null);
+                Assert.That(newState!.RemoteFileId, Is.EqualTo(remoteFileId));
+                Assert.That(newState.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+                Assert.That(newState.PlaceholderIdentity, Is.EqualTo(placeholderWriter.PlaceholderIdentity));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithScopedWindowsVirtualFilesDoesNotRenameExplicitlyDeletedPlaceholder()
+        {
+            const string oldPath = "Online/delete.bin";
+            const string newPath = "Online/replacement.bin";
+            NodeFileManifestDto remote = RemoteFile(oldPath, HashText("remote-content"), sizeBytes: 1024);
+            LocalFileSnapshot replacementPlaceholder = CloudFilesPlaceholderLocal(newPath, remote.SizeBytes);
+            replacementPlaceholder.LastWriteUtc = remote.UpdatedAt;
+            FakeLocalFileScanner scanner = new(replacementPlaceholder);
+            PathOnlyRemoteTreeCrawler crawler = new(RemoteTree(remote));
+            FakeRemoteFileSynchronizer remoteFiles = new();
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            SyncEngine engine = new(scanner, crawler, remoteFiles, stateStore);
+            await InsertPlaceholderBaselineAsync(stateStore, oldPath, remote);
+
+            await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions
+                {
+                    Scope = SyncRunScope.ForLocalChangedPaths([oldPath, newPath], [oldPath]),
+                });
+
+            SyncStateEntry? oldState = await stateStore.GetAsync("pair-a", oldPath);
+            SyncStateEntry? newState = await stateStore.GetAsync("pair-a", newPath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Moves, Is.Empty);
+                Assert.That(remoteFiles.Deletes, Is.EqualTo(new[] { (remote.Id, false, remote.ETag) }));
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(oldState, Is.Null);
+                Assert.That(newState, Is.Null);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithScopedWindowsVirtualFilesDoesNotRenameChangedNameAcrossDirectories()
+        {
+            const string oldPath = "First/old.bin";
+            const string newPath = "Second/new.bin";
+            NodeFileManifestDto remote = RemoteFile(oldPath, HashText("remote-content"), sizeBytes: 1024);
+            LocalFileSnapshot candidatePlaceholder = CloudFilesPlaceholderLocal(newPath, remote.SizeBytes);
+            candidatePlaceholder.LastWriteUtc = remote.UpdatedAt;
+            FakeLocalFileScanner scanner = new(candidatePlaceholder);
+            PathOnlyRemoteTreeCrawler crawler = new(RemoteTree(remote));
+            FakeRemoteFileSynchronizer remoteFiles = new();
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            SyncEngine engine = new(scanner, crawler, remoteFiles, stateStore);
+            await InsertPlaceholderBaselineAsync(stateStore, oldPath, remote);
+
+            await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions
+                {
+                    Scope = SyncRunScope.ForLocalChangedPaths([oldPath, newPath]),
+                });
+
+            SyncStateEntry? oldState = await stateStore.GetAsync("pair-a", oldPath);
+            SyncStateEntry? newState = await stateStore.GetAsync("pair-a", newPath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Moves, Is.Empty);
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(oldState, Is.Not.Null);
+                Assert.That(oldState!.RemoteFileId, Is.EqualTo(remote.Id));
+                Assert.That(newState, Is.Null);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesMovesNestedDirectorySubtreeInOnePass()
         {
             const string oldDirectoryPath = "Source/Album";

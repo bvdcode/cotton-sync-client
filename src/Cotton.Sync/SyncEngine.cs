@@ -3269,11 +3269,15 @@ namespace Cotton.Sync
                 return;
             }
 
+            IReadOnlySet<string> scopedKeys = BuildExactScopedPathKeys(options.Scope.LocalChangedPaths);
+            IReadOnlySet<string> explicitlyDeletedKeys = BuildExactScopedPathKeys(options.Scope.LocalDeletedPaths);
+
             List<(string SourceKey, SyncStateEntry State, RemoteFileSnapshot Remote)> sources = [];
             foreach (KeyValuePair<string, SyncStateEntry> state in stateByPath)
             {
                 if (!IsOnlineOnlyPlaceholderState(state.Value)
                     || state.Value.PlaceholderIdentity is not { Length: > 0 }
+                    || explicitlyDeletedKeys.Contains(state.Key)
                     || localByPath.ContainsKey(state.Key)
                     || !remoteByPath.TryGetValue(state.Key, out RemoteFileSnapshot? remote)
                     || !RemoteMatchesBaseline(remote.File, state.Value))
@@ -3309,7 +3313,17 @@ namespace Cotton.Sync
             foreach ((string sourceKey, SyncStateEntry state, RemoteFileSnapshot remote) in sources)
             {
                 (string TargetKey, LocalFileSnapshot Local)[] matchingTargets = targets
-                    .Where(target => CanCoalesceOnlineOnlyPlaceholderMove(state, remote.File, target.Local))
+                    .Where(target => CanCoalesceOnlineOnlyPlaceholderMove(
+                        state,
+                        remote.File,
+                        target.Local,
+                        CanUseScopedOnlineOnlyPlaceholderRename(
+                            options,
+                            scopedKeys,
+                            sourceKey,
+                            target.TargetKey,
+                            state.RelativePath,
+                            target.Local.RelativePath)))
                     .ToArray();
                 if (matchingTargets.Length != 1)
                 {
@@ -3318,7 +3332,17 @@ namespace Cotton.Sync
 
                 (string targetKey, LocalFileSnapshot local) = matchingTargets[0];
                 int matchingSourceCount = sources.Count(
-                    source => CanCoalesceOnlineOnlyPlaceholderMove(source.State, source.Remote.File, local));
+                    source => CanCoalesceOnlineOnlyPlaceholderMove(
+                        source.State,
+                        source.Remote.File,
+                        local,
+                        CanUseScopedOnlineOnlyPlaceholderRename(
+                            options,
+                            scopedKeys,
+                            source.SourceKey,
+                            targetKey,
+                            source.State.RelativePath,
+                            local.RelativePath)));
                 if (matchingSourceCount == 1)
                 {
                     matches.Add((sourceKey, state, remote, targetKey, local));
@@ -3557,13 +3581,31 @@ namespace Cotton.Sync
         private static bool CanCoalesceOnlineOnlyPlaceholderMove(
             SyncStateEntry sourceState,
             NodeFileManifestDto remoteFile,
-            LocalFileSnapshot target)
+            LocalFileSnapshot target,
+            bool allowChangedFileName)
         {
-            return string.Equals(
-                    Path.GetFileName(sourceState.RelativePath),
-                    Path.GetFileName(target.RelativePath),
-                    StringComparison.OrdinalIgnoreCase)
+            return (allowChangedFileName
+                    || string.Equals(
+                        Path.GetFileName(sourceState.RelativePath),
+                        Path.GetFileName(target.RelativePath),
+                        StringComparison.OrdinalIgnoreCase))
                 && CanAdoptUntrackedVirtualFilesPlaceholder(target, remoteFile);
+        }
+
+        private static bool CanUseScopedOnlineOnlyPlaceholderRename(
+            SyncRunOptions options,
+            IReadOnlySet<string> scopedKeys,
+            string sourceKey,
+            string targetKey,
+            string sourcePath,
+            string targetPath)
+        {
+            return !options.Scope.IsFull
+                && scopedKeys.Contains(sourceKey)
+                && scopedKeys.Contains(targetKey)
+                && PathComparer.Equals(
+                    SyncPath.ToKey(GetParentPath(sourcePath)),
+                    SyncPath.ToKey(GetParentPath(targetPath)));
         }
 
         private static List<KeyValuePair<string, SyncStateEntry>> FindLocalMoveSources(
