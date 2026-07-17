@@ -2939,7 +2939,7 @@ namespace Cotton.Sync.Tests
             movedLocalPlaceholder.LastWriteUtc = remote.UpdatedAt;
             FakeLocalFileScanner scanner = new(movedLocalPlaceholder);
             scanner.Directories.Add(LocalDirectory(newDirectoryPath));
-            PathOnlyRemoteTreeCrawler crawler = new(remoteTree);
+            DescendantPathRemoteTreeCrawler crawler = new(remoteTree);
             FakeRemoteFileSynchronizer remoteFiles = new();
             FakeRemoteFilePlaceholderWriter placeholderWriter = new();
             FakeRemoteDirectorySynchronizer remoteDirectories = new();
@@ -2991,6 +2991,161 @@ namespace Cotton.Sync.Tests
                 Assert.That(newEntry.RemoteContentHash, Is.EqualTo(remote.ContentHash));
                 Assert.That(newEntry.PlaceholderIdentity, Is.EqualTo(placeholderWriter.PlaceholderIdentity));
                 Assert.That(newEntry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithScopedWindowsVirtualFilesMovesNestedDirectorySubtreeInOnePass()
+        {
+            const string oldDirectoryPath = "Source/Album";
+            const string oldNestedDirectoryPath = "Source/Album/Disc1";
+            const string newDirectoryPath = "Target/Album";
+            const string newNestedDirectoryPath = "Target/Album/Disc1";
+            const string oldFilePath = "Source/Album/Disc1/online-only.bin";
+            const string newFilePath = "Target/Album/Disc1/online-only.bin";
+            RemoteDirectorySnapshot sourceDirectory = RemoteDirectory("Source");
+            RemoteDirectorySnapshot targetDirectory = RemoteDirectory("Target");
+            RemoteDirectorySnapshot oldDirectory = RemoteDirectory(oldDirectoryPath, sourceDirectory.Node.Id);
+            RemoteDirectorySnapshot oldNestedDirectory = RemoteDirectory(
+                oldNestedDirectoryPath,
+                oldDirectory.Node.Id);
+            NodeFileManifestDto remoteFile = RemoteFile(
+                oldFilePath,
+                HashText("remote-content"),
+                sizeBytes: 1024);
+            RemoteTreeSnapshot remoteTree = RemoteTree(remoteFile);
+            remoteTree.Directories.Add(sourceDirectory);
+            remoteTree.Directories.Add(targetDirectory);
+            remoteTree.Directories.Add(oldDirectory);
+            remoteTree.Directories.Add(oldNestedDirectory);
+            LocalFileSnapshot movedPlaceholder = CloudFilesPlaceholderLocal(newFilePath, remoteFile.SizeBytes);
+            movedPlaceholder.LastWriteUtc = remoteFile.UpdatedAt;
+            FakeLocalFileScanner scanner = new(movedPlaceholder);
+            scanner.Directories.Add(LocalDirectory("Source"));
+            scanner.Directories.Add(LocalDirectory("Target"));
+            scanner.Directories.Add(LocalDirectory(newDirectoryPath));
+            scanner.Directories.Add(LocalDirectory(newNestedDirectoryPath));
+            DescendantPathRemoteTreeCrawler crawler = new(remoteTree);
+            FakeRemoteFileSynchronizer remoteFiles = new();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new();
+            FakeRemoteDirectorySynchronizer remoteDirectories = new();
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            SyncEngine engine = new(
+                scanner,
+                crawler,
+                remoteFiles,
+                stateStore,
+                remoteDirectories: remoteDirectories,
+                remoteFilePlaceholderWriter: placeholderWriter);
+            await InsertDirectoryBaselineAsync(stateStore, "Source", sourceDirectory.Node);
+            await InsertDirectoryBaselineAsync(stateStore, "Target", targetDirectory.Node);
+            await InsertDirectoryBaselineAsync(stateStore, oldDirectoryPath, oldDirectory.Node);
+            await InsertDirectoryBaselineAsync(stateStore, oldNestedDirectoryPath, oldNestedDirectory.Node);
+            await InsertPlaceholderBaselineAsync(stateStore, oldFilePath, remoteFile);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions
+                {
+                    Scope = SyncRunScope.ForLocalChangedPaths(
+                    [
+                        "Source",
+                        oldDirectoryPath,
+                        oldNestedDirectoryPath,
+                        oldFilePath,
+                        "Target",
+                        newDirectoryPath,
+                        newNestedDirectoryPath,
+                        newFilePath,
+                    ]),
+                });
+
+            SyncStateEntry? oldDirectoryState = await stateStore.GetAsync("pair-a", oldDirectoryPath);
+            SyncStateEntry? oldNestedDirectoryState = await stateStore.GetAsync("pair-a", oldNestedDirectoryPath);
+            SyncStateEntry? oldFileState = await stateStore.GetAsync("pair-a", oldFilePath);
+            SyncStateEntry? newDirectoryState = await stateStore.GetAsync("pair-a", newDirectoryPath);
+            SyncStateEntry? newNestedDirectoryState = await stateStore.GetAsync("pair-a", newNestedDirectoryPath);
+            SyncStateEntry? newFileState = await stateStore.GetAsync("pair-a", newFilePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteDirectories.Creates.Select(call => call.Name), Is.EqualTo(new[] { "Album", "Disc1" }));
+                Assert.That(
+                    remoteDirectories.Deletes,
+                    Is.EqualTo(new[]
+                    {
+                        (oldNestedDirectory.Node.Id, false),
+                        (oldDirectory.Node.Id, false),
+                    }));
+                Assert.That(remoteFiles.Moves, Has.Count.EqualTo(1));
+                Assert.That(remoteFiles.Moves[0].RelativePath, Is.EqualTo(newFilePath));
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(result.Activities.Any(activity => activity.Kind == SyncActivityKind.Skipped), Is.False);
+                Assert.That(oldDirectoryState, Is.Null);
+                Assert.That(oldNestedDirectoryState, Is.Null);
+                Assert.That(oldFileState, Is.Null);
+                Assert.That(newDirectoryState?.RemoteNodeId, Is.EqualTo(remoteDirectories.Creates[0].ReturnedNode.Id));
+                Assert.That(newNestedDirectoryState?.RemoteNodeId, Is.EqualTo(remoteDirectories.Creates[1].ReturnedNode.Id));
+                Assert.That(newFileState?.RemoteFileId, Is.EqualTo(remoteFile.Id));
+                Assert.That(newFileState?.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithScopedWindowsVirtualFilesDoesNotDeleteSubtreeWithUntrackedRemoteDescendant()
+        {
+            const string oldDirectoryPath = "Library";
+            const string newDirectoryPath = "LibraryMoved";
+            const string oldTrackedFilePath = "Library/tracked.bin";
+            const string newTrackedFilePath = "LibraryMoved/tracked.bin";
+            RemoteDirectorySnapshot oldDirectory = RemoteDirectory(oldDirectoryPath);
+            NodeFileManifestDto trackedRemoteFile = RemoteFile(
+                oldTrackedFilePath,
+                HashText("tracked-content"),
+                sizeBytes: 1024);
+            NodeFileManifestDto untrackedRemoteFile = RemoteFile(
+                "Library/untracked.bin",
+                HashText("untracked-content"),
+                sizeBytes: 2048);
+            RemoteTreeSnapshot remoteTree = RemoteTree(trackedRemoteFile, untrackedRemoteFile);
+            remoteTree.Directories.Add(oldDirectory);
+            LocalFileSnapshot movedPlaceholder = CloudFilesPlaceholderLocal(
+                newTrackedFilePath,
+                trackedRemoteFile.SizeBytes);
+            movedPlaceholder.LastWriteUtc = trackedRemoteFile.UpdatedAt;
+            FakeLocalFileScanner scanner = new(movedPlaceholder);
+            scanner.Directories.Add(LocalDirectory(newDirectoryPath));
+            DescendantPathRemoteTreeCrawler crawler = new(remoteTree);
+            FakeRemoteFileSynchronizer remoteFiles = new();
+            FakeRemoteDirectorySynchronizer remoteDirectories = new();
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            SyncEngine engine = new(
+                scanner,
+                crawler,
+                remoteFiles,
+                stateStore,
+                remoteDirectories: remoteDirectories,
+                remoteFilePlaceholderWriter: new FakeRemoteFilePlaceholderWriter());
+            await InsertDirectoryBaselineAsync(stateStore, oldDirectoryPath, oldDirectory.Node);
+            await InsertPlaceholderBaselineAsync(stateStore, oldTrackedFilePath, trackedRemoteFile);
+
+            await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions
+                {
+                    Scope = SyncRunScope.ForLocalChangedPaths([oldDirectoryPath, newDirectoryPath]),
+                });
+
+            SyncStateEntry? oldDirectoryState = await stateStore.GetAsync("pair-a", oldDirectoryPath);
+            SyncStateEntry? oldTrackedFileState = await stateStore.GetAsync("pair-a", oldTrackedFilePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Moves, Is.Empty);
+                Assert.That(remoteDirectories.Deletes, Is.Empty);
+                Assert.That(oldDirectoryState, Is.Not.Null);
+                Assert.That(oldTrackedFileState, Is.Not.Null);
             });
         }
 
@@ -5354,6 +5509,7 @@ namespace Cotton.Sync.Tests
             {
                 string key = SyncPath.ToKey(relativePath);
                 return requestedKeys.Contains(key)
+                    || requestedPaths.Any(path => IsDescendantPath(path, relativePath))
                     || includeDirectoryDescendants && requestedPaths.Any(path => IsDescendantPath(relativePath, path));
             }
 
@@ -5965,7 +6121,8 @@ namespace Cotton.Sync.Tests
                 string normalizedPath = SyncPath.Normalize(relativePath);
                 string normalizedRequestedPath = SyncPath.Normalize(requestedPath).TrimEnd('/');
                 return normalizedPath.Equals(normalizedRequestedPath, StringComparison.OrdinalIgnoreCase)
-                    || normalizedPath.StartsWith(normalizedRequestedPath + "/", StringComparison.OrdinalIgnoreCase);
+                    || normalizedPath.StartsWith(normalizedRequestedPath + "/", StringComparison.OrdinalIgnoreCase)
+                    || normalizedRequestedPath.StartsWith(normalizedPath + "/", StringComparison.OrdinalIgnoreCase);
             }
         }
 
