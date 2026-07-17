@@ -6,6 +6,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Composition;
 
@@ -71,6 +72,9 @@ namespace Cotton.Sync.Desktop.Diagnostics
                 WriteIndented = true,
             };
             options.Converters.Add(new JsonStringEnumConverter<SyncPairMode>(JsonNamingPolicy.CamelCase));
+            options.Converters.Add(new JsonStringEnumConverter<SyncTransferDirection>(JsonNamingPolicy.CamelCase));
+            options.Converters.Add(new JsonStringEnumConverter<SyncRunProgressStage>(JsonNamingPolicy.CamelCase));
+            options.Converters.Add(new JsonStringEnumConverter<SyncRunCause>(JsonNamingPolicy.CamelCase));
             return options;
         }
 

@@ -361,6 +361,74 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public async Task ExportDiagnosticsAsync_IncludesCurrentAndAggregateProgressWithoutPrivatePaths()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            Uri serverUrl = new("https://cotton.example.test/");
+            FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
+            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            using DesktopShellController controller = CreateController(paths, factory);
+            Guid syncPairId = Guid.NewGuid();
+            DateTime startedAtUtc = new(2026, 7, 17, 6, 30, 0, DateTimeKind.Utc);
+            DateTime occurredAtUtc = startedAtUtc.AddSeconds(3);
+
+            await controller.SignInWithBrowserAsync(serverUrl.AbsoluteUri);
+            host.TransferProgressPublisher.Publish(new AppTransferProgress(
+                syncPairId,
+                SyncTransferDirection.Download,
+                "Music/private-track.flac",
+                4096,
+                8192,
+                isCompleted: false,
+                occurredAtUtc,
+                speedBytesPerSecond: 1024,
+                estimatedTimeRemaining: TimeSpan.FromSeconds(4)));
+            host.RunProgressPublisher.Publish(new AppRunProgress(
+                syncPairId,
+                SyncRunProgressStage.HydratingCloudFiles,
+                filesCompleted: 4,
+                filesTotal: 10,
+                currentPath: "Music/private-track.flac",
+                startedAtUtc,
+                isCompleted: false,
+                occurredAtUtc,
+                bytesCompleted: 4096,
+                bytesTotal: 8192,
+                causes: SyncRunCause.Manual,
+                isFull: true));
+
+            JsonElement currentTransfers = await ReadDiagnosticsRootAsync(controller, "currentTransfers");
+            JsonElement aggregateRunProgress = await ReadDiagnosticsRootAsync(controller, "aggregateRunProgress");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(currentTransfers.GetArrayLength(), Is.EqualTo(1));
+                Assert.That(currentTransfers[0].GetProperty("direction").GetString(), Is.EqualTo("download"));
+                Assert.That(currentTransfers[0].GetProperty("relativePath").GetString(), Is.EqualTo("[transfer-path]"));
+                Assert.That(currentTransfers[0].GetProperty("transferredBytes").GetInt64(), Is.EqualTo(4096));
+                Assert.That(currentTransfers[0].GetProperty("totalBytes").GetInt64(), Is.EqualTo(8192));
+                Assert.That(aggregateRunProgress.GetArrayLength(), Is.EqualTo(1));
+                Assert.That(
+                    aggregateRunProgress[0].GetProperty("stage").GetString(),
+                    Is.EqualTo("hydratingCloudFiles"));
+                Assert.That(aggregateRunProgress[0].GetProperty("currentPath").GetString(), Is.EqualTo("[run-current-path]"));
+                Assert.That(aggregateRunProgress[0].GetProperty("filesCompleted").GetInt32(), Is.EqualTo(4));
+                Assert.That(aggregateRunProgress[0].GetProperty("filesTotal").GetInt32(), Is.EqualTo(10));
+                Assert.That(aggregateRunProgress[0].GetProperty("bytesCompleted").GetInt64(), Is.EqualTo(4096));
+                Assert.That(aggregateRunProgress[0].GetProperty("bytesTotal").GetInt64(), Is.EqualTo(8192));
+            });
+
+            await controller.SignOutAsync();
+            JsonElement signedOutTransfers = await ReadDiagnosticsRootAsync(controller, "currentTransfers");
+            JsonElement signedOutRunProgress = await ReadDiagnosticsRootAsync(controller, "aggregateRunProgress");
+            Assert.Multiple(() =>
+            {
+                Assert.That(signedOutTransfers.GetArrayLength(), Is.Zero);
+                Assert.That(signedOutRunProgress.GetArrayLength(), Is.Zero);
+            });
+        }
+
+        [Test]
         public async Task RemoveSyncPairAsync_MarksZeroPairBackgroundInactiveAfterLastPairDeletion()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
@@ -1306,14 +1374,16 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 AsyncResource = new FakeAsyncResource();
                 StatusPublisher = new InMemoryAppStatusPublisher();
                 SessionRevocationPublisher = new InMemorySessionRevocationPublisher();
+                TransferProgressPublisher = new InMemoryAppTransferProgressPublisher();
+                RunProgressPublisher = new InMemoryAppRunProgressPublisher();
                 Host = new DesktopSyncApplicationHost(
                     App,
                     new FakeRemoteRootResolver(),
                     StatusPublisher,
                     new InMemoryAppActivityPublisher(),
                     SessionRevocationPublisher,
-                    new InMemoryAppTransferProgressPublisher(),
-                    new InMemoryAppRunProgressPublisher(),
+                    TransferProgressPublisher,
+                    RunProgressPublisher,
                     TokenStore,
                     new FakeCottonNodeClient(),
                     new FakeCottonSyncClient(),
@@ -1327,6 +1397,10 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             public InMemoryAppStatusPublisher StatusPublisher { get; }
 
             public InMemorySessionRevocationPublisher SessionRevocationPublisher { get; }
+
+            public InMemoryAppTransferProgressPublisher TransferProgressPublisher { get; }
+
+            public InMemoryAppRunProgressPublisher RunProgressPublisher { get; }
 
             public FakeAsyncResource AsyncResource { get; }
 

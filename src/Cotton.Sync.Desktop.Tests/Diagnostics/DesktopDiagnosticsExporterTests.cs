@@ -252,6 +252,28 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         }
 
         [Test]
+        public async Task ExportAsync_RedactsHistoricalWindowsPathMissingFromCurrentBundle()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            const string historicalPath = @"C:\Users\Person\Removed pair\private-track.flac";
+            File.WriteAllText(
+                paths.LogFilePath,
+                "Scanned local tree metadata for " + historicalPath + " with 0 directories and 1 files in 12 ms.");
+            var exporter = new DesktopDiagnosticsExporter();
+
+            string archivePath = await exporter.ExportAsync(paths, CreateBundle(paths));
+
+            using ZipArchive archive = ZipFile.OpenRead(archivePath);
+            string exportedLog = ReadEntry(archive, "logs/cotton-sync.log");
+            Assert.Multiple(() =>
+            {
+                Assert.That(exportedLog, Does.Contain("Scanned local tree metadata for [local-path]"));
+                Assert.That(exportedLog, Does.Not.Contain(historicalPath));
+                Assert.That(exportedLog, Does.Not.Contain("private-track.flac"));
+            });
+        }
+
+        [Test]
         public async Task ExportAsync_PrivateSupportModeKeepsSupportContextAndStillRedactsSecrets()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
@@ -708,7 +730,9 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                 selfTestItems ?? [
                     new DesktopSelfTestItemSnapshot("Server identity", true, "Cotton Cloud"),
                 ],
-                cloudFilesEvents ?? []);
+                cloudFilesEvents ?? [],
+                [],
+                []);
         }
 
         private static string ReadEntry(ZipArchive archive, string entryName)

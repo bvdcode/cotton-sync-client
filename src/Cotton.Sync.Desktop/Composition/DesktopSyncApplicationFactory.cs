@@ -31,24 +31,27 @@ namespace Cotton.Sync.Desktop.Composition
         private static readonly TimeSpan HttpRequestTimeout = TimeSpan.FromSeconds(30);
 
         private readonly IPlatformCommandService? _browserAuthPlatformCommands;
+        private readonly Func<HttpClient> _httpClientFactory;
         private readonly ILoggerFactory _loggerFactory;
         private readonly DesktopAppPaths _paths;
 
         public DesktopSyncApplicationFactory(
             DesktopAppPaths paths,
             ILoggerFactory? loggerFactory = null,
-            IPlatformCommandService? browserAuthPlatformCommands = null)
+            IPlatformCommandService? browserAuthPlatformCommands = null,
+            Func<HttpClient>? httpClientFactory = null)
         {
             _paths = paths ?? throw new ArgumentNullException(nameof(paths));
             _loggerFactory = loggerFactory ?? new DesktopTraceLoggerFactory();
             _browserAuthPlatformCommands = browserAuthPlatformCommands;
+            _httpClientFactory = httpClientFactory ?? (() => DesktopHttpClientFactory.Create(HttpRequestTimeout));
         }
 
         public DesktopSyncApplicationHost Create(Uri serverUrl)
         {
             ArgumentNullException.ThrowIfNull(serverUrl);
 
-            HttpClient httpClient = DesktopHttpClientFactory.Create(HttpRequestTimeout);
+            HttpClient httpClient = _httpClientFactory();
             var tokenStore = new FileCottonTokenStore(_paths.TokenStorePath);
             var sdkOptions = new CottonSdkOptions
             {

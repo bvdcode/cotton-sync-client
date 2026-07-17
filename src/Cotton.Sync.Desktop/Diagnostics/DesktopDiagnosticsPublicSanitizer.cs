@@ -1,6 +1,7 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using System.Text.RegularExpressions;
 using Cotton.Sync.Desktop.Composition;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Shell;
@@ -9,6 +10,13 @@ namespace Cotton.Sync.Desktop.Diagnostics
 {
     internal static class DesktopDiagnosticsPublicSanitizer
     {
+        private static readonly Regex UnknownWindowsAbsolutePathPattern = new(
+            @"(?im)(?<![A-Za-z0-9])(?:[A-Za-z]:\\|\\\\)[^\r\n]*",
+            RegexOptions.CultureInvariant);
+        private static readonly Regex UnknownUnixAbsolutePathPattern = new(
+            @"(?im)(?<![:A-Za-z0-9])/(?:home|Users|tmp|var|mnt|media|Volumes|opt|srv|run)/[^\r\n]*",
+            RegexOptions.CultureInvariant);
+
         public static DesktopDiagnosticsBundle SanitizeBundle(
             DesktopAppPaths paths,
             DesktopDiagnosticsBundle bundle)
@@ -37,6 +45,12 @@ namespace Cotton.Sync.Desktop.Diagnostics
                 CloudFilesEvents = bundle.CloudFilesEvents
                     .Select(item => SanitizeCloudFilesEvent(item, replacements))
                     .ToArray(),
+                CurrentTransfers = bundle.CurrentTransfers
+                    .Select(SanitizeCurrentTransfer)
+                    .ToArray(),
+                AggregateRunProgress = bundle.AggregateRunProgress
+                    .Select(SanitizeAggregateRunProgress)
+                    .ToArray(),
             };
         }
 
@@ -59,7 +73,8 @@ namespace Cotton.Sync.Desktop.Diagnostics
                     StringComparison.OrdinalIgnoreCase);
             }
 
-            return result;
+            result = UnknownWindowsAbsolutePathPattern.Replace(result, "[local-path]");
+            return UnknownUnixAbsolutePathPattern.Replace(result, "[local-path]");
         }
 
         private static DesktopSyncPairSnapshot SanitizeSyncPair(
@@ -101,6 +116,23 @@ namespace Cotton.Sync.Desktop.Diagnostics
                 LocalRootPath = item.LocalRootPath is null ? null : "[cloud-files-local-root]",
                 RelativePath = item.RelativePath is null ? null : "[cloud-files-relative-path]",
                 Details = details,
+            };
+        }
+
+        private static DesktopTransferProgressSnapshot SanitizeCurrentTransfer(
+            DesktopTransferProgressSnapshot progress)
+        {
+            return progress with { RelativePath = "[transfer-path]" };
+        }
+
+        private static DesktopRunProgressSnapshot SanitizeAggregateRunProgress(
+            DesktopRunProgressSnapshot progress)
+        {
+            return progress with
+            {
+                CurrentPath = string.IsNullOrWhiteSpace(progress.CurrentPath)
+                    ? progress.CurrentPath
+                    : "[run-current-path]",
             };
         }
 
@@ -249,6 +281,16 @@ namespace Cotton.Sync.Desktop.Diagnostics
             {
                 AddIfUseful(replacements, item.LocalRootPath, "[cloud-files-local-root]");
                 AddIfUseful(replacements, item.RelativePath, "[cloud-files-relative-path]");
+            }
+
+            foreach (DesktopTransferProgressSnapshot progress in bundle.CurrentTransfers)
+            {
+                AddIfUseful(replacements, progress.RelativePath, "[transfer-path]");
+            }
+
+            foreach (DesktopRunProgressSnapshot progress in bundle.AggregateRunProgress)
+            {
+                AddIfUseful(replacements, progress.CurrentPath, "[run-current-path]");
             }
 
             for (int index = 0; index < bundle.CloudFilesRegistration.SyncPairs.Count; index++)

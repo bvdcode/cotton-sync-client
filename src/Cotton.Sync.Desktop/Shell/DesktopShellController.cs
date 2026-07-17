@@ -57,12 +57,15 @@ namespace Cotton.Sync.Desktop.Shell
         private readonly TimeSpan _savedSessionRestoreTimeout;
         private readonly TimeSpan _savedSessionRestoreRetryBaseDelay;
         private readonly TimeSpan _serverProbeTimeout;
+        private readonly object _progressGate = new();
         private readonly object _syncPairSettingsGate = new();
         private readonly SqliteSyncPairSettingsStore _syncPairStore;
         private readonly TimeSpan _tokenStorageVerificationTimeout;
         private readonly IDesktopUpdateService _updateService;
         private readonly IDisposable? _updateServiceLifetime;
         private readonly IDesktopUpdateInstaller _updateInstaller;
+        private readonly Dictionary<Guid, DesktopRunProgressSnapshot> _aggregateRunProgress = [];
+        private readonly Dictionary<Guid, DesktopTransferProgressSnapshot> _currentTransfers = [];
         private Dictionary<Guid, (bool IsEnabled, string LocalRootPath)> _knownSyncPairSettings = [];
         private DesktopUpdateDiagnosticsSnapshot _lastUpdateDiagnostics =
             DesktopUpdateDiagnosticsSnapshot.NotChecked(DesktopAppVersion.Current);
@@ -521,19 +524,7 @@ namespace Cotton.Sync.Desktop.Shell
             {
                 if (ReferenceEquals(_host, host))
                 {
-                    _host = null;
-                    _activeSession = null;
-                    _syncCoreState = SyncCoreStateSignedOut;
-                    _activitySubscription?.Dispose();
-                    _activitySubscription = null;
-                    _sessionRevocationSubscription?.Dispose();
-                    _sessionRevocationSubscription = null;
-                    _statusSubscription?.Dispose();
-                    _statusSubscription = null;
-                    _transferProgressSubscription?.Dispose();
-                    _transferProgressSubscription = null;
-                    _runProgressSubscription?.Dispose();
-                    _runProgressSubscription = null;
+                    DetachHost();
                 }
 
                 await host.DisposeAsync().ConfigureAwait(false);
@@ -895,6 +886,8 @@ namespace Cotton.Sync.Desktop.Shell
                 DesktopCloudFilesRegistrationDiagnosticsSnapshot.Create(syncPairs);
             DesktopNotificationCapabilitySnapshot notificationCapabilities =
                 DesktopNotificationServiceFactory.CreateSelfTestCapabilitySnapshot();
+            IReadOnlyList<DesktopTransferProgressSnapshot> currentTransfers = GetCurrentTransfers();
+            IReadOnlyList<DesktopRunProgressSnapshot> aggregateRunProgress = GetAggregateRunProgress();
             IReadOnlyList<DesktopSelfTestItemSnapshot> diagnosticsItems =
                 await CreateDiagnosticsExportItemsAsync(
                     syncPairs,
@@ -917,7 +910,9 @@ namespace Cotton.Sync.Desktop.Shell
                 CreateUpdateDiagnosticsSnapshot(),
                 cloudFilesRegistration,
                 diagnosticsItems,
-                WindowsCloudFilesDiagnostics.Shared.Snapshot());
+                WindowsCloudFilesDiagnostics.Shared.Snapshot(),
+                currentTransfers,
+                aggregateRunProgress);
             return await _diagnosticsExporter.ExportAsync(_paths, bundle, options, cancellationToken).ConfigureAwait(false);
         }
 
@@ -1751,6 +1746,7 @@ namespace Cotton.Sync.Desktop.Shell
             _transferProgressSubscription = null;
             _runProgressSubscription?.Dispose();
             _runProgressSubscription = null;
+            ClearProgressSnapshots();
             return host;
         }
 
@@ -1769,6 +1765,7 @@ namespace Cotton.Sync.Desktop.Shell
             _statusSubscription?.Dispose();
             _transferProgressSubscription?.Dispose();
             _runProgressSubscription?.Dispose();
+            ClearProgressSnapshots();
             _statusSubscription = host.StatusPublisher.Subscribe(new DesktopShellObserver<SyncAppStatus>(OnStatusChanged));
             _activitySubscription = host.ActivityPublisher.Subscribe(new DesktopShellObserver<AppSyncActivity>(OnActivityReported));
             _sessionRevocationSubscription = host.SessionRevocationPublisher.Subscribe(new DesktopShellObserver<SessionRevocationEvent>(OnSessionRevoked));
@@ -1869,12 +1866,60 @@ namespace Cotton.Sync.Desktop.Shell
 
         private void OnTransferProgressChanged(AppTransferProgress progress)
         {
-            TransferProgressChanged?.Invoke(this, ToTransferProgressSnapshot(progress));
+            DesktopTransferProgressSnapshot snapshot = ToTransferProgressSnapshot(progress);
+            lock (_progressGate)
+            {
+                if (snapshot.IsCompleted)
+                {
+                    _currentTransfers.Remove(snapshot.SyncPairId);
+                }
+                else
+                {
+                    _currentTransfers[snapshot.SyncPairId] = snapshot;
+                }
+            }
+
+            TransferProgressChanged?.Invoke(this, snapshot);
         }
 
         private void OnRunProgressChanged(AppRunProgress progress)
         {
-            RunProgressChanged?.Invoke(this, ToRunProgressSnapshot(progress));
+            DesktopRunProgressSnapshot snapshot = ToRunProgressSnapshot(progress);
+            lock (_progressGate)
+            {
+                _aggregateRunProgress[snapshot.SyncPairId] = snapshot;
+            }
+
+            RunProgressChanged?.Invoke(this, snapshot);
+        }
+
+        private IReadOnlyList<DesktopTransferProgressSnapshot> GetCurrentTransfers()
+        {
+            lock (_progressGate)
+            {
+                return _currentTransfers.Values
+                    .OrderBy(static progress => progress.SyncPairId)
+                    .ToArray();
+            }
+        }
+
+        private IReadOnlyList<DesktopRunProgressSnapshot> GetAggregateRunProgress()
+        {
+            lock (_progressGate)
+            {
+                return _aggregateRunProgress.Values
+                    .OrderBy(static progress => progress.SyncPairId)
+                    .ToArray();
+            }
+        }
+
+        private void ClearProgressSnapshots()
+        {
+            lock (_progressGate)
+            {
+                _currentTransfers.Clear();
+                _aggregateRunProgress.Clear();
+            }
         }
 
         private static DesktopActivitySnapshot ToActivitySnapshot(AppSyncActivity activity)

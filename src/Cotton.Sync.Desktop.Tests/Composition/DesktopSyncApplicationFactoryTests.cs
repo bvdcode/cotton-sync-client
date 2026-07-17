@@ -48,6 +48,23 @@ namespace Cotton.Sync.Desktop.Tests.Composition
         }
 
         [Test]
+        public async Task Create_UsesInjectedHttpClientFactoryOnce()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            int calls = 0;
+            Func<HttpClient> httpClientFactory = () =>
+            {
+                calls++;
+                return new HttpClient();
+            };
+            DesktopSyncApplicationFactory factory = new(paths, httpClientFactory: httpClientFactory);
+
+            await using DesktopSyncApplicationHost host = factory.Create(new Uri("https://cotton.example.test/"));
+
+            Assert.That(calls, Is.EqualTo(1));
+        }
+
+        [Test]
         public async Task Create_WiresContinuousSyncCoordinators()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
