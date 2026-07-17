@@ -28,6 +28,8 @@ namespace Cotton.Sync.Desktop.Platform
         private const uint ReparseTagCloudFamily = 0x9000001A;
         private const uint FileFlagBackupSemantics = 0x02000000;
         private const int FileAttributeRecallOnOpen = 0x00040000;
+        private const int FileAttributePinned = 0x00080000;
+        private const int FileAttributeUnpinned = 0x00100000;
         private const int FileAttributeRecallOnDataAccess = 0x00400000;
         private static readonly Guid ProviderGuid = Guid.Parse("6453b9dc-e042-4a73-a675-c5b2aa6c9607");
         private static readonly TimeSpan[] TransientPathRetryDelays =
@@ -44,6 +46,7 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly IWindowsCloudFilesDiagnostics _diagnostics;
         private readonly Func<string, bool> _isReparsePoint;
         private readonly Func<string, bool> _isCloudFilesReparsePoint;
+        private readonly Func<string, FileAttributes> _readFileAttributes;
         private readonly Action<TimeSpan> _transientRetryDelay;
         private readonly object _registrationGate = new();
         private readonly HashSet<string> _registeredRootPaths = new(StringComparer.OrdinalIgnoreCase);
@@ -56,6 +59,7 @@ namespace Cotton.Sync.Desktop.Platform
             IWindowsCloudFilesDiagnostics? diagnostics = null,
             Func<string, bool>? isReparsePoint = null,
             Func<string, bool>? isCloudFilesReparsePoint = null,
+            Func<string, FileAttributes>? readFileAttributes = null,
             Action<TimeSpan>? transientRetryDelay = null)
         {
             _rootSafety = rootSafety ?? new WindowsVirtualFilesRootSafetyPolicy();
@@ -65,6 +69,7 @@ namespace Cotton.Sync.Desktop.Platform
             _diagnostics = diagnostics ?? WindowsCloudFilesDiagnostics.Shared;
             _isReparsePoint = isReparsePoint ?? IsReparsePoint;
             _isCloudFilesReparsePoint = isCloudFilesReparsePoint ?? IsCloudFilesReparsePoint;
+            _readFileAttributes = readFileAttributes ?? File.GetAttributes;
             _transientRetryDelay = transientRetryDelay ?? Thread.Sleep;
         }
 
@@ -538,6 +543,7 @@ namespace Cotton.Sync.Desktop.Platform
             string fullPlaceholderPath,
             byte[] directoryIdentity)
         {
+            WindowsCloudFilesPinState? existingPinState = ReadExistingPinState(fullPlaceholderPath);
             WindowsCloudFilesNativePlaceholder directoryPlaceholder = CreateDirectoryNativePlaceholder(
                 placeholderPath,
                 directoryIdentity,
@@ -548,12 +554,15 @@ namespace Cotton.Sync.Desktop.Platform
                 request.SyncPairId,
                 localRootPath,
                 normalizedPath);
-            ExecuteNativeOperationWithTransientPathRetry(
-                () => _nativeApi.SetPinState(fullPlaceholderPath, WindowsCloudFilesPinState.Unpinned),
-                "set-pin-state",
-                request.SyncPairId,
-                localRootPath,
-                normalizedPath);
+            if (existingPinState.HasValue)
+            {
+                ExecuteNativeOperationWithTransientPathRetry(
+                    () => _nativeApi.SetPinState(fullPlaceholderPath, existingPinState.Value),
+                    "set-pin-state",
+                    request.SyncPairId,
+                    localRootPath,
+                    normalizedPath);
+            }
             ExecuteNativeOperationWithTransientPathRetry(
                 () => SetAndVerifyInSyncState(fullPlaceholderPath),
                 "set-in-sync-state",
@@ -568,6 +577,35 @@ namespace Cotton.Sync.Desktop.Platform
                 localRootPath,
                 normalizedPath,
                 "Windows Cloud Files directory placeholder already existed and was repaired.");
+        }
+
+        private WindowsCloudFilesPinState? ReadExistingPinState(string fullPlaceholderPath)
+        {
+            FileAttributes attributes;
+            try
+            {
+                attributes = _readFileAttributes(fullPlaceholderPath);
+            }
+            catch (IOException)
+            {
+                return null;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return null;
+            }
+
+            if (HasRawAttribute(attributes, FileAttributePinned))
+            {
+                return WindowsCloudFilesPinState.Pinned;
+            }
+
+            if (HasRawAttribute(attributes, FileAttributeUnpinned))
+            {
+                return WindowsCloudFilesPinState.Unpinned;
+            }
+
+            return null;
         }
 
         public void DehydratePlaceholder(SyncPairSettings syncPair, string relativePath)

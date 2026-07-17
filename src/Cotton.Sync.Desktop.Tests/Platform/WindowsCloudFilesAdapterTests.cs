@@ -303,7 +303,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
-        public void CreateDirectoryPlaceholder_RepairsExistingCloudFilesDirectoryPlaceholderWithoutReconversion()
+        public void CreateDirectoryPlaceholder_RepairsExistingCloudFilesDirectoryPlaceholderAndPreservesPinnedState()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
             var diagnostics = new WindowsCloudFilesDiagnostics();
@@ -315,7 +315,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 nativeApi,
                 diagnostics: diagnostics,
                 isReparsePoint: path => string.Equals(Path.GetFullPath(path), directoryPath, StringComparison.OrdinalIgnoreCase),
-                isCloudFilesReparsePoint: path => string.Equals(Path.GetFullPath(path), directoryPath, StringComparison.OrdinalIgnoreCase));
+                isCloudFilesReparsePoint: path => string.Equals(Path.GetFullPath(path), directoryPath, StringComparison.OrdinalIgnoreCase),
+                readFileAttributes: _ => FileAttributes.Directory
+                    | FileAttributes.ReparsePoint
+                    | (FileAttributes)0x00080000);
 
             adapter.CreateDirectoryPlaceholder(CreateDirectoryRequest(root, "Projects"));
 
@@ -331,7 +334,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(nativeApi.UpdatedPlaceholders[0].BaseDirectoryPath, Is.EqualTo(Path.GetFullPath(root)));
                 Assert.That(nativeApi.UpdatedPlaceholders[0].RelativeFileName, Is.EqualTo("Projects"));
                 Assert.That(nativeApi.UpdatedPlaceholders[0].IsDirectory, Is.True);
-                Assert.That(nativeApi.PinStates.Select(static pin => pin.FilePath), Is.EqualTo(new[] { directoryPath }));
+                Assert.That(nativeApi.PinStates, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.PinStates[0].FilePath, Is.EqualTo(directoryPath));
+                Assert.That(nativeApi.PinStates[0].PinState, Is.EqualTo(WindowsCloudFilesPinState.Pinned));
                 Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { directoryPath }));
                 Assert.That(nativeApi.CallLog, Is.EqualTo(new[] { "native-update", "native-set-pin-state", "native-set-in-sync-state" }));
                 Assert.That(identity.RelativePath, Is.EqualTo("Projects"));
