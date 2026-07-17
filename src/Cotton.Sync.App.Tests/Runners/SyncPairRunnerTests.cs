@@ -892,6 +892,36 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task SyncNowAsync_CoalescesRepeatedScopedEditsWhileAnotherUploadIsActive()
+        {
+            BlockingSyncPairWork work = new();
+            SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
+            SyncRunRequest blockerRequest = SyncRunRequest.ForLocalChangedPaths(["active-upload-blocker.bin"]);
+            SyncRunRequest pinnedEditRequest = SyncRunRequest.ForLocalChangedPaths(["pinned-edit.bin"]);
+
+            Task activeSync = runner.SyncNowAsync(blockerRequest);
+            await work.WaitForRunAsync(TimeSpan.FromSeconds(2));
+            await runner.SyncNowAsync(pinnedEditRequest);
+            await runner.SyncNowAsync(pinnedEditRequest);
+            await runner.SyncNowAsync(pinnedEditRequest);
+
+            work.ReleaseCurrentRun();
+            await work.WaitForRunCountAsync(2, TimeSpan.FromSeconds(2));
+            work.ReleaseCurrentRun();
+            await activeSync;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(work.Requests, Has.Count.EqualTo(2));
+                Assert.That(work.Requests[0].LocalChangedPaths, Is.EqualTo(new[] { "active-upload-blocker.bin" }));
+                Assert.That(work.Requests[1].LocalChangedPaths, Is.EqualTo(new[] { "pinned-edit.bin" }));
+                Assert.That(work.Requests[1].IsFull, Is.False);
+                Assert.That(work.Requests[1].Causes, Is.EqualTo(SyncRunCause.LocalChange));
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Idle));
+            });
+        }
+
+        [Test]
         public async Task SyncNowAsync_MergesQueuedScopedRequestsIntoLaterFullCheck()
         {
             var work = new BlockingFirstFailureSyncPairWork();
@@ -1277,12 +1307,23 @@ namespace Cotton.Sync.App.Tests.Runners
 
             public int RunCount { get; private set; }
 
+            public List<SyncRunRequest> Requests { get; } = [];
+
             public async Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
+            {
+                await RunOnceAsync(syncPair, SyncRunRequest.Full, cancellationToken).ConfigureAwait(false);
+            }
+
+            public async Task RunOnceAsync(
+                SyncPairSettings syncPair,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
             {
                 TaskCompletionSource release;
                 lock (_gate)
                 {
                     RunCount++;
+                    Requests.Add(request);
                     release = _currentRunRelease;
                     _currentRunStarted.TrySetResult();
                     if (RunCount >= 2)
@@ -1292,14 +1333,6 @@ namespace Cotton.Sync.App.Tests.Runners
                 }
 
                 await release.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            public Task RunOnceAsync(
-                SyncPairSettings syncPair,
-                SyncRunRequest request,
-                CancellationToken cancellationToken = default)
-            {
-                return RunOnceAsync(syncPair, cancellationToken);
             }
 
             public void ReleaseCurrentRun()
