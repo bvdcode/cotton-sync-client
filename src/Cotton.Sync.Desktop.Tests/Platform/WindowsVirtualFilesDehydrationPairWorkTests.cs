@@ -165,6 +165,41 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_AlreadyHydratedPinnedDirectoryDoesNotSuppressLaterUserChanges()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            FakeSyncStateStore stateStore = new();
+            stateStore.UpsertEntry(CreateDirectoryState(syncPair, "Music"));
+            SyncStateEntry fileState = CreatePlaceholderState(syncPair, "Music/track.mp3");
+            fileState.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
+            stateStore.UpsertEntry(fileState);
+            FakeCloudFilesAdapter cloudFiles = new();
+            RecordingSyncPairWork inner = new();
+            RecordingLocalChangeSuppression suppression = new();
+            WindowsVirtualFilesDehydrationPairWork work = new(
+                inner,
+                stateStore,
+                cloudFiles,
+                new FakeContentHasher("remote-hash"),
+                readDiskState: path => path.EndsWith(Path.DirectorySeparatorChar + "Music", StringComparison.OrdinalIgnoreCase)
+                    ? CreatePinnedDirectoryDiskState()
+                    : CreatePinnedHydratedDiskState(),
+                localChangeSuppression: suppression);
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForLocalChangedPaths(["Music", "Music/track.mp3"]));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Is.Empty);
+                Assert.That(cloudFiles.HydratedPaths, Is.Empty);
+                Assert.That(suppression.SuppressedWrites, Is.Empty);
+                Assert.That(suppression.ProviderWriteBurstCount, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_HydratesPinnedDirectorySubtreePublishesAggregateProgress()
         {
             SyncPairSettings syncPair = CreateVirtualFilesPair();
@@ -192,7 +227,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 },
                 runProgressPublisher: progressPublisher);
             SyncRunRequest request = SyncRunRequest.ForLocalChangedPaths(
-                ["Music", "Music/track-one.mp3", "Music/track-two.mp3"],
+                ["Music/track-one.mp3", "Music/track-two.mp3", "Music"],
                 SyncRunCause.LocalChange);
 
             await work.RunOnceAsync(syncPair, request);
@@ -318,6 +353,50 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_IgnoresRedundantUnpinnedRootEventWhileHandlingPinnedDirectory()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            FakeSyncStateStore stateStore = new();
+            stateStore.UpsertEntry(CreateDirectoryState(syncPair, "Music"));
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Music/track.mp3"));
+            FakeCloudFilesAdapter cloudFiles = new();
+            RecordingSyncPairWork inner = new();
+            string rootPath = Path.GetFullPath(syncPair.LocalRootPath)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            WindowsVirtualFilesDehydrationPairWork work = new(
+                inner,
+                stateStore,
+                cloudFiles,
+                new FakeContentHasher("remote-hash"),
+                readDiskState: path =>
+                {
+                    string normalizedPath = Path.GetFullPath(path)
+                        .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                    if (string.Equals(normalizedPath, rootPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return CreateUnpinnedDirectoryDiskState();
+                    }
+
+                    if (path.EndsWith(Path.DirectorySeparatorChar + "Music", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return CreatePinnedDirectoryDiskState();
+                    }
+
+                    return CreatePinnedHydratedDiskState();
+                });
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForLocalChangedPaths([".", "Music", "Music/track.mp3"]));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Is.Empty);
+                Assert.That(cloudFiles.InSyncPaths, Is.EqualTo(new[] { "Music" }));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_PreservesUntrackedChildEventWhileHydratingPinnedDirectory()
         {
             SyncPairSettings syncPair = CreateVirtualFilesPair();
@@ -388,6 +467,135 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(updated.LocalSizeBytes, Is.Null);
                 Assert.That(diagnostic.Operation, Is.EqualTo("manual-free-up-space"));
                 Assert.That(diagnostic.Status, Is.EqualTo("completed"));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_RecordsExplorerCompletedDehydrationWithoutInnerSyncOrSecondDehydrate()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            FakeSyncStateStore stateStore = new();
+            SyncStateEntry state = CreatePlaceholderState(syncPair, "Docs/report.txt");
+            state.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
+            state.LocalContentHash = "remote-hash";
+            state.LocalLastWriteUtc = new DateTime(2026, 06, 16, 10, 05, 00, DateTimeKind.Utc);
+            state.LocalSizeBytes = 12;
+            stateStore.UpsertEntry(state);
+            FakeCloudFilesAdapter cloudFiles = new();
+            WindowsCloudFilesDiagnostics diagnostics = new();
+            RecordingSyncPairWork inner = new();
+            WindowsVirtualFilesDehydrationPairWork work = new(
+                inner,
+                stateStore,
+                cloudFiles,
+                new FakeContentHasher("unexpected-hash"),
+                diagnostics,
+                _ => CreateUnpinnedRemoteOnlyDiskState());
+
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]));
+
+            SyncStateEntry updated = stateStore.GetRequired(syncPair.Id, "Docs/report.txt");
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Is.Empty);
+                Assert.That(cloudFiles.DehydratedPaths, Is.Empty);
+                Assert.That(updated.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Dehydrated));
+                Assert.That(updated.LocalContentHash, Is.Null);
+                Assert.That(updated.LocalLastWriteUtc, Is.Null);
+                Assert.That(updated.LocalSizeBytes, Is.Null);
+                Assert.That(diagnostic.Operation, Is.EqualTo("manual-free-up-space"));
+                Assert.That(diagnostic.Status, Is.EqualTo("completed"));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_SuppressesInnerSyncForUnpinnedTrackedDirectoryPlaceholder()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            FakeSyncStateStore stateStore = new();
+            stateStore.UpsertEntry(CreateDirectoryState(syncPair, "Music"));
+            FakeCloudFilesAdapter cloudFiles = new();
+            RecordingSyncPairWork inner = new();
+            WindowsVirtualFilesDehydrationPairWork work = new(
+                inner,
+                stateStore,
+                cloudFiles,
+                readDiskState: _ => CreateUnpinnedDirectoryDiskState());
+
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForLocalChangedPaths(["Music"]));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Is.Empty);
+                Assert.That(cloudFiles.DehydratedPaths, Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_SuppressesNeutralHydratedDirectoryUnpinSubtree()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            FakeSyncStateStore stateStore = new();
+            stateStore.UpsertEntry(CreateDirectoryState(syncPair, "Music"));
+            SyncStateEntry fileState = CreatePlaceholderState(syncPair, "Music/track.mp3");
+            fileState.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
+            fileState.LocalContentHash = "remote-hash";
+            fileState.LocalSizeBytes = 12;
+            fileState.LocalLastWriteUtc = new DateTime(2026, 06, 16, 10, 05, 00, DateTimeKind.Utc);
+            stateStore.UpsertEntry(fileState);
+            RecordingSyncPairWork inner = new();
+            WindowsVirtualFilesDehydrationPairWork work = new(
+                inner,
+                stateStore,
+                new FakeCloudFilesAdapter(),
+                readDiskState: path => path.EndsWith(Path.DirectorySeparatorChar + "Music", StringComparison.OrdinalIgnoreCase)
+                    ? CreateNeutralDirectoryDiskState()
+                    : CreateNeutralHydratedDiskState());
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForLocalChangedPaths(["Music", "Music/track.mp3"]));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Is.Empty);
+                Assert.That(fileState.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_ForwardsNeutralDirectorySubtreeWhenTrackedFileChanged()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            FakeSyncStateStore stateStore = new();
+            stateStore.UpsertEntry(CreateDirectoryState(syncPair, "Music"));
+            SyncStateEntry fileState = CreatePlaceholderState(syncPair, "Music/track.mp3");
+            fileState.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
+            fileState.LocalContentHash = "remote-hash";
+            fileState.LocalSizeBytes = 12;
+            fileState.LocalLastWriteUtc = new DateTime(2026, 06, 16, 10, 05, 00, DateTimeKind.Utc);
+            stateStore.UpsertEntry(fileState);
+            RecordingSyncPairWork inner = new();
+            WindowsVirtualFilesDehydrationPairWork work = new(
+                inner,
+                stateStore,
+                new FakeCloudFilesAdapter(),
+                readDiskState: path => path.EndsWith(Path.DirectorySeparatorChar + "Music", StringComparison.OrdinalIgnoreCase)
+                    ? CreateNeutralDirectoryDiskState()
+                    : new WindowsVirtualFileDiskState(
+                        FileAttributes.Archive | FileAttributes.ReparsePoint,
+                        Length: 13,
+                        LastWriteUtc: new DateTime(2026, 06, 16, 10, 07, 00, DateTimeKind.Utc)));
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForLocalChangedPaths(["Music", "Music/track.mp3"]));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Has.Count.EqualTo(1));
+                Assert.That(inner.Requests[0].LocalChangedPaths, Is.EqualTo(new[] { "Music", "Music/track.mp3" }));
             });
         }
 
@@ -672,7 +880,26 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         private static WindowsVirtualFileDiskState CreateUnpinnedDirectoryDiskState()
         {
             FileAttributes attributes = FileAttributes.Directory
-                | FileAttributes.ReparsePoint;
+                | FileAttributes.ReparsePoint
+                | (FileAttributes)FileAttributeUnpinned;
+            return new WindowsVirtualFileDiskState(
+                attributes,
+                Length: 0,
+                LastWriteUtc: new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc));
+        }
+
+        private static WindowsVirtualFileDiskState CreateNeutralHydratedDiskState()
+        {
+            FileAttributes attributes = FileAttributes.Archive | FileAttributes.ReparsePoint;
+            return new WindowsVirtualFileDiskState(
+                attributes,
+                Length: 12,
+                LastWriteUtc: new DateTime(2026, 06, 16, 10, 05, 00, DateTimeKind.Utc));
+        }
+
+        private static WindowsVirtualFileDiskState CreateNeutralDirectoryDiskState()
+        {
+            FileAttributes attributes = FileAttributes.Directory | FileAttributes.ReparsePoint;
             return new WindowsVirtualFileDiskState(
                 attributes,
                 Length: 0,
