@@ -145,6 +145,23 @@ namespace Cotton.Sync
                 .ConfigureAwait(false);
             (Dictionary<string, SyncStateEntry> directoryStateByPath, Dictionary<string, SyncStateEntry> stateByPath) =
                 await LoadStateByPathAsync(syncPair.SyncPairId, options, treeLookups, cancellationToken).ConfigureAwait(false);
+            await ExpandScopedVirtualFilesDirectoryRenameLookupsAsync(
+                syncPair,
+                options,
+                treeLookups,
+                directoryStateByPath,
+                stateByPath,
+                cancellationToken).ConfigureAwait(false);
+            ThrowIfPathKindCollisions(
+                treeLookups.LocalDirectoriesByPath,
+                treeLookups.LocalFilesByPath,
+                directory => directory.RelativePath,
+                file => file.RelativePath);
+            ThrowIfPathKindCollisions(
+                treeLookups.RemoteDirectoriesByPath,
+                treeLookups.RemoteFilesByPath,
+                directory => directory.RelativePath,
+                file => file.RelativePath);
             var result = new SyncRunResult();
 
             Dictionary<string, LocalDirectorySnapshot> localDirectoriesByPath = treeLookups.LocalDirectoriesByPath;
@@ -170,6 +187,15 @@ namespace Cotton.Sync
 
             await EnsureLocalContentHashesForStateFilesAsync(localByPath, stateByPath, options, startedAtUtc, cancellationToken)
                 .ConfigureAwait(false);
+
+            await CoalesceLocalOnlineOnlyPlaceholderMovesAsync(
+                syncPair,
+                options,
+                result,
+                localByPath,
+                remoteByPath,
+                stateByPath,
+                cancellationToken).ConfigureAwait(false);
 
             await CoalesceLocalFileMovesAsync(
                 syncPair,
@@ -471,6 +497,157 @@ namespace Cotton.Sync
                 localTreeLookups.FilesByPath,
                 remoteTreeLookups.FilesByPath,
                 remoteTreeLookups.RootNode);
+        }
+
+        private async Task ExpandScopedVirtualFilesDirectoryRenameLookupsAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            SyncTreeLookups treeLookups,
+            IDictionary<string, SyncStateEntry> directoryStateByPath,
+            IDictionary<string, SyncStateEntry> fileStateByPath,
+            CancellationToken cancellationToken)
+        {
+            if (options.Scope.IsFull
+                || syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles
+                || _localMetadataPathLookupScanner is null
+                || _remotePathLookupCrawler is null)
+            {
+                return;
+            }
+
+            HashSet<string> scopedKeys = options.Scope.LocalChangedPaths
+                .Select(SyncPath.ToKey)
+                .ToHashSet(PathComparer);
+            List<(string Key, SyncStateEntry State)> sourceDirectories = directoryStateByPath
+                .Where(state =>
+                    scopedKeys.Contains(state.Key)
+                    && !treeLookups.LocalDirectoriesByPath.ContainsKey(state.Key)
+                    && treeLookups.RemoteDirectoriesByPath.TryGetValue(state.Key, out RemoteDirectorySnapshot? remote)
+                    && state.Value.RemoteNodeId == remote.Node.Id)
+                .Select(state => (state.Key, state.Value))
+                .ToList();
+            List<KeyValuePair<string, LocalDirectorySnapshot>> targetDirectories = treeLookups.LocalDirectoriesByPath
+                .Where(local =>
+                    scopedKeys.Contains(local.Key)
+                    && !treeLookups.RemoteDirectoriesByPath.ContainsKey(local.Key)
+                    && !directoryStateByPath.ContainsKey(local.Key))
+                .ToList();
+            if (sourceDirectories.Count != 1 || targetDirectories.Count != 1)
+            {
+                return;
+            }
+
+            (string sourceKey, SyncStateEntry sourceDirectoryState) = sourceDirectories[0];
+            KeyValuePair<string, LocalDirectorySnapshot> targetDirectory = targetDirectories[0];
+            string sourcePath = SyncPath.Normalize(sourceDirectoryState.RelativePath);
+            string targetPath = SyncPath.Normalize(targetDirectory.Value.RelativePath);
+            List<SyncStateEntry> descendantStates = [];
+            await foreach (SyncStateEntry state in _stateStore
+                               .LoadEntriesByPathPrefixAsync(syncPair.SyncPairId, sourcePath, cancellationToken)
+                               .WithCancellation(cancellationToken)
+                               .ConfigureAwait(false))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!string.Equals(SyncPath.ToKey(state.RelativePath), sourceKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    descendantStates.Add(state);
+                }
+            }
+
+            if (descendantStates.Count == 0)
+            {
+                return;
+            }
+
+            await foreach (SyncStateEntry _ in _stateStore
+                               .LoadEntriesByPathPrefixAsync(syncPair.SyncPairId, targetPath, cancellationToken)
+                               .WithCancellation(cancellationToken)
+                               .ConfigureAwait(false))
+            {
+                return;
+            }
+
+            Dictionary<string, string> targetPathBySourceKey = descendantStates.ToDictionary(
+                state => SyncPath.ToKey(state.RelativePath),
+                state => targetPath + SyncPath.Normalize(state.RelativePath)[sourcePath.Length..],
+                PathComparer);
+            string[] sourceDescendantPaths = descendantStates
+                .Select(state => SyncPath.Normalize(state.RelativePath))
+                .ToArray();
+            string[] targetDescendantPaths = targetPathBySourceKey.Values.ToArray();
+            LocalTreeLookupSnapshot localDescendants = await _localMetadataPathLookupScanner
+                .ScanPathMetadataLookupsAsync(
+                    syncPair.LocalRootPath,
+                    targetDescendantPaths,
+                    progress: null,
+                    includeDirectoryDescendants: false,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            RemoteTreeLookupSnapshot remoteDescendants = await _remotePathLookupCrawler
+                .CrawlPathLookupsAsync(
+                    syncPair.RemoteRootNodeId,
+                    sourceDescendantPaths,
+                    progress: null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            foreach (SyncStateEntry state in descendantStates)
+            {
+                string stateKey = SyncPath.ToKey(state.RelativePath);
+                string targetKey = SyncPath.ToKey(targetPathBySourceKey[stateKey]);
+                bool isConfirmed = state.Kind switch
+                {
+                    SyncEntryKind.Directory =>
+                        localDescendants.DirectoriesByPath.ContainsKey(targetKey)
+                        && remoteDescendants.DirectoriesByPath.TryGetValue(stateKey, out RemoteDirectorySnapshot? remote)
+                        && state.RemoteNodeId == remote.Node.Id,
+                    SyncEntryKind.File =>
+                        localDescendants.FilesByPath.ContainsKey(targetKey)
+                        && remoteDescendants.FilesByPath.TryGetValue(stateKey, out RemoteFileSnapshot? remote)
+                        && RemoteMatchesBaseline(remote.File, state),
+                    _ => throw new ArgumentOutOfRangeException(nameof(state), state.Kind, "Unknown sync state entry kind."),
+                };
+                if (!isConfirmed)
+                {
+                    return;
+                }
+            }
+
+            foreach (KeyValuePair<string, LocalDirectorySnapshot> local in localDescendants.DirectoriesByPath)
+            {
+                treeLookups.LocalDirectoriesByPath[local.Key] = local.Value;
+            }
+
+            foreach (KeyValuePair<string, LocalFileSnapshot> local in localDescendants.FilesByPath)
+            {
+                treeLookups.LocalFilesByPath[local.Key] = local.Value;
+            }
+
+            foreach (KeyValuePair<string, RemoteDirectorySnapshot> remote in remoteDescendants.DirectoriesByPath)
+            {
+                treeLookups.RemoteDirectoriesByPath[remote.Key] = remote.Value;
+            }
+
+            foreach (KeyValuePair<string, RemoteFileSnapshot> remote in remoteDescendants.FilesByPath)
+            {
+                treeLookups.RemoteFilesByPath[remote.Key] = remote.Value;
+            }
+
+            foreach (SyncStateEntry state in descendantStates)
+            {
+                string key = SyncPath.ToKey(state.RelativePath);
+                switch (state.Kind)
+                {
+                    case SyncEntryKind.Directory:
+                        directoryStateByPath[key] = state;
+                        break;
+                    case SyncEntryKind.File:
+                        fileStateByPath[key] = state;
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(state), state.Kind, "Unknown sync state entry kind.");
+                }
+            }
         }
 
         private async Task<(Dictionary<string, SyncStateEntry> DirectoryStateByPath, Dictionary<string, SyncStateEntry> FileStateByPath)> LoadStateByPathAsync(
@@ -2868,6 +3045,152 @@ namespace Cotton.Sync
                     stateByPath,
                     cancellationToken).ConfigureAwait(false);
             }
+        }
+
+        private async Task CoalesceLocalOnlineOnlyPlaceholderMovesAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            SyncRunResult result,
+            IReadOnlyDictionary<string, LocalFileSnapshot> localByPath,
+            IDictionary<string, RemoteFileSnapshot> remoteByPath,
+            IDictionary<string, SyncStateEntry> stateByPath,
+            CancellationToken cancellationToken)
+        {
+            if (syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles)
+            {
+                return;
+            }
+
+            List<(string SourceKey, SyncStateEntry State, RemoteFileSnapshot Remote)> sources = [];
+            foreach (KeyValuePair<string, SyncStateEntry> state in stateByPath)
+            {
+                if (!IsOnlineOnlyPlaceholderState(state.Value)
+                    || state.Value.PlaceholderIdentity is not { Length: > 0 }
+                    || localByPath.ContainsKey(state.Key)
+                    || !remoteByPath.TryGetValue(state.Key, out RemoteFileSnapshot? remote)
+                    || !RemoteMatchesBaseline(remote.File, state.Value))
+                {
+                    continue;
+                }
+
+                sources.Add((state.Key, state.Value, remote));
+            }
+
+            if (sources.Count == 0)
+            {
+                return;
+            }
+
+            List<(string TargetKey, LocalFileSnapshot Local)> targets = [];
+            foreach (KeyValuePair<string, LocalFileSnapshot> local in localByPath)
+            {
+                if (local.Value.IsCloudFilesOnlineOnlyPlaceholder
+                    && !stateByPath.ContainsKey(local.Key)
+                    && !remoteByPath.ContainsKey(local.Key))
+                {
+                    targets.Add((local.Key, local.Value));
+                }
+            }
+
+            List<(
+                string SourceKey,
+                SyncStateEntry State,
+                RemoteFileSnapshot Remote,
+                string TargetKey,
+                LocalFileSnapshot Local)> matches = [];
+            foreach ((string sourceKey, SyncStateEntry state, RemoteFileSnapshot remote) in sources)
+            {
+                (string TargetKey, LocalFileSnapshot Local)[] matchingTargets = targets
+                    .Where(target => CanCoalesceOnlineOnlyPlaceholderMove(state, remote.File, target.Local))
+                    .ToArray();
+                if (matchingTargets.Length != 1)
+                {
+                    continue;
+                }
+
+                (string targetKey, LocalFileSnapshot local) = matchingTargets[0];
+                int matchingSourceCount = sources.Count(
+                    source => CanCoalesceOnlineOnlyPlaceholderMove(source.State, source.Remote.File, local));
+                if (matchingSourceCount == 1)
+                {
+                    matches.Add((sourceKey, state, remote, targetKey, local));
+                }
+            }
+
+            foreach ((
+                string sourceKey,
+                SyncStateEntry sourceState,
+                RemoteFileSnapshot remote,
+                string targetKey,
+                LocalFileSnapshot local) in matches)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                string sourcePath = sourceState.RelativePath;
+                string targetPath = local.RelativePath;
+                NodeFileManifestDto moved;
+                try
+                {
+                    moved = await _remoteFiles
+                        .MoveFileAsync(syncPair.RemoteRootNodeId, targetPath, remote.File, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (HttpRequestException exception) when (IsRemotePreconditionFailed(exception))
+                {
+                    NodeFileManifestDto? latestRemoteFile = await FindLatestRemoteFileAsync(syncPair, sourcePath, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (latestRemoteFile is null)
+                    {
+                        remoteByPath.Remove(sourceKey);
+                    }
+                    else
+                    {
+                        remoteByPath[sourceKey] = new RemoteFileSnapshot
+                        {
+                            RelativePath = sourcePath,
+                            File = latestRemoteFile,
+                        };
+                    }
+
+                    continue;
+                }
+
+                SyncStateEntry? targetState = await TryCreateRemoteOnlyFilePlaceholderStateAsync(
+                        syncPair,
+                        options,
+                        targetPath,
+                        moved,
+                        cancellationToken,
+                        sourceState.PlaceholderHydrationState)
+                    .ConfigureAwait(false);
+                if (targetState is null)
+                {
+                    throw new InvalidOperationException("Cloud Files placeholder refresh returned no state for " + targetPath + ".");
+                }
+
+                remoteByPath.Remove(sourceKey);
+                remoteByPath[targetKey] = new RemoteFileSnapshot
+                {
+                    RelativePath = targetPath,
+                    File = moved,
+                };
+                stateByPath.Remove(sourceKey);
+                stateByPath[targetKey] = targetState;
+                await _stateStore.DeleteAsync(syncPair.SyncPairId, sourcePath, cancellationToken).ConfigureAwait(false);
+                await _stateStore.UpsertAsync(targetState, cancellationToken).ConfigureAwait(false);
+                Report(result, options, SyncActivityKind.Moved, targetPath, "Moved from " + sourcePath + ".");
+            }
+        }
+
+        private static bool CanCoalesceOnlineOnlyPlaceholderMove(
+            SyncStateEntry sourceState,
+            NodeFileManifestDto remoteFile,
+            LocalFileSnapshot target)
+        {
+            return string.Equals(
+                    Path.GetFileName(sourceState.RelativePath),
+                    Path.GetFileName(target.RelativePath),
+                    StringComparison.OrdinalIgnoreCase)
+                && CanAdoptUntrackedVirtualFilesPlaceholder(target, remoteFile);
         }
 
         private static List<KeyValuePair<string, SyncStateEntry>> FindLocalMoveSources(
