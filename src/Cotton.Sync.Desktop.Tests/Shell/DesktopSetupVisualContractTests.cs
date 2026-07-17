@@ -924,6 +924,40 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public void DashboardOverlays_KeepKeyboardFocusInsideTheActiveSurface()
+        {
+            string mainWindowXaml = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(CountOccurrences(mainWindowXaml, "KeyboardNavigation.TabNavigation=\"Cycle\""), Is.EqualTo(1));
+                Assert.That(CountOccurrences(mainWindowXaml, "IsEnabled=\"{Binding IsDashboardChromeVisible}\""), Is.EqualTo(2));
+                Assert.That(mainWindowXaml, Does.Contain("x:Name=\"CancelAddSyncPairButton\""));
+                Assert.That(mainWindowXaml, Does.Contain("x:Name=\"CloseSettingsButton\""));
+                Assert.That(mainWindowXaml, Does.Contain("x:Name=\"SettingsTabControl\""));
+            });
+        }
+
+        [Test]
+        public void MainWindow_FocusesAndClosesTheActiveDashboardOverlayFromKeyboard()
+        {
+            string mainWindowCode = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(mainWindowCode, Does.Contain("FocusOverlayAction(addSyncPairViewModel.IsAddSyncPairWizardVisible, CancelAddSyncPairButton);"));
+                Assert.That(mainWindowCode, Does.Contain("FocusOverlayAction(settingsViewModel.IsSettingsVisible, CloseSettingsButton);"));
+                Assert.That(mainWindowCode, Does.Contain("protected override void OnKeyDown(KeyEventArgs e)"));
+                Assert.That(mainWindowCode, Does.Contain("TryCycleSettingsFocus(e)"));
+                Assert.That(mainWindowCode, Does.Contain("SettingsTabControl.SelectedItem is Control selectedTab"));
+                Assert.That(mainWindowCode, Does.Contain("!CloseSettingsButton.IsKeyboardFocusWithin"));
+                Assert.That(mainWindowCode, Does.Contain("CancelCreateRemoteFolderCommand.Execute(null);"));
+                Assert.That(mainWindowCode, Does.Contain("CancelAddSyncPairCommand.Execute(null);"));
+                Assert.That(mainWindowCode, Does.Contain("CloseSettingsCommand.Execute(null);"));
+            });
+        }
+
+        [Test]
         public void CloudFolderPicker_UsesCompactIconNavigationButtons()
         {
             string mainWindowXaml = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml"));

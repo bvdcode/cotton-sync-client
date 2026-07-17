@@ -181,12 +181,101 @@ namespace Cotton.Sync.Desktop
                 return;
             }
 
+            if (e.PropertyName == nameof(ShellViewModel.IsAddSyncPairWizardVisible)
+                && sender is ShellViewModel addSyncPairViewModel)
+            {
+                FocusOverlayAction(addSyncPairViewModel.IsAddSyncPairWizardVisible, CancelAddSyncPairButton);
+                return;
+            }
+
+            if (e.PropertyName == nameof(ShellViewModel.IsSettingsVisible)
+                && sender is ShellViewModel settingsViewModel)
+            {
+                FocusOverlayAction(settingsViewModel.IsSettingsVisible, CloseSettingsButton);
+                return;
+            }
+
             if ((e.PropertyName == nameof(ShellViewModel.IsSelectedSyncPairEditorVisible)
                 || e.PropertyName == nameof(ShellViewModel.SelectedSyncPair))
                 && sender is ShellViewModel syncPairViewModel)
             {
                 ScrollSelectedSyncPairIntoView(syncPairViewModel);
             }
+        }
+
+        private static void FocusOverlayAction(bool isVisible, Control action)
+        {
+            if (!isVisible)
+            {
+                return;
+            }
+
+            Dispatcher.UIThread.Post(() => action.Focus(), DispatcherPriority.Background);
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (TryCycleSettingsFocus(e))
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.Escape && TryCloseActiveOverlay())
+            {
+                e.Handled = true;
+                return;
+            }
+
+            base.OnKeyDown(e);
+        }
+
+        private bool TryCycleSettingsFocus(KeyEventArgs e)
+        {
+            if (e.Key != Key.Tab
+                || e.KeyModifiers.HasFlag(KeyModifiers.Shift)
+                || !_viewModel.IsSettingsVisible
+                || !CloseSettingsButton.IsKeyboardFocusWithin)
+            {
+                return false;
+            }
+
+            if (SettingsTabControl.SelectedItem is Control selectedTab)
+            {
+                selectedTab.Focus();
+            }
+            else
+            {
+                SettingsTabControl.Focus();
+            }
+
+            return true;
+        }
+
+        private bool TryCloseActiveOverlay()
+        {
+            if (_viewModel.IsCreateRemoteFolderVisible
+                && _viewModel.CancelCreateRemoteFolderCommand.CanExecute(null))
+            {
+                _viewModel.CancelCreateRemoteFolderCommand.Execute(null);
+                return true;
+            }
+
+            if (_viewModel.IsAddSyncPairWizardVisible
+                && _viewModel.CancelAddSyncPairCommand.CanExecute(null))
+            {
+                _viewModel.CancelAddSyncPairCommand.Execute(null);
+                return true;
+            }
+
+            if (_viewModel.IsSettingsVisible
+                && _viewModel.CloseSettingsCommand.CanExecute(null))
+            {
+                _viewModel.CloseSettingsCommand.Execute(null);
+                return true;
+            }
+
+            return false;
         }
 
         private void OnUpdateInstallShutdownRequested(object? sender, EventArgs e)

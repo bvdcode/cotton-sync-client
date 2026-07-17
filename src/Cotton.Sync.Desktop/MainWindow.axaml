@@ -327,6 +327,7 @@
       </Grid.RowDefinitions>
       <StackPanel Grid.Row="0"
                   Spacing="8"
+                  IsEnabled="{Binding IsDashboardChromeVisible}"
                   IsVisible="{Binding IsDashboardChromeVisible}">
           <Border Padding="10"
                   CornerRadius="6"
@@ -607,6 +608,7 @@
       <Grid Grid.Row="1"
             RowDefinitions="*,Auto"
             RowSpacing="8"
+            IsEnabled="{Binding IsDashboardChromeVisible}"
             MinHeight="0">
         <Border Grid.Row="0"
                 Padding="10"
@@ -1089,6 +1091,7 @@
 
       <Border Grid.RowSpan="2"
               Background="{DynamicResource CottonOverlayBrush}"
+              KeyboardNavigation.TabNavigation="Cycle"
               IsVisible="{Binding IsAddSyncPairWizardVisible}">
         <Border Margin="10"
                 Padding="12"
@@ -1114,7 +1117,8 @@
                            FontSize="12"
                            TextWrapping="Wrap" />
               </StackPanel>
-              <Button Grid.Column="1"
+              <Button x:Name="CancelAddSyncPairButton"
+                      Grid.Column="1"
                       Classes="icon"
                       ToolTip.Tip="Cancel"
                       AutomationProperties.Name="Cancel"
@@ -1449,7 +1453,8 @@
                            FontSize="12"
                            TextWrapping="Wrap" />
               </StackPanel>
-              <Button Grid.Column="1"
+              <Button x:Name="CloseSettingsButton"
+                      Grid.Column="1"
                       Classes="icon"
                       ToolTip.Tip="Close"
                       AutomationProperties.Name="Close"
@@ -1462,6 +1467,7 @@
             </Grid>
 
             <TabControl Grid.Row="1"
+                        x:Name="SettingsTabControl"
                         Classes="settingsTabs"
                         FontSize="13"
                         KeyboardNavigation.TabNavigation="Continue"
