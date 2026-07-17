@@ -75,7 +75,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
-        public void SetupView_StretchesFormWithoutFixedContentWidth()
+        public void SetupView_StretchesAndScrollsWithoutFixedContentWidth()
         {
             string mainWindowXaml = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml"));
             string setupView = GetSlice(
@@ -87,7 +87,10 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             {
                 Assert.That(setupView, Does.Not.Contain("Width=\"296\""));
                 Assert.That(setupView, Does.Contain("HorizontalAlignment=\"Stretch\""));
-                Assert.That(setupView, Does.Contain("Margin=\"20,0\""));
+                Assert.That(setupView, Does.Contain("Margin=\"20,12\""));
+                Assert.That(setupView, Does.Contain("HorizontalScrollBarVisibility=\"Disabled\""));
+                Assert.That(setupView, Does.Contain("VerticalScrollBarVisibility=\"Auto\""));
+                Assert.That(setupView, Does.Contain("VerticalContentAlignment=\"Center\""));
             });
         }
 

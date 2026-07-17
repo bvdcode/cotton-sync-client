@@ -1,6 +1,8 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using System.Globalization;
+
 using Cotton.Sync.App.SyncPairs;
 
 namespace Cotton.Sync.Desktop.Startup
@@ -26,6 +28,7 @@ namespace Cotton.Sync.Desktop.Startup
             string? shellShareLinkTargetPath,
             string? shellCopyShareLinkTargetPath,
             DesktopVisualSmokeScenario? visualSmokeScenario,
+            double? visualSmokeScale,
             Uri? updateManifestUri,
             string? expectedUpdateVersion,
             string? updateInstallerPath,
@@ -59,6 +62,7 @@ namespace Cotton.Sync.Desktop.Startup
             ShellShareLinkTargetPath = shellShareLinkTargetPath;
             ShellCopyShareLinkTargetPath = shellCopyShareLinkTargetPath;
             VisualSmokeScenario = visualSmokeScenario;
+            VisualSmokeScale = visualSmokeScale;
             UpdateManifestUri = updateManifestUri;
             ExpectedUpdateVersion = expectedUpdateVersion;
             UpdateInstallerPath = updateInstallerPath;
@@ -91,6 +95,7 @@ namespace Cotton.Sync.Desktop.Startup
             false,
             false,
             false,
+            null,
             null,
             null,
             null,
@@ -145,6 +150,8 @@ namespace Cotton.Sync.Desktop.Startup
 
         public DesktopVisualSmokeScenario? VisualSmokeScenario { get; }
 
+        public double? VisualSmokeScale { get; }
+
         public Uri? UpdateManifestUri { get; }
 
         public string? ExpectedUpdateVersion { get; }
@@ -180,6 +187,7 @@ namespace Cotton.Sync.Desktop.Startup
             string? username = ReadOption(args, "--username") ?? ReadOption(args, "--user");
             string? dataDirectory = ReadOption(args, "--data-dir") ?? ReadOption(args, "--data-directory");
             string? visualSmokeScenario = ReadOption(args, "--visual-smoke") ?? ReadOption(args, "--screenshot-state");
+            string? visualSmokeScale = ReadOption(args, "--visual-scale");
             string? windowsVirtualFilesSmokeHoldAfterPlaceholder =
                 ReadOption(args, "--vfs-smoke-hold-after-placeholder-seconds");
             string? windowsVirtualFilesSmokePhase = ReadOption(args, "--vfs-smoke-phase");
@@ -203,6 +211,7 @@ namespace Cotton.Sync.Desktop.Startup
             string? shellCopyShareLinkTargetPath = ReadOption(args, "--copy-shell-share-link")
                 ?? ReadOption(args, "--copy-shell-share-link-target");
             (SyncPairMode parsedSyncMode, string? syncModeError) = ParseSyncMode(syncMode);
+            DesktopVisualSmokeScenario? parsedVisualSmokeScenario = ParseVisualSmokeScenario(visualSmokeScenario);
             bool startMinimizedToTray = HasFlag(args, "--start-minimized")
                 || HasFlag(args, "--minimized")
                 || HasFlag(args, "--tray");
@@ -251,7 +260,8 @@ namespace Cotton.Sync.Desktop.Startup
                 printVersion,
                 NormalizeOptional(shellShareLinkTargetPath),
                 NormalizeOptional(shellCopyShareLinkTargetPath),
-                ParseVisualSmokeScenario(visualSmokeScenario),
+                parsedVisualSmokeScenario,
+                ParseVisualSmokeScale(visualSmokeScale, parsedVisualSmokeScenario),
                 ParseAbsoluteUri(updateManifestUri),
                 NormalizeOptional(expectedUpdateVersion),
                 NormalizeOptional(updateInstallerPath),
@@ -326,6 +336,22 @@ namespace Cotton.Sync.Desktop.Startup
             return Enum.TryParse(enumName, ignoreCase: true, out DesktopVisualSmokeScenario scenario)
                 ? scenario
                 : null;
+        }
+
+        private static double? ParseVisualSmokeScale(
+            string? value,
+            DesktopVisualSmokeScenario? visualSmokeScenario)
+        {
+            string? normalized = NormalizeOptional(value);
+            return visualSmokeScenario is not null
+                && double.TryParse(
+                    normalized,
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out double scale)
+                && scale is >= 1 and <= 3
+                    ? scale
+                    : null;
         }
 
         private static (SyncPairMode Mode, string? Error) ParseSyncMode(string? value)

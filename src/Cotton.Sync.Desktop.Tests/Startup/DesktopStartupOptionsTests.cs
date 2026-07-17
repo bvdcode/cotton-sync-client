@@ -287,6 +287,52 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void Parse_LoadsVisualSmokeScaleAlongsideScenario()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--visual-smoke",
+                    "long-progress",
+                    "--visual-scale",
+                    "2",
+                ]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(options.VisualSmokeScenario, Is.EqualTo(DesktopVisualSmokeScenario.LongProgress));
+                Assert.That(options.VisualSmokeScale, Is.EqualTo(2));
+            });
+        }
+
+        [TestCase("0.75")]
+        [TestCase("4")]
+        [TestCase("invalid")]
+        public void Parse_IgnoresUnsupportedVisualSmokeScale(string value)
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--visual-smoke",
+                    "long-progress",
+                    "--visual-scale",
+                    value,
+                ]);
+
+            Assert.That(options.VisualSmokeScale, Is.Null);
+        }
+
+        [Test]
+        public void Parse_IgnoresVisualSmokeScaleWithoutScenario()
+        {
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+                [
+                    "--visual-scale",
+                    "2",
+                ]);
+
+            Assert.That(options.VisualSmokeScale, Is.Null);
+        }
+
+        [Test]
         public void Parse_LoadsHighPressureStartingVisualSmokeScenario()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(

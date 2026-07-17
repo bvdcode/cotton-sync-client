@@ -127,10 +127,13 @@
     <Grid Grid.Row="2"
           Background="{DynamicResource CottonSurfaceBrush}"
           IsVisible="{Binding IsSetupVisible}">
-      <StackPanel Spacing="9"
-                  Margin="20,0"
-                  HorizontalAlignment="Stretch"
-                  VerticalAlignment="Center">
+      <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    VerticalContentAlignment="Center">
+        <StackPanel Spacing="9"
+                    Margin="20,12"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Center">
         <StackPanel Spacing="4"
                     HorizontalAlignment="Center"
                     Margin="0,0,0,4">
@@ -314,7 +317,8 @@
                     Command="{Binding SignInCommand}" />
           </StackPanel>
         </StackPanel>
-      </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
     </Grid>
 
     <Grid Grid.Row="2"

@@ -56,7 +56,8 @@ namespace Cotton.Sync.Desktop
                     controller,
                     StartupOptions.StartMinimizedToTray,
                     useTrayLifecycle,
-                    StartupOptions.VisualSmokeScenario);
+                    StartupOptions.VisualSmokeScenario,
+                    StartupOptions.VisualSmokeScale);
                 if (startHiddenToTray)
                 {
                     window.StartHiddenToTray();

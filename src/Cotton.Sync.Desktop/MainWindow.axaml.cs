@@ -33,9 +33,11 @@ namespace Cotton.Sync.Desktop
         private const double SetupSignInMinHeight = 440;
         private const double SetupMinWidth = 316;
         private const double SetupWidth = 336;
+        private const double WindowFrameHeightAllowance = 48;
 
         private readonly ILogger _logger;
         private readonly DesktopWindowLifecyclePolicy _lifecyclePolicy;
+        private readonly double? _visualSmokeScale;
         private readonly DesktopVisualSmokeScenario? _visualSmokeScenario;
         private readonly ShellViewModel _viewModel;
         private bool _hasOpened;
@@ -55,12 +57,14 @@ namespace Cotton.Sync.Desktop
             IDesktopShellController controller,
             bool startMinimizedToTray = false,
             bool canHideToTray = false,
-            DesktopVisualSmokeScenario? visualSmokeScenario = null)
+            DesktopVisualSmokeScenario? visualSmokeScenario = null,
+            double? visualSmokeScale = null)
         {
             ArgumentNullException.ThrowIfNull(controller);
             _logger = new DesktopTraceLoggerFactory().CreateLogger(nameof(MainWindow));
             _lifecyclePolicy = new DesktopWindowLifecyclePolicy(startMinimizedToTray, canHideToTray);
             _visualSmokeScenario = visualSmokeScenario;
+            _visualSmokeScale = visualSmokeScenario is null ? null : visualSmokeScale;
             InitializeComponent();
             bool notifyOnSessionRestore = !startMinimizedToTray && visualSmokeScenario is null;
             _viewModel = new ShellViewModel(
@@ -77,7 +81,7 @@ namespace Cotton.Sync.Desktop
             Opened += async (_, _) =>
             {
                 _hasOpened = true;
-                CenterOnCurrentScreen();
+                FitAndCenterOnCurrentScreen();
                 if (_lifecyclePolicy.ShouldHideAfterStartup())
                 {
                     HideForTrayStartup();
@@ -89,6 +93,12 @@ namespace Cotton.Sync.Desktop
                     HideForTrayStartup();
                 }
             };
+            if (_visualSmokeScale is null)
+            {
+                ScalingChanged += (_, _) => Dispatcher.UIThread.Post(
+                    FitAndCenterOnCurrentScreen,
+                    DispatcherPriority.Loaded);
+            }
             Closing += OnClosing;
             Closed += OnClosed;
         }
@@ -390,7 +400,7 @@ namespace Cotton.Sync.Desktop
             };
             if (_hasOpened)
             {
-                CenterOnCurrentScreen();
+                FitAndCenterOnCurrentScreen();
             }
         }
 
@@ -404,7 +414,36 @@ namespace Cotton.Sync.Desktop
             return viewModel.IsSignInStepVisible ? WindowProfile.SetupSignIn : WindowProfile.SetupServer;
         }
 
-        private void CenterOnCurrentScreen()
+        internal static (double Height, double MinHeight) CalculateFittedWindowHeight(
+            double desiredHeight,
+            double minimumHeight,
+            int workingAreaPixelHeight,
+            double renderScaling)
+        {
+            if (desiredHeight <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(desiredHeight));
+            }
+
+            if (minimumHeight <= 0 || minimumHeight > desiredHeight)
+            {
+                throw new ArgumentOutOfRangeException(nameof(minimumHeight));
+            }
+
+            if (workingAreaPixelHeight <= 0 || renderScaling <= 0)
+            {
+                return (desiredHeight, minimumHeight);
+            }
+
+            double availableHeight = Math.Max(
+                1,
+                workingAreaPixelHeight / renderScaling - WindowFrameHeightAllowance);
+            return (
+                Math.Min(desiredHeight, availableHeight),
+                Math.Min(minimumHeight, availableHeight));
+        }
+
+        private void FitAndCenterOnCurrentScreen()
         {
             Screen? screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
             if (screen is null)
@@ -412,7 +451,28 @@ namespace Cotton.Sync.Desktop
                 return;
             }
 
-            double scale = screen.Scaling;
+            double scale = _visualSmokeScale ?? (RenderScaling > 0 ? RenderScaling : screen.Scaling);
+            WindowProfile profile = _windowProfile ?? ResolveWindowProfile(_viewModel);
+            double desiredHeight = profile switch
+            {
+                WindowProfile.Dashboard => DashboardHeight,
+                WindowProfile.SetupSignIn => SetupSignInHeight,
+                _ => SetupServerHeight,
+            };
+            double desiredMinHeight = profile switch
+            {
+                WindowProfile.Dashboard => DashboardMinHeight,
+                WindowProfile.SetupSignIn => SetupSignInMinHeight,
+                _ => SetupServerMinHeight,
+            };
+            (double fittedHeight, double fittedMinHeight) = CalculateFittedWindowHeight(
+                desiredHeight,
+                desiredMinHeight,
+                screen.WorkingArea.Height,
+                scale);
+            MinHeight = fittedMinHeight;
+            Height = fittedHeight;
+
             int pixelWidth = (int)Math.Round(Width * scale);
             int pixelHeight = (int)Math.Round(Height * scale);
             PixelRect workingArea = screen.WorkingArea;
