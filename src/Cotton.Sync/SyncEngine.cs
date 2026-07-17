@@ -240,6 +240,16 @@ namespace Cotton.Sync
                 ? DirectoryContentIndex.Create(remoteDirectoriesByPath.Keys, remoteByPath.Keys)
                 : DirectoryContentIndex.Empty;
 
+            ScopedVirtualFilesDirectoryDeletePlan? scopedDirectoryDelete =
+                BuildConfirmedScopedVirtualFilesDirectoryDeletePlan(
+                    syncPair,
+                    options,
+                    localDirectoriesByPath,
+                    remoteDirectoriesByPath,
+                    localByPath,
+                    remoteByPath,
+                    directoryStateByPath,
+                    stateByPath);
             IReadOnlySet<string>? scopedFileDeleteKeys = options.Scope.IsFull
                 ? null
                 : BuildExactScopedPathKeys(options.Scope.LocalChangedPaths);
@@ -247,6 +257,14 @@ namespace Cotton.Sync
                 ? null
                 : BuildExactScopedPathKeys(options.Scope.LocalChangedPaths);
             IReadOnlySet<string> scopedLocalDeletedFileKeys = BuildExactScopedPathKeys(options.Scope.LocalDeletedPaths);
+            if (scopedDirectoryDelete is not null)
+            {
+                scopedFileDeleteKeys = AddScopedPathKeys(scopedFileDeleteKeys!, scopedDirectoryDelete.FileKeys);
+                scopedLocalDeletedFileKeys = AddScopedPathKeys(
+                    scopedLocalDeletedFileKeys,
+                    scopedDirectoryDelete.FileKeys);
+            }
+
             SyncDeleteGuard deleteGuard = BuildDeleteGuard(
                 options,
                 localByPath,
@@ -259,7 +277,8 @@ namespace Cotton.Sync
                 remoteDirectoryContentIndex,
                 scopedFileDeleteKeys,
                 scopedDirectoryDeleteKeys,
-                scopedLocalDeletedFileKeys);
+                scopedLocalDeletedFileKeys,
+                scopedDirectoryDelete);
             bool hasMissingRemoteOnlyPlaceholder = HasMissingRemoteOnlyPlaceholder(
                 syncPair,
                 localByPath,
@@ -280,6 +299,7 @@ namespace Cotton.Sync
                     localDirectoryContentIndex,
                     remoteDirectoryContentIndex,
                     scopedDirectoryDeleteKeys,
+                    scopedDirectoryDelete,
                     cancellationToken).ConfigureAwait(false);
             }
 
@@ -383,6 +403,19 @@ namespace Cotton.Sync
                     bytesTotal: plannedTransferBytesTotal);
                 await YieldAfterLargeBatchAsync(options, filesCompleted, pathKeys.Count, cancellationToken)
                     .ConfigureAwait(false);
+            }
+
+            if (scopedDirectoryDelete is not null)
+            {
+                await DeleteConfirmedScopedVirtualFilesDirectorySubtreesAsync(
+                    syncPair,
+                    options,
+                    result,
+                    deleteGuard,
+                    scopedDirectoryDelete,
+                    remoteDirectoriesByPath,
+                    directoryStateByPath,
+                    cancellationToken).ConfigureAwait(false);
             }
 
             ReportRunProgress(
@@ -721,6 +754,102 @@ namespace Cotton.Sync
                 sourcePath,
                 sourceDirectoryKeys,
                 expectedSourceFileKeys.OrderBy(static key => key, StringComparer.OrdinalIgnoreCase).ToArray());
+        }
+
+        private static ScopedVirtualFilesDirectoryDeletePlan? BuildConfirmedScopedVirtualFilesDirectoryDeletePlan(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            IReadOnlyDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath,
+            IReadOnlyDictionary<string, RemoteDirectorySnapshot> remoteDirectoriesByPath,
+            IReadOnlyDictionary<string, LocalFileSnapshot> localFilesByPath,
+            IReadOnlyDictionary<string, RemoteFileSnapshot> remoteFilesByPath,
+            IReadOnlyDictionary<string, SyncStateEntry> directoryStateByPath,
+            IReadOnlyDictionary<string, SyncStateEntry> fileStateByPath)
+        {
+            if (options.Scope.IsFull
+                || syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles)
+            {
+                return null;
+            }
+
+            IReadOnlySet<string> deletedKeys = BuildExactScopedPathKeys(options.Scope.LocalDeletedPaths);
+            List<string> candidateKeys = directoryStateByPath.Keys
+                .Where(key =>
+                    deletedKeys.Contains(key)
+                    && !localDirectoriesByPath.ContainsKey(key)
+                    && remoteDirectoriesByPath.ContainsKey(key))
+                .ToList();
+            string[] rootKeys = candidateKeys
+                .Where(candidate => candidateKeys.All(other =>
+                    PathComparer.Equals(candidate, other)
+                    || !IsSameOrDescendantPathKey(candidate, other)))
+                .OrderBy(static key => key, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (rootKeys.Length == 0)
+            {
+                return null;
+            }
+
+            HashSet<string> directoryKeys = new(PathComparer);
+            HashSet<string> fileKeys = new(PathComparer);
+            List<string> rootPaths = [];
+            foreach (string rootKey in rootKeys)
+            {
+                if (localDirectoriesByPath.Keys.Any(key => IsSameOrDescendantPathKey(key, rootKey))
+                    || localFilesByPath.Keys.Any(key => IsSameOrDescendantPathKey(key, rootKey)))
+                {
+                    return null;
+                }
+
+                HashSet<string> expectedDirectoryKeys = directoryStateByPath.Keys
+                    .Where(key => IsSameOrDescendantPathKey(key, rootKey))
+                    .ToHashSet(PathComparer);
+                HashSet<string> expectedFileKeys = fileStateByPath.Keys
+                    .Where(key => IsSameOrDescendantPathKey(key, rootKey))
+                    .ToHashSet(PathComparer);
+                HashSet<string> actualDirectoryKeys = remoteDirectoriesByPath.Keys
+                    .Where(key => IsSameOrDescendantPathKey(key, rootKey))
+                    .ToHashSet(PathComparer);
+                HashSet<string> actualFileKeys = remoteFilesByPath.Keys
+                    .Where(key => IsSameOrDescendantPathKey(key, rootKey))
+                    .ToHashSet(PathComparer);
+                if (!actualDirectoryKeys.SetEquals(expectedDirectoryKeys)
+                    || !actualFileKeys.SetEquals(expectedFileKeys))
+                {
+                    return null;
+                }
+
+                foreach (string key in expectedDirectoryKeys)
+                {
+                    SyncStateEntry state = directoryStateByPath[key];
+                    RemoteDirectorySnapshot remote = remoteDirectoriesByPath[key];
+                    if (state.RemoteNodeId != remote.Node.Id)
+                    {
+                        return null;
+                    }
+                }
+
+                foreach (string key in expectedFileKeys)
+                {
+                    SyncStateEntry state = fileStateByPath[key];
+                    RemoteFileSnapshot remote = remoteFilesByPath[key];
+                    if (state.RemoteFileId != remote.File.Id || !RemoteMatchesBaseline(remote.File, state))
+                    {
+                        return null;
+                    }
+                }
+
+                rootPaths.Add(directoryStateByPath[rootKey].RelativePath);
+                directoryKeys.UnionWith(expectedDirectoryKeys);
+                fileKeys.UnionWith(expectedFileKeys);
+            }
+
+            string[] orderedFileKeys = fileKeys.OrderBy(static key => key, StringComparer.OrdinalIgnoreCase).ToArray();
+            return new ScopedVirtualFilesDirectoryDeletePlan(
+                rootPaths,
+                directoryKeys.OrderBy(static key => key, StringComparer.OrdinalIgnoreCase).ToArray(),
+                orderedFileKeys,
+                orderedFileKeys.Select(key => fileStateByPath[key].RelativePath).ToArray());
         }
 
         private async Task<(Dictionary<string, SyncStateEntry> DirectoryStateByPath, Dictionary<string, SyncStateEntry> FileStateByPath)> LoadStateByPathAsync(
@@ -2734,11 +2863,17 @@ namespace Cotton.Sync
             DirectoryContentIndex localDirectoryContentIndex,
             DirectoryContentIndex remoteDirectoryContentIndex,
             IReadOnlySet<string>? scopedDirectoryDeleteKeys,
+            ScopedVirtualFilesDirectoryDeletePlan? scopedDirectoryDelete,
             CancellationToken cancellationToken)
         {
             foreach (string key in EnumerateDirectoryDeleteKeys(pathKeys))
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (scopedDirectoryDelete?.DirectoryKeys.Contains(key, PathComparer) == true)
+                {
+                    continue;
+                }
+
                 if (scopedDirectoryDeleteKeys is not null && !scopedDirectoryDeleteKeys.Contains(key))
                 {
                     continue;
@@ -3329,6 +3464,93 @@ namespace Cotton.Sync
                     SyncActivityKind.DeletedRemote,
                     state.RelativePath,
                     "Deleted source folder after confirmed local subtree move.");
+            }
+        }
+
+        private async Task DeleteConfirmedScopedVirtualFilesDirectorySubtreesAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            SyncRunResult result,
+            SyncDeleteGuard deleteGuard,
+            ScopedVirtualFilesDirectoryDeletePlan plan,
+            IDictionary<string, RemoteDirectorySnapshot> remoteDirectoriesByPath,
+            IDictionary<string, SyncStateEntry> directoryStateByPath,
+            CancellationToken cancellationToken)
+        {
+            foreach (string relativePath in plan.FilePaths)
+            {
+                SyncStateEntry? remaining = await _stateStore
+                    .GetAsync(syncPair.SyncPairId, relativePath, cancellationToken)
+                    .ConfigureAwait(false);
+                if (remaining is not null)
+                {
+                    return;
+                }
+            }
+
+            if (_remoteDirectories is null)
+            {
+                foreach (string rootPath in plan.RootPaths)
+                {
+                    Report(
+                        result,
+                        options,
+                        SyncActivityKind.Skipped,
+                        rootPath,
+                        "Remote folder cleanup is not available after the confirmed local subtree delete.",
+                        requiresUserAction: true);
+                }
+
+                return;
+            }
+
+            foreach (string key in plan.DirectoryKeys)
+            {
+                if (!directoryStateByPath.TryGetValue(key, out SyncStateEntry? state)
+                    || !remoteDirectoriesByPath.TryGetValue(key, out RemoteDirectorySnapshot? remote)
+                    || state.RemoteNodeId != remote.Node.Id)
+                {
+                    return;
+                }
+            }
+
+            if (!deleteGuard.CanDeleteRemote(out string? details))
+            {
+                foreach (string rootPath in plan.RootPaths)
+                {
+                    Report(
+                        result,
+                        options,
+                        SyncActivityKind.Skipped,
+                        rootPath,
+                        details,
+                        requiresUserAction: true);
+                }
+
+                return;
+            }
+
+            foreach (string key in plan.DirectoryKeys
+                         .OrderByDescending(GetPathDepth)
+                         .ThenBy(static key => key, StringComparer.OrdinalIgnoreCase))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                SyncStateEntry state = directoryStateByPath[key];
+                RemoteDirectorySnapshot remote = remoteDirectoriesByPath[key];
+                await _remoteDirectories
+                    .DeleteDirectoryAsync(remote.Node.Id, options.DeleteRemotePermanently, cancellationToken)
+                    .ConfigureAwait(false);
+                await _stateStore
+                    .DeleteAsync(syncPair.SyncPairId, state.RelativePath, cancellationToken)
+                    .ConfigureAwait(false);
+                directoryStateByPath.Remove(key);
+                remoteDirectoriesByPath.Remove(key);
+                Report(
+                    result,
+                    options,
+                    SyncActivityKind.DeletedRemote,
+                    state.RelativePath,
+                    "Deleted folder after confirmed local subtree delete.");
             }
         }
 
@@ -4551,7 +4773,8 @@ namespace Cotton.Sync
             DirectoryContentIndex remoteDirectoryContentIndex,
             IReadOnlySet<string>? scopedFileDeleteKeys,
             IReadOnlySet<string>? scopedDirectoryDeleteKeys,
-            IReadOnlySet<string> scopedLocalDeletedFileKeys)
+            IReadOnlySet<string> scopedLocalDeletedFileKeys,
+            ScopedVirtualFilesDirectoryDeletePlan? scopedDirectoryDelete)
         {
             if (stateByPath.Count == 0 && directoryStateByPath.Count == 0)
             {
@@ -4590,6 +4813,11 @@ namespace Cotton.Sync
 
             foreach (KeyValuePair<string, SyncStateEntry> state in directoryStateByPath)
             {
+                if (scopedDirectoryDelete?.DirectoryKeys.Contains(state.Key, PathComparer) == true)
+                {
+                    continue;
+                }
+
                 localDirectoriesByPath.TryGetValue(state.Key, out LocalDirectorySnapshot? local);
                 remoteDirectoriesByPath.TryGetValue(state.Key, out RemoteDirectorySnapshot? remote);
 
@@ -4618,6 +4846,8 @@ namespace Cotton.Sync
                         break;
                 }
             }
+
+            plannedRemoteDeletes += scopedDirectoryDelete?.DirectoryKeys.Count ?? 0;
 
             return new SyncDeleteGuard(options, plannedLocalDeletes, plannedRemoteDeletes);
         }
@@ -5303,6 +5533,12 @@ namespace Cotton.Sync
             IReadOnlyList<string> SourceDirectoryKeys,
             IReadOnlyList<string> SourceFileKeys);
 
+        private record ScopedVirtualFilesDirectoryDeletePlan(
+            IReadOnlyList<string> RootPaths,
+            IReadOnlyList<string> DirectoryKeys,
+            IReadOnlyList<string> FileKeys,
+            IReadOnlyList<string> FilePaths);
+
         private sealed record InitialVirtualFilesStreamingPlan(
             bool SkipCurrentPlaceholders,
             IReadOnlyDictionary<string, InitialVirtualFilesPlaceholderBaseline> CurrentPlaceholderBaselineByPath,
@@ -5333,6 +5569,15 @@ namespace Cotton.Sync
                 keys.Add(SyncPath.ToKey(normalizedPath));
             }
 
+            return keys;
+        }
+
+        private static IReadOnlySet<string> AddScopedPathKeys(
+            IReadOnlySet<string> existingKeys,
+            IEnumerable<string> additionalKeys)
+        {
+            HashSet<string> keys = new(existingKeys, PathComparer);
+            keys.UnionWith(additionalKeys);
             return keys;
         }
 
