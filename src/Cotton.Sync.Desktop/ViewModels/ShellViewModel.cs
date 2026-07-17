@@ -3102,6 +3102,11 @@ namespace Cotton.Sync.Desktop.ViewModels
             RemoteFolders.Clear();
             ClearRunProgress();
             ClearTransferProgress();
+            foreach (SyncPairRowViewModel syncPair in SyncPairs)
+            {
+                ClearSyncPairProgress(syncPair);
+            }
+
             SetAllPairStatuses("Idle");
             RefreshCurrentProgressText();
             RefreshDiagnosticsItems();
