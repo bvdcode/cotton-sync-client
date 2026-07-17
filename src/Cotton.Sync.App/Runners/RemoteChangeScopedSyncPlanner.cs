@@ -263,6 +263,11 @@ namespace Cotton.Sync.App.Runners
             RemoteChangeImpact change,
             HashSet<string> paths)
         {
+            if (change.NodeId == syncPair.RemoteRootNodeId && change.Action == RemoteChangeAction.Created)
+            {
+                return RemoteChangePathDisposition.Ignored;
+            }
+
             bool hasExistingPath = TryGetExistingFolderPath(syncPair, stateIndex, change, out string? existingPath);
             RemoteNamedPathStatus currentStatus = ResolveNamedPath(
                 stateIndex,
