@@ -71,6 +71,21 @@ namespace Cotton.Sync.Tests.Local
         }
 
         [Test]
+        [Platform(Include = "Win")]
+        public void CreateReparseTagOpenPath_UsesExtendedSyntaxBeyondLegacyLimit()
+        {
+            string longPath = @"C:\Cloud\" + new string('a', 250) + @"\placeholder";
+
+            string openPath = LocalFileScanner.CreateReparseTagOpenPath(longPath);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(longPath.Length, Is.GreaterThan(260));
+                Assert.That(openPath, Is.EqualTo(@"\\?\" + longPath));
+            });
+        }
+
+        [Test]
         public async Task ScanTreeMetadataAsync_ReturnsFilesWithoutContentHashes()
         {
             WriteFile("alpha.txt", "alpha");

@@ -776,7 +776,7 @@ namespace Cotton.Sync.Local
             reparseTag = 0;
             uint openFlags = FileFlagOpenReparsePoint | (isDirectory ? FileFlagBackupSemantics : 0);
             using SafeFileHandle handle = CreateFile(
-                fullPath,
+                CreateReparseTagOpenPath(fullPath),
                 0,
                 FileShareRead | FileShareWrite | FileShareDelete,
                 IntPtr.Zero,
@@ -805,6 +805,29 @@ namespace Cotton.Sync.Local
 
             reparseTag = BinaryPrimitives.ReadUInt32LittleEndian(buffer);
             return true;
+        }
+
+        internal static string CreateReparseTagOpenPath(string fullPath)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(fullPath);
+            if (fullPath.StartsWith(@"\\?\", StringComparison.Ordinal)
+                || fullPath.StartsWith(@"\\.\", StringComparison.Ordinal))
+            {
+                return fullPath;
+            }
+
+            if (fullPath.StartsWith(@"\Device\", StringComparison.OrdinalIgnoreCase))
+            {
+                return @"\\?\GLOBALROOT" + fullPath;
+            }
+
+            string normalizedPath = Path.GetFullPath(fullPath);
+            if (normalizedPath.StartsWith(@"\\", StringComparison.Ordinal))
+            {
+                return @"\\?\UNC\" + normalizedPath.TrimStart('\\');
+            }
+
+            return @"\\?\" + normalizedPath;
         }
 
         private static bool HasRawAttribute(FileAttributes attributes, int rawAttribute)

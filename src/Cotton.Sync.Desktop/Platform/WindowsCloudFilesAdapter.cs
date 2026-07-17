@@ -1323,7 +1323,7 @@ namespace Cotton.Sync.Desktop.Platform
         {
             reparseTag = 0;
             using SafeFileHandle handle = CreateFile(
-                fullPath,
+                CreateReparseTagOpenPath(fullPath),
                 0,
                 FileShareRead | FileShareWrite | FileShareDelete,
                 IntPtr.Zero,
@@ -1352,6 +1352,11 @@ namespace Cotton.Sync.Desktop.Platform
 
             reparseTag = BinaryPrimitives.ReadUInt32LittleEndian(buffer);
             return true;
+        }
+
+        internal static string CreateReparseTagOpenPath(string fullPath)
+        {
+            return WindowsNativePath.ToWin32FilePath(fullPath);
         }
 
         internal static uint CreateReparseTagOpenFlags(string fullPath)

@@ -3796,6 +3796,21 @@ namespace Cotton.Sync
                 && remote is not null
                 && IsOnlineOnlyPlaceholderBaseline(syncPair, state))
             {
+                if (ContentMatches(local.ContentHash, remote.File.ContentHash))
+                {
+                    await _stateStore.UpsertAsync(
+                            BuildHydratedPlaceholderBaseline(syncPair, relativePath, local, remote.File, state),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    Report(
+                        result,
+                        options,
+                        SyncActivityKind.Converged,
+                        relativePath,
+                        "Hydrated placeholder content matches the remote file.");
+                    return;
+                }
+
                 if (!remoteChanged)
                 {
                     await UploadAsync(syncPair, options, result, relativePath, local, remote.File, cancellationToken).ConfigureAwait(false);
@@ -4878,6 +4893,25 @@ namespace Cotton.Sync
                 RemoteETag = remoteFile?.ETag,
                 SyncedAtUtc = DateTime.UtcNow,
             };
+        }
+
+        private static SyncStateEntry BuildHydratedPlaceholderBaseline(
+            SyncPair syncPair,
+            string relativePath,
+            LocalFileSnapshot local,
+            NodeFileManifestDto remoteFile,
+            SyncStateEntry existingState)
+        {
+            SyncStateEntry baseline = BuildBaseline(
+                syncPair,
+                relativePath,
+                local.ContentHash,
+                local.LastWriteUtc,
+                local.SizeBytes,
+                remoteFile);
+            baseline.PlaceholderIdentity = existingState.PlaceholderIdentity;
+            baseline.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
+            return baseline;
         }
 
         private static SyncStateEntry BuildPlaceholderBaseline(

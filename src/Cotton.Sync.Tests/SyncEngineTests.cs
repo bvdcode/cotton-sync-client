@@ -2803,6 +2803,45 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesAdoptsUnchangedHydratedPlaceholderWithoutUpload()
+        {
+            const string relativePath = "remote-hydrated.txt";
+            const string content = "remote-content";
+            Guid remoteFileId = Guid.NewGuid();
+            NodeFileManifestDto remote = RemoteFile(relativePath, HashText(content), remoteFileId, sizeBytes: Encoding.UTF8.GetByteCount(content));
+            LocalFileSnapshot local = LocalFile(relativePath, content);
+            local.IsCloudFilesPlaceholder = true;
+            local.IsCloudFilesOnlineOnlyPlaceholder = false;
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(local),
+                RemoteTree(remote),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+            await InsertPlaceholderBaselineAsync(stateStore, relativePath, remote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            SyncStateEntry? entry = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(placeholderWriter.Requests, Is.Empty);
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Converged }));
+                Assert.That(entry, Is.Not.Null);
+                Assert.That(entry!.LocalContentHash, Is.EqualTo(remote.ContentHash));
+                Assert.That(entry.LocalSizeBytes, Is.EqualTo(local.SizeBytes));
+                Assert.That(entry.RemoteFileId, Is.EqualTo(remoteFileId));
+                Assert.That(entry.PlaceholderIdentity, Is.Not.Null.And.Not.Empty);
+                Assert.That(entry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesUploadsMaterializedCloudFileOverRemoteOnlyBaseline()
         {
             const string relativePath = "remote-updated.txt";
