@@ -163,6 +163,44 @@ namespace Cotton.Sync.Tests.Remote
         }
 
         [Test]
+        public async Task UploadFileAsync_ServerErrorAfterChunkTransferPreservesRemoteFileUntilRetry()
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes("updated after retry");
+            LocalFileSnapshot local = WriteLocalFile("file.bin", bytes);
+            var client = new FakeCottonCloudClient(chunkSizeBytes: 1024);
+            NodeFileManifestDto existing = RemoteFile("file.bin", HashText("remote-before-server-error"));
+            client.FilesClient.Files[existing.Id] = existing;
+            client.FilesClient.UpdateContentFailuresRemaining = 1;
+            var synchronizer = new SdkRemoteFileSynchronizer(client);
+
+            Assert.ThrowsAsync<CottonApiException>(
+                async () => await synchronizer.UploadFileAsync(_rootNodeId, local.RelativePath, local, existing));
+
+            NodeFileManifestDto remoteAfterFailure = client.FilesClient.Files[existing.Id];
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteAfterFailure.ContentHash, Is.EqualTo(existing.ContentHash));
+                Assert.That(remoteAfterFailure.ETag, Is.EqualTo(existing.ETag));
+                Assert.That(client.ChunksClient.UploadedChunks, Has.Count.EqualTo(1));
+                Assert.That(client.FilesClient.UpdateRequests, Has.Count.EqualTo(1));
+            });
+
+            NodeFileManifestDto recovered = await synchronizer.UploadFileAsync(
+                _rootNodeId,
+                local.RelativePath,
+                local,
+                existing);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(recovered.ContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(client.FilesClient.Files[existing.Id].ContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(client.ChunksClient.UploadedChunks, Has.Count.EqualTo(1));
+                Assert.That(client.FilesClient.UpdateRequests, Has.Count.EqualTo(2));
+            });
+        }
+
+        [Test]
         public async Task MoveFileAsync_MovesToExistingParentAndRenamesWithFreshETags()
         {
             Guid docsId = Guid.NewGuid();
@@ -751,6 +789,8 @@ namespace Cotton.Sync.Tests.Remote
 
             public List<(Guid NodeFileId, long Offset, long Length, string? ExpectedETag)> RangeDownloads { get; } = [];
 
+            public int UpdateContentFailuresRemaining { get; set; }
+
             public Task<NodeFileManifestDto> CreateFromChunksAsync(
                 CreateFileFromChunksRequestDto request,
                 CancellationToken cancellationToken = default)
@@ -768,6 +808,15 @@ namespace Cotton.Sync.Tests.Remote
                 CancellationToken cancellationToken = default)
             {
                 UpdateRequests.Add((nodeFileId, request, expectedETag));
+                if (UpdateContentFailuresRemaining > 0)
+                {
+                    UpdateContentFailuresRemaining--;
+                    throw new CottonApiException(
+                        HttpStatusCode.ServiceUnavailable,
+                        "{\"message\":\"File update interrupted.\"}",
+                        "Cotton API file update failed with status 503 (ServiceUnavailable).");
+                }
+
                 NodeFileManifestDto updated = FileFromRequest(nodeFileId, request);
                 Files[nodeFileId] = updated;
                 return Task.FromResult(updated);

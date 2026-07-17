@@ -4852,26 +4852,47 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_RecoversAfterTransientDownloadFailureWithoutStalePartial()
         {
             string relativePath = "network-drop-download.txt";
+            WriteFile(relativePath, "local-before-server-error");
+            LocalFileSnapshot local = LocalFile(relativePath, "local-before-server-error");
             byte[] remoteContent = Encoding.UTF8.GetBytes("remote");
             NodeFileManifestDto remote = RemoteFile(relativePath, Hash(remoteContent), sizeBytes: remoteContent.Length);
             var remoteFiles = new FakeRemoteFileSynchronizer();
-            remoteFiles.DownloadFailureIds.Add(remote.Id);
+            remoteFiles.PartialDownloadFailureIds.Add(remote.Id);
             remoteFiles.Downloads[remote.Id] = remoteContent;
             var stateStore = new SqliteSyncStateStore(_databasePath);
+            await InsertBaselineAsync(
+                stateStore,
+                relativePath,
+                local.ContentHash,
+                RemoteFile(relativePath, local.ContentHash, remote.Id));
             SyncEngine firstRun = new(
-                new FakeLocalFileScanner(),
+                new FakeLocalFileScanner(local),
                 new FakeRemoteTreeCrawler(RemoteTree(remote)),
                 remoteFiles,
                 stateStore);
 
-            Assert.ThrowsAsync<InvalidOperationException>(
+            Assert.ThrowsAsync<CottonApiException>(
                 async () => await firstRun.RunOnceAsync(Pair()));
 
             string localPath = Path.Combine(_root, relativePath);
             SyncStateEntry? failedEntry = await stateStore.GetAsync("pair-a", relativePath);
-            remoteFiles.DownloadFailureIds.Clear();
+            string temporaryDirectory = Path.Combine(_root, ".cotton-sync", "tmp");
+            Assert.Multiple(() =>
+            {
+                Assert.That(File.ReadAllText(localPath), Is.EqualTo("local-before-server-error"));
+                Assert.That(failedEntry, Is.Not.Null);
+                Assert.That(failedEntry!.LocalContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(failedEntry.RemoteContentHash, Is.EqualTo(local.ContentHash));
+                Assert.That(
+                    Directory.Exists(temporaryDirectory)
+                        ? Directory.GetFiles(temporaryDirectory, "*", SearchOption.AllDirectories)
+                        : [],
+                    Is.Empty);
+            });
+
+            remoteFiles.PartialDownloadFailureIds.Clear();
             SyncEngine secondRun = new(
-                new FakeLocalFileScanner(),
+                new FakeLocalFileScanner(local),
                 new FakeRemoteTreeCrawler(RemoteTree(remote)),
                 remoteFiles,
                 stateStore);
@@ -4880,11 +4901,12 @@ namespace Cotton.Sync.Tests
             SyncStateEntry? recoveredEntry = await stateStore.GetAsync("pair-a", relativePath);
             Assert.Multiple(() =>
             {
-                Assert.That(failedEntry, Is.Null);
                 Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Downloaded }));
                 Assert.That(File.ReadAllText(localPath), Is.EqualTo("remote"));
                 Assert.That(recoveredEntry, Is.Not.Null);
                 Assert.That(recoveredEntry!.RemoteFileId, Is.EqualTo(remote.Id));
+                Assert.That(recoveredEntry.LocalContentHash, Is.EqualTo(remote.ContentHash));
+                Assert.That(recoveredEntry.RemoteContentHash, Is.EqualTo(remote.ContentHash));
             });
         }
 
@@ -6980,6 +7002,8 @@ namespace Cotton.Sync.Tests
 
             public HashSet<Guid> DownloadFailureIds { get; } = [];
 
+            public HashSet<Guid> PartialDownloadFailureIds { get; } = [];
+
             public HashSet<Guid> DeleteFailureIds { get; } = [];
 
             public HashSet<Guid> PreconditionFailedUploadIds { get; } = [];
@@ -7106,6 +7130,16 @@ namespace Cotton.Sync.Tests
                 }
 
                 byte[] bytes = Downloads[nodeFileId];
+                if (PartialDownloadFailureIds.Contains(nodeFileId))
+                {
+                    int partialLength = Math.Max(1, bytes.Length / 2);
+                    destination.Write(bytes, 0, partialLength);
+                    throw new CottonApiException(
+                        HttpStatusCode.ServiceUnavailable,
+                        "{\"message\":\"Download interrupted.\"}",
+                        "Cotton API download failed with status 503 (ServiceUnavailable).");
+                }
+
                 return destination.WriteAsync(bytes, cancellationToken).AsTask();
             }
 
