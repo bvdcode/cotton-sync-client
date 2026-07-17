@@ -1116,7 +1116,9 @@ namespace Cotton.Sync.Desktop.Startup
                     .ConfigureAwait(false)
                     + await CountStateEntriesAsync(secondPaths, secondPair.Id, cancellationToken)
                         .ConfigureAwait(false);
-                int expectedFinalStateEntries = seededLocalFiles.Count == 0 ? 0 : seededLocalFiles.Count * 2;
+                IReadOnlyList<string> expectedStatePaths = LiveSyncSmokeStateExpectation.BuildRelativePaths(
+                    seededLocalFiles.Select(static file => file.RelativePath));
+                int expectedFinalStateEntries = expectedStatePaths.Count * 2;
                 await output.WriteLineAsync("Final state entries: " + finalStateEntries.ToString(System.Globalization.CultureInfo.InvariantCulture))
                     .ConfigureAwait(false);
                 await output.WriteLineAsync(
