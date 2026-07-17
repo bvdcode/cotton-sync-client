@@ -3110,6 +3110,15 @@ namespace Cotton.Sync.Desktop.ViewModels
             try
             {
                 await _controller.SyncAllAsync().ConfigureAwait(true);
+                string actionRequiredMessage = ResolveCurrentSyncPairActionRequiredMessage();
+                if (!string.IsNullOrWhiteSpace(actionRequiredMessage))
+                {
+                    GlobalStatus = "Action required";
+                    ActionRequiredMessage = actionRequiredMessage;
+                    RefreshCurrentProgressText();
+                    return;
+                }
+
                 GlobalStatus = "Checked for changes";
                 ActionRequiredMessage = string.Empty;
                 RefreshCurrentProgressText();

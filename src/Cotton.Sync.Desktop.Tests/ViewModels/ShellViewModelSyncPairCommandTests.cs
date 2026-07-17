@@ -405,6 +405,10 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Guid syncPairId = Guid.NewGuid();
             var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Error")))
             {
+                SyncAllStatus = new DesktopSyncStatusSnapshot(
+                [
+                    new DesktopSyncPairStatusSnapshot(syncPairId, "Idle", null),
+                ]),
                 SelfTestSnapshot = new DesktopSelfTestSnapshot(
                 [
                     new DesktopSelfTestItemSnapshot("Server", false, "Cotton server not found."),
@@ -432,6 +436,42 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CanRetryActionRequired, Is.False);
                 Assert.That(viewModel.ActionRequiredMessage, Is.Empty);
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Checked for changes"));
+            });
+        }
+
+        [Test]
+        public async Task SyncNowCommand_UnresolvedMassDeleteGuardRemainsActionRequiredWithoutRetryLoop()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            const string rawError =
+                "Remote delete blocked by mass-delete guard. 2207 pending deletes exceed limit 100.";
+            const string expectedMessage =
+                "Cotton Sync blocked a large remote delete plan (2207 pending deletes exceed limit 100). "
+                + "Check local files and Cotton Cloud, then retry only if the deletes are intentional.";
+            DesktopSyncStatusSnapshot guardedStatus = new(
+            [
+                new DesktopSyncPairStatusSnapshot(syncPairId, "Error", rawError),
+            ]);
+            var controller = new FakeDesktopShellController(
+                CreateSignedInSnapshot(CreatePair(syncPairId, "Music", "Error")))
+            {
+                SyncAllStatus = guardedStatus,
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            controller.ReportStatus(guardedStatus);
+
+            await ExecuteAsync(viewModel.SyncNowCommand);
+            await Task.Delay(50);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(controller.SyncAllCalls, Is.EqualTo(1));
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Action required"));
+                Assert.That(viewModel.HasActionRequired, Is.True);
+                Assert.That(viewModel.CanRetryActionRequired, Is.True);
+                Assert.That(viewModel.ActionRequiredMessage, Is.EqualTo(expectedMessage));
+                Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Fix the issue below to continue syncing."));
             });
         }
 
@@ -7026,6 +7066,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             public TaskCompletionSource<bool>? SyncAllCompletion { get; set; }
 
+            public DesktopSyncStatusSnapshot? SyncAllStatus { get; set; }
+
             public TaskCompletionSource<bool>? PauseAllCompletion { get; set; }
 
             public int ExportDiagnosticsCalls { get; private set; }
@@ -7350,6 +7392,11 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 if (SyncAllCompletion is not null)
                 {
                     await SyncAllCompletion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                if (SyncAllStatus is not null)
+                {
+                    ReportStatus(SyncAllStatus);
                 }
             }
 
