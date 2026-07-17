@@ -1849,6 +1849,72 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesStreamingRefreshesHydratedPlaceholderBaseline()
+        {
+            string relativePath = "Desktop/available-offline.txt";
+            LocalFileSnapshot local = LocalFile(relativePath, "old");
+            local.IsCloudFilesPlaceholder = true;
+            local.IsCloudFilesOnlineOnlyPlaceholder = false;
+            NodeFileManifestDto oldRemote = RemoteFile(
+                relativePath,
+                local.ContentHash,
+                sizeBytes: local.SizeBytes);
+            local.LastWriteUtc = oldRemote.UpdatedAt;
+            NodeFileManifestDto newRemote = RemoteFile(
+                relativePath,
+                HashText("new remote content"),
+                id: oldRemote.Id,
+                sizeBytes: 18);
+            BlockingStreamingRemoteTreeCrawler remoteCrawler = new(
+                _remoteRootNodeId,
+                [new RemoteFileSnapshot { RelativePath = relativePath, File = newRemote }]);
+            FakeRemoteFileSynchronizer remoteFileSynchronizer = new();
+            SignalingRemoteFilePlaceholderWriter placeholderWriter = new(
+                remoteCrawler.FirstPlaceholderStarted,
+                SyncPlaceholderHydrationState.Hydrated);
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            await InsertPlaceholderBaselineAsync(
+                stateStore,
+                relativePath,
+                oldRemote,
+                SyncPlaceholderHydrationState.Hydrated);
+            SyncStateEntry existingState = (await stateStore.GetAsync("pair-a", relativePath))!;
+            existingState.LocalContentHash = local.ContentHash;
+            existingState.LocalSizeBytes = local.SizeBytes;
+            existingState.LocalLastWriteUtc = local.LastWriteUtc;
+            await stateStore.UpsertAsync(existingState);
+            FakeLocalFileScanner scanner = new(local);
+            SyncEngine engine = new(
+                scanner,
+                remoteCrawler,
+                remoteFileSynchronizer,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { InitialVirtualFilesPopulationQueueCapacity = 1 });
+
+            SyncStateEntry? state = await stateStore.GetAsync("pair-a", relativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
+                Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
+                Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[] { relativePath }));
+                Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
+                Assert.That(result.Activities, Is.Empty);
+                Assert.That(state, Is.Not.Null);
+                Assert.That(state!.LocalContentHash, Is.EqualTo(newRemote.ContentHash));
+                Assert.That(state.LocalSizeBytes, Is.EqualTo(newRemote.SizeBytes));
+                Assert.That(state.LocalLastWriteUtc, Is.EqualTo(newRemote.UpdatedAt));
+                Assert.That(state.RemoteContentHash, Is.EqualTo(newRemote.ContentHash));
+                Assert.That(state.RemoteSizeBytes, Is.EqualTo(newRemote.SizeBytes));
+                Assert.That(state.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+                Assert.That(state.PlaceholderIdentity, Is.Not.Null.And.Not.Empty);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesStreamingRemovesTrackedPlaceholderWhenRemoteDeleted()
         {
             string relativePath = "Desktop/deleted-online-only.txt";
@@ -5948,9 +6014,14 @@ namespace Cotton.Sync.Tests
             private readonly object _requestsLock = new();
             private readonly TaskCompletionSource _firstPlaceholderStarted;
 
-            public SignalingRemoteFilePlaceholderWriter(TaskCompletionSource firstPlaceholderStarted)
+            private readonly SyncPlaceholderHydrationState _hydrationState;
+
+            public SignalingRemoteFilePlaceholderWriter(
+                TaskCompletionSource firstPlaceholderStarted,
+                SyncPlaceholderHydrationState hydrationState = SyncPlaceholderHydrationState.RemoteOnly)
             {
                 _firstPlaceholderStarted = firstPlaceholderStarted;
+                _hydrationState = hydrationState;
             }
 
             public List<RemoteFilePlaceholderRequest> Requests { get; } = [];
@@ -5965,7 +6036,7 @@ namespace Cotton.Sync.Tests
                 }
 
                 _firstPlaceholderStarted.TrySetResult();
-                return Task.FromResult(new RemoteFilePlaceholderResult(PlaceholderIdentity));
+                return Task.FromResult(new RemoteFilePlaceholderResult(PlaceholderIdentity, _hydrationState));
             }
         }
 

@@ -964,6 +964,11 @@ namespace Cotton.Sync.Desktop.Platform
         private static CfUpdateFlags CreateUpdateFlags(bool isDirectory)
         {
             CfUpdateFlags flags = CfUpdateFlags.MarkInSync;
+            if (!isDirectory)
+            {
+                flags |= CfUpdateFlags.Dehydrate;
+            }
+
             return isDirectory
                 ? flags | CfUpdateFlags.DisableOnDemandPopulation
                 : flags | CfUpdateFlags.AllowPartial;

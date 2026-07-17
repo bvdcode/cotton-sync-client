@@ -100,6 +100,39 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesConflictActivityMarksMaterializedPathInSync()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            InMemoryAppActivityPublisher activityPublisher = new();
+            PublishingSyncPairWork inner = new(
+                activityPublisher,
+                "Docs/report.txt",
+                SyncActivityKind.Conflict);
+            FakeSyncStateStore stateStore = new();
+            stateStore.UpsertFile(syncPair, "Docs/report.txt");
+            RecordingCloudFilesAdapter cloudFiles = new();
+            WindowsVirtualFilesUploadFinalizationPairWork work = new(
+                inner,
+                activityPublisher,
+                stateStore,
+                cloudFiles);
+
+            await work.RunOnceAsync(syncPair, SyncRunRequest.Full);
+
+            SyncStateEntry? finalizedState = await stateStore
+                .GetAsync(syncPair.Id.ToString("D"), "Docs/report.txt");
+            Assert.Multiple(() =>
+            {
+                Assert.That(cloudFiles.InSyncPaths, Does.Contain("Docs/report.txt"));
+                Assert.That(finalizedState, Is.Not.Null);
+                Assert.That(finalizedState!.PlaceholderIdentity, Is.Not.Null.And.Not.Empty);
+                Assert.That(
+                    finalizedState.PlaceholderHydrationState,
+                    Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesUploadedDirectoryActivityFinalizesDirectoryPlaceholder()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);

@@ -286,7 +286,7 @@ namespace Cotton.Sync.Desktop.Platform
             {
                 ArgumentNullException.ThrowIfNull(value);
                 if (value.SyncPairId != _syncPairId
-                    || value.Type is not (SyncActivityKind.Uploaded or SyncActivityKind.Converged)
+                    || value.Type is not (SyncActivityKind.Uploaded or SyncActivityKind.Converged or SyncActivityKind.Conflict)
                     || string.IsNullOrWhiteSpace(value.ItemPath))
                 {
                     return;

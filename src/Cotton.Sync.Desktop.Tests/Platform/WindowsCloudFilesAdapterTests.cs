@@ -20,6 +20,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         private const uint CfPlaceholderCreateFlagDisableOnDemandPopulation = 0x00000001;
         private const uint CfPlaceholderCreateFlagMarkInSync = 0x00000002;
         private const uint CfUpdateFlagMarkInSync = 0x00000002;
+        private const uint CfUpdateFlagDehydrate = 0x00000004;
         private const uint CfUpdateFlagDisableOnDemandPopulation = 0x00000010;
         private const uint CfUpdateFlagAllowPartial = 0x00000400;
         private string _tempDirectory = string.Empty;
@@ -61,13 +62,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
-        public void CreateUpdateFlags_ForFileAllowsPartialUpdates()
+        public void CreateUpdateFlags_ForFileDehydratesStaleContentAndAllowsPartialUpdates()
         {
             uint flags = InvokeNativeFlagFactory("CreateUpdateFlags", isDirectory: false);
 
             Assert.That(
                 flags,
-                Is.EqualTo(CfUpdateFlagMarkInSync | CfUpdateFlagAllowPartial));
+                Is.EqualTo(CfUpdateFlagMarkInSync | CfUpdateFlagDehydrate | CfUpdateFlagAllowPartial));
         }
 
         [Test]
@@ -416,6 +417,95 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(nativeApi.UpdatedPlaceholders[0].BaseDirectoryPath, Is.EqualTo(Path.Combine(Path.GetFullPath(root), "Projects")));
                 Assert.That(nativeApi.UpdatedPlaceholders[0].RelativeFileName, Is.EqualTo("remote-only.txt"));
                 Assert.That(nativeApi.UpdatedPlaceholders[0].FileIdentity, Is.EqualTo(result.PlaceholderIdentity));
+            });
+        }
+
+        [Test]
+        public void CreateFilePlaceholder_RefreshesPinnedExistingPlaceholderAndPreservesHydration()
+        {
+            FakeCloudFilesNativeApi nativeApi = new();
+            string root = Path.Combine(_tempDirectory, "root");
+            string target = Path.GetFullPath(Path.Combine(root, "Projects", "available-offline.txt"));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllText(target, "old remote content");
+            WindowsCloudFilesAdapter adapter = new(
+                CreatePolicy(),
+                nativeApi,
+                isReparsePoint: path => string.Equals(
+                    Path.GetFullPath(path),
+                    target,
+                    StringComparison.OrdinalIgnoreCase),
+                readFileAttributes: _ => FileAttributes.Archive
+                    | FileAttributes.ReparsePoint
+                    | (FileAttributes)0x00080000);
+
+            RemoteFilePlaceholderResult result = adapter.CreateFilePlaceholder(
+                CreateRequest(root, "Projects/available-offline.txt"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.HydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+                Assert.That(nativeApi.UpdatedPlaceholders, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.HydratedPaths, Is.EqualTo(new[] { target }));
+                Assert.That(
+                    nativeApi.PinStates,
+                    Is.EqualTo(new[]
+                    {
+                        new FakeCloudFilesNativeApi.PinStateCall(target, WindowsCloudFilesPinState.Unpinned),
+                        new FakeCloudFilesNativeApi.PinStateCall(target, WindowsCloudFilesPinState.Pinned),
+                    }));
+                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { target }));
+                Assert.That(
+                    nativeApi.CallLog,
+                    Is.EqualTo(new[]
+                    {
+                        "native-set-pin-state",
+                        "native-update",
+                        "native-hydrate",
+                        "native-set-pin-state",
+                        "native-set-in-sync-state",
+                    }));
+            });
+        }
+
+        [Test]
+        public void CreateFilePlaceholder_WhenPinnedRefreshFailsRestoresPinnedState()
+        {
+            FakeCloudFilesNativeApi nativeApi = new()
+            {
+                UpdateFailuresBeforeSuccess = 10,
+            };
+            string root = Path.Combine(_tempDirectory, "root");
+            string target = Path.GetFullPath(Path.Combine(root, "Projects", "available-offline.txt"));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllText(target, "old remote content");
+            WindowsCloudFilesAdapter adapter = new(
+                CreatePolicy(),
+                nativeApi,
+                isReparsePoint: path => string.Equals(
+                    Path.GetFullPath(path),
+                    target,
+                    StringComparison.OrdinalIgnoreCase),
+                readFileAttributes: _ => FileAttributes.Archive
+                    | FileAttributes.ReparsePoint
+                    | (FileAttributes)0x00080000,
+                transientRetryDelay: _ => { });
+
+            Assert.Throws<WindowsCloudFilesNativeException>(() =>
+                adapter.CreateFilePlaceholder(CreateRequest(root, "Projects/available-offline.txt")));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.UpdateCalls, Is.EqualTo(4));
+                Assert.That(
+                    nativeApi.PinStates,
+                    Is.EqualTo(new[]
+                    {
+                        new FakeCloudFilesNativeApi.PinStateCall(target, WindowsCloudFilesPinState.Unpinned),
+                        new FakeCloudFilesNativeApi.PinStateCall(target, WindowsCloudFilesPinState.Pinned),
+                    }));
+                Assert.That(nativeApi.HydratedPaths, Is.Empty);
+                Assert.That(nativeApi.InSyncPaths, Is.Empty);
             });
         }
 

@@ -3471,11 +3471,16 @@ namespace Cotton.Sync
                 hydrationState = SyncPlaceholderHydrationState.Dehydrated;
             }
 
+            bool materialized = hydrationState == SyncPlaceholderHydrationState.Hydrated;
+
             return new SyncStateEntry
             {
                 SyncPairId = syncPair.SyncPairId,
                 RelativePath = SyncPath.Normalize(relativePath),
                 Kind = SyncEntryKind.File,
+                LocalContentHash = materialized ? remoteFile.ContentHash : null,
+                LocalLastWriteUtc = materialized ? remoteFile.UpdatedAt.ToUniversalTime() : null,
+                LocalSizeBytes = materialized ? remoteFile.SizeBytes : null,
                 RemoteSizeBytes = remoteFile.SizeBytes,
                 RemoteFileId = remoteFile.Id,
                 RemoteNodeId = remoteFile.NodeId,
