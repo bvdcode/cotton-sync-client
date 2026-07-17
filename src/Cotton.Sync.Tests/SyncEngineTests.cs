@@ -395,6 +395,43 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithScopedRapidRenameEditDeleteDeletesOldRemoteWithoutStaleTarget()
+        {
+            const string oldPath = "old.txt";
+            const string newPath = "new.txt";
+            NodeFileManifestDto remote = RemoteFile(oldPath, HashText("created-content"));
+            FakeLocalFileScanner scanner = new();
+            PathOnlyRemoteTreeCrawler crawler = new(RemoteTree(remote));
+            FakeRemoteFileSynchronizer remoteFiles = new();
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            await InsertBaselineAsync(stateStore, oldPath, remote.ContentHash, remote);
+            SyncEngine engine = new(scanner, crawler, remoteFiles, stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions
+                {
+                    Scope = SyncRunScope.ForLocalChangedPaths([oldPath, newPath], [newPath]),
+                });
+
+            SyncStateEntry? oldEntry = await stateStore.GetAsync("pair-a", oldPath);
+            SyncStateEntry? newEntry = await stateStore.GetAsync("pair-a", newPath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(crawler.PathCrawlCalls, Is.EqualTo(1));
+                Assert.That(crawler.FullCrawlCalls, Is.Zero);
+                Assert.That(remoteFiles.Deletes, Is.EqualTo(new[] { (remote.Id, false, remote.ETag) }));
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.DeletedRemote }));
+                Assert.That(result.Activities.Select(activity => activity.RelativePath), Is.EqualTo(new[] { oldPath }));
+                Assert.That(oldEntry, Is.Null);
+                Assert.That(newEntry, Is.Null);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesRemoteOnlyPlaceholderChurnDoesNotRequireAction()
         {
             const string relativePath = "remote-only.txt";

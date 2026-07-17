@@ -105,6 +105,44 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task RapidCreateRenameEditDelete_CoalescesOldAndNewPathsWithFinalDeleteMarker()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true);
+            FakeWatcherFactory watcherFactory = new();
+            FakeSyncSupervisor supervisor = new();
+            LocalChangeSyncCoordinator coordinator = new(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval);
+            await coordinator.StartAsync();
+
+            FakeWatcher watcher = watcherFactory.CreatedWatchers[syncPair.Id];
+            watcher.Raise("/home/user/Cotton/old.txt", LocalSyncRootChangeKind.Created);
+            watcher.Raise("/home/user/Cotton/old.txt", LocalSyncRootChangeKind.Changed);
+            watcher.RaiseRename(
+                "/home/user/Cotton/old.txt",
+                "/home/user/Cotton/new.txt",
+                LocalSyncRootChangeKind.Renamed);
+            watcher.Raise("/home/user/Cotton/new.txt", LocalSyncRootChangeKind.Changed);
+            watcher.Raise("/home/user/Cotton/new.txt", LocalSyncRootChangeKind.Deleted);
+
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
+            await Task.Delay(DebounceInterval * 3);
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(1));
+                Assert.That(supervisor.LastRequest?.IsFull, Is.False);
+                Assert.That(supervisor.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { "new.txt", "old.txt" }));
+                Assert.That(supervisor.LastRequest?.LocalDeletedPaths, Is.EqualTo(new[] { "new.txt" }));
+                Assert.That(supervisor.LastRequest?.Causes, Is.EqualTo(SyncRunCause.LocalChange));
+            });
+        }
+
+        [Test]
         public async Task RenamedLocalChange_WithoutOldPathRequestsFullSync()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
