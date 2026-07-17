@@ -1068,6 +1068,20 @@ namespace Cotton.Sync.Desktop.Startup
                     "Pre-existing local files survived sync pair creation.",
                     output,
                     cancellationToken).ConfigureAwait(false);
+                string diagnosticsBundlePath = await firstController
+                    .ExportDiagnosticsAsync(DesktopDiagnosticsExportOptions.Public, cancellationToken)
+                    .ConfigureAwait(false);
+                LiveSyncSmokeDiagnosticsVerification diagnosticsVerification =
+                    LiveSyncSmokeDiagnosticsVerifier.Verify(diagnosticsBundlePath, firstPair.Id);
+                await output.WriteLineAsync(FormatCheck(
+                    diagnosticsVerification.Passed,
+                    "Connected public diagnostics bundle is complete and sanitized. "
+                    + diagnosticsVerification.Details)).ConfigureAwait(false);
+                if (!diagnosticsVerification.Passed)
+                {
+                    failures++;
+                }
+
                 failures += await RunClientACreateAsync(
                     startupOptions,
                     firstController,
