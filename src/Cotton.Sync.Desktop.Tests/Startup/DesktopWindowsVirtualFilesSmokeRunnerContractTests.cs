@@ -210,6 +210,29 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void RunAsync_ExplorerFreeUpSpacePhaseSupportsInteractiveFolderSubtree()
+        {
+            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            int interactiveSetup = runner.IndexOf("if (interactiveFolderSmoke)", StringComparison.Ordinal);
+            int connect = runner.IndexOf("connection = cloudFiles.ConnectSyncRoot(syncPair, callbackHandler)", interactiveSetup, StringComparison.Ordinal);
+            int directoryPlaceholder = runner.IndexOf("cloudFiles.CreateDirectoryPlaceholder", connect, StringComparison.Ordinal);
+            int filePlaceholder = runner.IndexOf("RemoteFilePlaceholderRequest placeholderRequest", directoryPlaceholder, StringComparison.Ordinal);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(runner, Does.Contain("bool interactiveFolderSmoke = startupOptions.WindowsVirtualFilesSmokeHoldAfterPlaceholder > TimeSpan.Zero"));
+                Assert.That(runner, Does.Contain("Hydrated folder subtree is ready for modern Explorer Free up space."));
+                Assert.That(runner, Does.Contain("invoke modern Explorer Free up space on "));
+                Assert.That(runner, Does.Contain("Modern Explorer folder Free up space changed the subtree pin state."));
+                Assert.That(runner, Does.Contain("? [relativeFolderPath, relativePlaceholderPath]"));
+                Assert.That(runner, Does.Contain("HasUnpinned(folderAttributesAfterVerb) || HasUnpinned(fileAttributesAfterVerb)"));
+                Assert.That(connect, Is.GreaterThan(interactiveSetup));
+                Assert.That(directoryPlaceholder, Is.GreaterThan(connect));
+                Assert.That(filePlaceholder, Is.GreaterThan(directoryPlaceholder));
+            });
+        }
+
+        [Test]
         public void RunAsync_ShellShareLinkTargetsPhaseVerifiesRealVfsTargets()
         {
             string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));

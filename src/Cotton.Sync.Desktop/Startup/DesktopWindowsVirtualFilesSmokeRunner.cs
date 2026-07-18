@@ -288,6 +288,7 @@ namespace Cotton.Sync.Desktop.Startup
             if (explorerFreeUpSpace)
             {
                 return await RunExplorerFreeUpSpaceAsync(
+                    startupOptions,
                     paths,
                     output,
                     cloudFiles,
@@ -680,6 +681,7 @@ namespace Cotton.Sync.Desktop.Startup
         }
 
         private static async Task<int> RunExplorerFreeUpSpaceAsync(
+            DesktopStartupOptions startupOptions,
             DesktopAppPaths paths,
             TextWriter output,
             IWindowsCloudFilesAdapter cloudFiles,
@@ -696,8 +698,14 @@ namespace Cotton.Sync.Desktop.Startup
                 return 2;
             }
 
+            bool interactiveFolderSmoke = startupOptions.WindowsVirtualFilesSmokeHoldAfterPlaceholder > TimeSpan.Zero;
+            string relativeFolderPath = "folder-free-up-space";
+            string relativePlaceholderPath = interactiveFolderSmoke
+                ? relativeFolderPath + "/" + RelativePlaceholderPath
+                : RelativePlaceholderPath;
             string rootPath = syncPair.LocalRootPath;
-            string placeholderPath = Path.Combine(rootPath, RelativePlaceholderPath);
+            string folderPath = Path.Combine(rootPath, relativeFolderPath);
+            string placeholderPath = ToFullPath(rootPath, relativePlaceholderPath);
             byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
             string expectedText = Encoding.UTF8.GetString(expectedContent);
             string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
@@ -722,9 +730,15 @@ namespace Cotton.Sync.Desktop.Startup
                     + rootPath)
                     .ConfigureAwait(false);
 
+                if (interactiveFolderSmoke)
+                {
+                    connection = cloudFiles.ConnectSyncRoot(syncPair, callbackHandler);
+                    cloudFiles.CreateDirectoryPlaceholder(CreateDirectoryRequest(syncPair, relativeFolderPath));
+                }
+
                 RemoteFilePlaceholderRequest placeholderRequest = CreatePlaceholderRequest(
                     syncPair,
-                    RelativePlaceholderPath,
+                    relativePlaceholderPath,
                     expectedContent.LongLength,
                     expectedHash);
                 RemoteFilePlaceholderResult placeholder = cloudFiles.CreateFilePlaceholder(placeholderRequest);
@@ -733,7 +747,7 @@ namespace Cotton.Sync.Desktop.Startup
                         CreatePlaceholderState(syncPair, placeholderRequest, placeholder),
                         cancellationToken)
                     .ConfigureAwait(false);
-                connection = cloudFiles.ConnectSyncRoot(syncPair, callbackHandler);
+                connection ??= cloudFiles.ConnectSyncRoot(syncPair, callbackHandler);
                 await output.WriteLineAsync(
                     FormatCheck(true, "Cloud Files callbacks connected for Explorer Free up space smoke.")
                     + " root="
@@ -772,18 +786,81 @@ namespace Cotton.Sync.Desktop.Startup
                 }
 
                 int downloadsBeforeVerb = contentProvider.DownloadCount;
-                ShellVerbInvocationResult verbResult = await InvokeExplorerFreeUpSpaceAsync(
-                    placeholderPath,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-                await output.WriteLineAsync(
-                    FormatCheck(verbResult.Invoked, "Explorer shell exposed and invoked the Free up space verb.")
-                    + " verb="
-                    + (verbResult.InvokedVerbName ?? "missing")
-                    + ", availableVerbs="
-                    + string.Join("|", verbResult.AvailableVerbNames))
-                    .ConfigureAwait(false);
-                if (!verbResult.Invoked)
+                bool verbInvoked;
+                if (interactiveFolderSmoke)
+                {
+                    nativeApi.SetPinState(folderPath, WindowsCloudFilesPinState.Pinned);
+                    nativeApi.SetPinState(placeholderPath, WindowsCloudFilesPinState.Pinned);
+                    await WaitForAttributesAsync(
+                        folderPath,
+                        HasPinned,
+                        TimeSpan.FromSeconds(10),
+                        cancellationToken)
+                        .ConfigureAwait(false);
+                    await WaitForAttributesAsync(
+                        placeholderPath,
+                        HasPinned,
+                        TimeSpan.FromSeconds(10),
+                        cancellationToken)
+                        .ConfigureAwait(false);
+                    FileAttributes pinnedFolderAttributes = File.GetAttributes(folderPath);
+                    FileAttributes pinnedFileAttributes = File.GetAttributes(placeholderPath);
+                    bool pinnedFolderReady = HasPinned(pinnedFolderAttributes);
+                    bool pinnedFileReady = HasPinned(pinnedFileAttributes);
+                    await output.WriteLineAsync(
+                        FormatCheck(pinnedFolderReady && pinnedFileReady, "Hydrated folder subtree is ready for modern Explorer Free up space.")
+                        + " folder="
+                        + folderPath
+                        + ", folderAttributes="
+                        + FormatAttributes(pinnedFolderAttributes)
+                        + ", fileAttributes="
+                        + FormatAttributes(pinnedFileAttributes))
+                        .ConfigureAwait(false);
+                    if (!pinnedFolderReady || !pinnedFileReady)
+                    {
+                        failures++;
+                    }
+
+                    await output.WriteLineAsync(
+                        "Holding hydrated folder for "
+                        + startupOptions.WindowsVirtualFilesSmokeHoldAfterPlaceholder.TotalSeconds.ToString(
+                            "0.###",
+                            System.Globalization.CultureInfo.InvariantCulture)
+                        + " seconds; invoke modern Explorer Free up space on "
+                        + folderPath)
+                        .ConfigureAwait(false);
+                    await Task
+                        .Delay(startupOptions.WindowsVirtualFilesSmokeHoldAfterPlaceholder, cancellationToken)
+                        .ConfigureAwait(false);
+
+                    FileAttributes folderAttributesAfterVerb = File.GetAttributes(folderPath);
+                    FileAttributes fileAttributesAfterVerb = File.GetAttributes(placeholderPath);
+                    verbInvoked = HasUnpinned(folderAttributesAfterVerb) || HasUnpinned(fileAttributesAfterVerb);
+                    await output.WriteLineAsync(
+                        FormatCheck(verbInvoked, "Modern Explorer folder Free up space changed the subtree pin state.")
+                        + " folderAttributes="
+                        + FormatAttributes(folderAttributesAfterVerb)
+                        + ", fileAttributes="
+                        + FormatAttributes(fileAttributesAfterVerb))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    ShellVerbInvocationResult verbResult = await InvokeExplorerFreeUpSpaceAsync(
+                        placeholderPath,
+                        cancellationToken)
+                        .ConfigureAwait(false);
+                    verbInvoked = verbResult.Invoked;
+                    await output.WriteLineAsync(
+                        FormatCheck(verbInvoked, "Explorer shell exposed and invoked the Free up space verb.")
+                        + " verb="
+                        + (verbResult.InvokedVerbName ?? "missing")
+                        + ", availableVerbs="
+                        + string.Join("|", verbResult.AvailableVerbNames))
+                        .ConfigureAwait(false);
+                }
+
+                if (!verbInvoked)
                 {
                     failures++;
                 }
@@ -798,13 +875,16 @@ namespace Cotton.Sync.Desktop.Startup
                     await dehydrationWork
                         .RunOnceAsync(
                             syncPair,
-                            SyncRunRequest.ForLocalChangedPaths([RelativePlaceholderPath]),
+                            SyncRunRequest.ForLocalChangedPaths(
+                                interactiveFolderSmoke
+                                    ? [relativeFolderPath, relativePlaceholderPath]
+                                    : [relativePlaceholderPath]),
                             cancellationToken)
                         .ConfigureAwait(false);
                     await output.WriteLineAsync(
                         FormatCheck(true, "Production app Free up space handler processed the Explorer attribute change.")
                         + " path="
-                        + RelativePlaceholderPath)
+                        + relativePlaceholderPath)
                         .ConfigureAwait(false);
                 }
 
@@ -4709,6 +4789,12 @@ namespace Cotton.Sync.Desktop.Startup
         {
             const int Pinned = 0x00080000;
             return (((int)attributes) & Pinned) == Pinned;
+        }
+
+        private static bool HasUnpinned(FileAttributes attributes)
+        {
+            const int Unpinned = 0x00100000;
+            return (((int)attributes) & Unpinned) == Unpinned;
         }
 
         private static void AddKnownCloudFilesAttribute(
