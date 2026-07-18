@@ -59,6 +59,12 @@ namespace Cotton.Sync.Desktop.Startup
         private const string DesktopRootDirectoryName = "Desktop";
         private const string DesktopSessionRestoreDirectoryName = "DesktopSessionRestore";
         private const string DesktopRootRemoteFilePath = "desktop-cloud-file.txt";
+        private const string AlwaysKeepPopulationDirectoryName = "always-keep-population";
+        private const string AlwaysKeepPopulationEarlyDirectoryPath = AlwaysKeepPopulationDirectoryName + "/early";
+        private const string AlwaysKeepPopulationEarlyFilePath = AlwaysKeepPopulationEarlyDirectoryPath + "/early.txt";
+        private const string AlwaysKeepPopulationLateDirectoryPath = AlwaysKeepPopulationDirectoryName + "/late";
+        private const string AlwaysKeepPopulationLateNestedDirectoryPath = AlwaysKeepPopulationLateDirectoryPath + "/nested";
+        private const string AlwaysKeepPopulationLateFilePath = AlwaysKeepPopulationLateNestedDirectoryPath + "/late.txt";
         private const int DefaultLargeTreePlaceholderCount = 10_000;
         private const int LargeCleanupStateWriteBatchSize = 500;
         private const string LargeHydrationRelativePath = "large-hydration-smoke.bin";
@@ -157,6 +163,10 @@ namespace Cotton.Sync.Desktop.Startup
             bool trayQuitDisconnect = string.Equals(phase, "tray-quit-disconnect", StringComparison.Ordinal);
             bool explorerFreeUpSpace = string.Equals(phase, "explorer-free-up-space", StringComparison.Ordinal);
             bool explorerAlwaysKeep = string.Equals(phase, "explorer-always-keep", StringComparison.Ordinal);
+            bool explorerAlwaysKeepDuringPopulation = string.Equals(
+                phase,
+                "explorer-always-keep-during-population",
+                StringComparison.Ordinal);
             bool remoteUpdateAfterDehydrate = string.Equals(phase, "remote-update-after-dehydrate", StringComparison.Ordinal);
             bool replaceCloudOnlyUpload = string.Equals(phase, "replace-cloud-only-upload", StringComparison.Ordinal);
             bool shellShareLinkTargets = string.Equals(phase, "shell-share-link-targets", StringComparison.Ordinal);
@@ -175,6 +185,7 @@ namespace Cotton.Sync.Desktop.Startup
                 && !trayQuitDisconnect
                 && !explorerFreeUpSpace
                 && !explorerAlwaysKeep
+                && !explorerAlwaysKeepDuringPopulation
                 && !remoteUpdateAfterDehydrate
                 && !replaceCloudOnlyUpload
                 && !shellShareLinkTargets
@@ -302,6 +313,20 @@ namespace Cotton.Sync.Desktop.Startup
             if (explorerAlwaysKeep)
             {
                 return await RunExplorerAlwaysKeepAsync(
+                    paths,
+                    output,
+                    cloudFiles,
+                    nativeApi,
+                    syncPair,
+                    diagnostics,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (explorerAlwaysKeepDuringPopulation)
+            {
+                return await RunExplorerAlwaysKeepDuringPopulationAsync(
+                    startupOptions,
                     paths,
                     output,
                     cloudFiles,
@@ -1056,7 +1081,22 @@ namespace Cotton.Sync.Desktop.Startup
                     failures++;
                 }
 
-                nativeApi.SetPinState(placeholderPath, WindowsCloudFilesPinState.Pinned);
+                ShellVerbInvocationResult verbResult = await InvokeExplorerAlwaysKeepAsync(
+                        placeholderPath,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync(
+                    FormatCheck(verbResult.Invoked, "Explorer shell exposed and invoked Always keep on this device.")
+                    + " verb="
+                    + (verbResult.InvokedVerbName ?? "missing")
+                    + ", availableVerbs="
+                    + string.Join("|", verbResult.AvailableVerbNames))
+                    .ConfigureAwait(false);
+                if (!verbResult.Invoked)
+                {
+                    failures++;
+                }
+
                 bool pinned = await WaitForAttributesAsync(
                     placeholderPath,
                     HasPinned,
@@ -1239,6 +1279,440 @@ namespace Cotton.Sync.Desktop.Startup
             }
             finally
             {
+                connection?.Dispose();
+                failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
+            }
+
+            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
+            {
+                await output.WriteLineAsync(
+                    "Diagnostic: "
+                    + item.Operation
+                    + " "
+                    + item.Status
+                    + " "
+                    + CleanSingleLine(item.Details))
+                    .ConfigureAwait(false);
+            }
+
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> RunExplorerAlwaysKeepDuringPopulationAsync(
+            DesktopStartupOptions startupOptions,
+            DesktopAppPaths paths,
+            TextWriter output,
+            IWindowsCloudFilesAdapter cloudFiles,
+            IWindowsCloudFilesNativeApi? nativeApi,
+            SyncPairSettings syncPair,
+            WindowsCloudFilesDiagnostics diagnostics,
+            CancellationToken cancellationToken)
+        {
+            if (nativeApi is null)
+            {
+                await output.WriteLineAsync(
+                    FormatCheck(false, "Always keep during population smoke requires the native Windows Cloud Files API."))
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                return 2;
+            }
+
+            string rootPath = syncPair.LocalRootPath;
+            string folderPath = ToFullPath(rootPath, AlwaysKeepPopulationDirectoryName);
+            string earlyDirectoryPath = ToFullPath(rootPath, AlwaysKeepPopulationEarlyDirectoryPath);
+            string earlyFilePath = ToFullPath(rootPath, AlwaysKeepPopulationEarlyFilePath);
+            string lateDirectoryPath = ToFullPath(rootPath, AlwaysKeepPopulationLateDirectoryPath);
+            string lateNestedDirectoryPath = ToFullPath(rootPath, AlwaysKeepPopulationLateNestedDirectoryPath);
+            string lateFilePath = ToFullPath(rootPath, AlwaysKeepPopulationLateFilePath);
+            string[] directoryPaths = [folderPath, earlyDirectoryPath, lateDirectoryPath, lateNestedDirectoryPath];
+            string[] filePaths = [earlyFilePath, lateFilePath];
+            byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
+            string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
+            StaticSmokeContentProvider contentProvider = new(expectedContent);
+            WindowsCloudFilesHydrationCoordinator callbackHandler = new(
+                contentProvider,
+                nativeApi,
+                Path.Combine(paths.DataDirectory, "vfs-smoke-temp"),
+                diagnostics);
+            SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath);
+            LocalChangeSuppression localChangeSuppression = new LocalChangeSuppression();
+            DesktopCloudFilesPlaceholderWriter placeholderWriter = new(
+                cloudFilesAdapter: cloudFiles,
+                getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."),
+                localChangeSuppression: localChangeSuppression);
+            WindowsVirtualFilesDehydrationPairWork availabilityWork = new(
+                new FailOnInnerSyncPairWork("Always keep during population smoke must not run inner sync for availability-only changes."),
+                stateStore,
+                cloudFiles,
+                new LocalFileScanner(),
+                diagnostics,
+                localChangeSuppression: localChangeSuppression);
+            TaskCompletionSource<bool> earlyPopulationReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> continuePopulation = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> watcherRequestQueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            bool lateDescendantsStartedOnlineOnly = false;
+
+            async Task CreateDirectoryAsync(string relativePath, CancellationToken operationCancellationToken)
+            {
+                await placeholderWriter
+                    .BeforeCreateDirectoryAsync(CreateDirectoryRequest(syncPair, relativePath), operationCancellationToken)
+                    .ConfigureAwait(false);
+                await stateStore
+                    .UpsertAsync(CreateDirectoryState(syncPair, relativePath), operationCancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            async Task CreateFileAsync(string relativePath, CancellationToken operationCancellationToken)
+            {
+                RemoteFilePlaceholderRequest request = CreatePlaceholderRequest(
+                    syncPair,
+                    relativePath,
+                    expectedContent.LongLength,
+                    expectedHash);
+                RemoteFilePlaceholderResult placeholder = await placeholderWriter
+                    .CreatePlaceholderAsync(request, operationCancellationToken)
+                    .ConfigureAwait(false);
+                await stateStore
+                    .UpsertAsync(CreatePlaceholderState(syncPair, request, placeholder), operationCancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            DelegateSyncPairWork pairWork = new(async (_, request, operationCancellationToken) =>
+            {
+                if (!request.IsFull)
+                {
+                    await availabilityWork
+                        .RunOnceAsync(syncPair, request, operationCancellationToken)
+                        .ConfigureAwait(false);
+                    return;
+                }
+
+                using IDisposable population = placeholderWriter.BeginPopulation(
+                    syncPair.Id.ToString("D"),
+                    syncPair.LocalRootPath);
+                await CreateDirectoryAsync(AlwaysKeepPopulationDirectoryName, operationCancellationToken).ConfigureAwait(false);
+                await CreateDirectoryAsync(AlwaysKeepPopulationEarlyDirectoryPath, operationCancellationToken).ConfigureAwait(false);
+                await CreateFileAsync(AlwaysKeepPopulationEarlyFilePath, operationCancellationToken).ConfigureAwait(false);
+                earlyPopulationReady.TrySetResult(true);
+                await continuePopulation.Task.WaitAsync(operationCancellationToken).ConfigureAwait(false);
+                await CreateDirectoryAsync(AlwaysKeepPopulationLateDirectoryPath, operationCancellationToken).ConfigureAwait(false);
+                await CreateDirectoryAsync(AlwaysKeepPopulationLateNestedDirectoryPath, operationCancellationToken).ConfigureAwait(false);
+                await CreateFileAsync(AlwaysKeepPopulationLateFilePath, operationCancellationToken).ConfigureAwait(false);
+                lateDescendantsStartedOnlineOnly = !HasPinned(File.GetAttributes(lateDirectoryPath))
+                    && !HasPinned(File.GetAttributes(lateNestedDirectoryPath))
+                    && HasRecallOnDataAccess(File.GetAttributes(lateFilePath));
+            });
+            SyncPairRunner runner = new SyncPairRunner(syncPair, pairWork);
+            FileSystemLocalSyncRootWatcher watcher = new FileSystemLocalSyncRootWatcher(syncPair.Id, rootPath);
+            WindowsCloudFilesConnection? connection = null;
+            Task? initialRun = null;
+            int queueStarted = 0;
+            bool queuedDuringPopulation = false;
+            int failures = 0;
+
+            async Task QueueAvailabilityAsync()
+            {
+                try
+                {
+                    queuedDuringPopulation = !continuePopulation.Task.IsCompleted
+                        && runner.Status.State == SyncPairRunState.Syncing;
+                    await runner
+                        .SyncNowAsync(
+                            SyncRunRequest.ForLocalChangedPaths([AlwaysKeepPopulationDirectoryName]),
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
+                    watcherRequestQueued.TrySetResult(true);
+                }
+                catch (Exception exception)
+                {
+                    watcherRequestQueued.TrySetException(exception);
+                }
+            }
+
+            void OnWatcherChanged(object? _, LocalSyncRootChange change)
+            {
+                if (localChangeSuppression.ShouldSuppress(change)
+                    || !string.Equals(
+                        Path.GetFullPath(change.FullPath),
+                        Path.GetFullPath(folderPath),
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                FileAttributes attributes;
+                try
+                {
+                    attributes = File.GetAttributes(folderPath);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    return;
+                }
+
+                if (!HasPinned(attributes) || Interlocked.CompareExchange(ref queueStarted, 1, 0) != 0)
+                {
+                    return;
+                }
+
+                _ = QueueAvailabilityAsync();
+            }
+
+            watcher.Changed += OnWatcherChanged;
+            try
+            {
+                await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+                await stateStore.DeletePairAsync(syncPair.Id.ToString("D"), cancellationToken).ConfigureAwait(false);
+                TryUnregisterExistingRoot(cloudFiles, syncPair, output);
+                PrepareRoot(rootPath);
+                connection = cloudFiles.ConnectSyncRoot(syncPair, callbackHandler);
+                await watcher.StartAsync(cancellationToken).ConfigureAwait(false);
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Packaged Cloud Files root and watcher prepared for Always keep during population.")
+                    + " root="
+                    + rootPath)
+                    .ConfigureAwait(false);
+
+                initialRun = runner.SyncNowAsync(
+                    SyncRunRequest.ForFull(SyncRunCause.InitialPopulation),
+                    cancellationToken);
+                bool initialReady = await WaitForTaskAsync(
+                        earlyPopulationReady.Task,
+                        TimeSpan.FromSeconds(20),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync(
+                    FormatCheck(initialReady, "Initial population paused after creating the early subtree."))
+                    .ConfigureAwait(false);
+                if (!initialReady)
+                {
+                    failures++;
+                }
+
+                ShellVerbInvocationResult verbResult = await InvokeExplorerAlwaysKeepAsync(folderPath, cancellationToken)
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync(
+                    FormatCheck(verbResult.Invoked, "Explorer shell invoked Always keep on the parent folder during population.")
+                    + " verb="
+                    + (verbResult.InvokedVerbName ?? "missing")
+                    + ", availableVerbs="
+                    + string.Join("|", verbResult.AvailableVerbNames))
+                    .ConfigureAwait(false);
+                if (!verbResult.Invoked)
+                {
+                    failures++;
+                }
+
+                bool parentPinned = await WaitForAttributesAsync(
+                        folderPath,
+                        HasPinned,
+                        TimeSpan.FromSeconds(15),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                bool watcherQueued = await WaitForTaskAsync(
+                        watcherRequestQueued.Task,
+                        TimeSpan.FromSeconds(15),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                bool watcherPassed = parentPinned && watcherQueued && queuedDuringPopulation;
+                await output.WriteLineAsync(
+                    FormatCheck(watcherPassed, "Explorer Always keep watcher event queued while initial population was active.")
+                    + " parentAttributes="
+                    + FormatAttributes(File.GetAttributes(folderPath))
+                    + ", runnerState="
+                    + runner.Status.State)
+                    .ConfigureAwait(false);
+                if (!watcherPassed)
+                {
+                    failures++;
+                }
+
+                continuePopulation.TrySetResult(true);
+                await initialRun.WaitAsync(TimeSpan.FromMinutes(2), cancellationToken).ConfigureAwait(false);
+
+                bool lateDirectoriesPinned = lateDescendantsStartedOnlineOnly
+                    && HasPinned(File.GetAttributes(lateDirectoryPath))
+                    && HasPinned(File.GetAttributes(lateNestedDirectoryPath));
+                await output.WriteLineAsync(
+                    FormatCheck(
+                        lateDirectoriesPinned,
+                        "Late-created descendant directories were pinned after queued availability processing.")
+                    + " lateDirectoryAttributes="
+                    + FormatAttributes(File.GetAttributes(lateDirectoryPath))
+                    + ", lateNestedAttributes="
+                    + FormatAttributes(File.GetAttributes(lateNestedDirectoryPath)))
+                    .ConfigureAwait(false);
+                if (!lateDirectoriesPinned)
+                {
+                    failures++;
+                }
+
+                bool filesHydrated = filePaths.All(path =>
+                {
+                    FileAttributes attributes = File.GetAttributes(path);
+                    return HasPinned(attributes)
+                        && !HasRecallOnDataAccess(attributes)
+                        && (attributes & FileAttributes.Offline) == 0;
+                });
+                int downloadsBeforeRead = contentProvider.DownloadCount;
+                string earlyText = await ReadAllTextThroughExternalProcessAsync(earlyFilePath, cancellationToken)
+                    .ConfigureAwait(false);
+                string lateText = await ReadAllTextThroughExternalProcessAsync(lateFilePath, cancellationToken)
+                    .ConfigureAwait(false);
+                bool contentMatches = string.Equals(earlyText, SmokeContentText, StringComparison.Ordinal)
+                    && string.Equals(lateText, SmokeContentText, StringComparison.Ordinal)
+                    && contentProvider.DownloadCount == downloadsBeforeRead;
+                bool allFilesPassed = filesHydrated && contentMatches && contentProvider.DownloadCount == filePaths.Length;
+                await output.WriteLineAsync(
+                    FormatCheck(allFilesPassed, "All early and late files became pinned and hydrated.")
+                    + " downloads="
+                    + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+                if (!allFilesPassed)
+                {
+                    failures++;
+                }
+
+                bool allDirectoriesPinned = directoryPaths.All(path => HasPinned(File.GetAttributes(path)));
+                if (!allDirectoriesPinned)
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "At least one Always-keep directory remained unpinned after population."))
+                        .ConfigureAwait(false);
+                }
+
+                int downloadsBeforeUnpin = contentProvider.DownloadCount;
+                ShellVerbInvocationResult unpinVerb = await InvokeExplorerAlwaysKeepAsync(folderPath, cancellationToken)
+                    .ConfigureAwait(false);
+                bool[] unpinResults = await Task.WhenAll(
+                        directoryPaths
+                            .Concat(filePaths)
+                            .Select(path => WaitForAttributesAsync(
+                                path,
+                                IsHydratedWithoutPin,
+                                TimeSpan.FromSeconds(15),
+                                cancellationToken)))
+                    .ConfigureAwait(false);
+                await runner
+                    .SyncNowAsync(
+                        SyncRunRequest.ForLocalChangedPaths([AlwaysKeepPopulationDirectoryName]),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                string earlyTextAfterUnpin = await ReadAllTextThroughExternalProcessAsync(earlyFilePath, cancellationToken)
+                    .ConfigureAwait(false);
+                string lateTextAfterUnpin = await ReadAllTextThroughExternalProcessAsync(lateFilePath, cancellationToken)
+                    .ConfigureAwait(false);
+                bool unpinPassed = unpinVerb.Invoked
+                    && unpinResults.All(result => result)
+                    && contentProvider.DownloadCount == downloadsBeforeUnpin
+                    && directoryPaths.All(path => IsHydratedWithoutPin(File.GetAttributes(path)))
+                    && filePaths.All(path =>
+                    {
+                        FileAttributes attributes = File.GetAttributes(path);
+                        return IsHydratedWithoutPin(attributes);
+                    })
+                    && string.Equals(earlyTextAfterUnpin, SmokeContentText, StringComparison.Ordinal)
+                    && string.Equals(lateTextAfterUnpin, SmokeContentText, StringComparison.Ordinal);
+                await output.WriteLineAsync(
+                    FormatCheck(unpinPassed, "Second Explorer Always keep invocation removed pin without deleting hydrated content.")
+                    + " downloadsBeforeUnpin="
+                    + downloadsBeforeUnpin.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", downloadsAfterUnpin="
+                    + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", parentAttributes="
+                    + FormatAttributes(File.GetAttributes(folderPath))
+                    + ", earlyFileAttributes="
+                    + FormatAttributes(File.GetAttributes(earlyFilePath))
+                    + ", lateFileAttributes="
+                    + FormatAttributes(File.GetAttributes(lateFilePath)))
+                    .ConfigureAwait(false);
+                if (!unpinPassed)
+                {
+                    failures++;
+                }
+
+                int downloadsBeforeRepin = contentProvider.DownloadCount;
+                ShellVerbInvocationResult repinVerb = await InvokeExplorerAlwaysKeepAsync(folderPath, cancellationToken)
+                    .ConfigureAwait(false);
+                bool[] repinResults = await Task.WhenAll(
+                        directoryPaths
+                            .Concat(filePaths)
+                            .Select(path => WaitForAttributesAsync(
+                                path,
+                                HasPinned,
+                                TimeSpan.FromSeconds(15),
+                                cancellationToken)))
+                    .ConfigureAwait(false);
+                await runner
+                    .SyncNowAsync(
+                        SyncRunRequest.ForLocalChangedPaths([AlwaysKeepPopulationDirectoryName]),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                bool repinPassed = repinVerb.Invoked
+                    && repinResults.All(result => result)
+                    && contentProvider.DownloadCount == downloadsBeforeRepin
+                    && directoryPaths.All(path => HasPinned(File.GetAttributes(path)))
+                    && filePaths.All(path =>
+                    {
+                        FileAttributes attributes = File.GetAttributes(path);
+                        return HasPinned(attributes)
+                            && !HasRecallOnDataAccess(attributes)
+                            && (attributes & FileAttributes.Offline) == 0;
+                    });
+                await output.WriteLineAsync(
+                    FormatCheck(repinPassed, "Third Explorer Always keep invocation restored pin without redownloading.")
+                    + " downloadsBeforeRepin="
+                    + downloadsBeforeRepin.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", downloadsAfterRepin="
+                    + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+                if (!repinPassed)
+                {
+                    failures++;
+                }
+
+                if (startupOptions.WindowsVirtualFilesSmokeHoldAfterPlaceholder > TimeSpan.Zero)
+                {
+                    await output.WriteLineAsync(
+                        "Holding pinned population root for "
+                        + startupOptions.WindowsVirtualFilesSmokeHoldAfterPlaceholder.TotalSeconds.ToString(
+                            "0.###",
+                            System.Globalization.CultureInfo.InvariantCulture)
+                        + " seconds; inspect "
+                        + folderPath
+                        + " in Explorer before cleanup starts.")
+                        .ConfigureAwait(false);
+                    await Task
+                        .Delay(startupOptions.WindowsVirtualFilesSmokeHoldAfterPlaceholder, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                failures++;
+                await output.WriteLineAsync(
+                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                continuePopulation.TrySetResult(true);
+                if (initialRun is not null)
+                {
+                    try
+                    {
+                        await initialRun.WaitAsync(TimeSpan.FromSeconds(30), CancellationToken.None).ConfigureAwait(false);
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+
+                watcher.Changed -= OnWatcherChanged;
+                await watcher.StopAsync(CancellationToken.None).ConfigureAwait(false);
+                await watcher.DisposeAsync().ConfigureAwait(false);
                 connection?.Dispose();
                 failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
             }
@@ -4797,6 +5271,14 @@ namespace Cotton.Sync.Desktop.Startup
             return (((int)attributes) & Unpinned) == Unpinned;
         }
 
+        private static bool IsHydratedWithoutPin(FileAttributes attributes)
+        {
+            return !HasPinned(attributes)
+                && !HasUnpinned(attributes)
+                && !HasRecallOnDataAccess(attributes)
+                && (attributes & FileAttributes.Offline) == 0;
+        }
+
         private static void AddKnownCloudFilesAttribute(
             int raw,
             int flag,
@@ -5035,7 +5517,8 @@ namespace Cotton.Sync.Desktop.Startup
             while (timer.Elapsed < timeout)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (File.Exists(filePath) && predicate(File.GetAttributes(filePath)))
+                if ((File.Exists(filePath) || Directory.Exists(filePath))
+                    && predicate(File.GetAttributes(filePath)))
                 {
                     return true;
                 }
@@ -5043,7 +5526,24 @@ namespace Cotton.Sync.Desktop.Startup
                 await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken).ConfigureAwait(false);
             }
 
-            return File.Exists(filePath) && predicate(File.GetAttributes(filePath));
+            return (File.Exists(filePath) || Directory.Exists(filePath))
+                && predicate(File.GetAttributes(filePath));
+        }
+
+        private static async Task<bool> WaitForTaskAsync(
+            Task task,
+            TimeSpan timeout,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                await task.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+            catch (TimeoutException)
+            {
+                return false;
+            }
         }
 
         private static async Task<int> VerifyExplorerShellSettledStatusAsync(
@@ -5231,6 +5731,13 @@ namespace Cotton.Sync.Desktop.Startup
             return InvokeExplorerVerbAsync(filePath, IsFreeUpSpaceVerb, cancellationToken);
         }
 
+        private static Task<ShellVerbInvocationResult> InvokeExplorerAlwaysKeepAsync(
+            string filePath,
+            CancellationToken cancellationToken)
+        {
+            return InvokeExplorerVerbAsync(filePath, IsAlwaysKeepVerb, cancellationToken);
+        }
+
         private static Task<ShellVerbInvocationResult> InvokeExplorerVerbAsync(
             string filePath,
             Func<string, bool> matchesVerb,
@@ -5334,6 +5841,13 @@ namespace Cotton.Sync.Desktop.Startup
         {
             return value.Contains("Free up space", StringComparison.OrdinalIgnoreCase)
                 || value.Contains("\u041e\u0441\u0432\u043e\u0431\u043e\u0434\u0438\u0442\u044c \u043c\u0435\u0441\u0442\u043e", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsAlwaysKeepVerb(string value)
+        {
+            return value.Contains("Always keep on this device", StringComparison.OrdinalIgnoreCase)
+                || value.Contains("\u0412\u0441\u0435\u0433\u0434\u0430 \u0445\u0440\u0430\u043d\u0438\u0442\u044c \u043d\u0430 \u044d\u0442\u043e\u043c \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0435", StringComparison.OrdinalIgnoreCase)
+                || value.Contains("\u0425\u0440\u0430\u043d\u0438\u0442\u044c \u044d\u0442\u0438 \u0444\u0430\u0439\u043b\u044b \u043d\u0430 \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0435", StringComparison.OrdinalIgnoreCase);
         }
 
         private sealed record ShellVerbInvocationResult(
@@ -6060,6 +6574,29 @@ namespace Cotton.Sync.Desktop.Startup
             {
                 TransferCalls++;
                 throw new InvalidOperationException("Steady-state repeat smoke must not delete remote files.");
+            }
+        }
+
+        private class DelegateSyncPairWork : ISyncPairWork
+        {
+            private readonly Func<SyncPairSettings, SyncRunRequest, CancellationToken, Task> _run;
+
+            public DelegateSyncPairWork(Func<SyncPairSettings, SyncRunRequest, CancellationToken, Task> run)
+            {
+                _run = run ?? throw new ArgumentNullException(nameof(run));
+            }
+
+            public Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
+            {
+                return _run(syncPair, SyncRunRequest.Full, cancellationToken);
+            }
+
+            public Task RunOnceAsync(
+                SyncPairSettings syncPair,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                return _run(syncPair, request, cancellationToken);
             }
         }
 

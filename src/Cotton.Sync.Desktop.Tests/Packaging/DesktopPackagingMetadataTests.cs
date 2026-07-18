@@ -483,6 +483,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-shell-share-link-targets\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-replace-cloud-only-upload\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-explorer-always-keep\\cloud-files-vfs-smoke.stdout.log"));
+                Assert.That(script, Does.Contain("vfs-smoke\\phase-explorer-always-keep-during-population\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-leave-registered\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-reconnect-existing\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-initial-streaming-logging\\cloud-files-vfs-smoke.stdout.log"));
@@ -1923,7 +1924,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("-LocalRoot $vfsLocalRoot"));
                 Assert.That(
                     workflow,
-                    Does.Contain("-AdditionalVfsSmokePhases @(\"desktop-session-restore\", \"shell-share-link-targets\", \"initial-streaming-logging\", \"steady-state-repeat\", \"replace-cloud-only-upload\", \"explorer-always-keep\")"));
+                    Does.Contain("-AdditionalVfsSmokePhases @(\"desktop-session-restore\", \"shell-share-link-targets\", \"initial-streaming-logging\", \"steady-state-repeat\", \"replace-cloud-only-upload\", \"explorer-always-keep\", \"explorer-always-keep-during-population\")"));
                 Assert.That(workflow, Does.Contain("timeout-minutes: 20"));
                 Assert.That(workflow, Does.Contain("-InitialStreamingPlaceholderCount $ciVfsPlaceholderCount"));
                 Assert.That(workflow, Does.Contain("-SteadyStateRepeatPlaceholderCount $ciVfsPlaceholderCount"));
@@ -2789,6 +2790,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "Result: passed"
                 });
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-explorer-always-keep"));
+            Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-explorer-always-keep-during-population"));
             File.WriteAllLines(
                 Path.Combine(
                     evidenceDirectory,
@@ -2797,11 +2799,28 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "cloud-files-vfs-smoke.stdout.log"),
                 new[]
                 {
+                    "PASS: Explorer shell exposed and invoked Always keep on this device.",
                     "PASS: Explorer Always keep hydrated the placeholder and kept it pinned.",
                     "PASS: Reading the Always-keep file used local hydrated content.",
                     "PASS: Repeating Explorer Always keep on this device was idempotent. downloadsBeforeRepeat=1, downloadsAfterRepeat=1",
                     "PASS: Always-keep placeholder Cloud Files status was finalized.",
                     "PASS: Explorer shell status settled for always-keep placeholder.",
+                    "Result: passed"
+                });
+            File.WriteAllLines(
+                Path.Combine(
+                    evidenceDirectory,
+                    "vfs-smoke",
+                    "phase-explorer-always-keep-during-population",
+                    "cloud-files-vfs-smoke.stdout.log"),
+                new[]
+                {
+                    "PASS: Explorer shell invoked Always keep on the parent folder during population.",
+                    "PASS: Explorer Always keep watcher event queued while initial population was active.",
+                    "PASS: Late-created descendant directories were pinned after queued availability processing.",
+                    "PASS: All early and late files became pinned and hydrated.",
+                    "PASS: Second Explorer Always keep invocation removed pin without deleting hydrated content.",
+                    "PASS: Third Explorer Always keep invocation restored pin without redownloading.",
                     "Result: passed"
                 });
             File.WriteAllLines(

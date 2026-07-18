@@ -317,6 +317,7 @@ Assert-Contains -Content $replaceCloudOnlyUpload -Expected "Explorer shell statu
 Assert-Contains -Content $replaceCloudOnlyUpload -Expected "Result: passed" -Label "vfs-smoke\phase-replace-cloud-only-upload\cloud-files-vfs-smoke.stdout.log"
 
 $explorerAlwaysKeep = Read-EvidenceFile -RelativePath "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $explorerAlwaysKeep -Expected "Explorer shell exposed and invoked Always keep on this device." -Label "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $explorerAlwaysKeep -Expected "Explorer Always keep hydrated the placeholder and kept it pinned." -Label "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $explorerAlwaysKeep -Expected "Reading the Always-keep file used local hydrated content." -Label "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $explorerAlwaysKeep -Expected "Repeating Explorer Always keep on this device was idempotent." -Label "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
@@ -325,6 +326,15 @@ Assert-Contains -Content $explorerAlwaysKeep -Expected "downloadsAfterRepeat=1" 
 Assert-Contains -Content $explorerAlwaysKeep -Expected "Always-keep placeholder Cloud Files status was finalized." -Label "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $explorerAlwaysKeep -Expected "Explorer shell status settled for always-keep placeholder." -Label "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $explorerAlwaysKeep -Expected "Result: passed" -Label "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
+
+$explorerAlwaysKeepDuringPopulation = Read-EvidenceFile -RelativePath "vfs-smoke\phase-explorer-always-keep-during-population\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $explorerAlwaysKeepDuringPopulation -Expected "Explorer shell invoked Always keep on the parent folder during population." -Label "vfs-smoke\phase-explorer-always-keep-during-population\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $explorerAlwaysKeepDuringPopulation -Expected "Explorer Always keep watcher event queued while initial population was active." -Label "vfs-smoke\phase-explorer-always-keep-during-population\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $explorerAlwaysKeepDuringPopulation -Expected "Late-created descendant directories were pinned after queued availability processing." -Label "vfs-smoke\phase-explorer-always-keep-during-population\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $explorerAlwaysKeepDuringPopulation -Expected "All early and late files became pinned and hydrated." -Label "vfs-smoke\phase-explorer-always-keep-during-population\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $explorerAlwaysKeepDuringPopulation -Expected "Second Explorer Always keep invocation removed pin without deleting hydrated content." -Label "vfs-smoke\phase-explorer-always-keep-during-population\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $explorerAlwaysKeepDuringPopulation -Expected "Third Explorer Always keep invocation restored pin without redownloading." -Label "vfs-smoke\phase-explorer-always-keep-during-population\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $explorerAlwaysKeepDuringPopulation -Expected "Result: passed" -Label "vfs-smoke\phase-explorer-always-keep-during-population\cloud-files-vfs-smoke.stdout.log"
 
 $leaveRegistered = Read-EvidenceFile -RelativePath "vfs-smoke\phase-leave-registered\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $leaveRegistered -Expected "Cloud Files sync root left registered for process restart smoke." -Label "vfs-smoke\phase-leave-registered\cloud-files-vfs-smoke.stdout.log"
