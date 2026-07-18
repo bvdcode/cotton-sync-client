@@ -67,7 +67,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          global-json-file: global.json
 
       - name: Restore solution
         run: dotnet restore src/Cotton.sln --locked-mode
@@ -100,7 +100,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          global-json-file: global.json
 
       - name: Install desktop Linux smoke dependencies
         run: |
@@ -323,7 +323,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          global-json-file: global.json
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -889,7 +889,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          global-json-file: global.json
 
       - name: Restore CLI project
         run: dotnet restore src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj --locked-mode

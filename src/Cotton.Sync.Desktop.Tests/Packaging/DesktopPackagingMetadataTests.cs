@@ -43,7 +43,11 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             Assert.Multiple(() =>
             {
                 Assert.That(globalJson, Does.Contain("\"version\": \"10.0.301\""));
-                Assert.That(globalJson, Does.Contain("\"rollForward\": \"latestFeature\""));
+                Assert.That(globalJson, Does.Contain("\"rollForward\": \"disable\""));
+                Assert.That(
+                    Regex.Matches(workflow, Regex.Escape("global-json-file: global.json")).Count,
+                    Is.EqualTo(4));
+                Assert.That(workflow, Does.Not.Contain("dotnet-version: 10.0.x"));
                 Assert.That(
                     GetProperty(propertyGroups[0], "RestorePackagesWithLockFile"),
                     Is.EqualTo("true"));
