@@ -324,7 +324,7 @@ namespace Cotton.Sync.Desktop.Platform
                 return;
             }
 
-            _localChangeSuppression.SuppressProviderWrite(syncPairId, localRootPath, relativePath);
+            _localChangeSuppression.SuppressProviderOnlineOnlyWrite(syncPairId, localRootPath, relativePath);
         }
 
         private sealed class NoopDisposable : IDisposable

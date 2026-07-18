@@ -14,6 +14,14 @@ namespace Cotton.Sync.App.LocalChanges
         void SuppressProviderWrite(Guid syncPairId, string localRootPath, string relativePath);
 
         /// <summary>
+        /// Suppresses placeholder-creation echoes only while the resulting path remains online-only.
+        /// </summary>
+        void SuppressProviderOnlineOnlyWrite(Guid syncPairId, string localRootPath, string relativePath)
+        {
+            SuppressProviderWrite(syncPairId, localRootPath, relativePath);
+        }
+
+        /// <summary>
         /// Suppresses watcher overflow and provider-generated Cloud Files echoes while a large provider write is active.
         /// </summary>
         IDisposable SuppressProviderWriteBurst(Guid syncPairId, string localRootPath);

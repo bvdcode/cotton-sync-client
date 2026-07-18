@@ -870,6 +870,74 @@ namespace Cotton.Sync.Desktop.Platform
                 "Windows Cloud Files placeholder was marked in sync.");
         }
 
+        public void PinPlaceholder(SyncPairSettings syncPair, string relativePath)
+        {
+            ArgumentNullException.ThrowIfNull(syncPair);
+            ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
+            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
+            string normalizedPath = SyncPath.Normalize(relativePath);
+            PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
+            EnsureNoReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
+            string fullPlaceholderPath = Path.Combine(
+                placeholderPath.BaseDirectoryPath,
+                placeholderPath.RelativeFileName);
+            const string operation = "pin-placeholder";
+            bool isFile = File.Exists(fullPlaceholderPath);
+            bool isDirectory = Directory.Exists(fullPlaceholderPath);
+            if (!isFile && !isDirectory)
+            {
+                _diagnostics.Record(
+                    operation,
+                    "skipped",
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    normalizedPath,
+                    "Windows Cloud Files pin state was skipped for a missing placeholder.");
+                return;
+            }
+
+            if (isFile && !_isReparsePoint(fullPlaceholderPath))
+            {
+                _diagnostics.Record(
+                    operation,
+                    "skipped",
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    normalizedPath,
+                    "Windows Cloud Files pin state was skipped for a non-placeholder file.");
+                return;
+            }
+
+            try
+            {
+                ExecuteNativeOperationWithTransientPathRetry(
+                    () => _nativeApi.SetPinState(fullPlaceholderPath, WindowsCloudFilesPinState.Pinned),
+                    operation,
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    normalizedPath);
+                NotifyShellPathUpdated(fullPlaceholderPath, isDirectory);
+            }
+            catch (Exception exception)
+            {
+                RecordFailure(
+                    operation,
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    normalizedPath,
+                    exception);
+                throw;
+            }
+
+            _diagnostics.Record(
+                operation,
+                "completed",
+                syncPair.Id.ToString(),
+                registration.LocalRootPath,
+                normalizedPath,
+                "Windows Cloud Files placeholder was pinned for offline availability.");
+        }
+
         public RemoteFilePlaceholderResult FinalizeUploadedFilePlaceholder(
             SyncPairSettings syncPair,
             SyncStateEntry fileState)

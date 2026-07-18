@@ -514,6 +514,7 @@ namespace Cotton.Sync.Desktop.Platform
             foreach (SyncStateEntry entry in directoryEntries)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                PinDirectoryIfNeeded(syncPair, entry.RelativePath);
                 _cloudFiles.SetInSyncState(syncPair, entry.RelativePath);
             }
 
@@ -605,6 +606,7 @@ namespace Cotton.Sync.Desktop.Platform
             foreach (SyncStateEntry entry in directoryEntries)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                PinDirectoryIfNeeded(syncPair, entry.RelativePath);
                 _cloudFiles.SetInSyncState(syncPair, entry.RelativePath);
             }
 
@@ -623,6 +625,22 @@ namespace Cotton.Sync.Desktop.Platform
                 + directoryEntries.Length
                 + " tracked directories.");
             return true;
+        }
+
+        private void PinDirectoryIfNeeded(SyncPairSettings syncPair, string relativePath)
+        {
+            string fullPath = ResolveFullPath(syncPair.LocalRootPath, relativePath);
+            WindowsVirtualFileDiskState? diskState = TryReadDiskState(fullPath);
+            if (diskState is not null && IsManualAlwaysKeepDirectoryCandidate(diskState.Attributes))
+            {
+                return;
+            }
+
+            _localChangeSuppression?.SuppressProviderWrite(
+                syncPair.Id,
+                syncPair.LocalRootPath,
+                relativePath);
+            _cloudFiles.PinPlaceholder(syncPair, relativePath);
         }
 
         private async Task<bool> TryHandleManualDirectoryUnpinAsync(

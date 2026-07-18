@@ -1038,6 +1038,37 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void PinPlaceholder_PinsDirectoryAndNotifiesShell()
+        {
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var diagnostics = new WindowsCloudFilesDiagnostics();
+            var shellChanges = new RecordingShellChangeNotifier();
+            string root = Path.Combine(_tempDirectory, "root");
+            string target = Path.GetFullPath(Path.Combine(root, "Music", "Album"));
+            Directory.CreateDirectory(target);
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                diagnostics: diagnostics,
+                shellChangeNotifier: shellChanges,
+                isReparsePoint: path => string.Equals(Path.GetFullPath(path), target, StringComparison.OrdinalIgnoreCase));
+            SyncPairSettings syncPair = CreateSyncPair(root);
+
+            adapter.PinPlaceholder(syncPair, "Music/Album");
+
+            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.PinStates, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.PinStates[0].FilePath, Is.EqualTo(target));
+                Assert.That(nativeApi.PinStates[0].PinState, Is.EqualTo(WindowsCloudFilesPinState.Pinned));
+                Assert.That(shellChanges.DirectoryUpdates, Is.EqualTo(new[] { target }));
+                Assert.That(diagnostic.Operation, Is.EqualTo("pin-placeholder"));
+                Assert.That(diagnostic.Status, Is.EqualTo("completed"));
+            });
+        }
+
+        [Test]
         public void SetInSyncState_ForwardsDirectoryPlaceholderToNativeBoundary()
         {
             var nativeApi = new FakeCloudFilesNativeApi();

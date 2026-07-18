@@ -724,6 +724,36 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task ProviderWriteBurst_OnlineOnlyRegistrationDoesNotHidePinnedUserChange()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            var watcherFactory = new FakeWatcherFactory();
+            var supervisor = new FakeSyncSupervisor();
+            var suppression = new LocalChangeSuppression(_ => false);
+            using IDisposable burst = suppression.SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath);
+            suppression.SuppressProviderOnlineOnlyWrite(syncPair.Id, syncPair.LocalRootPath, "Music");
+            var coordinator = new LocalChangeSyncCoordinator(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval,
+                changeSuppression: suppression);
+            await coordinator.StartAsync();
+
+            watcherFactory.CreatedWatchers[syncPair.Id].Raise(FullPath(syncPair, "Music"));
+
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(1));
+                Assert.That(supervisor.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { "Music" }));
+            });
+        }
+
+        [Test]
         public async Task ProviderWriteBurst_RegisteredPathStormDoesNotExhaustEventBudget()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
@@ -806,12 +836,14 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         {
             FileAttributes recallOnOpen = FileAttributes.Archive | (FileAttributes)0x00040000;
             FileAttributes recallOnDataAccess = FileAttributes.Archive | (FileAttributes)0x00400000;
+            FileAttributes pinnedOffline = FileAttributes.Offline | (FileAttributes)0x00080000;
 
             Assert.Multiple(() =>
             {
                 Assert.That(LocalChangeSuppression.IsOnlineOnlyCloudFilesAttributes(recallOnOpen), Is.True);
                 Assert.That(LocalChangeSuppression.IsOnlineOnlyCloudFilesAttributes(recallOnDataAccess), Is.True);
                 Assert.That(LocalChangeSuppression.IsOnlineOnlyCloudFilesAttributes(FileAttributes.Offline), Is.True);
+                Assert.That(LocalChangeSuppression.IsOnlineOnlyCloudFilesAttributes(pinnedOffline), Is.False);
                 Assert.That(LocalChangeSuppression.IsOnlineOnlyCloudFilesAttributes(FileAttributes.ReparsePoint), Is.False);
             });
         }

@@ -245,6 +245,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(
                     cloudFiles.HydratedPaths,
                     Is.EquivalentTo(new[] { "Music/Album/track-two.mp3", "Music/track-one.mp3" }));
+                Assert.That(cloudFiles.PinnedPaths, Is.EqualTo(new[] { "Music/Album" }));
                 Assert.That(cloudFiles.InSyncPaths, Is.EqualTo(new[] { "Music/Album", "Music" }));
                 Assert.That(cloudFiles.HydratedPaths, Does.Not.Contain("Other/outside.mp3"));
                 Assert.That(
@@ -256,7 +257,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(
                     diagnostics.Snapshot().Last().Operation,
                     Is.EqualTo("manual-always-keep-directory"));
-                Assert.That(suppression.SuppressedWrites, Has.Count.EqualTo(2));
+                Assert.That(suppression.SuppressedWrites, Has.Count.EqualTo(3));
                 Assert.That(suppression.ProviderWriteBurstCount, Is.EqualTo(1));
                 Assert.That(stateStore.UpsertManyCallCount, Is.EqualTo(1));
             });
@@ -1214,6 +1215,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<string> HydratedPaths { get; } = [];
 
+            public List<string> PinnedPaths { get; } = [];
+
             public List<string> InSyncPaths { get; } = [];
 
             public RemoteFilePlaceholderResult CreateFilePlaceholder(RemoteFilePlaceholderRequest request)
@@ -1234,6 +1237,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public void HydratePlaceholder(SyncPairSettings syncPair, string relativePath)
             {
                 HydratedPaths.Add(relativePath);
+            }
+
+            public void PinPlaceholder(SyncPairSettings syncPair, string relativePath)
+            {
+                PinnedPaths.Add(relativePath);
             }
 
             public void SetInSyncState(SyncPairSettings syncPair, string relativePath)

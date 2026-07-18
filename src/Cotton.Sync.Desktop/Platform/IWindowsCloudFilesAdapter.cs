@@ -56,6 +56,13 @@ namespace Cotton.Sync.Desktop.Platform
             SetInSyncState(syncPair, relativePath);
         }
 
+        void PinPlaceholder(SyncPairSettings syncPair, string relativePath)
+        {
+            ArgumentNullException.ThrowIfNull(syncPair);
+            ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
+            SetInSyncState(syncPair, relativePath);
+        }
+
         void SetInSyncState(SyncPairSettings syncPair, string relativePath);
 
         RemoteFilePlaceholderResult FinalizeUploadedFilePlaceholder(
