@@ -138,6 +138,9 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             {
                 Assert.That(snapshot.SyncPairs[0].Status, Is.EqualTo("Syncing"));
                 Assert.That(runSnapshots, Has.Length.EqualTo(101));
+                Assert.That(
+                    runSnapshots.Select(static progress => progress.Stage),
+                    Is.All.EqualTo(SyncRunProgressStage.HydratingCloudFiles));
                 Assert.That(runSnapshots.Select(static progress => progress.FilesTotal), Is.All.EqualTo(2000));
                 Assert.That(
                     runSnapshots.Select(static progress => progress.FilesCompleted),

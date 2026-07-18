@@ -1471,7 +1471,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Syncing"));
                 Assert.That(viewModel.HasCurrentWorkProgress, Is.True);
                 Assert.That(viewModel.CurrentWorkProgressTitle, Is.EqualTo("Documents"));
-                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Checking files · 1 of 2000 files"));
+                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Making files available · 1 of 2000 files"));
                 Assert.That(row.CurrentOperation, Is.EqualTo("Downloading track-0040.flac"));
                 Assert.That(row.HasCurrentProgress, Is.True);
             });
@@ -2969,7 +2969,11 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressDetails, Does.Not.Contain("Track 101.flac"));
                 Assert.That(viewModel.CurrentWorkProgressSecondaryDetails, Is.Empty);
                 Assert.That(viewModel.CurrentWorkProgressValue, Is.EqualTo(10.05).Within(0.01));
+                Assert.That(viewModel.CurrentTransferProgressValue, Is.EqualTo(50).Within(0.01));
                 Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.False);
+                SyncPairRowViewModel row = viewModel.SyncPairs.Single();
+                Assert.That(row.CurrentOperation, Is.EqualTo("Downloading Track 101.flac"));
+                Assert.That(row.CurrentProgressValue, Is.EqualTo(10.05).Within(0.01));
             });
         }
 

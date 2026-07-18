@@ -2287,7 +2287,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             syncPair.Status = "Syncing";
             ApplyRunProgress(new DesktopRunProgressSnapshot(
                 syncPair.Id,
-                SyncRunProgressStage.ReconcilingFiles,
+                SyncRunProgressStage.HydratingCloudFiles,
                 FilesCompleted: 0,
                 totalFiles,
                 relativePath,

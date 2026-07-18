@@ -452,7 +452,7 @@ namespace Cotton.Sync.Desktop.Shell
 
                     RunProgressChanged?.Invoke(this, new DesktopRunProgressSnapshot(
                         DocumentsPairId,
-                        SyncRunProgressStage.ReconcilingFiles,
+                        SyncRunProgressStage.HydratingCloudFiles,
                         completedBefore,
                         totalFiles,
                         relativePath,
@@ -499,7 +499,7 @@ namespace Cotton.Sync.Desktop.Shell
                         EstimatedTimeRemaining: TimeSpan.Zero));
                     RunProgressChanged?.Invoke(this, new DesktopRunProgressSnapshot(
                         DocumentsPairId,
-                        SyncRunProgressStage.ReconcilingFiles,
+                        SyncRunProgressStage.HydratingCloudFiles,
                         completedAfter,
                         totalFiles,
                         relativePath,
@@ -515,7 +515,7 @@ namespace Cotton.Sync.Desktop.Shell
                 DateTime completedAtUtc = animationCompletedAtUtc;
                 RunProgressChanged?.Invoke(this, new DesktopRunProgressSnapshot(
                     DocumentsPairId,
-                    SyncRunProgressStage.ReconcilingFiles,
+                    SyncRunProgressStage.HydratingCloudFiles,
                     totalFiles,
                     totalFiles,
                     string.Empty,
