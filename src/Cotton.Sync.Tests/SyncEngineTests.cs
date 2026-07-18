@@ -656,6 +656,102 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithScopedWindowsVirtualFilesLocalAddsDoNotPlanMassRemoteDeletesForUnscannedLargeTree()
+        {
+            const string directoryPath = "Music";
+            const int existingFileCount = 2_207;
+            string[] newPaths = ["Music/new-one.mp3", "Music/new-two.mp3"];
+            RemoteDirectorySnapshot musicDirectory = RemoteDirectory(directoryPath);
+            RemoteDirectorySnapshot albumDirectory = RemoteDirectory("Music/Album", musicDirectory.Node.Id);
+            RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
+            remoteTree.Directories.Add(musicDirectory);
+            remoteTree.Directories.Add(albumDirectory);
+            List<SyncStateEntry> baselineEntries =
+            [
+                new SyncStateEntry
+                {
+                    SyncPairId = "pair-a",
+                    RelativePath = directoryPath,
+                    Kind = SyncEntryKind.Directory,
+                    RemoteNodeId = musicDirectory.Node.Id,
+                    SyncedAtUtc = new DateTime(2026, 6, 2, 13, 1, 0, DateTimeKind.Utc),
+                },
+                new SyncStateEntry
+                {
+                    SyncPairId = "pair-a",
+                    RelativePath = albumDirectory.RelativePath,
+                    Kind = SyncEntryKind.Directory,
+                    RemoteNodeId = albumDirectory.Node.Id,
+                    SyncedAtUtc = new DateTime(2026, 6, 2, 13, 1, 0, DateTimeKind.Utc),
+                },
+            ];
+            for (int index = 0; index < existingFileCount; index++)
+            {
+                string relativePath = $"Music/Album/track-{index:D4}.mp3";
+                string contentHash = HashText($"track-{index:D4}");
+                NodeFileManifestDto remoteFile = RemoteFile(relativePath, contentHash, sizeBytes: 10);
+                remoteTree.Files.Add(new RemoteFileSnapshot
+                {
+                    RelativePath = relativePath,
+                    File = remoteFile,
+                });
+                baselineEntries.Add(new SyncStateEntry
+                {
+                    SyncPairId = "pair-a",
+                    RelativePath = relativePath,
+                    Kind = SyncEntryKind.File,
+                    LocalContentHash = contentHash,
+                    LocalLastWriteUtc = new DateTime(2026, 6, 2, 13, 0, 0, DateTimeKind.Utc),
+                    LocalSizeBytes = remoteFile.SizeBytes,
+                    RemoteNodeId = remoteFile.NodeId,
+                    RemoteFileId = remoteFile.Id,
+                    RemoteContentHash = remoteFile.ContentHash,
+                    RemoteETag = remoteFile.ETag,
+                    SyncedAtUtc = new DateTime(2026, 6, 2, 13, 1, 0, DateTimeKind.Utc),
+                });
+            }
+
+            FakeLocalFileScanner scanner = new(
+                LocalFile(newPaths[0], "new-one"),
+                LocalFile(newPaths[1], "new-two"));
+            scanner.Directories.Add(new LocalDirectorySnapshot
+            {
+                RelativePath = directoryPath,
+                FullPath = Path.Combine(_root, directoryPath),
+            });
+            DescendantPathRemoteTreeCrawler crawler = new(remoteTree);
+            FakeRemoteFileSynchronizer remoteFiles = new();
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            await stateStore.InitializeAsync();
+            await stateStore.ReplacePairAsync("pair-a", baselineEntries);
+            SyncEngine engine = new(scanner, crawler, remoteFiles, stateStore);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions
+                {
+                    MaximumRemoteDeletesPerRun = 100,
+                    Scope = SyncRunScope.ForLocalChangedPaths([directoryPath, ..newPaths]),
+                });
+
+            IReadOnlyList<SyncStateEntry> finalEntries = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(scanner.ScanCalls, Is.Zero);
+                Assert.That(scanner.PathLookupCalls, Is.EqualTo(1));
+                Assert.That(scanner.LastIncludeDirectoryDescendants, Is.False);
+                Assert.That(crawler.PathCrawlCalls, Is.EqualTo(1));
+                Assert.That(crawler.FullCrawlCalls, Is.Zero);
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(remoteFiles.Uploads.Select(upload => upload.RelativePath), Is.EquivalentTo(newPaths));
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.All.EqualTo(SyncActivityKind.Uploaded));
+                Assert.That(result.Activities.Select(activity => activity.RelativePath), Is.EquivalentTo(newPaths));
+                Assert.That(finalEntries, Has.Count.EqualTo(existingFileCount + 2 + newPaths.Length));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesPreservesRemoteOnlyPlaceholderStateAfterEngineRestart()
         {
             const string relativePath = "remote-only-restart.txt";
