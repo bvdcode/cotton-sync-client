@@ -232,6 +232,25 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void RunAsync_ExplorerAvailabilityPhasesRequirePackagedShellRegistration()
+        {
+            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(runner, Does.Contain("bool requiresExplorerAvailabilityVerbs = explorerFreeUpSpace"));
+                Assert.That(runner, Does.Contain("|| explorerAlwaysKeep"));
+                Assert.That(runner, Does.Contain("|| explorerAlwaysKeepDuringPopulation"));
+                Assert.That(runner, Does.Contain("WindowsStorageProviderSyncRootRegistrar.TryCreateDefault()"));
+                Assert.That(
+                    runner,
+                    Does.Contain(
+                        "Explorer availability smoke requires the packaged Windows shell helper beside the desktop app."));
+                Assert.That(runner, Does.Contain("storageProviderRegistrar: storageProviderRegistrar"));
+            });
+        }
+
+        [Test]
         public void RunAsync_ExplorerFreeUpSpacePhaseSupportsInteractiveFolderSubtree()
         {
             string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));

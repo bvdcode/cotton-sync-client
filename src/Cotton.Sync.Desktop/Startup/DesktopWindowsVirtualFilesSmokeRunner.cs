@@ -198,11 +198,33 @@ namespace Cotton.Sync.Desktop.Startup
                 return 2;
             }
 
+            bool requiresExplorerAvailabilityVerbs = explorerFreeUpSpace
+                || explorerAlwaysKeep
+                || explorerAlwaysKeepDuringPopulation;
+            IWindowsStorageProviderSyncRootRegistrar? storageProviderRegistrar = cloudFilesAdapter is null
+                ? WindowsStorageProviderSyncRootRegistrar.TryCreateDefault()
+                : null;
+            if (cloudFilesAdapter is null
+                && requiresExplorerAvailabilityVerbs
+                && storageProviderRegistrar is null)
+            {
+                await output.WriteLineAsync(
+                        FormatCheck(
+                            false,
+                            "Explorer availability smoke requires the packaged Windows shell helper beside the desktop app."))
+                    .ConfigureAwait(false);
+                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                return 2;
+            }
+
             IWindowsCloudFilesNativeApi? nativeApi = cloudFilesAdapter is null
                 ? new WindowsCloudFilesNativeApi()
                 : null;
             IWindowsCloudFilesAdapter cloudFiles = cloudFilesAdapter
-                ?? new WindowsCloudFilesAdapter(nativeApi: nativeApi, diagnostics: diagnostics);
+                ?? new WindowsCloudFilesAdapter(
+                    nativeApi: nativeApi,
+                    storageProviderRegistrar: storageProviderRegistrar,
+                    diagnostics: diagnostics);
             SyncPairSettings syncPair = CreateSyncPair(rootPath);
             int largeTreePlaceholderCount = GetLargeTreePlaceholderCount(startupOptions);
             if (initialStreamingLogging)
