@@ -223,7 +223,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(runner, Does.Contain("new SyncPairRunner("));
                 Assert.That(runner, Does.Contain("InvokeExplorerAlwaysKeepAsync("));
                 Assert.That(runner, Does.Contain("Explorer Always keep watcher event queued while initial population was active."));
-                Assert.That(runner, Does.Contain("Late-created descendant directories were pinned after queued availability processing."));
+                Assert.That(runner, Does.Contain("Late-created descendants inherited Always keep before initial population completed."));
                 Assert.That(runner, Does.Contain("All early and late files became pinned and hydrated."));
                 Assert.That(runner, Does.Contain("Second Explorer Always keep invocation removed pin without deleting hydrated content."));
                 Assert.That(runner, Does.Contain("Third Explorer Always keep invocation restored pin without redownloading."));

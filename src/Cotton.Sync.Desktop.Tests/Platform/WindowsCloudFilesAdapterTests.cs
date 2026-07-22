@@ -231,6 +231,48 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void CreateFilePlaceholder_InheritsPinnedParentAndHydratesImmediately()
+        {
+            string root = Path.Combine(_tempDirectory, "root");
+            string parentPath = Path.GetFullPath(Path.Combine(root, "Projects"));
+            string filePath = Path.GetFullPath(Path.Combine(parentPath, "remote.txt"));
+            Directory.CreateDirectory(parentPath);
+            var nativeApi = new FakeCloudFilesNativeApi
+            {
+                HydrateAction = path => File.WriteAllBytes(path, new byte[12]),
+            };
+            var shellChangeNotifier = new RecordingShellChangeNotifier();
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                shellChangeNotifier: shellChangeNotifier,
+                readFileAttributes: path => string.Equals(
+                        Path.GetFullPath(path),
+                        parentPath,
+                        StringComparison.OrdinalIgnoreCase)
+                    ? FileAttributes.Directory | (FileAttributes)0x00080000
+                    : File.GetAttributes(path));
+
+            RemoteFilePlaceholderResult result = adapter.CreateFilePlaceholder(
+                CreateRequest(root, "Projects/remote.txt"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.HydratedPaths, Is.EqualTo(new[] { filePath }));
+                Assert.That(nativeApi.PinStates, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.PinStates[0].FilePath, Is.EqualTo(filePath));
+                Assert.That(nativeApi.PinStates[0].PinState, Is.EqualTo(WindowsCloudFilesPinState.Inherit));
+                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { filePath }));
+                Assert.That(
+                    nativeApi.CallLog,
+                    Is.EqualTo(new[] { "native-hydrate", "native-set-pin-state", "native-set-in-sync-state" }));
+                Assert.That(result.HydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+                Assert.That(result.LocalSizeBytes, Is.EqualTo(12));
+                Assert.That(shellChangeNotifier.ItemUpdates, Is.EqualTo(new[] { filePath }));
+            });
+        }
+
+        [Test]
         public void CreateDirectoryPlaceholder_CreatesRemoteDirectoryPlaceholderWithoutConversion()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
@@ -269,6 +311,36 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(identity.NodeId, Is.EqualTo(Guid.Parse("88888888-8888-8888-8888-888888888888")));
                 Assert.That(diagnostic.Operation, Is.EqualTo("create-directory-placeholder"));
                 Assert.That(diagnostic.RelativePath, Is.EqualTo("Projects/Nested"));
+            });
+        }
+
+        [Test]
+        public void CreateDirectoryPlaceholder_InheritsPinnedParent()
+        {
+            string root = Path.Combine(_tempDirectory, "root");
+            string parentPath = Path.GetFullPath(Path.Combine(root, "Projects"));
+            string directoryPath = Path.GetFullPath(Path.Combine(parentPath, "Nested"));
+            Directory.CreateDirectory(parentPath);
+            var nativeApi = new FakeCloudFilesNativeApi();
+            var adapter = new WindowsCloudFilesAdapter(
+                CreatePolicy(),
+                nativeApi,
+                isReparsePoint: _ => false,
+                readFileAttributes: path => string.Equals(
+                        Path.GetFullPath(path),
+                        parentPath,
+                        StringComparison.OrdinalIgnoreCase)
+                    ? FileAttributes.Directory | (FileAttributes)0x00080000
+                    : File.GetAttributes(path));
+
+            adapter.CreateDirectoryPlaceholder(CreateDirectoryRequest(root, "Projects/Nested"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.PinStates, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.PinStates[0].FilePath, Is.EqualTo(directoryPath));
+                Assert.That(nativeApi.PinStates[0].PinState, Is.EqualTo(WindowsCloudFilesPinState.Inherit));
+                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { directoryPath }));
             });
         }
 

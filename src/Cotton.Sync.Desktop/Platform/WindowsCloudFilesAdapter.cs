@@ -258,20 +258,43 @@ namespace Cotton.Sync.Desktop.Platform
 
                 foreach (PreparedFilePlaceholder item in batch)
                 {
-                    const string pinOperation = "set-pin-state";
+                    SyncPlaceholderHydrationState hydrationState = SyncPlaceholderHydrationState.RemoteOnly;
+                    WindowsCloudFilesPinState pinState = ResolveNewPlaceholderPinState(
+                        item.Placeholder.BaseDirectoryPath);
                     try
                     {
+                        if (pinState == WindowsCloudFilesPinState.Inherit)
+                        {
+                            ExecuteNativeOperationWithTransientPathRetry(
+                                () => _nativeApi.HydratePlaceholder(item.FullPlaceholderPath),
+                                "hydrate-placeholder",
+                                item.SyncPairId,
+                                item.LocalRootPath,
+                                item.NormalizedRelativePath);
+                            hydrationState = SyncPlaceholderHydrationState.Hydrated;
+                        }
+
                         ExecuteNativeOperationWithTransientPathRetry(
-                            () => _nativeApi.SetPinState(item.FullPlaceholderPath, WindowsCloudFilesPinState.Unpinned),
-                            pinOperation,
+                            () => _nativeApi.SetPinState(item.FullPlaceholderPath, pinState),
+                            "set-pin-state",
                             item.SyncPairId,
                             item.LocalRootPath,
                             item.NormalizedRelativePath);
+                        if (hydrationState == SyncPlaceholderHydrationState.Hydrated)
+                        {
+                            ExecuteNativeOperationWithTransientPathRetry(
+                                () => SetAndVerifyInSyncState(item.FullPlaceholderPath),
+                                "set-in-sync-state",
+                                item.SyncPairId,
+                                item.LocalRootPath,
+                                item.NormalizedRelativePath);
+                            NotifyShellPathUpdated(item.FullPlaceholderPath, isDirectory: false);
+                        }
                     }
                     catch (Exception exception)
                     {
                         RecordFailure(
-                            pinOperation,
+                            "apply-new-placeholder-availability",
                             item.SyncPairId,
                             item.LocalRootPath,
                             item.NormalizedRelativePath,
@@ -279,9 +302,15 @@ namespace Cotton.Sync.Desktop.Platform
                         throw;
                     }
 
+                    FileInfo? hydratedFile = hydrationState == SyncPlaceholderHydrationState.Hydrated
+                        ? new FileInfo(item.FullPlaceholderPath)
+                        : null;
+                    hydratedFile?.Refresh();
                     results[item.Index] = new RemoteFilePlaceholderResult(
                         item.FileIdentity,
-                        SyncPlaceholderHydrationState.RemoteOnly);
+                        hydrationState,
+                        hydratedFile?.Length,
+                        hydratedFile?.LastWriteTimeUtc);
                 }
             }
 
@@ -495,6 +524,8 @@ namespace Cotton.Sync.Desktop.Platform
             const string operation = "create-directory-placeholder";
             try
             {
+                WindowsCloudFilesPinState pinState = ResolveNewPlaceholderPinState(
+                    directoryPlaceholder.BaseDirectoryPath);
                 ExecuteNativeOperationWithTransientPathRetry(
                     () => _nativeApi.CreatePlaceholder(directoryPlaceholder),
                     operation,
@@ -502,7 +533,7 @@ namespace Cotton.Sync.Desktop.Platform
                     localRootPath,
                     normalizedPath);
                 ExecuteNativeOperationWithTransientPathRetry(
-                    () => _nativeApi.SetPinState(fullPlaceholderPath, WindowsCloudFilesPinState.Unpinned),
+                    () => _nativeApi.SetPinState(fullPlaceholderPath, pinState),
                     "set-pin-state",
                     request.SyncPairId,
                     localRootPath,
@@ -546,6 +577,8 @@ namespace Cotton.Sync.Desktop.Platform
             const string operation = "convert-directory-placeholder";
             try
             {
+                WindowsCloudFilesPinState pinState = ResolveNewPlaceholderPinState(
+                    directoryPlaceholder.BaseDirectoryPath);
                 ExecuteNativeOperationWithTransientPathRetry(
                     () => _nativeApi.ConvertToPlaceholder(
                         fullPlaceholderPath,
@@ -563,7 +596,7 @@ namespace Cotton.Sync.Desktop.Platform
                     localRootPath,
                     normalizedPath);
                 ExecuteNativeOperationWithTransientPathRetry(
-                    () => _nativeApi.SetPinState(fullPlaceholderPath, WindowsCloudFilesPinState.Unpinned),
+                    () => _nativeApi.SetPinState(fullPlaceholderPath, pinState),
                     "set-pin-state",
                     request.SyncPairId,
                     localRootPath,
@@ -686,6 +719,13 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             return null;
+        }
+
+        private WindowsCloudFilesPinState ResolveNewPlaceholderPinState(string parentDirectoryPath)
+        {
+            return ReadExistingPinState(parentDirectoryPath) == WindowsCloudFilesPinState.Pinned
+                ? WindowsCloudFilesPinState.Inherit
+                : WindowsCloudFilesPinState.Unpinned;
         }
 
         public void DehydratePlaceholder(SyncPairSettings syncPair, string relativePath)

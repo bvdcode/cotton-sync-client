@@ -1373,7 +1373,7 @@ namespace Cotton.Sync.Desktop.Startup
             TaskCompletionSource<bool> earlyPopulationReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
             TaskCompletionSource<bool> continuePopulation = new(TaskCreationOptions.RunContinuationsAsynchronously);
             TaskCompletionSource<bool> watcherRequestQueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            bool lateDescendantsStartedOnlineOnly = false;
+            bool lateDescendantsInheritedAvailability = false;
 
             async Task CreateDirectoryAsync(string relativePath, CancellationToken operationCancellationToken)
             {
@@ -1421,9 +1421,12 @@ namespace Cotton.Sync.Desktop.Startup
                 await CreateDirectoryAsync(AlwaysKeepPopulationLateDirectoryPath, operationCancellationToken).ConfigureAwait(false);
                 await CreateDirectoryAsync(AlwaysKeepPopulationLateNestedDirectoryPath, operationCancellationToken).ConfigureAwait(false);
                 await CreateFileAsync(AlwaysKeepPopulationLateFilePath, operationCancellationToken).ConfigureAwait(false);
-                lateDescendantsStartedOnlineOnly = !HasPinned(File.GetAttributes(lateDirectoryPath))
-                    && !HasPinned(File.GetAttributes(lateNestedDirectoryPath))
-                    && HasRecallOnDataAccess(File.GetAttributes(lateFilePath));
+                FileAttributes lateFileAttributes = File.GetAttributes(lateFilePath);
+                lateDescendantsInheritedAvailability = HasPinned(File.GetAttributes(lateDirectoryPath))
+                    && HasPinned(File.GetAttributes(lateNestedDirectoryPath))
+                    && HasPinned(lateFileAttributes)
+                    && !HasRecallOnDataAccess(lateFileAttributes)
+                    && (lateFileAttributes & FileAttributes.Offline) == 0;
             });
             SyncPairRunner runner = new SyncPairRunner(syncPair, pairWork);
             FileSystemLocalSyncRootWatcher watcher = new FileSystemLocalSyncRootWatcher(syncPair.Id, rootPath);
@@ -1553,13 +1556,13 @@ namespace Cotton.Sync.Desktop.Startup
                 continuePopulation.TrySetResult(true);
                 await initialRun.WaitAsync(TimeSpan.FromMinutes(2), cancellationToken).ConfigureAwait(false);
 
-                bool lateDirectoriesPinned = lateDescendantsStartedOnlineOnly
+                bool lateDirectoriesPinned = lateDescendantsInheritedAvailability
                     && HasPinned(File.GetAttributes(lateDirectoryPath))
                     && HasPinned(File.GetAttributes(lateNestedDirectoryPath));
                 await output.WriteLineAsync(
                     FormatCheck(
                         lateDirectoriesPinned,
-                        "Late-created descendant directories were pinned after queued availability processing.")
+                        "Late-created descendants inherited Always keep before initial population completed.")
                     + " lateDirectoryAttributes="
                     + FormatAttributes(File.GetAttributes(lateDirectoryPath))
                     + ", lateNestedAttributes="
@@ -2037,12 +2040,18 @@ namespace Cotton.Sync.Desktop.Startup
             SyncPlaceholderHydrationState hydrationState = placeholder.HydrationState == SyncPlaceholderHydrationState.None
                 ? SyncPlaceholderHydrationState.RemoteOnly
                 : placeholder.HydrationState;
+            bool materialized = hydrationState == SyncPlaceholderHydrationState.Hydrated;
 
             return new SyncStateEntry
             {
                 SyncPairId = syncPair.Id.ToString("D"),
                 RelativePath = Cotton.Sync.State.SyncPath.Normalize(request.RelativePath),
                 Kind = SyncEntryKind.File,
+                LocalContentHash = materialized ? request.RemoteFile.ContentHash : null,
+                LocalLastWriteUtc = materialized
+                    ? placeholder.LocalLastWriteUtc?.ToUniversalTime() ?? request.RemoteFile.UpdatedAt.ToUniversalTime()
+                    : null,
+                LocalSizeBytes = materialized ? placeholder.LocalSizeBytes ?? request.RemoteFile.SizeBytes : null,
                 RemoteSizeBytes = request.RemoteFile.SizeBytes,
                 RemoteFileId = request.RemoteFile.Id,
                 RemoteNodeId = request.RemoteFile.NodeId,
