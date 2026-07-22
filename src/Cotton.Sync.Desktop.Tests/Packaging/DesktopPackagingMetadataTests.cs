@@ -455,6 +455,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         public void WindowsVfsReleaseEvidenceVerifierScript_ChecksRequiredEvidenceBundleFiles()
         {
             string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/verify-vfs-release-evidence.ps1"));
+            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            const string inheritedAvailabilityProof =
+                "Late-created descendants inherited Always keep before initial population completed.";
 
             Assert.Multiple(() =>
             {
@@ -484,6 +487,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-replace-cloud-only-upload\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-explorer-always-keep\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-explorer-always-keep-during-population\\cloud-files-vfs-smoke.stdout.log"));
+                Assert.That(script, Does.Contain(inheritedAvailabilityProof));
+                Assert.That(runner, Does.Contain(inheritedAvailabilityProof));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-leave-registered\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-reconnect-existing\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-initial-streaming-logging\\cloud-files-vfs-smoke.stdout.log"));
@@ -2817,7 +2822,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 {
                     "PASS: Explorer shell invoked Always keep on the parent folder during population.",
                     "PASS: Explorer Always keep watcher event queued while initial population was active.",
-                    "PASS: Late-created descendant directories were pinned after queued availability processing.",
+                    "PASS: Late-created descendants inherited Always keep before initial population completed.",
                     "PASS: All early and late files became pinned and hydrated.",
                     "PASS: Second Explorer Always keep invocation removed pin without deleting hydrated content.",
                     "PASS: Third Explorer Always keep invocation restored pin without redownloading.",
