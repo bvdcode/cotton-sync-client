@@ -49,6 +49,28 @@ namespace Cotton.Sync.Tests.Remote
         }
 
         [Test]
+        public async Task EnsureAsync_ReusesExistingDirectoryIgnoringDiacritics()
+        {
+            Guid rootId = Guid.NewGuid();
+            Guid artistId = Guid.NewGuid();
+            FakeNodeClient client = new() { Root = Node(rootId, null, "root") };
+            client.Children[(rootId, 1)] = new NodeContentDto
+            {
+                TotalCount = 1,
+                Nodes = [Node(artistId, rootId, "Michael Brun")],
+            };
+            RemoteRootResolver resolver = new(client);
+
+            NodeDto node = await resolver.EnsureAsync("Michaël Brun");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(node.Id, Is.EqualTo(artistId));
+                Assert.That(client.CreatedNodes, Is.Empty);
+            });
+        }
+
+        [Test]
         public async Task EnsureAsync_CreatesMissingNestedDirectoriesAfterPaging()
         {
             Guid rootId = Guid.NewGuid();

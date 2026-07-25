@@ -560,7 +560,10 @@ namespace Cotton.Sync.Remote
             }
 
             if (cachedNode.ParentId != expectedParentNodeId
-                || !string.Equals(cachedNode.Name, expectedName, StringComparison.OrdinalIgnoreCase))
+                || !string.Equals(
+                    RemoteNameKey.Create(cachedNode.Name),
+                    RemoteNameKey.Create(expectedName),
+                    StringComparison.Ordinal))
             {
                 _directoryCache.TryRemove(cacheKey, out _);
                 return null;
@@ -571,6 +574,7 @@ namespace Cotton.Sync.Remote
 
         private async Task<NodeDto?> FindChildDirectoryAsync(Guid parentNodeId, string name, CancellationToken cancellationToken)
         {
+            string nameKey = RemoteNameKey.Create(name);
             int page = 1;
             int loaded = 0;
             while (true)
@@ -581,7 +585,8 @@ namespace Cotton.Sync.Remote
                     _options.DirectoryPageSize,
                     depth: 0,
                     cancellationToken).ConfigureAwait(false);
-                NodeDto? match = content.Nodes.FirstOrDefault(node => string.Equals(node.Name, name, StringComparison.OrdinalIgnoreCase));
+                NodeDto? match = content.Nodes.FirstOrDefault(node =>
+                    string.Equals(RemoteNameKey.Create(node.Name), nameKey, StringComparison.Ordinal));
                 if (match is not null)
                 {
                     return match;

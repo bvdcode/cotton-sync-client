@@ -136,6 +136,25 @@ namespace Cotton.Sync.Tests.Remote
         }
 
         [Test]
+        public async Task UploadFileAsync_ReusesDiacriticInsensitiveParentDirectory()
+        {
+            Guid parentId = Guid.NewGuid();
+            LocalFileSnapshot local = WriteLocalFile("Michaël Brun/file.txt", Encoding.UTF8.GetBytes("content"));
+            FakeCottonCloudClient client = new(chunkSizeBytes: 1024);
+            client.NodesClient.Children[_rootNodeId] = [Node(parentId, _rootNodeId, "Michael Brun")];
+            SdkRemoteFileSynchronizer synchronizer = new(client);
+
+            await synchronizer.UploadFileAsync(_rootNodeId, local.RelativePath, local);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(client.NodesClient.CreatedNodes, Is.Empty);
+                Assert.That(client.FilesClient.CreateRequests, Has.Count.EqualTo(1));
+                Assert.That(client.FilesClient.CreateRequests[0].NodeId, Is.EqualTo(parentId));
+            });
+        }
+
+        [Test]
         public async Task UploadFileAsync_ReusesExistingFolderAndUpdatesExistingFile()
         {
             Guid docsId = Guid.NewGuid();

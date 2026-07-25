@@ -53,6 +53,25 @@ namespace Cotton.Sync.Tests.Remote
         }
 
         [Test]
+        public async Task FindChildDirectoryAsync_ReturnsDiacriticInsensitiveChildDirectory()
+        {
+            Guid parentId = Guid.NewGuid();
+            NodeDto child = new()
+            {
+                Id = Guid.NewGuid(),
+                ParentId = parentId,
+                Name = "Michael Brun",
+            };
+            FakeNodeClient client = new();
+            client.Children[parentId] = [child];
+            SdkRemoteDirectorySynchronizer synchronizer = new(client);
+
+            NodeDto? found = await synchronizer.FindChildDirectoryAsync(parentId, "Michaël Brun");
+
+            Assert.That(found, Is.SameAs(child));
+        }
+
+        [Test]
         public async Task FindChildDirectoryAsync_ReturnsNullWhenChildDirectoryIsMissing()
         {
             Guid parentId = Guid.NewGuid();

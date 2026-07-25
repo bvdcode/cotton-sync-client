@@ -32,7 +32,7 @@ namespace Cotton.Sync.Remote
             CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(name);
-            string normalizedName = name.Trim();
+            string nameKey = RemoteNameKey.Create(name);
             int page = 1;
             int loaded = 0;
             while (true)
@@ -44,7 +44,7 @@ namespace Cotton.Sync.Remote
                     depth: 0,
                     cancellationToken).ConfigureAwait(false);
                 NodeDto? match = content.Nodes.FirstOrDefault(node =>
-                    string.Equals(node.Name, normalizedName, StringComparison.OrdinalIgnoreCase));
+                    string.Equals(RemoteNameKey.Create(node.Name), nameKey, StringComparison.Ordinal));
                 if (match is not null)
                 {
                     return match;
