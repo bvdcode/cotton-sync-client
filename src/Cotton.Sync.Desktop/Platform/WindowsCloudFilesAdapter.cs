@@ -21,6 +21,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         private const int HResultFileNotFound = unchecked((int)0x80070002);
         private const int HResultPathNotFound = unchecked((int)0x80070003);
+        private const int HResultCloudFileUnsuccessful = unchecked((int)0x80070185);
         private const int ReparseDataBufferSize = 16 * 1024;
         private const uint FsctlGetReparsePoint = 0x000900A8;
         private const uint ReparseTagCloudLowByte = 0x1A;
@@ -151,12 +152,7 @@ namespace Cotton.Sync.Desktop.Platform
                         item.NormalizedRelativePath);
                     if (restoreHydration)
                     {
-                        ExecuteNativeOperationWithTransientPathRetry(
-                            () => _nativeApi.HydratePlaceholder(item.FullPlaceholderPath),
-                            "hydrate-placeholder",
-                            item.SyncPairId,
-                            item.LocalRootPath,
-                            item.NormalizedRelativePath);
+                        bool hydrationRestored = TryHydratePlaceholderOrDefer(item);
                         if (existingPinState == WindowsCloudFilesPinState.Pinned)
                         {
                             ExecuteNativeOperationWithTransientPathRetry(
@@ -167,13 +163,16 @@ namespace Cotton.Sync.Desktop.Platform
                                 item.NormalizedRelativePath);
                         }
 
-                        ExecuteNativeOperationWithTransientPathRetry(
-                            () => SetAndVerifyInSyncState(item.FullPlaceholderPath),
-                            "set-in-sync-state",
-                            item.SyncPairId,
-                            item.LocalRootPath,
-                            item.NormalizedRelativePath);
-                        hydrationState = SyncPlaceholderHydrationState.Hydrated;
+                        if (hydrationRestored)
+                        {
+                            ExecuteNativeOperationWithTransientPathRetry(
+                                () => SetAndVerifyInSyncState(item.FullPlaceholderPath),
+                                "set-in-sync-state",
+                                item.SyncPairId,
+                                item.LocalRootPath,
+                                item.NormalizedRelativePath);
+                            hydrationState = SyncPlaceholderHydrationState.Hydrated;
+                        }
                     }
                     else if (existingPinState == WindowsCloudFilesPinState.Unpinned)
                     {
@@ -263,14 +262,9 @@ namespace Cotton.Sync.Desktop.Platform
                         item.Placeholder.BaseDirectoryPath);
                     try
                     {
-                        if (pinState == WindowsCloudFilesPinState.Inherit)
+                        if (pinState == WindowsCloudFilesPinState.Inherit
+                            && TryHydratePlaceholderOrDefer(item))
                         {
-                            ExecuteNativeOperationWithTransientPathRetry(
-                                () => _nativeApi.HydratePlaceholder(item.FullPlaceholderPath),
-                                "hydrate-placeholder",
-                                item.SyncPairId,
-                                item.LocalRootPath,
-                                item.NormalizedRelativePath);
                             hydrationState = SyncPlaceholderHydrationState.Hydrated;
                         }
 
@@ -315,6 +309,34 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             return results;
+        }
+
+        private bool TryHydratePlaceholderOrDefer(PreparedFilePlaceholder item)
+        {
+            try
+            {
+                ExecuteNativeOperationWithTransientPathRetry(
+                    () => _nativeApi.HydratePlaceholder(item.FullPlaceholderPath),
+                    "hydrate-placeholder",
+                    item.SyncPairId,
+                    item.LocalRootPath,
+                    item.NormalizedRelativePath);
+                return true;
+            }
+            catch (WindowsCloudFilesNativeException exception)
+                when (exception.Operation == "CfHydratePlaceholder"
+                    && exception.HResult == HResultCloudFileUnsuccessful)
+            {
+                _diagnostics.Record(
+                    "hydrate-placeholder",
+                    "deferred",
+                    item.SyncPairId,
+                    item.LocalRootPath,
+                    item.NormalizedRelativePath,
+                    "Immediate hydration was deferred; the inherited pin state remains available for retry.",
+                    exception.HResult);
+                return false;
+            }
         }
 
         private PreparedFilePlaceholder PrepareFilePlaceholder(

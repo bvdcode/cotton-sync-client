@@ -4653,30 +4653,30 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return;
             }
 
-            bool isNewTransfer = _transferSyncPairId != progress.SyncPairId
-                || _transferDirection != progress.Direction
-                || !string.Equals(_transferRelativePath, progress.RelativePath, StringComparison.Ordinal);
-            if (isNewTransfer)
-            {
-                _transferSyncPairId = progress.SyncPairId;
-                _transferDirection = progress.Direction;
-                _transferRelativePath = progress.RelativePath;
-            }
-
-            HasCurrentTransfer = true;
-            IsCurrentTransferIndeterminate = !progress.TotalBytes.HasValue && !progress.IsCompleted;
-            CurrentTransferProgressValue = CalculateProgressValue(progress);
-            CurrentTransferTitle = CreateTransferTitle(progress, syncPair.DisplayName);
-            CurrentTransferDetails = CreateTransferDetails(progress);
             TrackRunTransferProgress(progress);
             if (progress.IsCompleted)
             {
-                _transferProgressByPair.Remove(progress.SyncPairId);
+                if (_transferProgressByPair.TryGetValue(
+                        progress.SyncPairId,
+                        out DesktopTransferProgressSnapshot? activeProgress)
+                    && CanReplacePendingTransferProgress(activeProgress, progress))
+                {
+                    _transferProgressByPair.Remove(progress.SyncPairId);
+                }
+
+                RefreshSyncPairProgressAfterTransfer(syncPair);
+                RefreshCurrentTransferSummary();
+                if (_runProgressByPair.Count > 0)
+                {
+                    RefreshRunProgressSummary();
+                }
+
+                RefreshCurrentProgressText();
+                return;
             }
-            else
-            {
-                _transferProgressByPair[progress.SyncPairId] = progress;
-            }
+
+            _transferProgressByPair[progress.SyncPairId] = progress;
+            SetCurrentTransferSummary(progress, syncPair);
 
             syncPair.CurrentOperation = CreateTransferOperation(progress);
             syncPair.HasCurrentProgress = true;
@@ -4694,6 +4694,84 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
 
             RefreshCurrentProgressText();
+        }
+
+        private void RefreshSyncPairProgressAfterTransfer(SyncPairRowViewModel syncPair)
+        {
+            if (_transferProgressByPair.TryGetValue(
+                    syncPair.Id,
+                    out DesktopTransferProgressSnapshot? activeTransfer))
+            {
+                syncPair.CurrentOperation = CreateTransferOperation(activeTransfer);
+                syncPair.HasCurrentProgress = true;
+                if (_runProgressByPair.TryGetValue(syncPair.Id, out DesktopRunProgressSnapshot? activeRunProgress))
+                {
+                    syncPair.IsCurrentProgressIndeterminate = IsIndeterminateRunProgress(activeRunProgress);
+                    syncPair.CurrentProgressValue = CalculateRunProgressValue(activeRunProgress);
+                }
+                else
+                {
+                    syncPair.IsCurrentProgressIndeterminate = !activeTransfer.TotalBytes.HasValue;
+                    syncPair.CurrentProgressValue = CalculateProgressValue(activeTransfer);
+                }
+
+                return;
+            }
+
+            if (_runProgressByPair.TryGetValue(syncPair.Id, out DesktopRunProgressSnapshot? runProgress))
+            {
+                syncPair.CurrentOperation = CreateRunProgressOperation(runProgress);
+                syncPair.HasCurrentProgress = true;
+                syncPair.IsCurrentProgressIndeterminate = IsIndeterminateRunProgress(runProgress);
+                syncPair.CurrentProgressValue = CalculateRunProgressValue(runProgress);
+                return;
+            }
+
+            ClearSyncPairProgress(syncPair);
+        }
+
+        private void RefreshCurrentTransferSummary()
+        {
+            DesktopTransferProgressSnapshot? latestProgress = _transferProgressByPair.Values
+                .OrderByDescending(static progress => progress.OccurredAtUtc)
+                .FirstOrDefault();
+            if (latestProgress is null)
+            {
+                HasCurrentTransfer = false;
+                IsCurrentTransferIndeterminate = false;
+                CurrentTransferProgressValue = 0;
+                CurrentTransferTitle = string.Empty;
+                CurrentTransferDetails = string.Empty;
+                _transferSyncPairId = null;
+                _transferDirection = SyncTransferDirection.Unknown;
+                _transferRelativePath = string.Empty;
+                RaiseCurrentWorkProgressProperties();
+                return;
+            }
+
+            SyncPairRowViewModel? syncPair = SyncPairs.FirstOrDefault(pair => pair.Id == latestProgress.SyncPairId);
+            if (syncPair is null)
+            {
+                _transferProgressByPair.Remove(latestProgress.SyncPairId);
+                RefreshCurrentTransferSummary();
+                return;
+            }
+
+            SetCurrentTransferSummary(latestProgress, syncPair);
+        }
+
+        private void SetCurrentTransferSummary(
+            DesktopTransferProgressSnapshot progress,
+            SyncPairRowViewModel syncPair)
+        {
+            _transferSyncPairId = progress.SyncPairId;
+            _transferDirection = progress.Direction;
+            _transferRelativePath = progress.RelativePath;
+            HasCurrentTransfer = true;
+            IsCurrentTransferIndeterminate = !progress.TotalBytes.HasValue;
+            CurrentTransferProgressValue = CalculateProgressValue(progress);
+            CurrentTransferTitle = CreateTransferTitle(progress, syncPair.DisplayName);
+            CurrentTransferDetails = CreateTransferDetails(progress);
         }
 
         private void ApplyRunProgress(DesktopRunProgressSnapshot progress)
@@ -5413,6 +5491,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
 
             HasCurrentRunProgress = true;
+            ExpireStaleRunTransferRate(progressValues);
             if (updateEstimate)
             {
                 UpdateRunProgressEstimatedTimeRemaining(progressValues);
@@ -5436,6 +5515,30 @@ namespace Cotton.Sync.Desktop.ViewModels
             CurrentRunProgressTitle = "Syncing " + progressValues.Count.ToString(CultureInfo.CurrentCulture) + " folders";
             CurrentRunProgressDetails = CreateAggregateRunProgressDetails(progressValues);
             RaiseCurrentWorkProgressProperties();
+        }
+
+        private void ExpireStaleRunTransferRate(IReadOnlyList<DesktopRunProgressSnapshot> progressValues)
+        {
+            if (HasActiveTransferProgress
+                || !_runTransferSpeedBytesPerSecond.HasValue
+                || _runTransferSamples.Count == 0)
+            {
+                return;
+            }
+
+            DateTime latestRunProgressAtUtc = progressValues
+                .Max(static progress => progress.OccurredAtUtc.ToUniversalTime());
+            DateTime latestTransferProgressAtUtc = _runTransferSamples.Last().OccurredAtUtc.ToUniversalTime();
+            if (latestRunProgressAtUtc - latestTransferProgressAtUtc <= RunTransferMetricsWindow)
+            {
+                return;
+            }
+
+            _runTransferSamples.Clear();
+            _runTransferSpeedBytesPerSecond = null;
+            _lastRunTransferSpeedOccurredAtUtc = null;
+            _runTransferEstimatedTimeRemaining = null;
+            _lastRunTransferEstimateOccurredAtUtc = null;
         }
 
         private List<DesktopRunProgressSnapshot> GetOrderedRunProgressSnapshots()
@@ -5583,10 +5686,11 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return;
             }
 
-            long effectiveTransferredBytes = progress.IsCompleted && progress.TotalBytes.HasValue
-                ? progress.TotalBytes.Value
-                : progress.TransferredBytes;
-            effectiveTransferredBytes = Math.Max(0, effectiveTransferredBytes);
+            long effectiveTransferredBytes = Math.Max(0, progress.TransferredBytes);
+            if (progress.TotalBytes.HasValue)
+            {
+                effectiveTransferredBytes = Math.Min(effectiveTransferredBytes, progress.TotalBytes.Value);
+            }
 
             var key = new RunTransferProgressKey(progress.SyncPairId, progress.Direction, progress.RelativePath);
             _runTransferBytesByKey.TryGetValue(key, out long previousTransferredBytes);
@@ -6282,7 +6386,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             string context = CreateRunContextDetails(progress);
             return string.IsNullOrWhiteSpace(context)
                 ? stageDetails
-                : context + " · " + stageDetails;
+                : stageDetails + " · " + context;
         }
 
         private static string CreateRunContextDetails(DesktopRunProgressSnapshot progress)

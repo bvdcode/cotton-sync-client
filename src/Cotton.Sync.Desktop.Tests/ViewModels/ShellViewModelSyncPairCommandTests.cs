@@ -1893,7 +1893,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
-        public async Task TransferProgressChanged_DoesNotThrottleCompletionSample()
+        public async Task TransferProgressChanged_ClearsCompletedTransferState()
         {
             Guid syncPairId = Guid.NewGuid();
             var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
@@ -1920,10 +1920,100 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             Assert.Multiple(() =>
             {
+                SyncPairRowViewModel row = viewModel.SyncPairs.Single();
+                Assert.That(viewModel.HasCurrentTransfer, Is.False);
+                Assert.That(viewModel.CurrentTransferProgressValue, Is.Zero);
+                Assert.That(viewModel.CurrentTransferTitle, Is.Empty);
+                Assert.That(viewModel.CurrentTransferDetails, Is.Empty);
+                Assert.That(row.CurrentOperation, Is.Empty);
+                Assert.That(row.HasCurrentProgress, Is.False);
+            });
+        }
+
+        [Test]
+        public async Task TransferProgressChanged_CoalescedCompletionDoesNotLeaveStaleTransfer()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            var dispatcher = new QueuedDesktopUiDispatcher();
+            using ShellViewModel viewModel = CreateViewModel(controller, uiDispatcher: dispatcher);
+            await viewModel.InitializeAsync();
+            DateTime startedAtUtc = new(2026, 7, 25, 20, 46, 18, DateTimeKind.Utc);
+
+            controller.ReportTransferProgress(new DesktopTransferProgressSnapshot(
+                syncPairId,
+                SyncTransferDirection.Download,
+                "Music/1 - Beyond the Edge.m4a",
+                TransferredBytes: 50,
+                TotalBytes: 100,
+                IsCompleted: false,
+                startedAtUtc));
+            controller.ReportTransferProgress(new DesktopTransferProgressSnapshot(
+                syncPairId,
+                SyncTransferDirection.Download,
+                "Music/1 - Beyond the Edge.m4a",
+                TransferredBytes: 100,
+                TotalBytes: 100,
+                IsCompleted: true,
+                startedAtUtc.AddMilliseconds(100)));
+
+            dispatcher.DrainAll();
+
+            Assert.Multiple(() =>
+            {
+                SyncPairRowViewModel row = viewModel.SyncPairs.Single();
+                Assert.That(viewModel.HasCurrentTransfer, Is.False);
+                Assert.That(viewModel.CurrentTransferTitle, Is.Empty);
+                Assert.That(row.CurrentOperation, Is.Empty);
+                Assert.That(row.HasCurrentProgress, Is.False);
+            });
+        }
+
+        [Test]
+        public async Task TransferProgressChanged_CompletionKeepsAnotherFolderTransferVisible()
+        {
+            Guid documentsPairId = Guid.NewGuid();
+            Guid videosPairId = Guid.NewGuid();
+            FakeDesktopShellController controller = CreateTwoFolderSyncingController(documentsPairId, videosPairId);
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            DateTime startedAtUtc = new(2026, 7, 25, 20, 46, 18, DateTimeKind.Utc);
+
+            controller.ReportTransferProgress(new DesktopTransferProgressSnapshot(
+                documentsPairId,
+                SyncTransferDirection.Upload,
+                "Reports/report.txt",
+                TransferredBytes: 50,
+                TotalBytes: 100,
+                IsCompleted: false,
+                startedAtUtc));
+            controller.ReportTransferProgress(new DesktopTransferProgressSnapshot(
+                videosPairId,
+                SyncTransferDirection.Download,
+                "Videos/clip.mp4",
+                TransferredBytes: 50,
+                TotalBytes: 100,
+                IsCompleted: false,
+                startedAtUtc.AddSeconds(1)));
+            controller.ReportTransferProgress(new DesktopTransferProgressSnapshot(
+                videosPairId,
+                SyncTransferDirection.Download,
+                "Videos/clip.mp4",
+                TransferredBytes: 100,
+                TotalBytes: 100,
+                IsCompleted: true,
+                startedAtUtc.AddSeconds(2)));
+
+            Assert.Multiple(() =>
+            {
+                SyncPairRowViewModel documents = viewModel.SyncPairs.Single(pair => pair.Id == documentsPairId);
+                SyncPairRowViewModel videos = viewModel.SyncPairs.Single(pair => pair.Id == videosPairId);
                 Assert.That(viewModel.HasCurrentTransfer, Is.True);
-                Assert.That(viewModel.CurrentTransferProgressValue, Is.EqualTo(100).Within(0.01));
-                Assert.That(viewModel.CurrentTransferTitle, Is.EqualTo("Documents: Uploaded report.txt"));
-                Assert.That(viewModel.CurrentTransferDetails, Is.EqualTo("100 B / 100 B"));
+                Assert.That(viewModel.CurrentTransferTitle, Is.EqualTo("Documents: Uploading report.txt"));
+                Assert.That(documents.CurrentOperation, Is.EqualTo("Uploading report.txt"));
+                Assert.That(documents.HasCurrentProgress, Is.True);
+                Assert.That(videos.CurrentOperation, Is.Empty);
+                Assert.That(videos.HasCurrentProgress, Is.False);
             });
         }
 
@@ -2552,7 +2642,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Assert.That(
                 viewModel.CurrentRunProgressDetails,
                 Is.EqualTo(
-                    "Scheduled check · full folder scope · Making cloud files available · 100 cloud items ready · scanning cloud · saving state"));
+                    "Making cloud files available · 100 cloud items ready · scanning cloud · saving state · Scheduled check · full folder scope"));
         }
 
         [Test]
@@ -2965,7 +3055,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressTitle, Is.EqualTo("Music"));
                 Assert.That(
                     viewModel.CurrentWorkProgressDetails,
-                    Is.EqualTo("Local change · 1 changed path · Making files available · 100 of 1000 files"));
+                    Is.EqualTo("Making files available · 100 of 1000 files · Local change · 1 changed path"));
                 Assert.That(viewModel.CurrentWorkProgressDetails, Does.Not.Contain("Track 101.flac"));
                 Assert.That(viewModel.CurrentWorkProgressSecondaryDetails, Is.Empty);
                 Assert.That(viewModel.CurrentWorkProgressValue, Is.EqualTo(10.05).Within(0.01));
@@ -2974,6 +3064,102 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 SyncPairRowViewModel row = viewModel.SyncPairs.Single();
                 Assert.That(row.CurrentOperation, Is.EqualTo("Downloading Track 101.flac"));
                 Assert.That(row.CurrentProgressValue, Is.EqualTo(10.05).Within(0.01));
+            });
+        }
+
+        [Test]
+        public async Task TransferProgressChanged_CompletionRestoresInitialPopulationProgress()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            FakeDesktopShellController controller = new(CreateSignedInSnapshot(
+                CreatePair(syncPairId, "Cloud", "Syncing", mode: SyncPairMode.WindowsVirtualFiles)));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            DateTime startedAtUtc = new(2026, 7, 25, 20, 46, 18, DateTimeKind.Utc);
+
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.CreatingPlaceholders,
+                FilesCompleted: 160_000,
+                FilesTotal: 477_153,
+                CurrentPath: "Music/album/track.m4a",
+                StartedAtUtc: startedAtUtc,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc.AddMinutes(50),
+                Causes: SyncRunCause.InitialPopulation,
+                RequestedPathCount: 1,
+                IsFull: true));
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.CreatingPlaceholders,
+                FilesCompleted: 161_000,
+                FilesTotal: 477_153,
+                CurrentPath: "Music/album/track.m4a",
+                StartedAtUtc: startedAtUtc,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc.AddMinutes(50).AddSeconds(10),
+                Causes: SyncRunCause.InitialPopulation,
+                RequestedPathCount: 1,
+                IsFull: true));
+            controller.ReportTransferProgress(new DesktopTransferProgressSnapshot(
+                syncPairId,
+                SyncTransferDirection.Download,
+                "Music/1 - Beyond the Edge.m4a",
+                TransferredBytes: 2L * 1024 * 1024 * 1024,
+                TotalBytes: 3L * 1024 * 1024 * 1024,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc.AddMinutes(50).AddSeconds(11)));
+            controller.ReportTransferProgress(new DesktopTransferProgressSnapshot(
+                syncPairId,
+                SyncTransferDirection.Download,
+                "Music/1 - Beyond the Edge.m4a",
+                TransferredBytes: 3L * 1024 * 1024 * 1024,
+                TotalBytes: 3L * 1024 * 1024 * 1024,
+                IsCompleted: true,
+                OccurredAtUtc: startedAtUtc.AddMinutes(50).AddSeconds(12)));
+
+            Assert.Multiple(() =>
+            {
+                SyncPairRowViewModel row = viewModel.SyncPairs.Single();
+                Assert.That(viewModel.HasCurrentTransfer, Is.False);
+                Assert.That(row.CurrentOperation, Is.EqualTo("Preparing cloud files"));
+                Assert.That(row.HasCurrentProgress, Is.True);
+                Assert.That(row.IsCurrentProgressIndeterminate, Is.True);
+                Assert.That(viewModel.CurrentWorkProgressTitle, Is.EqualTo("Cloud"));
+                Assert.That(viewModel.CurrentWorkProgressDetails, Does.Contain("161000 cloud items ready"));
+            });
+
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.CreatingPlaceholders,
+                FilesCompleted: 161_500,
+                FilesTotal: 477_153,
+                CurrentPath: "Music/album/next-track.m4a",
+                StartedAtUtc: startedAtUtc,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc.AddMinutes(50).AddSeconds(18),
+                Causes: SyncRunCause.InitialPopulation,
+                RequestedPathCount: 1,
+                IsFull: true));
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.CreatingPlaceholders,
+                FilesCompleted: 162_000,
+                FilesTotal: 477_153,
+                CurrentPath: "Music/album/next-track.m4a",
+                StartedAtUtc: startedAtUtc,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc.AddMinutes(50).AddSeconds(23),
+                Causes: SyncRunCause.InitialPopulation,
+                RequestedPathCount: 1,
+                IsFull: true));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.CurrentWorkProgressHeaderSizeDetails, Is.EqualTo("3.0 GB"));
+                Assert.That(viewModel.CurrentWorkProgressHeaderRateDetails, Does.Contain("cloud items/s"));
+                Assert.That(viewModel.CurrentWorkProgressHeaderRateDetails, Does.Not.Contain("GB/s"));
+                Assert.That(viewModel.CurrentWorkProgressHeaderRateDetails, Does.Not.Contain("MB/s"));
             });
         }
 
@@ -3004,7 +3190,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressTitle, Is.EqualTo("Music"));
                 Assert.That(
                     viewModel.CurrentWorkProgressDetails,
-                    Is.EqualTo("Local change · 1 changed path · Freeing up space · 100 of 1000 files"));
+                    Is.EqualTo("Freeing up space · 100 of 1000 files · Local change · 1 changed path"));
                 Assert.That(viewModel.CurrentWorkProgressValue, Is.EqualTo(10).Within(0.01));
                 Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.False);
                 Assert.That(viewModel.SyncPairs.Single().CurrentOperation, Is.EqualTo("Freeing up space 100 of 1000"));
@@ -3164,6 +3350,49 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressHeaderDetails, Is.EqualTo("1.0 KB · 1.3 files/s · 20s left"));
                 Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("8 of 30 files across 2 folders"));
                 Assert.That(viewModel.CurrentWorkProgressSecondaryDetails, Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task TransferProgressChanged_DoesNotCountUntransferredBytesOnTerminalSample()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            DateTime startedAtUtc = new(2026, 7, 25, 20, 46, 18, DateTimeKind.Utc);
+
+            controller.ReportRunProgress(new DesktopRunProgressSnapshot(
+                syncPairId,
+                SyncRunProgressStage.ReconcilingFiles,
+                FilesCompleted: 10,
+                FilesTotal: 100,
+                CurrentPath: "Videos/clip.mp4",
+                StartedAtUtc: startedAtUtc,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc));
+            controller.ReportTransferProgress(new DesktopTransferProgressSnapshot(
+                syncPairId,
+                SyncTransferDirection.Download,
+                "Videos/clip.mp4",
+                TransferredBytes: 256,
+                TotalBytes: 1024,
+                IsCompleted: false,
+                startedAtUtc.AddSeconds(1)));
+            controller.ReportTransferProgress(new DesktopTransferProgressSnapshot(
+                syncPairId,
+                SyncTransferDirection.Download,
+                "Videos/clip.mp4",
+                TransferredBytes: 256,
+                TotalBytes: 1024,
+                IsCompleted: true,
+                startedAtUtc.AddSeconds(2)));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.HasCurrentTransfer, Is.False);
+                Assert.That(viewModel.CurrentWorkProgressHeaderSizeDetails, Is.EqualTo("256 B"));
+                Assert.That(viewModel.SyncPairs.Single().CurrentOperation, Is.EqualTo("Checking files 10 of 100"));
             });
         }
 
