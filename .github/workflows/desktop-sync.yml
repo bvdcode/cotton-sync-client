@@ -92,15 +92,15 @@ jobs:
           lfs: "true"
           fetch-depth: 0
 
-      - name: Determine Version
-        id: gitversion
-        shell: pwsh
-        run: ./.github/scripts/determine-version.ps1
-
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
+
+      - name: Determine Version
+        id: gitversion
+        shell: pwsh
+        run: ./.github/scripts/determine-version.ps1
 
       - name: Install desktop Linux smoke dependencies
         run: |
@@ -315,15 +315,15 @@ jobs:
           lfs: "true"
           fetch-depth: 0
 
-      - name: Determine Version
-        id: gitversion
-        shell: pwsh
-        run: ./.github/scripts/determine-version.ps1
-
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
+
+      - name: Determine Version
+        id: gitversion
+        shell: pwsh
+        run: ./.github/scripts/determine-version.ps1
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -881,15 +881,15 @@ jobs:
           lfs: "true"
           fetch-depth: 0
 
-      - name: Determine Version
-        id: gitversion
-        shell: pwsh
-        run: ./.github/scripts/determine-version.ps1
-
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
+
+      - name: Determine Version
+        id: gitversion
+        shell: pwsh
+        run: ./.github/scripts/determine-version.ps1
 
       - name: Restore CLI project
         run: dotnet restore src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj --locked-mode

@@ -33,6 +33,33 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         }
 
         [Test]
+        public void DesktopWorkflow_SetsUpPinnedSdkBeforeDeterminingVersion()
+        {
+            string workflow = GetDesktopWorkflow();
+            MatchCollection determineVersionSteps = Regex.Matches(
+                workflow,
+                @"(?m)^[ \t]+- name: Determine Version\r?$");
+
+            Assert.That(determineVersionSteps, Has.Count.EqualTo(3));
+            foreach (Match determineVersionStep in determineVersionSteps)
+            {
+                int checkoutIndex = workflow.LastIndexOf(
+                    "- name: check repository",
+                    determineVersionStep.Index,
+                    StringComparison.Ordinal);
+                int setupDotNetIndex = workflow.LastIndexOf(
+                    "- name: Setup .NET",
+                    determineVersionStep.Index,
+                    StringComparison.Ordinal);
+
+                Assert.That(
+                    setupDotNetIndex,
+                    Is.GreaterThan(checkoutIndex),
+                    "Each package job must install the pinned SDK before running the GitVersion tool.");
+            }
+        }
+
+        [Test]
         public void ReleaseBuildPolicy_PinsSdkLocksPackagesAndControlsDebugArtifacts()
         {
             string globalJson = File.ReadAllText(GetRepositoryFilePath("global.json"));
