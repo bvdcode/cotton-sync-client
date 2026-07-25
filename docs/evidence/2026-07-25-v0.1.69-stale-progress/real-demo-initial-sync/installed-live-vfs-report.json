@@ -1,0 +1,71 @@
+{
+  "runRoot": "<isolated QA root>",
+  "installedExe": "<installed app>\\Cotton.Sync.Desktop.exe",
+  "productVersion": "0.1.69+935e622a93685e9f0fc850f3637270a595f26f82",
+  "server": "https://app.cottoncloud.dev/",
+  "startedAtUtc": "2026-07-25T23:55:31.1022106Z",
+  "completedAtUtc": "2026-07-26T00:03:57.9506688Z",
+  "elapsedMilliseconds": 506816,
+  "passed": true,
+  "expectedFileCount": 2504,
+  "firstClick": {
+    "invokedAtUtc": "2026-07-25T23:55:43.2387076Z",
+    "availableVerbs": [
+      "Open",
+      "Pin to Quick access",
+      "Scan with TreeSize Free",
+      "Always keep on this device",
+      "Free up space",
+      "Manage devices",
+      "Open with Visual Studio",
+      "Copy Cotton Cloud share link",
+      "Open Git GUI here",
+      "Open Git Bash here",
+      "Compare using MobaDiff",
+      "Open MobaXterm terminal here",
+      "Restore previous versions",
+      "Pin to Start",
+      "Copy as path",
+      "Cut",
+      "Copy",
+      "Create shortcut",
+      "Delete",
+      "Rename",
+      "Properties"
+    ],
+    "fileCountWhenInvoked": 2,
+    "directoryCountWhenInvoked": 50
+  },
+  "completion": {
+    "FileCount": 2504,
+    "DirectoryCount": 50,
+    "PinnedFiles": 2504,
+    "OfflineFiles": 0,
+    "PinnedDirectories": 50,
+    "UnpinnedFiles": 0
+  },
+  "sentinelHashes": [
+    {
+      "RelativePath": "Music\\Album-00\\track-0000.bin",
+      "SourceHash": "D67C656E01756650D77717B0839985A056EC28FFE174601D690FC407A2CEFFCA",
+      "TargetHash": "D67C656E01756650D77717B0839985A056EC28FFE174601D690FC407A2CEFFCA",
+      "Match": true
+    },
+    {
+      "RelativePath": "Music\\Album-49\\track-2499.bin",
+      "SourceHash": "5CF6DE6342BE5E2542BA680A79A0C70BDE861204508ACF7EE6F1E8A4E372F16B",
+      "TargetHash": "5CF6DE6342BE5E2542BA680A79A0C70BDE861204508ACF7EE6F1E8A4E372F16B",
+      "Match": true
+    },
+    {
+      "RelativePath": "Music\\Album-00\\large-00.bin",
+      "SourceHash": "1D13259FDAC0F8E21B9EA207C2B1704C2F901BB369DD7EB9A9EB5B4C04E4E079",
+      "TargetHash": "1D13259FDAC0F8E21B9EA207C2B1704C2F901BB369DD7EB9A9EB5B4C04E4E079",
+      "Match": true
+    }
+  ],
+  "frameCount": 683,
+  "samplesPath": "live-vfs-samples.csv",
+  "appLogPath": "installed-live-public-diagnostics.zip!/logs/cotton-sync.log",
+  "failure": null
+}

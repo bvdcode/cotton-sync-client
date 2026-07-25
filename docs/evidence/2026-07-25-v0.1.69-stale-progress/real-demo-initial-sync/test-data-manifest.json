@@ -1,0 +1,24 @@
+{
+  "runId": "demo-v0169-20260725-162216",
+  "createdAt": "2026-07-25T23:23:23.8333385Z",
+  "server": "https://app.cottoncloud.dev/",
+  "remotePath": "/CottonSyncQa/demo-v0169-20260725-162216",
+  "seedRoot": "<isolated QA root>\\seed",
+  "vfsRoot": "<isolated QA root>\\vfs",
+  "fileCount": 2504,
+  "totalBytes": 77348864.0,
+  "sentinelHashes": [
+    {
+      "Path": "Music\\Album-00\\track-0000.bin",
+      "Hash": "D67C656E01756650D77717B0839985A056EC28FFE174601D690FC407A2CEFFCA"
+    },
+    {
+      "Path": "Music\\Album-49\\track-2499.bin",
+      "Hash": "5CF6DE6342BE5E2542BA680A79A0C70BDE861204508ACF7EE6F1E8A4E372F16B"
+    },
+    {
+      "Path": "Music\\Album-00\\large-00.bin",
+      "Hash": "1D13259FDAC0F8E21B9EA207C2B1704C2F901BB369DD7EB9A9EB5B4C04E4E079"
+    }
+  ]
+}

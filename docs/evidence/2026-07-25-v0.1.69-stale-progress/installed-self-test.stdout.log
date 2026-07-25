@@ -1,0 +1,17 @@
+Cotton Sync Desktop self-test
+[OK] Preferences database - Ready
+[OK] Sync pair database - 0 sync pair(s)
+[OK] Sync state database - Ready: entries=0, cursors=0, file=48 KB, used=48 KB, free=0 B
+[OK] Authentication state - Signed out
+[OK] Token storage - Windows DPAPI current-user protection (verified)
+[OK] Desktop icon - <installed app>\Assets\icon-192.png
+[OK] Update cache - <isolated QA profile>\self-test\updates
+[OK] Autostart adapter - Enabled
+[OK] Desktop platform - Windows; session: Not reported; desktop: Not reported
+[OK] Tray lifecycle - Supported on Windows through the native tray lifecycle.
+[OK] Windows virtual files - Windows Cloud Files API, StorageProvider sync-root registration, placeholder creation, CfConnectSyncRoot, and cleanup are available.
+[OK] Notification adapter - Supported; adapter: Windows toast; app name: Cotton Sync; AppUserModelID: Cotton.Sync.Desktop; executable: <Windows PowerShell>; icon: <installed app>\Assets\icon-192.png; PowerShell is only the toast delivery helper; full installed notification identity requires a verified Start Menu AppUserModelID shortcut; Start Menu AppUserModelID shortcut: verified
+[OK] File watcher - Available
+[OK] Server identity - Not configured
+[SKIP] Desktop sync change feed - Not configured
+Result: passed

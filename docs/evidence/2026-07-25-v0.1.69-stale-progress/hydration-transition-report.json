@@ -1,0 +1,70 @@
+{
+  "scenario": "installed-hydration-progress-state-machine",
+  "productVersion": "0.1.69+935e622a93685e9f0fc850f3637270a595f26f82",
+  "commit": "935e622a93685e9f0fc850f3637270a595f26f82",
+  "release": "v0.1.69",
+  "visualFrameRun": {
+    "durationSeconds": 22,
+    "framesCaptured": 80,
+    "uiAutomationSamples": 80,
+    "uiAutomationErrors": 0,
+    "representativeFramesKept": 3,
+    "rawFramesRemovedAfterSha256Manifest": true
+  },
+  "highFrequencyRun": {
+    "durationSeconds": 22,
+    "samples": 212,
+    "effectiveSamplesPerSecond": 9.64,
+    "maxSampleGapMs": 142,
+    "maxSampleDurationMs": 91
+  },
+  "assertions": {
+    "expectedDownloadRows": 50,
+    "observedUniqueDownloadRows": 50,
+    "allExpectedDownloadRowsObserved": true,
+    "maxDownloadHoldAfterWarmupMs": 302,
+    "maxAllowedDownloadHoldMs": 500,
+    "noStaleDownloadName": true,
+    "aggregateFallbackSamples": 51,
+    "aggregateRestoredBetweenFiles": true,
+    "connectedSamples": 29,
+    "connectedProgressLeaks": 0,
+    "finalStatus": [
+      "Connected"
+    ],
+    "finalDownload": null,
+    "finalAggregate": [],
+    "finalRateText": [],
+    "completedStateCleared": true
+  },
+  "screenshots": [
+    {
+      "state": "active-specific-file",
+      "elapsedMs": 3388,
+      "download": "Downloading track-0120.flac",
+      "aggregate": "Making files available · 80 of 2000 files",
+      "file": "hydration-active-specific-file.png",
+      "sha256": "0FA0F95217D08159446C7833983134010000BB00C5BCBB43A9F3E79C5DC163F6",
+      "bytes": 19620
+    },
+    {
+      "state": "between-files-aggregate",
+      "elapsedMs": 3632,
+      "download": null,
+      "aggregate": "Making files available · 120 of 2000 files",
+      "file": "hydration-between-files-aggregate.png",
+      "sha256": "C2245C67ED8AEBD9C2A6C44EBB5A2C836B6AE2F3C9E33A2B2A01042D3315FD57",
+      "bytes": 19705
+    },
+    {
+      "state": "complete-connected",
+      "elapsedMs": 19264,
+      "download": null,
+      "aggregate": null,
+      "file": "hydration-complete-connected.png",
+      "sha256": "D6E4AD4023ED2D35C0E2A5743929F7274EB8E49961DEA9A5F108F7FE1120FE10",
+      "bytes": 5726
+    }
+  ],
+  "scope": "Exact installed UI pipeline with deterministic visual-smoke events; not a demo-account real network transfer."
+}

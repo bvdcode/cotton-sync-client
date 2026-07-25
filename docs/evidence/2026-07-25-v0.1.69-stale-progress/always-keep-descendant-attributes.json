@@ -1,0 +1,62 @@
+[
+  {
+    "relativePath": ".",
+    "kind": "directory",
+    "attributes": "525328",
+    "raw": "0x80410",
+    "pinned": true,
+    "offline": false,
+    "recallOnDataAccess": false,
+    "length": null
+  },
+  {
+    "relativePath": "early",
+    "kind": "directory",
+    "attributes": "525328",
+    "raw": "0x80410",
+    "pinned": true,
+    "offline": false,
+    "recallOnDataAccess": false,
+    "length": null
+  },
+  {
+    "relativePath": "early\\early.txt",
+    "kind": "file",
+    "attributes": "525344",
+    "raw": "0x80420",
+    "pinned": true,
+    "offline": false,
+    "recallOnDataAccess": false,
+    "length": 48
+  },
+  {
+    "relativePath": "late",
+    "kind": "directory",
+    "attributes": "525328",
+    "raw": "0x80410",
+    "pinned": true,
+    "offline": false,
+    "recallOnDataAccess": false,
+    "length": null
+  },
+  {
+    "relativePath": "late\\nested",
+    "kind": "directory",
+    "attributes": "525328",
+    "raw": "0x80410",
+    "pinned": true,
+    "offline": false,
+    "recallOnDataAccess": false,
+    "length": null
+  },
+  {
+    "relativePath": "late\\nested\\late.txt",
+    "kind": "file",
+    "attributes": "525344",
+    "raw": "0x80420",
+    "pinned": true,
+    "offline": false,
+    "recallOnDataAccess": false,
+    "length": 48
+  }
+]

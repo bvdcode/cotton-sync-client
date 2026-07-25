@@ -1,0 +1,63 @@
+{
+  "createdAtUtc": "2026-07-25T22:24:13.2806539Z",
+  "completedAtUtc": "2026-07-26T00:12:37.9734991Z",
+  "repository": "bvdcode/cotton-sync-client",
+  "commit": "935e622a93685e9f0fc850f3637270a595f26f82",
+  "workflowRun": 30177260018,
+  "release": "v0.1.69",
+  "server": "https://app.cottoncloud.dev/",
+  "plannedRemoteNamespace": "/CottonSyncQa/stale-progress-935e622-20260725-152354",
+  "remoteNamespaceCreated": false,
+  "sourceDiagnosticsFingerprint": "e454f542",
+  "sourceDiagnosticsCopied": false,
+  "rawEvidenceSha256BeforePathNormalization": {
+    "explorerAlwaysKeepStdout": "838A2C3F9B71419CC199C77E3A4D9DD30771B46E82F70DC68CD1A7BA03A71DEA",
+    "installedSelfTestStdout": "7D584995EACE9CA1BA1865640D2D168EE7553C7FC2E21ABC8958E5AD50785D31"
+  },
+  "realDemoRun": {
+    "remoteNamespace": "/CottonSyncQa/demo-v0169-20260725-162216",
+    "remoteFiles": 2504,
+    "remoteDirectories": 51,
+    "remoteBytes": 77348864,
+    "firstClickLocalFiles": 2,
+    "stateSamples": 683,
+    "effectiveSamplesPerSecond": 1.37,
+    "capturedFrames": 680,
+    "pinConvergenceMilliseconds": 643,
+    "maximumOfflineFiles": 16,
+    "finalPinnedFiles": 2504,
+    "finalOfflineFiles": 0,
+    "finalUnpinnedFiles": 0,
+    "sentinelHashMismatches": 0
+  },
+  "temporaryLocalRoot": "C:\\Temp\\CottonSyncQa\\run-20260725-152354-935e622",
+  "result": {
+    "installedSelfTest": "passed",
+    "installedAlwaysKeepDuringPopulation": "passed",
+    "installedHydrationVisualTransition": "passed",
+    "hydrationRenderedFrames": 80,
+    "hydrationUiAutomationSamples": 212,
+    "hydrationEffectiveSamplesPerSecond": 9.64,
+    "hydrationMaxDownloadHoldAfterWarmupMs": 302,
+    "hydrationConnectedProgressLeaks": 0,
+    "runnerStderrBytes": 0,
+    "explorerScreenshots": 3,
+    "demoRealTransfer": "passed"
+  },
+  "cleanup": {
+    "cloudFilesSyncRootUnregistered": true,
+    "qaRegistryMatches": 0,
+    "substDriveRemoved": true,
+    "substBackingRootRemoved": true,
+    "qaExplorerWindowsClosed": true,
+    "temporaryLocalRootRemovedAfterEvidenceCopy": true,
+    "currentRunTemporaryBytesRemoved": 169071397,
+    "historicalCottonSyncQaCacheBytesRemoved": 798247140,
+    "sourceDiagnosticsPreserved": true,
+    "realDemoCloudFilesRootUnregistered": true,
+    "realDemoRemoteNamespaceDeleted": true,
+    "realDemoRemoteDeleteVerifiedByNotFound": true,
+    "realDemoTemporaryBytesRemoved": 178622497,
+    "realDemoQaParentRemoved": true
+  }
+}

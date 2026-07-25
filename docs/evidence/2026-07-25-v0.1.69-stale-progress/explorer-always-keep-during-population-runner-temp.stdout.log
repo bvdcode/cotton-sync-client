@@ -1,0 +1,37 @@
+PASS: Isolated QA drive is available. drive=C:\
+Cotton Sync Desktop Windows virtual files smoke
+Destructive root: <isolated QA root>\vfs-root
+PASS: Isolated QA drive is available. drive=C:\
+Info: no previous Cloud Files registration cleanup was confirmed: CfUnregisterSyncRoot failed with HRESULT 0x80070186.
+PASS: Packaged Cloud Files root and watcher prepared for Always keep during population. root=<isolated QA root>\vfs-root
+PASS: Initial population paused after creating the early subtree.
+PASS: Explorer shell invoked Always keep on the parent folder during population. verb=Always keep on this device, availableVerbs=Open|Pin to Quick access|Scan with TreeSize Free|Always keep on this device
+PASS: Explorer Always keep watcher event queued while initial population was active. parentAttributes=Directory|ReparsePoint|Pinned (raw=0x80410), runnerState=Syncing
+PASS: Late-created descendants inherited Always keep before initial population completed. lateDirectoryAttributes=Directory|ReparsePoint|Pinned (raw=0x80410), lateNestedAttributes=Directory|ReparsePoint|Pinned (raw=0x80410)
+PASS: All early and late files became pinned and hydrated. downloads=2
+PASS: Second Explorer Always keep invocation removed pin without deleting hydrated content. downloadsBeforeUnpin=2, downloadsAfterUnpin=2, parentAttributes=Directory|ReparsePoint (raw=0x410), earlyFileAttributes=Archive|ReparsePoint (raw=0x420), lateFileAttributes=Archive|ReparsePoint (raw=0x420)
+PASS: Third Explorer Always keep invocation restored pin without redownloading. downloadsBeforeRepin=2, downloadsAfterRepin=2
+Holding pinned population root for 300 seconds; inspect <isolated QA root>\vfs-root\always-keep-population in Explorer before cleanup starts.
+PASS: Cloud Files sync root unregistered after smoke. root=<isolated QA root>\vfs-root
+Diagnostic: unregister-sync-root failed CfUnregisterSyncRoot failed with HRESULT 0x80070186.
+Diagnostic: create-directory-placeholder completed Windows Cloud Files directory placeholder was created and marked in sync.
+Diagnostic: create-directory-placeholder completed Windows Cloud Files directory placeholder was created and marked in sync.
+Diagnostic: create-directory-placeholder completed Windows Cloud Files directory placeholder was created and marked in sync.
+Diagnostic: create-directory-placeholder completed Windows Cloud Files directory placeholder was created and marked in sync.
+Diagnostic: hydrate requested requiredOffset=0; requiredLength=48; optionalOffset=0; optionalLength=0; fileSize=48; priority=5; requester=pid=<qa-process>; session=<qa-session>; image=<installed Cotton Sync executable>; package=UNKNOWN; app=UNKNOWN
+Diagnostic: hydrate requested requiredOffset=0; requiredLength=48; optionalOffset=0; optionalLength=0; fileSize=48; priority=5; requester=pid=<qa-process>; session=<qa-session>; image=<installed Cotton Sync executable>; package=UNKNOWN; app=UNKNOWN
+Diagnostic: hydrate-placeholder completed Windows Cloud Files placeholder was hydrated for offline availability.
+Diagnostic: manual-always-keep completed Explorer Always keep on this device hydrated the tracked placeholder.
+Diagnostic: set-in-sync-state completed Windows Cloud Files placeholder was marked in sync.
+Diagnostic: set-in-sync-state completed Windows Cloud Files placeholder was marked in sync.
+Diagnostic: set-in-sync-state completed Windows Cloud Files placeholder was marked in sync.
+Diagnostic: set-in-sync-state completed Windows Cloud Files placeholder was marked in sync.
+Diagnostic: manual-always-keep-directory completed Hydrated 1 tracked files; 1 were already available; completed 4 tracked directories.
+Diagnostic: manual-always-keep-directory unpinned Explorer removed Always keep on this device without changing materialized file content.
+Diagnostic: set-in-sync-state completed Windows Cloud Files placeholder was marked in sync.
+Diagnostic: set-in-sync-state completed Windows Cloud Files placeholder was marked in sync.
+Diagnostic: set-in-sync-state completed Windows Cloud Files placeholder was marked in sync.
+Diagnostic: set-in-sync-state completed Windows Cloud Files placeholder was marked in sync.
+Diagnostic: manual-always-keep-directory completed Hydrated 0 tracked files; 2 were already available; completed 4 tracked directories.
+Diagnostic: unregister-sync-root completed Windows Cloud Files sync root was unregistered.
+Result: passed

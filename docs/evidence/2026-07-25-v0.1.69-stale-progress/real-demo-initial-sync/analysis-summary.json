@@ -1,0 +1,28 @@
+{
+  "result": "passed",
+  "sampleCount": 683,
+  "durationSeconds": 498.48,
+  "effectiveSampleRateHz": 1.37,
+  "fileCountRegressions": 0,
+  "firstClickFileCount": 2,
+  "firstPostClickSamplePinnedFiles": 0,
+  "pinConvergenceLatencyMs": 643.0,
+  "postClickPinMismatchSamples": 1,
+  "postConvergencePinMismatchSamples": 0,
+  "maximumOfflineFiles": 16,
+  "finalFiles": 2504,
+  "finalPinnedFiles": 2504,
+  "finalOfflineFiles": 0,
+  "finalUnpinnedFiles": 0,
+  "sentinelHashMismatches": 0,
+  "installedLogErrors": 0,
+  "installedLogWarnings": 1,
+  "warningDisposition": "Expected unauthorized challenge; token refresh succeeded and the request was retried.",
+  "remoteVerifiedBeforeCleanup": {
+    "files": 2504,
+    "directories": 51
+  },
+  "remoteNamespaceDeleted": true,
+  "remoteDeleteVerifiedByNotFound": true,
+  "cloudFilesRootUnregistered": true
+}

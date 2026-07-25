@@ -1,0 +1,996 @@
+[
+  {
+    "index": 0,
+    "elapsedMs": 340,
+    "sha256": "612734A37D71C9317E57DD12B3A9699EF607D10F2E3DB7D66EC722F6B3E57023",
+    "bytes": 27836,
+    "download": "Downloading track-0040.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 1,
+    "elapsedMs": 596,
+    "sha256": "612734A37D71C9317E57DD12B3A9699EF607D10F2E3DB7D66EC722F6B3E57023",
+    "bytes": 27836,
+    "download": "Downloading track-0040.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 2,
+    "elapsedMs": 869,
+    "sha256": "612734A37D71C9317E57DD12B3A9699EF607D10F2E3DB7D66EC722F6B3E57023",
+    "bytes": 27836,
+    "download": "Downloading track-0040.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 3,
+    "elapsedMs": 1147,
+    "sha256": "612734A37D71C9317E57DD12B3A9699EF607D10F2E3DB7D66EC722F6B3E57023",
+    "bytes": 27836,
+    "download": "Downloading track-0040.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 4,
+    "elapsedMs": 1418,
+    "sha256": "612734A37D71C9317E57DD12B3A9699EF607D10F2E3DB7D66EC722F6B3E57023",
+    "bytes": 27836,
+    "download": "Downloading track-0040.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 5,
+    "elapsedMs": 1694,
+    "sha256": "612734A37D71C9317E57DD12B3A9699EF607D10F2E3DB7D66EC722F6B3E57023",
+    "bytes": 27836,
+    "download": "Downloading track-0040.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 6,
+    "elapsedMs": 1968,
+    "sha256": "612734A37D71C9317E57DD12B3A9699EF607D10F2E3DB7D66EC722F6B3E57023",
+    "bytes": 27836,
+    "download": "Downloading track-0040.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 7,
+    "elapsedMs": 2241,
+    "sha256": "612734A37D71C9317E57DD12B3A9699EF607D10F2E3DB7D66EC722F6B3E57023",
+    "bytes": 27836,
+    "download": "Downloading track-0040.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 8,
+    "elapsedMs": 2513,
+    "sha256": "612734A37D71C9317E57DD12B3A9699EF607D10F2E3DB7D66EC722F6B3E57023",
+    "bytes": 27836,
+    "download": "Downloading track-0040.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 9,
+    "elapsedMs": 2790,
+    "sha256": "612734A37D71C9317E57DD12B3A9699EF607D10F2E3DB7D66EC722F6B3E57023",
+    "bytes": 27836,
+    "download": "Downloading track-0040.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 10,
+    "elapsedMs": 3066,
+    "sha256": "7CDC4C4F36EFFD1CD5C2EA595278A619BB5EE989F27BE6988918BC513D7EC2DE",
+    "bytes": 28051,
+    "download": "Downloading track-0040.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 11,
+    "elapsedMs": 3342,
+    "sha256": "83AF6900E2E5D49DBA28C0818213EC103586F283E55C694CC830D125FD3ADDF9",
+    "bytes": 29749,
+    "download": "Downloading track-0080.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "6.7 MB/s · 11m 25s left"
+    ]
+  },
+  {
+    "index": 12,
+    "elapsedMs": 3620,
+    "sha256": "CA656E9B811572EFDAE76355737B20150D761CF7FBFB68068ACD3A3CC9A782CF",
+    "bytes": 29781,
+    "download": "Downloading track-0120.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "6.8 MB/s · 11m 10s left"
+    ]
+  },
+  {
+    "index": 13,
+    "elapsedMs": 3908,
+    "sha256": "7AD35354296622EE6B2A673DBD64C30F9E65B61FBB63BF017B3975C03872371C",
+    "bytes": 29518,
+    "download": "Downloading track-0160.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 4m 50s left"
+    ]
+  },
+  {
+    "index": 14,
+    "elapsedMs": 4182,
+    "sha256": "6CA5499DBB158E46AA684D7ACEBDD13D112A65F968F6FA47C54D31228342FCEC",
+    "bytes": 29767,
+    "download": "Downloading track-0200.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 4m 45s left"
+    ]
+  },
+  {
+    "index": 15,
+    "elapsedMs": 4465,
+    "sha256": "AADFCA404F65C4E795E12C5308745B8B93A5FF7DBCA31A4405E7663F3CD757AB",
+    "bytes": 29697,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 4m 40s left"
+    ]
+  },
+  {
+    "index": 16,
+    "elapsedMs": 4739,
+    "sha256": "F514399509A11D3EEFB73976CD30CC2B99B301D1B9A1BAC87E36F93FF1315DF8",
+    "bytes": 29818,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 4m 30s left"
+    ]
+  },
+  {
+    "index": 17,
+    "elapsedMs": 5012,
+    "sha256": "DE93D7AD29A2285311AEB39DE8D455C8203A914921BECB25B053767CE8FF28DC",
+    "bytes": 29605,
+    "download": "Downloading track-0280.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "6.7 MB/s · 10m 15s left"
+    ]
+  },
+  {
+    "index": 18,
+    "elapsedMs": 5285,
+    "sha256": "C606A08A17D2C49511413F580A31AE758101523CFC0057CCD47668AAAC70FCF2",
+    "bytes": 29725,
+    "download": "Downloading track-0320.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "6.8 MB/s · 10m 00s left"
+    ]
+  },
+  {
+    "index": 19,
+    "elapsedMs": 5560,
+    "sha256": "14B4B44343EF2785BD3B8D76212D78E728337B42EE4C6AD6EE0C166EAC354A7E",
+    "bytes": 29469,
+    "download": "Downloading track-0360.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "6.8 MB/s · 9m 45s left"
+    ]
+  },
+  {
+    "index": 20,
+    "elapsedMs": 5847,
+    "sha256": "77A2D24170F990319110DDEDF7FB421A6DC6C9E81A4AC9447067611BF6A2983E",
+    "bytes": 29523,
+    "download": "Downloading track-0400.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 4m 15s left"
+    ]
+  },
+  {
+    "index": 21,
+    "elapsedMs": 6109,
+    "sha256": "66BC78BEBD3435CE50D0213EDE3628938096AFB035925F6CB1C7B3DA0A43C8C8",
+    "bytes": 29372,
+    "download": "Downloading track-0440.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 4m 05s left"
+    ]
+  },
+  {
+    "index": 22,
+    "elapsedMs": 6388,
+    "sha256": "765721D7EC9641ED778CA719269BF89B99F7DC3946DE8535ED7FD9B4175F5414",
+    "bytes": 29718,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 4m 00s left"
+    ]
+  },
+  {
+    "index": 23,
+    "elapsedMs": 6661,
+    "sha256": "81664373FB924A655E715099CB5DB9D7860349798B712BB266571AD1C29FCD9F",
+    "bytes": 30018,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 3m 55s left"
+    ]
+  },
+  {
+    "index": 24,
+    "elapsedMs": 6933,
+    "sha256": "E48BCBEC2A023A1819CC9E1BADB08148AF2E2C76D0A41F2E5F9AF9D72947042F",
+    "bytes": 29856,
+    "download": "Downloading track-0520.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "6.8 MB/s · 8m 50s left"
+    ]
+  },
+  {
+    "index": 25,
+    "elapsedMs": 7218,
+    "sha256": "46E9A515E5CF791E01EEB0EDEEA4E0F4F9A9101CFCB6E41D7DBB11B33AC3C9C9",
+    "bytes": 29611,
+    "download": "Downloading track-0560.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "6.8 MB/s · 8m 35s left"
+    ]
+  },
+  {
+    "index": 26,
+    "elapsedMs": 7492,
+    "sha256": "7AD3E04A7003D978025167FA8A7ECC04FFE8E9091054D7F1A7B873410D14028D",
+    "bytes": 29687,
+    "download": "Downloading track-0600.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "6.8 MB/s · 8m 20s left"
+    ]
+  },
+  {
+    "index": 27,
+    "elapsedMs": 7764,
+    "sha256": "B3914F1057DF14CCF9E604EBCE81806E943F239C752A534A69B0CCC638707BE4",
+    "bytes": 29713,
+    "download": "Downloading track-0640.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 3m 35s left"
+    ]
+  },
+  {
+    "index": 28,
+    "elapsedMs": 8042,
+    "sha256": "239B18E965FB2B97EC0A21BF5B9370E1AFFE50748A1681672840BD47C14D834F",
+    "bytes": 29768,
+    "download": "Downloading track-0680.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 3m 30s left"
+    ]
+  },
+  {
+    "index": 29,
+    "elapsedMs": 8317,
+    "sha256": "7ECBA960A74A57FDCE84F557E8866BBF3D683CCDC808DF168B1767C02D09029F",
+    "bytes": 29906,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 3m 25s left"
+    ]
+  },
+  {
+    "index": 30,
+    "elapsedMs": 8587,
+    "sha256": "268EC89DEC34C97CB07235CEA0FE5EF5E1E7F7ED3A9AA6C17D5032C52B32FC45",
+    "bytes": 29572,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 3m 15s left"
+    ]
+  },
+  {
+    "index": 31,
+    "elapsedMs": 8862,
+    "sha256": "3211DE1C529374CE7CE8821449E8DC13CD58F885DC5D7613338FAC305FA1A8E7",
+    "bytes": 29773,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 3m 10s left"
+    ]
+  },
+  {
+    "index": 32,
+    "elapsedMs": 9135,
+    "sha256": "1418EEA0CEA87C00B57D8581862C85BB9F6E5C40D161282CA46BBE3E7ED5EF2A",
+    "bytes": 29518,
+    "download": "Downloading track-0800.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "6.8 MB/s · 7m 10s left"
+    ]
+  },
+  {
+    "index": 33,
+    "elapsedMs": 9410,
+    "sha256": "7E5A10F7A04FF2EDDB16D7988FAA6E6BA2D86C1CD02591A0FBFC21F3DBDC700E",
+    "bytes": 29559,
+    "download": "Downloading track-0840.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "6.6 MB/s · 7m 05s left"
+    ]
+  },
+  {
+    "index": 34,
+    "elapsedMs": 9690,
+    "sha256": "F720420C800E7D683F5BCBDDB226742A8FB3BC57783D6FFCE604901C8DF60B31",
+    "bytes": 29793,
+    "download": "Downloading track-0880.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 3m 00s left"
+    ]
+  },
+  {
+    "index": 35,
+    "elapsedMs": 9968,
+    "sha256": "E7890A4C090DC3088C9B6DC06B0F8CC7902E147B81CBDA7FBA2AF1F2F339D499",
+    "bytes": 29586,
+    "download": "Downloading track-0920.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 2m 50s left"
+    ]
+  },
+  {
+    "index": 36,
+    "elapsedMs": 10243,
+    "sha256": "9CBDAEA41998FC2DB13F271199CE3ACC22BBAD95D83A37AEFFE77DB48B9703B6",
+    "bytes": 29784,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 2m 45s left"
+    ]
+  },
+  {
+    "index": 37,
+    "elapsedMs": 10516,
+    "sha256": "111108AA0C3CAC4A7725D3F7A259276A6752B27792566A64C88F00D8A30B4411",
+    "bytes": 29761,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 2m 40s left"
+    ]
+  },
+  {
+    "index": 38,
+    "elapsedMs": 10791,
+    "sha256": "1EA61D0F12A236249BD55820844F44FCA81F41C9C8E73229B40C695EB06D8DC4",
+    "bytes": 29747,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 2m 35s left"
+    ]
+  },
+  {
+    "index": 39,
+    "elapsedMs": 11065,
+    "sha256": "A4029DC1C5F256C090BB8B7E9652E127550F94EA63614AFECFCB7A23814CE33D",
+    "bytes": 29496,
+    "download": "Downloading track-1040.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "6.6 MB/s · 5m 55s left"
+    ]
+  },
+  {
+    "index": 40,
+    "elapsedMs": 11338,
+    "sha256": "96426FA80DAFAC7FBB5D5642DD2A956814701298CD1C55767C8D003B3D390907",
+    "bytes": 29561,
+    "download": "Downloading track-1080.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "6.7 MB/s · 5m 35s left"
+    ]
+  },
+  {
+    "index": 41,
+    "elapsedMs": 11615,
+    "sha256": "506B8C1C20272496DFD8991A0935E2C18F58B2B2A4E9C9DB8FF3003369CBF1B1",
+    "bytes": 29487,
+    "download": "Downloading track-1120.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 2m 20s left"
+    ]
+  },
+  {
+    "index": 42,
+    "elapsedMs": 11889,
+    "sha256": "17FEE2DFDC2A13D8C084183020B5EFBA89570A0CED16936BC8A9A9C745EC443E",
+    "bytes": 29513,
+    "download": "Downloading track-1160.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 2m 15s left"
+    ]
+  },
+  {
+    "index": 43,
+    "elapsedMs": 12163,
+    "sha256": "C80E2EAF0F3668F068566A0270AB15AFF1AC70D842E91B6EE72C87BFDDE5BDC4",
+    "bytes": 29474,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 2m 10s left"
+    ]
+  },
+  {
+    "index": 44,
+    "elapsedMs": 12438,
+    "sha256": "2325ECF498EE0672738058A7E5C5A2589D6E4815AB3A8E1635FCC94916FF2415",
+    "bytes": 29871,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 2m 05s left"
+    ]
+  },
+  {
+    "index": 45,
+    "elapsedMs": 12731,
+    "sha256": "C56F77F8CD0FD2EBFF0ECAC33F8AE44F6436AC4C48B06705A48FF2DAC69E7687",
+    "bytes": 29812,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 2m 00s left"
+    ]
+  },
+  {
+    "index": 46,
+    "elapsedMs": 13000,
+    "sha256": "CC9E3E156DEE325E26041176BD44CED5522A46C2253C971377A28F00274EED13",
+    "bytes": 29615,
+    "download": "Downloading track-1280.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "6.7 MB/s · 4m 25s left"
+    ]
+  },
+  {
+    "index": 47,
+    "elapsedMs": 13273,
+    "sha256": "6C5E0B867C5E7D9F72DE4FC6446E91F9FED2C3EC575DAB9B367F623526FD74AC",
+    "bytes": 29719,
+    "download": "Downloading track-1320.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "6.8 MB/s · 4m 10s left"
+    ]
+  },
+  {
+    "index": 48,
+    "elapsedMs": 13552,
+    "sha256": "0DEC05FF90D1AAE22FEFFB8B348BD270AF9BFCA335D9E03B5D4E9B0BB376B810",
+    "bytes": 29813,
+    "download": "Downloading track-1360.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "6.8 MB/s · 3m 55s left"
+    ]
+  },
+  {
+    "index": 49,
+    "elapsedMs": 13823,
+    "sha256": "3B48D92B71C615286E6686FAD61A4A421F3F96F7A02F074BD9D87F34A09A4C1B",
+    "bytes": 29682,
+    "download": "Downloading track-1400.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 1m 40s left"
+    ]
+  },
+  {
+    "index": 50,
+    "elapsedMs": 14097,
+    "sha256": "97ECD1D2C84B445814D1EA7D47A2A22F49AE70909EE4FBAD175E413EAC3A8A1E",
+    "bytes": 29346,
+    "download": "Downloading track-1440.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 1m 35s left"
+    ]
+  },
+  {
+    "index": 51,
+    "elapsedMs": 14369,
+    "sha256": "485A0320BB348983C9F4F3466F8D3E303364A8F458914C0BECDF083074867D07",
+    "bytes": 29841,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 1m 25s left"
+    ]
+  },
+  {
+    "index": 52,
+    "elapsedMs": 14666,
+    "sha256": "1300457DEF4448E91151D19E1DCBB6D7D4985392E82483D66164221F705BE762",
+    "bytes": 29875,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 1m 20s left"
+    ]
+  },
+  {
+    "index": 53,
+    "elapsedMs": 14953,
+    "sha256": "C1CD068D73EE8698D8E1B523C1EF6CF0F901476FE611B494FD55791A45774F3B",
+    "bytes": 29853,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 1m 15s left"
+    ]
+  },
+  {
+    "index": 54,
+    "elapsedMs": 15225,
+    "sha256": "72FE2CFF1D6DBDF9BD1127ADF87DABB2C5D6DFFEBEDC9C50A6084CC70FC6F9AE",
+    "bytes": 29685,
+    "download": "Downloading track-1560.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "6.8 MB/s · 2m 45s left"
+    ]
+  },
+  {
+    "index": 55,
+    "elapsedMs": 15504,
+    "sha256": "B3F3543E06BE58B5E214FAFE1DD144BE56108A61BDD03C7305324D215FC0F777",
+    "bytes": 29778,
+    "download": "Downloading track-1600.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "6.8 MB/s · 2m 30s left"
+    ]
+  },
+  {
+    "index": 56,
+    "elapsedMs": 15779,
+    "sha256": "4A21E5E2C99AE480BF4916523DE0565D468F252D1280571A87C3240D05F598DD",
+    "bytes": 29594,
+    "download": "Downloading track-1640.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 1m 05s left"
+    ]
+  },
+  {
+    "index": 57,
+    "elapsedMs": 16052,
+    "sha256": "618136D2DDAA8E96072075D1DADCFEADCA275CEEAB5860883C9B700AF5FBF028",
+    "bytes": 29435,
+    "download": "Downloading track-1680.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 55s left"
+    ]
+  },
+  {
+    "index": 58,
+    "elapsedMs": 16327,
+    "sha256": "B49FD7A25A719C7CE68AE2DCF8F6E742B5B5EF43DB4E22F2C7347EDC1D38589D",
+    "bytes": 29947,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 50s left"
+    ]
+  },
+  {
+    "index": 59,
+    "elapsedMs": 16599,
+    "sha256": "4C0619C1BB01F9AFA9709BD9E64C4140F75668DC697B2684003268FB3E05A358",
+    "bytes": 29682,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 45s left"
+    ]
+  },
+  {
+    "index": 60,
+    "elapsedMs": 16873,
+    "sha256": "E616D13F6612E656327748A3F7D69A3DD897BB0219FEA633E57D585411F59429",
+    "bytes": 29875,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 40s left"
+    ]
+  },
+  {
+    "index": 61,
+    "elapsedMs": 17152,
+    "sha256": "19BB9EBC719E5FE55FAE316A101AE585A6621C8D18B6559FD286FD67C32CE1E4",
+    "bytes": 29653,
+    "download": "Downloading track-1800.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "6.8 MB/s · 1m 20s left"
+    ]
+  },
+  {
+    "index": 62,
+    "elapsedMs": 17430,
+    "sha256": "65A74CEA8731CC049B6CFAB93C1BD74F3BE02010545B89E7C3FCFB0FFFA93319",
+    "bytes": 29628,
+    "download": "Downloading track-1840.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "6.6 MB/s · 1m 10s left"
+    ]
+  },
+  {
+    "index": 63,
+    "elapsedMs": 17715,
+    "sha256": "9DD52051A6B7CE6156BD67C395CE227866B79F3DE592ACE169F4A64EC5AFCBD5",
+    "bytes": 29445,
+    "download": "Downloading track-1880.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 25s left"
+    ]
+  },
+  {
+    "index": 64,
+    "elapsedMs": 18000,
+    "sha256": "1A693C420BA1CB4248E2789398D312C24BE23BCDDC68D04FA4A54304E1B66F26",
+    "bytes": 29480,
+    "download": "Downloading track-1920.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 20s left"
+    ]
+  },
+  {
+    "index": 65,
+    "elapsedMs": 18279,
+    "sha256": "DE57294A77662B6CE16DFC06BDD29E190BFE2444CDC14912C4BEBD6B9D675867",
+    "bytes": 29330,
+    "download": "Downloading track-1960.flac",
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 15s left"
+    ]
+  },
+  {
+    "index": 66,
+    "elapsedMs": 18552,
+    "sha256": "6B73D7188B186119FA2E9B62A180FFF95C8A23DD28A42E2ECAEC8D533855BC38",
+    "bytes": 29793,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "26 MB/s · 7s left"
+    ]
+  },
+  {
+    "index": 67,
+    "elapsedMs": 18824,
+    "sha256": "204160DFAC3F6474F586E180A9AE13BF4D127C7C7D38A5BABF87CF7854244C80",
+    "bytes": 28761,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": [
+      "4.0 MB/s"
+    ]
+  },
+  {
+    "index": 68,
+    "elapsedMs": 19094,
+    "sha256": "360C6B02FBB2853614BADEC9593C2154CC479AB20879BD30BE72FBF8776F80F5",
+    "bytes": 24081,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 69,
+    "elapsedMs": 19371,
+    "sha256": "360C6B02FBB2853614BADEC9593C2154CC479AB20879BD30BE72FBF8776F80F5",
+    "bytes": 24081,
+    "download": null,
+    "status": [
+      "Syncing"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 70,
+    "elapsedMs": 19646,
+    "sha256": "9E84876DCB644E56A7BB1639AEEC600DED6CC1B0FC7CFBF4D45B0E40636504DA",
+    "bytes": 21596,
+    "download": null,
+    "status": [
+      "Connected"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 71,
+    "elapsedMs": 19918,
+    "sha256": "9E84876DCB644E56A7BB1639AEEC600DED6CC1B0FC7CFBF4D45B0E40636504DA",
+    "bytes": 21596,
+    "download": null,
+    "status": [
+      "Connected"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 72,
+    "elapsedMs": 20194,
+    "sha256": "9E84876DCB644E56A7BB1639AEEC600DED6CC1B0FC7CFBF4D45B0E40636504DA",
+    "bytes": 21596,
+    "download": null,
+    "status": [
+      "Connected"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 73,
+    "elapsedMs": 20469,
+    "sha256": "9E84876DCB644E56A7BB1639AEEC600DED6CC1B0FC7CFBF4D45B0E40636504DA",
+    "bytes": 21596,
+    "download": null,
+    "status": [
+      "Connected"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 74,
+    "elapsedMs": 20742,
+    "sha256": "9E84876DCB644E56A7BB1639AEEC600DED6CC1B0FC7CFBF4D45B0E40636504DA",
+    "bytes": 21596,
+    "download": null,
+    "status": [
+      "Connected"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 75,
+    "elapsedMs": 21016,
+    "sha256": "9E84876DCB644E56A7BB1639AEEC600DED6CC1B0FC7CFBF4D45B0E40636504DA",
+    "bytes": 21596,
+    "download": null,
+    "status": [
+      "Connected"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 76,
+    "elapsedMs": 21288,
+    "sha256": "9E84876DCB644E56A7BB1639AEEC600DED6CC1B0FC7CFBF4D45B0E40636504DA",
+    "bytes": 21596,
+    "download": null,
+    "status": [
+      "Connected"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 77,
+    "elapsedMs": 21472,
+    "sha256": "9E84876DCB644E56A7BB1639AEEC600DED6CC1B0FC7CFBF4D45B0E40636504DA",
+    "bytes": 21596,
+    "download": null,
+    "status": [
+      "Connected"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 78,
+    "elapsedMs": 21744,
+    "sha256": "9E84876DCB644E56A7BB1639AEEC600DED6CC1B0FC7CFBF4D45B0E40636504DA",
+    "bytes": 21596,
+    "download": null,
+    "status": [
+      "Connected"
+    ],
+    "rateText": []
+  },
+  {
+    "index": 79,
+    "elapsedMs": 22018,
+    "sha256": "9E84876DCB644E56A7BB1639AEEC600DED6CC1B0FC7CFBF4D45B0E40636504DA",
+    "bytes": 21596,
+    "download": null,
+    "status": [
+      "Connected"
+    ],
+    "rateText": []
+  }
+]
