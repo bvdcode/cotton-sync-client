@@ -1,7 +1,6 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
-using System.Diagnostics;
 using System.IO.Compression;
 using System.Net;
 using System.Text.Json;
@@ -745,6 +744,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
+            var verificationCancelled = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
             var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
@@ -758,17 +759,20 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 factory,
                 tokenStorageVerifier: async cancellationToken =>
                 {
+                    using CancellationTokenRegistration registration = cancellationToken.Register(
+                        () => verificationCancelled.TrySetResult(true));
                     await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
                     return CreateSecureTokenStorage();
                 },
                 tokenStorageVerificationTimeout: TimeSpan.FromMilliseconds(50));
-            Stopwatch stopwatch = Stopwatch.StartNew();
 
-            DesktopShellSnapshot snapshot = await controller.LoadAsync();
+            DesktopShellSnapshot snapshot = await controller
+                .LoadAsync()
+                .WaitAsync(TimeSpan.FromSeconds(10));
 
             Assert.Multiple(() =>
             {
-                Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(2)));
+                Assert.That(verificationCancelled.Task.IsCompletedSuccessfully, Is.True);
                 Assert.That(snapshot.IsSignedIn, Is.False);
                 Assert.That(snapshot.ServerUrl, Is.EqualTo(serverUrl));
                 Assert.That(factory.CreatedServerUrls, Is.Empty);
