@@ -1589,7 +1589,8 @@ namespace Cotton.Sync.Desktop.Shell
                 lastSyncedAtUtc,
                 cursor?.LastCursor,
                 localRootError ?? status?.LastError,
-                settings.Mode);
+                settings.Mode,
+                cursor?.HasCompletedFullReconcile ?? false);
         }
 
         private void ReplaceKnownSyncPairSettings(IReadOnlyList<SyncPairSettings> settings)

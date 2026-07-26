@@ -35,6 +35,10 @@ namespace Cotton.Sync.State.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("earliest_available_cursor");
 
+                    b.Property<bool>("HasCompletedFullReconcile")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("has_completed_full_reconcile");
+
                     b.Property<long>("LastCursor")
                         .HasColumnType("INTEGER")
                         .HasColumnName("last_cursor");

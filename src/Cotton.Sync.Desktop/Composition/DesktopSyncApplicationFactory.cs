@@ -104,14 +104,19 @@ namespace Cotton.Sync.Desktop.Composition
                 logger: _loggerFactory.CreateLogger<HeadlessSyncEngine>());
             ISyncPairWork pairWork = new WindowsVirtualFilesDehydrationPairWork(
                 new RemoteChangeAwareSyncPairWork(
-                    new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
-                        new WindowsVirtualFilesUploadFinalizationPairWork(
-                            new SyncEnginePairWork(syncEngine, activityPublisher, transferProgressPublisher, runProgressPublisher),
-                            activityPublisher,
+                    new WindowsVirtualFilesFilePlaceholderRepairPairWork(
+                        new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
+                            new WindowsVirtualFilesUploadFinalizationPairWork(
+                                new SyncEnginePairWork(syncEngine, activityPublisher, transferProgressPublisher, runProgressPublisher),
+                                activityPublisher,
+                                stateStore,
+                                cloudFilesAdapter,
+                                localChangeSuppression,
+                                runProgressPublisher),
                             stateStore,
                             cloudFilesAdapter,
                             localChangeSuppression,
-                            runProgressPublisher),
+                            runProgressPublisher: runProgressPublisher),
                         stateStore,
                         cloudFilesAdapter,
                         localChangeSuppression,

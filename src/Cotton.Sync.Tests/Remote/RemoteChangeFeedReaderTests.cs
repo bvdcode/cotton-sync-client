@@ -153,6 +153,12 @@ namespace Cotton.Sync.Tests.Remote
         {
             var stateStore = CreateStore();
             await stateStore.InitializeAsync();
+            await stateStore.SaveChangeCursorAsync(new SyncChangeCursor
+            {
+                SyncPairId = "pair-a",
+                LastCursor = 10,
+                HasCompletedFullReconcile = true,
+            });
             var reader = new RemoteChangeFeedReader(new FakeCottonSyncClient(), stateStore);
             var batch = new RemoteChangeFeedBatch(
                 "pair-a",
@@ -171,6 +177,7 @@ namespace Cotton.Sync.Tests.Remote
                 Assert.That(cursor.LastCursor, Is.EqualTo(12));
                 Assert.That(cursor.CursorExpired, Is.False);
                 Assert.That(cursor.EarliestAvailableCursor, Is.EqualTo(5));
+                Assert.That(cursor.HasCompletedFullReconcile, Is.True);
             });
         }
 

@@ -866,6 +866,7 @@ namespace Cotton.Sync.App.Tests.Runners
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
             var inner = new FakeSyncPairWork();
+            var stateStore = new FakeSyncStateStore();
             var batch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 9_828,
@@ -875,7 +876,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 earliestAvailableCursor: 5,
                 changes: Array.Empty<SyncChangeDto>());
             var remoteChanges = new FakeRemoteChangeFeedReader(batch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
             await work.RunOnceAsync(
                 syncPair,
@@ -884,6 +885,139 @@ namespace Cotton.Sync.App.Tests.Runners
             Assert.Multiple(() =>
             {
                 Assert.That(inner.RunCallCount, Is.Zero);
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithIncompleteVfsReconcileForcesFullRunOnEmptyFeed()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            var inner = new FakeSyncPairWork();
+            var stateStore = new FakeSyncStateStore();
+            stateStore.Cursor = new SyncChangeCursor
+            {
+                SyncPairId = syncPair.Id.ToString("D"),
+                LastCursor = 9_828,
+                HasCompletedFullReconcile = false,
+                UpdatedAtUtc = DateTime.UtcNow,
+            };
+            var batch = new RemoteChangeFeedBatch(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 9_828,
+                nextCursor: 9_828,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes: Array.Empty<SyncChangeDto>());
+            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForFull(SyncRunCause.Resume));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.True);
+                Assert.That(
+                    inner.LastRequest?.Causes,
+                    Is.EqualTo(SyncRunCause.Resume | SyncRunCause.InitialPopulation));
+                Assert.That(stateStore.Cursor.HasCompletedFullReconcile, Is.True);
+                Assert.That(stateStore.Cursor.LastCursor, Is.EqualTo(9_828));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithIncompleteVfsReconcileAndRemoteChangesKeepsFullRun()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            var inner = new FakeSyncPairWork();
+            var stateStore = new FakeSyncStateStore();
+            stateStore.Cursor = new SyncChangeCursor
+            {
+                SyncPairId = syncPair.Id.ToString("D"),
+                LastCursor = 9_828,
+                HasCompletedFullReconcile = false,
+                UpdatedAtUtc = DateTime.UtcNow,
+            };
+            var batch = new RemoteChangeFeedBatch(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 9_828,
+                nextCursor: 9_829,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes:
+                [
+                    new SyncChangeDto
+                    {
+                        Id = 9_829,
+                        Kind = SyncChangeKind.FileCreated,
+                        LayoutId = Guid.NewGuid(),
+                        ItemId = Guid.NewGuid(),
+                        ParentNodeId = syncPair.RemoteRootNodeId,
+                        Name = "remote-origin.txt",
+                        CreatedAt = DateTime.UtcNow,
+                    },
+                ]);
+            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForFull(SyncRunCause.Resume));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.True);
+                Assert.That(
+                    inner.LastRequest?.Causes,
+                    Is.EqualTo(SyncRunCause.Resume | SyncRunCause.InitialPopulation));
+                Assert.That(inner.LastRequest?.LocalChangedPaths, Is.Empty);
+                Assert.That(stateStore.Cursor.HasCompletedFullReconcile, Is.True);
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
+            });
+        }
+
+        [Test]
+        public void RunOnceAsync_WhenIncompleteVfsReconcileFailsKeepsRecoveryPending()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            var inner = new FakeSyncPairWork
+            {
+                ThrowOnRun = true,
+            };
+            var stateStore = new FakeSyncStateStore();
+            stateStore.Cursor = new SyncChangeCursor
+            {
+                SyncPairId = syncPair.Id.ToString("D"),
+                LastCursor = 9_828,
+                HasCompletedFullReconcile = false,
+                UpdatedAtUtc = DateTime.UtcNow,
+            };
+            var batch = new RemoteChangeFeedBatch(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 9_828,
+                nextCursor: 9_828,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes: Array.Empty<SyncChangeDto>());
+            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+
+            Assert.ThrowsAsync<InvalidOperationException>(
+                async () => await work.RunOnceAsync(
+                    syncPair,
+                    SyncRunRequest.ForFull(SyncRunCause.Resume)));
+            Assert.Multiple(() =>
+            {
+                Assert.That(stateStore.Cursor.HasCompletedFullReconcile, Is.False);
+                Assert.That(stateStore.SavedCursors, Is.Empty);
                 Assert.That(remoteChanges.AcknowledgedBatches, Is.Empty);
             });
         }
@@ -1554,7 +1688,16 @@ namespace Cotton.Sync.App.Tests.Runners
             public FakeSyncStateStore(params SyncStateEntry[] entries)
             {
                 _entries = [.. entries];
+                Cursor = new SyncChangeCursor
+                {
+                    HasCompletedFullReconcile = true,
+                    UpdatedAtUtc = DateTime.UtcNow,
+                };
             }
+
+            public SyncChangeCursor Cursor { get; set; }
+
+            public List<SyncChangeCursor> SavedCursors { get; } = [];
 
             public int LoadPairEntriesCallCount { get; private set; }
 
@@ -1656,8 +1799,11 @@ namespace Cotton.Sync.App.Tests.Runners
                 return Task.FromResult(new SyncChangeCursor
                 {
                     SyncPairId = syncPairId,
-                    LastCursor = 0,
-                    UpdatedAtUtc = DateTime.UtcNow,
+                    LastCursor = Cursor.LastCursor,
+                    CursorExpired = Cursor.CursorExpired,
+                    EarliestAvailableCursor = Cursor.EarliestAvailableCursor,
+                    HasCompletedFullReconcile = Cursor.HasCompletedFullReconcile,
+                    UpdatedAtUtc = Cursor.UpdatedAtUtc,
                 });
             }
 
@@ -1683,6 +1829,16 @@ namespace Cotton.Sync.App.Tests.Runners
 
             public Task SaveChangeCursorAsync(SyncChangeCursor cursor, CancellationToken cancellationToken = default)
             {
+                Cursor = new SyncChangeCursor
+                {
+                    SyncPairId = cursor.SyncPairId,
+                    LastCursor = cursor.LastCursor,
+                    CursorExpired = cursor.CursorExpired,
+                    EarliestAvailableCursor = cursor.EarliestAvailableCursor,
+                    HasCompletedFullReconcile = cursor.HasCompletedFullReconcile,
+                    UpdatedAtUtc = cursor.UpdatedAtUtc,
+                };
+                SavedCursors.Add(Cursor);
                 return Task.CompletedTask;
             }
 

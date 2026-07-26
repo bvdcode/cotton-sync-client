@@ -722,6 +722,7 @@ namespace Cotton.Sync.State
             entity.LastCursor = cursor.LastCursor;
             entity.CursorExpired = cursor.CursorExpired;
             entity.EarliestAvailableCursor = cursor.EarliestAvailableCursor;
+            entity.HasCompletedFullReconcile = cursor.HasCompletedFullReconcile;
             entity.UpdatedAtUtc = ToUtc(cursor.UpdatedAtUtc) ?? DateTime.UtcNow;
         }
 
@@ -733,6 +734,7 @@ namespace Cotton.Sync.State
                 LastCursor = entity.LastCursor,
                 CursorExpired = entity.CursorExpired,
                 EarliestAvailableCursor = entity.EarliestAvailableCursor,
+                HasCompletedFullReconcile = entity.HasCompletedFullReconcile,
                 UpdatedAtUtc = ToUtc(entity.UpdatedAtUtc) ?? DateTime.UtcNow,
             };
         }

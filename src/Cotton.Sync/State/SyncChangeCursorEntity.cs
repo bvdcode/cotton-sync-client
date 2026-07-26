@@ -39,6 +39,12 @@ namespace Cotton.Sync.State
         public long? EarliestAvailableCursor { get; set; }
 
         /// <summary>
+        /// Gets or sets a value indicating whether the sync pair completed a full tree reconcile.
+        /// </summary>
+        [Column("has_completed_full_reconcile")]
+        public bool HasCompletedFullReconcile { get; set; }
+
+        /// <summary>
         /// Gets or sets the timestamp when the cursor was updated.
         /// </summary>
         [Column("updated_at_utc")]

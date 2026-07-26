@@ -15,5 +15,6 @@ namespace Cotton.Sync.Desktop.Shell
         DateTime? LastSyncedAtUtc = null,
         long? ChangeCursor = null,
         string? LastError = null,
-        SyncPairMode Mode = SyncPairMode.FullMirror);
+        SyncPairMode Mode = SyncPairMode.FullMirror,
+        bool HasCompletedFullReconcile = false);
 }

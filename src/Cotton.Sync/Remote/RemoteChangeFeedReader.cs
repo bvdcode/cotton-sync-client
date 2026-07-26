@@ -114,23 +114,27 @@ namespace Cotton.Sync.Remote
                 cancellationToken).ConfigureAwait(false);
         }
 
-        private Task SaveCursorAsync(
+        private async Task SaveCursorAsync(
             string syncPairId,
             long lastCursor,
             bool cursorExpired,
             long? earliestAvailableCursor,
             CancellationToken cancellationToken)
         {
-            return _stateStore.SaveChangeCursorAsync(
+            SyncChangeCursor current = await _stateStore
+                .GetChangeCursorAsync(syncPairId, cancellationToken)
+                .ConfigureAwait(false);
+            await _stateStore.SaveChangeCursorAsync(
                 new SyncChangeCursor
                 {
                     SyncPairId = syncPairId,
                     LastCursor = lastCursor,
                     CursorExpired = cursorExpired,
                     EarliestAvailableCursor = earliestAvailableCursor,
+                    HasCompletedFullReconcile = current.HasCompletedFullReconcile,
                     UpdatedAtUtc = DateTime.UtcNow,
                 },
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
         }
     }
 }

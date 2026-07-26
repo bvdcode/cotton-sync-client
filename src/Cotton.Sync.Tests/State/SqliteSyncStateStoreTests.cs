@@ -517,6 +517,7 @@ namespace Cotton.Sync.Tests.State
                 Assert.That(cursor.LastCursor, Is.Zero);
                 Assert.That(cursor.CursorExpired, Is.False);
                 Assert.That(cursor.EarliestAvailableCursor, Is.Null);
+                Assert.That(cursor.HasCompletedFullReconcile, Is.False);
                 Assert.That(cursor.UpdatedAtUtc, Is.GreaterThan(DateTime.UtcNow.AddMinutes(-1)));
             });
         }
@@ -656,6 +657,7 @@ namespace Cotton.Sync.Tests.State
                 LastCursor = 42,
                 CursorExpired = true,
                 EarliestAvailableCursor = 40,
+                HasCompletedFullReconcile = true,
                 UpdatedAtUtc = updatedAt,
             });
 
@@ -669,7 +671,45 @@ namespace Cotton.Sync.Tests.State
                 Assert.That(cursor.LastCursor, Is.EqualTo(42));
                 Assert.That(cursor.CursorExpired, Is.True);
                 Assert.That(cursor.EarliestAvailableCursor, Is.EqualTo(40));
+                Assert.That(cursor.HasCompletedFullReconcile, Is.True);
                 Assert.That(cursor.UpdatedAtUtc, Is.EqualTo(updatedAt));
+            });
+        }
+
+        [Test]
+        public async Task InitializeAsync_MigratesExistingCursorAsIncompleteFullReconcile()
+        {
+            string databasePath = DatabasePath();
+            await CreateMigratedStateDatabaseAsync(
+                databasePath,
+                "20260622002311_AddRemoteFileIdentityMetadata");
+            var connectionString = new DbConnectionStringBuilder
+            {
+                ["Data Source"] = databasePath,
+                ["Pooling"] = false,
+            }.ToString();
+            DbContextOptions<SyncStateDbContext> options = new DbContextOptionsBuilder<SyncStateDbContext>()
+                .UseSqlite(connectionString)
+                .Options;
+            await using (var context = new SyncStateDbContext(options))
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    """
+                    INSERT INTO sync_change_cursors
+                        (sync_pair_id, last_cursor, cursor_expired, earliest_available_cursor, updated_at_utc)
+                    VALUES
+                        ('pair-a', 11944, 0, NULL, '2026-07-26 06:13:01');
+                    """);
+            }
+
+            var store = new SqliteSyncStateStore(databasePath);
+            await store.InitializeAsync();
+            SyncChangeCursor cursor = await store.GetChangeCursorAsync("pair-a");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(cursor.LastCursor, Is.EqualTo(11944));
+                Assert.That(cursor.HasCompletedFullReconcile, Is.False);
             });
         }
 

@@ -16,6 +16,7 @@ namespace Cotton.Sync.App.Runners
         private readonly ISyncPairWork _inner;
         private readonly IRemoteChangeFeedReader _remoteChanges;
         private readonly RemoteChangeScopedSyncPlanner? _scopedSyncPlanner;
+        private readonly ISyncStateStore? _stateStore;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="RemoteChangeAwareSyncPairWork" /> class.
@@ -27,6 +28,7 @@ namespace Cotton.Sync.App.Runners
         {
             _inner = inner ?? throw new ArgumentNullException(nameof(inner));
             _remoteChanges = remoteChanges ?? throw new ArgumentNullException(nameof(remoteChanges));
+            _stateStore = stateStore;
             _scopedSyncPlanner = stateStore is null ? null : new RemoteChangeScopedSyncPlanner(stateStore);
         }
 
@@ -47,32 +49,36 @@ namespace Cotton.Sync.App.Runners
             RemoteChangeFeedReadResult remoteRead = await ReadRemoteChangesAsync(syncPair, cancellationToken)
                 .ConfigureAwait(false);
             RemoteChangeFeedBatch remoteBatch = remoteRead.Batch;
+            SyncRunRequest effectiveRequest = await AddPendingFullReconcileCauseAsync(
+                    syncPair,
+                    request,
+                    cancellationToken)
+                .ConfigureAwait(false);
 
             if (remoteBatch.CursorExpired)
             {
-                await _inner
-                    .RunOnceAsync(
+                await RunInnerAsync(
                         syncPair,
-                        request.Merge(SyncRunRequest.ForFull(SyncRunCause.RemoteCursorExpired)),
+                        effectiveRequest.Merge(SyncRunRequest.ForFull(SyncRunCause.RemoteCursorExpired)),
                         cancellationToken)
                     .ConfigureAwait(false);
                 await _remoteChanges.AcknowledgeFullResyncAsync(remoteBatch, cancellationToken).ConfigureAwait(false);
                 return;
             }
 
-            bool skippedInnerSync = CanSkipInnerSync(syncPair, request, remoteRead);
+            bool skippedInnerSync = CanSkipInnerSync(syncPair, effectiveRequest, remoteRead);
             InnerRequestPlan? innerPlan = null;
             if (!skippedInnerSync)
             {
                 innerPlan = await CreateInnerRequestAsync(
                         syncPair,
-                        request,
+                        effectiveRequest,
                         remoteRead,
                         cancellationToken)
                     .ConfigureAwait(false);
                 if (innerPlan.Request is not null)
                 {
-                    await _inner.RunOnceAsync(syncPair, innerPlan.Request, cancellationToken).ConfigureAwait(false);
+                    await RunInnerAsync(syncPair, innerPlan.Request, cancellationToken).ConfigureAwait(false);
                 }
 
                 if (!innerPlan.RemoteChangesCovered)
@@ -84,13 +90,13 @@ namespace Cotton.Sync.App.Runners
 
                     SyncRunRequest? replayRequest = await CreateRemoteReplayRequestAsync(
                             syncPair,
-                            request,
+                            effectiveRequest,
                             remoteRead,
                             cancellationToken)
                         .ConfigureAwait(false);
                     if (replayRequest is not null)
                     {
-                        await _inner.RunOnceAsync(syncPair, replayRequest, cancellationToken).ConfigureAwait(false);
+                        await RunInnerAsync(syncPair, replayRequest, cancellationToken).ConfigureAwait(false);
                     }
 
                     innerPlan = new InnerRequestPlan(replayRequest, RemoteChangesCovered: true);
@@ -99,13 +105,60 @@ namespace Cotton.Sync.App.Runners
 
             if (ShouldAcknowledgeRemoteBatch(
                     syncPair,
-                    request,
+                    effectiveRequest,
                     remoteRead,
                     skippedInnerSync,
                     innerPlan?.RemoteChangesCovered ?? true))
             {
                 await _remoteChanges.AcknowledgeAsync(remoteBatch, cancellationToken).ConfigureAwait(false);
             }
+        }
+
+        private async Task<SyncRunRequest> AddPendingFullReconcileCauseAsync(
+            SyncPairSettings syncPair,
+            SyncRunRequest request,
+            CancellationToken cancellationToken)
+        {
+            if (syncPair.Mode != SyncPairMode.WindowsVirtualFiles
+                || !request.IsFull
+                || _stateStore is null)
+            {
+                return request;
+            }
+
+            SyncChangeCursor cursor = await _stateStore
+                .GetChangeCursorAsync(syncPair.Id.ToString("D"), cancellationToken)
+                .ConfigureAwait(false);
+            return cursor.HasCompletedFullReconcile
+                ? request
+                : request.Merge(SyncRunRequest.ForFull(SyncRunCause.InitialPopulation));
+        }
+
+        private async Task RunInnerAsync(
+            SyncPairSettings syncPair,
+            SyncRunRequest request,
+            CancellationToken cancellationToken)
+        {
+            await _inner.RunOnceAsync(syncPair, request, cancellationToken).ConfigureAwait(false);
+            if (syncPair.Mode != SyncPairMode.WindowsVirtualFiles
+                || !request.IsFull
+                || _stateStore is null)
+            {
+                return;
+            }
+
+            string syncPairId = syncPair.Id.ToString("D");
+            SyncChangeCursor cursor = await _stateStore
+                .GetChangeCursorAsync(syncPairId, cancellationToken)
+                .ConfigureAwait(false);
+            if (cursor.HasCompletedFullReconcile)
+            {
+                return;
+            }
+
+            cursor.HasCompletedFullReconcile = true;
+            cursor.UpdatedAtUtc = DateTime.UtcNow;
+            await _stateStore.SaveChangeCursorAsync(cursor, cancellationToken).ConfigureAwait(false);
         }
 
         private async Task<RemoteChangeFeedReadResult> ReadRemoteChangesAsync(
