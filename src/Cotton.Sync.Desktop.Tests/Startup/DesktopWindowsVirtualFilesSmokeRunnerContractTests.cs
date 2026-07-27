@@ -210,6 +210,21 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void RunAsync_ExplorerAlwaysKeepMissingPlaceholderPhaseVerifiesNativeRecovery()
+        {
+            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(runner, Does.Contain("\"explorer-always-keep-missing-placeholder\""));
+                Assert.That(runner, Does.Contain("restoreMissingPlaceholder: true"));
+                Assert.That(runner, Does.Contain("Tracked placeholder was removed before Explorer Always keep recovery."));
+                Assert.That(runner, Does.Contain("Always keep restored the missing tracked placeholder before hydration."));
+                Assert.That(runner, Does.Contain("\"manual-always-keep-placeholder-repair\""));
+            });
+        }
+
+        [Test]
         public void RunAsync_ExplorerAlwaysKeepDuringPopulationUsesRealWatcherAndQueuedRunner()
         {
             string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
@@ -240,6 +255,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             {
                 Assert.That(runner, Does.Contain("bool requiresExplorerAvailabilityVerbs = explorerFreeUpSpace"));
                 Assert.That(runner, Does.Contain("|| explorerAlwaysKeep"));
+                Assert.That(runner, Does.Contain("|| explorerAlwaysKeepMissingPlaceholder"));
                 Assert.That(runner, Does.Contain("|| explorerAlwaysKeepDuringPopulation"));
                 Assert.That(runner, Does.Contain("WindowsStorageProviderSyncRootRegistrar.TryCreateDefault()"));
                 Assert.That(

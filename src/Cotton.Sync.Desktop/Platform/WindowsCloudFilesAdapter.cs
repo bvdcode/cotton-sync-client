@@ -101,6 +101,54 @@ namespace Cotton.Sync.Desktop.Platform
             return CreateFilePlaceholders([request])[0];
         }
 
+        public RemoteFilePlaceholderResult RestoreMissingFilePlaceholder(
+            SyncPairSettings syncPair,
+            SyncStateEntry fileState)
+        {
+            ArgumentNullException.ThrowIfNull(syncPair);
+            ArgumentNullException.ThrowIfNull(fileState);
+            if (fileState.Kind != SyncEntryKind.File || fileState.PlaceholderIdentity is not { Length: > 0 })
+            {
+                throw new InvalidOperationException(
+                    "Cloud Files missing-placeholder recovery requires tracked file identity.");
+            }
+
+            string normalizedPath = SyncPath.Normalize(fileState.RelativePath);
+            WindowsCloudFilesPlaceholderIdentity identity =
+                WindowsCloudFilesPlaceholderIdentity.Parse(fileState.PlaceholderIdentity);
+            if (identity.SyncPairId != syncPair.Id
+                || identity.RemoteRootNodeId != syncPair.RemoteRootNodeId
+                || !string.Equals(
+                    SyncPath.ToKey(identity.RelativePath),
+                    SyncPath.ToKey(normalizedPath),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Cloud Files missing-placeholder recovery found mismatched tracked identity.");
+            }
+
+            return CreateFilePlaceholder(
+                new RemoteFilePlaceholderRequest(
+                    syncPair.Id.ToString("D"),
+                    syncPair.LocalRootPath,
+                    syncPair.RemoteRootNodeId,
+                    normalizedPath,
+                    new NodeFileManifestDto
+                    {
+                        Id = identity.NodeFileId,
+                        NodeId = identity.NodeId,
+                        FileManifestId = identity.FileManifestId,
+                        OriginalNodeFileId = identity.OriginalNodeFileId ?? identity.NodeFileId,
+                        Name = Path.GetFileName(normalizedPath),
+                        SizeBytes = identity.SizeBytes,
+                        ContentHash = identity.ContentHash ?? fileState.RemoteContentHash ?? string.Empty,
+                        ETag = identity.ETag ?? fileState.RemoteETag ?? string.Empty,
+                        CreatedAt = identity.UpdatedAt,
+                        UpdatedAt = identity.UpdatedAt,
+                    },
+                    SyncPlaceholderHydrationState.RemoteOnly));
+        }
+
         public IReadOnlyList<RemoteFilePlaceholderResult> CreateFilePlaceholders(
             IReadOnlyList<RemoteFilePlaceholderRequest> requests)
         {

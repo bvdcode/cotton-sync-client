@@ -11,6 +11,15 @@ namespace Cotton.Sync.Desktop.Platform
     {
         RemoteFilePlaceholderResult CreateFilePlaceholder(RemoteFilePlaceholderRequest request);
 
+        RemoteFilePlaceholderResult RestoreMissingFilePlaceholder(
+            SyncPairSettings syncPair,
+            SyncStateEntry fileState)
+        {
+            ArgumentNullException.ThrowIfNull(syncPair);
+            ArgumentNullException.ThrowIfNull(fileState);
+            throw new NotSupportedException("Cloud Files missing-placeholder recovery is not supported by this adapter.");
+        }
+
         IReadOnlyList<RemoteFilePlaceholderResult> CreateFilePlaceholders(IReadOnlyList<RemoteFilePlaceholderRequest> requests)
         {
             ArgumentNullException.ThrowIfNull(requests);

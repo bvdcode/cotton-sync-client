@@ -7,6 +7,7 @@ using Cotton.Sync.App.Progress;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Local;
 using Cotton.Sync.State;
+using Cotton.Sync.VirtualFiles;
 using System.Collections.Concurrent;
 
 namespace Cotton.Sync.Desktop.Platform
@@ -972,6 +973,11 @@ namespace Cotton.Sync.Desktop.Platform
                         totalFiles,
                         entry.RelativePath,
                         isCompleted: false);
+                    if (fileState is null)
+                    {
+                        RestoreMissingTrackedPlaceholder(syncPair, entry);
+                    }
+
                     await HydrateTrackedPlaceholderAsync(
                             syncPair,
                             entry.RelativePath,
@@ -1007,6 +1013,32 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             return (hydratedFiles, alreadyHydratedFiles);
+        }
+
+        private void RestoreMissingTrackedPlaceholder(
+            SyncPairSettings syncPair,
+            SyncStateEntry state)
+        {
+            try
+            {
+                RemoteFilePlaceholderResult restored =
+                    _cloudFiles.RestoreMissingFilePlaceholder(syncPair, state);
+                state.PlaceholderIdentity = restored.PlaceholderIdentity;
+                _diagnostics.Record(
+                    "manual-always-keep-placeholder-repair",
+                    "completed",
+                    syncPair.Id.ToString("D"),
+                    syncPair.LocalRootPath,
+                    state.RelativePath,
+                    "Restored a tracked placeholder that was missing when Explorer requested offline availability.");
+            }
+            catch (Exception exception)
+            {
+                string details = "Missing placeholder recovery failed during Explorer Always keep on this device: "
+                    + exception.Message;
+                RecordFailed(syncPair, state.RelativePath, details);
+                throw;
+            }
         }
 
         private void PublishAvailabilityProgress(

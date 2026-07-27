@@ -152,6 +152,40 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void RestoreMissingFilePlaceholder_RecreatesPlaceholderFromPersistedIdentity()
+        {
+            FakeCloudFilesNativeApi nativeApi = new();
+            WindowsCloudFilesAdapter adapter = new(CreatePolicy(), nativeApi);
+            string root = Path.Combine(_tempDirectory, "root");
+            SyncPairSettings syncPair = CreateSyncPair(root);
+            RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/missing.txt");
+            byte[] persistedIdentity = WindowsCloudFilesPlaceholderIdentity
+                .Create(request, "Projects/missing.txt")
+                .ToBytes();
+            SyncStateEntry state = new()
+            {
+                SyncPairId = syncPair.Id.ToString("D"),
+                RelativePath = "Projects/missing.txt",
+                Kind = SyncEntryKind.File,
+                PlaceholderIdentity = persistedIdentity,
+                PlaceholderHydrationState = SyncPlaceholderHydrationState.RemoteOnly,
+                SyncedAtUtc = request.RemoteFile.UpdatedAt,
+            };
+
+            RemoteFilePlaceholderResult result = adapter.RestoreMissingFilePlaceholder(syncPair, state);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.Placeholders, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.Placeholders[0].RelativeFileName, Is.EqualTo("missing.txt"));
+                Assert.That(nativeApi.Placeholders[0].FileSizeBytes, Is.EqualTo(request.RemoteFile.SizeBytes));
+                Assert.That(nativeApi.Placeholders[0].FileIdentity, Is.EqualTo(persistedIdentity));
+                Assert.That(result.PlaceholderIdentity, Is.EqualTo(persistedIdentity));
+                Assert.That(result.HydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
+            });
+        }
+
+        [Test]
         public void CreateFilePlaceholder_RegistersStorageProviderSyncRootBeforeNativeSyncRoot()
         {
             var operations = new List<string>();

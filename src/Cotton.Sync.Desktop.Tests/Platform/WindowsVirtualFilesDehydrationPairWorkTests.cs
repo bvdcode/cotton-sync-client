@@ -264,6 +264,50 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_PinnedDirectoryRestoresMissingTrackedPlaceholderBeforeHydration()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            FakeSyncStateStore stateStore = new();
+            stateStore.UpsertEntry(CreateDirectoryState(syncPair, "Music"));
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Music/missing.mp3"));
+            FakeCloudFilesAdapter cloudFiles = new();
+            WindowsCloudFilesDiagnostics diagnostics = new();
+            RecordingSyncPairWork inner = new();
+            RecordingLocalChangeSuppression suppression = new();
+            WindowsVirtualFilesDehydrationPairWork work = new(
+                inner,
+                stateStore,
+                cloudFiles,
+                new FakeContentHasher("remote-hash"),
+                diagnostics,
+                path => path.EndsWith(Path.DirectorySeparatorChar + "Music", StringComparison.OrdinalIgnoreCase)
+                    ? CreatePinnedDirectoryDiskState()
+                    : cloudFiles.RestoredPaths.Count == 0
+                        ? null
+                        : CreatePinnedHydratedDiskState(),
+                suppression);
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForLocalChangedPaths(["Music", "Music/missing.mp3"]));
+
+            SyncStateEntry updated = stateStore.GetRequired(syncPair.Id, "Music/missing.mp3");
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Is.Empty);
+                Assert.That(cloudFiles.RestoredPaths, Is.EqualTo(new[] { "Music/missing.mp3" }));
+                Assert.That(cloudFiles.HydratedPaths, Is.EqualTo(new[] { "Music/missing.mp3" }));
+                Assert.That(updated.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+                Assert.That(updated.LocalContentHash, Is.EqualTo("remote-hash"));
+                Assert.That(
+                    diagnostics.Snapshot().Select(static item => (item.Operation, item.Status)),
+                    Does.Contain(("manual-always-keep-placeholder-repair", "completed")));
+                Assert.That(diagnostics.Snapshot().Any(static item => item.Status == "failed"), Is.False);
+                Assert.That(suppression.SuppressedWrites, Has.Count.EqualTo(1));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_AlreadyHydratedPinnedDirectoryDoesNotSuppressLaterUserChanges()
         {
             SyncPairSettings syncPair = CreateVirtualFilesPair();
@@ -1215,6 +1259,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<string> HydratedPaths { get; } = [];
 
+            public List<string> RestoredPaths { get; } = [];
+
             public List<string> PinnedPaths { get; } = [];
 
             public List<string> InSyncPaths { get; } = [];
@@ -1222,6 +1268,16 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public RemoteFilePlaceholderResult CreateFilePlaceholder(RemoteFilePlaceholderRequest request)
             {
                 throw new NotSupportedException();
+            }
+
+            public RemoteFilePlaceholderResult RestoreMissingFilePlaceholder(
+                SyncPairSettings syncPair,
+                SyncStateEntry fileState)
+            {
+                RestoredPaths.Add(fileState.RelativePath);
+                return new RemoteFilePlaceholderResult(
+                    fileState.PlaceholderIdentity,
+                    SyncPlaceholderHydrationState.RemoteOnly);
             }
 
             public void UnregisterSyncRoot(SyncPairSettings syncPair)

@@ -163,6 +163,10 @@ namespace Cotton.Sync.Desktop.Startup
             bool trayQuitDisconnect = string.Equals(phase, "tray-quit-disconnect", StringComparison.Ordinal);
             bool explorerFreeUpSpace = string.Equals(phase, "explorer-free-up-space", StringComparison.Ordinal);
             bool explorerAlwaysKeep = string.Equals(phase, "explorer-always-keep", StringComparison.Ordinal);
+            bool explorerAlwaysKeepMissingPlaceholder = string.Equals(
+                phase,
+                "explorer-always-keep-missing-placeholder",
+                StringComparison.Ordinal);
             bool explorerAlwaysKeepDuringPopulation = string.Equals(
                 phase,
                 "explorer-always-keep-during-population",
@@ -185,6 +189,7 @@ namespace Cotton.Sync.Desktop.Startup
                 && !trayQuitDisconnect
                 && !explorerFreeUpSpace
                 && !explorerAlwaysKeep
+                && !explorerAlwaysKeepMissingPlaceholder
                 && !explorerAlwaysKeepDuringPopulation
                 && !remoteUpdateAfterDehydrate
                 && !replaceCloudOnlyUpload
@@ -200,6 +205,7 @@ namespace Cotton.Sync.Desktop.Startup
 
             bool requiresExplorerAvailabilityVerbs = explorerFreeUpSpace
                 || explorerAlwaysKeep
+                || explorerAlwaysKeepMissingPlaceholder
                 || explorerAlwaysKeepDuringPopulation;
             IWindowsStorageProviderSyncRootRegistrar? storageProviderRegistrar = cloudFilesAdapter is null
                 ? WindowsStorageProviderSyncRootRegistrar.TryCreateDefault()
@@ -341,6 +347,21 @@ namespace Cotton.Sync.Desktop.Startup
                     nativeApi,
                     syncPair,
                     diagnostics,
+                    restoreMissingPlaceholder: false,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (explorerAlwaysKeepMissingPlaceholder)
+            {
+                return await RunExplorerAlwaysKeepAsync(
+                    paths,
+                    output,
+                    cloudFiles,
+                    nativeApi,
+                    syncPair,
+                    diagnostics,
+                    restoreMissingPlaceholder: true,
                     cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -1033,6 +1054,7 @@ namespace Cotton.Sync.Desktop.Startup
             IWindowsCloudFilesNativeApi? nativeApi,
             SyncPairSettings syncPair,
             WindowsCloudFilesDiagnostics diagnostics,
+            bool restoreMissingPlaceholder,
             CancellationToken cancellationToken)
         {
             if (nativeApi is null)
@@ -1045,6 +1067,8 @@ namespace Cotton.Sync.Desktop.Startup
 
             string rootPath = syncPair.LocalRootPath;
             string placeholderPath = Path.Combine(rootPath, RelativePlaceholderPath);
+            string availabilityTargetPath = restoreMissingPlaceholder ? rootPath : placeholderPath;
+            string availabilityRelativePath = restoreMissingPlaceholder ? "." : RelativePlaceholderPath;
             byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
             string expectedText = Encoding.UTF8.GetString(expectedContent);
             string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
@@ -1103,8 +1127,25 @@ namespace Cotton.Sync.Desktop.Startup
                     failures++;
                 }
 
+                if (restoreMissingPlaceholder)
+                {
+                    File.Delete(placeholderPath);
+                    bool placeholderMissing = !File.Exists(placeholderPath);
+                    await output.WriteLineAsync(
+                        FormatCheck(
+                            placeholderMissing,
+                            "Tracked placeholder was removed before Explorer Always keep recovery.")
+                        + " path="
+                        + placeholderPath)
+                        .ConfigureAwait(false);
+                    if (!placeholderMissing)
+                    {
+                        failures++;
+                    }
+                }
+
                 ShellVerbInvocationResult verbResult = await InvokeExplorerAlwaysKeepAsync(
-                        placeholderPath,
+                        availabilityTargetPath,
                         cancellationToken)
                     .ConfigureAwait(false);
                 await output.WriteLineAsync(
@@ -1120,7 +1161,7 @@ namespace Cotton.Sync.Desktop.Startup
                 }
 
                 bool pinned = await WaitForAttributesAsync(
-                    placeholderPath,
+                    availabilityTargetPath,
                     HasPinned,
                     TimeSpan.FromSeconds(10),
                     cancellationToken)
@@ -1128,7 +1169,7 @@ namespace Cotton.Sync.Desktop.Startup
                 await output.WriteLineAsync(
                     FormatCheck(pinned, "Cloud Files pinned state was applied for Always keep processing.")
                     + " attributes="
-                    + FormatAttributes(File.GetAttributes(placeholderPath)))
+                    + FormatAttributes(File.GetAttributes(availabilityTargetPath)))
                     .ConfigureAwait(false);
                 if (!pinned)
                 {
@@ -1144,13 +1185,13 @@ namespace Cotton.Sync.Desktop.Startup
                 await hydrationWork
                     .RunOnceAsync(
                         syncPair,
-                        SyncRunRequest.ForLocalChangedPaths([RelativePlaceholderPath]),
+                        SyncRunRequest.ForLocalChangedPaths([availabilityRelativePath]),
                         cancellationToken)
                     .ConfigureAwait(false);
                 await output.WriteLineAsync(
                     FormatCheck(true, "Production app Always keep handler processed the Cloud Files pin-state change.")
                     + " path="
-                    + RelativePlaceholderPath)
+                    + availabilityRelativePath)
                     .ConfigureAwait(false);
 
                 bool becameHydratedPinned = await WaitForAttributesAsync(
@@ -1239,11 +1280,27 @@ namespace Cotton.Sync.Desktop.Startup
                     failures++;
                 }
 
+                if (restoreMissingPlaceholder)
+                {
+                    bool repairRecorded = diagnostics.Snapshot().Any(static item =>
+                        item.Operation == "manual-always-keep-placeholder-repair"
+                        && item.Status == "completed");
+                    await output.WriteLineAsync(
+                        FormatCheck(
+                            repairRecorded,
+                            "Always keep restored the missing tracked placeholder before hydration."))
+                        .ConfigureAwait(false);
+                    if (!repairRecorded)
+                    {
+                        failures++;
+                    }
+                }
+
                 int downloadsBeforeRepeat = contentProvider.DownloadCount;
                 await hydrationWork
                     .RunOnceAsync(
                         syncPair,
-                        SyncRunRequest.ForLocalChangedPaths([RelativePlaceholderPath]),
+                        SyncRunRequest.ForLocalChangedPaths([availabilityRelativePath]),
                         cancellationToken)
                     .ConfigureAwait(false);
                 FileAttributes repeatAttributes = File.GetAttributes(placeholderPath);
