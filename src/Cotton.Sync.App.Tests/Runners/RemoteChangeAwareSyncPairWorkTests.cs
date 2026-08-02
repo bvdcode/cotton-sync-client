@@ -198,6 +198,54 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesScopesMergedRealtimeAndLocalRequest()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new();
+            FakeSyncStateStore stateStore = new();
+            RemoteChangeFeedBatch batch = new(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 12,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes:
+                [
+                    new SyncChangeDto
+                    {
+                        Id = 11,
+                        Kind = SyncChangeKind.FileCreated,
+                        LayoutId = Guid.NewGuid(),
+                        ItemId = Guid.NewGuid(),
+                        ParentNodeId = syncPair.RemoteRootNodeId,
+                        Name = "Budget.xlsx",
+                        CreatedAt = DateTime.UtcNow,
+                    },
+                ]);
+            FakeRemoteChangeFeedReader remoteChanges = new(batch);
+            RemoteChangeAwareSyncPairWork work = new(inner, remoteChanges, stateStore);
+            SyncRunRequest request = SyncRunRequest
+                .ForFull(SyncRunCause.RealtimeRemoteChange)
+                .Merge(SyncRunRequest.ForLocalChangedPaths(["Budget.xlsx", "Budget (1).xlsx"]));
+
+            await work.RunOnceAsync(syncPair, request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.False);
+                Assert.That(
+                    inner.LastRequest?.LocalChangedPaths,
+                    Is.EqualTo(new[] { "Budget (1).xlsx", "Budget.xlsx" }));
+                Assert.That(
+                    inner.LastRequest?.Causes,
+                    Is.EqualTo(SyncRunCause.LocalChange | SyncRunCause.RealtimeRemoteChange));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesRunsInitialPopulationFullForUnmappedRemoteRootChange()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);

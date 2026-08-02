@@ -76,6 +76,13 @@ namespace Cotton.Sync.App.Runners
             {
                 plannedRequest = request;
             }
+            else if (request.LocalChangedPaths.Count > 0 && CanScopeFullRequest(request.Causes))
+            {
+                plannedRequest = SyncRunRequest.ForLocalChangedPaths(
+                    request.LocalChangedPaths,
+                    request.LocalDeletedPaths,
+                    request.Causes);
+            }
             else if (!hasUnresolvedChanges && !CanSkipFullRequestWithoutMappedRemoteChanges(request.Causes))
             {
                 plannedRequest = request;
@@ -94,9 +101,25 @@ namespace Cotton.Sync.App.Runners
 
         private static SyncRunRequest CreateFullRequestPlan(SyncRunRequest request, SyncRunRequest remoteRequest)
         {
-            return CanSkipFullRequestWithoutMappedRemoteChanges(request.Causes)
-                ? remoteRequest
-                : request.Merge(remoteRequest);
+            if (!CanScopeFullRequest(request.Causes))
+            {
+                return request.Merge(remoteRequest);
+            }
+
+            return SyncRunRequest.ForLocalChangedPaths(
+                request.LocalChangedPaths.Concat(remoteRequest.LocalChangedPaths),
+                request.LocalDeletedPaths.Concat(remoteRequest.LocalDeletedPaths),
+                request.Causes | remoteRequest.Causes);
+        }
+
+        private static bool CanScopeFullRequest(SyncRunCause causes)
+        {
+            const SyncRunCause scopeEligibleFullCauses = SyncRunCause.Periodic
+                | SyncRunCause.RealtimeRemoteChange
+                | SyncRunCause.Resume;
+            SyncRunCause fullCauses = causes & ~SyncRunCause.LocalChange;
+            return fullCauses != SyncRunCause.None
+                && (fullCauses & ~scopeEligibleFullCauses) == SyncRunCause.None;
         }
 
         private async Task AddTrackedFolderSubtreePathsAsync(

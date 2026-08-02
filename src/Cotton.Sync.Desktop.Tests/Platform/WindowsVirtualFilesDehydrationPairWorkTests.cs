@@ -825,6 +825,36 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_PreservesEditedPathsOnMergedFullRequest()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            FakeSyncStateStore stateStore = new();
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Docs/report.xlsx"));
+            RecordingSyncPairWork inner = new();
+            WindowsVirtualFilesDehydrationPairWork work = new(
+                inner,
+                stateStore,
+                new FakeCloudFilesAdapter(),
+                new FakeContentHasher("edited-hash"),
+                readDiskState: _ => CreateUnpinnedHydratedDiskState());
+            SyncRunRequest request = SyncRunRequest
+                .ForFull(SyncRunCause.RealtimeRemoteChange)
+                .Merge(SyncRunRequest.ForLocalChangedPaths(["Docs/report.xlsx"]));
+
+            await work.RunOnceAsync(syncPair, request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Has.Count.EqualTo(1));
+                Assert.That(inner.Requests[0].IsFull, Is.True);
+                Assert.That(inner.Requests[0].LocalChangedPaths, Is.EqualTo(new[] { "Docs/report.xlsx" }));
+                Assert.That(
+                    inner.Requests[0].Causes,
+                    Is.EqualTo(SyncRunCause.LocalChange | SyncRunCause.RealtimeRemoteChange));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_RemovesHandledPathsAndSyncsRemainingPaths()
         {
             SyncPairSettings syncPair = CreateVirtualFilesPair();

@@ -281,7 +281,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             SyncRunRequest remainingRequest = request.IsFull || requiresFullPass
-                ? SyncRunRequest.ForFull(request.Causes)
+                ? CreateFullRequestWithRemainingPaths(request, remainingPaths)
                 : remainingPaths.Count == request.LocalChangedPaths.Count
                     ? request
                     : SyncRunRequest.ForLocalChangedPaths(
@@ -289,6 +289,23 @@ namespace Cotton.Sync.Desktop.Platform
                         FilterDeletedPaths(request.LocalDeletedPaths, remainingPaths),
                         request.Causes);
             await _inner.RunOnceAsync(syncPair, remainingRequest, cancellationToken).ConfigureAwait(false);
+        }
+
+        private static SyncRunRequest CreateFullRequestWithRemainingPaths(
+            SyncRunRequest request,
+            IReadOnlyList<string> remainingPaths)
+        {
+            SyncRunRequest fullRequest = SyncRunRequest.ForFull(request.Causes);
+            if (remainingPaths.Count == 0)
+            {
+                return fullRequest;
+            }
+
+            SyncRunRequest scopedRequest = SyncRunRequest.ForLocalChangedPaths(
+                remainingPaths,
+                FilterDeletedPaths(request.LocalDeletedPaths, remainingPaths),
+                request.Causes);
+            return fullRequest.Merge(scopedRequest);
         }
 
         private static IReadOnlyList<string> FilterDeletedPaths(
