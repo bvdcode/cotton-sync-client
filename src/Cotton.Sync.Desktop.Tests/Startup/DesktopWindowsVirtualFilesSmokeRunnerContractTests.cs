@@ -209,6 +209,22 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void RunAsync_LocalMoveAfterProviderWriteUsesRealWatcherAndPreservesDeleteAndCreate()
+        {
+            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(runner, Does.Contain("\"local-move-after-provider-write\""));
+                Assert.That(runner, Does.Contain("RunLocalMoveAfterProviderWriteAsync("));
+                Assert.That(runner, Does.Contain("suppression.SuppressProviderMetadataWrite("));
+                Assert.That(runner, Does.Contain("Real watcher preserved delete and create paths for a cross-directory move after provider metadata finalization."));
+                Assert.That(runner, Does.Contain("Cross-directory move stayed scoped and emitted one request."));
+                Assert.That(runner, Does.Contain("File-system cross-directory move left exactly the target file."));
+            });
+        }
+
+        [Test]
         public void RunAsync_ExplorerAlwaysKeepPhaseVerifiesPinnedHydrationPath()
         {
             string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));

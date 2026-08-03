@@ -59,7 +59,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     cloudFiles.SyncRootInSyncPairs.Select(static item => item.Id),
                     Is.EqualTo(new[] { syncPair.Id }));
                 Assert.That(
-                    suppression.SuppressedWrites,
+                    suppression.MetadataSuppressedWrites,
                     Is.EqualTo(new[]
                     {
                         new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs/Reports/report.txt"),
@@ -165,7 +165,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     cloudFiles.SyncRootInSyncPairs.Select(static item => item.Id),
                     Is.EqualTo(new[] { syncPair.Id }));
                 Assert.That(
-                    suppression.SuppressedWrites,
+                    suppression.MetadataSuppressedWrites,
                     Is.EqualTo(new[]
                     {
                         new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs"),
@@ -613,9 +613,16 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             public List<SuppressedWrite> SuppressedWrites { get; } = [];
 
+            public List<SuppressedWrite> MetadataSuppressedWrites { get; } = [];
+
             public void SuppressProviderWrite(Guid syncPairId, string localRootPath, string relativePath)
             {
                 SuppressedWrites.Add(new SuppressedWrite(syncPairId, localRootPath, relativePath));
+            }
+
+            public void SuppressProviderMetadataWrite(Guid syncPairId, string localRootPath, string relativePath)
+            {
+                MetadataSuppressedWrites.Add(new SuppressedWrite(syncPairId, localRootPath, relativePath));
             }
 
             public IDisposable SuppressProviderWriteBurst(Guid syncPairId, string localRootPath)

@@ -513,6 +513,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-shell-share-link-targets\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-replace-cloud-only-upload\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-local-rename-after-provider-write\\cloud-files-vfs-smoke.stdout.log"));
+                Assert.That(script, Does.Contain("vfs-smoke\\phase-local-move-after-provider-write\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-explorer-always-keep\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain("vfs-smoke\\phase-explorer-always-keep-during-population\\cloud-files-vfs-smoke.stdout.log"));
                 Assert.That(script, Does.Contain(inheritedAvailabilityProof));
@@ -789,6 +790,29 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(
                     output,
                     Does.Contain("vfs-smoke\\phase-local-rename-after-provider-write\\cloud-files-vfs-smoke.stdout.log"));
+            }
+            finally
+            {
+                DeleteTestDirectory(evidenceDirectory);
+            }
+        }
+
+        [Test]
+        public void WindowsVfsReleaseEvidenceVerifierScript_RejectsMissingLocalMoveAfterProviderWriteLogs()
+        {
+            string evidenceDirectory = CreateVfsReleaseEvidenceBundle();
+            try
+            {
+                Directory.Delete(
+                    Path.Combine(evidenceDirectory, "vfs-smoke", "phase-local-move-after-provider-write"),
+                    recursive: true);
+
+                (int exitCode, string output) = RunVfsReleaseEvidenceVerifier(evidenceDirectory);
+
+                Assert.That(exitCode, Is.Not.EqualTo(0), output);
+                Assert.That(
+                    output,
+                    Does.Contain("vfs-smoke\\phase-local-move-after-provider-write\\cloud-files-vfs-smoke.stdout.log"));
             }
             finally
             {
@@ -1980,7 +2004,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("-LocalRoot $vfsLocalRoot"));
                 Assert.That(
                     workflow,
-                    Does.Contain("-AdditionalVfsSmokePhases @(\"desktop-session-restore\", \"shell-share-link-targets\", \"initial-streaming-logging\", \"steady-state-repeat\", \"replace-cloud-only-upload\", \"local-rename-after-provider-write\", \"explorer-always-keep\", \"explorer-always-keep-missing-placeholder\", \"explorer-always-keep-during-population\")"));
+                    Does.Contain("-AdditionalVfsSmokePhases @(\"desktop-session-restore\", \"shell-share-link-targets\", \"initial-streaming-logging\", \"steady-state-repeat\", \"replace-cloud-only-upload\", \"local-rename-after-provider-write\", \"local-move-after-provider-write\", \"explorer-always-keep\", \"explorer-always-keep-missing-placeholder\", \"explorer-always-keep-during-population\")"));
                 Assert.That(workflow, Does.Contain("timeout-minutes: 20"));
                 Assert.That(workflow, Does.Contain("-InitialStreamingPlaceholderCount $ciVfsPlaceholderCount"));
                 Assert.That(workflow, Does.Contain("-SteadyStateRepeatPlaceholderCount $ciVfsPlaceholderCount"));
@@ -2724,6 +2748,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-shell-share-link-targets"));
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-replace-cloud-only-upload"));
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-local-rename-after-provider-write"));
+            Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-local-move-after-provider-write"));
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-leave-registered"));
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-reconnect-existing"));
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-initial-streaming-logging"));
@@ -2739,7 +2764,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "Cloud Files Explorer registrations: captured: registry-cloud-files-explorer.txt",
                     "Local root entries: captured: local-root-entries.csv",
                     "Log tails: captured 1 log file(s)",
-                    "VFS smoke logs: captured: vfs-smoke; files=10",
+                    "VFS smoke logs: captured: vfs-smoke; files=11",
                     "Installed self-test: exitCode=0; stdout=self-test.stdout.log; stderr=self-test.stderr.log",
                     "Diagnostics export: exitCode=0; stdout=diagnostics-export.stdout.log; stderr=diagnostics-export.stderr.log"
                 });
@@ -2857,6 +2882,19 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "PASS: Real watcher preserved both paths for a user rename after provider write suppression.",
                     "PASS: Provider-suppressed user rename stayed scoped and emitted one request.",
                     "PASS: File-system rename completed without duplicating the local file.",
+                    "Result: passed"
+                });
+            File.WriteAllLines(
+                Path.Combine(
+                    evidenceDirectory,
+                    "vfs-smoke",
+                    "phase-local-move-after-provider-write",
+                    "cloud-files-vfs-smoke.stdout.log"),
+                new[]
+                {
+                    "PASS: Real watcher preserved delete and create paths for a cross-directory move after provider metadata finalization.",
+                    "PASS: Cross-directory move stayed scoped and emitted one request.",
+                    "PASS: File-system cross-directory move left exactly the target file.",
                     "Result: passed"
                 });
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-explorer-always-keep"));

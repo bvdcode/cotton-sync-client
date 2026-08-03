@@ -120,6 +120,66 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task StartAsync_PublishesCrossDirectoryMoveAsDeleteAndCreate()
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                Assert.Ignore("Windows FileSystemWatcher move semantics are required for this test.");
+            }
+
+            Guid syncPairId = Guid.NewGuid();
+            string sourceDirectory = Path.Combine(_root, "source");
+            string targetDirectory = Path.Combine(_root, "target");
+            Directory.CreateDirectory(sourceDirectory);
+            Directory.CreateDirectory(targetDirectory);
+            string oldPath = Path.Combine(sourceDirectory, "old-name.txt");
+            string newPath = Path.Combine(targetDirectory, "new-name.txt");
+            File.WriteAllText(oldPath, "content");
+            var watcher = new FileSystemLocalSyncRootWatcher(syncPairId, _root);
+            List<LocalSyncRootChange> observed = [];
+            var targetObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            watcher.Changed += (_, change) =>
+            {
+                lock (observed)
+                {
+                    observed.Add(change);
+                }
+
+                if (string.Equals(change.FullPath, newPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    targetObserved.TrySetResult();
+                }
+            };
+
+            await watcher.StartAsync();
+            File.Move(oldPath, newPath);
+
+            await targetObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Task.Delay(TimeSpan.FromMilliseconds(250));
+            await watcher.DisposeAsync();
+
+            LocalSyncRootChange[] snapshot;
+            lock (observed)
+            {
+                snapshot = observed.ToArray();
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    snapshot,
+                    Has.Some.Matches<LocalSyncRootChange>(change =>
+                        change.Kind == LocalSyncRootChangeKind.Deleted
+                        && string.Equals(change.FullPath, oldPath, StringComparison.OrdinalIgnoreCase)));
+                Assert.That(
+                    snapshot,
+                    Has.Some.Matches<LocalSyncRootChange>(change =>
+                        change.Kind == LocalSyncRootChangeKind.Created
+                        && string.Equals(change.FullPath, newPath, StringComparison.OrdinalIgnoreCase)));
+            });
+        }
+
+        [Test]
         public void Publish_ReportsErrorWhenFilterThrows()
         {
             Guid syncPairId = Guid.NewGuid();

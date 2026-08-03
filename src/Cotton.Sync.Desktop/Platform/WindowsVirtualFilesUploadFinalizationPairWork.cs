@@ -132,7 +132,10 @@ namespace Cotton.Sync.Desktop.Platform
             if (finalizedPaths.Add(relativePath))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                _localChangeSuppression?.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, relativePath);
+                _localChangeSuppression?.SuppressProviderMetadataWrite(
+                    syncPair.Id,
+                    syncPair.LocalRootPath,
+                    relativePath);
                 SyncStateEntry? state = await _stateStore
                     .GetAsync(syncPair.Id.ToString("D"), relativePath, cancellationToken)
                     .ConfigureAwait(false);
@@ -176,7 +179,10 @@ namespace Cotton.Sync.Desktop.Platform
                 }
 
                 cancellationToken.ThrowIfCancellationRequested();
-                _localChangeSuppression?.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, directoryPath);
+                _localChangeSuppression?.SuppressProviderMetadataWrite(
+                    syncPair.Id,
+                    syncPair.LocalRootPath,
+                    directoryPath);
                 SyncStateEntry? directoryState = await _stateStore
                     .GetAsync(syncPair.Id.ToString("D"), directoryPath, cancellationToken)
                     .ConfigureAwait(false);

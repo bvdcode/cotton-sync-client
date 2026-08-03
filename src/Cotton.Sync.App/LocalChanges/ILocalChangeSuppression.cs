@@ -14,6 +14,14 @@ namespace Cotton.Sync.App.LocalChanges
         void SuppressProviderWrite(Guid syncPairId, string localRootPath, string relativePath);
 
         /// <summary>
+        /// Suppresses provider metadata echoes without hiding a subsequent user delete or move.
+        /// </summary>
+        void SuppressProviderMetadataWrite(Guid syncPairId, string localRootPath, string relativePath)
+        {
+            SuppressProviderWrite(syncPairId, localRootPath, relativePath);
+        }
+
+        /// <summary>
         /// Suppresses placeholder-creation echoes only while the resulting path remains online-only.
         /// </summary>
         void SuppressProviderOnlineOnlyWrite(Guid syncPairId, string localRootPath, string relativePath)

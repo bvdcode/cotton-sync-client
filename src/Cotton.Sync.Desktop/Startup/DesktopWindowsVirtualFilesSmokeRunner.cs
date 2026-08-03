@@ -52,6 +52,8 @@ namespace Cotton.Sync.Desktop.Startup
         private const string ReplaceCloudOnlyRelativePath = ReplaceCloudOnlyDirectoryName + "/replace-smoke.txt";
         private const string ProviderWriteRenameSourcePath = "provider-write-rename/source.txt";
         private const string ProviderWriteRenameTargetPath = "provider-write-rename/renamed.txt";
+        private const string ProviderWriteMoveSourcePath = "provider-write-move/source/move.txt";
+        private const string ProviderWriteMoveTargetPath = "provider-write-move/target/moved.txt";
         private const string ShellShareLinkDirectoryName = "share-link";
         private const string ShellShareLinkSyncedFilePath = ShellShareLinkDirectoryName + "/synced-file.txt";
         private const string ShellShareLinkRemoteOnlyFilePath = ShellShareLinkDirectoryName + "/remote-only-placeholder.txt";
@@ -176,6 +178,7 @@ namespace Cotton.Sync.Desktop.Startup
             bool remoteUpdateAfterDehydrate = string.Equals(phase, "remote-update-after-dehydrate", StringComparison.Ordinal);
             bool replaceCloudOnlyUpload = string.Equals(phase, "replace-cloud-only-upload", StringComparison.Ordinal);
             bool localRenameAfterProviderWrite = string.Equals(phase, "local-rename-after-provider-write", StringComparison.Ordinal);
+            bool localMoveAfterProviderWrite = string.Equals(phase, "local-move-after-provider-write", StringComparison.Ordinal);
             bool shellShareLinkTargets = string.Equals(phase, "shell-share-link-targets", StringComparison.Ordinal);
             bool desktopRootLifecycle = string.Equals(phase, "desktop-root-lifecycle", StringComparison.Ordinal);
             bool desktopSessionRestore = string.Equals(phase, "desktop-session-restore", StringComparison.Ordinal);
@@ -197,6 +200,7 @@ namespace Cotton.Sync.Desktop.Startup
                 && !remoteUpdateAfterDehydrate
                 && !replaceCloudOnlyUpload
                 && !localRenameAfterProviderWrite
+                && !localMoveAfterProviderWrite
                 && !shellShareLinkTargets
                 && !desktopRootLifecycle
                 && !desktopSessionRestore)
@@ -240,6 +244,16 @@ namespace Cotton.Sync.Desktop.Startup
             if (localRenameAfterProviderWrite)
             {
                 return await RunLocalRenameAfterProviderWriteAsync(
+                    output,
+                    cloudFiles,
+                    syncPair,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (localMoveAfterProviderWrite)
+            {
+                return await RunLocalMoveAfterProviderWriteAsync(
                     output,
                     cloudFiles,
                     syncPair,
@@ -844,6 +858,113 @@ namespace Cotton.Sync.Desktop.Startup
                     failures++;
                     await output.WriteLineAsync(
                         FormatCheck(false, "File-system rename did not leave exactly the target file."))
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                failures++;
+                await output.WriteLineAsync(
+                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                if (coordinator is not null)
+                {
+                    await coordinator.StopAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+
+                PrepareRoot(rootPath);
+            }
+
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> RunLocalMoveAfterProviderWriteAsync(
+            TextWriter output,
+            IWindowsCloudFilesAdapter cloudFiles,
+            SyncPairSettings syncPair,
+            CancellationToken cancellationToken)
+        {
+            string rootPath = syncPair.LocalRootPath;
+            string sourcePath = ToFullPath(rootPath, ProviderWriteMoveSourcePath);
+            string targetPath = ToFullPath(rootPath, ProviderWriteMoveTargetPath);
+            LocalChangeSuppression suppression = new();
+            RecordingRenameSyncSupervisor supervisor = new();
+            LocalChangeSyncCoordinator? coordinator = null;
+            int failures = 0;
+
+            try
+            {
+                TryUnregisterExistingRoot(cloudFiles, syncPair, output);
+                PrepareRoot(rootPath);
+                Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+                Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+                await File.WriteAllTextAsync(sourcePath, SmokeContentText, cancellationToken).ConfigureAwait(false);
+                suppression.SuppressProviderMetadataWrite(syncPair.Id, rootPath, ProviderWriteMoveSourcePath);
+                coordinator = new LocalChangeSyncCoordinator(
+                    new SingleSyncPairSettingsStore(syncPair),
+                    supervisor,
+                    new FileSystemLocalSyncRootWatcherFactory(),
+                    debounceInterval: TimeSpan.FromMilliseconds(100),
+                    changeSuppression: suppression,
+                    maxDebounceDelay: TimeSpan.FromSeconds(1));
+                await coordinator.StartAsync(cancellationToken).ConfigureAwait(false);
+
+                File.Move(sourcePath, targetPath);
+                SyncRunRequest request = await supervisor
+                    .WaitForRequestAsync(TimeSpan.FromSeconds(10), cancellationToken)
+                    .ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMilliseconds(300), cancellationToken).ConfigureAwait(false);
+
+                bool preservedMoveScope = !request.IsFull
+                    && request.LocalChangedPaths.Contains(ProviderWriteMoveSourcePath, StringComparer.OrdinalIgnoreCase)
+                    && request.LocalChangedPaths.Contains(ProviderWriteMoveTargetPath, StringComparer.OrdinalIgnoreCase)
+                    && request.LocalDeletedPaths.Count == 1
+                    && request.LocalDeletedPaths.Contains(ProviderWriteMoveSourcePath, StringComparer.OrdinalIgnoreCase);
+                if (preservedMoveScope)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Real watcher preserved delete and create paths for a cross-directory move after provider metadata finalization."))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Provider metadata suppression hid part of the cross-directory move scope."))
+                        .ConfigureAwait(false);
+                }
+
+                if (supervisor.SyncNowCallCount == 1)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Cross-directory move stayed scoped and emitted one request."))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Cross-directory move emitted an unexpected request count.")
+                        + " requests="
+                        + supervisor.SyncNowCallCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+
+                if (!File.Exists(sourcePath) && File.Exists(targetPath))
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "File-system cross-directory move left exactly the target file."))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "File-system cross-directory move did not leave exactly the target file."))
                         .ConfigureAwait(false);
                 }
             }

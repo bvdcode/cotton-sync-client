@@ -554,6 +554,82 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task ProviderMetadataSuppression_DoesNotHideCrossDirectoryMoveDelete()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            var watcherFactory = new FakeWatcherFactory();
+            var supervisor = new FakeSyncSupervisor();
+            var suppression = new LocalChangeSuppression();
+            var coordinator = new LocalChangeSyncCoordinator(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval,
+                changeSuppression: suppression);
+            suppression.SuppressProviderMetadataWrite(
+                syncPair.Id,
+                syncPair.LocalRootPath,
+                "Source/move.txt");
+            await coordinator.StartAsync();
+
+            watcherFactory.CreatedWatchers[syncPair.Id].Raise(
+                FullPath(syncPair, "Source/move.txt"),
+                LocalSyncRootChangeKind.Deleted);
+            watcherFactory.CreatedWatchers[syncPair.Id].Raise(
+                FullPath(syncPair, "Target/moved.txt"),
+                LocalSyncRootChangeKind.Created);
+
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(1));
+                Assert.That(
+                    supervisor.LastRequest?.LocalChangedPaths,
+                    Is.EquivalentTo(new[] { "Source/move.txt", "Target/moved.txt" }));
+                Assert.That(
+                    supervisor.LastRequest?.LocalDeletedPaths,
+                    Is.EqualTo(new[] { "Source/move.txt" }));
+            });
+        }
+
+        [Test]
+        public async Task ProviderMetadataSuppression_StillSuppressesFinalizationChange()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            var watcherFactory = new FakeWatcherFactory();
+            var supervisor = new FakeSyncSupervisor();
+            var suppression = new LocalChangeSuppression();
+            var coordinator = new LocalChangeSyncCoordinator(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval,
+                changeSuppression: suppression);
+            suppression.SuppressProviderMetadataWrite(
+                syncPair.Id,
+                syncPair.LocalRootPath,
+                "Cloud/finalized.txt");
+            await coordinator.StartAsync();
+
+            watcherFactory.CreatedWatchers[syncPair.Id].Raise(
+                FullPath(syncPair, "Cloud/finalized.txt"),
+                LocalSyncRootChangeKind.Changed);
+
+            bool observed = await supervisor.WaitForSyncAsync(DebounceInterval * 4);
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.False);
+                Assert.That(supervisor.SyncNowCallCount, Is.Zero);
+                Assert.That(coordinator.PendingRequestCount, Is.Zero);
+            });
+        }
+
+        [Test]
         public async Task StopAsync_DuringSuppressionDoesNotRaceLifetimeDispose()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);

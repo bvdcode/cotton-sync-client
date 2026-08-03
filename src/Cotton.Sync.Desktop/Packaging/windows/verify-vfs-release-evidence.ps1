@@ -322,6 +322,12 @@ Assert-Contains -Content $localRenameAfterProviderWrite -Expected "Provider-supp
 Assert-Contains -Content $localRenameAfterProviderWrite -Expected "File-system rename completed without duplicating the local file." -Label "vfs-smoke\phase-local-rename-after-provider-write\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $localRenameAfterProviderWrite -Expected "Result: passed" -Label "vfs-smoke\phase-local-rename-after-provider-write\cloud-files-vfs-smoke.stdout.log"
 
+$localMoveAfterProviderWrite = Read-EvidenceFile -RelativePath "vfs-smoke\phase-local-move-after-provider-write\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $localMoveAfterProviderWrite -Expected "Real watcher preserved delete and create paths for a cross-directory move after provider metadata finalization." -Label "vfs-smoke\phase-local-move-after-provider-write\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $localMoveAfterProviderWrite -Expected "Cross-directory move stayed scoped and emitted one request." -Label "vfs-smoke\phase-local-move-after-provider-write\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $localMoveAfterProviderWrite -Expected "File-system cross-directory move left exactly the target file." -Label "vfs-smoke\phase-local-move-after-provider-write\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $localMoveAfterProviderWrite -Expected "Result: passed" -Label "vfs-smoke\phase-local-move-after-provider-write\cloud-files-vfs-smoke.stdout.log"
+
 $explorerAlwaysKeep = Read-EvidenceFile -RelativePath "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $explorerAlwaysKeep -Expected "Explorer shell exposed and invoked Always keep on this device." -Label "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $explorerAlwaysKeep -Expected "Explorer Always keep hydrated the placeholder and kept it pinned." -Label "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
