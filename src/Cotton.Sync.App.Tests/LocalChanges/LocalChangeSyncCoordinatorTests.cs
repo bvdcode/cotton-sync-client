@@ -105,6 +105,69 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task RenamedLocalChange_WithProviderSuppressedSourceRequestsOldAndNewPaths()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            FakeWatcherFactory watcherFactory = new();
+            FakeSyncSupervisor supervisor = new();
+            LocalChangeSuppression suppression = new(_ => false);
+            LocalChangeSyncCoordinator coordinator = new(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval,
+                changeSuppression: suppression);
+            suppression.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, "old.txt");
+            await coordinator.StartAsync();
+
+            watcherFactory.CreatedWatchers[syncPair.Id].RaiseRename(
+                FullPath(syncPair, "old.txt"),
+                FullPath(syncPair, "renamed.txt"));
+
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.LastRequest?.IsFull, Is.False);
+                Assert.That(supervisor.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { "old.txt", "renamed.txt" }));
+            });
+        }
+
+        [Test]
+        public async Task RenamedLocalChange_WithProviderSuppressedSourceAndTargetDoesNotRequestSync()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            FakeWatcherFactory watcherFactory = new();
+            FakeSyncSupervisor supervisor = new();
+            LocalChangeSuppression suppression = new(_ => false);
+            LocalChangeSyncCoordinator coordinator = new(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval,
+                changeSuppression: suppression);
+            suppression.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, "old.txt");
+            suppression.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, "renamed.txt");
+            await coordinator.StartAsync();
+
+            watcherFactory.CreatedWatchers[syncPair.Id].RaiseRename(
+                FullPath(syncPair, "old.txt"),
+                FullPath(syncPair, "renamed.txt"));
+
+            bool observed = await supervisor.WaitForSyncAsync(DebounceInterval * 4);
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.False);
+                Assert.That(supervisor.SyncNowCallCount, Is.Zero);
+                Assert.That(coordinator.PendingRequestCount, Is.Zero);
+            });
+        }
+
+        [Test]
         public async Task RapidCreateRenameEditDelete_CoalescesOldAndNewPathsWithFinalDeleteMarker()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);

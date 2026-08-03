@@ -183,10 +183,11 @@ namespace Cotton.Sync.App.LocalChanges
                     return ShouldSuppressProviderBurst(change, includeCloudFilesPlaceholderProbe: true);
                 }
 
-                bool suppress = ShouldSuppressPath(change.SyncPairId, change.FullPath, entries, now);
+                bool suppressChangedPath = ShouldSuppressPath(change.SyncPairId, change.FullPath, entries, now);
+                bool suppressOldPath = true;
                 if (!string.IsNullOrWhiteSpace(change.OldFullPath))
                 {
-                    suppress |= ShouldSuppressPath(change.SyncPairId, change.OldFullPath, entries, now);
+                    suppressOldPath = ShouldSuppressPath(change.SyncPairId, change.OldFullPath, entries, now);
                 }
 
                 if (entries.Count == 0)
@@ -194,7 +195,8 @@ namespace Cotton.Sync.App.LocalChanges
                     _entriesByPair.Remove(change.SyncPairId);
                 }
 
-                return suppress || ShouldSuppressProviderBurst(change, includeCloudFilesPlaceholderProbe: true);
+                return (suppressChangedPath && suppressOldPath)
+                    || ShouldSuppressProviderBurst(change, includeCloudFilesPlaceholderProbe: true);
             }
         }
 
@@ -418,8 +420,14 @@ namespace Cotton.Sync.App.LocalChanges
                 return true;
             }
 
-            return includeCloudFilesPlaceholderProbe
-                && _onlineOnlyCloudFilesPlaceholderProbe(change.FullPath);
+            if (!includeCloudFilesPlaceholderProbe
+                || !_onlineOnlyCloudFilesPlaceholderProbe(change.FullPath))
+            {
+                return false;
+            }
+
+            return string.IsNullOrWhiteSpace(change.OldFullPath)
+                || _onlineOnlyCloudFilesPlaceholderProbe(change.OldFullPath);
         }
 
         private static bool IsOnlineOnlyCloudFilesPlaceholder(string fullPath)
