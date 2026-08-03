@@ -81,7 +81,8 @@ namespace Cotton.Sync.App.LocalChanges
                 localRootPath,
                 relativePath,
                 onlyWhileOnlineOnly: false,
-                suppressDeleteEvents: true);
+                suppressDeleteEvents: true,
+                metadataOnly: false);
         }
 
         /// <inheritdoc />
@@ -92,7 +93,8 @@ namespace Cotton.Sync.App.LocalChanges
                 localRootPath,
                 relativePath,
                 onlyWhileOnlineOnly: false,
-                suppressDeleteEvents: false);
+                suppressDeleteEvents: false,
+                metadataOnly: true);
         }
 
         /// <inheritdoc />
@@ -103,7 +105,8 @@ namespace Cotton.Sync.App.LocalChanges
                 localRootPath,
                 relativePath,
                 onlyWhileOnlineOnly: true,
-                suppressDeleteEvents: true);
+                suppressDeleteEvents: true,
+                metadataOnly: false);
         }
 
         private void SuppressProviderWrite(
@@ -111,7 +114,8 @@ namespace Cotton.Sync.App.LocalChanges
             string localRootPath,
             string relativePath,
             bool onlyWhileOnlineOnly,
-            bool suppressDeleteEvents)
+            bool suppressDeleteEvents,
+            bool metadataOnly)
         {
             if (syncPairId == Guid.Empty)
             {
@@ -134,14 +138,28 @@ namespace Cotton.Sync.App.LocalChanges
                     PruneExpired(syncPairId, entries, now);
                 }
 
-                Register(syncPairId, entries, fullPath, expiresAt, onlyWhileOnlineOnly, suppressDeleteEvents);
+                Register(
+                    syncPairId,
+                    entries,
+                    fullPath,
+                    expiresAt,
+                    onlyWhileOnlineOnly,
+                    suppressDeleteEvents,
+                    metadataOnly);
 
                 string? currentPath = Path.GetDirectoryName(fullPath);
                 while (!string.IsNullOrWhiteSpace(currentPath)
                     && !PathEquals(rootPath, currentPath)
                     && IsInsideRoot(rootPath, currentPath))
                 {
-                    Register(syncPairId, entries, currentPath, expiresAt, onlyWhileOnlineOnly, suppressDeleteEvents);
+                    Register(
+                        syncPairId,
+                        entries,
+                        currentPath,
+                        expiresAt,
+                        onlyWhileOnlineOnly,
+                        suppressDeleteEvents,
+                        metadataOnly);
                     currentPath = Path.GetDirectoryName(currentPath);
                 }
 
@@ -246,7 +264,9 @@ namespace Cotton.Sync.App.LocalChanges
                     && changeKind is LocalSyncRootChangeKind.Deleted or LocalSyncRootChangeKind.Renamed;
                 bool onlineOnlyConditionEnded = entry.OnlyWhileOnlineOnly
                     && !_onlineOnlyCloudFilesPlaceholderProbe(fullPath);
-                if (userRemovalMustRemainVisible || onlineOnlyConditionEnded)
+                bool contentChangeMustRemainVisible = entry.MetadataOnly
+                    && changeKind != LocalSyncRootChangeKind.AttributesChanged;
+                if (userRemovalMustRemainVisible || onlineOnlyConditionEnded || contentChangeMustRemainVisible)
                 {
                     entries.Remove(key);
                     if (_providerWriteBurstsByPair.TryGetValue(syncPairId, out ProviderWriteBurstScope? scope))
@@ -340,7 +360,8 @@ namespace Cotton.Sync.App.LocalChanges
             string fullPath,
             DateTimeOffset expiresAt,
             bool onlyWhileOnlineOnly,
-            bool suppressDeleteEvents)
+            bool suppressDeleteEvents,
+            bool metadataOnly)
         {
             string key = NormalizePathKey(fullPath);
             if (_providerWriteBurstsByPair.TryGetValue(syncPairId, out ProviderWriteBurstScope? scope)
@@ -355,6 +376,7 @@ namespace Cotton.Sync.App.LocalChanges
                 entry.RemainingEvents = Math.Min(entry.RemainingEvents + _eventBudget, _eventBudget * 16);
                 entry.OnlyWhileOnlineOnly = onlyWhileOnlineOnly;
                 entry.SuppressDeleteEvents = suppressDeleteEvents;
+                entry.MetadataOnly = metadataOnly;
                 return;
             }
 
@@ -362,7 +384,8 @@ namespace Cotton.Sync.App.LocalChanges
                 expiresAt,
                 _eventBudget,
                 onlyWhileOnlineOnly,
-                suppressDeleteEvents));
+                suppressDeleteEvents,
+                metadataOnly));
         }
 
         private bool TryConsume(
@@ -555,12 +578,14 @@ namespace Cotton.Sync.App.LocalChanges
                 DateTimeOffset expiresAt,
                 int remainingEvents,
                 bool onlyWhileOnlineOnly,
-                bool suppressDeleteEvents)
+                bool suppressDeleteEvents,
+                bool metadataOnly)
             {
                 ExpiresAt = expiresAt;
                 RemainingEvents = remainingEvents;
                 OnlyWhileOnlineOnly = onlyWhileOnlineOnly;
                 SuppressDeleteEvents = suppressDeleteEvents;
+                MetadataOnly = metadataOnly;
             }
 
             public DateTimeOffset ExpiresAt { get; set; }
@@ -570,6 +595,8 @@ namespace Cotton.Sync.App.LocalChanges
             public bool OnlyWhileOnlineOnly { get; set; }
 
             public bool SuppressDeleteEvents { get; set; }
+
+            public bool MetadataOnly { get; set; }
         }
 
         private sealed class ProviderWriteBurstScope

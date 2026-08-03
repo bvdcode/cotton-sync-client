@@ -52,6 +52,7 @@ namespace Cotton.Sync.Desktop.Startup
         private const string ReplaceCloudOnlyRelativePath = ReplaceCloudOnlyDirectoryName + "/replace-smoke.txt";
         private const string ProviderWriteRenameSourcePath = "provider-write-rename/source.txt";
         private const string ProviderWriteRenameTargetPath = "provider-write-rename/renamed.txt";
+        private const string ProviderMetadataUserEditPath = "provider-metadata-user-edit/edited.txt";
         private const string ProviderWriteMoveSourcePath = "provider-write-move/source/move.txt";
         private const string ProviderWriteMoveTargetPath = "provider-write-move/target/moved.txt";
         private const string ProviderWriteDirectoryMoveSourcePath = "provider-write-directory-move/source/folder";
@@ -185,6 +186,7 @@ namespace Cotton.Sync.Desktop.Startup
             bool remoteUpdateAfterDehydrate = string.Equals(phase, "remote-update-after-dehydrate", StringComparison.Ordinal);
             bool replaceCloudOnlyUpload = string.Equals(phase, "replace-cloud-only-upload", StringComparison.Ordinal);
             bool excelAtomicSave = string.Equals(phase, "excel-atomic-save", StringComparison.Ordinal);
+            bool providerMetadataUserEdit = string.Equals(phase, "provider-metadata-user-edit", StringComparison.Ordinal);
             bool localRenameAfterProviderWrite = string.Equals(phase, "local-rename-after-provider-write", StringComparison.Ordinal);
             bool localMoveAfterProviderWrite = string.Equals(phase, "local-move-after-provider-write", StringComparison.Ordinal);
             bool shellShareLinkTargets = string.Equals(phase, "shell-share-link-targets", StringComparison.Ordinal);
@@ -208,6 +210,7 @@ namespace Cotton.Sync.Desktop.Startup
                 && !remoteUpdateAfterDehydrate
                 && !replaceCloudOnlyUpload
                 && !excelAtomicSave
+                && !providerMetadataUserEdit
                 && !localRenameAfterProviderWrite
                 && !localMoveAfterProviderWrite
                 && !shellShareLinkTargets
@@ -253,6 +256,16 @@ namespace Cotton.Sync.Desktop.Startup
             if (excelAtomicSave)
             {
                 return await RunExcelAtomicSaveAsync(
+                    output,
+                    cloudFiles,
+                    syncPair,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (providerMetadataUserEdit)
+            {
+                return await RunProviderMetadataUserEditAsync(
                     output,
                     cloudFiles,
                     syncPair,
@@ -789,6 +802,126 @@ namespace Cotton.Sync.Desktop.Startup
                     + " "
                     + CleanSingleLine(item.Details))
                     .ConfigureAwait(false);
+            }
+
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> RunProviderMetadataUserEditAsync(
+            TextWriter output,
+            IWindowsCloudFilesAdapter cloudFiles,
+            SyncPairSettings syncPair,
+            CancellationToken cancellationToken)
+        {
+            string rootPath = syncPair.LocalRootPath;
+            string filePath = ToFullPath(rootPath, ProviderMetadataUserEditPath);
+            const string userContent = "user content after provider metadata finalization";
+            LocalChangeSuppression suppression = new();
+            RecordingRenameSyncSupervisor supervisor = new();
+            LocalChangeSyncCoordinator? coordinator = null;
+            int failures = 0;
+
+            try
+            {
+                TryUnregisterExistingRoot(cloudFiles, syncPair, output);
+                PrepareRoot(rootPath);
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+                await File.WriteAllTextAsync(filePath, SmokeContentText, cancellationToken).ConfigureAwait(false);
+                suppression.SuppressProviderMetadataWrite(syncPair.Id, rootPath, ProviderMetadataUserEditPath);
+                coordinator = new LocalChangeSyncCoordinator(
+                    new SingleSyncPairSettingsStore(syncPair),
+                    supervisor,
+                    new FileSystemLocalSyncRootWatcherFactory(),
+                    debounceInterval: TimeSpan.FromMilliseconds(100),
+                    changeSuppression: suppression,
+                    maxDebounceDelay: TimeSpan.FromSeconds(1));
+                await coordinator.StartAsync(cancellationToken).ConfigureAwait(false);
+
+                File.SetAttributes(filePath, File.GetAttributes(filePath) | FileAttributes.NotContentIndexed);
+                await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken).ConfigureAwait(false);
+                if (supervisor.SyncNowCallCount == 0)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Provider metadata attribute echo was suppressed without starting sync."))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Provider metadata attribute echo started an unexpected sync request.")
+                        + " requests="
+                        + supervisor.SyncNowCallCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+
+                await File.WriteAllTextAsync(filePath, userContent, cancellationToken).ConfigureAwait(false);
+                SyncRunRequest request = await supervisor
+                    .WaitForRequestAsync(TimeSpan.FromSeconds(10), cancellationToken)
+                    .ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMilliseconds(300), cancellationToken).ConfigureAwait(false);
+
+                bool exactUserEditScope = !request.IsFull
+                    && request.LocalChangedPaths.Count == 1
+                    && request.LocalChangedPaths.Contains(ProviderMetadataUserEditPath, StringComparer.OrdinalIgnoreCase)
+                    && request.LocalDeletedPaths.Count == 0;
+                if (exactUserEditScope)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Real watcher preserved a user content edit after provider metadata finalization."))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Provider metadata suppression hid or widened the user content edit scope.")
+                        + " requestedPaths="
+                        + string.Join(",", request.LocalChangedPaths))
+                        .ConfigureAwait(false);
+                }
+
+                if (supervisor.SyncNowCallCount == 1)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Post-finalization content edit stayed scoped and emitted one request."))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Post-finalization content edit emitted an unexpected request count.")
+                        + " requests="
+                        + supervisor.SyncNowCallCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+
+                string actualContent = await File.ReadAllTextAsync(filePath, cancellationToken).ConfigureAwait(false);
+                if (!string.Equals(actualContent, userContent, StringComparison.Ordinal))
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Post-finalization user content was not preserved on disk."))
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                failures++;
+                await output.WriteLineAsync(
+                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                if (coordinator is not null)
+                {
+                    await coordinator.StopAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+
+                PrepareRoot(rootPath);
             }
 
             await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);

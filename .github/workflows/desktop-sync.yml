@@ -506,7 +506,7 @@ jobs:
             -DataDirectory $dataDir `
             -VfsSmokeDataDirectory $vfsSmokeDataDir `
             -LocalRoot $vfsLocalRoot `
-            -AdditionalVfsSmokePhases @("desktop-session-restore", "shell-share-link-targets", "initial-streaming-logging", "steady-state-repeat", "replace-cloud-only-upload", "excel-atomic-save", "local-rename-after-provider-write", "local-move-after-provider-write", "explorer-always-keep", "explorer-always-keep-missing-placeholder", "explorer-always-keep-during-population") `
+            -AdditionalVfsSmokePhases @("desktop-session-restore", "shell-share-link-targets", "initial-streaming-logging", "steady-state-repeat", "replace-cloud-only-upload", "excel-atomic-save", "provider-metadata-user-edit", "local-rename-after-provider-write", "local-move-after-provider-write", "explorer-always-keep", "explorer-always-keep-missing-placeholder", "explorer-always-keep-during-population") `
             -InitialStreamingPlaceholderCount $ciVfsPlaceholderCount `
             -SteadyStateRepeatPlaceholderCount $ciVfsPlaceholderCount
           function Invoke-InstalledVfsSmokePhase {

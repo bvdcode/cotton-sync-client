@@ -34,6 +34,26 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public void PublishAttributeChange_UsesAttributeSpecificKind()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            string changedPath = Path.Combine(_root, "file.txt");
+            var watcher = new FileSystemLocalSyncRootWatcher(syncPairId, _root);
+            LocalSyncRootChange? observed = null;
+            watcher.Changed += (_, change) => observed = change;
+
+            watcher.PublishAttributeChange(changedPath);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.Not.Null);
+                Assert.That(observed?.SyncPairId, Is.EqualTo(syncPairId));
+                Assert.That(observed?.FullPath, Is.EqualTo(changedPath));
+                Assert.That(observed?.Kind, Is.EqualTo(LocalSyncRootChangeKind.AttributesChanged));
+            });
+        }
+
+        [Test]
         public async Task StartAsync_RejectsMissingRoot()
         {
             string missingRoot = Path.Combine(_root, "missing");

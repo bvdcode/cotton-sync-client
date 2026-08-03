@@ -322,6 +322,12 @@ Assert-Contains -Content $excelAtomicSave -Expected "Excel lock and temporary ar
 Assert-Contains -Content $excelAtomicSave -Expected "Two Excel-style saves emitted one debounced scoped request." -Label "vfs-smoke\phase-excel-atomic-save\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $excelAtomicSave -Expected "Result: passed" -Label "vfs-smoke\phase-excel-atomic-save\cloud-files-vfs-smoke.stdout.log"
 
+$providerMetadataUserEdit = Read-EvidenceFile -RelativePath "vfs-smoke\phase-provider-metadata-user-edit\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $providerMetadataUserEdit -Expected "Provider metadata attribute echo was suppressed without starting sync." -Label "vfs-smoke\phase-provider-metadata-user-edit\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $providerMetadataUserEdit -Expected "Real watcher preserved a user content edit after provider metadata finalization." -Label "vfs-smoke\phase-provider-metadata-user-edit\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $providerMetadataUserEdit -Expected "Post-finalization content edit stayed scoped and emitted one request." -Label "vfs-smoke\phase-provider-metadata-user-edit\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $providerMetadataUserEdit -Expected "Result: passed" -Label "vfs-smoke\phase-provider-metadata-user-edit\cloud-files-vfs-smoke.stdout.log"
+
 $localRenameAfterProviderWrite = Read-EvidenceFile -RelativePath "vfs-smoke\phase-local-rename-after-provider-write\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $localRenameAfterProviderWrite -Expected "Real watcher preserved both paths for a user rename after provider write suppression." -Label "vfs-smoke\phase-local-rename-after-provider-write\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $localRenameAfterProviderWrite -Expected "Provider-suppressed user rename stayed scoped and emitted one request." -Label "vfs-smoke\phase-local-rename-after-provider-write\cloud-files-vfs-smoke.stdout.log"

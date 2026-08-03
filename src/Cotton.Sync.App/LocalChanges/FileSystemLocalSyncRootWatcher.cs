@@ -135,7 +135,12 @@ namespace Cotton.Sync.App.LocalChanges
 
         private void OnAttributeChanged(object sender, FileSystemEventArgs e)
         {
-            Publish(e.FullPath, LocalSyncRootChangeKind.Changed);
+            PublishAttributeChange(e.FullPath);
+        }
+
+        internal void PublishAttributeChange(string fullPath)
+        {
+            Publish(fullPath, LocalSyncRootChangeKind.AttributesChanged);
         }
 
         private void OnDeleted(object sender, FileSystemEventArgs e)

@@ -209,6 +209,23 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void RunAsync_ProviderMetadataUserEditUsesRealWatcherAndPreservesContentChange()
+        {
+            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(runner, Does.Contain("\"provider-metadata-user-edit\""));
+                Assert.That(runner, Does.Contain("RunProviderMetadataUserEditAsync("));
+                Assert.That(runner, Does.Contain("suppression.SuppressProviderMetadataWrite("));
+                Assert.That(runner, Does.Contain("File.SetAttributes(filePath"));
+                Assert.That(runner, Does.Contain("Provider metadata attribute echo was suppressed without starting sync."));
+                Assert.That(runner, Does.Contain("Real watcher preserved a user content edit after provider metadata finalization."));
+                Assert.That(runner, Does.Contain("Post-finalization content edit stayed scoped and emitted one request."));
+            });
+        }
+
+        [Test]
         public void RunAsync_LocalMoveAfterProviderWriteUsesRealWatcherAndPreservesDeleteAndCreate()
         {
             string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));

@@ -37,5 +37,10 @@ namespace Cotton.Sync.App.LocalChanges
         /// The watcher encountered an error and the sync pair should be reconciled.
         /// </summary>
         Error = 5,
+
+        /// <summary>
+        /// Only filesystem attributes changed, such as Cloud Files pin or in-sync state.
+        /// </summary>
+        AttributesChanged = 6,
     }
 }
