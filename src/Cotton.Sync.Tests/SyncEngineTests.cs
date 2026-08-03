@@ -1521,7 +1521,13 @@ namespace Cotton.Sync.Tests
             var scanner = new FakeLocalFileScanner(local);
             var remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.Downloads[changedRemote.Id] = remoteContent;
-            SyncEngine engine = CreateEngine(scanner, RemoteTree(changedRemote), remoteFiles, out SqliteSyncStateStore stateStore);
+            FakeRemoteFilePlaceholderWriter materializationObserver = new();
+            SyncEngine engine = CreateEngine(
+                scanner,
+                RemoteTree(changedRemote),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore,
+                remoteFilePlaceholderWriter: materializationObserver);
             await stateStore.InitializeAsync();
             await stateStore.UpsertAsync(new SyncStateEntry
             {
@@ -1553,6 +1559,14 @@ namespace Cotton.Sync.Tests
                 Assert.That(File.ReadAllText(Path.Combine(_root, "Docs", "hydrated-conflict.txt")), Is.EqualTo("local-new-content"));
                 Assert.That(conflictFiles, Has.Length.EqualTo(1));
                 Assert.That(File.ReadAllText(conflictFiles[0]), Is.EqualTo("remote-new-content"));
+                Assert.That(materializationObserver.FileMaterializationRequests, Has.Count.EqualTo(1));
+                Assert.That(
+                    materializationObserver.FileMaterializationRequests[0].RelativePath,
+                    Does.Contain("Cotton conflict"));
+                Assert.That(
+                    materializationObserver.FileMaterializationRequests[0].RemoteFile.Id,
+                    Is.EqualTo(changedRemote.Id));
+                Assert.That(materializationObserver.FileExistsWhenMaterializationRequested, Is.EqualTo(new[] { false }));
                 Assert.That(entry, Is.Not.Null);
                 Assert.That(entry!.LocalContentHash, Is.EqualTo(local.ContentHash));
                 Assert.That(entry.RemoteContentHash, Is.EqualTo(changedRemote.ContentHash));
@@ -6904,6 +6918,7 @@ namespace Cotton.Sync.Tests
         private class FakeRemoteFilePlaceholderWriter :
             IRemoteFilePlaceholderWriter,
             IRemoteFilePlaceholderPopulationObserver,
+            IRemoteFileMaterializationObserver,
             IRemoteDirectoryMaterializationObserver,
             IRemoteDirectoryTreePopulationObserver
         {
@@ -6912,6 +6927,10 @@ namespace Cotton.Sync.Tests
             public byte[] PlaceholderIdentity { get; } = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E];
 
             public List<RemoteFilePlaceholderRequest> Requests { get; } = [];
+
+            public List<RemoteFileMaterializationRequest> FileMaterializationRequests { get; } = [];
+
+            public List<bool> FileExistsWhenMaterializationRequested { get; } = [];
 
             public List<RemoteDirectoryMaterializationRequest> DirectoryRequests { get; } = [];
 
@@ -6939,6 +6958,17 @@ namespace Cotton.Sync.Tests
             {
                 BeginPopulationCalls++;
                 return new PopulationLease(this);
+            }
+
+            public Task BeforeWriteFileAsync(
+                RemoteFileMaterializationRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                FileMaterializationRequests.Add(request);
+                FileExistsWhenMaterializationRequested.Add(File.Exists(Path.Combine(
+                    request.LocalRootPath,
+                    request.RelativePath.Replace('/', Path.DirectorySeparatorChar))));
+                return Task.CompletedTask;
             }
 
             public Task BeforeCreateDirectoryAsync(

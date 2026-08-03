@@ -148,6 +148,22 @@ namespace Cotton.Sync.Tests.Local
         }
 
         [Test]
+        public async Task WriteFileAsync_PreservesRequestedLastWriteTimeAfterAtomicMove()
+        {
+            DateTime lastWriteUtc = new(2026, 8, 3, 20, 0, 0, DateTimeKind.Utc);
+            AtomicLocalFileSyncWriter writer = new();
+
+            await writer.WriteFileAsync(
+                _root,
+                "Docs/file.txt",
+                async (stream, cancellationToken) =>
+                    await stream.WriteAsync(Encoding.UTF8.GetBytes("content"), cancellationToken),
+                lastWriteUtc);
+
+            Assert.That(File.GetLastWriteTimeUtc(FullPath("Docs/file.txt")), Is.EqualTo(lastWriteUtc));
+        }
+
+        [Test]
         public async Task MoveDirectoryAsync_RenamesDirectoryWhenOnlyCasingChanges()
         {
             WriteFile("Projects/file.txt", "case-content");

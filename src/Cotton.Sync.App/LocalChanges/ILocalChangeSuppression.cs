@@ -14,6 +14,11 @@ namespace Cotton.Sync.App.LocalChanges
         void SuppressProviderWrite(Guid syncPairId, string localRootPath, string relativePath);
 
         /// <summary>
+        /// Suppresses only the watcher event that exposes a newly materialized provider file.
+        /// </summary>
+        void SuppressProviderFileCreation(Guid syncPairId, string localRootPath, string relativePath);
+
+        /// <summary>
         /// Suppresses provider metadata echoes without hiding a subsequent user delete or move.
         /// </summary>
         void SuppressProviderMetadataWrite(Guid syncPairId, string localRootPath, string relativePath)

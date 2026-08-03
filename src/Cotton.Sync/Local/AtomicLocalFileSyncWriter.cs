@@ -56,12 +56,13 @@ namespace Cotton.Sync.Local
                 }
 
                 cancellationToken.ThrowIfCancellationRequested();
-                File.Move(temporaryPath, targetPath, overwrite: true);
-                moved = true;
                 if (lastWriteUtc.HasValue)
                 {
-                    File.SetLastWriteTimeUtc(targetPath, lastWriteUtc.Value.ToUniversalTime());
+                    File.SetLastWriteTimeUtc(temporaryPath, lastWriteUtc.Value.ToUniversalTime());
                 }
+
+                File.Move(temporaryPath, targetPath, overwrite: true);
+                moved = true;
             }
             finally
             {

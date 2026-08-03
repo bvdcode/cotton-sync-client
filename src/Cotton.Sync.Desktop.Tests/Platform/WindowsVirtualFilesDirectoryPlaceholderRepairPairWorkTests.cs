@@ -510,6 +510,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 SuppressedWrites.Add(new SuppressedWrite(syncPairId, localRootPath, relativePath));
             }
 
+            public void SuppressProviderFileCreation(Guid syncPairId, string localRootPath, string relativePath)
+            {
+            }
+
             public void SuppressProviderMetadataWrite(Guid syncPairId, string localRootPath, string relativePath)
             {
                 MetadataSuppressedWrites.Add(new SuppressedWrite(syncPairId, localRootPath, relativePath));

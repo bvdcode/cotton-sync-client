@@ -6,6 +6,7 @@ using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.Status;
 using Cotton.Sync.App.Supervision;
 using Cotton.Sync.App.SyncPairs;
+using Cotton.Sync.Local;
 using Microsoft.Extensions.Logging;
 
 namespace Cotton.Sync.App.Tests.LocalChanges
@@ -729,6 +730,136 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task ProviderFileCreationSuppression_DoesNotHideSubsequentContentEdit()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            FakeWatcherFactory watcherFactory = new();
+            FakeSyncSupervisor supervisor = new();
+            LocalChangeSuppression suppression = new();
+            LocalChangeSyncCoordinator coordinator = new(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval,
+                changeSuppression: suppression);
+            suppression.SuppressProviderFileCreation(
+                syncPair.Id,
+                syncPair.LocalRootPath,
+                "Docs/file (Cotton conflict 20260803T200000Z).txt");
+            await coordinator.StartAsync();
+
+            string fullPath = FullPath(syncPair, "Docs/file (Cotton conflict 20260803T200000Z).txt");
+            watcherFactory.CreatedWatchers[syncPair.Id].Raise(fullPath, LocalSyncRootChangeKind.Created);
+            await Task.Delay(DebounceInterval * 4);
+            watcherFactory.CreatedWatchers[syncPair.Id].Raise(fullPath, LocalSyncRootChangeKind.Changed);
+
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(1));
+                Assert.That(supervisor.LastRequest?.IsFull, Is.False);
+                Assert.That(
+                    supervisor.LastRequest?.LocalChangedPaths,
+                    Is.EqualTo(new[] { "Docs/file (Cotton conflict 20260803T200000Z).txt" }));
+            });
+        }
+
+        [Test]
+        public async Task UserCreatedConflictLookalikeWithoutSuppression_RequestsSync()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            FakeWatcherFactory watcherFactory = new();
+            FakeSyncSupervisor supervisor = new();
+            LocalChangeSyncCoordinator coordinator = new(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval);
+            await coordinator.StartAsync();
+
+            watcherFactory.CreatedWatchers[syncPair.Id].Raise(
+                FullPath(syncPair, "Docs/user (Cotton conflict 20260803T200000Z).txt"),
+                LocalSyncRootChangeKind.Created);
+
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(1));
+                Assert.That(
+                    supervisor.LastRequest?.LocalChangedPaths,
+                    Is.EqualTo(new[] { "Docs/user (Cotton conflict 20260803T200000Z).txt" }));
+            });
+        }
+
+        [Test]
+        public async Task ProviderFileCreationSuppression_WithAtomicWriterSuppressesEchoButNotUserEdit()
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                Assert.Ignore("Windows FileSystemWatcher move semantics are required for this test.");
+            }
+
+            string rootPath = Path.Combine(
+                Path.GetTempPath(),
+                "cotton-provider-file-creation",
+                Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(rootPath, "Docs"));
+            SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            syncPair.LocalRootPath = rootPath;
+            FakeSyncSupervisor supervisor = new();
+            LocalChangeSuppression suppression = new();
+            LocalChangeSyncCoordinator coordinator = new(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                new FileSystemLocalSyncRootWatcherFactory(),
+                DebounceInterval,
+                changeSuppression: suppression);
+            const string relativePath = "Docs/file (Cotton conflict 20260803T200000Z).txt";
+            string fullPath = FullPath(syncPair, relativePath);
+
+            await coordinator.StartAsync();
+            try
+            {
+                suppression.SuppressProviderFileCreation(syncPair.Id, rootPath, relativePath);
+                AtomicLocalFileSyncWriter writer = new();
+                await writer.WriteFileAsync(
+                    rootPath,
+                    relativePath,
+                    async (stream, cancellationToken) =>
+                        await stream.WriteAsync("remote-content"u8.ToArray(), cancellationToken),
+                    new DateTime(2026, 8, 3, 20, 0, 0, DateTimeKind.Utc));
+
+                await Task.Delay(TimeSpan.FromMilliseconds(500));
+                Assert.That(supervisor.SyncNowCallCount, Is.Zero);
+
+                await File.AppendAllTextAsync(fullPath, "-user-edit");
+                bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(5));
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(observed, Is.True);
+                    Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(1));
+                    Assert.That(supervisor.LastRequest?.IsFull, Is.False);
+                    Assert.That(supervisor.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { relativePath }));
+                });
+            }
+            finally
+            {
+                await coordinator.StopAsync();
+                if (Directory.Exists(rootPath))
+                {
+                    Directory.Delete(rootPath, recursive: true);
+                }
+            }
+        }
+
+        [Test]
         public async Task StopAsync_DuringSuppressionDoesNotRaceLifetimeDispose()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
@@ -1380,6 +1511,10 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
             public void SuppressProviderWrite(Guid syncPairId, string localRootPath, string relativePath)
+            {
+            }
+
+            public void SuppressProviderFileCreation(Guid syncPairId, string localRootPath, string relativePath)
             {
             }
 

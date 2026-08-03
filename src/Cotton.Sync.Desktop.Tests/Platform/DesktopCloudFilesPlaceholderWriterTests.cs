@@ -181,6 +181,38 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task BeforeWriteFileAsync_SuppressesOnlyProviderFileCreation()
+        {
+            RecordingLocalChangeSuppression suppression = new();
+            DesktopCloudFilesPlaceholderWriter writer = new(
+                localChangeSuppression: suppression,
+                getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
+            Guid syncPairId = Guid.Parse("77777777-7777-7777-7777-777777777777");
+            RemoteFilePlaceholderRequest placeholderRequest = CreateRequest(
+                _tempDirectory,
+                syncPairId.ToString("D"),
+                "Projects/report (Cotton conflict 20260803T200000Z).txt");
+
+            await writer.BeforeWriteFileAsync(new RemoteFileMaterializationRequest(
+                placeholderRequest.SyncPairId,
+                placeholderRequest.LocalRootPath,
+                placeholderRequest.RemoteRootNodeId,
+                placeholderRequest.RelativePath,
+                placeholderRequest.RemoteFile));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    suppression.SuppressedFileCreations,
+                    Is.EqualTo(new[]
+                    {
+                        new SuppressedWrite(syncPairId, _tempDirectory, placeholderRequest.RelativePath),
+                    }));
+                Assert.That(suppression.SuppressedWrites, Is.Empty);
+            });
+        }
+
+        [Test]
         public async Task AfterCreateDirectoryAsync_EnsuresDirectoryPlaceholderThroughAdapter()
         {
             var adapter = new FakeCloudFilesAdapter();
@@ -336,9 +368,16 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             public List<SuppressedWrite> SuppressedWrites { get; } = [];
 
+            public List<SuppressedWrite> SuppressedFileCreations { get; } = [];
+
             public void SuppressProviderWrite(Guid syncPairId, string localRootPath, string relativePath)
             {
                 throw new InvalidOperationException("Placeholder creation must use online-only watcher suppression.");
+            }
+
+            public void SuppressProviderFileCreation(Guid syncPairId, string localRootPath, string relativePath)
+            {
+                SuppressedFileCreations.Add(new SuppressedWrite(syncPairId, localRootPath, relativePath));
             }
 
             public void SuppressProviderOnlineOnlyWrite(Guid syncPairId, string localRootPath, string relativePath)

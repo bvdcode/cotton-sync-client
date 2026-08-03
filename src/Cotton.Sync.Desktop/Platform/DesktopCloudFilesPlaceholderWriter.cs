@@ -13,6 +13,7 @@ namespace Cotton.Sync.Desktop.Platform
     internal sealed class DesktopCloudFilesPlaceholderWriter :
         IRemoteFilePlaceholderBatchWriter,
         IRemoteFilePlaceholderPopulationObserver,
+        IRemoteFileMaterializationObserver,
         IRemoteDirectoryMaterializationObserver,
         IRemoteDirectoryTreePopulationObserver
     {
@@ -151,6 +152,32 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             return _localChangeSuppression.SuppressProviderWriteBurst(syncPairId, localRootPath);
+        }
+
+        public Task BeforeWriteFileAsync(
+            RemoteFileMaterializationRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_localChangeSuppression is null)
+            {
+                return Task.CompletedTask;
+            }
+
+            if (!Guid.TryParse(request.SyncPairId, out Guid syncPairId))
+            {
+                _logger.LogDebug(
+                    "Skipping local watcher suppression for provider-created file {RelativePath} because sync pair id is not a GUID.",
+                    request.RelativePath);
+                return Task.CompletedTask;
+            }
+
+            _localChangeSuppression.SuppressProviderFileCreation(
+                syncPairId,
+                request.LocalRootPath,
+                request.RelativePath);
+            return Task.CompletedTask;
         }
 
         public Task BeforeCreateDirectoryAsync(
