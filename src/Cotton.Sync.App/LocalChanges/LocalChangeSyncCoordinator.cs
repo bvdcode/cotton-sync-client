@@ -4,6 +4,7 @@
 using Cotton.Sync.App.Supervision;
 using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.SyncPairs;
+using Cotton.Sync.State;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -210,9 +211,13 @@ namespace Cotton.Sync.App.LocalChanges
 
                 var next = new PendingLocalSyncRequest(
                     CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token),
-                    change.FullPath,
                     _timeProvider.GetUtcNow());
-                RecordChange(change.SyncPairId, next, change);
+                if (!RecordChange(change.SyncPairId, next, change))
+                {
+                    next.Cancellation.Dispose();
+                    return;
+                }
+
                 _pendingSyncs.Add(change.SyncPairId, next);
                 _pendingRequests.Add(next);
                 next.Runner = RunDebouncedSyncAsync(change.SyncPairId, next);
@@ -391,7 +396,7 @@ namespace Cotton.Sync.App.LocalChanges
             bool allowRootRelativePath = IsWindowsVirtualFilesPair(syncPairId);
             foreach (string changedPath in request.ChangedPaths)
             {
-                if (TryGetRelativePath(localRootPath, changedPath, allowRootRelativePath, out string relativePath))
+                if (TryGetSyncRelativePath(localRootPath, changedPath, allowRootRelativePath, out string relativePath))
                 {
                     relativePaths.Add(relativePath);
                 }
@@ -400,7 +405,7 @@ namespace Cotton.Sync.App.LocalChanges
             List<string> deletedRelativePaths = [];
             foreach (string deletedPath in request.DeletedPaths)
             {
-                if (TryGetRelativePath(localRootPath, deletedPath, allowRootRelativePath, out string relativePath))
+                if (TryGetSyncRelativePath(localRootPath, deletedPath, allowRootRelativePath, out string relativePath))
                 {
                     deletedRelativePaths.Add(relativePath);
                 }
@@ -411,25 +416,59 @@ namespace Cotton.Sync.App.LocalChanges
                 : SyncRunRequest.ForLocalChangedPaths(relativePaths, deletedRelativePaths, request.Causes);
         }
 
-        private void RecordChange(Guid syncPairId, PendingLocalSyncRequest pendingSync, LocalSyncRootChange change)
+        private bool RecordChange(Guid syncPairId, PendingLocalSyncRequest pendingSync, LocalSyncRootChange change)
         {
             SyncRunCause fullSyncCause = GetFullSyncCause(change);
             int maxScopedChangedPaths = GetMaxScopedChangedPaths(syncPairId);
             bool preserveScopeOnOverflow = IsWindowsVirtualFilesPair(syncPairId);
-            pendingSync.RecordChange(
-                change.FullPath,
-                fullSyncCause,
-                maxScopedChangedPaths,
-                preserveScopeOnOverflow,
-                change.Kind == LocalSyncRootChangeKind.Deleted);
-            if (fullSyncCause == SyncRunCause.None && !string.IsNullOrWhiteSpace(change.OldFullPath))
+            if (fullSyncCause != SyncRunCause.None)
+            {
+                pendingSync.RecordChange(
+                    change.FullPath,
+                    fullSyncCause,
+                    maxScopedChangedPaths,
+                    preserveScopeOnOverflow);
+                return true;
+            }
+
+            if (!_localRootPaths.TryGetValue(syncPairId, out string? localRootPath))
+            {
+                return false;
+            }
+
+            bool allowRootRelativePath = IsWindowsVirtualFilesPair(syncPairId);
+            bool recorded = false;
+            if (TryGetSyncRelativePath(
+                    localRootPath,
+                    change.FullPath,
+                    allowRootRelativePath,
+                    out _))
+            {
+                pendingSync.RecordChange(
+                    change.FullPath,
+                    SyncRunCause.None,
+                    maxScopedChangedPaths,
+                    preserveScopeOnOverflow,
+                    change.Kind == LocalSyncRootChangeKind.Deleted);
+                recorded = true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(change.OldFullPath)
+                && TryGetSyncRelativePath(
+                    localRootPath,
+                    change.OldFullPath,
+                    allowRootRelativePath,
+                    out _))
             {
                 pendingSync.RecordChange(
                     change.OldFullPath,
                     SyncRunCause.None,
                     maxScopedChangedPaths,
                     preserveScopeOnOverflow);
+                recorded = true;
             }
+
+            return recorded;
         }
 
         private int GetMaxScopedChangedPaths(Guid syncPairId)
@@ -460,6 +499,17 @@ namespace Cotton.Sync.App.LocalChanges
         private static bool TryGetRelativePath(string localRootPath, string fullPath, out string relativePath)
         {
             return TryGetRelativePath(localRootPath, fullPath, allowRootRelativePath: false, out relativePath);
+        }
+
+        private static bool TryGetSyncRelativePath(
+            string localRootPath,
+            string fullPath,
+            bool allowRootRelativePath,
+            out string relativePath)
+        {
+            return TryGetRelativePath(localRootPath, fullPath, allowRootRelativePath, out relativePath)
+                && (string.Equals(relativePath, ".", StringComparison.Ordinal)
+                    || !SyncPathIgnoreRules.ShouldIgnore(relativePath));
         }
 
         private static bool TryGetRelativePath(

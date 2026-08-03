@@ -12,20 +12,21 @@ namespace Cotton.Sync.App.LocalChanges
     public class FileSystemLocalSyncRootWatcher : ILocalSyncRootWatcher
     {
         private const int InternalBufferSizeBytes = 64 * 1024;
-        internal const NotifyFilters WatchedNotifyFilters =
+        internal const NotifyFilters ContentNotifyFilters =
             NotifyFilters.FileName
             | NotifyFilters.DirectoryName
             | NotifyFilters.LastWrite
             | NotifyFilters.Size
-            | NotifyFilters.CreationTime
-            | NotifyFilters.Attributes;
+            | NotifyFilters.CreationTime;
+        internal const NotifyFilters AttributeNotifyFilters = NotifyFilters.Attributes;
+        internal const NotifyFilters WatchedNotifyFilters = ContentNotifyFilters | AttributeNotifyFilters;
 
         private readonly Guid _syncPairId;
         private readonly string _localRootPath;
         private readonly LocalSyncRootChangeFilter _changeFilter;
         private readonly ILogger<FileSystemLocalSyncRootWatcher> _logger;
         private readonly object _watcherGate = new();
-        private FileSystemWatcher? _watcher;
+        private FileSystemWatcher[]? _watchers;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="FileSystemLocalSyncRootWatcher" /> class.
@@ -49,7 +50,7 @@ namespace Cotton.Sync.App.LocalChanges
         public Task StartAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (_watcher is not null)
+            if (_watchers is not null)
             {
                 return Task.CompletedTask;
             }
@@ -59,24 +60,28 @@ namespace Cotton.Sync.App.LocalChanges
                 throw new DirectoryNotFoundException($"Local sync root does not exist: {_localRootPath}.");
             }
 
-            FileSystemWatcher watcher = CreateWatcher();
+            FileSystemWatcher[] watchers = CreateWatchers();
             try
             {
-                watcher.EnableRaisingEvents = true;
+                foreach (FileSystemWatcher watcher in watchers)
+                {
+                    watcher.EnableRaisingEvents = true;
+                }
+
                 lock (_watcherGate)
                 {
-                    if (_watcher is not null)
+                    if (_watchers is not null)
                     {
-                        DisposeWatcher(watcher);
+                        DisposeWatchers(watchers);
                         return Task.CompletedTask;
                     }
 
-                    _watcher = watcher;
+                    _watchers = watchers;
                 }
             }
             catch
             {
-                DisposeWatcher(watcher);
+                DisposeWatchers(watchers);
                 throw;
             }
 
@@ -87,19 +92,19 @@ namespace Cotton.Sync.App.LocalChanges
         public Task StopAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            FileSystemWatcher? watcher;
+            FileSystemWatcher[]? watchers;
             lock (_watcherGate)
             {
-                watcher = _watcher;
-                _watcher = null;
+                watchers = _watchers;
+                _watchers = null;
             }
 
-            if (watcher is null)
+            if (watchers is null)
             {
                 return Task.CompletedTask;
             }
 
-            DisposeWatcher(watcher);
+            DisposeWatchers(watchers);
             return Task.CompletedTask;
         }
 
@@ -114,7 +119,21 @@ namespace Cotton.Sync.App.LocalChanges
             Publish(e.FullPath, LocalSyncRootChangeKind.Created);
         }
 
-        private void OnChanged(object sender, FileSystemEventArgs e)
+        private void OnContentChanged(object sender, FileSystemEventArgs e)
+        {
+            if (Directory.Exists(e.FullPath))
+            {
+                _logger.LogDebug(
+                    "Ignoring directory timestamp watcher event for {SyncPairId} at {ChangedPath}.",
+                    _syncPairId,
+                    e.FullPath);
+                return;
+            }
+
+            Publish(e.FullPath, LocalSyncRootChangeKind.Changed);
+        }
+
+        private void OnAttributeChanged(object sender, FileSystemEventArgs e)
         {
             Publish(e.FullPath, LocalSyncRootChangeKind.Changed);
         }
@@ -240,18 +259,36 @@ namespace Cotton.Sync.App.LocalChanges
             }
         }
 
-        private FileSystemWatcher CreateWatcher()
+        private FileSystemWatcher[] CreateWatchers()
+        {
+            return [CreateContentWatcher(), CreateAttributeWatcher()];
+        }
+
+        private FileSystemWatcher CreateContentWatcher()
         {
             FileSystemWatcher watcher = new(_localRootPath)
             {
                 IncludeSubdirectories = true,
-                NotifyFilter = WatchedNotifyFilters,
+                NotifyFilter = ContentNotifyFilters,
                 InternalBufferSize = InternalBufferSizeBytes,
             };
             watcher.Created += OnCreated;
-            watcher.Changed += OnChanged;
+            watcher.Changed += OnContentChanged;
             watcher.Deleted += OnDeleted;
             watcher.Renamed += OnRenamed;
+            watcher.Error += OnError;
+            return watcher;
+        }
+
+        private FileSystemWatcher CreateAttributeWatcher()
+        {
+            FileSystemWatcher watcher = new(_localRootPath)
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = AttributeNotifyFilters,
+                InternalBufferSize = InternalBufferSizeBytes,
+            };
+            watcher.Changed += OnAttributeChanged;
             watcher.Error += OnError;
             return watcher;
         }
@@ -266,17 +303,20 @@ namespace Cotton.Sync.App.LocalChanges
                 return;
             }
 
-            FileSystemWatcher? replacement = null;
+            FileSystemWatcher[]? replacements = null;
             try
             {
-                replacement = CreateWatcher();
-                replacement.EnableRaisingEvents = true;
+                replacements = CreateWatchers();
+                foreach (FileSystemWatcher replacement in replacements)
+                {
+                    replacement.EnableRaisingEvents = true;
+                }
             }
             catch (Exception restartException)
             {
-                if (replacement is not null)
+                if (replacements is not null)
                 {
-                    DisposeWatcher(replacement);
+                    DisposeWatchers(replacements);
                 }
 
                 _logger.LogWarning(
@@ -286,30 +326,39 @@ namespace Cotton.Sync.App.LocalChanges
                 return;
             }
 
-            FileSystemWatcher? previous;
+            FileSystemWatcher[]? previous;
             lock (_watcherGate)
             {
-                if (_watcher is null)
+                if (_watchers is null)
                 {
-                    DisposeWatcher(replacement);
+                    DisposeWatchers(replacements);
                     return;
                 }
 
-                previous = _watcher;
-                _watcher = replacement;
+                previous = _watchers;
+                _watchers = replacements;
             }
 
-            DisposeWatcher(previous);
+            DisposeWatchers(previous);
             _logger.LogInformation(
                 "Local sync root watcher restarted for {SyncPairId}.",
                 _syncPairId);
+        }
+
+        private void DisposeWatchers(IEnumerable<FileSystemWatcher> watchers)
+        {
+            foreach (FileSystemWatcher watcher in watchers)
+            {
+                DisposeWatcher(watcher);
+            }
         }
 
         private void DisposeWatcher(FileSystemWatcher watcher)
         {
             watcher.EnableRaisingEvents = false;
             watcher.Created -= OnCreated;
-            watcher.Changed -= OnChanged;
+            watcher.Changed -= OnContentChanged;
+            watcher.Changed -= OnAttributeChanged;
             watcher.Deleted -= OnDeleted;
             watcher.Renamed -= OnRenamed;
             watcher.Error -= OnError;

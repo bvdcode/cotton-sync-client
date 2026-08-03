@@ -120,6 +120,77 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task StartAsync_ExcelAtomicSaveDoesNotPublishParentOrTemporaryPaths()
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                Assert.Ignore("Windows FileSystemWatcher and File.Replace semantics are required for this test.");
+            }
+
+            Guid syncPairId = Guid.NewGuid();
+            string directoryPath = Path.Combine(_root, "Excel");
+            Directory.CreateDirectory(directoryPath);
+            string targetPath = Path.Combine(directoryPath, "Budget.xlsx");
+            string temporaryPath = targetPath + ".111111.tmp";
+            string lockPath = Path.Combine(directoryPath, "~$Budget.xlsx");
+            File.WriteAllText(targetPath, "initial");
+            var watcher = new FileSystemLocalSyncRootWatcher(syncPairId, _root);
+            List<LocalSyncRootChange> observed = [];
+            var targetObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            watcher.Changed += (_, change) =>
+            {
+                lock (observed)
+                {
+                    observed.Add(change);
+                }
+
+                if (string.Equals(change.FullPath, targetPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    targetObserved.TrySetResult();
+                }
+            };
+
+            await watcher.StartAsync();
+            try
+            {
+                File.WriteAllText(lockPath, "lock");
+                File.WriteAllText(temporaryPath, "updated");
+                File.Replace(temporaryPath, targetPath, destinationBackupFileName: null, ignoreMetadataErrors: true);
+                await targetObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await Task.Delay(TimeSpan.FromMilliseconds(300));
+            }
+            finally
+            {
+                await watcher.DisposeAsync();
+                File.Delete(temporaryPath);
+                File.Delete(lockPath);
+            }
+
+            LocalSyncRootChange[] snapshot;
+            lock (observed)
+            {
+                snapshot = observed.ToArray();
+            }
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    snapshot,
+                    Has.Some.Matches<LocalSyncRootChange>(change =>
+                        string.Equals(change.FullPath, targetPath, StringComparison.OrdinalIgnoreCase)));
+                Assert.That(
+                    snapshot,
+                    Has.None.Matches<LocalSyncRootChange>(change =>
+                        string.Equals(change.FullPath, directoryPath, StringComparison.OrdinalIgnoreCase)));
+                Assert.That(
+                    snapshot,
+                    Has.None.Matches<LocalSyncRootChange>(change =>
+                        string.Equals(change.FullPath, temporaryPath, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(change.FullPath, lockPath, StringComparison.OrdinalIgnoreCase)));
+            });
+        }
+
+        [Test]
         public async Task StartAsync_PublishesCrossDirectoryMoveAsDeleteAndCreate()
         {
             if (!OperatingSystem.IsWindows())

@@ -124,6 +124,52 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task SyncNowAsync_LogsRealtimeWindowsVirtualFilesRequestAsFeedPlanned()
+        {
+            SyncPairSettings syncPair = CreatePair(
+                isEnabled: true,
+                mode: SyncPairMode.WindowsVirtualFiles);
+            var logger = new RecordingLogger<SyncPairRunner>();
+            SyncPairRunner runner = CreateRunner(syncPair, logger: logger);
+
+            await runner.SyncNowAsync(SyncRunRequest.ForFull(SyncRunCause.RealtimeRemoteChange));
+
+            string[] messages = logger.Entries
+                .Where(entry => entry.Level == LogLevel.Information)
+                .Select(entry => entry.Message)
+                .ToArray();
+            Assert.Multiple(() =>
+            {
+                Assert.That(messages, Has.Length.EqualTo(2));
+                Assert.That(messages[0], Does.StartWith("Starting feed-planned sync"));
+                Assert.That(messages[1], Does.StartWith("Completed feed-planned sync"));
+                Assert.That(messages, Has.None.Contains("full sync"));
+            });
+        }
+
+        [Test]
+        public async Task SyncNowAsync_StillLogsManualWindowsVirtualFilesRequestAsFull()
+        {
+            SyncPairSettings syncPair = CreatePair(
+                isEnabled: true,
+                mode: SyncPairMode.WindowsVirtualFiles);
+            var logger = new RecordingLogger<SyncPairRunner>();
+            SyncPairRunner runner = CreateRunner(syncPair, logger: logger);
+
+            await runner.SyncNowAsync(SyncRunRequest.ForFull(SyncRunCause.Manual));
+
+            string[] messages = logger.Entries
+                .Where(entry => entry.Level == LogLevel.Information)
+                .Select(entry => entry.Message)
+                .ToArray();
+            Assert.Multiple(() =>
+            {
+                Assert.That(messages[0], Does.StartWith("Starting full sync"));
+                Assert.That(messages[1], Does.StartWith("Completed full sync"));
+            });
+        }
+
+        [Test]
         public async Task StartAsync_DoesNotMarkPairAsSuccessfullySynced()
         {
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true));
@@ -1101,7 +1147,10 @@ namespace Cotton.Sync.App.Tests.Runners
             };
         }
 
-        private static SyncPairSettings CreatePair(bool isEnabled, string? localRootPath = null)
+        private static SyncPairSettings CreatePair(
+            bool isEnabled,
+            string? localRootPath = null,
+            SyncPairMode mode = SyncPairMode.FullMirror)
         {
             return new SyncPairSettings
             {
@@ -1111,7 +1160,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 RemoteRootNodeId = Guid.NewGuid(),
                 RemoteDisplayPath = "/Documents",
                 IsEnabled = isEnabled,
-                Mode = SyncPairMode.FullMirror,
+                Mode = mode,
             };
         }
 

@@ -179,9 +179,10 @@ namespace Cotton.Sync.App.Runners
                 SetActiveSyncCancellation(activeSyncCancellation);
                 try
                 {
+                    string syncScope = GetLoggedSyncScope(request);
                     _logger.LogInformation(
                         "Starting {SyncScope} sync for {SyncPairId}; causes={SyncCauses}; requested paths={RequestedPathCount}.",
-                        request.IsFull ? "full" : "scoped",
+                        syncScope,
                         _syncPair.Id,
                         request.Causes,
                         request.LocalChangedPaths.Count);
@@ -190,7 +191,7 @@ namespace Cotton.Sync.App.Runners
                     SetState(SyncPairRunState.Idle, lastSuccessfulSyncAtUtc: DateTime.UtcNow);
                     _logger.LogInformation(
                         "Completed {SyncScope} sync for {SyncPairId}; causes={SyncCauses}; requested paths={RequestedPathCount}.",
-                        request.IsFull ? "full" : "scoped",
+                        syncScope,
                         _syncPair.Id,
                         request.Causes,
                         request.LocalChangedPaths.Count);
@@ -261,6 +262,24 @@ namespace Cotton.Sync.App.Runners
             {
                 _operationGate.Release();
             }
+        }
+
+        private string GetLoggedSyncScope(SyncRunRequest request)
+        {
+            if (!request.IsFull)
+            {
+                return "scoped";
+            }
+
+            const SyncRunCause feedPlannedCauses = SyncRunCause.Periodic
+                | SyncRunCause.RealtimeRemoteChange
+                | SyncRunCause.Resume;
+            const SyncRunCause allowedCauses = feedPlannedCauses | SyncRunCause.LocalChange;
+            return _syncPair.Mode == SyncPairMode.WindowsVirtualFiles
+                && (request.Causes & feedPlannedCauses) != SyncRunCause.None
+                && (request.Causes & ~allowedCauses) == SyncRunCause.None
+                    ? "feed-planned"
+                    : "full";
         }
 
         private bool TryStartSyncLoop(SyncRunRequest request)

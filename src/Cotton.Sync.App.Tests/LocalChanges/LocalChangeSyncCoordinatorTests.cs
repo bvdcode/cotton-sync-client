@@ -105,6 +105,68 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task RenamedLocalChanges_FromIgnoredTemporaryPathsRequestOnlyWorkbookTargets()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true);
+            var watcherFactory = new FakeWatcherFactory();
+            var supervisor = new FakeSyncSupervisor();
+            var coordinator = new LocalChangeSyncCoordinator(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval);
+            await coordinator.StartAsync();
+
+            watcherFactory.CreatedWatchers[syncPair.Id].RaiseRename(
+                FullPath(syncPair, "Budget.xlsx.111111.tmp"),
+                FullPath(syncPair, "Budget.xlsx"));
+            watcherFactory.CreatedWatchers[syncPair.Id].RaiseRename(
+                FullPath(syncPair, "Budget (1).xlsx.222222.tmp"),
+                FullPath(syncPair, "Budget (1).xlsx"));
+
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(1));
+                Assert.That(
+                    supervisor.LastRequest?.LocalChangedPaths,
+                    Is.EqualTo(new[] { "Budget (1).xlsx", "Budget.xlsx" }));
+                Assert.That(supervisor.LastRequest?.LocalDeletedPaths, Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task RenamedLocalChange_ToIgnoredTemporaryPathRequestsOnlyWorkbookSource()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true);
+            var watcherFactory = new FakeWatcherFactory();
+            var supervisor = new FakeSyncSupervisor();
+            var coordinator = new LocalChangeSyncCoordinator(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval);
+            await coordinator.StartAsync();
+
+            watcherFactory.CreatedWatchers[syncPair.Id].RaiseRename(
+                FullPath(syncPair, "Budget.xlsx"),
+                FullPath(syncPair, "Budget.xlsx.111111.tmp"));
+
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { "Budget.xlsx" }));
+                Assert.That(supervisor.LastRequest?.LocalDeletedPaths, Is.Empty);
+            });
+        }
+
+        [Test]
         public async Task RenamedLocalChange_WithProviderSuppressedSourceRequestsOldAndNewPaths()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);

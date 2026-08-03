@@ -58,6 +58,9 @@ namespace Cotton.Sync.Desktop.Startup
         private const string ProviderWriteDirectoryMoveTargetPath = "provider-write-directory-move/target/folder";
         private const string ProviderWriteDirectoryMoveSourceFilePath = ProviderWriteDirectoryMoveSourcePath + "/nested/file.txt";
         private const string ProviderWriteDirectoryMoveTargetFilePath = ProviderWriteDirectoryMoveTargetPath + "/nested/file.txt";
+        private const string ExcelAtomicSaveDirectoryPath = "excel-atomic-save";
+        private const string ExcelAtomicSaveFirstWorkbookPath = ExcelAtomicSaveDirectoryPath + "/Budget.xlsx";
+        private const string ExcelAtomicSaveSecondWorkbookPath = ExcelAtomicSaveDirectoryPath + "/Budget (1).xlsx";
         private const string ShellShareLinkDirectoryName = "share-link";
         private const string ShellShareLinkSyncedFilePath = ShellShareLinkDirectoryName + "/synced-file.txt";
         private const string ShellShareLinkRemoteOnlyFilePath = ShellShareLinkDirectoryName + "/remote-only-placeholder.txt";
@@ -181,6 +184,7 @@ namespace Cotton.Sync.Desktop.Startup
                 StringComparison.Ordinal);
             bool remoteUpdateAfterDehydrate = string.Equals(phase, "remote-update-after-dehydrate", StringComparison.Ordinal);
             bool replaceCloudOnlyUpload = string.Equals(phase, "replace-cloud-only-upload", StringComparison.Ordinal);
+            bool excelAtomicSave = string.Equals(phase, "excel-atomic-save", StringComparison.Ordinal);
             bool localRenameAfterProviderWrite = string.Equals(phase, "local-rename-after-provider-write", StringComparison.Ordinal);
             bool localMoveAfterProviderWrite = string.Equals(phase, "local-move-after-provider-write", StringComparison.Ordinal);
             bool shellShareLinkTargets = string.Equals(phase, "shell-share-link-targets", StringComparison.Ordinal);
@@ -203,6 +207,7 @@ namespace Cotton.Sync.Desktop.Startup
                 && !explorerAlwaysKeepDuringPopulation
                 && !remoteUpdateAfterDehydrate
                 && !replaceCloudOnlyUpload
+                && !excelAtomicSave
                 && !localRenameAfterProviderWrite
                 && !localMoveAfterProviderWrite
                 && !shellShareLinkTargets
@@ -245,6 +250,16 @@ namespace Cotton.Sync.Desktop.Startup
                     diagnostics: diagnostics);
             SyncPairSettings syncPair = CreateSyncPair(rootPath);
             int largeTreePlaceholderCount = GetLargeTreePlaceholderCount(startupOptions);
+            if (excelAtomicSave)
+            {
+                return await RunExcelAtomicSaveAsync(
+                    output,
+                    cloudFiles,
+                    syncPair,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             if (localRenameAfterProviderWrite)
             {
                 return await RunLocalRenameAfterProviderWriteAsync(
@@ -884,6 +899,135 @@ namespace Cotton.Sync.Desktop.Startup
 
             await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
             return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> RunExcelAtomicSaveAsync(
+            TextWriter output,
+            IWindowsCloudFilesAdapter cloudFiles,
+            SyncPairSettings syncPair,
+            CancellationToken cancellationToken)
+        {
+            string rootPath = syncPair.LocalRootPath;
+            string firstWorkbookPath = ToFullPath(rootPath, ExcelAtomicSaveFirstWorkbookPath);
+            string secondWorkbookPath = ToFullPath(rootPath, ExcelAtomicSaveSecondWorkbookPath);
+            RecordingRenameSyncSupervisor supervisor = new();
+            LocalChangeSyncCoordinator? coordinator = null;
+            int failures = 0;
+
+            try
+            {
+                TryUnregisterExistingRoot(cloudFiles, syncPair, output);
+                PrepareRoot(rootPath);
+                Directory.CreateDirectory(Path.GetDirectoryName(firstWorkbookPath)!);
+                await File.WriteAllTextAsync(firstWorkbookPath, "initial-budget", cancellationToken).ConfigureAwait(false);
+                await File.WriteAllTextAsync(secondWorkbookPath, "initial-budget-1", cancellationToken).ConfigureAwait(false);
+                coordinator = new LocalChangeSyncCoordinator(
+                    new SingleSyncPairSettingsStore(syncPair),
+                    supervisor,
+                    new FileSystemLocalSyncRootWatcherFactory(),
+                    debounceInterval: TimeSpan.FromMilliseconds(500),
+                    maxDebounceDelay: TimeSpan.FromSeconds(2));
+                await coordinator.StartAsync(cancellationToken).ConfigureAwait(false);
+
+                ReplaceLikeExcel(firstWorkbookPath, "updated-budget");
+                ReplaceLikeExcel(secondWorkbookPath, "updated-budget-1");
+                SyncRunRequest request = await supervisor
+                    .WaitForRequestAsync(TimeSpan.FromSeconds(10), cancellationToken)
+                    .ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMilliseconds(700), cancellationToken).ConfigureAwait(false);
+
+                bool exactWorkbookScope = !request.IsFull
+                    && request.LocalChangedPaths.Count == 2
+                    && request.LocalChangedPaths.Contains(ExcelAtomicSaveFirstWorkbookPath, StringComparer.OrdinalIgnoreCase)
+                    && request.LocalChangedPaths.Contains(ExcelAtomicSaveSecondWorkbookPath, StringComparer.OrdinalIgnoreCase)
+                    && request.LocalDeletedPaths.Count == 0;
+                if (exactWorkbookScope)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Excel-style atomic saves stayed scoped to exactly the two workbook paths."))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Excel-style atomic saves included a parent, lock, or temporary path in the sync request.")
+                        + " requestedPaths="
+                        + string.Join(",", request.LocalChangedPaths))
+                        .ConfigureAwait(false);
+                }
+
+                bool temporaryArtifactsGone = !Directory
+                    .EnumerateFileSystemEntries(Path.GetDirectoryName(firstWorkbookPath)!)
+                    .Any(path => Path.GetFileName(path).StartsWith("~$", StringComparison.Ordinal)
+                        || path.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase));
+                if (temporaryArtifactsGone)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Excel lock and temporary artifacts were ignored and removed."))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Excel lock or temporary artifacts remained after the save burst."))
+                        .ConfigureAwait(false);
+                }
+
+                if (supervisor.SyncNowCallCount == 1)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Two Excel-style saves emitted one debounced scoped request."))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Excel-style saves emitted an unexpected request count.")
+                        + " requests="
+                        + supervisor.SyncNowCallCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                failures++;
+                await output.WriteLineAsync(
+                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                if (coordinator is not null)
+                {
+                    await coordinator.StopAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+
+                PrepareRoot(rootPath);
+            }
+
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
+        private static void ReplaceLikeExcel(string targetPath, string content)
+        {
+            string directoryPath = Path.GetDirectoryName(targetPath)!;
+            string lockPath = Path.Combine(directoryPath, "~$" + Path.GetFileName(targetPath));
+            string temporaryPath = targetPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.WriteAllText(lockPath, "excel-lock");
+                File.WriteAllText(temporaryPath, content);
+                File.Replace(temporaryPath, targetPath, destinationBackupFileName: null, ignoreMetadataErrors: true);
+            }
+            finally
+            {
+                File.Delete(temporaryPath);
+                File.Delete(lockPath);
+            }
         }
 
         private static async Task<int> RunLocalMoveAfterProviderWriteAsync(

@@ -12,20 +12,17 @@ namespace Cotton.Sync.App.LocalChanges
 
         public PendingLocalSyncRequest(
             CancellationTokenSource cancellation,
-            string changedPath,
             DateTimeOffset createdAt)
         {
             Cancellation = cancellation;
-            ChangedPath = changedPath;
             CreatedAt = createdAt;
-            ChangedPaths.Add(changedPath);
         }
 
         public CancellationTokenSource Cancellation { get; }
 
         public DateTimeOffset CreatedAt { get; }
 
-        public string ChangedPath { get; private set; }
+        public string ChangedPath { get; private set; } = string.Empty;
 
         public HashSet<string> ChangedPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
 
