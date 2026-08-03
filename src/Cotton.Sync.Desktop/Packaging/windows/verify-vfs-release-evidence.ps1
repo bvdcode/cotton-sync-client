@@ -326,6 +326,9 @@ $localMoveAfterProviderWrite = Read-EvidenceFile -RelativePath "vfs-smoke\phase-
 Assert-Contains -Content $localMoveAfterProviderWrite -Expected "Real watcher preserved delete and create paths for a cross-directory move after provider metadata finalization." -Label "vfs-smoke\phase-local-move-after-provider-write\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $localMoveAfterProviderWrite -Expected "Cross-directory move stayed scoped and emitted one request." -Label "vfs-smoke\phase-local-move-after-provider-write\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $localMoveAfterProviderWrite -Expected "File-system cross-directory move left exactly the target file." -Label "vfs-smoke\phase-local-move-after-provider-write\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $localMoveAfterProviderWrite -Expected "Real watcher preserved the deleted source and created target for a directory move after placeholder repair metadata finalization." -Label "vfs-smoke\phase-local-move-after-provider-write\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $localMoveAfterProviderWrite -Expected "Directory move after placeholder repair stayed scoped and emitted one request." -Label "vfs-smoke\phase-local-move-after-provider-write\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $localMoveAfterProviderWrite -Expected "File-system directory move preserved the nested file only at the target." -Label "vfs-smoke\phase-local-move-after-provider-write\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $localMoveAfterProviderWrite -Expected "Result: passed" -Label "vfs-smoke\phase-local-move-after-provider-write\cloud-files-vfs-smoke.stdout.log"
 
 $explorerAlwaysKeep = Read-EvidenceFile -RelativePath "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"

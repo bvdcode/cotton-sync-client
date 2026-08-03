@@ -221,6 +221,10 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(runner, Does.Contain("Real watcher preserved delete and create paths for a cross-directory move after provider metadata finalization."));
                 Assert.That(runner, Does.Contain("Cross-directory move stayed scoped and emitted one request."));
                 Assert.That(runner, Does.Contain("File-system cross-directory move left exactly the target file."));
+                Assert.That(runner, Does.Contain("Directory.Move(directorySourcePath, directoryTargetPath)"));
+                Assert.That(runner, Does.Contain("Real watcher preserved the deleted source and created target for a directory move after placeholder repair metadata finalization."));
+                Assert.That(runner, Does.Contain("Directory move after placeholder repair stayed scoped and emitted one request."));
+                Assert.That(runner, Does.Contain("File-system directory move preserved the nested file only at the target."));
             });
         }
 

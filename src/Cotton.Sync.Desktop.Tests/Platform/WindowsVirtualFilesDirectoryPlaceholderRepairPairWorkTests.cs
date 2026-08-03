@@ -56,7 +56,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     suppression.BurstSuppressedRoots,
                     Is.EqualTo(new[] { syncPair.LocalRootPath }));
                 Assert.That(
-                    suppression.SuppressedWrites,
+                    suppression.MetadataSuppressedWrites,
                     Is.EqualTo(new[]
                     {
                         new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs/Reports"),
@@ -501,11 +501,18 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             public List<SuppressedWrite> SuppressedWrites { get; } = [];
 
+            public List<SuppressedWrite> MetadataSuppressedWrites { get; } = [];
+
             public List<string> BurstSuppressedRoots { get; } = [];
 
             public void SuppressProviderWrite(Guid syncPairId, string localRootPath, string relativePath)
             {
                 SuppressedWrites.Add(new SuppressedWrite(syncPairId, localRootPath, relativePath));
+            }
+
+            public void SuppressProviderMetadataWrite(Guid syncPairId, string localRootPath, string relativePath)
+            {
+                MetadataSuppressedWrites.Add(new SuppressedWrite(syncPairId, localRootPath, relativePath));
             }
 
             public IDisposable SuppressProviderWriteBurst(Guid syncPairId, string localRootPath)

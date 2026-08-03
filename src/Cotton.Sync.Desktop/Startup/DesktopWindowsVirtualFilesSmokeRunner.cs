@@ -54,6 +54,10 @@ namespace Cotton.Sync.Desktop.Startup
         private const string ProviderWriteRenameTargetPath = "provider-write-rename/renamed.txt";
         private const string ProviderWriteMoveSourcePath = "provider-write-move/source/move.txt";
         private const string ProviderWriteMoveTargetPath = "provider-write-move/target/moved.txt";
+        private const string ProviderWriteDirectoryMoveSourcePath = "provider-write-directory-move/source/folder";
+        private const string ProviderWriteDirectoryMoveTargetPath = "provider-write-directory-move/target/folder";
+        private const string ProviderWriteDirectoryMoveSourceFilePath = ProviderWriteDirectoryMoveSourcePath + "/nested/file.txt";
+        private const string ProviderWriteDirectoryMoveTargetFilePath = ProviderWriteDirectoryMoveTargetPath + "/nested/file.txt";
         private const string ShellShareLinkDirectoryName = "share-link";
         private const string ShellShareLinkSyncedFilePath = ShellShareLinkDirectoryName + "/synced-file.txt";
         private const string ShellShareLinkRemoteOnlyFilePath = ShellShareLinkDirectoryName + "/remote-only-placeholder.txt";
@@ -891,6 +895,10 @@ namespace Cotton.Sync.Desktop.Startup
             string rootPath = syncPair.LocalRootPath;
             string sourcePath = ToFullPath(rootPath, ProviderWriteMoveSourcePath);
             string targetPath = ToFullPath(rootPath, ProviderWriteMoveTargetPath);
+            string directorySourcePath = ToFullPath(rootPath, ProviderWriteDirectoryMoveSourcePath);
+            string directoryTargetPath = ToFullPath(rootPath, ProviderWriteDirectoryMoveTargetPath);
+            string directorySourceFilePath = ToFullPath(rootPath, ProviderWriteDirectoryMoveSourceFilePath);
+            string directoryTargetFilePath = ToFullPath(rootPath, ProviderWriteDirectoryMoveTargetFilePath);
             LocalChangeSuppression suppression = new();
             RecordingRenameSyncSupervisor supervisor = new();
             LocalChangeSyncCoordinator? coordinator = null;
@@ -965,6 +973,90 @@ namespace Cotton.Sync.Desktop.Startup
                     failures++;
                     await output.WriteLineAsync(
                         FormatCheck(false, "File-system cross-directory move did not leave exactly the target file."))
+                        .ConfigureAwait(false);
+                }
+
+                await coordinator.StopAsync(CancellationToken.None).ConfigureAwait(false);
+                coordinator = null;
+                PrepareRoot(rootPath);
+                Directory.CreateDirectory(Path.GetDirectoryName(directorySourceFilePath)!);
+                Directory.CreateDirectory(Path.GetDirectoryName(directoryTargetPath)!);
+                await File.WriteAllTextAsync(directorySourceFilePath, SmokeContentText, cancellationToken).ConfigureAwait(false);
+                LocalChangeSuppression directorySuppression = new();
+                RecordingRenameSyncSupervisor directorySupervisor = new();
+                directorySuppression.SuppressProviderMetadataWrite(
+                    syncPair.Id,
+                    rootPath,
+                    ProviderWriteDirectoryMoveSourcePath);
+                coordinator = new LocalChangeSyncCoordinator(
+                    new SingleSyncPairSettingsStore(syncPair),
+                    directorySupervisor,
+                    new FileSystemLocalSyncRootWatcherFactory(),
+                    debounceInterval: TimeSpan.FromMilliseconds(100),
+                    changeSuppression: directorySuppression,
+                    maxDebounceDelay: TimeSpan.FromSeconds(1));
+                await coordinator.StartAsync(cancellationToken).ConfigureAwait(false);
+
+                Directory.Move(directorySourcePath, directoryTargetPath);
+                SyncRunRequest directoryRequest = await directorySupervisor
+                    .WaitForRequestAsync(TimeSpan.FromSeconds(10), cancellationToken)
+                    .ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMilliseconds(300), cancellationToken).ConfigureAwait(false);
+
+                bool preservedDirectoryMoveScope = !directoryRequest.IsFull
+                    && directoryRequest.LocalChangedPaths.Contains(
+                        ProviderWriteDirectoryMoveSourcePath,
+                        StringComparer.OrdinalIgnoreCase)
+                    && directoryRequest.LocalChangedPaths.Contains(
+                        ProviderWriteDirectoryMoveTargetPath,
+                        StringComparer.OrdinalIgnoreCase)
+                    && directoryRequest.LocalDeletedPaths.Contains(
+                        ProviderWriteDirectoryMoveSourcePath,
+                        StringComparer.OrdinalIgnoreCase);
+                if (preservedDirectoryMoveScope)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Real watcher preserved the deleted source and created target for a directory move after placeholder repair metadata finalization."))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Placeholder repair metadata suppression hid part of the directory move scope."))
+                        .ConfigureAwait(false);
+                }
+
+                if (directorySupervisor.SyncNowCallCount == 1)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Directory move after placeholder repair stayed scoped and emitted one request."))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Directory move after placeholder repair emitted an unexpected request count.")
+                        + " requests="
+                        + directorySupervisor.SyncNowCallCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+
+                if (!Directory.Exists(directorySourcePath)
+                    && Directory.Exists(directoryTargetPath)
+                    && !File.Exists(directorySourceFilePath)
+                    && File.Exists(directoryTargetFilePath))
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "File-system directory move preserved the nested file only at the target."))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "File-system directory move did not preserve exactly the target subtree."))
                         .ConfigureAwait(false);
                 }
             }

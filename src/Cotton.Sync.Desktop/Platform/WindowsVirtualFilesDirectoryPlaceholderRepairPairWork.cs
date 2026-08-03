@@ -120,7 +120,7 @@ namespace Cotton.Sync.Desktop.Platform
                              .ThenBy(static entry => entry.RelativePath, StringComparer.OrdinalIgnoreCase))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    _localChangeSuppression?.SuppressProviderWrite(
+                    _localChangeSuppression?.SuppressProviderMetadataWrite(
                         syncPair.Id,
                         syncPair.LocalRootPath,
                         directory.RelativePath);

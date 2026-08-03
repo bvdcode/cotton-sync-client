@@ -2895,6 +2895,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     "PASS: Real watcher preserved delete and create paths for a cross-directory move after provider metadata finalization.",
                     "PASS: Cross-directory move stayed scoped and emitted one request.",
                     "PASS: File-system cross-directory move left exactly the target file.",
+                    "PASS: Real watcher preserved the deleted source and created target for a directory move after placeholder repair metadata finalization.",
+                    "PASS: Directory move after placeholder repair stayed scoped and emitted one request.",
+                    "PASS: File-system directory move preserved the nested file only at the target.",
                     "Result: passed"
                 });
             Directory.CreateDirectory(Path.Combine(evidenceDirectory, "vfs-smoke", "phase-explorer-always-keep"));
