@@ -1131,6 +1131,49 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public async Task StatusChanged_MapsWaitingRuntimeStateWithoutActionRequired()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            Uri serverUrl = new("https://cotton.example.test/");
+            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            await preferencesStore.InitializeAsync();
+            await preferencesStore.SaveAsync(new AppPreferences
+            {
+                RememberedServerUrl = serverUrl,
+            });
+            FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
+            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            using DesktopShellController controller = CreateController(paths, factory);
+            var statusEvents = new List<DesktopSyncStatusSnapshot>();
+            controller.StatusChanged += (_, status) => statusEvents.Add(status);
+            Guid syncPairId = Guid.NewGuid();
+            const string message = "Local file is not ready yet: Drafts/report.docx. Sync will retry.";
+
+            await controller.LoadAsync();
+            host.StatusPublisher.Publish(new SyncAppStatus(
+                isAuthenticated: true,
+                [
+                    new SyncPairStatus(
+                        syncPairId,
+                        "Documents",
+                        SyncPairRunState.Waiting,
+                        message,
+                        message,
+                        DateTime.UtcNow),
+                ],
+                DateTime.UtcNow));
+
+            DesktopSyncPairStatusSnapshot pairStatus = statusEvents.Last().SyncPairs.Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(pairStatus.Status, Is.EqualTo("Waiting"));
+                Assert.That(pairStatus.LastError, Is.EqualTo(message));
+                Assert.That(pairStatus.CurrentOperation, Is.EqualTo(message));
+                Assert.That(DesktopActionRequiredMessageResolver.FromStatus(statusEvents.Last()), Is.Empty);
+            });
+        }
+
+        [Test]
         public async Task LoadAsync_ReportsMissingEnabledLocalRootAsError()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);

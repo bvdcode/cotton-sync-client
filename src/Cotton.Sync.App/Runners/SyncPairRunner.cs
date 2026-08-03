@@ -395,7 +395,7 @@ namespace Cotton.Sync.App.Runners
 
         private async Task RunWorkWithRetryAsync(SyncRunRequest request, CancellationToken cancellationToken)
         {
-            for (int attempt = 1; attempt <= _retryOptions.MaxAttempts; attempt++)
+            for (int attempt = 1; ; attempt++)
             {
                 try
                 {
@@ -405,6 +405,11 @@ namespace Cotton.Sync.App.Runners
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
                     throw;
+                }
+                catch (LocalFileUnavailableException exception) when (attempt >= _retryOptions.MaxAttempts)
+                {
+                    await WaitForLocalFileAvailabilityAsync(exception, attempt, cancellationToken)
+                        .ConfigureAwait(false);
                 }
                 catch (Exception exception) when (IsRetriableSyncFailure(exception) && attempt < _retryOptions.MaxAttempts)
                 {
@@ -420,6 +425,85 @@ namespace Cotton.Sync.App.Runners
                     await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
                     SetState(SyncPairRunState.Syncing);
                 }
+            }
+        }
+
+        private async Task WaitForLocalFileAvailabilityAsync(
+            LocalFileUnavailableException exception,
+            int completedAttempts,
+            CancellationToken cancellationToken)
+        {
+            string message = CreateFailureMessage(exception);
+            int availabilityAttempt = completedAttempts;
+            bool firstWait = true;
+            while (true)
+            {
+                TimeSpan delay = GetRetryDelay(availabilityAttempt);
+                if (delay == TimeSpan.Zero)
+                {
+                    delay = TimeSpan.FromMilliseconds(10);
+                }
+
+                SetState(SyncPairRunState.Waiting, message);
+                if (firstWait)
+                {
+                    _logger.LogWarning(
+                        "Local file {RelativePath} remains unavailable after {AttemptCount} attempts; waiting {Delay} before checking it again.",
+                        exception.RelativePath,
+                        completedAttempts,
+                        delay);
+                    firstWait = false;
+                }
+                else
+                {
+                    _logger.LogDebug(
+                        "Local file {RelativePath} is still unavailable; checking it again after {Delay}.",
+                        exception.RelativePath,
+                        delay);
+                }
+
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                if (IsLocalFileReady(exception.FullPath))
+                {
+                    _logger.LogInformation(
+                        "Local file {RelativePath} became available; resuming sync.",
+                        exception.RelativePath);
+                    SetState(SyncPairRunState.Syncing);
+                    return;
+                }
+
+                availabilityAttempt++;
+            }
+        }
+
+        private static bool IsLocalFileReady(string fullPath)
+        {
+            try
+            {
+                using FileStream stream = new(
+                    fullPath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite | FileShare.Delete,
+                    bufferSize: 1,
+                    FileOptions.SequentialScan);
+                return true;
+            }
+            catch (FileNotFoundException)
+            {
+                return true;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                return true;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return true;
+            }
+            catch (IOException)
+            {
+                return false;
             }
         }
 
@@ -624,6 +708,9 @@ namespace Cotton.Sync.App.Runners
             {
                 SyncPairRunState.Scanning => "Scanning changes",
                 SyncPairRunState.Syncing => "Syncing changes",
+                SyncPairRunState.Waiting => string.IsNullOrWhiteSpace(lastError)
+                    ? "Waiting for a local file"
+                    : lastError.Trim(),
                 SyncPairRunState.Offline => string.IsNullOrWhiteSpace(lastError)
                     ? "Waiting for connection"
                     : "Waiting for connection: " + lastError.Trim(),
@@ -703,6 +790,11 @@ namespace Cotton.Sync.App.Runners
 
         private static SyncPairRunState GetRetriableFailureState(Exception exception)
         {
+            if (exception is LocalFileUnavailableException)
+            {
+                return SyncPairRunState.Waiting;
+            }
+
             return SyncFailureClassifier.IsTransientConnectionFailure(exception)
                 ? SyncPairRunState.Offline
                 : SyncPairRunState.Error;

@@ -1840,6 +1840,7 @@ namespace Cotton.Sync.Desktop.Shell
                 SyncPairRunState.Idle => "Idle",
                 SyncPairRunState.Scanning => "Scanning",
                 SyncPairRunState.Syncing => "Syncing",
+                SyncPairRunState.Waiting => "Waiting",
                 SyncPairRunState.Paused => "Paused",
                 SyncPairRunState.Offline => "Offline",
                 SyncPairRunState.Conflict => "Conflict",

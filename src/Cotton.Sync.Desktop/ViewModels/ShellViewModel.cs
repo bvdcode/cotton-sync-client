@@ -1081,6 +1081,8 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public bool HasOfflineStatus => HasOfflineSyncPairs && !HasActionRequired && !HasConflicts;
 
+        public bool HasWaitingStatus => string.Equals(GlobalStatus, "Waiting", StringComparison.Ordinal);
+
         private bool HasPairStatusAttention => SyncPairs.Any(static pair => pair.IsStatusAttention);
 
         public bool IsStatusCardVisible =>
@@ -4846,6 +4848,11 @@ namespace Cotton.Sync.Desktop.ViewModels
                 else
                 {
                     ClearSyncPairProgress(row);
+                    if (string.Equals(pairStatus.Status, "Waiting", StringComparison.Ordinal))
+                    {
+                        row.CurrentOperation = pairStatus.CurrentOperation ?? string.Empty;
+                    }
+
                     runProgressChanged |= _runProgressByPair.Remove(pairStatus.Id);
                     _runProgressAppliedAtUtcByPair.Remove(pairStatus.Id);
                     _transferProgressByPair.Remove(pairStatus.Id);
@@ -4901,6 +4908,12 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private bool ShouldAddStatusErrorActivity(DesktopSyncPairStatusSnapshot pairStatus)
         {
+            if (string.Equals(pairStatus.Status, "Waiting", StringComparison.Ordinal))
+            {
+                _lastStatusErrorActivityMessages.Remove(pairStatus.Id);
+                return false;
+            }
+
             if (string.IsNullOrWhiteSpace(pairStatus.LastError))
             {
                 _lastStatusErrorActivityMessages.Remove(pairStatus.Id);
@@ -5055,6 +5068,11 @@ namespace Cotton.Sync.Desktop.ViewModels
                 || string.Equals(pair.Status, "Scanning", StringComparison.Ordinal)))
             {
                 return "Syncing";
+            }
+
+            if (status.SyncPairs.Any(static pair => string.Equals(pair.Status, "Waiting", StringComparison.Ordinal)))
+            {
+                return "Waiting";
             }
 
             if (status.SyncPairs.Any(static pair => string.Equals(pair.Status, "Offline", StringComparison.Ordinal)))
@@ -5248,6 +5266,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             OnPropertyChanged(nameof(IsSyncPaused));
             OnPropertyChanged(nameof(HasStatusAttention));
             OnPropertyChanged(nameof(HasOfflineStatus));
+            OnPropertyChanged(nameof(HasWaitingStatus));
             OnPropertyChanged(nameof(IsStatusCardVisible));
             OnPropertyChanged(nameof(HeaderStatusText));
             OnPropertyChanged(nameof(StatusCardTitle));
@@ -5389,6 +5408,16 @@ namespace Cotton.Sync.Desktop.ViewModels
             if (HasOfflineSyncPairs)
             {
                 CurrentProgressText = "Waiting for connection to recover.";
+                return;
+            }
+
+            SyncPairRowViewModel? waitingPair = SyncPairs.FirstOrDefault(static pair =>
+                string.Equals(pair.Status, "Waiting", StringComparison.Ordinal));
+            if (waitingPair is not null)
+            {
+                CurrentProgressText = string.IsNullOrWhiteSpace(waitingPair.CurrentOperation)
+                    ? waitingPair.DisplayName + ": Waiting for a local file."
+                    : waitingPair.DisplayName + ": " + waitingPair.CurrentOperation;
                 return;
             }
 

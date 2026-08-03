@@ -162,6 +162,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(foldersSection, Does.Contain("Classes.active=\"{Binding IsStatusActive}\""));
                 Assert.That(foldersSection, Does.Contain("Classes.paused=\"{Binding IsStatusPaused}\""));
                 Assert.That(foldersSection, Does.Contain("Classes.offline=\"{Binding IsStatusOffline}\""));
+                Assert.That(foldersSection, Does.Contain("Classes.waiting=\"{Binding IsStatusWaiting}\""));
                 Assert.That(foldersSection, Does.Contain("Classes.attention=\"{Binding IsStatusAttention}\""));
                 Assert.That(foldersSection, Does.Contain("ToolTip.Tip=\"{Binding StatusIndicatorToolTip}\""));
                 Assert.That(foldersSection, Does.Contain("IsVisible=\"{Binding IsStatusIndicatorVisible}\""));
@@ -171,6 +172,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(appXaml, Does.Contain("Border.syncPairStatusIndicator.active"));
                 Assert.That(appXaml, Does.Contain("Border.syncPairStatusIndicator.paused"));
                 Assert.That(appXaml, Does.Contain("Border.syncPairStatusIndicator.offline"));
+                Assert.That(appXaml, Does.Contain("Border.syncPairStatusIndicator.waiting"));
                 Assert.That(appXaml, Does.Contain("Border.syncPairStatusIndicator.attention"));
                 Assert.That(foldersSection, Does.Contain("Text=\"{Binding EditableDisplayName}\""));
                 Assert.That(foldersSection, Does.Not.Contain("SelectedSyncPairEditableDisplayName"));
@@ -772,6 +774,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(statusCard, Does.Contain("IsVisible=\"{Binding IsStatusCardVisible}\""));
                 Assert.That(statusCard, Does.Contain("Classes.actionRequired=\"{Binding HasStatusAttention}\""));
                 Assert.That(statusCard, Does.Contain("Classes.offline=\"{Binding HasOfflineStatus}\""));
+                Assert.That(statusCard, Does.Contain("Classes.waiting=\"{Binding HasWaitingStatus}\""));
                 Assert.That(statusCard, Does.Not.Contain("Classes.actionRequired=\"{Binding HasActionRequired}\""));
                 Assert.That(statusCard, Does.Contain("Text=\"{Binding StatusCardDetailText}\""));
                 Assert.That(statusCard, Does.Contain("IsVisible=\"{Binding HasStatusCardDetail}\""));

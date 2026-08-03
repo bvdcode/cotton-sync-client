@@ -80,6 +80,10 @@
       <Setter Property="Background" Value="{DynamicResource CottonWarningSoftBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource CottonWarningBrush}" />
     </Style>
+    <Style Selector="Border.statusCard.waiting">
+      <Setter Property="Background" Value="{DynamicResource CottonWarningSoftBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CottonWarningBrush}" />
+    </Style>
     <Style Selector="Border.statusDot">
       <Setter Property="Background" Value="{DynamicResource CottonSuccessBrush}" />
     </Style>
@@ -87,6 +91,9 @@
       <Setter Property="Background" Value="{DynamicResource CottonErrorBrush}" />
     </Style>
     <Style Selector="Border.statusDot.offline">
+      <Setter Property="Background" Value="{DynamicResource CottonWarningBrush}" />
+    </Style>
+    <Style Selector="Border.statusDot.waiting">
       <Setter Property="Background" Value="{DynamicResource CottonWarningBrush}" />
     </Style>
     <Style Selector="Border.syncPairStatusIndicator">
@@ -99,6 +106,9 @@
       <Setter Property="Background" Value="{DynamicResource CottonWarningBrush}" />
     </Style>
     <Style Selector="Border.syncPairStatusIndicator.offline">
+      <Setter Property="Background" Value="{DynamicResource CottonWarningBrush}" />
+    </Style>
+    <Style Selector="Border.syncPairStatusIndicator.waiting">
       <Setter Property="Background" Value="{DynamicResource CottonWarningBrush}" />
     </Style>
     <Style Selector="Border.syncPairStatusIndicator.attention">

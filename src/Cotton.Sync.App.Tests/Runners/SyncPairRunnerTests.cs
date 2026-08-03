@@ -651,6 +651,121 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task SyncNowAsync_WaitsForPersistentlyLockedLocalFileWithoutActionRequiredAndRecovers()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "cotton-sync-runner-tests", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            string filePath = Path.Combine(root, "locked.txt");
+            File.WriteAllText(filePath, "locked");
+            FileStream? locked = new(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            var unavailable = new LocalFileUnavailableException(
+                "locked.txt",
+                filePath,
+                new IOException("The file is being used by another process."));
+            var work = new FakeSyncPairWork
+            {
+                Failures = [unavailable, unavailable],
+            };
+            var retryOptions = new SyncPairRunnerRetryOptions
+            {
+                MaxAttempts = 2,
+                InitialDelay = TimeSpan.FromMilliseconds(1),
+                MaxDelay = TimeSpan.FromMilliseconds(10),
+            };
+            var logger = new RecordingLogger<SyncPairRunner>();
+            SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true, root), work, retryOptions, logger);
+
+            try
+            {
+                Task sync = runner.SyncNowAsync();
+                for (int attempt = 0; attempt < 200 && runner.Status.State != SyncPairRunState.Waiting; attempt++)
+                {
+                    await Task.Delay(5);
+                }
+
+                SyncPairStatus waiting = runner.Status;
+                Assert.Multiple(() =>
+                {
+                    Assert.That(sync.IsCompleted, Is.False);
+                    Assert.That(waiting.State, Is.EqualTo(SyncPairRunState.Waiting));
+                    Assert.That(waiting.LastError, Does.Contain("locked.txt"));
+                    Assert.That(waiting.CurrentOperation, Does.Not.StartWith("Action required"));
+                    Assert.That(
+                        logger.Entries.Select(entry => entry.Message),
+                        Has.None.Contains("Sync pair runner failed"));
+                });
+
+                locked.Dispose();
+                locked = null;
+                await sync.WaitAsync(TimeSpan.FromSeconds(2));
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(work.RunCount, Is.EqualTo(3));
+                    Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Idle));
+                    Assert.That(runner.Status.LastError, Is.Null);
+                    Assert.That(runner.Status.CurrentOperation, Is.Null);
+                });
+            }
+            finally
+            {
+                locked?.Dispose();
+                Directory.Delete(root, recursive: true);
+            }
+        }
+
+        [Test]
+        public async Task PauseAsync_CancelsLocalFileWaitAndPausesRunner()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "cotton-sync-runner-tests", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            string filePath = Path.Combine(root, "locked.txt");
+            File.WriteAllText(filePath, "locked");
+            FileStream? locked = new(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            var unavailable = new LocalFileUnavailableException(
+                "locked.txt",
+                filePath,
+                new IOException("The file is being used by another process."));
+            var work = new FakeSyncPairWork
+            {
+                Failures = [unavailable],
+            };
+            var retryOptions = new SyncPairRunnerRetryOptions
+            {
+                MaxAttempts = 1,
+                InitialDelay = TimeSpan.FromSeconds(1),
+                MaxDelay = TimeSpan.FromSeconds(1),
+            };
+            SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true, root), work, retryOptions);
+
+            try
+            {
+                Task sync = runner.SyncNowAsync();
+                for (int attempt = 0; attempt < 200 && runner.Status.State != SyncPairRunState.Waiting; attempt++)
+                {
+                    await Task.Delay(5);
+                }
+
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Waiting));
+
+                await runner.PauseAsync().WaitAsync(TimeSpan.FromSeconds(2));
+                await sync.WaitAsync(TimeSpan.FromSeconds(2));
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(work.RunCount, Is.EqualTo(1));
+                    Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Paused));
+                    Assert.That(runner.Status.LastError, Is.Null);
+                });
+            }
+            finally
+            {
+                locked.Dispose();
+                Directory.Delete(root, recursive: true);
+            }
+        }
+
+        [Test]
         public async Task SyncNowAsync_RetriesLockedLocalFileAfterItBecomesReadable()
         {
             string root = Path.Combine(Path.GetTempPath(), "cotton-sync-runner-tests", Guid.NewGuid().ToString("N"));

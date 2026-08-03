@@ -1396,6 +1396,62 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
+        public async Task StatusChanged_ShowsWaitingForLocalFileWithoutActionRequired()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            const string message = "Local file is not ready yet: Drafts/report.docx. Sync will retry.";
+
+            controller.ReportStatus(new DesktopSyncStatusSnapshot(
+            [
+                new DesktopSyncPairStatusSnapshot(syncPairId, "Waiting", message, message),
+            ]));
+
+            Assert.Multiple(() =>
+            {
+                SyncPairRowViewModel row = viewModel.SyncPairs.Single();
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Waiting"));
+                Assert.That(viewModel.HeaderStatusText, Is.EqualTo("Waiting"));
+                Assert.That(viewModel.HasWaitingStatus, Is.True);
+                Assert.That(viewModel.HasStatusAttention, Is.False);
+                Assert.That(viewModel.HasActionRequired, Is.False);
+                Assert.That(viewModel.ActionRequiredMessage, Is.Empty);
+                Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Documents: " + message));
+                Assert.That(viewModel.Activities, Has.None.Matches<ActivityRowViewModel>(activity => activity.Kind == "Error"));
+                Assert.That(row.Status, Is.EqualTo("Waiting"));
+                Assert.That(row.IsStatusWaiting, Is.True);
+                Assert.That(row.IsStatusAttention, Is.False);
+            });
+        }
+
+        [Test]
+        public async Task StatusChanged_ActionRequiredTakesVisualPriorityOverWaiting()
+        {
+            Guid waitingPairId = Guid.NewGuid();
+            Guid errorPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(
+                CreatePair(waitingPairId, "Documents", "Idle"),
+                CreatePair(errorPairId, "Photos", "Idle")));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            controller.ReportStatus(new DesktopSyncStatusSnapshot(
+            [
+                new DesktopSyncPairStatusSnapshot(waitingPairId, "Waiting", "Document is locked."),
+                new DesktopSyncPairStatusSnapshot(errorPairId, "Error", "Local folder is missing."),
+            ]));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Action required"));
+                Assert.That(viewModel.HasStatusAttention, Is.True);
+                Assert.That(viewModel.HasWaitingStatus, Is.False);
+            });
+        }
+
+        [Test]
         public async Task StatusChanged_ClearsOfflineStateAfterConnectionRecovers()
         {
             Guid syncPairId = Guid.NewGuid();

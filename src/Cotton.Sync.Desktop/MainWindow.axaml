@@ -338,6 +338,7 @@
                   Classes="statusCard"
                   Classes.actionRequired="{Binding HasStatusAttention}"
                   Classes.offline="{Binding HasOfflineStatus}"
+                  Classes.waiting="{Binding HasWaitingStatus}"
                   IsVisible="{Binding IsStatusCardVisible}">
             <Grid ColumnDefinitions="Auto,*"
                   ColumnSpacing="9">
@@ -347,6 +348,7 @@
                       Classes="statusDot"
                       Classes.actionRequired="{Binding HasStatusAttention}"
                       Classes.offline="{Binding HasOfflineStatus}"
+                      Classes.waiting="{Binding HasWaitingStatus}"
                       VerticalAlignment="Center" />
               <StackPanel Grid.Column="1"
                           Spacing="1">
@@ -750,6 +752,7 @@
                                       Classes.active="{Binding IsStatusActive}"
                                       Classes.paused="{Binding IsStatusPaused}"
                                       Classes.offline="{Binding IsStatusOffline}"
+                                      Classes.waiting="{Binding IsStatusWaiting}"
                                       Classes.attention="{Binding IsStatusAttention}"
                                       ToolTip.Tip="{Binding StatusIndicatorToolTip}"
                                       VerticalAlignment="Center"

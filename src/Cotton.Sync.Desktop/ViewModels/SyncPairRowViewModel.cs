@@ -107,6 +107,8 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public bool IsStatusOffline => string.Equals(DisplayStatus, "Offline", StringComparison.Ordinal);
 
+        public bool IsStatusWaiting => string.Equals(DisplayStatus, "Waiting", StringComparison.Ordinal);
+
         public bool IsStatusAttention =>
             string.Equals(DisplayStatus, "Error", StringComparison.Ordinal)
             || string.Equals(DisplayStatus, "Conflict", StringComparison.Ordinal);
@@ -236,6 +238,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                     OnPropertyChanged(nameof(IsStatusActive));
                     OnPropertyChanged(nameof(IsStatusPaused));
                     OnPropertyChanged(nameof(IsStatusOffline));
+                    OnPropertyChanged(nameof(IsStatusWaiting));
                     OnPropertyChanged(nameof(IsStatusAttention));
                 }
             }

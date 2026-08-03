@@ -60,12 +60,25 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(row.IsStatusAttention, Is.False);
             });
 
+            row.Status = "Waiting";
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(row.DisplayStatus, Is.EqualTo("Waiting"));
+                Assert.That(row.IsStatusActive, Is.False);
+                Assert.That(row.IsStatusPaused, Is.False);
+                Assert.That(row.IsStatusOffline, Is.False);
+                Assert.That(row.IsStatusWaiting, Is.True);
+                Assert.That(row.IsStatusAttention, Is.False);
+            });
+
             row.Status = "Error";
 
             Assert.Multiple(() =>
             {
                 Assert.That(row.DisplayStatus, Is.EqualTo("Error"));
                 Assert.That(row.IsStatusOffline, Is.False);
+                Assert.That(row.IsStatusWaiting, Is.False);
                 Assert.That(row.IsStatusAttention, Is.True);
             });
         }

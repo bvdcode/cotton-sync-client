@@ -52,5 +52,10 @@ namespace Cotton.Sync.App.Status
         /// The sync pair has an action-required error.
         /// </summary>
         Error = 8,
+
+        /// <summary>
+        /// The sync pair is waiting for a transient local resource to become available.
+        /// </summary>
+        Waiting = 9,
     }
 }
