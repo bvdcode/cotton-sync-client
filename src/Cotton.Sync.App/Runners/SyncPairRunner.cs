@@ -188,6 +188,12 @@ namespace Cotton.Sync.App.Runners
                     SetState(SyncPairRunState.Syncing);
                     await RunWorkWithRetryAsync(request, syncCancellation.Token).ConfigureAwait(false);
                     SetState(SyncPairRunState.Idle, lastSuccessfulSyncAtUtc: DateTime.UtcNow);
+                    _logger.LogInformation(
+                        "Completed {SyncScope} sync for {SyncPairId}; causes={SyncCauses}; requested paths={RequestedPathCount}.",
+                        request.IsFull ? "full" : "scoped",
+                        _syncPair.Id,
+                        request.Causes,
+                        request.LocalChangedPaths.Count);
                 }
                 catch (OperationCanceledException) when (IsActiveSyncCancellation(
                     activeSyncCancellation,

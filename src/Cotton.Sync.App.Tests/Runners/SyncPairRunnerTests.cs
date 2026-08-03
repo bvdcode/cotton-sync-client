@@ -97,6 +97,33 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task SyncNowAsync_LogsCompletionForSuccessfulScopedRequest()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true);
+            var logger = new RecordingLogger<SyncPairRunner>();
+            SyncPairRunner runner = CreateRunner(syncPair, logger: logger);
+            SyncRunRequest request = SyncRunRequest.ForLocalChangedPaths([
+                "Docs/report.txt",
+                "Docs/report-renamed.txt",
+            ]);
+
+            await runner.SyncNowAsync(request);
+
+            string[] messages = logger.Entries
+                .Where(entry => entry.Level == LogLevel.Information)
+                .Select(entry => entry.Message)
+                .ToArray();
+            Assert.Multiple(() =>
+            {
+                Assert.That(messages, Has.Length.EqualTo(2));
+                Assert.That(messages[0], Does.StartWith("Starting scoped sync"));
+                Assert.That(messages[1], Does.StartWith("Completed scoped sync"));
+                Assert.That(messages[1], Does.Contain(syncPair.Id.ToString()));
+                Assert.That(messages[1], Does.Contain("requested paths=2"));
+            });
+        }
+
+        [Test]
         public async Task StartAsync_DoesNotMarkPairAsSuccessfullySynced()
         {
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true));
