@@ -115,6 +115,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             var tokenStore = new FakeCottonTokenStore(hasStoredTokens: false);
             FakeDesktopApplicationHost signedInHost = FakeDesktopApplicationHost.Create(serverUrl, tokenStore);
             FakeDesktopApplicationHost restoredHost = FakeDesktopApplicationHost.Create(serverUrl, tokenStore);
+            signedInHost.App.StartSyncStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            restoredHost.App.StartSyncStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             signedInHost.App.PreferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             var factory = new QueueingDesktopSyncApplicationFactory(signedInHost.Host, restoredHost.Host);
 
@@ -125,6 +127,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                     " desktop@example.test ",
                     "password",
                     null));
+                await signedInHost.App.StartSyncStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
                 Assert.Multiple(() =>
                 {
@@ -139,6 +142,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             await using DesktopShellController restoredController = CreateController(paths, factory);
 
             DesktopShellSnapshot snapshot = await restoredController.LoadAsync();
+            await restoredHost.App.StartSyncStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
             Assert.Multiple(() =>
             {
@@ -151,6 +155,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(signedInHost.App.StopSyncCalls, Is.EqualTo(1));
                 Assert.That(signedInHost.AsyncResource.DisposeAsyncCalls, Is.EqualTo(1));
                 Assert.That(restoredHost.App.RestoreSessionCalls, Is.EqualTo(1));
+                Assert.That(restoredHost.App.StartSyncCalls, Is.EqualTo(1));
                 Assert.That(tokenStore.ClearAsyncCalls, Is.Zero);
             });
         }

@@ -50,6 +50,8 @@ namespace Cotton.Sync.Desktop.Startup
         private const string NonEmptyPreservationRemoteOnlyFilePath = NonEmptyPreservationRemoteOnlyDirectoryName + "/cloud-only.txt";
         private const string ReplaceCloudOnlyDirectoryName = "replace-cloud-only";
         private const string ReplaceCloudOnlyRelativePath = ReplaceCloudOnlyDirectoryName + "/replace-smoke.txt";
+        private const string ProviderWriteRenameSourcePath = "provider-write-rename/source.txt";
+        private const string ProviderWriteRenameTargetPath = "provider-write-rename/renamed.txt";
         private const string ShellShareLinkDirectoryName = "share-link";
         private const string ShellShareLinkSyncedFilePath = ShellShareLinkDirectoryName + "/synced-file.txt";
         private const string ShellShareLinkRemoteOnlyFilePath = ShellShareLinkDirectoryName + "/remote-only-placeholder.txt";
@@ -173,6 +175,7 @@ namespace Cotton.Sync.Desktop.Startup
                 StringComparison.Ordinal);
             bool remoteUpdateAfterDehydrate = string.Equals(phase, "remote-update-after-dehydrate", StringComparison.Ordinal);
             bool replaceCloudOnlyUpload = string.Equals(phase, "replace-cloud-only-upload", StringComparison.Ordinal);
+            bool localRenameAfterProviderWrite = string.Equals(phase, "local-rename-after-provider-write", StringComparison.Ordinal);
             bool shellShareLinkTargets = string.Equals(phase, "shell-share-link-targets", StringComparison.Ordinal);
             bool desktopRootLifecycle = string.Equals(phase, "desktop-root-lifecycle", StringComparison.Ordinal);
             bool desktopSessionRestore = string.Equals(phase, "desktop-session-restore", StringComparison.Ordinal);
@@ -193,6 +196,7 @@ namespace Cotton.Sync.Desktop.Startup
                 && !explorerAlwaysKeepDuringPopulation
                 && !remoteUpdateAfterDehydrate
                 && !replaceCloudOnlyUpload
+                && !localRenameAfterProviderWrite
                 && !shellShareLinkTargets
                 && !desktopRootLifecycle
                 && !desktopSessionRestore)
@@ -233,6 +237,16 @@ namespace Cotton.Sync.Desktop.Startup
                     diagnostics: diagnostics);
             SyncPairSettings syncPair = CreateSyncPair(rootPath);
             int largeTreePlaceholderCount = GetLargeTreePlaceholderCount(startupOptions);
+            if (localRenameAfterProviderWrite)
+            {
+                return await RunLocalRenameAfterProviderWriteAsync(
+                    output,
+                    cloudFiles,
+                    syncPair,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             if (initialStreamingLogging)
             {
                 return await RunInitialStreamingLoggingAsync(
@@ -742,6 +756,112 @@ namespace Cotton.Sync.Desktop.Startup
                     + " "
                     + CleanSingleLine(item.Details))
                     .ConfigureAwait(false);
+            }
+
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> RunLocalRenameAfterProviderWriteAsync(
+            TextWriter output,
+            IWindowsCloudFilesAdapter cloudFiles,
+            SyncPairSettings syncPair,
+            CancellationToken cancellationToken)
+        {
+            string rootPath = syncPair.LocalRootPath;
+            string sourcePath = ToFullPath(rootPath, ProviderWriteRenameSourcePath);
+            string targetPath = ToFullPath(rootPath, ProviderWriteRenameTargetPath);
+            LocalChangeSuppression suppression = new();
+            RecordingRenameSyncSupervisor supervisor = new();
+            LocalChangeSyncCoordinator? coordinator = null;
+            int failures = 0;
+
+            try
+            {
+                TryUnregisterExistingRoot(cloudFiles, syncPair, output);
+                PrepareRoot(rootPath);
+                Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+                await File.WriteAllTextAsync(sourcePath, SmokeContentText, cancellationToken).ConfigureAwait(false);
+                suppression.SuppressProviderWrite(syncPair.Id, rootPath, ProviderWriteRenameSourcePath);
+                coordinator = new LocalChangeSyncCoordinator(
+                    new SingleSyncPairSettingsStore(syncPair),
+                    supervisor,
+                    new FileSystemLocalSyncRootWatcherFactory(),
+                    debounceInterval: TimeSpan.FromMilliseconds(100),
+                    changeSuppression: suppression,
+                    maxDebounceDelay: TimeSpan.FromSeconds(1));
+                await coordinator.StartAsync(cancellationToken).ConfigureAwait(false);
+
+                File.Move(sourcePath, targetPath);
+                SyncRunRequest request = await supervisor
+                    .WaitForRequestAsync(TimeSpan.FromSeconds(10), cancellationToken)
+                    .ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMilliseconds(300), cancellationToken).ConfigureAwait(false);
+
+                bool preservedBothPaths = !request.IsFull
+                    && request.LocalChangedPaths.Count == 2
+                    && request.LocalChangedPaths.Contains(ProviderWriteRenameSourcePath, StringComparer.OrdinalIgnoreCase)
+                    && request.LocalChangedPaths.Contains(ProviderWriteRenameTargetPath, StringComparer.OrdinalIgnoreCase)
+                    && request.LocalDeletedPaths.Count == 0;
+                if (preservedBothPaths)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Real watcher preserved both paths for a user rename after provider write suppression."))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Provider write suppression hid part of the user rename scope."))
+                        .ConfigureAwait(false);
+                }
+
+                if (supervisor.SyncNowCallCount == 1)
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "Provider-suppressed user rename stayed scoped and emitted one request."))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "Provider-suppressed user rename emitted an unexpected request count.")
+                        + " requests="
+                        + supervisor.SyncNowCallCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        .ConfigureAwait(false);
+                }
+
+                if (!File.Exists(sourcePath) && File.Exists(targetPath))
+                {
+                    await output.WriteLineAsync(
+                        FormatCheck(true, "File-system rename completed without duplicating the local file."))
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    failures++;
+                    await output.WriteLineAsync(
+                        FormatCheck(false, "File-system rename did not leave exactly the target file."))
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                failures++;
+                await output.WriteLineAsync(
+                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                if (coordinator is not null)
+                {
+                    await coordinator.StopAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+
+                PrepareRoot(rootPath);
             }
 
             await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
@@ -7233,6 +7353,91 @@ namespace Cotton.Sync.Desktop.Startup
 
             public Task OpenWebAsync(Uri url, CancellationToken cancellationToken = default)
             {
+                return Task.CompletedTask;
+            }
+        }
+
+        private class RecordingRenameSyncSupervisor : ISyncSupervisor
+        {
+            private readonly TaskCompletionSource<SyncRunRequest> _request = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            private int _syncNowCallCount;
+
+            public IReadOnlyList<SyncPairStatus> CurrentStatuses => [];
+
+            public int SyncNowCallCount => Volatile.Read(ref _syncNowCallCount);
+
+            public Task<SyncRunRequest> WaitForRequestAsync(TimeSpan timeout, CancellationToken cancellationToken)
+            {
+                return _request.Task.WaitAsync(timeout, cancellationToken);
+            }
+
+            public Task StartAsync(CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.CompletedTask;
+            }
+
+            public Task StartAsync(bool startPaused, CancellationToken cancellationToken = default)
+            {
+                return StartAsync(cancellationToken);
+            }
+
+            public Task SyncAllAsync(CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.CompletedTask;
+            }
+
+            public Task SyncAllAsync(SyncRunRequest request, CancellationToken cancellationToken = default)
+            {
+                ArgumentNullException.ThrowIfNull(request);
+                return SyncAllAsync(cancellationToken);
+            }
+
+            public Task SyncNowAsync(Guid syncPairId, CancellationToken cancellationToken = default)
+            {
+                return SyncNowAsync(syncPairId, SyncRunRequest.Full, cancellationToken);
+            }
+
+            public Task SyncNowAsync(
+                Guid syncPairId,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ArgumentNullException.ThrowIfNull(request);
+                Interlocked.Increment(ref _syncNowCallCount);
+                _request.TrySetResult(request);
+                return Task.CompletedTask;
+            }
+
+            public Task PauseAllAsync(CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.CompletedTask;
+            }
+
+            public Task PauseAsync(Guid syncPairId, CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.CompletedTask;
+            }
+
+            public Task ResumeAllAsync(CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.CompletedTask;
+            }
+
+            public Task ResumeAsync(Guid syncPairId, CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.CompletedTask;
+            }
+
+            public Task StopAsync(CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
                 return Task.CompletedTask;
             }
         }

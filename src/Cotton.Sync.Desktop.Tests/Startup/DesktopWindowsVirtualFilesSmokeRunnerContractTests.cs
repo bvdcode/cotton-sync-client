@@ -191,6 +191,24 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void RunAsync_LocalRenameAfterProviderWriteUsesRealWatcherAndPreservesBothPaths()
+        {
+            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(runner, Does.Contain("\"local-rename-after-provider-write\""));
+                Assert.That(runner, Does.Contain("RunLocalRenameAfterProviderWriteAsync("));
+                Assert.That(runner, Does.Contain("new FileSystemLocalSyncRootWatcherFactory()"));
+                Assert.That(runner, Does.Contain("suppression.SuppressProviderWrite("));
+                Assert.That(runner, Does.Contain("File.Move(sourcePath, targetPath)"));
+                Assert.That(runner, Does.Contain("Real watcher preserved both paths for a user rename after provider write suppression."));
+                Assert.That(runner, Does.Contain("Provider-suppressed user rename stayed scoped and emitted one request."));
+                Assert.That(runner, Does.Contain("File-system rename completed without duplicating the local file."));
+            });
+        }
+
+        [Test]
         public void RunAsync_ExplorerAlwaysKeepPhaseVerifiesPinnedHydrationPath()
         {
             string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));

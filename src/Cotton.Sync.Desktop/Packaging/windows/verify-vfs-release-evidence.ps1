@@ -316,6 +316,12 @@ Assert-Contains -Content $replaceCloudOnlyUpload -Expected "Explorer shell statu
 Assert-Contains -Content $replaceCloudOnlyUpload -Expected "Explorer shell status settled for uploaded replacement parent directory." -Label "vfs-smoke\phase-replace-cloud-only-upload\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $replaceCloudOnlyUpload -Expected "Result: passed" -Label "vfs-smoke\phase-replace-cloud-only-upload\cloud-files-vfs-smoke.stdout.log"
 
+$localRenameAfterProviderWrite = Read-EvidenceFile -RelativePath "vfs-smoke\phase-local-rename-after-provider-write\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $localRenameAfterProviderWrite -Expected "Real watcher preserved both paths for a user rename after provider write suppression." -Label "vfs-smoke\phase-local-rename-after-provider-write\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $localRenameAfterProviderWrite -Expected "Provider-suppressed user rename stayed scoped and emitted one request." -Label "vfs-smoke\phase-local-rename-after-provider-write\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $localRenameAfterProviderWrite -Expected "File-system rename completed without duplicating the local file." -Label "vfs-smoke\phase-local-rename-after-provider-write\cloud-files-vfs-smoke.stdout.log"
+Assert-Contains -Content $localRenameAfterProviderWrite -Expected "Result: passed" -Label "vfs-smoke\phase-local-rename-after-provider-write\cloud-files-vfs-smoke.stdout.log"
+
 $explorerAlwaysKeep = Read-EvidenceFile -RelativePath "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $explorerAlwaysKeep -Expected "Explorer shell exposed and invoked Always keep on this device." -Label "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
 Assert-Contains -Content $explorerAlwaysKeep -Expected "Explorer Always keep hydrated the placeholder and kept it pinned." -Label "vfs-smoke\phase-explorer-always-keep\cloud-files-vfs-smoke.stdout.log"
