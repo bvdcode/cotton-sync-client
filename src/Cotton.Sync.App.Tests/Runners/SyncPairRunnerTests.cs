@@ -239,6 +239,65 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task SyncNowAsync_QueuesLocalChangeWhilePausedAndRunsItAfterResume()
+        {
+            var work = new FakeSyncPairWork();
+            SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
+            SyncRunRequest localChange = SyncRunRequest.ForLocalChangedPaths(["Docs/paused.txt"]);
+
+            await runner.PauseAsync();
+            await runner.SyncNowAsync(localChange);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(work.RunCount, Is.Zero);
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Paused));
+            });
+
+            await runner.ResumeAsync();
+            await runner.SyncNowAsync(SyncRunRequest.ForFull(SyncRunCause.Resume));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(work.Requests, Has.Count.EqualTo(2));
+                Assert.That(work.Requests[0].IsFull, Is.True);
+                Assert.That(work.Requests[0].Causes, Is.EqualTo(SyncRunCause.Resume));
+                Assert.That(work.Requests[1].IsFull, Is.False);
+                Assert.That(work.Requests[1].Causes, Is.EqualTo(SyncRunCause.LocalChange));
+                Assert.That(work.Requests[1].LocalChangedPaths, Is.EqualTo(new[] { "Docs/paused.txt" }));
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Idle));
+            });
+        }
+
+        [Test]
+        public async Task PauseAsync_PreservesLocalChangeArrivingWhileActiveWorkCancels()
+        {
+            var work = new BlockingFirstRunSyncPairWork();
+            SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
+            SyncRunRequest localChange = SyncRunRequest.ForLocalChangedPaths(["Docs/during-pause.txt"]);
+
+            Task activeSync = runner.SyncNowAsync(SyncRunRequest.ForFull(SyncRunCause.Manual));
+            await work.WaitForRunAsync(TimeSpan.FromSeconds(2));
+            Task pause = runner.PauseAsync();
+            await runner.SyncNowAsync(localChange);
+            await pause.WaitAsync(TimeSpan.FromSeconds(2));
+            await activeSync.WaitAsync(TimeSpan.FromSeconds(2));
+
+            await runner.ResumeAsync();
+            await runner.SyncNowAsync(SyncRunRequest.ForFull(SyncRunCause.Resume));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(work.Requests, Has.Count.EqualTo(3));
+                Assert.That(work.Requests[0].Causes, Is.EqualTo(SyncRunCause.Manual));
+                Assert.That(work.Requests[1].Causes, Is.EqualTo(SyncRunCause.Resume));
+                Assert.That(work.Requests[2].Causes, Is.EqualTo(SyncRunCause.LocalChange));
+                Assert.That(work.Requests[2].LocalChangedPaths, Is.EqualTo(new[] { "Docs/during-pause.txt" }));
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Idle));
+            });
+        }
+
+        [Test]
         public async Task PauseAsync_CancelsRunningSyncWorkAndPausesRunner()
         {
             var work = new CancellationObservingSyncPairWork();
@@ -1301,6 +1360,8 @@ namespace Cotton.Sync.App.Tests.Runners
 
             public SyncRunRequest? LastRequest { get; private set; }
 
+            public List<SyncRunRequest> Requests { get; } = [];
+
             public int RunCount { get; private set; }
 
             public Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
@@ -1326,6 +1387,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 CancellationToken cancellationToken = default)
             {
                 LastRequest = request;
+                Requests.Add(request);
                 return RunOnceAsync(syncPair, cancellationToken);
             }
         }
@@ -1559,6 +1621,8 @@ namespace Cotton.Sync.App.Tests.Runners
 
             public int RunCount { get; private set; }
 
+            public List<SyncRunRequest> Requests { get; } = [];
+
             public async Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
             {
                 RunCount++;
@@ -1574,6 +1638,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 SyncRunRequest request,
                 CancellationToken cancellationToken = default)
             {
+                Requests.Add(request);
                 return RunOnceAsync(syncPair, cancellationToken);
             }
 

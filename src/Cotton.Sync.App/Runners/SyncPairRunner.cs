@@ -27,6 +27,7 @@ namespace Cotton.Sync.App.Runners
         private CancellationTokenSource? _activeSyncCancellation;
         private ActiveSyncCancellationReason _activeSyncCancellationReason;
         private bool _isSyncInProgress;
+        private bool _queueSyncRequestsWhileBlocked;
         private SyncRunRequest? _activeSyncRequest;
         private SyncRunRequest? _failedSyncRequest;
         private SyncRunRequest? _pendingFullSyncRequest;
@@ -86,7 +87,7 @@ namespace Cotton.Sync.App.Runners
         public async Task PauseAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            SetSyncRequestsBlocked(isBlocked: true);
+            SetSyncRequestsBlocked(isBlocked: true, queueIncomingRequests: true);
             CancelActiveSync(ActiveSyncCancellationReason.Pause);
             try
             {
@@ -288,6 +289,11 @@ namespace Cotton.Sync.App.Runners
             {
                 if (_syncRequestsBlocked)
                 {
+                    if (_queueSyncRequestsWhileBlocked)
+                    {
+                        QueuePendingRequest(request);
+                    }
+
                     return false;
                 }
 
@@ -332,6 +338,13 @@ namespace Cotton.Sync.App.Runners
         {
             lock (_syncRequestGate)
             {
+                if (_syncRequestsBlocked)
+                {
+                    _isSyncInProgress = false;
+                    _activeSyncRequest = null;
+                    return false;
+                }
+
                 SyncRunRequest? nextRequest = TakeNextPendingRequest();
                 if (nextRequest is not null)
                 {
@@ -609,11 +622,12 @@ namespace Cotton.Sync.App.Runners
             }
         }
 
-        private void SetSyncRequestsBlocked(bool isBlocked)
+        private void SetSyncRequestsBlocked(bool isBlocked, bool queueIncomingRequests = false)
         {
             lock (_syncRequestGate)
             {
                 _syncRequestsBlocked = isBlocked;
+                _queueSyncRequestsWhileBlocked = isBlocked && queueIncomingRequests;
                 if (isBlocked)
                 {
                     _failedSyncRequest = null;
@@ -626,7 +640,10 @@ namespace Cotton.Sync.App.Runners
         private void RestoreSyncRequestBlockFromStatus()
         {
             SyncPairRunState state = Status.State;
-            SetSyncRequestsBlocked(!_syncPair.IsEnabled || state is SyncPairRunState.Disabled or SyncPairRunState.Paused);
+            bool isPaused = state == SyncPairRunState.Paused;
+            SetSyncRequestsBlocked(
+                !_syncPair.IsEnabled || state == SyncPairRunState.Disabled || isPaused,
+                queueIncomingRequests: isPaused);
         }
 
         private void SetState(
