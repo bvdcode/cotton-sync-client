@@ -476,7 +476,7 @@ namespace Cotton.Sync.App.Runners
                 }
 
                 await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-                if (IsLocalFileReady(exception.FullPath))
+                if (IsLocalFileReady(exception))
                 {
                     _logger.LogInformation(
                         "Local file {RelativePath} became available; resuming sync.",
@@ -489,15 +489,18 @@ namespace Cotton.Sync.App.Runners
             }
         }
 
-        private static bool IsLocalFileReady(string fullPath)
+        private static bool IsLocalFileReady(LocalFileUnavailableException exception)
         {
             try
             {
+                FileShare fileShare = exception.RequiresExclusiveAccess
+                    ? FileShare.None
+                    : FileShare.ReadWrite | FileShare.Delete;
                 using FileStream stream = new(
-                    fullPath,
+                    exception.FullPath,
                     FileMode.Open,
                     FileAccess.Read,
-                    FileShare.ReadWrite | FileShare.Delete,
+                    fileShare,
                     bufferSize: 1,
                     FileOptions.SequentialScan);
                 return true;

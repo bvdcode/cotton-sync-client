@@ -774,6 +774,65 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task SyncNowAsync_WaitsForExclusiveAccessRequiredByPlaceholderFinalization()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "cotton-sync-runner-tests", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            string filePath = Path.Combine(root, "open-in-excel.xlsx");
+            File.WriteAllText(filePath, "workbook");
+            FileStream? openWorkbook = new(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            LocalFileUnavailableException unavailable = new(
+                "open-in-excel.xlsx",
+                filePath,
+                new IOException("The file is being used by another process."),
+                requiresExclusiveAccess: true);
+            FakeSyncPairWork work = new()
+            {
+                Failures = [unavailable],
+            };
+            SyncPairRunnerRetryOptions retryOptions = new()
+            {
+                MaxAttempts = 1,
+                InitialDelay = TimeSpan.FromMilliseconds(1),
+                MaxDelay = TimeSpan.FromMilliseconds(10),
+            };
+            SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true, root), work, retryOptions);
+
+            try
+            {
+                Task sync = runner.SyncNowAsync();
+                for (int attempt = 0; attempt < 200 && runner.Status.State != SyncPairRunState.Waiting; attempt++)
+                {
+                    await Task.Delay(5);
+                }
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(sync.IsCompleted, Is.False);
+                    Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Waiting));
+                    Assert.That(runner.Status.LastError, Does.Contain("open-in-excel.xlsx"));
+                    Assert.That(runner.Status.CurrentOperation, Does.Not.StartWith("Action required"));
+                });
+
+                openWorkbook.Dispose();
+                openWorkbook = null;
+                await sync.WaitAsync(TimeSpan.FromSeconds(2));
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(work.RunCount, Is.EqualTo(2));
+                    Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Idle));
+                    Assert.That(runner.Status.LastError, Is.Null);
+                });
+            }
+            finally
+            {
+                openWorkbook?.Dispose();
+                Directory.Delete(root, recursive: true);
+            }
+        }
+
+        [Test]
         public async Task PauseAsync_CancelsLocalFileWaitAndPausesRunner()
         {
             string root = Path.Combine(Path.GetTempPath(), "cotton-sync-runner-tests", Guid.NewGuid().ToString("N"));

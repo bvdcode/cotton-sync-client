@@ -4,6 +4,7 @@
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Files;
 using Cotton.Nodes;
+using Cotton.Sync.Local;
 using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
 using Microsoft.Win32.SafeHandles;
@@ -21,6 +22,8 @@ namespace Cotton.Sync.Desktop.Platform
 
         private const int HResultFileNotFound = unchecked((int)0x80070002);
         private const int HResultPathNotFound = unchecked((int)0x80070003);
+        private const int HResultSharingViolation = unchecked((int)0x80070020);
+        private const int HResultLockViolation = unchecked((int)0x80070021);
         private const int HResultCloudFileUnsuccessful = unchecked((int)0x80070185);
         private const int ReparseDataBufferSize = 16 * 1024;
         private const uint FsctlGetReparsePoint = 0x000900A8;
@@ -1111,7 +1114,18 @@ namespace Cotton.Sync.Desktop.Platform
 
             if (_isReparsePoint(fullPlaceholderPath))
             {
-                SetInSyncState(syncPair, normalizedPath);
+                try
+                {
+                    SetInSyncState(syncPair, normalizedPath);
+                }
+                catch (WindowsCloudFilesNativeException exception) when (IsSharingViolation(exception))
+                {
+                    throw new LocalFileUnavailableException(
+                        normalizedPath,
+                        fullPlaceholderPath,
+                        exception,
+                        requiresExclusiveAccess: true);
+                }
             }
             else
             {
@@ -1134,6 +1148,20 @@ namespace Cotton.Sync.Desktop.Platform
                         registration.LocalRootPath,
                         normalizedPath);
                     _shellChangeNotifier.NotifyItemUpdated(fullPlaceholderPath);
+                }
+                catch (WindowsCloudFilesNativeException exception) when (IsSharingViolation(exception))
+                {
+                    RecordFailure(
+                        operation,
+                        syncPair.Id.ToString(),
+                        registration.LocalRootPath,
+                        normalizedPath,
+                        exception);
+                    throw new LocalFileUnavailableException(
+                        normalizedPath,
+                        fullPlaceholderPath,
+                        exception,
+                        requiresExclusiveAccess: true);
                 }
                 catch (Exception exception)
                 {
@@ -1534,6 +1562,11 @@ namespace Cotton.Sync.Desktop.Platform
 
             reparseTag = BinaryPrimitives.ReadUInt32LittleEndian(buffer);
             return true;
+        }
+
+        private static bool IsSharingViolation(WindowsCloudFilesNativeException exception)
+        {
+            return exception.HResult is HResultSharingViolation or HResultLockViolation;
         }
 
         internal static string CreateReparseTagOpenPath(string fullPath)

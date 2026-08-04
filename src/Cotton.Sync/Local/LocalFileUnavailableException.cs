@@ -11,23 +11,33 @@ namespace Cotton.Sync.Local
         /// <summary>
         /// Initializes a new instance of the <see cref="LocalFileUnavailableException" /> class.
         /// </summary>
-        public LocalFileUnavailableException(string relativePath, string fullPath, Exception innerException)
+        public LocalFileUnavailableException(
+            string relativePath,
+            string fullPath,
+            Exception innerException,
+            bool requiresExclusiveAccess = false)
             : base($"Local file '{relativePath}' could not be scanned safely.", innerException)
         {
             RelativePath = relativePath;
             FullPath = fullPath;
             Reason = innerException.Message;
+            RequiresExclusiveAccess = requiresExclusiveAccess;
         }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="LocalFileUnavailableException" /> class.
         /// </summary>
-        public LocalFileUnavailableException(string relativePath, string fullPath, string reason)
+        public LocalFileUnavailableException(
+            string relativePath,
+            string fullPath,
+            string reason,
+            bool requiresExclusiveAccess = false)
             : base($"Local file '{relativePath}' could not be scanned safely: {reason}")
         {
             RelativePath = relativePath;
             FullPath = fullPath;
             Reason = reason;
+            RequiresExclusiveAccess = requiresExclusiveAccess;
         }
 
         /// <summary>
@@ -44,5 +54,10 @@ namespace Cotton.Sync.Local
         /// Gets the reason the file could not be scanned safely.
         /// </summary>
         public string Reason { get; }
+
+        /// <summary>
+        /// Gets a value indicating whether the blocked operation requires exclusive access to the file.
+        /// </summary>
+        public bool RequiresExclusiveAccess { get; }
     }
 }
