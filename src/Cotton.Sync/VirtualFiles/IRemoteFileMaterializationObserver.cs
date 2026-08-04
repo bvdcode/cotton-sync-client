@@ -14,5 +14,15 @@ namespace Cotton.Sync.VirtualFiles
         Task BeforeWriteFileAsync(
             RemoteFileMaterializationRequest request,
             CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Runs after remote content has been written to the local file successfully.
+        /// </summary>
+        Task AfterWriteFileAsync(
+            RemoteFileMaterializationRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
     }
 }

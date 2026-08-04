@@ -1730,6 +1730,8 @@ namespace Cotton.Sync.Tests
                     materializationObserver.FileMaterializationRequests[0].RemoteFile.Id,
                     Is.EqualTo(changedRemote.Id));
                 Assert.That(materializationObserver.FileExistsWhenMaterializationRequested, Is.EqualTo(new[] { false }));
+                Assert.That(materializationObserver.CompletedFileMaterializationRequests, Has.Count.EqualTo(1));
+                Assert.That(materializationObserver.FileExistsWhenMaterializationCompleted, Is.EqualTo(new[] { true }));
                 Assert.That(entry, Is.Not.Null);
                 Assert.That(entry!.LocalContentHash, Is.EqualTo(local.ContentHash));
                 Assert.That(entry.RemoteContentHash, Is.EqualTo(changedRemote.ContentHash));
@@ -1783,6 +1785,62 @@ namespace Cotton.Sync.Tests
                 Assert.That(File.ReadAllText(Path.Combine(_root, "Docs", "hydrated-near-simultaneous.txt")), Is.EqualTo("local-edit"));
                 Assert.That(conflictFiles, Has.Length.EqualTo(1));
                 Assert.That(File.ReadAllText(conflictFiles[0]), Is.EqualTo("remote-edit"));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesSuppressesWatcherBeforeRestoringRemoteEditAfterLocalDelete()
+        {
+            const string relativePath = "Docs/restored.txt";
+            byte[] remoteContent = Encoding.UTF8.GetBytes("remote-changed");
+            string oldHash = HashText("old-content");
+            Guid remoteFileId = Guid.NewGuid();
+            NodeFileManifestDto baselineRemote = RemoteFile(
+                relativePath,
+                oldHash,
+                remoteFileId,
+                sizeBytes: Encoding.UTF8.GetByteCount("old-content"));
+            NodeFileManifestDto changedRemote = RemoteFile(
+                relativePath,
+                Hash(remoteContent),
+                remoteFileId,
+                sizeBytes: remoteContent.Length);
+            var remoteFiles = new FakeRemoteFileSynchronizer();
+            remoteFiles.Downloads[changedRemote.Id] = remoteContent;
+            var materializationObserver = new FakeRemoteFilePlaceholderWriter();
+            SyncEngine engine = CreateEngine(
+                new FakeLocalFileScanner(),
+                RemoteTree(changedRemote),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore,
+                remoteFilePlaceholderWriter: materializationObserver);
+            await stateStore.InitializeAsync();
+            await stateStore.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = "pair-a",
+                RelativePath = relativePath,
+                Kind = SyncEntryKind.File,
+                LocalContentHash = oldHash,
+                LocalLastWriteUtc = new DateTime(2026, 6, 2, 13, 0, 0, DateTimeKind.Utc),
+                LocalSizeBytes = baselineRemote.SizeBytes,
+                RemoteNodeId = baselineRemote.NodeId,
+                RemoteFileId = baselineRemote.Id,
+                RemoteSizeBytes = baselineRemote.SizeBytes,
+                RemoteContentHash = baselineRemote.ContentHash,
+                RemoteETag = baselineRemote.ETag,
+                PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated,
+            });
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Conflict }));
+                Assert.That(File.ReadAllText(Path.Combine(_root, "Docs", "restored.txt")), Is.EqualTo("remote-changed"));
+                Assert.That(materializationObserver.FileMaterializationRequests, Has.Count.EqualTo(1));
+                Assert.That(materializationObserver.FileMaterializationRequests[0].RelativePath, Is.EqualTo(relativePath));
+                Assert.That(materializationObserver.FileExistsWhenMaterializationRequested, Is.EqualTo(new[] { false }));
+                Assert.That(materializationObserver.CompletedFileMaterializationRequests, Is.Empty);
             });
         }
 
@@ -7103,6 +7161,10 @@ namespace Cotton.Sync.Tests
 
             public List<bool> FileExistsWhenMaterializationRequested { get; } = [];
 
+            public List<RemoteFileMaterializationRequest> CompletedFileMaterializationRequests { get; } = [];
+
+            public List<bool> FileExistsWhenMaterializationCompleted { get; } = [];
+
             public List<RemoteDirectoryMaterializationRequest> DirectoryRequests { get; } = [];
 
             public List<RemoteDirectoryMaterializationRequest> CompletedDirectoryRequests { get; } = [];
@@ -7137,6 +7199,17 @@ namespace Cotton.Sync.Tests
             {
                 FileMaterializationRequests.Add(request);
                 FileExistsWhenMaterializationRequested.Add(File.Exists(Path.Combine(
+                    request.LocalRootPath,
+                    request.RelativePath.Replace('/', Path.DirectorySeparatorChar))));
+                return Task.CompletedTask;
+            }
+
+            public Task AfterWriteFileAsync(
+                RemoteFileMaterializationRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                CompletedFileMaterializationRequests.Add(request);
+                FileExistsWhenMaterializationCompleted.Add(File.Exists(Path.Combine(
                     request.LocalRootPath,
                     request.RelativePath.Replace('/', Path.DirectorySeparatorChar))));
                 return Task.CompletedTask;

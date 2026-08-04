@@ -22,19 +22,22 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly IWindowsCloudFilesAdapter _cloudFilesAdapter;
         private readonly ILocalChangeSuppression? _localChangeSuppression;
         private readonly ILogger<DesktopCloudFilesPlaceholderWriter> _logger;
+        private readonly ILocalProviderFileMarker? _providerFileMarker;
 
         public DesktopCloudFilesPlaceholderWriter(
             WindowsVirtualFilesRootSafetyPolicy? rootSafety = null,
             IWindowsCloudFilesAdapter? cloudFilesAdapter = null,
             Func<SyncPairModeCapabilitySnapshot>? getCapabilities = null,
             ILocalChangeSuppression? localChangeSuppression = null,
-            ILogger<DesktopCloudFilesPlaceholderWriter>? logger = null)
+            ILogger<DesktopCloudFilesPlaceholderWriter>? logger = null,
+            ILocalProviderFileMarker? providerFileMarker = null)
         {
             _rootSafety = rootSafety ?? new WindowsVirtualFilesRootSafetyPolicy();
             _cloudFilesAdapter = cloudFilesAdapter ?? new WindowsCloudFilesAdapter(_rootSafety);
             _getCapabilities = getCapabilities ?? DesktopCloudFilesCapabilities.CreateSyncPairModeCapabilities;
             _localChangeSuppression = localChangeSuppression;
             _logger = logger ?? NullLogger<DesktopCloudFilesPlaceholderWriter>.Instance;
+            _providerFileMarker = providerFileMarker;
         }
 
         public Task<RemoteFilePlaceholderResult> CreatePlaceholderAsync(
@@ -173,11 +176,42 @@ namespace Cotton.Sync.Desktop.Platform
                 return Task.CompletedTask;
             }
 
-            _localChangeSuppression.SuppressProviderFileCreation(
+            _localChangeSuppression.SuppressProviderFileMaterialization(
                 syncPairId,
                 request.LocalRootPath,
-                request.RelativePath);
+                request.RelativePath,
+                request.RemoteFile.SizeBytes,
+                request.RemoteFile.UpdatedAt == default ? null : request.RemoteFile.UpdatedAt);
             return Task.CompletedTask;
+        }
+
+        public async Task AfterWriteFileAsync(
+            RemoteFileMaterializationRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_providerFileMarker is null)
+            {
+                return;
+            }
+
+            if (!Guid.TryParse(request.SyncPairId, out Guid syncPairId))
+            {
+                _logger.LogDebug(
+                    "Skipping durable provider-created file marker for {RelativePath} because sync pair id is not a GUID.",
+                    request.RelativePath);
+                return;
+            }
+
+            await _providerFileMarker.MarkAsync(
+                    syncPairId,
+                    request.LocalRootPath,
+                    request.RelativePath,
+                    request.RemoteFile.ContentHash,
+                    request.RemoteFile.SizeBytes,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
 
         public Task BeforeCreateDirectoryAsync(

@@ -17,16 +17,19 @@ namespace Cotton.Sync.App.LocalChanges
 
         private readonly ILocalFileMetadataTreeLookupScanner _localScanner;
         private readonly ISyncStateStore _stateStore;
+        private readonly ILocalProviderFileMarker? _providerFileMarker;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="LocalOfflineChangeDetector" /> class.
         /// </summary>
         public LocalOfflineChangeDetector(
             ILocalFileMetadataTreeLookupScanner localScanner,
-            ISyncStateStore stateStore)
+            ISyncStateStore stateStore,
+            ILocalProviderFileMarker? providerFileMarker = null)
         {
             _localScanner = localScanner ?? throw new ArgumentNullException(nameof(localScanner));
             _stateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
+            _providerFileMarker = providerFileMarker;
         }
 
         /// <inheritdoc />
@@ -114,6 +117,14 @@ namespace Cotton.Sync.App.LocalChanges
             foreach (LocalFileSnapshot file in local.FilesByPath.Values)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (_providerFileMarker is not null
+                    && await _providerFileMarker
+                        .IsUnchangedAsync(syncPair.Id, syncPair.LocalRootPath, file, cancellationToken)
+                        .ConfigureAwait(false))
+                {
+                    continue;
+                }
+
                 changedPaths.Add(file.RelativePath);
             }
 

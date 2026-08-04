@@ -875,6 +875,59 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public void ProviderFileMaterializationSuppression_SuppressesEchoBurstUntilFileChanges()
+        {
+            string rootPath = Path.Combine(
+                Path.GetTempPath(),
+                "cotton-provider-file-materialization",
+                Guid.NewGuid().ToString("N"));
+            const string relativePath = "Docs/restored.txt";
+            string fullPath = Path.Combine(rootPath, "Docs", "restored.txt");
+            Guid syncPairId = Guid.NewGuid();
+            DateTime expectedLastWriteUtc = new(2026, 8, 3, 20, 0, 0, DateTimeKind.Utc);
+            byte[] content = "remote-content"u8.ToArray();
+            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            File.WriteAllBytes(fullPath, content);
+            File.SetLastWriteTimeUtc(fullPath, expectedLastWriteUtc);
+            var suppression = new LocalChangeSuppression(eventBudget: 2);
+            suppression.SuppressProviderFileMaterialization(
+                syncPairId,
+                rootPath,
+                relativePath,
+                content.Length,
+                expectedLastWriteUtc);
+
+            try
+            {
+                for (int index = 0; index < 12; index++)
+                {
+                    Assert.That(
+                        suppression.ShouldSuppress(new LocalSyncRootChange(
+                            syncPairId,
+                            fullPath,
+                            index == 0 ? LocalSyncRootChangeKind.Created : LocalSyncRootChangeKind.Changed)),
+                        Is.True);
+                }
+
+                File.AppendAllText(fullPath, "-user-edit");
+
+                Assert.That(
+                    suppression.ShouldSuppress(new LocalSyncRootChange(
+                        syncPairId,
+                        fullPath,
+                        LocalSyncRootChangeKind.Changed)),
+                    Is.False);
+            }
+            finally
+            {
+                if (Directory.Exists(rootPath))
+                {
+                    Directory.Delete(rootPath, recursive: true);
+                }
+            }
+        }
+
+        [Test]
         public async Task UserCreatedConflictLookalikeWithoutSuppression_RequestsSync()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
@@ -933,14 +986,21 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             await coordinator.StartAsync();
             try
             {
-                suppression.SuppressProviderFileCreation(syncPair.Id, rootPath, relativePath);
+                const string remoteContent = "remote-content";
+                DateTime expectedLastWriteUtc = new(2026, 8, 3, 20, 0, 0, DateTimeKind.Utc);
+                suppression.SuppressProviderFileMaterialization(
+                    syncPair.Id,
+                    rootPath,
+                    relativePath,
+                    remoteContent.Length,
+                    expectedLastWriteUtc);
                 AtomicLocalFileSyncWriter writer = new();
                 await writer.WriteFileAsync(
                     rootPath,
                     relativePath,
                     async (stream, cancellationToken) =>
                         await stream.WriteAsync("remote-content"u8.ToArray(), cancellationToken),
-                    new DateTime(2026, 8, 3, 20, 0, 0, DateTimeKind.Utc));
+                    expectedLastWriteUtc);
 
                 await Task.Delay(TimeSpan.FromMilliseconds(500));
                 Assert.That(supervisor.SyncNowCallCount, Is.Zero);

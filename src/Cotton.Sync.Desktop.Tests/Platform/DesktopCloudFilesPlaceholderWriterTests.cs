@@ -4,6 +4,7 @@
 using Cotton.Sync.App.LocalChanges;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Platform;
+using Cotton.Sync.Local;
 using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
 using Cotton.Files;
@@ -181,7 +182,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
-        public async Task BeforeWriteFileAsync_SuppressesOnlyProviderFileCreation()
+        public async Task BeforeWriteFileAsync_SuppressesProviderMaterializationWithRemoteBaseline()
         {
             RecordingLocalChangeSuppression suppression = new();
             DesktopCloudFilesPlaceholderWriter writer = new(
@@ -203,12 +204,48 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             Assert.Multiple(() =>
             {
                 Assert.That(
-                    suppression.SuppressedFileCreations,
+                    suppression.SuppressedFileMaterializations,
                     Is.EqualTo(new[]
                     {
-                        new SuppressedWrite(syncPairId, _tempDirectory, placeholderRequest.RelativePath),
+                        new SuppressedFileMaterialization(
+                            syncPairId,
+                            _tempDirectory,
+                            placeholderRequest.RelativePath,
+                            placeholderRequest.RemoteFile.SizeBytes,
+                            placeholderRequest.RemoteFile.UpdatedAt),
                     }));
+                Assert.That(suppression.SuppressedFileCreations, Is.Empty);
                 Assert.That(suppression.SuppressedWrites, Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task AfterWriteFileAsync_PersistsProviderCreatedFileMarker()
+        {
+            var marker = new RecordingProviderFileMarker();
+            DesktopCloudFilesPlaceholderWriter writer = new(
+                getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."),
+                providerFileMarker: marker);
+            Guid syncPairId = Guid.Parse("77777777-7777-7777-7777-777777777777");
+            RemoteFilePlaceholderRequest placeholderRequest = CreateRequest(
+                _tempDirectory,
+                syncPairId.ToString("D"),
+                "Projects/report (Cotton conflict 20260803T200000Z).txt");
+
+            await writer.AfterWriteFileAsync(new RemoteFileMaterializationRequest(
+                placeholderRequest.SyncPairId,
+                placeholderRequest.LocalRootPath,
+                placeholderRequest.RemoteRootNodeId,
+                placeholderRequest.RelativePath,
+                placeholderRequest.RemoteFile));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(marker.SyncPairId, Is.EqualTo(syncPairId));
+                Assert.That(marker.LocalRootPath, Is.EqualTo(_tempDirectory));
+                Assert.That(marker.RelativePath, Is.EqualTo(placeholderRequest.RelativePath));
+                Assert.That(marker.ContentHash, Is.EqualTo(placeholderRequest.RemoteFile.ContentHash));
+                Assert.That(marker.SizeBytes, Is.EqualTo(placeholderRequest.RemoteFile.SizeBytes));
             });
         }
 
@@ -364,11 +401,20 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
         private sealed record SuppressedWrite(Guid SyncPairId, string LocalRootPath, string RelativePath);
 
+        private sealed record SuppressedFileMaterialization(
+            Guid SyncPairId,
+            string LocalRootPath,
+            string RelativePath,
+            long ExpectedSizeBytes,
+            DateTime? ExpectedLastWriteUtc);
+
         private sealed class RecordingLocalChangeSuppression : ILocalChangeSuppression
         {
             public List<SuppressedWrite> SuppressedWrites { get; } = [];
 
             public List<SuppressedWrite> SuppressedFileCreations { get; } = [];
+
+            public List<SuppressedFileMaterialization> SuppressedFileMaterializations { get; } = [];
 
             public void SuppressProviderWrite(Guid syncPairId, string localRootPath, string relativePath)
             {
@@ -378,6 +424,21 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public void SuppressProviderFileCreation(Guid syncPairId, string localRootPath, string relativePath)
             {
                 SuppressedFileCreations.Add(new SuppressedWrite(syncPairId, localRootPath, relativePath));
+            }
+
+            public void SuppressProviderFileMaterialization(
+                Guid syncPairId,
+                string localRootPath,
+                string relativePath,
+                long expectedSizeBytes,
+                DateTime? expectedLastWriteUtc)
+            {
+                SuppressedFileMaterializations.Add(new SuppressedFileMaterialization(
+                    syncPairId,
+                    localRootPath,
+                    relativePath,
+                    expectedSizeBytes,
+                    expectedLastWriteUtc));
             }
 
             public void SuppressProviderOnlineOnlyWrite(Guid syncPairId, string localRootPath, string relativePath)
@@ -393,6 +454,45 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public bool ShouldSuppress(LocalSyncRootChange change)
             {
                 return false;
+            }
+        }
+
+        private class RecordingProviderFileMarker : ILocalProviderFileMarker
+        {
+            public Guid? SyncPairId { get; private set; }
+
+            public string? LocalRootPath { get; private set; }
+
+            public string? RelativePath { get; private set; }
+
+            public string? ContentHash { get; private set; }
+
+            public long? SizeBytes { get; private set; }
+
+            public Task MarkAsync(
+                Guid syncPairId,
+                string localRootPath,
+                string relativePath,
+                string contentHash,
+                long sizeBytes,
+                CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                SyncPairId = syncPairId;
+                LocalRootPath = localRootPath;
+                RelativePath = relativePath;
+                ContentHash = contentHash;
+                SizeBytes = sizeBytes;
+                return Task.CompletedTask;
+            }
+
+            public Task<bool> IsUnchangedAsync(
+                Guid syncPairId,
+                string localRootPath,
+                LocalFileSnapshot localFile,
+                CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
             }
         }
 

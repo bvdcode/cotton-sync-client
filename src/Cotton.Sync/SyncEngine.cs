@@ -4769,6 +4769,19 @@ namespace Cotton.Sync
                     (stream, token) => DownloadAndVerifyFileAsync(remoteFile, relativePath, options, stream, token),
                     remoteFile.UpdatedAt == default ? null : remoteFile.UpdatedAt,
                     cancellationToken).ConfigureAwait(false);
+                if (syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
+                    && _remoteFileMaterializationObserver is not null)
+                {
+                    await _remoteFileMaterializationObserver.AfterWriteFileAsync(
+                        new RemoteFileMaterializationRequest(
+                            syncPair.SyncPairId,
+                            syncPair.LocalRootPath,
+                            syncPair.RemoteRootNodeId,
+                            conflictPath,
+                            remoteFile),
+                        cancellationToken).ConfigureAwait(false);
+                }
+
                 details = "Remote version saved as " + conflictPath;
                 await _stateStore.UpsertAsync(BuildBaseline(syncPair, relativePath, local.ContentHash, local.LastWriteUtc, local.SizeBytes, remoteFile), cancellationToken)
                     .ConfigureAwait(false);
@@ -4791,6 +4804,19 @@ namespace Cotton.Sync
             else if (remoteFile is not null)
             {
                 EnsureEnoughLocalFreeSpace(syncPair.LocalRootPath, relativePath, remoteFile.SizeBytes);
+                if (syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
+                    && _remoteFileMaterializationObserver is not null)
+                {
+                    await _remoteFileMaterializationObserver.BeforeWriteFileAsync(
+                        new RemoteFileMaterializationRequest(
+                            syncPair.SyncPairId,
+                            syncPair.LocalRootPath,
+                            syncPair.RemoteRootNodeId,
+                            relativePath,
+                            remoteFile),
+                        cancellationToken).ConfigureAwait(false);
+                }
+
                 await _localWriter.WriteFileAsync(
                     syncPair.LocalRootPath,
                     relativePath,

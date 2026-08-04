@@ -74,6 +74,9 @@ namespace Cotton.Sync.Desktop.Composition
             var transferProgressPublisher = new InMemoryAppTransferProgressPublisher();
             var runProgressPublisher = new InMemoryAppRunProgressPublisher();
             var localChangeSuppression = new LocalChangeSuppression();
+            var localProviderFileMarker = new WindowsLocalProviderFileMarker(
+                Path.Combine(_paths.DataDirectory, "provider-file-markers"),
+                _loggerFactory.CreateLogger<WindowsLocalProviderFileMarker>());
             var cloudFilesNativeApi = new WindowsCloudFilesNativeApi();
             var cloudFilesAdapter = new WindowsCloudFilesAdapter(nativeApi: cloudFilesNativeApi);
             var cloudFilesHydration = new WindowsCloudFilesHydrationCoordinator(
@@ -93,7 +96,8 @@ namespace Cotton.Sync.Desktop.Composition
             var remoteFilePlaceholderWriter = new DesktopCloudFilesPlaceholderWriter(
                 cloudFilesAdapter: cloudFilesAdapter,
                 localChangeSuppression: localChangeSuppression,
-                logger: _loggerFactory.CreateLogger<DesktopCloudFilesPlaceholderWriter>());
+                logger: _loggerFactory.CreateLogger<DesktopCloudFilesPlaceholderWriter>(),
+                providerFileMarker: localProviderFileMarker);
             var syncEngine = new HeadlessSyncEngine(
                 new LocalFileScanner(),
                 remoteTreeCrawler,
@@ -137,7 +141,10 @@ namespace Cotton.Sync.Desktop.Composition
                 new FileSystemLocalSyncRootWatcherFactory(_loggerFactory),
                 logger: _loggerFactory.CreateLogger<LocalChangeSyncCoordinator>(),
                 changeSuppression: localChangeSuppression,
-                offlineChangeDetector: new LocalOfflineChangeDetector(new LocalFileScanner(), stateStore));
+                offlineChangeDetector: new LocalOfflineChangeDetector(
+                    new LocalFileScanner(),
+                    stateStore,
+                    localProviderFileMarker));
             var periodicSync = new PeriodicSyncCoordinator(
                 supervisor,
                 logger: _loggerFactory.CreateLogger<PeriodicSyncCoordinator>());

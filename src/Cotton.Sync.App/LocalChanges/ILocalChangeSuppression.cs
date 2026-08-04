@@ -19,6 +19,19 @@ namespace Cotton.Sync.App.LocalChanges
         void SuppressProviderFileCreation(Guid syncPairId, string localRootPath, string relativePath);
 
         /// <summary>
+        /// Suppresses the complete creation/finalization event burst while the provider-written file still matches its baseline metadata.
+        /// </summary>
+        void SuppressProviderFileMaterialization(
+            Guid syncPairId,
+            string localRootPath,
+            string relativePath,
+            long expectedSizeBytes,
+            DateTime? expectedLastWriteUtc)
+        {
+            SuppressProviderFileCreation(syncPairId, localRootPath, relativePath);
+        }
+
+        /// <summary>
         /// Suppresses provider metadata echoes without hiding a subsequent user delete or move.
         /// </summary>
         void SuppressProviderMetadataWrite(Guid syncPairId, string localRootPath, string relativePath)

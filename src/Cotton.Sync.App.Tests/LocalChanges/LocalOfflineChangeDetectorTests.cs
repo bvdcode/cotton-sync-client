@@ -114,6 +114,51 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task DetectAsync_UnchangedProviderCreatedUntrackedFileIsSkipped()
+        {
+            SyncPairSettings syncPair = CreatePair();
+            var scanner = new FakeMetadataScanner();
+            AddFile(scanner.Snapshot, "Docs/report (Cotton conflict 20260804T060000Z).txt", 24, Utc(10));
+            var marker = new FakeProviderFileMarker(isUnchanged: true);
+
+            await WithStateStoreAsync(async store =>
+            {
+                await AddCompletedCursorAsync(store, syncPair);
+                var detector = new LocalOfflineChangeDetector(scanner, store, marker);
+
+                SyncRunRequest? request = await detector.DetectAsync(syncPair);
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(request, Is.Null);
+                    Assert.That(marker.InspectedPaths, Is.EqualTo(new[]
+                    {
+                        "Docs/report (Cotton conflict 20260804T060000Z).txt",
+                    }));
+                });
+            });
+        }
+
+        [Test]
+        public async Task DetectAsync_ChangedProviderCreatedUntrackedFileIsReturned()
+        {
+            SyncPairSettings syncPair = CreatePair();
+            var scanner = new FakeMetadataScanner();
+            AddFile(scanner.Snapshot, "Docs/recovery.txt", 31, Utc(11));
+            var marker = new FakeProviderFileMarker(isUnchanged: false);
+
+            await WithStateStoreAsync(async store =>
+            {
+                await AddCompletedCursorAsync(store, syncPair);
+                var detector = new LocalOfflineChangeDetector(scanner, store, marker);
+
+                SyncRunRequest? request = await detector.DetectAsync(syncPair);
+
+                Assert.That(request?.LocalChangedPaths, Is.EqualTo(new[] { "Docs/recovery.txt" }));
+            });
+        }
+
+        [Test]
         public async Task DetectAsync_NewAndDeletedDirectoriesCollapseDescendants()
         {
             SyncPairSettings syncPair = CreatePair();
@@ -306,6 +351,40 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 cancellationToken.ThrowIfCancellationRequested();
                 ScanCallCount++;
                 return Task.FromResult(Snapshot);
+            }
+        }
+
+        private class FakeProviderFileMarker : ILocalProviderFileMarker
+        {
+            private readonly bool _isUnchanged;
+
+            public FakeProviderFileMarker(bool isUnchanged)
+            {
+                _isUnchanged = isUnchanged;
+            }
+
+            public List<string> InspectedPaths { get; } = [];
+
+            public Task MarkAsync(
+                Guid syncPairId,
+                string localRootPath,
+                string relativePath,
+                string contentHash,
+                long sizeBytes,
+                CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException();
+            }
+
+            public Task<bool> IsUnchangedAsync(
+                Guid syncPairId,
+                string localRootPath,
+                LocalFileSnapshot localFile,
+                CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                InspectedPaths.Add(localFile.RelativePath);
+                return Task.FromResult(_isUnchanged);
             }
         }
     }

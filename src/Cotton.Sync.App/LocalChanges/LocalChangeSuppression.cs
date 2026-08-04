@@ -83,7 +83,9 @@ namespace Cotton.Sync.App.LocalChanges
                 onlyWhileOnlineOnly: false,
                 suppressDeleteEvents: true,
                 metadataOnly: false,
-                creationOnly: false);
+                creationOnly: false,
+                expectedSizeBytes: null,
+                expectedLastWriteUtc: null);
         }
 
         /// <inheritdoc />
@@ -96,7 +98,30 @@ namespace Cotton.Sync.App.LocalChanges
                 onlyWhileOnlineOnly: false,
                 suppressDeleteEvents: false,
                 metadataOnly: false,
-                creationOnly: true);
+                creationOnly: true,
+                expectedSizeBytes: null,
+                expectedLastWriteUtc: null);
+        }
+
+        /// <inheritdoc />
+        public void SuppressProviderFileMaterialization(
+            Guid syncPairId,
+            string localRootPath,
+            string relativePath,
+            long expectedSizeBytes,
+            DateTime? expectedLastWriteUtc)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(expectedSizeBytes);
+            SuppressProviderWrite(
+                syncPairId,
+                localRootPath,
+                relativePath,
+                onlyWhileOnlineOnly: false,
+                suppressDeleteEvents: false,
+                metadataOnly: false,
+                creationOnly: true,
+                expectedSizeBytes,
+                expectedLastWriteUtc?.ToUniversalTime());
         }
 
         /// <inheritdoc />
@@ -109,7 +134,9 @@ namespace Cotton.Sync.App.LocalChanges
                 onlyWhileOnlineOnly: false,
                 suppressDeleteEvents: false,
                 metadataOnly: true,
-                creationOnly: false);
+                creationOnly: false,
+                expectedSizeBytes: null,
+                expectedLastWriteUtc: null);
         }
 
         /// <inheritdoc />
@@ -122,7 +149,9 @@ namespace Cotton.Sync.App.LocalChanges
                 onlyWhileOnlineOnly: true,
                 suppressDeleteEvents: true,
                 metadataOnly: false,
-                creationOnly: false);
+                creationOnly: false,
+                expectedSizeBytes: null,
+                expectedLastWriteUtc: null);
         }
 
         private void SuppressProviderWrite(
@@ -132,7 +161,9 @@ namespace Cotton.Sync.App.LocalChanges
             bool onlyWhileOnlineOnly,
             bool suppressDeleteEvents,
             bool metadataOnly,
-            bool creationOnly)
+            bool creationOnly,
+            long? expectedSizeBytes,
+            DateTime? expectedLastWriteUtc)
         {
             if (syncPairId == Guid.Empty)
             {
@@ -163,7 +194,9 @@ namespace Cotton.Sync.App.LocalChanges
                     onlyWhileOnlineOnly,
                     suppressDeleteEvents,
                     metadataOnly,
-                    creationOnly);
+                    creationOnly,
+                    expectedSizeBytes,
+                    expectedLastWriteUtc);
 
                 if (!creationOnly)
                 {
@@ -180,7 +213,9 @@ namespace Cotton.Sync.App.LocalChanges
                             onlyWhileOnlineOnly,
                             suppressDeleteEvents,
                             metadataOnly,
-                            creationOnly: false);
+                            creationOnly: false,
+                            expectedSizeBytes: null,
+                            expectedLastWriteUtc: null);
                         currentPath = Path.GetDirectoryName(currentPath);
                     }
                 }
@@ -303,11 +338,16 @@ namespace Cotton.Sync.App.LocalChanges
                 bool contentChangeMustRemainVisible = entry.MetadataOnly
                     && changeKind != LocalSyncRootChangeKind.AttributesChanged;
                 bool nonCreationChangeMustRemainVisible = entry.CreationOnly
+                    && !entry.ExpectedSizeBytes.HasValue
                     && changeKind is not LocalSyncRootChangeKind.Created and not LocalSyncRootChangeKind.Renamed;
+                bool providerMaterializationChanged = entry.CreationOnly
+                    && entry.ExpectedSizeBytes.HasValue
+                    && !MatchesExpectedFileMetadata(fullPath, entry);
                 if (userRemovalMustRemainVisible
                     || onlineOnlyConditionEnded
                     || contentChangeMustRemainVisible
-                    || nonCreationChangeMustRemainVisible)
+                    || nonCreationChangeMustRemainVisible
+                    || providerMaterializationChanged)
                 {
                     entries.Remove(key);
                     if (_providerWriteBurstsByPair.TryGetValue(syncPairId, out ProviderWriteBurstScope? scope))
@@ -318,7 +358,7 @@ namespace Cotton.Sync.App.LocalChanges
                     return false;
                 }
 
-                if (entry.CreationOnly)
+                if (entry.CreationOnly && !entry.ExpectedSizeBytes.HasValue)
                 {
                     entries.Remove(key);
                     if (_providerWriteBurstsByPair.TryGetValue(syncPairId, out ProviderWriteBurstScope? scope))
@@ -326,6 +366,11 @@ namespace Cotton.Sync.App.LocalChanges
                         scope.RegisteredPathKeys.Remove(key);
                     }
 
+                    return true;
+                }
+
+                if (entry.CreationOnly && entry.ExpectedSizeBytes.HasValue)
+                {
                     return true;
                 }
             }
@@ -414,7 +459,9 @@ namespace Cotton.Sync.App.LocalChanges
             bool onlyWhileOnlineOnly,
             bool suppressDeleteEvents,
             bool metadataOnly,
-            bool creationOnly)
+            bool creationOnly,
+            long? expectedSizeBytes,
+            DateTime? expectedLastWriteUtc)
         {
             string key = NormalizePathKey(fullPath);
             if (_providerWriteBurstsByPair.TryGetValue(syncPairId, out ProviderWriteBurstScope? scope)
@@ -431,6 +478,8 @@ namespace Cotton.Sync.App.LocalChanges
                 entry.SuppressDeleteEvents = suppressDeleteEvents;
                 entry.MetadataOnly = metadataOnly;
                 entry.CreationOnly = creationOnly;
+                entry.ExpectedSizeBytes = expectedSizeBytes;
+                entry.ExpectedLastWriteUtc = expectedLastWriteUtc;
                 return;
             }
 
@@ -440,7 +489,31 @@ namespace Cotton.Sync.App.LocalChanges
                 onlyWhileOnlineOnly,
                 suppressDeleteEvents,
                 metadataOnly,
-                creationOnly));
+                creationOnly,
+                expectedSizeBytes,
+                expectedLastWriteUtc));
+        }
+
+        private static bool MatchesExpectedFileMetadata(string fullPath, SuppressionEntry entry)
+        {
+            try
+            {
+                var info = new FileInfo(fullPath);
+                if (!info.Exists || info.Length != entry.ExpectedSizeBytes)
+                {
+                    return false;
+                }
+
+                return !entry.ExpectedLastWriteUtc.HasValue
+                    || info.LastWriteTimeUtc == entry.ExpectedLastWriteUtc.Value;
+            }
+            catch (Exception exception) when (exception is IOException
+                or UnauthorizedAccessException
+                or ArgumentException
+                or NotSupportedException)
+            {
+                return false;
+            }
         }
 
         private bool TryConsume(
@@ -635,7 +708,9 @@ namespace Cotton.Sync.App.LocalChanges
                 bool onlyWhileOnlineOnly,
                 bool suppressDeleteEvents,
                 bool metadataOnly,
-                bool creationOnly)
+                bool creationOnly,
+                long? expectedSizeBytes,
+                DateTime? expectedLastWriteUtc)
             {
                 ExpiresAt = expiresAt;
                 RemainingEvents = remainingEvents;
@@ -643,6 +718,8 @@ namespace Cotton.Sync.App.LocalChanges
                 SuppressDeleteEvents = suppressDeleteEvents;
                 MetadataOnly = metadataOnly;
                 CreationOnly = creationOnly;
+                ExpectedSizeBytes = expectedSizeBytes;
+                ExpectedLastWriteUtc = expectedLastWriteUtc;
             }
 
             public DateTimeOffset ExpiresAt { get; set; }
@@ -656,6 +733,10 @@ namespace Cotton.Sync.App.LocalChanges
             public bool MetadataOnly { get; set; }
 
             public bool CreationOnly { get; set; }
+
+            public long? ExpectedSizeBytes { get; set; }
+
+            public DateTime? ExpectedLastWriteUtc { get; set; }
         }
 
         private sealed class ProviderWriteBurstScope
