@@ -76,6 +76,113 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task TransientConnectionFailure_RetriesScopedRequestUntilItSucceeds()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true);
+            FakeWatcherFactory watcherFactory = new();
+            FakeSyncSupervisor supervisor = new();
+            supervisor.SyncNowExceptions.Enqueue(new HttpRequestException("Network unavailable."));
+            RecordingLogger<LocalChangeSyncCoordinator> logger = new();
+            LocalChangeSyncCoordinator coordinator = new(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                TimeSpan.Zero,
+                logger,
+                connectionRetryInterval: TimeSpan.FromMilliseconds(1),
+                delayAsync: static (_, _) => Task.CompletedTask);
+            await coordinator.StartAsync();
+
+            watcherFactory.CreatedWatchers[syncPair.Id].Raise(FullPath(syncPair, "offline-edit.txt"));
+
+            bool retried = await supervisor.WaitForSyncCallCountAsync(2, TimeSpan.FromSeconds(2));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(retried, Is.True);
+                Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(2));
+                Assert.That(supervisor.Requests, Has.Count.EqualTo(2));
+                Assert.That(
+                    supervisor.Requests.Select(static request => request.LocalChangedPaths),
+                    Is.All.EqualTo(new[] { "offline-edit.txt" }));
+                Assert.That(coordinator.PendingRequestCount, Is.Zero);
+                Assert.That(
+                    logger.Entries.Any(entry => entry.Level == LogLevel.Warning
+                        && entry.Message.Contains("retrying after", StringComparison.Ordinal)),
+                    Is.True);
+                Assert.That(logger.Entries.Any(entry => entry.Level == LogLevel.Error), Is.False);
+            });
+        }
+
+        [Test]
+        public async Task NonTransientFailure_DoesNotRetryScopedRequest()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true);
+            FakeWatcherFactory watcherFactory = new();
+            FakeSyncSupervisor supervisor = new();
+            supervisor.SyncNowExceptions.Enqueue(new InvalidOperationException("Permanent failure."));
+            RecordingLogger<LocalChangeSyncCoordinator> logger = new();
+            LocalChangeSyncCoordinator coordinator = new(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                TimeSpan.Zero,
+                logger,
+                connectionRetryInterval: TimeSpan.FromMilliseconds(1),
+                delayAsync: static (_, _) => Task.CompletedTask);
+            await coordinator.StartAsync();
+
+            watcherFactory.CreatedWatchers[syncPair.Id].Raise(FullPath(syncPair, "invalid.txt"));
+
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(1));
+                Assert.That(coordinator.PendingRequestCount, Is.Zero);
+                Assert.That(logger.Entries.Any(entry => entry.Level == LogLevel.Warning), Is.False);
+                Assert.That(logger.Entries.Any(entry => entry.Level == LogLevel.Error), Is.True);
+            });
+        }
+
+        [Test]
+        public async Task StopAsync_CancelsConnectionRecoveryDelayWithoutAnotherAttempt()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true);
+            FakeWatcherFactory watcherFactory = new();
+            FakeSyncSupervisor supervisor = new();
+            supervisor.SyncNowExceptions.Enqueue(new HttpRequestException("Network unavailable."));
+            TaskCompletionSource retryDelayStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            LocalChangeSyncCoordinator coordinator = new(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                TimeSpan.Zero,
+                connectionRetryInterval: TimeSpan.FromSeconds(15),
+                delayAsync: async (_, cancellationToken) =>
+                {
+                    retryDelayStarted.TrySetResult();
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                });
+            await coordinator.StartAsync();
+
+            watcherFactory.CreatedWatchers[syncPair.Id].Raise(FullPath(syncPair, "offline-edit.txt"));
+            await retryDelayStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            await coordinator.StopAsync().WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(1));
+                Assert.That(coordinator.PendingRequestCount, Is.Zero);
+            });
+        }
+
+        [Test]
         public async Task RenamedLocalChange_WithOldPathRequestsScopedSyncForOldAndNewPaths()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
@@ -1402,6 +1509,38 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task StartAsync_TransientOfflineReconciliationFailureRetriesUntilItSucceeds()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            FakeWatcherFactory watcherFactory = new();
+            FakeSyncSupervisor supervisor = new();
+            supervisor.SyncNowExceptions.Enqueue(new HttpRequestException("Network unavailable."));
+            SyncRunRequest expectedRequest = SyncRunRequest.ForLocalChangedPaths(
+                ["Docs/offline.txt"],
+                causes: SyncRunCause.LocalChange);
+            FakeOfflineChangeDetector detector = new(expectedRequest);
+            LocalChangeSyncCoordinator coordinator = new(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval,
+                offlineChangeDetector: detector,
+                connectionRetryInterval: TimeSpan.FromMilliseconds(1),
+                delayAsync: static (_, _) => Task.CompletedTask);
+
+            await coordinator.StartAsync();
+            bool retried = await supervisor.WaitForSyncCallCountAsync(2, TimeSpan.FromSeconds(2));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(retried, Is.True);
+                Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(2));
+                Assert.That(supervisor.Requests, Is.All.SameAs(expectedRequest));
+            });
+        }
+
+        [Test]
         public async Task StartAsync_OfflineDetectionFailureRequestsFullRecovery()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
@@ -1758,6 +1897,10 @@ namespace Cotton.Sync.App.Tests.LocalChanges
 
             public bool BlockSyncNow { get; set; }
 
+            public List<SyncRunRequest> Requests { get; } = [];
+
+            public Queue<Exception> SyncNowExceptions { get; } = [];
+
             public int SyncNowCallCount { get; private set; }
 
             public Guid? LastSyncNowPairId { get; private set; }
@@ -1822,9 +1965,15 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 SyncNowCallCount++;
                 LastSyncNowPairId = syncPairId;
                 LastRequest = request;
+                Requests.Add(request);
                 _syncRequested.TrySetResult();
-                return BlockSyncNow
-                    ? _releaseSyncNow.Task
+                if (BlockSyncNow)
+                {
+                    return _releaseSyncNow.Task;
+                }
+
+                return SyncNowExceptions.TryDequeue(out Exception? exception)
+                    ? Task.FromException(exception)
                     : Task.CompletedTask;
             }
 
@@ -1832,6 +1981,17 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             {
                 Task completed = await Task.WhenAny(_syncRequested.Task, Task.Delay(timeout)).ConfigureAwait(false);
                 return completed == _syncRequested.Task;
+            }
+
+            public async Task<bool> WaitForSyncCallCountAsync(int expectedCount, TimeSpan timeout)
+            {
+                DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+                while (SyncNowCallCount < expectedCount && DateTimeOffset.UtcNow < deadline)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(10)).ConfigureAwait(false);
+                }
+
+                return SyncNowCallCount >= expectedCount;
             }
 
             public void ReleaseSyncNow()

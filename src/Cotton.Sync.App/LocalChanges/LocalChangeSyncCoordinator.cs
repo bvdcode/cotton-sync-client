@@ -16,6 +16,7 @@ namespace Cotton.Sync.App.LocalChanges
     public class LocalChangeSyncCoordinator : ILocalChangeSyncCoordinator
     {
         private static readonly TimeSpan DefaultDebounceInterval = TimeSpan.FromMilliseconds(750);
+        private static readonly TimeSpan DefaultConnectionRetryInterval = TimeSpan.FromSeconds(15);
         private static readonly TimeSpan DefaultMaxDebounceDelay = TimeSpan.FromSeconds(5);
 
         private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
@@ -25,6 +26,8 @@ namespace Cotton.Sync.App.LocalChanges
         private readonly TimeProvider _timeProvider;
         private readonly ILogger<LocalChangeSyncCoordinator> _logger;
         private readonly ILocalChangeSuppression? _changeSuppression;
+        private readonly TimeSpan _connectionRetryInterval;
+        private readonly Func<TimeSpan, CancellationToken, Task> _delayAsync;
         private readonly ILocalOfflineChangeDetector? _offlineChangeDetector;
         private readonly ISyncPairSettingsStore _syncPairs;
         private readonly ISyncSupervisor _supervisor;
@@ -72,7 +75,9 @@ namespace Cotton.Sync.App.LocalChanges
             ILocalChangeSuppression? changeSuppression = null,
             TimeSpan? maxDebounceDelay = null,
             TimeProvider? timeProvider = null,
-            ILocalOfflineChangeDetector? offlineChangeDetector = null)
+            ILocalOfflineChangeDetector? offlineChangeDetector = null,
+            TimeSpan? connectionRetryInterval = null,
+            Func<TimeSpan, CancellationToken, Task>? delayAsync = null)
         {
             _syncPairs = syncPairs ?? throw new ArgumentNullException(nameof(syncPairs));
             _supervisor = supervisor ?? throw new ArgumentNullException(nameof(supervisor));
@@ -91,7 +96,16 @@ namespace Cotton.Sync.App.LocalChanges
                 throw new ArgumentOutOfRangeException(nameof(maxDebounceDelay), "Maximum debounce delay cannot be negative.");
             }
 
+            _connectionRetryInterval = connectionRetryInterval ?? DefaultConnectionRetryInterval;
+            if (_connectionRetryInterval <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(connectionRetryInterval),
+                    "Connection retry interval must be positive.");
+            }
+
             _timeProvider = timeProvider ?? TimeProvider.System;
+            _delayAsync = delayAsync ?? Task.Delay;
             _logger = logger ?? NullLogger<LocalChangeSyncCoordinator>.Instance;
         }
 
@@ -254,7 +268,12 @@ namespace Cotton.Sync.App.LocalChanges
         {
             try
             {
-                await _supervisor.SyncNowAsync(syncPairId, request, cancellationToken).ConfigureAwait(false);
+                await RequestSyncWithConnectionRecoveryAsync(
+                        syncPairId,
+                        request,
+                        "Startup local-change reconciliation",
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -362,7 +381,12 @@ namespace Cotton.Sync.App.LocalChanges
                     return;
                 }
 
-                await _supervisor.SyncNowAsync(syncPairId, syncRequest, request.Cancellation.Token).ConfigureAwait(false);
+                await RequestSyncWithConnectionRecoveryAsync(
+                        syncPairId,
+                        syncRequest,
+                        "Local-change sync",
+                        request.Cancellation.Token)
+                    .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (request.Cancellation.IsCancellationRequested)
             {
@@ -378,6 +402,36 @@ namespace Cotton.Sync.App.LocalChanges
             {
                 CompletePendingSync(syncPairId, request);
                 request.Cancellation.Dispose();
+            }
+        }
+
+        private async Task RequestSyncWithConnectionRecoveryAsync(
+            Guid syncPairId,
+            SyncRunRequest request,
+            string operation,
+            CancellationToken cancellationToken)
+        {
+            while (true)
+            {
+                try
+                {
+                    await _supervisor.SyncNowAsync(syncPairId, request, cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception) when (SyncFailureClassifier.IsTransientConnectionFailure(exception))
+                {
+                    _logger.LogWarning(
+                        exception,
+                        "{Operation} for {SyncPairId} could not reach Cotton Cloud; retrying after {RetryInterval}.",
+                        operation,
+                        syncPairId,
+                        _connectionRetryInterval);
+                    await _delayAsync(_connectionRetryInterval, cancellationToken).ConfigureAwait(false);
+                }
             }
         }
 
