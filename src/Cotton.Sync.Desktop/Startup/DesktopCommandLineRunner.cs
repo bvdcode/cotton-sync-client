@@ -119,6 +119,8 @@ namespace Cotton.Sync.Desktop.Startup
             DesktopTraceLogging.Install(paths);
             var syncPairs = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
             await syncPairs.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            var syncState = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            await syncState.InitializeAsync(cancellationToken).ConfigureAwait(false);
             IReadOnlyList<SyncPairSettings> configuredPairs = await syncPairs
                 .ListAsync(cancellationToken)
                 .ConfigureAwait(false);
@@ -132,9 +134,16 @@ namespace Cotton.Sync.Desktop.Startup
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
+                    SyncChangeCursor cursor = await syncState
+                        .GetChangeCursorAsync(syncPair.Id.ToString("D"), cancellationToken)
+                        .ConfigureAwait(false);
+                    cursor.HasCompletedFullReconcile = false;
+                    cursor.UpdatedAtUtc = DateTime.UtcNow;
+                    await syncState.SaveChangeCursorAsync(cursor, cancellationToken).ConfigureAwait(false);
                     cloudFiles.UnregisterSyncRoot(syncPair);
                     cleaned++;
                     await output.WriteLineAsync("Unregistered: " + syncPair.LocalRootPath).ConfigureAwait(false);
+                    await output.WriteLineAsync("Recovery queued: " + syncPair.LocalRootPath).ConfigureAwait(false);
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {

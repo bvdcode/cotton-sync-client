@@ -79,6 +79,12 @@ namespace Cotton.Sync
         public bool AllowInitialVirtualFilesStreaming { get; set; } = true;
 
         /// <summary>
+        /// Gets or sets a value indicating whether a full Windows virtual-files recovery pass restores tracked
+        /// online-only placeholders that are missing from disk.
+        /// </summary>
+        public bool RestoreMissingRemoteOnlyPlaceholders { get; set; }
+
+        /// <summary>
         /// Gets or sets the optional live activity reporter used by UI and CLI clients.
         /// </summary>
         public IProgress<SyncActivity>? ActivityProgress { get; set; }

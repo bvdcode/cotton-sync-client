@@ -2950,29 +2950,37 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
-        public async Task RunOnceAsync_WithWindowsVirtualFilesReportsMissingRemoteOnlyPlaceholderAsActionRequired()
+        public async Task RunOnceAsync_WithWindowsVirtualFilesRestoresMissingRemoteOnlyPlaceholderDuringFullReconcile()
         {
             NodeFileManifestDto remote = RemoteFile("placeholder-deleted.txt", HashText("remote-content"), sizeBytes: 1024);
             var remoteFiles = new FakeRemoteFileSynchronizer();
+            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(),
                 RemoteTree(remote),
                 remoteFiles,
-                out SqliteSyncStateStore stateStore);
+                out SqliteSyncStateStore stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
             await InsertPlaceholderBaselineAsync(stateStore, "placeholder-deleted.txt", remote);
 
-            SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { RestoreMissingRemoteOnlyPlaceholders = true });
 
             SyncStateEntry? entry = await stateStore.GetAsync("pair-a", "placeholder-deleted.txt");
             Assert.Multiple(() =>
             {
                 Assert.That(remoteFiles.Deletes, Is.Empty);
-                Assert.That(result.RequiresUserAction, Is.True);
-                Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.Skipped }));
-                Assert.That(result.ActionRequiredMessage, Does.Contain("deleted or moved locally"));
+                Assert.That(remoteFiles.DownloadCalls, Is.Empty);
+                Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath),
+                    Is.EqualTo(new[] { "placeholder-deleted.txt" }));
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(result.Activities.Select(x => x.Kind),
+                    Is.EqualTo(new[] { SyncActivityKind.PlaceholderCreated }));
                 Assert.That(entry, Is.Not.Null);
                 Assert.That(entry!.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
                 Assert.That(entry.RemoteFileId, Is.EqualTo(remote.Id));
+                Assert.That(entry.PlaceholderIdentity, Is.EqualTo(placeholderWriter.PlaceholderIdentity));
             });
         }
 

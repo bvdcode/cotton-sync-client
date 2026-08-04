@@ -126,23 +126,33 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         public async Task RunCloudFilesCleanupAsync_UnregistersOnlyVirtualFilesPairs()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(["--data-dir", _tempDirectory, "--cleanup-cloud-files"]);
-            var store = new SqliteSyncPairSettingsStore(DesktopAppPaths.CreateForDataDirectory(_tempDirectory).AppDatabasePath);
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            var store = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
             await store.InitializeAsync();
             SyncPairSettings fullMirror = CreateSyncPair("Full", SyncPairMode.FullMirror, Path.Combine(_tempDirectory, "full"));
             SyncPairSettings virtualFiles = CreateSyncPair("Virtual", SyncPairMode.WindowsVirtualFiles, Path.Combine(_tempDirectory, "virtual"));
             await store.UpsertAsync(fullMirror);
             await store.UpsertAsync(virtualFiles);
+            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            await stateStore.InitializeAsync();
+            await stateStore.SaveChangeCursorAsync(new SyncChangeCursor
+            {
+                SyncPairId = virtualFiles.Id.ToString("D"),
+                LastCursor = 42,
+                HasCompletedFullReconcile = true,
+            });
             var adapter = new FakeCloudFilesAdapter();
             var storageProvider = new FakeStorageProviderSyncRootRegistrar();
             using var output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunCloudFilesCleanupAsync(
-                DesktopAppPaths.CreateForDataDirectory(_tempDirectory),
+                paths,
                 options,
                 output,
                 adapter,
                 storageProvider);
             IReadOnlyList<SyncPairSettings> remainingPairs = await store.ListAsync();
+            SyncChangeCursor cursor = await stateStore.GetChangeCursorAsync(virtualFiles.Id.ToString("D"));
 
             Assert.Multiple(() =>
             {
@@ -150,7 +160,10 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(adapter.UnregisteredPairs.Select(static pair => pair.Id), Is.EqualTo(new[] { virtualFiles.Id }));
                 Assert.That(storageProvider.UnregisterAllCalls, Is.EqualTo(1));
                 Assert.That(remainingPairs.Select(static pair => pair.Id), Is.EquivalentTo(new[] { fullMirror.Id, virtualFiles.Id }));
+                Assert.That(cursor.LastCursor, Is.EqualTo(42));
+                Assert.That(cursor.HasCompletedFullReconcile, Is.False);
                 Assert.That(output.ToString(), Does.Contain("Roots cleaned: 1"));
+                Assert.That(output.ToString(), Does.Contain("Recovery queued: " + virtualFiles.LocalRootPath));
                 Assert.That(output.ToString(), Does.Contain("Orphaned storage-provider roots cleaned."));
                 Assert.That(output.ToString(), Does.Contain("Result: passed"));
             });

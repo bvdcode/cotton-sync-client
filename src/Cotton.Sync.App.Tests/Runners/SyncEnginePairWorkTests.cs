@@ -128,6 +128,26 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task RunOnceAsync_EnablesMissingPlaceholderRecoveryForInitialPopulationRequest()
+        {
+            FakeSyncEngine engine = new();
+            SyncEnginePairWork work = new(engine);
+            SyncPairSettings syncPair = CreateSyncPair(Guid.NewGuid());
+            syncPair.Mode = SyncPairMode.WindowsVirtualFiles;
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForFull(SyncRunCause.InitialPopulation));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(engine.LastOptions, Is.Not.Null);
+                Assert.That(engine.LastOptions!.Scope.IsFull, Is.True);
+                Assert.That(engine.LastOptions.RestoreMissingRemoteOnlyPlaceholders, Is.True);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_PublishesCoreSyncActivities()
         {
             Guid syncPairId = Guid.NewGuid();
@@ -390,9 +410,10 @@ namespace Cotton.Sync.App.Tests.Runners
             {
                 Assert.That(engine.RunOnceCallCount, Is.EqualTo(2));
                 Assert.That(delays, Is.EqualTo(new[] { TimeSpan.FromSeconds(2) }));
-                Assert.That(engine.OptionsHistory[0], Is.Null);
+                Assert.That(engine.OptionsHistory[0]?.RestoreMissingRemoteOnlyPlaceholders, Is.True);
                 Assert.That(engine.OptionsHistory[1]?.Scope.IsFull, Is.False);
                 Assert.That(engine.OptionsHistory[1]?.Scope.LocalChangedPaths, Is.EqualTo(new[] { "Docs/report.txt" }));
+                Assert.That(engine.OptionsHistory[1]?.RestoreMissingRemoteOnlyPlaceholders, Is.False);
             });
         }
 

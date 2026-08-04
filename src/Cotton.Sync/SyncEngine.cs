@@ -3767,6 +3767,20 @@ namespace Cotton.Sync
                     return;
                 }
 
+                if (options.RestoreMissingRemoteOnlyPlaceholders)
+                {
+                    await MaterializeRemoteOnlyFileAsync(
+                            syncPair,
+                            options,
+                            result,
+                            relativePath,
+                            remote.File,
+                            cancellationToken,
+                            state.PlaceholderHydrationState)
+                        .ConfigureAwait(false);
+                    return;
+                }
+
                 Report(
                     result,
                     options,
