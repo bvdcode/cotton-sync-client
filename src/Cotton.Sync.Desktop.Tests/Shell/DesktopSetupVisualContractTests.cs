@@ -689,7 +689,9 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(dashboardHeader, Does.Not.Contain("Content=\"Sync\""));
                 Assert.That(actionRequiredRow, Does.Contain("Kind=\"Refresh\""));
                 Assert.That(actionRequiredRow, Does.Contain("Kind=\"CheckCircleOutline\""));
-                Assert.That(actionRequiredRow, Does.Contain("MaxLines=\"3\""));
+                Assert.That(actionRequiredRow, Does.Contain("Grid.Row=\"1\""));
+                Assert.That(actionRequiredRow, Does.Contain("HorizontalAlignment=\"Right\""));
+                Assert.That(actionRequiredRow, Does.Contain("MaxLines=\"4\""));
                 Assert.That(actionRequiredRow, Does.Contain("TextWrapping=\"Wrap\""));
                 Assert.That(actionRequiredRow, Does.Contain("ToolTip.Tip=\"{Binding ActionRequiredMessage}\""));
                 Assert.That(actionRequiredRow, Does.Contain("Text=\"Retry\""));
