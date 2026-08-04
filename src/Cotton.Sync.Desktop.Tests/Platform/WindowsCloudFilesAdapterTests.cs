@@ -867,6 +867,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(identity.ETag, Is.EqualTo(state.RemoteETag));
                 Assert.That(result.PlaceholderIdentity, Is.EqualTo(converted.FileIdentity));
                 Assert.That(result.HydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+                Assert.That(result.LocalSizeBytes, Is.EqualTo(new FileInfo(target).Length));
+                Assert.That(result.LocalLastWriteUtc, Is.EqualTo(new FileInfo(target).LastWriteTimeUtc));
             });
         }
 
@@ -894,6 +896,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { target }));
                 Assert.That(result.PlaceholderIdentity, Is.Not.Null.And.Not.Empty);
                 Assert.That(result.HydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+                Assert.That(result.LocalSizeBytes, Is.EqualTo(new FileInfo(target).Length));
+                Assert.That(result.LocalLastWriteUtc, Is.EqualTo(new FileInfo(target).LastWriteTimeUtc));
             });
         }
 

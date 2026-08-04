@@ -25,6 +25,7 @@ namespace Cotton.Sync.App.LocalChanges
         private readonly TimeProvider _timeProvider;
         private readonly ILogger<LocalChangeSyncCoordinator> _logger;
         private readonly ILocalChangeSuppression? _changeSuppression;
+        private readonly ILocalOfflineChangeDetector? _offlineChangeDetector;
         private readonly ISyncPairSettingsStore _syncPairs;
         private readonly ISyncSupervisor _supervisor;
         private readonly ILocalSyncRootWatcherFactory _watcherFactory;
@@ -34,6 +35,7 @@ namespace Cotton.Sync.App.LocalChanges
         private readonly Dictionary<Guid, string> _localRootPaths = [];
         private readonly Dictionary<Guid, SyncPairMode> _syncPairModes = [];
         private readonly HashSet<Guid> _loggedProviderSuppressionPairs = [];
+        private readonly List<Task> _offlineReconciliationTasks = [];
         private CancellationTokenSource? _lifetime;
 
         internal int PendingRequestCount
@@ -69,12 +71,14 @@ namespace Cotton.Sync.App.LocalChanges
             ILogger<LocalChangeSyncCoordinator>? logger = null,
             ILocalChangeSuppression? changeSuppression = null,
             TimeSpan? maxDebounceDelay = null,
-            TimeProvider? timeProvider = null)
+            TimeProvider? timeProvider = null,
+            ILocalOfflineChangeDetector? offlineChangeDetector = null)
         {
             _syncPairs = syncPairs ?? throw new ArgumentNullException(nameof(syncPairs));
             _supervisor = supervisor ?? throw new ArgumentNullException(nameof(supervisor));
             _watcherFactory = watcherFactory ?? throw new ArgumentNullException(nameof(watcherFactory));
             _changeSuppression = changeSuppression;
+            _offlineChangeDetector = offlineChangeDetector;
             _debounceInterval = debounceInterval ?? DefaultDebounceInterval;
             if (_debounceInterval < TimeSpan.Zero)
             {
@@ -103,7 +107,10 @@ namespace Cotton.Sync.App.LocalChanges
                     _lifetime = new CancellationTokenSource();
                     await _syncPairs.InitializeAsync(cancellationToken).ConfigureAwait(false);
                     IReadOnlyList<SyncPairSettings> syncPairs = await _syncPairs.ListAsync(cancellationToken).ConfigureAwait(false);
-                    foreach (SyncPairSettings syncPair in syncPairs.Where(static pair => pair.IsEnabled))
+                    IReadOnlyList<SyncPairSettings> enabledSyncPairs = syncPairs
+                        .Where(static pair => pair.IsEnabled)
+                        .ToList();
+                    foreach (SyncPairSettings syncPair in enabledSyncPairs)
                     {
                         ILocalSyncRootWatcher watcher = _watcherFactory.Create(syncPair);
                         watcher.Changed += OnLocalChange;
@@ -111,6 +118,14 @@ namespace Cotton.Sync.App.LocalChanges
                         _localRootPaths[syncPair.Id] = syncPair.LocalRootPath;
                         _syncPairModes[syncPair.Id] = syncPair.Mode;
                         await watcher.StartAsync(cancellationToken).ConfigureAwait(false);
+                    }
+
+                    if (_offlineChangeDetector is not null)
+                    {
+                        foreach (SyncPairSettings syncPair in enabledSyncPairs)
+                        {
+                            await StartOfflineReconciliationAsync(syncPair, cancellationToken).ConfigureAwait(false);
+                        }
                     }
                 }
                 catch
@@ -142,6 +157,7 @@ namespace Cotton.Sync.App.LocalChanges
         private async Task StopCoreAsync(CancellationToken cancellationToken)
         {
             List<PendingLocalSyncRequest> pendingSyncs;
+            List<Task> offlineReconciliationTasks;
             CancellationTokenSource? lifetime;
             lock (_pendingGate)
             {
@@ -157,9 +173,12 @@ namespace Cotton.Sync.App.LocalChanges
                 _pendingSyncs.Clear();
                 _pendingRequests.Clear();
                 _loggedProviderSuppressionPairs.Clear();
+                offlineReconciliationTasks = _offlineReconciliationTasks.ToList();
+                _offlineReconciliationTasks.Clear();
             }
 
             await WaitForPendingSyncsAsync(pendingSyncs, cancellationToken).ConfigureAwait(false);
+            await WaitForTasksAsync(offlineReconciliationTasks, cancellationToken).ConfigureAwait(false);
             lifetime?.Dispose();
 
             foreach (ILocalSyncRootWatcher watcher in _watchers.Values)
@@ -172,6 +191,81 @@ namespace Cotton.Sync.App.LocalChanges
             _watchers.Clear();
             _localRootPaths.Clear();
             _syncPairModes.Clear();
+        }
+
+        private async Task StartOfflineReconciliationAsync(
+            SyncPairSettings syncPair,
+            CancellationToken cancellationToken)
+        {
+            if (_offlineChangeDetector is null || syncPair.Mode != SyncPairMode.WindowsVirtualFiles)
+            {
+                return;
+            }
+
+            SyncRunRequest? request;
+            try
+            {
+                request = await _offlineChangeDetector
+                    .DetectAsync(syncPair, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                _logger.LogError(
+                    exception,
+                    "Failed to inspect local changes made while sync was stopped for {SyncPairId}; requesting a full recovery pass.",
+                    syncPair.Id);
+                request = SyncRunRequest.ForFull(SyncRunCause.LocalWatcherError);
+            }
+
+            if (request is null)
+            {
+                return;
+            }
+
+            _logger.LogInformation(
+                "Requesting startup local-change reconciliation for {SyncPairId}; full={IsFull}; requested paths={RequestedPathCount}; paths={ChangedPathPreview}.",
+                syncPair.Id,
+                request.IsFull,
+                request.LocalChangedPaths.Count,
+                string.Join(", ", request.LocalChangedPaths.Take(8)));
+            CancellationToken lifetimeToken;
+            lock (_pendingGate)
+            {
+                if (_lifetime is null || _lifetime.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                lifetimeToken = _lifetime.Token;
+            }
+
+            Task reconciliation = RunOfflineReconciliationAsync(syncPair.Id, request, lifetimeToken);
+            lock (_pendingGate)
+            {
+                _offlineReconciliationTasks.Add(reconciliation);
+            }
+        }
+
+        private async Task RunOfflineReconciliationAsync(
+            Guid syncPairId,
+            SyncRunRequest request,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                await _supervisor.SyncNowAsync(syncPairId, request, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+            catch (Exception exception)
+            {
+                _logger.LogError(
+                    exception,
+                    "Startup local-change reconciliation failed for {SyncPairId}.",
+                    syncPairId);
+            }
         }
 
         private void OnLocalChange(object? sender, LocalSyncRootChange change)
@@ -378,6 +472,18 @@ namespace Cotton.Sync.App.LocalChanges
             }
 
             await Task.WhenAll(runners).WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        private static async Task WaitForTasksAsync(
+            IReadOnlyList<Task> tasks,
+            CancellationToken cancellationToken)
+        {
+            if (tasks.Count == 0)
+            {
+                return;
+            }
+
+            await Task.WhenAll(tasks).WaitAsync(cancellationToken).ConfigureAwait(false);
         }
 
         private SyncRunRequest? CreateSyncRunRequest(Guid syncPairId, PendingLocalSyncRequest request)

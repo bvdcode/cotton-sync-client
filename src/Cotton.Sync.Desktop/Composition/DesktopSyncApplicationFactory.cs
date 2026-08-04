@@ -136,7 +136,8 @@ namespace Cotton.Sync.Desktop.Composition
                 supervisor,
                 new FileSystemLocalSyncRootWatcherFactory(_loggerFactory),
                 logger: _loggerFactory.CreateLogger<LocalChangeSyncCoordinator>(),
-                changeSuppression: localChangeSuppression);
+                changeSuppression: localChangeSuppression,
+                offlineChangeDetector: new LocalOfflineChangeDetector(new LocalFileScanner(), stateStore));
             var periodicSync = new PeriodicSyncCoordinator(
                 supervisor,
                 logger: _loggerFactory.CreateLogger<PeriodicSyncCoordinator>());

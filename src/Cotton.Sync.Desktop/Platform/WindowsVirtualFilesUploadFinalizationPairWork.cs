@@ -153,6 +153,9 @@ namespace Cotton.Sync.Desktop.Platform
 
                     state.PlaceholderIdentity = placeholder.PlaceholderIdentity;
                     state.PlaceholderHydrationState = placeholder.HydrationState;
+                    state.LocalSizeBytes = placeholder.LocalSizeBytes ?? state.LocalSizeBytes;
+                    state.LocalLastWriteUtc = placeholder.LocalLastWriteUtc?.ToUniversalTime()
+                        ?? state.LocalLastWriteUtc;
                     state.SyncedAtUtc = DateTime.UtcNow;
                     await _stateStore.UpsertAsync(state, cancellationToken).ConfigureAwait(false);
                     recordFinalizedPath();

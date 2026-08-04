@@ -1371,6 +1371,63 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task StartAsync_RequestsDetectedOfflineChangesAfterWatcherStarts()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            var watcherFactory = new FakeWatcherFactory();
+            var supervisor = new FakeSyncSupervisor();
+            SyncRunRequest expectedRequest = SyncRunRequest.ForLocalChangedPaths(
+                ["Docs/old.txt", "Docs/renamed.txt"],
+                ["Docs/old.txt"],
+                SyncRunCause.LocalChange);
+            var detector = new FakeOfflineChangeDetector(expectedRequest);
+            var coordinator = new LocalChangeSyncCoordinator(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval,
+                offlineChangeDetector: detector);
+
+            await coordinator.StartAsync();
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(detector.DetectedPairs, Is.EqualTo(new[] { syncPair.Id }));
+                Assert.That(watcherFactory.CreatedWatchers[syncPair.Id].StartCallCount, Is.EqualTo(1));
+                Assert.That(supervisor.LastRequest, Is.SameAs(expectedRequest));
+            });
+        }
+
+        [Test]
+        public async Task StartAsync_OfflineDetectionFailureRequestsFullRecovery()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            var watcherFactory = new FakeWatcherFactory();
+            var supervisor = new FakeSyncSupervisor();
+            var detector = new FakeOfflineChangeDetector(new InvalidOperationException("Scan failed."));
+            var coordinator = new LocalChangeSyncCoordinator(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                DebounceInterval,
+                offlineChangeDetector: detector);
+
+            await coordinator.StartAsync();
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.LastRequest?.IsFull, Is.True);
+                Assert.That(supervisor.LastRequest?.Causes, Is.EqualTo(SyncRunCause.LocalWatcherError));
+            });
+        }
+
+        [Test]
         public async Task StopAsync_CancelsPendingSyncRequest()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
@@ -1579,6 +1636,8 @@ namespace Cotton.Sync.App.Tests.LocalChanges
 
             public int DisposeAsyncCallCount { get; private set; }
 
+            public int StartCallCount { get; private set; }
+
             public int StopCallCount { get; private set; }
 
             public ValueTask DisposeAsync()
@@ -1607,6 +1666,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             public Task StartAsync(CancellationToken cancellationToken = default)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                StartCallCount++;
                 if (StartException is not null)
                 {
                     throw StartException;
@@ -1620,6 +1680,35 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 cancellationToken.ThrowIfCancellationRequested();
                 StopCallCount++;
                 return Task.CompletedTask;
+            }
+        }
+
+        private class FakeOfflineChangeDetector : ILocalOfflineChangeDetector
+        {
+            private readonly Exception? _exception;
+            private readonly SyncRunRequest? _request;
+
+            public FakeOfflineChangeDetector(SyncRunRequest? request)
+            {
+                _request = request;
+            }
+
+            public FakeOfflineChangeDetector(Exception exception)
+            {
+                _exception = exception;
+            }
+
+            public List<Guid> DetectedPairs { get; } = [];
+
+            public Task<SyncRunRequest?> DetectAsync(
+                SyncPairSettings syncPair,
+                CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                DetectedPairs.Add(syncPair.Id);
+                return _exception is null
+                    ? Task.FromResult(_request)
+                    : Task.FromException<SyncRunRequest?>(_exception);
             }
         }
 

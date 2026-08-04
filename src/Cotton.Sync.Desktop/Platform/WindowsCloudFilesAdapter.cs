@@ -1112,52 +1112,56 @@ namespace Cotton.Sync.Desktop.Platform
             if (_isReparsePoint(fullPlaceholderPath))
             {
                 SetInSyncState(syncPair, normalizedPath);
-                return new RemoteFilePlaceholderResult(
-                    fileIdentity,
-                    SyncPlaceholderHydrationState.Hydrated);
             }
+            else
+            {
+                try
+                {
+                    ExecuteNativeOperationWithTransientPathRetry(
+                        () => _nativeApi.ConvertToPlaceholder(
+                            fullPlaceholderPath,
+                            fileIdentity,
+                            isDirectory: false,
+                            markInSync: true),
+                        operation,
+                        syncPair.Id.ToString(),
+                        registration.LocalRootPath,
+                        normalizedPath);
+                    ExecuteNativeOperationWithTransientPathRetry(
+                        () => SetAndVerifyInSyncState(fullPlaceholderPath),
+                        "set-in-sync-state",
+                        syncPair.Id.ToString(),
+                        registration.LocalRootPath,
+                        normalizedPath);
+                    _shellChangeNotifier.NotifyItemUpdated(fullPlaceholderPath);
+                }
+                catch (Exception exception)
+                {
+                    RecordFailure(
+                        operation,
+                        syncPair.Id.ToString(),
+                        registration.LocalRootPath,
+                        normalizedPath,
+                        exception);
+                    throw;
+                }
 
-            try
-            {
-                ExecuteNativeOperationWithTransientPathRetry(
-                    () => _nativeApi.ConvertToPlaceholder(
-                        fullPlaceholderPath,
-                        fileIdentity,
-                        isDirectory: false,
-                        markInSync: true),
+                _diagnostics.Record(
                     operation,
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath);
-                ExecuteNativeOperationWithTransientPathRetry(
-                    () => SetAndVerifyInSyncState(fullPlaceholderPath),
-                    "set-in-sync-state",
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath);
-                _shellChangeNotifier.NotifyItemUpdated(fullPlaceholderPath);
-            }
-            catch (Exception exception)
-            {
-                RecordFailure(
-                    operation,
+                    "completed",
                     syncPair.Id.ToString(),
                     registration.LocalRootPath,
                     normalizedPath,
-                    exception);
-                throw;
+                    "Uploaded local file was converted to a Cloud Files placeholder and marked in sync.");
             }
 
-            _diagnostics.Record(
-                operation,
-                "completed",
-                syncPair.Id.ToString(),
-                registration.LocalRootPath,
-                normalizedPath,
-                "Uploaded local file was converted to a Cloud Files placeholder and marked in sync.");
+            var finalizedFile = new FileInfo(fullPlaceholderPath);
+            finalizedFile.Refresh();
             return new RemoteFilePlaceholderResult(
                 fileIdentity,
-                SyncPlaceholderHydrationState.Hydrated);
+                SyncPlaceholderHydrationState.Hydrated,
+                finalizedFile.Length,
+                finalizedFile.LastWriteTimeUtc);
         }
 
         public void SetSyncRootInSyncState(SyncPairSettings syncPair)

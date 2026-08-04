@@ -69,6 +69,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(finalizedState, Is.Not.Null);
                 Assert.That(finalizedState!.PlaceholderIdentity, Is.Not.Null.And.Not.Empty);
                 Assert.That(finalizedState.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+                Assert.That(finalizedState.LocalSizeBytes, Is.EqualTo(25));
+                Assert.That(finalizedState.LocalLastWriteUtc, Is.EqualTo(
+                    new DateTime(2026, 8, 3, 12, 0, 0, DateTimeKind.Utc)));
             });
         }
 
@@ -465,7 +468,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 SetInSyncState(syncPair, fileState.RelativePath);
                 return new RemoteFilePlaceholderResult(
                     [1, 2, 3],
-                    SyncPlaceholderHydrationState.Hydrated);
+                    SyncPlaceholderHydrationState.Hydrated,
+                    LocalSizeBytes: 25,
+                    LocalLastWriteUtc: new DateTime(2026, 8, 3, 12, 0, 0, DateTimeKind.Utc));
             }
 
             public void SetSyncRootInSyncState(SyncPairSettings syncPair)
