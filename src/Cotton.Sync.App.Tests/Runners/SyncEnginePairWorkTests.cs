@@ -91,6 +91,24 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task RunOnceAsync_MapsExplicitRemoteDeleteApprovalToCoreOptions()
+        {
+            FakeSyncEngine engine = new();
+            SyncEnginePairWork work = new(engine);
+            SyncPairSettings syncPair = CreateSyncPair(Guid.NewGuid());
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForFull(SyncRunCause.Manual, approvedRemoteDeleteCount: 101));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(engine.LastOptions, Is.Not.Null);
+                Assert.That(engine.LastOptions!.ApprovedRemoteDeleteCount, Is.EqualTo(101));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_DisablesStreamingFastPathForRemoteChangeFullRequest()
         {
             FakeSyncEngine engine = new();

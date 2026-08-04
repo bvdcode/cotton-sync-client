@@ -43,7 +43,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 message,
                 Is.EqualTo(
                     "Cotton Sync blocked a large remote delete plan (2207 pending deletes exceed limit 100). "
-                    + "Check local files and Cotton Cloud, then retry only if the deletes are intentional."));
+                    + "Check local files and Cotton Cloud, then explicitly approve the exact delete plan."));
         }
 
         [Test]
@@ -58,7 +58,38 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 message,
                 Is.EqualTo(
                     "Cotton Sync blocked a large remote delete plan (42 pending deletes exceed limit 10). "
-                    + "Check local files and Cotton Cloud, then retry only if the deletes are intentional."));
+                    + "Check local files and Cotton Cloud, then explicitly approve the exact delete plan."));
+        }
+
+        [TestCase(
+            "Remote delete blocked by mass-delete guard. 2207 pending deletes exceed limit 100.",
+            2207)]
+        [TestCase(
+            "Cotton Sync blocked a large remote delete plan (42 pending deletes exceed limit 10). Check local files.",
+            42)]
+        public void TryGetRemoteMassDeleteCount_ParsesGuardedPlan(string message, int expectedCount)
+        {
+            bool parsed = DesktopActionRequiredMessageResolver.TryGetRemoteMassDeleteCount(message, out int deleteCount);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(parsed, Is.True);
+                Assert.That(deleteCount, Is.EqualTo(expectedCount));
+            });
+        }
+
+        [TestCase("101 pending deletes exceed limit 100.")]
+        [TestCase("Remote delete blocked by mass-delete guard. pending deletes exceed limit 100.")]
+        [TestCase("Remote delete blocked by mass-delete guard. 0 pending deletes exceed limit 100.")]
+        public void TryGetRemoteMassDeleteCount_RejectsUnapprovedMessages(string message)
+        {
+            bool parsed = DesktopActionRequiredMessageResolver.TryGetRemoteMassDeleteCount(message, out int deleteCount);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(parsed, Is.False);
+                Assert.That(deleteCount, Is.Zero);
+            });
         }
 
         [Test]

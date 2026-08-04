@@ -60,7 +60,10 @@ namespace Cotton.Sync.Desktop.Shell
 
         Task RemoveSyncPairAsync(Guid syncPairId, CancellationToken cancellationToken = default);
 
-        Task SyncAllAsync(CancellationToken cancellationToken = default);
+        Task SyncAllAsync(
+            CancellationToken cancellationToken = default,
+            Guid? syncPairId = null,
+            int? approvedRemoteDeleteCount = null);
 
         Task PauseAllAsync(CancellationToken cancellationToken = default);
 

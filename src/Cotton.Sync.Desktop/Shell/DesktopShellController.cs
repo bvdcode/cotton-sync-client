@@ -548,8 +548,26 @@ namespace Cotton.Sync.Desktop.Shell
             StartSessionSyncInBackground(host, "sign-in");
         }
 
-        public Task SyncAllAsync(CancellationToken cancellationToken = default)
+        public Task SyncAllAsync(
+            CancellationToken cancellationToken = default,
+            Guid? syncPairId = null,
+            int? approvedRemoteDeleteCount = null)
         {
+            if (!syncPairId.HasValue && approvedRemoteDeleteCount.HasValue)
+            {
+                throw new ArgumentException(
+                    "A sync pair is required when approving a remote delete plan.",
+                    nameof(syncPairId));
+            }
+
+            if (syncPairId.HasValue)
+            {
+                SyncRunRequest request = SyncRunRequest.ForFull(
+                    SyncRunCause.Manual,
+                    approvedRemoteDeleteCount);
+                return RequireHost().App.SyncNowAsync(syncPairId.Value, request, cancellationToken);
+            }
+
             return RequireHost().App.SyncAllAsync(cancellationToken);
         }
 

@@ -7,6 +7,7 @@ namespace Cotton.Sync
     {
         private readonly int _maximumLocalDeletes;
         private readonly int _maximumRemoteDeletes;
+        private readonly int? _approvedRemoteDeleteCount;
         private readonly int _plannedLocalDeletes;
         private readonly int _plannedRemoteDeletes;
 
@@ -14,6 +15,7 @@ namespace Cotton.Sync
         {
             _maximumLocalDeletes = options.MaximumLocalDeletesPerRun;
             _maximumRemoteDeletes = options.MaximumRemoteDeletesPerRun;
+            _approvedRemoteDeleteCount = options.ApprovedRemoteDeleteCount;
             _plannedLocalDeletes = plannedLocalDeletes;
             _plannedRemoteDeletes = plannedRemoteDeletes;
         }
@@ -29,6 +31,12 @@ namespace Cotton.Sync
 
         public bool CanDeleteRemote(out string? details)
         {
+            if (_approvedRemoteDeleteCount == _plannedRemoteDeletes)
+            {
+                details = null;
+                return true;
+            }
+
             return CanDelete(
                 _plannedRemoteDeletes,
                 _maximumRemoteDeletes,

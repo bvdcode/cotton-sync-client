@@ -5119,6 +5119,13 @@ namespace Cotton.Sync
                     "Maximum remote deletes per run cannot be negative.");
             }
 
+            if (options.ApprovedRemoteDeleteCount <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(options),
+                    "Approved remote delete count must be positive.");
+            }
+
             if (options.MaximumStoredResultActivities < 0)
             {
                 throw new ArgumentOutOfRangeException(
@@ -5896,6 +5903,7 @@ namespace Cotton.Sync
                 MinimumLocalUploadAge = options.MinimumLocalUploadAge,
                 MaximumLocalDeletesPerRun = options.MaximumLocalDeletesPerRun,
                 MaximumRemoteDeletesPerRun = options.MaximumRemoteDeletesPerRun,
+                ApprovedRemoteDeleteCount = options.ApprovedRemoteDeleteCount,
                 MaximumStoredResultActivities = options.MaximumStoredResultActivities,
                 InitialVirtualFilesPopulationQueueCapacity = options.InitialVirtualFilesPopulationQueueCapacity,
                 InitialVirtualFilesStateBatchSize = options.InitialVirtualFilesStateBatchSize,

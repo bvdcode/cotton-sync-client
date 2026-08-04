@@ -506,11 +506,20 @@ namespace Cotton.Sync.Tests
             await InsertPlaceholderBaselineAsync(stateStore, secondPath, secondRemote);
             SyncEngine engine = new(scanner, crawler, remoteFiles, stateStore);
 
-            SyncRunResult result = await engine.RunOnceAsync(
+            SyncRunResult blockedResult = await engine.RunOnceAsync(
                 Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
                 new SyncRunOptions
                 {
                     MaximumRemoteDeletesPerRun = 1,
+                    Scope = SyncRunScope.ForLocalChangedPaths([firstPath, secondPath], [firstPath, secondPath]),
+                });
+
+            SyncRunResult changedPlanResult = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions
+                {
+                    MaximumRemoteDeletesPerRun = 1,
+                    ApprovedRemoteDeleteCount = 3,
                     Scope = SyncRunScope.ForLocalChangedPaths([firstPath, secondPath], [firstPath, secondPath]),
                 });
 
@@ -519,17 +528,37 @@ namespace Cotton.Sync.Tests
             Assert.Multiple(() =>
             {
                 Assert.That(remoteFiles.Deletes, Is.Empty);
-                Assert.That(result.RequiresUserAction, Is.True);
-                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[]
+                Assert.That(blockedResult.RequiresUserAction, Is.True);
+                Assert.That(changedPlanResult.RequiresUserAction, Is.True);
+                Assert.That(blockedResult.Activities.Select(activity => activity.Kind), Is.EqualTo(new[]
                 {
                     SyncActivityKind.Skipped,
                     SyncActivityKind.Skipped,
                 }));
-                Assert.That(result.Activities.Select(activity => activity.RequiresUserAction), Is.All.True);
-                Assert.That(result.Activities[0].Details, Does.Contain("2 pending deletes exceed limit 1"));
-                Assert.That(result.Activities[1].Details, Does.Contain("2 pending deletes exceed limit 1"));
+                Assert.That(blockedResult.Activities.Select(activity => activity.RequiresUserAction), Is.All.True);
+                Assert.That(blockedResult.Activities[0].Details, Does.Contain("2 pending deletes exceed limit 1"));
+                Assert.That(blockedResult.Activities[1].Details, Does.Contain("2 pending deletes exceed limit 1"));
                 Assert.That(firstEntry, Is.Not.Null);
                 Assert.That(secondEntry, Is.Not.Null);
+            });
+
+            SyncRunResult approvedResult = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions
+                {
+                    MaximumRemoteDeletesPerRun = 1,
+                    ApprovedRemoteDeleteCount = 2,
+                    Scope = SyncRunScope.ForLocalChangedPaths([firstPath, secondPath], [firstPath, secondPath]),
+                });
+
+            firstEntry = await stateStore.GetAsync("pair-a", firstPath);
+            secondEntry = await stateStore.GetAsync("pair-a", secondPath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(approvedResult.RequiresUserAction, Is.False);
+                Assert.That(remoteFiles.Deletes, Has.Count.EqualTo(2));
+                Assert.That(firstEntry, Is.Null);
+                Assert.That(secondEntry, Is.Null);
             });
         }
 

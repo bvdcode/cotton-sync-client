@@ -264,6 +264,10 @@ namespace Cotton.Sync.Desktop.ViewModels
             ShowSettingsCommand = new AsyncRelayCommand(ShowSettingsAsync, () => IsSignedIn, HandleCommandError);
             CloseSettingsCommand = new AsyncRelayCommand(CloseSettingsAsync, () => IsSettingsVisible, HandleCommandError);
             SyncNowCommand = new AsyncRelayCommand(SyncNowAsync, () => CanSyncNow, HandleCommandError);
+            ApproveRemoteMassDeleteCommand = new AsyncRelayCommand(
+                ApproveRemoteMassDeleteAsync,
+                () => CanApproveRemoteMassDelete,
+                HandleCommandError);
             PauseCommand = new AsyncRelayCommand(PauseAsync, () => CanPauseSync, HandleCommandError);
             ResumeCommand = new AsyncRelayCommand(ResumeAsync, () => CanResumeSync, HandleCommandError);
             PauseResumeCommand = new AsyncRelayCommand(PauseResumeAsync, () => CanTogglePauseResumeSync, HandleCommandError);
@@ -438,6 +442,8 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public AsyncRelayCommand SyncNowCommand { get; }
 
+        public AsyncRelayCommand ApproveRemoteMassDeleteCommand { get; }
+
         public AsyncRelayCommand SelfTestCommand { get; }
 
         public AsyncRelayCommand ExportDiagnosticsCommand { get; }
@@ -598,6 +604,10 @@ namespace Cotton.Sync.Desktop.ViewModels
                     OnPropertyChanged(nameof(HasOfflineStatus));
                     OnPropertyChanged(nameof(ActionRequiredOpacity));
                     OnPropertyChanged(nameof(CanRetryActionRequired));
+                    OnPropertyChanged(nameof(CanApproveRemoteMassDelete));
+                    OnPropertyChanged(nameof(RemoteMassDeleteApprovalText));
+                    OnPropertyChanged(nameof(RemoteMassDeleteApprovalToolTip));
+                    ApproveRemoteMassDeleteCommand.RaiseCanExecuteChanged();
                     OnPropertyChanged(nameof(StatusCardTitle));
                     OnPropertyChanged(nameof(StatusCardDetailText));
                     OnPropertyChanged(nameof(HasStatusCardDetail));
@@ -1098,7 +1108,22 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public double ActionRequiredOpacity => HasActionRequired ? 1 : 0;
 
-        public bool CanRetryActionRequired => HasActionRequired && IsSignedIn;
+        public bool CanRetryActionRequired => HasActionRequired
+            && IsSignedIn
+            && !HasRemoteMassDeleteGuard();
+
+        public bool CanApproveRemoteMassDelete => HasActionRequired
+            && IsSignedIn
+            && !IsBusy
+            && TryResolveRemoteMassDeleteApproval(out _, out _);
+
+        public string RemoteMassDeleteApprovalText => TryResolveRemoteMassDeleteApproval(out _, out int deleteCount)
+            ? "Approve " + deleteCount.ToString("N0", CultureInfo.InvariantCulture) + " deletes"
+            : "Approve deletes";
+
+        public string RemoteMassDeleteApprovalToolTip => TryResolveRemoteMassDeleteApproval(out _, out int deleteCount)
+            ? "Approve deletion of exactly " + deleteCount.ToString("N0", CultureInfo.InvariantCulture) + " cloud files"
+            : "Approve the blocked cloud delete plan";
 
         public bool HasNoRemoteFolders => RemoteFolders.Count == 0;
 
@@ -3206,6 +3231,39 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
         }
 
+        private async Task ApproveRemoteMassDeleteAsync()
+        {
+            if (!TryResolveRemoteMassDeleteApproval(out Guid syncPairId, out int deleteCount))
+            {
+                return;
+            }
+
+            IsBusy = true;
+            try
+            {
+                await _controller
+                    .SyncAllAsync(syncPairId: syncPairId, approvedRemoteDeleteCount: deleteCount)
+                    .ConfigureAwait(true);
+                string actionRequiredMessage = ResolveCurrentSyncPairActionRequiredMessage();
+                if (!string.IsNullOrWhiteSpace(actionRequiredMessage))
+                {
+                    GlobalStatus = "Action required";
+                    ActionRequiredMessage = actionRequiredMessage;
+                    RefreshCurrentProgressText();
+                    return;
+                }
+
+                GlobalStatus = "Checked for changes";
+                ActionRequiredMessage = string.Empty;
+                RefreshCurrentProgressText();
+                AddActivity("Sync", string.Empty, "Approved remote delete plan completed");
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+        }
+
         private async Task SelfTestAsync()
         {
             IsBusy = true;
@@ -3566,6 +3624,39 @@ namespace Cotton.Sync.Desktop.ViewModels
                 .ToArray();
 
             return DesktopActionRequiredMessageResolver.FromStatus(new DesktopSyncStatusSnapshot(pairStatuses));
+        }
+
+        private bool TryResolveRemoteMassDeleteApproval(out Guid syncPairId, out int deleteCount)
+        {
+            syncPairId = Guid.Empty;
+            deleteCount = 0;
+            bool found = false;
+            foreach (SyncPairRowViewModel pair in SyncPairs)
+            {
+                if (!DesktopActionRequiredMessageResolver.TryGetRemoteMassDeleteCount(pair.LastError, out int pairDeleteCount))
+                {
+                    continue;
+                }
+
+                if (found)
+                {
+                    syncPairId = Guid.Empty;
+                    deleteCount = 0;
+                    return false;
+                }
+
+                found = true;
+                syncPairId = pair.Id;
+                deleteCount = pairDeleteCount;
+            }
+
+            return found;
+        }
+
+        private bool HasRemoteMassDeleteGuard()
+        {
+            return SyncPairs.Any(static pair =>
+                DesktopActionRequiredMessageResolver.TryGetRemoteMassDeleteCount(pair.LastError, out _));
         }
 
         private async Task ExportDiagnosticsAsync()
@@ -5209,6 +5300,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             OpenRemoteFolderCommand.RaiseCanExecuteChanged();
             RemoteFolderUpCommand.RaiseCanExecuteChanged();
             SyncNowCommand.RaiseCanExecuteChanged();
+            ApproveRemoteMassDeleteCommand.RaiseCanExecuteChanged();
             PauseCommand.RaiseCanExecuteChanged();
             ResumeCommand.RaiseCanExecuteChanged();
             PauseResumeCommand.RaiseCanExecuteChanged();
@@ -5253,10 +5345,14 @@ namespace Cotton.Sync.Desktop.ViewModels
         private void RaiseSyncStateProperties()
         {
             SyncNowCommand.RaiseCanExecuteChanged();
+            ApproveRemoteMassDeleteCommand.RaiseCanExecuteChanged();
             PauseCommand.RaiseCanExecuteChanged();
             ResumeCommand.RaiseCanExecuteChanged();
             PauseResumeCommand.RaiseCanExecuteChanged();
             OnPropertyChanged(nameof(CanSyncNow));
+            OnPropertyChanged(nameof(CanApproveRemoteMassDelete));
+            OnPropertyChanged(nameof(RemoteMassDeleteApprovalText));
+            OnPropertyChanged(nameof(RemoteMassDeleteApprovalToolTip));
             OnPropertyChanged(nameof(CanPauseSync));
             OnPropertyChanged(nameof(CanResumeSync));
             OnPropertyChanged(nameof(CanTogglePauseResumeSync));
@@ -5356,6 +5452,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
             RaiseSyncStateProperties();
             SyncNowCommand.RaiseCanExecuteChanged();
+            ApproveRemoteMassDeleteCommand.RaiseCanExecuteChanged();
             PauseCommand.RaiseCanExecuteChanged();
             ResumeCommand.RaiseCanExecuteChanged();
             PauseResumeCommand.RaiseCanExecuteChanged();

@@ -262,7 +262,10 @@ namespace Cotton.Sync.Desktop.Shell
             return Task.CompletedTask;
         }
 
-        public Task SyncAllAsync(CancellationToken cancellationToken = default)
+        public Task SyncAllAsync(
+            CancellationToken cancellationToken = default,
+            Guid? syncPairId = null,
+            int? approvedRemoteDeleteCount = null)
         {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.CompletedTask;

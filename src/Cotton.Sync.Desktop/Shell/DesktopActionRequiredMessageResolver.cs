@@ -1,6 +1,7 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using System.Globalization;
 using System.Text.Json;
 using Cotton.Sdk;
 using Cotton.Sync.App.Runners;
@@ -263,6 +264,48 @@ namespace Cotton.Sync.Desktop.Shell
             return DesktopUserMessageFormatter.Compact(message);
         }
 
+        internal static bool TryGetRemoteMassDeleteCount(string? message, out int deleteCount)
+        {
+            deleteCount = 0;
+            if (string.IsNullOrWhiteSpace(message)
+                || (!message.Contains(RemoteMassDeleteGuardPrefix, StringComparison.OrdinalIgnoreCase)
+                    && !message.Contains("blocked a large remote delete plan", StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            const string marker = "pending deletes exceed limit";
+            int markerIndex = message.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (markerIndex < 0)
+            {
+                return false;
+            }
+
+            int end = markerIndex - 1;
+            while (end >= 0 && char.IsWhiteSpace(message[end]))
+            {
+                end--;
+            }
+
+            int start = end;
+            while (start >= 0 && char.IsDigit(message[start]))
+            {
+                start--;
+            }
+
+            if (end < 0 || start == end)
+            {
+                return false;
+            }
+
+            return int.TryParse(
+                    message.AsSpan(start + 1, end - start),
+                    NumberStyles.None,
+                    CultureInfo.InvariantCulture,
+                    out deleteCount)
+                && deleteCount > 0;
+        }
+
         private static string? NormalizeRemoteMassDeleteGuardMessage(string message)
         {
             if (!message.Contains(RemoteMassDeleteGuardPrefix, StringComparison.OrdinalIgnoreCase)
@@ -278,7 +321,7 @@ namespace Cotton.Sync.Desktop.Shell
             return DesktopUserMessageFormatter.Compact(
                 "Cotton Sync blocked a large remote delete plan"
                 + detailSuffix
-                + ". Check local files and Cotton Cloud, then retry only if the deletes are intentional.");
+                + ". Check local files and Cotton Cloud, then explicitly approve the exact delete plan.");
         }
 
         private static string? ExtractRemoteMassDeleteGuardDetails(string message)

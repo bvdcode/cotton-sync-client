@@ -440,14 +440,14 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
-        public async Task SyncNowCommand_UnresolvedMassDeleteGuardRemainsActionRequiredWithoutRetryLoop()
+        public async Task ApproveRemoteMassDeleteCommand_TargetsExactGuardedPlanWithoutRetryLoop()
         {
             Guid syncPairId = Guid.NewGuid();
             const string rawError =
                 "Remote delete blocked by mass-delete guard. 2207 pending deletes exceed limit 100.";
             const string expectedMessage =
                 "Cotton Sync blocked a large remote delete plan (2207 pending deletes exceed limit 100). "
-                + "Check local files and Cotton Cloud, then retry only if the deletes are intentional.";
+                + "Check local files and Cotton Cloud, then explicitly approve the exact delete plan.";
             DesktopSyncStatusSnapshot guardedStatus = new(
             [
                 new DesktopSyncPairStatusSnapshot(syncPairId, "Error", rawError),
@@ -461,17 +461,59 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             await viewModel.InitializeAsync();
             controller.ReportStatus(guardedStatus);
 
-            await ExecuteAsync(viewModel.SyncNowCommand);
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.CanRetryActionRequired, Is.False);
+                Assert.That(viewModel.CanApproveRemoteMassDelete, Is.True);
+                Assert.That(viewModel.RemoteMassDeleteApprovalText, Is.EqualTo("Approve 2,207 deletes"));
+            });
+
+            await ExecuteAsync(viewModel.ApproveRemoteMassDeleteCommand);
             await Task.Delay(50);
 
             Assert.Multiple(() =>
             {
                 Assert.That(controller.SyncAllCalls, Is.EqualTo(1));
+                Assert.That(controller.LastSyncAllPairId, Is.EqualTo(syncPairId));
+                Assert.That(controller.LastApprovedRemoteDeleteCount, Is.EqualTo(2207));
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Action required"));
                 Assert.That(viewModel.HasActionRequired, Is.True);
-                Assert.That(viewModel.CanRetryActionRequired, Is.True);
+                Assert.That(viewModel.CanRetryActionRequired, Is.False);
+                Assert.That(viewModel.CanApproveRemoteMassDelete, Is.True);
                 Assert.That(viewModel.ActionRequiredMessage, Is.EqualTo(expectedMessage));
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Fix the issue below to continue syncing."));
+            });
+        }
+
+        [Test]
+        public async Task StatusChanged_WithMultipleMassDeleteGuardsOffersNoAmbiguousAction()
+        {
+            Guid firstSyncPairId = Guid.NewGuid();
+            Guid secondSyncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(
+                CreateSignedInSnapshot(
+                    CreatePair(firstSyncPairId, "Music", "Error"),
+                    CreatePair(secondSyncPairId, "Photos", "Error")));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            controller.ReportStatus(new DesktopSyncStatusSnapshot(
+            [
+                new DesktopSyncPairStatusSnapshot(
+                    firstSyncPairId,
+                    "Error",
+                    "Remote delete blocked by mass-delete guard. 101 pending deletes exceed limit 100."),
+                new DesktopSyncPairStatusSnapshot(
+                    secondSyncPairId,
+                    "Error",
+                    "Remote delete blocked by mass-delete guard. 250 pending deletes exceed limit 100."),
+            ]));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.CanRetryActionRequired, Is.False);
+                Assert.That(viewModel.CanApproveRemoteMassDelete, Is.False);
+                Assert.That(controller.SyncAllCalls, Is.Zero);
             });
         }
 
@@ -1563,7 +1605,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Guid syncPairId = Guid.NewGuid();
             const string expectedMessage =
                 "Cotton Sync blocked a large remote delete plan (2207 pending deletes exceed limit 100). "
-                + "Check local files and Cotton Cloud, then retry only if the deletes are intentional.";
+                + "Check local files and Cotton Cloud, then explicitly approve the exact delete plan.";
             var controller = new FakeDesktopShellController(
                 CreateSignedInSnapshotWithNotifications(
                     enableNotifications: false,
@@ -1584,6 +1626,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Action required"));
                 Assert.That(viewModel.HeaderStatusText, Is.EqualTo("Action required"));
                 Assert.That(viewModel.HasActionRequired, Is.True);
+                Assert.That(viewModel.CanRetryActionRequired, Is.False);
+                Assert.That(viewModel.CanApproveRemoteMassDelete, Is.True);
                 Assert.That(viewModel.ActionRequiredMessage, Is.EqualTo(expectedMessage));
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Fix the issue below to continue syncing."));
             });
@@ -7559,6 +7603,10 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             public int SyncAllCalls { get; private set; }
 
+            public Guid? LastSyncAllPairId { get; private set; }
+
+            public int? LastApprovedRemoteDeleteCount { get; private set; }
+
             public int PauseAllCalls { get; private set; }
 
             public int ResumeAllCalls { get; private set; }
@@ -7881,7 +7929,10 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 return addTask.WaitAsync(cancellationToken);
             }
 
-            public async Task SyncAllAsync(CancellationToken cancellationToken = default)
+            public async Task SyncAllAsync(
+                CancellationToken cancellationToken = default,
+                Guid? syncPairId = null,
+                int? approvedRemoteDeleteCount = null)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (SyncAllException is not null)
@@ -7890,6 +7941,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 }
 
                 SyncAllCalls++;
+                LastSyncAllPairId = syncPairId;
+                LastApprovedRemoteDeleteCount = approvedRemoteDeleteCount;
                 if (SyncAllCompletion is not null)
                 {
                     await SyncAllCompletion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);

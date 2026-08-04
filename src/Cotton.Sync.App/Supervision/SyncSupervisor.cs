@@ -342,8 +342,16 @@ namespace Cotton.Sync.App.Supervision
                 throw;
             }
 
-            await PublishActiveStatusUntilSyncCompletesAsync(syncTask, cancellationToken).ConfigureAwait(false);
-            await syncTask.ConfigureAwait(false);
+            try
+            {
+                await PublishActiveStatusUntilSyncCompletesAsync(syncTask, cancellationToken).ConfigureAwait(false);
+                await syncTask.ConfigureAwait(false);
+            }
+            catch
+            {
+                _statusPublisher.Publish(CreateAppStatusSnapshot());
+                throw;
+            }
         }
 
         private async Task PublishActiveStatusUntilSyncCompletesAsync(

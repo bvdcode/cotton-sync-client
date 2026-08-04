@@ -66,6 +66,7 @@ namespace Cotton.Sync.App.Runners
                 CoreSyncRunOptions? options = _activityPublisher is null && _progressPublisher is null && _runProgressPublisher is null
                         && currentRequest.IsFull
                         && allowInitialVirtualFilesStreaming
+                        && currentRequest.ApprovedRemoteDeleteCount is null
                     ? null
                     : CreateOptions(
                         syncPair,
@@ -116,6 +117,7 @@ namespace Cotton.Sync.App.Runners
                     ? CoreSyncRunScope.Full
                     : CoreSyncRunScope.ForLocalChangedPaths(request.LocalChangedPaths, request.LocalDeletedPaths),
                 MinimumLocalUploadAge = BackgroundMinimumLocalUploadAge,
+                ApprovedRemoteDeleteCount = request.ApprovedRemoteDeleteCount,
                 AllowInitialVirtualFilesStreaming = allowInitialVirtualFilesStreaming,
                 ActivityProgress = _activityPublisher is null ? null : new AppActivityProgressReporter(syncPair.Id, _activityPublisher),
                 TransferProgress = transferProgressReporter,

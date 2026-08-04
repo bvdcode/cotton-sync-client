@@ -42,6 +42,11 @@ namespace Cotton.Sync
         public int MaximumRemoteDeletesPerRun { get; set; } = DefaultMaximumDeletesPerRun;
 
         /// <summary>
+        /// Gets or sets the exact remote delete plan explicitly approved for this pass.
+        /// </summary>
+        public int? ApprovedRemoteDeleteCount { get; set; }
+
+        /// <summary>
         /// Gets or sets the maximum number of activities retained in the returned result.
         /// Live activity progress is still reported for every activity.
         /// </summary>

@@ -462,6 +462,23 @@
                         Spacing="6"
                         VerticalAlignment="Center">
               <Button Classes="compact"
+                      ToolTip.Tip="{Binding RemoteMassDeleteApprovalToolTip}"
+                      AutomationProperties.Name="{Binding RemoteMassDeleteApprovalToolTip}"
+                      IsVisible="{Binding CanApproveRemoteMassDelete}"
+                      Command="{Binding ApproveRemoteMassDeleteCommand}">
+                <StackPanel Orientation="Horizontal"
+                            Spacing="5">
+                  <materialIcons:MaterialIcon Kind="TrashCanOutline"
+                                              Width="14"
+                                              Height="14"
+                                              Foreground="{DynamicResource CottonErrorBrush}"
+                                              VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding RemoteMassDeleteApprovalText}"
+                             FontSize="12"
+                             VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Classes="compact"
                       ToolTip.Tip="Run synchronization again"
                       AutomationProperties.Name="Run synchronization again"
                       IsVisible="{Binding CanRetryActionRequired}"

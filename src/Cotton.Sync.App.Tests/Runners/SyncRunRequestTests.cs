@@ -56,5 +56,26 @@ namespace Cotton.Sync.App.Tests.Runners
         {
             Assert.Throws<ArgumentOutOfRangeException>(() => SyncRunRequest.ForFull(SyncRunCause.None));
         }
+
+        [Test]
+        public void ForFull_RejectsNonPositiveRemoteDeleteApproval()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => SyncRunRequest.ForFull(SyncRunCause.Manual, 0));
+        }
+
+        [Test]
+        public void Merge_PreservesOnlyMatchingRemoteDeleteApproval()
+        {
+            SyncRunRequest approved = SyncRunRequest.ForFull(SyncRunCause.Manual, 101);
+
+            SyncRunRequest matching = approved.Merge(SyncRunRequest.ForFull(SyncRunCause.Manual, 101));
+            SyncRunRequest changed = approved.Merge(SyncRunRequest.ForFull(SyncRunCause.Periodic));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(matching.ApprovedRemoteDeleteCount, Is.EqualTo(101));
+                Assert.That(changed.ApprovedRemoteDeleteCount, Is.Null);
+            });
+        }
     }
 }

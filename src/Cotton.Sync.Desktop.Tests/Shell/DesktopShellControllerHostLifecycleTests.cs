@@ -365,6 +365,44 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public async Task SyncAllAsync_WithRemoteDeleteApprovalTargetsExactSyncPair()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            Uri serverUrl = new("https://cotton.example.test/");
+            FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
+            QueueingDesktopSyncApplicationFactory factory = new(host.Host);
+            using DesktopShellController controller = CreateController(paths, factory);
+            Guid syncPairId = Guid.NewGuid();
+
+            await controller.SignInWithBrowserAsync(serverUrl.AbsoluteUri);
+            await controller.SyncAllAsync(syncPairId: syncPairId, approvedRemoteDeleteCount: 101);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(host.App.SyncNowCalls, Is.EqualTo(1));
+                Assert.That(host.App.LastSyncNowPairId, Is.EqualTo(syncPairId));
+                Assert.That(host.App.LastSyncNowRequest?.IsFull, Is.True);
+                Assert.That(host.App.LastSyncNowRequest?.Causes, Is.EqualTo(SyncRunCause.Manual));
+                Assert.That(host.App.LastSyncNowRequest?.ApprovedRemoteDeleteCount, Is.EqualTo(101));
+            });
+        }
+
+        [Test]
+        public async Task SyncAllAsync_RejectsRemoteDeleteApprovalWithoutSyncPair()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            Uri serverUrl = new("https://cotton.example.test/");
+            FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
+            QueueingDesktopSyncApplicationFactory factory = new(host.Host);
+            using DesktopShellController controller = CreateController(paths, factory);
+
+            await controller.SignInWithBrowserAsync(serverUrl.AbsoluteUri);
+
+            Assert.ThrowsAsync<ArgumentException>(
+                async () => await controller.SyncAllAsync(approvedRemoteDeleteCount: 101));
+        }
+
+        [Test]
         public async Task ExportDiagnosticsAsync_IncludesCurrentAndAggregateProgressWithoutPrivatePaths()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
@@ -1556,6 +1594,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             public SyncRunRequest? LastSyncNowRequest { get; private set; }
 
+            public Guid? LastSyncNowPairId { get; private set; }
+
             public SyncPairSettings? SavedSyncPair { get; private set; }
 
             public Guid? DeletedSyncPairId { get; private set; }
@@ -1695,6 +1735,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             public Task SyncNowAsync(Guid syncPairId, CancellationToken cancellationToken = default)
             {
                 SyncNowCalls++;
+                LastSyncNowPairId = syncPairId;
                 SyncNowStarted?.TrySetResult();
                 if (SyncNowException is not null)
                 {
