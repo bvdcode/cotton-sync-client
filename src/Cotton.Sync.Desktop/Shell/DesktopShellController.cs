@@ -65,7 +65,7 @@ namespace Cotton.Sync.Desktop.Shell
         private readonly IDisposable? _updateServiceLifetime;
         private readonly IDesktopUpdateInstaller _updateInstaller;
         private readonly Dictionary<Guid, DesktopRunProgressSnapshot> _aggregateRunProgress = [];
-        private readonly Dictionary<Guid, DesktopTransferProgressSnapshot> _currentTransfers = [];
+        private readonly Dictionary<TransferProgressKey, DesktopTransferProgressSnapshot> _currentTransfers = [];
         private Dictionary<Guid, (bool IsEnabled, string LocalRootPath)> _knownSyncPairSettings = [];
         private DesktopUpdateDiagnosticsSnapshot _lastUpdateDiagnostics =
             DesktopUpdateDiagnosticsSnapshot.NotChecked(DesktopAppVersion.Current);
@@ -1887,15 +1887,24 @@ namespace Cotton.Sync.Desktop.Shell
         private void OnTransferProgressChanged(AppTransferProgress progress)
         {
             DesktopTransferProgressSnapshot snapshot = ToTransferProgressSnapshot(progress);
+            var key = new TransferProgressKey(snapshot.SyncPairId, snapshot.Direction, snapshot.RelativePath);
             lock (_progressGate)
             {
                 if (snapshot.IsCompleted)
                 {
-                    _currentTransfers.Remove(snapshot.SyncPairId);
+                    if (_currentTransfers.TryGetValue(key, out DesktopTransferProgressSnapshot? activeProgress)
+                        && snapshot.OccurredAtUtc >= activeProgress.OccurredAtUtc)
+                    {
+                        _currentTransfers.Remove(key);
+                    }
                 }
                 else
                 {
-                    _currentTransfers[snapshot.SyncPairId] = snapshot;
+                    if (!_currentTransfers.TryGetValue(key, out DesktopTransferProgressSnapshot? activeProgress)
+                        || snapshot.OccurredAtUtc >= activeProgress.OccurredAtUtc)
+                    {
+                        _currentTransfers[key] = snapshot;
+                    }
                 }
             }
 
@@ -2281,6 +2290,11 @@ namespace Cotton.Sync.Desktop.Shell
                 + tokenStorage.Details
                 + ". Configure Windows DPAPI or Linux Secret Service before signing in.";
         }
+
+        private readonly record struct TransferProgressKey(
+            Guid SyncPairId,
+            SyncTransferDirection Direction,
+            string RelativePath);
 
     }
 }

@@ -64,7 +64,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private readonly Dictionary<Guid, DesktopRunProgressSnapshot> _runProgressByPair = [];
         private readonly Dictionary<Guid, DateTime> _runProgressAppliedAtUtcByPair = [];
         private readonly HashSet<Guid> _suppressedInitialSyncCompleteUntilRunProgressCompleted = [];
-        private readonly Dictionary<Guid, DesktopTransferProgressSnapshot> _transferProgressByPair = [];
+        private readonly Dictionary<RunTransferProgressKey, DesktopTransferProgressSnapshot> _transferProgressByKey = [];
         private readonly Dictionary<Guid, long> _runCompletedTransferBytesByPair = [];
         private readonly Dictionary<RunTransferProgressKey, long> _runCompletedTransferBytesByKey = [];
         private readonly Dictionary<RunTransferProgressKey, long> _runTransferBytesByKey = [];
@@ -793,7 +793,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             get => IsRunProgressPrimary
                 ? CurrentRunProgressTitle
-                : HasCurrentTransfer ? CurrentTransferTitle : CurrentRunProgressTitle;
+                : HasCurrentTransfer ? CreateActiveTransferTitle() : CurrentRunProgressTitle;
         }
 
         public string CurrentWorkProgressHeaderDetails => IsRunProgressPrimary
@@ -819,7 +819,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public string CurrentWorkProgressDetails => IsRunProgressPrimary
             ? CurrentRunProgressDetails
-            : HasCurrentTransfer ? CurrentTransferDetails : CurrentRunProgressDetails;
+            : HasCurrentTransfer ? CreateActiveTransferDetails() : CurrentRunProgressDetails;
 
         public string CurrentWorkProgressSecondaryDetails
         {
@@ -866,7 +866,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private bool IsRunProgressPrimary => HasCurrentRunProgress;
 
-        private bool HasActiveTransferProgress => _transferProgressByPair.Count > 0;
+        private bool HasActiveTransferProgress => _transferProgressByKey.Count > 0;
 
         private bool ShouldShowQueuedWorkIndicator()
         {
@@ -2206,6 +2206,16 @@ namespace Cotton.Sync.Desktop.ViewModels
                 startedAtUtc.AddSeconds(2),
                 SpeedBytesPerSecond: 3_145_728,
                 EstimatedTimeRemaining: TimeSpan.FromSeconds(6)));
+            ApplyTransferProgress(new DesktopTransferProgressSnapshot(
+                syncPair.Id,
+                SyncTransferDirection.Upload,
+                "Reports/forecast.xlsx",
+                TransferredBytes: 3_145_728,
+                TotalBytes: 6_291_456,
+                IsCompleted: false,
+                startedAtUtc.AddSeconds(2),
+                SpeedBytesPerSecond: 1_048_576,
+                EstimatedTimeRemaining: TimeSpan.FromSeconds(3)));
             if (secondSyncPair is not null)
             {
                 ApplyTransferProgress(new DesktopTransferProgressSnapshot(
@@ -2293,6 +2303,16 @@ namespace Cotton.Sync.Desktop.ViewModels
                 IsCompleted: false,
                 startedAtUtc.AddSeconds(24),
                 SpeedBytesPerSecond: fileSize * 2,
+                EstimatedTimeRemaining: TimeSpan.FromSeconds(1)));
+            ApplyTransferProgress(new DesktopTransferProgressSnapshot(
+                syncPair.Id,
+                SyncTransferDirection.Download,
+                "Downloads/small-files/batch-0411.txt",
+                TransferredBytes: fileSize / 2,
+                TotalBytes: fileSize,
+                IsCompleted: false,
+                startedAtUtc.AddSeconds(24),
+                SpeedBytesPerSecond: fileSize,
                 EstimatedTimeRemaining: TimeSpan.FromSeconds(1)));
             AddActivity("Download", relativePath, "Downloading " + Path.GetFileName(relativePath));
         }
@@ -4746,15 +4766,22 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return;
             }
 
+            RunTransferProgressKey key = CreateTransferProgressKey(progress);
+            if (_transferProgressByKey.TryGetValue(key, out DesktopTransferProgressSnapshot? currentProgress)
+                && progress.OccurredAtUtc < currentProgress.OccurredAtUtc)
+            {
+                return;
+            }
+
             TrackRunTransferProgress(progress);
             if (progress.IsCompleted)
             {
-                if (_transferProgressByPair.TryGetValue(
-                        progress.SyncPairId,
+                if (_transferProgressByKey.TryGetValue(
+                        key,
                         out DesktopTransferProgressSnapshot? activeProgress)
                     && CanReplacePendingTransferProgress(activeProgress, progress))
                 {
-                    _transferProgressByPair.Remove(progress.SyncPairId);
+                    _transferProgressByKey.Remove(key);
                 }
 
                 RefreshSyncPairProgressAfterTransfer(syncPair);
@@ -4768,10 +4795,10 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return;
             }
 
-            _transferProgressByPair[progress.SyncPairId] = progress;
+            _transferProgressByKey[key] = progress;
             SetCurrentTransferSummary(progress, syncPair);
 
-            syncPair.CurrentOperation = CreateTransferOperation(progress);
+            syncPair.CurrentOperation = CreateSyncPairTransferOperation(syncPair.Id, progress);
             syncPair.HasCurrentProgress = true;
             if (_runProgressByPair.TryGetValue(progress.SyncPairId, out DesktopRunProgressSnapshot? runProgress))
             {
@@ -4781,8 +4808,11 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
             else
             {
-                syncPair.IsCurrentProgressIndeterminate = IsCurrentTransferIndeterminate;
-                syncPair.CurrentProgressValue = CurrentTransferProgressValue;
+                bool hasAggregateProgress = TryCalculateAggregateTransferProgressValue(
+                    syncPair.Id,
+                    out double aggregateProgressValue);
+                syncPair.IsCurrentProgressIndeterminate = !hasAggregateProgress;
+                syncPair.CurrentProgressValue = hasAggregateProgress ? aggregateProgressValue : 0;
                 RaiseCurrentWorkProgressProperties();
             }
 
@@ -4791,11 +4821,10 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private void RefreshSyncPairProgressAfterTransfer(SyncPairRowViewModel syncPair)
         {
-            if (_transferProgressByPair.TryGetValue(
-                    syncPair.Id,
-                    out DesktopTransferProgressSnapshot? activeTransfer))
+            DesktopTransferProgressSnapshot? activeTransfer = GetLatestActiveTransferForPair(syncPair.Id);
+            if (activeTransfer is not null)
             {
-                syncPair.CurrentOperation = CreateTransferOperation(activeTransfer);
+                syncPair.CurrentOperation = CreateSyncPairTransferOperation(syncPair.Id, activeTransfer);
                 syncPair.HasCurrentProgress = true;
                 if (_runProgressByPair.TryGetValue(syncPair.Id, out DesktopRunProgressSnapshot? activeRunProgress))
                 {
@@ -4804,8 +4833,11 @@ namespace Cotton.Sync.Desktop.ViewModels
                 }
                 else
                 {
-                    syncPair.IsCurrentProgressIndeterminate = !activeTransfer.TotalBytes.HasValue;
-                    syncPair.CurrentProgressValue = CalculateProgressValue(activeTransfer);
+                    bool hasAggregateProgress = TryCalculateAggregateTransferProgressValue(
+                        syncPair.Id,
+                        out double aggregateProgressValue);
+                    syncPair.IsCurrentProgressIndeterminate = !hasAggregateProgress;
+                    syncPair.CurrentProgressValue = hasAggregateProgress ? aggregateProgressValue : 0;
                 }
 
                 return;
@@ -4825,7 +4857,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private void RefreshCurrentTransferSummary()
         {
-            DesktopTransferProgressSnapshot? latestProgress = _transferProgressByPair.Values
+            DesktopTransferProgressSnapshot? latestProgress = _transferProgressByKey.Values
                 .OrderByDescending(static progress => progress.OccurredAtUtc)
                 .FirstOrDefault();
             if (latestProgress is null)
@@ -4845,7 +4877,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             SyncPairRowViewModel? syncPair = SyncPairs.FirstOrDefault(pair => pair.Id == latestProgress.SyncPairId);
             if (syncPair is null)
             {
-                _transferProgressByPair.Remove(latestProgress.SyncPairId);
+                _transferProgressByKey.Remove(CreateTransferProgressKey(latestProgress));
                 RefreshCurrentTransferSummary();
                 return;
             }
@@ -4867,6 +4899,97 @@ namespace Cotton.Sync.Desktop.ViewModels
             CurrentTransferDetails = CreateTransferDetails(progress);
         }
 
+        private string CreateActiveTransferTitle()
+        {
+            DesktopTransferProgressSnapshot[] transfers = _transferProgressByKey.Values.ToArray();
+            if (transfers.Length <= 1)
+            {
+                return CurrentTransferTitle;
+            }
+
+            string action = CreateAggregateTransferAction(transfers);
+            string title = action
+                + " "
+                + transfers.Length.ToString(CultureInfo.CurrentCulture)
+                + " files";
+            Guid[] syncPairIds = transfers
+                .Select(static transfer => transfer.SyncPairId)
+                .Distinct()
+                .ToArray();
+            if (syncPairIds.Length == 1)
+            {
+                string? syncPairName = SyncPairs
+                    .FirstOrDefault(pair => pair.Id == syncPairIds[0])
+                    ?.DisplayName;
+                return string.IsNullOrWhiteSpace(syncPairName) ? title : syncPairName + ": " + title;
+            }
+
+            return title
+                + " across "
+                + syncPairIds.Length.ToString(CultureInfo.CurrentCulture)
+                + " folders";
+        }
+
+        private string CreateActiveTransferDetails()
+        {
+            return _transferProgressByKey.Count <= 1
+                ? CurrentTransferDetails
+                : CreateAggregateTransferDetails(_transferProgressByKey.Values, includeEstimatedTimeRemaining: true);
+        }
+
+        private string CreateSyncPairTransferOperation(
+            Guid syncPairId,
+            DesktopTransferProgressSnapshot latestTransfer)
+        {
+            DesktopTransferProgressSnapshot[] transfers = _transferProgressByKey.Values
+                .Where(transfer => transfer.SyncPairId == syncPairId)
+                .ToArray();
+            if (transfers.Length <= 1)
+            {
+                return CreateTransferOperation(latestTransfer);
+            }
+
+            return CreateAggregateTransferAction(transfers)
+                + " "
+                + transfers.Length.ToString(CultureInfo.CurrentCulture)
+                + " files";
+        }
+
+        private static string CreateAggregateTransferAction(
+            IReadOnlyList<DesktopTransferProgressSnapshot> transfers)
+        {
+            SyncTransferDirection direction = transfers[0].Direction;
+            return transfers.All(transfer => transfer.Direction == direction)
+                ? CreateTransferAction(direction, isCompleted: false)
+                : "Syncing";
+        }
+
+        private DesktopTransferProgressSnapshot? GetLatestActiveTransferForPair(Guid syncPairId)
+        {
+            return _transferProgressByKey.Values
+                .Where(progress => progress.SyncPairId == syncPairId)
+                .OrderByDescending(static progress => progress.OccurredAtUtc)
+                .FirstOrDefault();
+        }
+
+        private bool HasActiveTransferForPair(Guid syncPairId)
+        {
+            return _transferProgressByKey.Keys.Any(key => key.SyncPairId == syncPairId);
+        }
+
+        private bool RemoveTransferProgressForPair(Guid syncPairId)
+        {
+            RunTransferProgressKey[] keys = _transferProgressByKey.Keys
+                .Where(key => key.SyncPairId == syncPairId)
+                .ToArray();
+            foreach (RunTransferProgressKey key in keys)
+            {
+                _transferProgressByKey.Remove(key);
+            }
+
+            return keys.Length > 0;
+        }
+
         private void ApplyRunProgress(DesktopRunProgressSnapshot progress)
         {
             SyncPairRowViewModel? syncPair = SyncPairs.FirstOrDefault(pair => pair.Id == progress.SyncPairId);
@@ -4880,7 +5003,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 _runProgressByPair.Remove(progress.SyncPairId);
                 _runProgressAppliedAtUtcByPair.Remove(progress.SyncPairId);
                 _suppressedInitialSyncCompleteUntilRunProgressCompleted.Remove(progress.SyncPairId);
-                if (!HasCurrentTransfer || _transferSyncPairId != progress.SyncPairId)
+                if (!HasActiveTransferForPair(progress.SyncPairId))
                 {
                     ClearSyncPairProgress(syncPair);
                 }
@@ -4892,7 +5015,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
             _runProgressByPair[progress.SyncPairId] = progress;
             _runProgressAppliedAtUtcByPair[progress.SyncPairId] = DateTime.UtcNow;
-            bool hasActiveTransferForPair = HasCurrentTransfer && _transferSyncPairId == progress.SyncPairId;
+            bool hasActiveTransferForPair = HasActiveTransferForPair(progress.SyncPairId);
             if (!hasActiveTransferForPair)
             {
                 syncPair.CurrentOperation = CreateRunProgressOperation(progress);
@@ -4910,7 +5033,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             HashSet<Guid> suppressedInitialSyncCompletePairIds = GetInitialSyncCompleteNotificationSuppressionIds();
             bool hasActiveSyncStatus = false;
             bool runProgressChanged = false;
-            bool shouldClearCurrentTransfer = false;
+            bool transferProgressChanged = false;
             foreach (DesktopSyncPairStatusSnapshot pairStatus in status.SyncPairs)
             {
                 SyncPairRowViewModel? row = SyncPairs.FirstOrDefault(syncPair => syncPair.Id == pairStatus.Id);
@@ -4946,8 +5069,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
                     runProgressChanged |= _runProgressByPair.Remove(pairStatus.Id);
                     _runProgressAppliedAtUtcByPair.Remove(pairStatus.Id);
-                    _transferProgressByPair.Remove(pairStatus.Id);
-                    shouldClearCurrentTransfer |= _transferSyncPairId == pairStatus.Id;
+                    transferProgressChanged |= RemoveTransferProgressForPair(pairStatus.Id);
                 }
 
                 if (pairStatus.LastSyncedAtUtc.HasValue)
@@ -4977,9 +5099,9 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
             else
             {
-                if (shouldClearCurrentTransfer)
+                if (transferProgressChanged)
                 {
-                    ClearTransferProgress();
+                    RefreshCurrentTransferSummary();
                 }
 
                 if (runProgressChanged)
@@ -5054,7 +5176,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private bool HasFreshDetailedProgress(Guid syncPairId)
         {
-            if (_transferProgressByPair.ContainsKey(syncPairId)
+            if (HasActiveTransferForPair(syncPairId)
                 || (_transferSyncPairId == syncPairId && HasCurrentTransfer))
             {
                 return true;
@@ -5578,7 +5700,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             CurrentTransferProgressValue = 0;
             CurrentTransferTitle = string.Empty;
             CurrentTransferDetails = string.Empty;
-            _transferProgressByPair.Clear();
+            _transferProgressByKey.Clear();
             _transferSyncPairId = null;
             _transferDirection = SyncTransferDirection.Unknown;
             _transferRelativePath = string.Empty;
@@ -5715,7 +5837,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
 
             return HasActiveTransferProgress
-                ? CreateAggregateTransferMetricDetails(_transferProgressByPair.Values).Size
+                ? CreateAggregateTransferMetricDetails(_transferProgressByKey.Values).Size
                 : string.Empty;
         }
 
@@ -5742,7 +5864,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             else if (HasActiveTransferProgress && !hasAggregateTransferBytes)
             {
                 string activeTransferRate = CreateAggregateTransferMetricDetails(
-                    _transferProgressByPair.Values,
+                    _transferProgressByKey.Values,
                     includeEstimatedTimeRemaining: false).Rate;
                 if (!string.IsNullOrWhiteSpace(activeTransferRate))
                 {
@@ -5818,7 +5940,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 effectiveTransferredBytes = Math.Min(effectiveTransferredBytes, progress.TotalBytes.Value);
             }
 
-            var key = new RunTransferProgressKey(progress.SyncPairId, progress.Direction, progress.RelativePath);
+            RunTransferProgressKey key = CreateTransferProgressKey(progress);
             _runTransferBytesByKey.TryGetValue(key, out long previousTransferredBytes);
             if (effectiveTransferredBytes < previousTransferredBytes)
             {
@@ -5843,6 +5965,12 @@ namespace Cotton.Sync.Desktop.ViewModels
 
             _runTransferredBytes += transferredDelta;
             AddRunTransferSample(_runTransferredBytes, progress.OccurredAtUtc);
+        }
+
+        private static RunTransferProgressKey CreateTransferProgressKey(
+            DesktopTransferProgressSnapshot progress)
+        {
+            return new RunTransferProgressKey(progress.SyncPairId, progress.Direction, progress.RelativePath);
         }
 
         private void TrackCompletedRunTransferBytes(RunTransferProgressKey key, long completedBytes)
@@ -6353,13 +6481,24 @@ namespace Cotton.Sync.Desktop.ViewModels
 
             int total = progress.FilesTotal.Value;
             double completed = Math.Clamp(progress.FilesCompleted, 0, total);
-            if (!progress.IsCompleted
-                && IsCountedRunStage(progress.Stage)
-                && _transferProgressByPair.TryGetValue(progress.SyncPairId, out DesktopTransferProgressSnapshot? transfer)
-                && transfer.TotalBytes is > 0)
+            if (!progress.IsCompleted && IsCountedRunStage(progress.Stage))
             {
-                double transferred = Math.Clamp(transfer.TransferredBytes, 0, transfer.TotalBytes.Value);
-                return Math.Clamp(completed + transferred / transfer.TotalBytes.Value, 0, total);
+                double activeTransferFiles = 0;
+                foreach (DesktopTransferProgressSnapshot transfer in _transferProgressByKey.Values)
+                {
+                    if (transfer.SyncPairId != progress.SyncPairId || transfer.TotalBytes is not > 0)
+                    {
+                        continue;
+                    }
+
+                    double transferred = Math.Clamp(transfer.TransferredBytes, 0, transfer.TotalBytes.Value);
+                    activeTransferFiles += transferred / transfer.TotalBytes.Value;
+                }
+
+                if (activeTransferFiles > 0)
+                {
+                    return Math.Clamp(completed + activeTransferFiles, 0, total);
+                }
             }
 
             return GetDisplayedRunProgressCount(progress);
@@ -6384,16 +6523,28 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private bool TryCalculateAggregateTransferProgressValue(out double progressValue)
         {
-            progressValue = 0;
-            if (_transferProgressByPair.Count == 0)
-            {
-                return false;
-            }
+            return TryCalculateAggregateTransferProgressValue(syncPairId: null, out progressValue);
+        }
 
+        private bool TryCalculateAggregateTransferProgressValue(Guid syncPairId, out double progressValue)
+        {
+            return TryCalculateAggregateTransferProgressValue((Guid?)syncPairId, out progressValue);
+        }
+
+        private bool TryCalculateAggregateTransferProgressValue(Guid? syncPairId, out double progressValue)
+        {
+            progressValue = 0;
+            int transferCount = 0;
             long transferredBytes = 0;
             long totalBytes = 0;
-            foreach (DesktopTransferProgressSnapshot progress in _transferProgressByPair.Values)
+            foreach (DesktopTransferProgressSnapshot progress in _transferProgressByKey.Values)
             {
+                if (syncPairId.HasValue && progress.SyncPairId != syncPairId.Value)
+                {
+                    continue;
+                }
+
+                transferCount++;
                 if (progress.TotalBytes is not > 0)
                 {
                     return false;
@@ -6403,7 +6554,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 transferredBytes += Math.Clamp(progress.TransferredBytes, 0, progress.TotalBytes.Value);
             }
 
-            if (totalBytes <= 0)
+            if (transferCount == 0 || totalBytes <= 0)
             {
                 return false;
             }

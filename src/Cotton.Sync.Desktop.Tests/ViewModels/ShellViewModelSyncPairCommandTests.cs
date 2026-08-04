@@ -893,9 +893,10 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentTransferDetails, Does.Contain("/s"));
                 Assert.That(viewModel.CurrentTransferDetails, Does.Contain("left"));
                 Assert.That(viewModel.CurrentWorkProgressTitle, Is.EqualTo("Syncing 2 folders"));
-                Assert.That(viewModel.CurrentWorkProgressHeaderDetails, Is.EqualTo("7.0 MB · 4.0 MB/s"));
+                Assert.That(viewModel.CurrentWorkProgressHeaderDetails, Is.EqualTo("10 MB · 5.0 MB/s"));
                 Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("10 of 40 files across 2 folders"));
                 Assert.That(viewModel.CurrentWorkProgressSecondaryDetails, Is.Empty);
+                Assert.That(viewModel.SyncPairs.First().CurrentOperation, Is.EqualTo("Uploading 2 files"));
             });
         }
 
@@ -946,10 +947,10 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressTitle, Is.EqualTo("Documents"));
                 Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Checking files · 410 of 500 files"));
                 Assert.That(viewModel.CurrentWorkProgressSecondaryDetails, Is.EqualTo("Processing queued changes"));
-                Assert.That(viewModel.CurrentWorkProgressValue, Is.EqualTo(82.15).Within(0.01));
-                Assert.That(row.CurrentOperation, Is.EqualTo("Downloading batch-0410.txt"));
+                Assert.That(viewModel.CurrentWorkProgressValue, Is.EqualTo(82.25).Within(0.01));
+                Assert.That(row.CurrentOperation, Is.EqualTo("Downloading 2 files"));
                 Assert.That(row.HasCurrentProgress, Is.True);
-                Assert.That(row.CurrentProgressValue, Is.EqualTo(82.15).Within(0.01));
+                Assert.That(row.CurrentProgressValue, Is.EqualTo(82.25).Within(0.01));
             });
         }
 
@@ -3388,6 +3389,72 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("8 of 30 files across 2 folders"));
                 Assert.That(viewModel.CurrentWorkProgressSecondaryDetails, Is.Empty);
                 Assert.That(viewModel.CurrentWorkProgressValue, Is.EqualTo(30).Within(0.01));
+            });
+        }
+
+        [TestCase(SyncTransferDirection.Download, "Downloading")]
+        [TestCase(SyncTransferDirection.Upload, "Uploading")]
+        public async Task TransferProgressChanged_AggregatesConcurrentFilesWithinOneFolder(
+            SyncTransferDirection direction,
+            string action)
+        {
+            Guid syncPairId = Guid.NewGuid();
+            var controller = new FakeDesktopShellController(
+                CreateSignedInSnapshot(CreatePair(syncPairId, "Music", "Syncing")));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            DateTime startedAtUtc = new(2026, 8, 4, 3, 0, 0, DateTimeKind.Utc);
+
+            controller.ReportTransferProgress(new DesktopTransferProgressSnapshot(
+                syncPairId,
+                direction,
+                "Albums/first.flac",
+                TransferredBytes: 25,
+                TotalBytes: 100,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc,
+                SpeedBytesPerSecond: 10,
+                EstimatedTimeRemaining: TimeSpan.FromSeconds(8)));
+            controller.ReportTransferProgress(new DesktopTransferProgressSnapshot(
+                syncPairId,
+                direction,
+                "Albums/second.flac",
+                TransferredBytes: 50,
+                TotalBytes: 100,
+                IsCompleted: false,
+                OccurredAtUtc: startedAtUtc.AddSeconds(1),
+                SpeedBytesPerSecond: 20,
+                EstimatedTimeRemaining: TimeSpan.FromSeconds(3)));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.CurrentWorkProgressTitle, Is.EqualTo($"Music: {action} 2 files"));
+                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("75 B / 200 B · 30 B/s · 8s left"));
+                Assert.That(viewModel.CurrentWorkProgressValue, Is.EqualTo(37.5).Within(0.01));
+                Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.False);
+                SyncPairRowViewModel row = viewModel.SyncPairs.Single();
+                Assert.That(row.CurrentOperation, Is.EqualTo($"{action} 2 files"));
+                Assert.That(row.CurrentProgressValue, Is.EqualTo(37.5).Within(0.01));
+                Assert.That(row.IsCurrentProgressIndeterminate, Is.False);
+            });
+
+            controller.ReportTransferProgress(new DesktopTransferProgressSnapshot(
+                syncPairId,
+                direction,
+                "Albums/second.flac",
+                TransferredBytes: 100,
+                TotalBytes: 100,
+                IsCompleted: true,
+                OccurredAtUtc: startedAtUtc.AddSeconds(2)));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.CurrentWorkProgressTitle, Is.EqualTo($"Music: {action} first.flac"));
+                Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("25 B / 100 B · 10 B/s · 8s left"));
+                Assert.That(viewModel.CurrentWorkProgressValue, Is.EqualTo(25).Within(0.01));
+                SyncPairRowViewModel row = viewModel.SyncPairs.Single();
+                Assert.That(row.CurrentOperation, Is.EqualTo($"{action} first.flac"));
+                Assert.That(row.CurrentProgressValue, Is.EqualTo(25).Within(0.01));
             });
         }
 

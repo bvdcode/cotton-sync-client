@@ -425,6 +425,16 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 occurredAtUtc,
                 speedBytesPerSecond: 1024,
                 estimatedTimeRemaining: TimeSpan.FromSeconds(4)));
+            host.TransferProgressPublisher.Publish(new AppTransferProgress(
+                syncPairId,
+                SyncTransferDirection.Download,
+                "Music/private-track-2.flac",
+                2048,
+                4096,
+                isCompleted: false,
+                occurredAtUtc.AddSeconds(1),
+                speedBytesPerSecond: 512,
+                estimatedTimeRemaining: TimeSpan.FromSeconds(4)));
             host.RunProgressPublisher.Publish(new AppRunProgress(
                 syncPairId,
                 SyncRunProgressStage.HydratingCloudFiles,
@@ -436,19 +446,32 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 occurredAtUtc,
                 bytesCompleted: 4096,
                 bytesTotal: 8192,
-                causes: SyncRunCause.Manual,
-                isFull: true));
+                causes: SyncRunCause.Manual | SyncRunCause.LocalChange,
+                isFull: false,
+                requestedPathCount: 2));
 
             JsonElement currentTransfers = await ReadDiagnosticsRootAsync(controller, "currentTransfers");
             JsonElement aggregateRunProgress = await ReadDiagnosticsRootAsync(controller, "aggregateRunProgress");
 
             Assert.Multiple(() =>
             {
-                Assert.That(currentTransfers.GetArrayLength(), Is.EqualTo(1));
-                Assert.That(currentTransfers[0].GetProperty("direction").GetString(), Is.EqualTo("download"));
-                Assert.That(currentTransfers[0].GetProperty("relativePath").GetString(), Is.EqualTo("[transfer-path]"));
-                Assert.That(currentTransfers[0].GetProperty("transferredBytes").GetInt64(), Is.EqualTo(4096));
-                Assert.That(currentTransfers[0].GetProperty("totalBytes").GetInt64(), Is.EqualTo(8192));
+                Assert.That(currentTransfers.GetArrayLength(), Is.EqualTo(2));
+                Assert.That(
+                    currentTransfers.EnumerateArray().Select(item => item.GetProperty("direction").GetString()),
+                    Is.All.EqualTo("download"));
+                Assert.That(
+                    currentTransfers.EnumerateArray().Select(item => item.GetProperty("relativePath").GetString()),
+                    Is.All.EqualTo("[transfer-path]"));
+                Assert.That(
+                    currentTransfers.EnumerateArray()
+                        .Select(item => item.GetProperty("transferredBytes").GetInt64())
+                        .Order(),
+                    Is.EqualTo(new long[] { 2048, 4096 }));
+                Assert.That(
+                    currentTransfers.EnumerateArray()
+                        .Select(item => item.GetProperty("totalBytes").GetInt64())
+                        .Order(),
+                    Is.EqualTo(new long[] { 4096, 8192 }));
                 Assert.That(aggregateRunProgress.GetArrayLength(), Is.EqualTo(1));
                 Assert.That(
                     aggregateRunProgress[0].GetProperty("stage").GetString(),
@@ -458,6 +481,27 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(aggregateRunProgress[0].GetProperty("filesTotal").GetInt32(), Is.EqualTo(10));
                 Assert.That(aggregateRunProgress[0].GetProperty("bytesCompleted").GetInt64(), Is.EqualTo(4096));
                 Assert.That(aggregateRunProgress[0].GetProperty("bytesTotal").GetInt64(), Is.EqualTo(8192));
+                Assert.That(aggregateRunProgress[0].GetProperty("isFull").GetBoolean(), Is.False);
+                Assert.That(aggregateRunProgress[0].GetProperty("requestedPathCount").GetInt32(), Is.EqualTo(2));
+                Assert.That(
+                    aggregateRunProgress[0].GetProperty("causes").GetString(),
+                    Does.Contain("manual").And.Contain("localChange"));
+            });
+
+            host.TransferProgressPublisher.Publish(new AppTransferProgress(
+                syncPairId,
+                SyncTransferDirection.Download,
+                "Music/private-track-2.flac",
+                4096,
+                4096,
+                isCompleted: true,
+                occurredAtUtc.AddSeconds(2)));
+            JsonElement remainingTransfers = await ReadDiagnosticsRootAsync(controller, "currentTransfers");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remainingTransfers.GetArrayLength(), Is.EqualTo(1));
+                Assert.That(remainingTransfers[0].GetProperty("transferredBytes").GetInt64(), Is.EqualTo(4096));
+                Assert.That(remainingTransfers[0].GetProperty("totalBytes").GetInt64(), Is.EqualTo(8192));
             });
 
             await controller.SignOutAsync();
