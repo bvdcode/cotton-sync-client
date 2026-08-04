@@ -2588,19 +2588,6 @@ namespace Cotton.Sync
                     ReportActivity: false);
             }
 
-            if (streamingPlan.AdoptableUntrackedPlaceholderByPath.TryGetValue(key, out LocalFileSnapshot? local)
-                && local is not null
-                && CanAdoptUntrackedVirtualFilesPlaceholder(local, remote.File))
-            {
-                return new InitialVirtualFilesFileWorkResult(
-                    remote.RelativePath,
-                    BuildAdoptedOnlineOnlyPlaceholderBaseline(syncPair, remote.RelativePath, remote.File),
-                    SyncActivityKind.Skipped,
-                    Details: null,
-                    RequiresUserAction: false,
-                    ReportActivity: false);
-            }
-
             return null;
         }
 
@@ -3623,6 +3610,22 @@ namespace Cotton.Sync
             bool blockLocalOnlyUploads,
             CancellationToken cancellationToken)
         {
+            if (syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
+                && local is { IsCloudFilesOnlineOnlyPlaceholder: true }
+                && remote is not null)
+            {
+                await MaterializeRemoteOnlyFileAsync(
+                        syncPair,
+                        options,
+                        result,
+                        relativePath,
+                        remote.File,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                return;
+            }
+
             if (local is not null && remote is null)
             {
                 if (blockLocalOnlyUploads)
@@ -3684,6 +3687,23 @@ namespace Cotton.Sync
             RemoteFileSnapshot? remote,
             CancellationToken cancellationToken)
         {
+            if (syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
+                && local is { IsCloudFilesOnlineOnlyPlaceholder: true }
+                && remote is not null
+                && IsIncompleteOnlineOnlyPlaceholderBaseline(state))
+            {
+                await MaterializeRemoteOnlyFileAsync(
+                        syncPair,
+                        options,
+                        result,
+                        relativePath,
+                        remote.File,
+                        cancellationToken,
+                        state.PlaceholderHydrationState)
+                    .ConfigureAwait(false);
+                return;
+            }
+
             if (local is not null)
             {
                 await EnsureLocalContentHashForBaselineComparisonAsync(local, state, options, cancellationToken)
@@ -4971,28 +4991,6 @@ namespace Cotton.Sync
             };
         }
 
-        private static SyncStateEntry BuildAdoptedOnlineOnlyPlaceholderBaseline(
-            SyncPair syncPair,
-            string relativePath,
-            NodeFileManifestDto remoteFile)
-        {
-            return new SyncStateEntry
-            {
-                SyncPairId = syncPair.SyncPairId,
-                RelativePath = SyncPath.Normalize(relativePath),
-                Kind = SyncEntryKind.File,
-                RemoteSizeBytes = remoteFile.SizeBytes,
-                RemoteFileId = remoteFile.Id,
-                RemoteNodeId = remoteFile.NodeId,
-                RemoteFileManifestId = remoteFile.FileManifestId,
-                RemoteOriginalNodeFileId = remoteFile.OriginalNodeFileId,
-                RemoteContentHash = remoteFile.ContentHash,
-                RemoteETag = remoteFile.ETag,
-                PlaceholderHydrationState = SyncPlaceholderHydrationState.RemoteOnly,
-                SyncedAtUtc = DateTime.UtcNow,
-            };
-        }
-
         private static SyncStateEntry BuildDirectoryBaseline(
             SyncPair syncPair,
             string relativePath,
@@ -5837,6 +5835,15 @@ namespace Cotton.Sync
                 && state.PlaceholderIdentity is { Length: > 0 };
         }
 
+        private static bool IsIncompleteOnlineOnlyPlaceholderBaseline(SyncStateEntry state)
+        {
+            return state.Kind == SyncEntryKind.File
+                && (state.PlaceholderHydrationState == SyncPlaceholderHydrationState.RemoteOnly
+                    || state.PlaceholderHydrationState == SyncPlaceholderHydrationState.Dehydrated)
+                && state.PlaceholderIdentity is not { Length: > 0 }
+                && HasRemoteFileBaseline(state);
+        }
+
         private static bool HasRemoteFileBaseline(SyncStateEntry state)
         {
             return state.Kind == SyncEntryKind.File
@@ -6264,7 +6271,8 @@ namespace Cotton.Sync
                 return;
             }
 
-            if (local.IsCloudFilesOnlineOnlyPlaceholder && IsOnlineOnlyPlaceholderState(state))
+            if (local.IsCloudFilesOnlineOnlyPlaceholder
+                && (IsOnlineOnlyPlaceholderState(state) || IsIncompleteOnlineOnlyPlaceholderBaseline(state)))
             {
                 local.ContentHash = !string.IsNullOrWhiteSpace(state.LocalContentHash)
                     ? state.LocalContentHash
