@@ -20,11 +20,14 @@ namespace Cotton.Sync
         {
             ArgumentNullException.ThrowIfNull(value);
             int entriesScanned = value.FilesScanned + value.DirectoriesScanned;
+            int? entriesExpected = value.EntriesExpected.HasValue
+                ? Math.Max(value.EntriesExpected.Value, entriesScanned)
+                : null;
             SyncRunProgressReporter.Report(
                 _options,
                 SyncRunProgressStage.ScanningRemote,
                 entriesScanned,
-                value.EntriesExpected,
+                entriesExpected,
                 value.CurrentPath,
                 _startedAtUtc);
         }

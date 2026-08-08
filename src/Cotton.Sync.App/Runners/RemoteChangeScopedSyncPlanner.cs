@@ -30,7 +30,9 @@ namespace Cotton.Sync.App.Runners
             ArgumentNullException.ThrowIfNull(snapshot);
             if (snapshot.IsEmpty)
             {
-                return new RemoteChangeScopedSyncPlan(request, HasUnresolvedChanges: false);
+                return new RemoteChangeScopedSyncPlan(
+                    CreatePlanWithoutMappedRemoteChanges(request, hasUnresolvedChanges: false),
+                    HasUnresolvedChanges: false);
             }
 
             RemoteChangeStateIndex stateIndex =
@@ -72,23 +74,35 @@ namespace Cotton.Sync.App.Runners
                     ? CreateFullRequestPlan(request, remoteRequest)
                     : request.Merge(remoteRequest);
             }
-            else if (!request.IsFull)
+            else
             {
-                plannedRequest = request;
+                plannedRequest = CreatePlanWithoutMappedRemoteChanges(request, hasUnresolvedChanges);
             }
-            else if (request.LocalChangedPaths.Count > 0 && CanScopeFullRequest(request.Causes))
+
+            return new RemoteChangeScopedSyncPlan(plannedRequest, hasUnresolvedChanges);
+        }
+
+        internal static SyncRunRequest? CreatePlanWithoutMappedRemoteChanges(
+            SyncRunRequest request,
+            bool hasUnresolvedChanges)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            if (!request.IsFull)
             {
-                plannedRequest = SyncRunRequest.ForLocalChangedPaths(
+                return request;
+            }
+
+            if (request.LocalChangedPaths.Count > 0 && CanScopeFullRequest(request.Causes))
+            {
+                return SyncRunRequest.ForLocalChangedPaths(
                     request.LocalChangedPaths,
                     request.LocalDeletedPaths,
                     request.Causes);
             }
-            else if (!hasUnresolvedChanges && !CanSkipFullRequestWithoutMappedRemoteChanges(request.Causes))
-            {
-                plannedRequest = request;
-            }
 
-            return new RemoteChangeScopedSyncPlan(plannedRequest, hasUnresolvedChanges);
+            return !hasUnresolvedChanges && !CanSkipFullRequestWithoutMappedRemoteChanges(request.Causes)
+                ? request
+                : null;
         }
 
         private static bool CanSkipFullRequestWithoutMappedRemoteChanges(SyncRunCause causes)

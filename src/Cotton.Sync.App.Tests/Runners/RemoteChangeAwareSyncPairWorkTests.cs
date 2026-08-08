@@ -64,6 +64,39 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesScopesMergedPeriodicAndLocalRequestWhenFeedIsEmpty()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new();
+            FakeSyncStateStore stateStore = new();
+            RemoteChangeFeedBatch batch = new(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 12,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes: Array.Empty<SyncChangeDto>());
+            FakeRemoteChangeFeedReader remoteChanges = new(batch);
+            RemoteChangeAwareSyncPairWork work = new(inner, remoteChanges, stateStore);
+            SyncRunRequest request = SyncRunRequest
+                .ForFull(SyncRunCause.Periodic)
+                .Merge(SyncRunRequest.ForLocalChangedPaths(["Docs/first.txt", "Docs/second.txt"]));
+
+            await work.RunOnceAsync(syncPair, request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.False);
+                Assert.That(inner.LastRequest?.Causes, Is.EqualTo(SyncRunCause.Periodic | SyncRunCause.LocalChange));
+                Assert.That(inner.LastRequest?.LocalChangedPaths, Is.EqualTo(new[] { "Docs/first.txt", "Docs/second.txt" }));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.Empty);
+                Assert.That(remoteChanges.FullResyncAcknowledgedBatches, Is.Empty);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesRunsManualFullForMappedRemoteFileCreate()
         {
             var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);

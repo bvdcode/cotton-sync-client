@@ -105,10 +105,9 @@ namespace Cotton.Sync.App.Runners
 
             if (ShouldAcknowledgeRemoteBatch(
                     syncPair,
-                    effectiveRequest,
                     remoteRead,
-                    skippedInnerSync,
-                    innerPlan?.RemoteChangesCovered ?? true))
+                    innerPlan?.RemoteChangesCovered ?? true,
+                    innerPlan?.Request?.IsFull == true))
             {
                 await _remoteChanges.AcknowledgeAsync(remoteBatch, cancellationToken).ConfigureAwait(false);
             }
@@ -227,12 +226,19 @@ namespace Cotton.Sync.App.Runners
             CancellationToken cancellationToken)
         {
             if (syncPair.Mode != SyncPairMode.WindowsVirtualFiles
-                || !remoteRead.HasObservedChanges
                 || remoteRead.Batch.CursorExpired
                 || remoteRead.Batch.HasMore
                 || remoteRead.Batch.SinceCursor == 0)
             {
                 return new InnerRequestPlan(request, RemoteChangesCovered: true);
+            }
+
+            if (!remoteRead.HasObservedChanges)
+            {
+                SyncRunRequest? localPlan = RemoteChangeScopedSyncPlanner.CreatePlanWithoutMappedRemoteChanges(
+                    request,
+                    hasUnresolvedChanges: false);
+                return new InnerRequestPlan(localPlan, RemoteChangesCovered: true);
             }
 
             if (RequiresFullReconcileForWindowsVirtualFiles(request))
@@ -294,10 +300,9 @@ namespace Cotton.Sync.App.Runners
 
         private static bool ShouldAcknowledgeRemoteBatch(
             SyncPairSettings syncPair,
-            SyncRunRequest request,
             RemoteChangeFeedReadResult remoteRead,
-            bool skippedInnerSync,
-            bool remoteChangesCovered)
+            bool remoteChangesCovered,
+            bool performedFullSync)
         {
             if (!remoteChangesCovered)
             {
@@ -306,7 +311,7 @@ namespace Cotton.Sync.App.Runners
 
             if (syncPair.Mode != SyncPairMode.WindowsVirtualFiles
                 || remoteRead.HasObservedChanges
-                || (request.IsFull && !skippedInnerSync))
+                || performedFullSync)
             {
                 return true;
             }
