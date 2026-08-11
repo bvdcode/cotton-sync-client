@@ -39,14 +39,15 @@ namespace Cotton.Sync.Desktop.Startup
 {
     internal static partial class DesktopWindowsVirtualFilesSmokeRunner
     {
-        private static async Task<int> RunReplaceCloudOnlyUploadAsync(
-            DesktopAppPaths paths,
-            TextWriter output,
-            IWindowsCloudFilesAdapter cloudFiles,
-            SyncPairSettings syncPair,
-            WindowsCloudFilesDiagnostics diagnostics,
-            CancellationToken cancellationToken)
+        private static async Task<int> RunReplaceCloudOnlyUploadAsync(WindowsVirtualFilesSmokeContext context)
         {
+            DesktopAppPaths paths = context.Paths;
+            TextWriter output = context.Output;
+            IWindowsCloudFilesAdapter cloudFiles = context.CloudFiles;
+            SyncPairSettings syncPair = context.SyncPair;
+            WindowsCloudFilesDiagnostics diagnostics = context.Diagnostics;
+            CancellationToken cancellationToken = context.CancellationToken;
+
             string rootPath = syncPair.LocalRootPath;
             string filePath = Path.Combine(
                 rootPath,
@@ -176,38 +177,27 @@ namespace Cotton.Sync.Desktop.Startup
                 SyncStateEntry? syncedState = await stateStore
                     .GetAsync(syncPair.Id.ToString("D"), ReplaceCloudOnlyRelativePath, cancellationToken)
                     .ConfigureAwait(false);
-                bool uploadPassed = remoteFiles.Uploads.Count == 1
-                    && string.Equals(remoteFiles.Uploads[0].RelativePath, ReplaceCloudOnlyRelativePath, StringComparison.OrdinalIgnoreCase)
-                    && remoteFiles.Uploads[0].ExistingRemoteFile?.Id == oldRemoteRequest.RemoteFile.Id
-                    && string.Equals(remoteFiles.Uploads[0].Returned.ContentHash, replacementHash, StringComparison.OrdinalIgnoreCase)
-                    && syncedState is not null
-                    && string.Equals(syncedState.RemoteContentHash, replacementHash, StringComparison.OrdinalIgnoreCase)
-                    && syncedState.RemoteFileManifestId == remoteFiles.Uploads[0].Returned.FileManifestId;
-                if (uploadPassed)
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, "Cloud-only replacement uploaded and persisted remote identity.")
-                        + " uploads="
+                bool uploadPassed = IsCloudOnlyReplacementUploadComplete(
+                    remoteFiles.Uploads,
+                    oldRemoteRequest.RemoteFile.Id,
+                    replacementHash,
+                    syncedState);
+                failures += await WriteOutcomeAsync(
+                        output,
+                        uploadPassed,
+                        "Cloud-only replacement uploaded and persisted remote identity.",
+                        "Cloud-only replacement upload did not produce the expected state.",
+                        "uploads="
                         + remoteFiles.Uploads.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
                         + ", pathLookupCalls="
                         + crawler.PathLookupCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
                         + ", fullCrawlCalls="
-                        + crawler.FullCrawlCalls.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "Cloud-only replacement upload did not produce the expected state.")
-                        + " uploads="
-                        + remoteFiles.Uploads.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + crawler.FullCrawlCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
                         + ", hasState="
                         + (syncedState is not null).ToString()
                         + ", stateHash="
                         + (syncedState?.RemoteContentHash ?? "missing"))
-                        .ConfigureAwait(false);
-                }
+                    .ConfigureAwait(false);
 
                 failures += await VerifyCloudFilesInSyncStateAsync(
                         output,
@@ -255,6 +245,25 @@ namespace Cotton.Sync.Desktop.Startup
             }
 
             return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
+        }
+
+        private static bool IsCloudOnlyReplacementUploadComplete(
+            IReadOnlyList<RecordingUploadRemoteFileSynchronizer.UploadCall> uploads,
+            Guid previousRemoteFileId,
+            string replacementHash,
+            SyncStateEntry? syncedState)
+        {
+            if (uploads.Count != 1 || syncedState is null)
+            {
+                return false;
+            }
+
+            RecordingUploadRemoteFileSynchronizer.UploadCall upload = uploads[0];
+            return string.Equals(upload.RelativePath, ReplaceCloudOnlyRelativePath, StringComparison.OrdinalIgnoreCase)
+                && upload.ExistingRemoteFile?.Id == previousRemoteFileId
+                && string.Equals(upload.Returned.ContentHash, replacementHash, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(syncedState.RemoteContentHash, replacementHash, StringComparison.OrdinalIgnoreCase)
+                && syncedState.RemoteFileManifestId == upload.Returned.FileManifestId;
         }
 }
 }

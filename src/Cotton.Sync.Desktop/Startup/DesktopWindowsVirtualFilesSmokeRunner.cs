@@ -171,13 +171,7 @@ namespace Cotton.Sync.Desktop.Startup
                 [WindowsVirtualFilesSmokePhase.ExplorerAlwaysKeepMissingPlaceholder] = RunExplorerAlwaysKeepAsync,
                 [WindowsVirtualFilesSmokePhase.ExplorerAlwaysKeepDuringPopulation] =
                     RunExplorerAlwaysKeepDuringPopulationAsync,
-                [WindowsVirtualFilesSmokePhase.ReplaceCloudOnlyUpload] = context => RunReplaceCloudOnlyUploadAsync(
-                    context.Paths,
-                    context.Output,
-                    context.CloudFiles,
-                    context.SyncPair,
-                    context.Diagnostics,
-                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.ReplaceCloudOnlyUpload] = RunReplaceCloudOnlyUploadAsync,
                 [WindowsVirtualFilesSmokePhase.ShellShareLinkTargets] = RunShellShareLinkTargetsAsync,
                 [WindowsVirtualFilesSmokePhase.DesktopRootLifecycle] = context => RunDesktopRootLifecycleAsync(
                     context.Paths,
