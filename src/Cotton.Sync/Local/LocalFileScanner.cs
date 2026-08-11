@@ -157,81 +157,128 @@ namespace Cotton.Sync.Local
                     continue;
                 }
 
-                if ((attributes & FileAttributes.Directory) == 0)
-                {
-                    FileInfo file = new(fullPath);
-                    bool isCloudFilesPlaceholder = IsCloudFilesPlaceholder(file, attributes);
-                    bool isCloudFilesOnlineOnlyPlaceholder =
-                        isCloudFilesPlaceholder && IsCloudFilesOnlineOnlyPlaceholder(attributes);
-                    if ((attributes & FileAttributes.ReparsePoint) != 0
-                        && !isCloudFilesPlaceholder)
-                    {
-                        throw new LocalFileUnavailableException(
+                (int AddedFiles, int AddedDirectories) result = (attributes & FileAttributes.Directory) == 0
+                    ? await ScanScopedFileAsync(
+                            tree,
+                            fullPath,
                             normalizedPath,
-                            file.FullName,
-                            "the scoped path is an unsupported file reparse point.");
-                    }
-
-                    AddFile(
-                        tree,
-                        await CreateSnapshotAsync(
-                                file,
-                                normalizedPath,
-                                computeHash: false,
-                                isCloudFilesPlaceholder,
-                                isCloudFilesOnlineOnlyPlaceholder,
-                                cancellationToken)
-                            .ConfigureAwait(false));
-                    filesScanned++;
-                    ReportScanProgress(progress, filesScanned, directoriesScanned, normalizedPath);
-                    continue;
-                }
-
-                DirectoryInfo directoryInfo = new(fullPath);
-                bool isCloudFilesDirectoryPlaceholder = IsCloudFilesPlaceholder(directoryInfo, attributes);
-                if (!ShouldIncludeScopedDirectory(attributes, isCloudFilesDirectoryPlaceholder))
-                {
-                    throw new LocalFileUnavailableException(
-                        normalizedPath,
-                        directoryInfo.FullName,
-                        "the scoped path contains an unsupported directory reparse point.");
-                }
-
-                AddDirectory(tree, new LocalDirectorySnapshot
-                {
-                    RelativePath = normalizedPath,
-                    FullPath = directoryInfo.FullName,
-                });
-                directoriesScanned++;
-                ReportDirectoryScanProgress(progress, filesScanned, directoriesScanned, normalizedPath);
-                if (isCloudFilesDirectoryPlaceholder
-                    || !includeDirectoryDescendants
-                    || !targetKeys.Contains(SyncPath.ToKey(normalizedPath)))
-                {
-                    continue;
-                }
-
-                await ScanTreeCoreAsync(
-                        fullRoot,
-                        directoryInfo.FullName,
-                        computeHashes: false,
-                        progress,
-                        directory =>
-                        {
-                            AddDirectory(tree, directory);
-                            directoriesScanned++;
-                        },
-                        file =>
-                        {
-                            AddFile(tree, file);
-                            filesScanned++;
-                        },
-                        cancellationToken)
-                    .ConfigureAwait(false);
+                            attributes,
+                            progress,
+                            filesScanned,
+                            directoriesScanned,
+                            cancellationToken)
+                        .ConfigureAwait(false)
+                    : await ScanScopedDirectoryAsync(
+                            tree,
+                            fullRoot,
+                            fullPath,
+                            normalizedPath,
+                            attributes,
+                            targetKeys,
+                            includeDirectoryDescendants,
+                            progress,
+                            filesScanned,
+                            directoriesScanned,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                filesScanned += result.AddedFiles;
+                directoriesScanned += result.AddedDirectories;
             }
 
             progress?.Report(new LocalTreeScanProgress(filesScanned, directoriesScanned, currentPath: null));
             return tree;
+        }
+
+        private static async Task<(int AddedFiles, int AddedDirectories)> ScanScopedFileAsync(
+            LocalTreeLookupSnapshot tree,
+            string fullPath,
+            string normalizedPath,
+            FileAttributes attributes,
+            IProgress<LocalTreeScanProgress>? progress,
+            int filesScanned,
+            int directoriesScanned,
+            CancellationToken cancellationToken)
+        {
+            FileInfo file = new(fullPath);
+            bool isCloudFilesPlaceholder = IsCloudFilesPlaceholder(file, attributes);
+            if ((attributes & FileAttributes.ReparsePoint) != 0 && !isCloudFilesPlaceholder)
+            {
+                throw new LocalFileUnavailableException(
+                    normalizedPath,
+                    file.FullName,
+                    "the scoped path is an unsupported file reparse point.");
+            }
+
+            bool isOnlineOnly = isCloudFilesPlaceholder && IsCloudFilesOnlineOnlyPlaceholder(attributes);
+            LocalFileSnapshot snapshot = await CreateSnapshotAsync(
+                    file,
+                    normalizedPath,
+                    computeHash: false,
+                    isCloudFilesPlaceholder,
+                    isOnlineOnly,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            AddFile(tree, snapshot);
+            ReportScanProgress(progress, filesScanned + 1, directoriesScanned, normalizedPath);
+            return (1, 0);
+        }
+
+        private static async Task<(int AddedFiles, int AddedDirectories)> ScanScopedDirectoryAsync(
+            LocalTreeLookupSnapshot tree,
+            string fullRoot,
+            string fullPath,
+            string normalizedPath,
+            FileAttributes attributes,
+            IReadOnlySet<string> targetKeys,
+            bool includeDirectoryDescendants,
+            IProgress<LocalTreeScanProgress>? progress,
+            int filesScanned,
+            int directoriesScanned,
+            CancellationToken cancellationToken)
+        {
+            DirectoryInfo directory = new(fullPath);
+            bool isCloudFilesPlaceholder = IsCloudFilesPlaceholder(directory, attributes);
+            if (!ShouldIncludeScopedDirectory(attributes, isCloudFilesPlaceholder))
+            {
+                throw new LocalFileUnavailableException(
+                    normalizedPath,
+                    directory.FullName,
+                    "the scoped path contains an unsupported directory reparse point.");
+            }
+
+            AddDirectory(tree, new LocalDirectorySnapshot
+            {
+                RelativePath = normalizedPath,
+                FullPath = directory.FullName,
+            });
+            ReportDirectoryScanProgress(progress, filesScanned, directoriesScanned + 1, normalizedPath);
+            if (isCloudFilesPlaceholder
+                || !includeDirectoryDescendants
+                || !targetKeys.Contains(SyncPath.ToKey(normalizedPath)))
+            {
+                return (0, 1);
+            }
+
+            int descendantFiles = 0;
+            int descendantDirectories = 0;
+            await ScanTreeCoreAsync(
+                    fullRoot,
+                    directory.FullName,
+                    computeHashes: false,
+                    progress,
+                    descendant =>
+                    {
+                        AddDirectory(tree, descendant);
+                        descendantDirectories++;
+                    },
+                    descendant =>
+                    {
+                        AddFile(tree, descendant);
+                        descendantFiles++;
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return (descendantFiles, descendantDirectories + 1);
         }
 
         private static bool TryReadScopedPathAttributes(string fullPath, out FileAttributes attributes)

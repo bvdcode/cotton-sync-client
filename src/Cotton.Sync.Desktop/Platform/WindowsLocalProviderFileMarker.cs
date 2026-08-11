@@ -97,22 +97,15 @@ namespace Cotton.Sync.Desktop.Platform
 
             try
             {
-                byte[] json = await File.ReadAllBytesAsync(markerPath, cancellationToken).ConfigureAwait(false);
-                MarkerPayload? marker = JsonSerializer.Deserialize<MarkerPayload>(json);
-                if (marker is null
-                    || marker.Version != MarkerVersion
-                    || marker.SyncPairId != syncPairId
-                    || !string.Equals(marker.LocalRootPath, NormalizePath(localRootPath), StringComparison.OrdinalIgnoreCase)
-                    || !string.Equals(marker.RelativePath, normalizedPath, StringComparison.OrdinalIgnoreCase)
-                    || marker.SizeBytes != localFile.SizeBytes
-                    || !string.Equals(marker.FileIdentity, ReadFileIdentity(localFile.FullPath), StringComparison.Ordinal))
+                MarkerPayload? marker = await ReadMarkerAsync(markerPath, cancellationToken).ConfigureAwait(false);
+                if (!MarkerMatchesFile(marker, syncPairId, localRootPath, normalizedPath, localFile))
                 {
                     DeleteMarker(markerPath);
                     return false;
                 }
 
                 string contentHash = await ComputeContentHashAsync(localFile.FullPath, cancellationToken).ConfigureAwait(false);
-                if (!string.Equals(marker.ContentHash, contentHash, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(marker!.ContentHash, contentHash, StringComparison.OrdinalIgnoreCase))
                 {
                     DeleteMarker(markerPath);
                     return false;
@@ -131,6 +124,30 @@ namespace Cotton.Sync.Desktop.Platform
                     normalizedPath);
                 return false;
             }
+        }
+
+        private static async Task<MarkerPayload?> ReadMarkerAsync(
+            string markerPath,
+            CancellationToken cancellationToken)
+        {
+            byte[] json = await File.ReadAllBytesAsync(markerPath, cancellationToken).ConfigureAwait(false);
+            return JsonSerializer.Deserialize<MarkerPayload>(json);
+        }
+
+        private static bool MarkerMatchesFile(
+            MarkerPayload? marker,
+            Guid syncPairId,
+            string localRootPath,
+            string normalizedPath,
+            LocalFileSnapshot localFile)
+        {
+            return marker is not null
+                && marker.Version == MarkerVersion
+                && marker.SyncPairId == syncPairId
+                && string.Equals(marker.LocalRootPath, NormalizePath(localRootPath), StringComparison.OrdinalIgnoreCase)
+                && string.Equals(marker.RelativePath, normalizedPath, StringComparison.OrdinalIgnoreCase)
+                && marker.SizeBytes == localFile.SizeBytes
+                && string.Equals(marker.FileIdentity, ReadFileIdentity(localFile.FullPath), StringComparison.Ordinal);
         }
 
         private static void ValidateArguments(

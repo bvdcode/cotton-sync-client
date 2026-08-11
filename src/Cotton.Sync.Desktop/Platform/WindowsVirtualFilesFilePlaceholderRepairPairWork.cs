@@ -6,11 +6,10 @@ using Cotton.Sync.App.Progress;
 using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.State;
-using System.Diagnostics;
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal sealed class WindowsVirtualFilesFilePlaceholderRepairPairWork : ISyncPairWork
+    internal class WindowsVirtualFilesFilePlaceholderRepairPairWork : ISyncPairWork
     {
         private const int HResultFileNotFound = unchecked((int)0x80070002);
         private const int HResultPathNotFound = unchecked((int)0x80070003);
@@ -67,119 +66,147 @@ namespace Cotton.Sync.Desktop.Platform
             SyncRunRequest request,
             CancellationToken cancellationToken)
         {
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            DateTime startedAtUtc = DateTime.UtcNow;
-            int candidateCount = 0;
-            int repairedCount = 0;
-            int missingCount = 0;
-            int nonPlaceholderCount = 0;
-            PublishProgress(syncPair.Id, request, startedAtUtc, 0, null, isCompleted: false);
+            FilePlaceholderRepairStatistics statistics = new();
+            PublishProgress(syncPair.Id, request, statistics.StartedAt, 0, null, isCompleted: false);
 
             try
             {
                 using IDisposable? burst = _localChangeSuppression?.SuppressProviderWriteBurst(
                     syncPair.Id,
                     syncPair.LocalRootPath);
-                await foreach (SyncStateEntry entry in _stateStore
-                                   .LoadPairEntriesAsync(syncPair.Id.ToString("D"), cancellationToken)
-                                   .WithCancellation(cancellationToken)
-                                   .ConfigureAwait(false))
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    if (!IsTrackedPlaceholderFile(entry))
-                    {
-                        continue;
-                    }
+                await RepairTrackedEntriesAsync(syncPair, request, statistics, cancellationToken).ConfigureAwait(false);
 
-                    candidateCount++;
-                    string relativePath = SyncPath.Normalize(entry.RelativePath);
-                    if (!File.Exists(GetFullPath(syncPair.LocalRootPath, relativePath)))
-                    {
-                        missingCount++;
-                        continue;
-                    }
-
-                    WindowsCloudFilesPlaceholderState state;
-                    try
-                    {
-                        state = _cloudFiles.GetPlaceholderState(syncPair, relativePath);
-                    }
-                    catch (WindowsCloudFilesNativeException exception) when (IsMissingPath(exception.HResult))
-                    {
-                        missingCount++;
-                        continue;
-                    }
-
-                    if (state == WindowsCloudFilesPlaceholderState.Invalid
-                        || !state.HasFlag(WindowsCloudFilesPlaceholderState.Placeholder))
-                    {
-                        nonPlaceholderCount++;
-                    }
-                    else if (!state.HasFlag(WindowsCloudFilesPlaceholderState.InSync))
-                    {
-                        _localChangeSuppression?.SuppressProviderWrite(
-                            syncPair.Id,
-                            syncPair.LocalRootPath,
-                            relativePath);
-                        _cloudFiles.SetInSyncState(syncPair, relativePath);
-                        repairedCount++;
-                    }
-
-                    if (candidateCount % ProgressInterval == 0)
-                    {
-                        PublishProgress(
-                            syncPair.Id,
-                            request,
-                            startedAtUtc,
-                            candidateCount,
-                            totalCount: null,
-                            isCompleted: false);
-                    }
-                }
-
-                if (repairedCount > 0)
+                if (statistics.RepairedCount > 0)
                 {
                     _cloudFiles.SetSyncRootInSyncState(syncPair);
                 }
             }
             catch (Exception exception)
             {
-                stopwatch.Stop();
-                PublishProgress(
-                    syncPair.Id,
-                    request,
-                    startedAtUtc,
-                    candidateCount,
-                    candidateCount,
-                    isCompleted: true);
-                RecordSummary(
-                    syncPair,
-                    status: "failed",
-                    candidateCount,
-                    repairedCount,
-                    missingCount,
-                    nonPlaceholderCount,
-                    stopwatch.ElapsedMilliseconds,
-                    exception is WindowsCloudFilesNativeException nativeException ? nativeException.HResult : null);
+                CompleteRepair(syncPair, request, statistics, "failed", GetNativeHResult(exception));
                 throw;
             }
 
-            stopwatch.Stop();
+            CompleteRepair(syncPair, request, statistics, "completed");
+        }
+
+        private async Task RepairTrackedEntriesAsync(
+            SyncPairSettings syncPair,
+            SyncRunRequest request,
+            FilePlaceholderRepairStatistics statistics,
+            CancellationToken cancellationToken)
+        {
+            await foreach (SyncStateEntry entry in _stateStore
+                               .LoadPairEntriesAsync(syncPair.Id.ToString("D"), cancellationToken)
+                               .WithCancellation(cancellationToken)
+                               .ConfigureAwait(false))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!IsTrackedPlaceholderFile(entry))
+                {
+                    continue;
+                }
+
+                statistics.RecordCandidate();
+                bool inspectedPlaceholder = RepairTrackedEntry(syncPair, entry, statistics);
+                if (inspectedPlaceholder && statistics.CandidateCount % ProgressInterval == 0)
+                {
+                    PublishProgress(
+                        syncPair.Id,
+                        request,
+                        statistics.StartedAt,
+                        statistics.CandidateCount,
+                        totalCount: null,
+                        isCompleted: false);
+                }
+            }
+        }
+
+        private bool RepairTrackedEntry(
+            SyncPairSettings syncPair,
+            SyncStateEntry entry,
+            FilePlaceholderRepairStatistics statistics)
+        {
+            string relativePath = SyncPath.Normalize(entry.RelativePath);
+            if (!File.Exists(GetFullPath(syncPair.LocalRootPath, relativePath)))
+            {
+                statistics.RecordMissing();
+                return false;
+            }
+
+            WindowsCloudFilesPlaceholderState? state = TryGetPlaceholderState(syncPair, relativePath);
+            if (!state.HasValue)
+            {
+                statistics.RecordMissing();
+                return false;
+            }
+
+            if (state.Value == WindowsCloudFilesPlaceholderState.Invalid
+                || !state.Value.HasFlag(WindowsCloudFilesPlaceholderState.Placeholder))
+            {
+                statistics.RecordNonPlaceholder();
+                return true;
+            }
+
+            if (state.Value.HasFlag(WindowsCloudFilesPlaceholderState.InSync))
+            {
+                return true;
+            }
+
+            _localChangeSuppression?.SuppressProviderWrite(
+                syncPair.Id,
+                syncPair.LocalRootPath,
+                relativePath);
+            _cloudFiles.SetInSyncState(syncPair, relativePath);
+            statistics.RecordRepaired();
+            return true;
+        }
+
+        private WindowsCloudFilesPlaceholderState? TryGetPlaceholderState(
+            SyncPairSettings syncPair,
+            string relativePath)
+        {
+            try
+            {
+                return _cloudFiles.GetPlaceholderState(syncPair, relativePath);
+            }
+            catch (WindowsCloudFilesNativeException exception) when (IsMissingPath(exception.HResult))
+            {
+                return null;
+            }
+        }
+
+        private void CompleteRepair(
+            SyncPairSettings syncPair,
+            SyncRunRequest request,
+            FilePlaceholderRepairStatistics statistics,
+            string status,
+            int? hResult = null)
+        {
+            statistics.Stop();
             PublishProgress(
                 syncPair.Id,
                 request,
-                startedAtUtc,
-                candidateCount,
-                candidateCount,
+                statistics.StartedAt,
+                statistics.CandidateCount,
+                statistics.CandidateCount,
                 isCompleted: true);
             RecordSummary(
                 syncPair,
-                status: "completed",
-                candidateCount,
-                repairedCount,
-                missingCount,
-                nonPlaceholderCount,
-                stopwatch.ElapsedMilliseconds);
+                status,
+                statistics.CandidateCount,
+                statistics.RepairedCount,
+                statistics.MissingCount,
+                statistics.NonPlaceholderCount,
+                statistics.ElapsedMilliseconds,
+                hResult);
+        }
+
+        private static int? GetNativeHResult(Exception exception)
+        {
+            return exception is WindowsCloudFilesNativeException nativeException
+                ? nativeException.HResult
+                : null;
         }
 
         private void PublishProgress(

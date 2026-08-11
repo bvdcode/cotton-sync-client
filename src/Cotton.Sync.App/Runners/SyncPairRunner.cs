@@ -173,8 +173,8 @@ namespace Cotton.Sync.App.Runners
                     return;
                 }
 
-                using var activeSyncCancellation = new CancellationTokenSource();
-                using var syncCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                using CancellationTokenSource activeSyncCancellation = new();
+                using CancellationTokenSource syncCancellation = CancellationTokenSource.CreateLinkedTokenSource(
                     cancellationToken,
                     activeSyncCancellation.Token);
                 SetActiveSyncCancellation(activeSyncCancellation);
@@ -197,62 +197,39 @@ namespace Cotton.Sync.App.Runners
                         request.Causes,
                         request.LocalChangedPaths.Count);
                 }
-                catch (OperationCanceledException) when (IsActiveSyncCancellation(
-                    activeSyncCancellation,
-                    ActiveSyncCancellationReason.Pause)
-                    && !cancellationToken.IsCancellationRequested)
-                {
-                    SetState(SyncPairRunState.Idle);
-                    _logger.LogDebug("Sync pair runner was paused for {SyncPairId}.", _syncPair.Id);
-                    return;
-                }
-                catch (OperationCanceledException exception) when (syncCancellation.Token.IsCancellationRequested)
-                {
-                    SetState(SyncPairRunState.Idle);
-                    _logger.LogDebug(
-                        exception,
-                        "Sync pair runner was canceled for {SyncPairId}.",
-                        _syncPair.Id);
-                    throw;
-                }
-                catch (Exception exception) when (IsActiveSyncCancellationSideEffect(
-                    exception,
-                    activeSyncCancellation,
-                    ActiveSyncCancellationReason.Pause)
-                    && !cancellationToken.IsCancellationRequested)
-                {
-                    SetState(SyncPairRunState.Idle);
-                    _logger.LogDebug(
-                        exception,
-                        "Sync pair runner was paused while in-flight work was canceling for {SyncPairId}.",
-                        _syncPair.Id);
-                    return;
-                }
-                catch (Exception exception) when (IsActiveSyncCancellationSideEffect(
-                    exception,
-                    activeSyncCancellation,
-                    ActiveSyncCancellationReason.Stop)
-                    && !cancellationToken.IsCancellationRequested)
-                {
-                    SetState(SyncPairRunState.Disabled);
-                    _logger.LogDebug(
-                        exception,
-                        "Sync pair runner was stopped while in-flight work was canceling for {SyncPairId}.",
-                        _syncPair.Id);
-                    throw new OperationCanceledException("Sync pair runner was stopped.", exception, activeSyncCancellation.Token);
-                }
                 catch (Exception exception)
                 {
-                    SetState(
-                        SyncFailureClassifier.IsTransientConnectionFailure(exception)
-                            ? SyncPairRunState.Offline
-                            : SyncPairRunState.Error,
-                        CreateFailureMessage(exception));
-                    _logger.LogError(
+                    ActiveSyncFailureKind failureKind = ClassifyActiveSyncFailure(
                         exception,
-                        "Sync pair runner failed for {SyncPairId}.",
-                        _syncPair.Id);
-                    throw;
+                        activeSyncCancellation,
+                        syncCancellation.Token,
+                        cancellationToken);
+                    switch (failureKind)
+                    {
+                        case ActiveSyncFailureKind.PausedCancellation:
+                            HandlePausedCancellation();
+                            return;
+                        case ActiveSyncFailureKind.PausedSideEffect:
+                            HandlePausedSideEffect(exception);
+                            return;
+                        case ActiveSyncFailureKind.Canceled:
+                            HandleCanceledSync(exception);
+                            throw;
+                        case ActiveSyncFailureKind.Stopped:
+                            HandleStoppedSync(exception);
+                            throw new OperationCanceledException(
+                                "Sync pair runner was stopped.",
+                                exception,
+                                activeSyncCancellation.Token);
+                        case ActiveSyncFailureKind.Failed:
+                            HandleFailedSync(exception);
+                            throw;
+                        default:
+                            throw new ArgumentOutOfRangeException(
+                                nameof(failureKind),
+                                failureKind,
+                                "Unsupported sync failure kind.");
+                    }
                 }
                 finally
                 {
@@ -263,6 +240,95 @@ namespace Cotton.Sync.App.Runners
             {
                 _operationGate.Release();
             }
+        }
+
+        private ActiveSyncFailureKind ClassifyActiveSyncFailure(
+            Exception exception,
+            CancellationTokenSource activeSyncCancellation,
+            CancellationToken syncCancellation,
+            CancellationToken callerCancellation)
+        {
+            if (exception is OperationCanceledException)
+            {
+                if (!callerCancellation.IsCancellationRequested
+                    && IsActiveSyncCancellation(activeSyncCancellation, ActiveSyncCancellationReason.Pause))
+                {
+                    return ActiveSyncFailureKind.PausedCancellation;
+                }
+
+                if (syncCancellation.IsCancellationRequested)
+                {
+                    return ActiveSyncFailureKind.Canceled;
+                }
+            }
+
+            if (!callerCancellation.IsCancellationRequested
+                && IsActiveSyncCancellationSideEffect(
+                    exception,
+                    activeSyncCancellation,
+                    ActiveSyncCancellationReason.Pause))
+            {
+                return ActiveSyncFailureKind.PausedSideEffect;
+            }
+
+            if (!callerCancellation.IsCancellationRequested
+                && IsActiveSyncCancellationSideEffect(
+                    exception,
+                    activeSyncCancellation,
+                    ActiveSyncCancellationReason.Stop))
+            {
+                return ActiveSyncFailureKind.Stopped;
+            }
+
+            return ActiveSyncFailureKind.Failed;
+        }
+
+        private void HandlePausedCancellation()
+        {
+            SetState(SyncPairRunState.Idle);
+            _logger.LogDebug("Sync pair runner was paused for {SyncPairId}.", _syncPair.Id);
+        }
+
+        private void HandlePausedSideEffect(Exception exception)
+        {
+            SetState(SyncPairRunState.Idle);
+            _logger.LogDebug(
+                exception,
+                "Sync pair runner was paused while in-flight work was canceling for {SyncPairId}.",
+                _syncPair.Id);
+        }
+
+        private void HandleCanceledSync(Exception exception)
+        {
+            SetState(SyncPairRunState.Idle);
+            _logger.LogDebug(
+                exception,
+                "Sync pair runner was canceled for {SyncPairId}.",
+                _syncPair.Id);
+        }
+
+        private void HandleStoppedSync(Exception exception)
+        {
+            SetState(SyncPairRunState.Disabled);
+            _logger.LogDebug(
+                exception,
+                "Sync pair runner was stopped while in-flight work was canceling for {SyncPairId}.",
+                _syncPair.Id);
+        }
+
+        private void HandleFailedSync(Exception exception)
+        {
+            SyncPairRunState failureState = SyncPairRunState.Error;
+            if (SyncFailureClassifier.IsTransientConnectionFailure(exception))
+            {
+                failureState = SyncPairRunState.Offline;
+            }
+
+            SetState(failureState, CreateFailureMessage(exception));
+            _logger.LogError(
+                exception,
+                "Sync pair runner failed for {SyncPairId}.",
+                _syncPair.Id);
         }
 
         private string GetLoggedSyncScope(SyncRunRequest request)
@@ -820,11 +886,5 @@ namespace Cotton.Sync.App.Runners
                 : SyncPairRunState.Error;
         }
 
-        private enum ActiveSyncCancellationReason
-        {
-            None = 0,
-            Pause,
-            Stop,
-        }
     }
 }

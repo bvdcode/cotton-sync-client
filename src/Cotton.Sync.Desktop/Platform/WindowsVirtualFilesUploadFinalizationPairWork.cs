@@ -131,49 +131,78 @@ namespace Cotton.Sync.Desktop.Platform
         {
             if (finalizedPaths.Add(relativePath))
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                _localChangeSuppression?.SuppressProviderMetadataWrite(
-                    syncPair.Id,
-                    syncPair.LocalRootPath,
-                    relativePath);
-                SyncStateEntry? state = await _stateStore
-                    .GetAsync(syncPair.Id.ToString("D"), relativePath, cancellationToken)
-                    .ConfigureAwait(false);
-                if (state is { Kind: SyncEntryKind.File })
-                {
-                    RemoteFilePlaceholderResult placeholder =
-                        _cloudFiles.FinalizeUploadedFilePlaceholder(syncPair, state);
-                    if (placeholder.PlaceholderIdentity is not { Length: > 0 })
-                    {
-                        throw new InvalidOperationException(
-                            "Uploaded Cloud Files finalization did not return placeholder identity for "
-                            + relativePath
-                            + ".");
-                    }
-
-                    state.PlaceholderIdentity = placeholder.PlaceholderIdentity;
-                    state.PlaceholderHydrationState = placeholder.HydrationState;
-                    state.LocalSizeBytes = placeholder.LocalSizeBytes ?? state.LocalSizeBytes;
-                    state.LocalLastWriteUtc = placeholder.LocalLastWriteUtc?.ToUniversalTime()
-                        ?? state.LocalLastWriteUtc;
-                    state.SyncedAtUtc = DateTime.UtcNow;
-                    await _stateStore.UpsertAsync(state, cancellationToken).ConfigureAwait(false);
-                    recordFinalizedPath();
-                }
-                else if (state is { Kind: SyncEntryKind.Directory })
-                {
-                    FinalizeDirectoryPlaceholder(syncPair, relativePath, state);
-                    recordFinalizedPath();
-                }
-                else
-                {
-                    throw new InvalidOperationException(
-                        "Uploaded Cloud Files finalization requires synced file or directory state for "
-                        + relativePath
-                        + ".");
-                }
+                await FinalizeTrackedPathAsync(syncPair, relativePath, cancellationToken).ConfigureAwait(false);
+                recordFinalizedPath();
             }
 
+            await FinalizeAncestorDirectoriesAsync(
+                    syncPair,
+                    relativePath,
+                    finalizedPaths,
+                    recordFinalizedPath,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        private async Task FinalizeTrackedPathAsync(
+            SyncPairSettings syncPair,
+            string relativePath,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            SuppressMetadataWrite(syncPair, relativePath);
+            SyncStateEntry? state = await _stateStore
+                .GetAsync(syncPair.Id.ToString("D"), relativePath, cancellationToken)
+                .ConfigureAwait(false);
+            if (state is null)
+            {
+                throw CreateMissingFinalizationStateException(relativePath);
+            }
+
+            switch (state.Kind)
+            {
+                case SyncEntryKind.File:
+                    await FinalizeFilePlaceholderAsync(syncPair, relativePath, state, cancellationToken)
+                        .ConfigureAwait(false);
+                    return;
+                case SyncEntryKind.Directory:
+                    FinalizeDirectoryPlaceholder(syncPair, relativePath, state);
+                    return;
+                default:
+                    throw CreateMissingFinalizationStateException(relativePath);
+            }
+        }
+
+        private async Task FinalizeFilePlaceholderAsync(
+            SyncPairSettings syncPair,
+            string relativePath,
+            SyncStateEntry state,
+            CancellationToken cancellationToken)
+        {
+            RemoteFilePlaceholderResult placeholder = _cloudFiles.FinalizeUploadedFilePlaceholder(syncPair, state);
+            if (placeholder.PlaceholderIdentity is not { Length: > 0 })
+            {
+                throw new InvalidOperationException(
+                    "Uploaded Cloud Files finalization did not return placeholder identity for "
+                    + relativePath
+                    + ".");
+            }
+
+            state.PlaceholderIdentity = placeholder.PlaceholderIdentity;
+            state.PlaceholderHydrationState = placeholder.HydrationState;
+            state.LocalSizeBytes = placeholder.LocalSizeBytes ?? state.LocalSizeBytes;
+            state.LocalLastWriteUtc = placeholder.LocalLastWriteUtc?.ToUniversalTime() ?? state.LocalLastWriteUtc;
+            state.SyncedAtUtc = DateTime.UtcNow;
+            await _stateStore.UpsertAsync(state, cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task FinalizeAncestorDirectoriesAsync(
+            SyncPairSettings syncPair,
+            string relativePath,
+            HashSet<string> finalizedPaths,
+            Action recordFinalizedPath,
+            CancellationToken cancellationToken)
+        {
             foreach (string directoryPath in CreateAncestorDirectoryPaths(relativePath).Reverse())
             {
                 if (!finalizedPaths.Add(directoryPath))
@@ -182,10 +211,7 @@ namespace Cotton.Sync.Desktop.Platform
                 }
 
                 cancellationToken.ThrowIfCancellationRequested();
-                _localChangeSuppression?.SuppressProviderMetadataWrite(
-                    syncPair.Id,
-                    syncPair.LocalRootPath,
-                    directoryPath);
+                SuppressMetadataWrite(syncPair, directoryPath);
                 SyncStateEntry? directoryState = await _stateStore
                     .GetAsync(syncPair.Id.ToString("D"), directoryPath, cancellationToken)
                     .ConfigureAwait(false);
@@ -199,6 +225,22 @@ namespace Cotton.Sync.Desktop.Platform
                 _cloudFiles.SetInSyncState(syncPair, directoryPath);
                 recordFinalizedPath();
             }
+        }
+
+        private void SuppressMetadataWrite(SyncPairSettings syncPair, string relativePath)
+        {
+            _localChangeSuppression?.SuppressProviderMetadataWrite(
+                syncPair.Id,
+                syncPair.LocalRootPath,
+                relativePath);
+        }
+
+        private static InvalidOperationException CreateMissingFinalizationStateException(string relativePath)
+        {
+            return new InvalidOperationException(
+                "Uploaded Cloud Files finalization requires synced file or directory state for "
+                + relativePath
+                + ".");
         }
 
         private void FinalizeDirectoryPlaceholder(
