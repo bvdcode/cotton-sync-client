@@ -55,65 +55,73 @@ namespace Cotton.Sync.App.LocalChanges
             LocalTreeLookupSnapshot local = await _localScanner
                 .ScanTreeMetadataLookupsAsync(syncPair.LocalRootPath, progress: null, cancellationToken)
                 .ConfigureAwait(false);
-            var changedPaths = new HashSet<string>(PathComparer);
-            var changedDirectoryPaths = new HashSet<string>(PathComparer);
-            var deletedPaths = new HashSet<string>(PathComparer);
-            var deletedDirectoryPaths = new HashSet<string>(PathComparer);
+            HashSet<string> changedPaths = new(PathComparer);
+            HashSet<string> changedDirectoryPaths = new(PathComparer);
+            HashSet<string> deletedPaths = new(PathComparer);
+            HashSet<string> deletedDirectoryPaths = new(PathComparer);
+            await ReconcileTrackedEntriesAsync(
+                    syncPairId,
+                    local,
+                    changedPaths,
+                    changedDirectoryPaths,
+                    deletedPaths,
+                    deletedDirectoryPaths,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            AddUntrackedDirectories(local, changedPaths, changedDirectoryPaths, cancellationToken);
+            await AddUntrackedFilesAsync(syncPair, local, changedPaths, cancellationToken).ConfigureAwait(false);
+
+            CollapseDescendants(changedPaths, changedDirectoryPaths);
+            CollapseDescendants(deletedPaths, deletedDirectoryPaths);
+            changedPaths.UnionWith(deletedPaths);
+            return CreateSyncRunRequest(changedPaths, deletedPaths);
+        }
+
+        private async Task ReconcileTrackedEntriesAsync(
+            string syncPairId,
+            LocalTreeLookupSnapshot local,
+            HashSet<string> changedPaths,
+            HashSet<string> changedDirectoryPaths,
+            HashSet<string> deletedPaths,
+            HashSet<string> deletedDirectoryPaths,
+            CancellationToken cancellationToken)
+        {
             await foreach (SyncStateEntry state in _stateStore
                                .LoadPairEntriesAsync(syncPairId, cancellationToken)
                                .WithCancellation(cancellationToken)
                                .ConfigureAwait(false))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                string key = SyncPath.ToKey(state.RelativePath);
-                if (state.Kind == SyncEntryKind.Directory)
-                {
-                    if (local.DirectoriesByPath.Remove(key))
-                    {
-                        continue;
-                    }
-
-                    if (local.FilesByPath.Remove(key, out LocalFileSnapshot? replacementFile))
-                    {
-                        changedPaths.Add(replacementFile.RelativePath);
-                        continue;
-                    }
-
-                    deletedPaths.Add(state.RelativePath);
-                    deletedDirectoryPaths.Add(state.RelativePath);
-                    continue;
-                }
-
-                if (state.Kind == SyncEntryKind.File)
-                {
-                    if (local.FilesByPath.Remove(key, out LocalFileSnapshot? localFile))
-                    {
-                        if (HasFileChanged(localFile, state))
-                        {
-                            changedPaths.Add(localFile.RelativePath);
-                        }
-
-                        continue;
-                    }
-
-                    if (local.DirectoriesByPath.Remove(key, out LocalDirectorySnapshot? replacementDirectory))
-                    {
-                        changedPaths.Add(replacementDirectory.RelativePath);
-                        changedDirectoryPaths.Add(replacementDirectory.RelativePath);
-                        continue;
-                    }
-                }
-
-                deletedPaths.Add(state.RelativePath);
+                ReconcileTrackedEntry(
+                    state,
+                    local,
+                    changedPaths,
+                    changedDirectoryPaths,
+                    deletedPaths,
+                    deletedDirectoryPaths);
             }
+        }
 
+        private static void AddUntrackedDirectories(
+            LocalTreeLookupSnapshot local,
+            HashSet<string> changedPaths,
+            HashSet<string> changedDirectoryPaths,
+            CancellationToken cancellationToken)
+        {
             foreach (LocalDirectorySnapshot directory in local.DirectoriesByPath.Values)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 changedPaths.Add(directory.RelativePath);
                 changedDirectoryPaths.Add(directory.RelativePath);
             }
+        }
 
+        private async Task AddUntrackedFilesAsync(
+            SyncPairSettings syncPair,
+            LocalTreeLookupSnapshot local,
+            HashSet<string> changedPaths,
+            CancellationToken cancellationToken)
+        {
             foreach (LocalFileSnapshot file in local.FilesByPath.Values)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -127,10 +135,12 @@ namespace Cotton.Sync.App.LocalChanges
 
                 changedPaths.Add(file.RelativePath);
             }
+        }
 
-            CollapseDescendants(changedPaths, changedDirectoryPaths);
-            CollapseDescendants(deletedPaths, deletedDirectoryPaths);
-            changedPaths.UnionWith(deletedPaths);
+        private static SyncRunRequest? CreateSyncRunRequest(
+            HashSet<string> changedPaths,
+            HashSet<string> deletedPaths)
+        {
             if (changedPaths.Count == 0)
             {
                 return null;
@@ -145,6 +155,90 @@ namespace Cotton.Sync.App.LocalChanges
                 changedPaths.OrderBy(static path => path, PathComparer),
                 deletedPaths.OrderBy(static path => path, PathComparer),
                 SyncRunCause.LocalChange);
+        }
+
+        private static void ReconcileTrackedEntry(
+            SyncStateEntry state,
+            LocalTreeLookupSnapshot local,
+            HashSet<string> changedPaths,
+            HashSet<string> changedDirectoryPaths,
+            HashSet<string> deletedPaths,
+            HashSet<string> deletedDirectoryPaths)
+        {
+            string key = SyncPath.ToKey(state.RelativePath);
+            switch (state.Kind)
+            {
+                case SyncEntryKind.Directory:
+                    ReconcileTrackedDirectory(
+                        state,
+                        key,
+                        local,
+                        changedPaths,
+                        deletedPaths,
+                        deletedDirectoryPaths);
+                    return;
+                case SyncEntryKind.File:
+                    if (ReconcileTrackedFile(state, key, local, changedPaths, changedDirectoryPaths))
+                    {
+                        return;
+                    }
+
+                    break;
+                default:
+                    break;
+            }
+
+            deletedPaths.Add(state.RelativePath);
+        }
+
+        private static void ReconcileTrackedDirectory(
+            SyncStateEntry state,
+            string key,
+            LocalTreeLookupSnapshot local,
+            HashSet<string> changedPaths,
+            HashSet<string> deletedPaths,
+            HashSet<string> deletedDirectoryPaths)
+        {
+            if (local.DirectoriesByPath.Remove(key))
+            {
+                return;
+            }
+
+            if (local.FilesByPath.Remove(key, out LocalFileSnapshot? replacementFile))
+            {
+                changedPaths.Add(replacementFile.RelativePath);
+                return;
+            }
+
+            deletedPaths.Add(state.RelativePath);
+            deletedDirectoryPaths.Add(state.RelativePath);
+        }
+
+        private static bool ReconcileTrackedFile(
+            SyncStateEntry state,
+            string key,
+            LocalTreeLookupSnapshot local,
+            HashSet<string> changedPaths,
+            HashSet<string> changedDirectoryPaths)
+        {
+            if (local.FilesByPath.Remove(key, out LocalFileSnapshot? localFile))
+            {
+                if (HasFileChanged(localFile, state))
+                {
+                    changedPaths.Add(localFile.RelativePath);
+                }
+
+                return true;
+            }
+
+            if (!local.DirectoriesByPath.Remove(key, out LocalDirectorySnapshot? replacementDirectory))
+            {
+                return false;
+            }
+
+            changedPaths.Add(replacementDirectory.RelativePath);
+            changedDirectoryPaths.Add(replacementDirectory.RelativePath);
+            return true;
         }
 
         private static bool HasFileChanged(LocalFileSnapshot local, SyncStateEntry state)

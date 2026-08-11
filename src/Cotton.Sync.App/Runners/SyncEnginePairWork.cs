@@ -56,38 +56,8 @@ namespace Cotton.Sync.App.Runners
             SyncRunRequest currentRequest = request;
             while (true)
             {
-                AppRunProgressReporter? runProgressReporter = _runProgressPublisher is null
-                    ? null
-                    : new AppRunProgressReporter(syncPair.Id, _runProgressPublisher, currentRequest);
-                AppTransferProgressReporter? transferProgressReporter = _progressPublisher is null
-                    ? null
-                    : new AppTransferProgressReporter(syncPair.Id, _progressPublisher);
-                bool allowInitialVirtualFilesStreaming = CanUseInitialVirtualFilesStreaming(currentRequest);
-                CoreSyncRunOptions? options = _activityPublisher is null && _progressPublisher is null && _runProgressPublisher is null
-                        && currentRequest.IsFull
-                        && allowInitialVirtualFilesStreaming
-                        && (currentRequest.Causes & SyncRunCause.InitialPopulation) == SyncRunCause.None
-                        && currentRequest.ApprovedRemoteDeleteCount is null
-                    ? null
-                    : CreateOptions(
-                        syncPair,
-                        currentRequest,
-                        runProgressReporter,
-                        transferProgressReporter,
-                        allowInitialVirtualFilesStreaming);
-                CoreSyncRunResult result;
-                try
-                {
-                    result = await _syncEngine
-                        .RunOnceAsync(ToCorePair(syncPair), options, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                finally
-                {
-                    transferProgressReporter?.Complete();
-                    runProgressReporter?.Complete();
-                }
-
+                CoreSyncRunResult result = await RunRequestAsync(syncPair, currentRequest, cancellationToken)
+                    .ConfigureAwait(false);
                 if (result.RequiresUserAction)
                 {
                     throw new SyncActionRequiredException(CreateActionRequiredMessage(result));
@@ -103,6 +73,68 @@ namespace Cotton.Sync.App.Runners
                     request.Causes | SyncRunCause.LocalChange);
                 await _delayAsync(BackgroundMinimumLocalUploadAge, cancellationToken).ConfigureAwait(false);
             }
+        }
+
+        private async Task<CoreSyncRunResult> RunRequestAsync(
+            SyncPairSettings syncPair,
+            SyncRunRequest request,
+            CancellationToken cancellationToken)
+        {
+            AppRunProgressReporter? runProgressReporter = _runProgressPublisher is null
+                ? null
+                : new AppRunProgressReporter(syncPair.Id, _runProgressPublisher, request);
+            AppTransferProgressReporter? transferProgressReporter = _progressPublisher is null
+                ? null
+                : new AppTransferProgressReporter(syncPair.Id, _progressPublisher);
+            CoreSyncRunOptions? options = CreateOptionsIfRequired(
+                syncPair,
+                request,
+                runProgressReporter,
+                transferProgressReporter);
+            try
+            {
+                return await _syncEngine
+                    .RunOnceAsync(ToCorePair(syncPair), options, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                transferProgressReporter?.Complete();
+                runProgressReporter?.Complete();
+            }
+        }
+
+        private CoreSyncRunOptions? CreateOptionsIfRequired(
+            SyncPairSettings syncPair,
+            SyncRunRequest request,
+            AppRunProgressReporter? runProgressReporter,
+            AppTransferProgressReporter? transferProgressReporter)
+        {
+            bool allowInitialVirtualFilesStreaming = CanUseInitialVirtualFilesStreaming(request);
+            if (CanUseDefaultOptions(request, allowInitialVirtualFilesStreaming))
+            {
+                return null;
+            }
+
+            return CreateOptions(
+                syncPair,
+                request,
+                runProgressReporter,
+                transferProgressReporter,
+                allowInitialVirtualFilesStreaming);
+        }
+
+        private bool CanUseDefaultOptions(
+            SyncRunRequest request,
+            bool allowInitialVirtualFilesStreaming)
+        {
+            return _activityPublisher is null
+                && _progressPublisher is null
+                && _runProgressPublisher is null
+                && request.IsFull
+                && allowInitialVirtualFilesStreaming
+                && (request.Causes & SyncRunCause.InitialPopulation) == SyncRunCause.None
+                && request.ApprovedRemoteDeleteCount is null;
         }
 
         private CoreSyncRunOptions CreateOptions(

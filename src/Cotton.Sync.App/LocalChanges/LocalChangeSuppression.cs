@@ -331,41 +331,15 @@ namespace Cotton.Sync.App.LocalChanges
             string key = NormalizePathKey(fullPath);
             if (entries.TryGetValue(key, out SuppressionEntry? entry))
             {
-                bool userRemovalMustRemainVisible = !entry.SuppressDeleteEvents
-                    && changeKind is LocalSyncRootChangeKind.Deleted or LocalSyncRootChangeKind.Renamed;
-                bool onlineOnlyConditionEnded = entry.OnlyWhileOnlineOnly
-                    && !_onlineOnlyCloudFilesPlaceholderProbe(fullPath);
-                bool contentChangeMustRemainVisible = entry.MetadataOnly
-                    && changeKind != LocalSyncRootChangeKind.AttributesChanged;
-                bool nonCreationChangeMustRemainVisible = entry.CreationOnly
-                    && !entry.ExpectedSizeBytes.HasValue
-                    && changeKind is not LocalSyncRootChangeKind.Created and not LocalSyncRootChangeKind.Renamed;
-                bool providerMaterializationChanged = entry.CreationOnly
-                    && entry.ExpectedSizeBytes.HasValue
-                    && !MatchesExpectedFileMetadata(fullPath, entry);
-                if (userRemovalMustRemainVisible
-                    || onlineOnlyConditionEnded
-                    || contentChangeMustRemainVisible
-                    || nonCreationChangeMustRemainVisible
-                    || providerMaterializationChanged)
+                if (HasSuppressionEnded(fullPath, changeKind, entry))
                 {
-                    entries.Remove(key);
-                    if (_providerWriteBurstsByPair.TryGetValue(syncPairId, out ProviderWriteBurstScope? scope))
-                    {
-                        scope.RegisteredPathKeys.Remove(key);
-                    }
-
+                    RemoveSuppressionEntry(syncPairId, key, entries);
                     return false;
                 }
 
                 if (entry.CreationOnly && !entry.ExpectedSizeBytes.HasValue)
                 {
-                    entries.Remove(key);
-                    if (_providerWriteBurstsByPair.TryGetValue(syncPairId, out ProviderWriteBurstScope? scope))
-                    {
-                        scope.RegisteredPathKeys.Remove(key);
-                    }
-
+                    RemoveSuppressionEntry(syncPairId, key, entries);
                     return true;
                 }
 
@@ -377,6 +351,42 @@ namespace Cotton.Sync.App.LocalChanges
 
             return ShouldSuppressRegisteredProviderBurst(syncPairId, fullPath, entries)
                 || TryConsume(entries, fullPath, now);
+        }
+
+        private bool HasSuppressionEnded(
+            string fullPath,
+            LocalSyncRootChangeKind changeKind,
+            SuppressionEntry entry)
+        {
+            bool userRemovalMustRemainVisible = !entry.SuppressDeleteEvents
+                && changeKind is LocalSyncRootChangeKind.Deleted or LocalSyncRootChangeKind.Renamed;
+            bool onlineOnlyConditionEnded = entry.OnlyWhileOnlineOnly
+                && !_onlineOnlyCloudFilesPlaceholderProbe(fullPath);
+            bool contentChangeMustRemainVisible = entry.MetadataOnly
+                && changeKind != LocalSyncRootChangeKind.AttributesChanged;
+            bool nonCreationChangeMustRemainVisible = entry.CreationOnly
+                && !entry.ExpectedSizeBytes.HasValue
+                && changeKind is not LocalSyncRootChangeKind.Created and not LocalSyncRootChangeKind.Renamed;
+            bool providerMaterializationChanged = entry.CreationOnly
+                && entry.ExpectedSizeBytes.HasValue
+                && !MatchesExpectedFileMetadata(fullPath, entry);
+            return userRemovalMustRemainVisible
+                || onlineOnlyConditionEnded
+                || contentChangeMustRemainVisible
+                || nonCreationChangeMustRemainVisible
+                || providerMaterializationChanged;
+        }
+
+        private void RemoveSuppressionEntry(
+            Guid syncPairId,
+            string key,
+            Dictionary<string, SuppressionEntry> entries)
+        {
+            entries.Remove(key);
+            if (_providerWriteBurstsByPair.TryGetValue(syncPairId, out ProviderWriteBurstScope? scope))
+            {
+                scope.RegisteredPathKeys.Remove(key);
+            }
         }
 
         private bool ShouldSuppressRegisteredProviderBurst(

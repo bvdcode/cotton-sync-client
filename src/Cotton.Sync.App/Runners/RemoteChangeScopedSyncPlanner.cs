@@ -348,46 +348,101 @@ namespace Cotton.Sync.App.Runners
             bool hasIgnoredPath = currentStatus == RemoteNamedPathStatus.Ignored
                 || previousStatus == RemoteNamedPathStatus.Ignored;
 
-            if (action is RemoteChangeAction.Created or RemoteChangeAction.Restored)
+            switch (action)
             {
-                if (currentResolved)
+                case RemoteChangeAction.Created:
+                case RemoteChangeAction.Restored:
+                    return ResolveCreatedOrRestoredPath(
+                        currentResolved,
+                        currentPath,
+                        hasIgnoredPath,
+                        hasRelation,
+                        paths);
+                case RemoteChangeAction.Renamed:
+                    return ResolveRenamedPath(
+                        hasExistingPath,
+                        existingPath,
+                        currentResolved,
+                        currentStatus,
+                        currentPath,
+                        hasRelation,
+                        paths);
+                case RemoteChangeAction.Unknown:
+                case RemoteChangeAction.ContentUpdated:
+                case RemoteChangeAction.Moved:
+                case RemoteChangeAction.Deleted:
+                    return ResolveRelatedPaths(
+                        hasExistingPath,
+                        existingPath,
+                        currentResolved,
+                        currentPath,
+                        previousResolved,
+                        previousPath,
+                        hasIgnoredPath,
+                        hasRelation,
+                        paths);
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(action), action, "Unsupported remote change action.");
+            }
+        }
+
+        private static RemoteChangePathDisposition ResolveCreatedOrRestoredPath(
+            bool currentResolved,
+            string? currentPath,
+            bool hasIgnoredPath,
+            bool hasRelation,
+            HashSet<string> paths)
+        {
+            if (currentResolved)
+            {
+                paths.Add(currentPath!);
+                return RemoteChangePathDisposition.Mapped;
+            }
+
+            return ResolveUnmappedDisposition(hasIgnoredPath, hasRelation);
+        }
+
+        private static RemoteChangePathDisposition ResolveRenamedPath(
+            bool hasExistingPath,
+            string? existingPath,
+            bool currentResolved,
+            RemoteNamedPathStatus currentStatus,
+            string? currentPath,
+            bool hasRelation,
+            HashSet<string> paths)
+        {
+            if (currentResolved)
+            {
+                AddPathIfPresent(paths, existingPath);
+                paths.Add(currentPath!);
+                return RemoteChangePathDisposition.Mapped;
+            }
+
+            if (currentStatus == RemoteNamedPathStatus.Ignored)
+            {
+                if (hasExistingPath)
                 {
-                    paths.Add(currentPath!);
+                    paths.Add(existingPath!);
                     return RemoteChangePathDisposition.Mapped;
                 }
 
-                return hasIgnoredPath
-                    ? RemoteChangePathDisposition.Ignored
-                    : hasRelation
-                        ? RemoteChangePathDisposition.Unresolved
-                        : RemoteChangePathDisposition.OutsidePair;
+                return RemoteChangePathDisposition.Ignored;
             }
 
-            if (action == RemoteChangeAction.Renamed)
-            {
-                if (currentResolved)
-                {
-                    AddPathIfPresent(paths, existingPath);
-                    paths.Add(currentPath!);
-                    return RemoteChangePathDisposition.Mapped;
-                }
+            return ResolveUnmappedDisposition(hasIgnoredPath: false, hasRelation: hasRelation);
+        }
 
-                if (currentStatus == RemoteNamedPathStatus.Ignored)
-                {
-                    if (hasExistingPath)
-                    {
-                        paths.Add(existingPath!);
-                        return RemoteChangePathDisposition.Mapped;
-                    }
-
-                    return RemoteChangePathDisposition.Ignored;
-                }
-
-                return hasRelation
-                    ? RemoteChangePathDisposition.Unresolved
-                    : RemoteChangePathDisposition.OutsidePair;
-            }
-
+        private static RemoteChangePathDisposition ResolveRelatedPaths(
+            bool hasExistingPath,
+            string? existingPath,
+            bool currentResolved,
+            string? currentPath,
+            bool previousResolved,
+            string? previousPath,
+            bool hasIgnoredPath,
+            bool hasRelation,
+            HashSet<string> paths)
+        {
             if (hasExistingPath)
             {
                 paths.Add(existingPath!);
@@ -408,6 +463,13 @@ namespace Cotton.Sync.App.Runners
                 return RemoteChangePathDisposition.Mapped;
             }
 
+            return ResolveUnmappedDisposition(hasIgnoredPath, hasRelation);
+        }
+
+        private static RemoteChangePathDisposition ResolveUnmappedDisposition(
+            bool hasIgnoredPath,
+            bool hasRelation)
+        {
             return hasIgnoredPath
                 ? RemoteChangePathDisposition.Ignored
                 : hasRelation
