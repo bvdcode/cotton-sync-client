@@ -188,7 +188,7 @@ namespace Cotton.Sync
                 remoteDirectoriesByPath.Keys,
                 directoryStateByPath.Keys);
             ReportRunProgress(options, SyncRunProgressStage.ReconcilingDirectories, 0, directoryPathKeys.Count, null, startedAtUtc);
-            await ReconcileDirectoriesWithoutBaselineAsync(
+            var directoryReconciliation = new DirectoryReconciliationContext(
                 syncPair,
                 options,
                 result,
@@ -198,7 +198,8 @@ namespace Cotton.Sync
                 directoryStateByPath,
                 treeLookups.RemoteRootNode,
                 startedAtUtc,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken);
+            await ReconcileDirectoriesWithoutBaselineAsync(directoryReconciliation).ConfigureAwait(false);
 
             await EnsureLocalContentHashesForStateFilesAsync(localByPath, stateByPath, options, startedAtUtc, cancellationToken)
                 .ConfigureAwait(false);
@@ -301,7 +302,7 @@ namespace Cotton.Sync
 
             if (hasLocalDirectoryDeleteCandidates || hasRemoteDirectoryDeleteCandidates || hasStaleDirectoryState)
             {
-                await ReconcileDirectoryDeletesAsync(
+                var directoryDeletes = new DirectoryDeleteContext(
                     syncPair,
                     options,
                     result,
@@ -316,8 +317,9 @@ namespace Cotton.Sync
                     localDirectoryContentIndex,
                     remoteDirectoryContentIndex,
                     scopedDirectoryDeleteKeys,
-                    scopedDirectoryDelete,
-                    cancellationToken).ConfigureAwait(false);
+                    scopedDirectoryDelete?.DirectoryKeys,
+                    cancellationToken);
+                await ReconcileDirectoryDeletesAsync(directoryDeletes).ConfigureAwait(false);
             }
 
             IReadOnlyList<string> pathKeys = BuildPathKeys(localByPath.Keys, remoteByPath.Keys, stateByPath.Keys);
@@ -3126,136 +3128,144 @@ namespace Cotton.Sync
                 relativePath.Replace('/', Path.DirectorySeparatorChar));
         }
 
-        private async Task ReconcileDirectoriesWithoutBaselineAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            SyncRunResult result,
-            IReadOnlyList<string> pathKeys,
-            IReadOnlyDictionary<string, LocalDirectorySnapshot> localByPath,
-            IDictionary<string, RemoteDirectorySnapshot> remoteByPath,
-            IReadOnlyDictionary<string, SyncStateEntry> stateByPath,
-            NodeDto remoteRootNode,
-            DateTime startedAtUtc,
-            CancellationToken cancellationToken)
+        private async Task ReconcileDirectoriesWithoutBaselineAsync(DirectoryReconciliationContext context)
         {
             int foldersCompleted = 0;
             DateTime? lastDirectoryRunProgressReportedAtUtc = null;
-            foreach (string key in pathKeys)
+            foreach (string key in context.PathKeys)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                localByPath.TryGetValue(key, out LocalDirectorySnapshot? local);
-                remoteByPath.TryGetValue(key, out RemoteDirectorySnapshot? remote);
-                stateByPath.TryGetValue(key, out SyncStateEntry? state);
-                string relativePath = local?.RelativePath ?? remote?.RelativePath ?? state?.RelativePath ?? key;
-                ReportItemRunProgress(
-                    options,
-                    SyncRunProgressStage.ReconcilingDirectories,
+                context.CancellationToken.ThrowIfCancellationRequested();
+                context.LocalByPath.TryGetValue(key, out LocalDirectorySnapshot? local);
+                context.RemoteByPath.TryGetValue(key, out RemoteDirectorySnapshot? remote);
+                context.StateByPath.TryGetValue(key, out SyncStateEntry? state);
+                string relativePath = ResolveDirectoryRelativePath(key, local, remote, state);
+                ReportDirectoryProgress(
+                    context,
                     foldersCompleted,
-                    pathKeys.Count,
                     relativePath,
-                    startedAtUtc,
                     ref lastDirectoryRunProgressReportedAtUtc);
-                if (state is not null)
+                if (state is null)
                 {
-                    foldersCompleted++;
-                    ReportItemRunProgress(
-                        options,
-                        SyncRunProgressStage.ReconcilingDirectories,
-                        foldersCompleted,
-                        pathKeys.Count,
-                        relativePath,
-                        startedAtUtc,
-                        ref lastDirectoryRunProgressReportedAtUtc);
-                    continue;
-                }
-
-                if (local is null && remote is not null)
-                {
-                    await CreateRemoteBackedLocalDirectoryAsync(syncPair, relativePath, remote.Node, cancellationToken)
-                        .ConfigureAwait(false);
-                    await _stateStore.UpsertAsync(BuildDirectoryBaseline(syncPair, relativePath, remote.Node), cancellationToken)
-                        .ConfigureAwait(false);
-                    Report(result, options, SyncActivityKind.Downloaded, relativePath, "Created local folder.");
-                    foldersCompleted++;
-                    ReportItemRunProgress(
-                        options,
-                        SyncRunProgressStage.ReconcilingDirectories,
-                        foldersCompleted,
-                        pathKeys.Count,
-                        relativePath,
-                        startedAtUtc,
-                        ref lastDirectoryRunProgressReportedAtUtc);
-                    continue;
-                }
-
-                if (local is not null && remote is null && _remoteDirectories is not null)
-                {
-                    string parentPath = GetParentPath(relativePath);
-                    string parentKey = string.IsNullOrEmpty(parentPath) ? string.Empty : SyncPath.ToKey(parentPath);
-                    if (!TryGetRemoteDirectoryNodeId(remoteByPath, parentKey, remoteRootNode.Id, out Guid parentNodeId))
-                    {
-                        foldersCompleted++;
-                        ReportItemRunProgress(
-                            options,
-                            SyncRunProgressStage.ReconcilingDirectories,
-                            foldersCompleted,
-                            pathKeys.Count,
-                            relativePath,
-                            startedAtUtc,
-                            ref lastDirectoryRunProgressReportedAtUtc);
-                        continue;
-                    }
-
-                    RemoteDirectoryCreationResult creation = await CreateOrReuseRemoteDirectoryAsync(
-                            _remoteDirectories,
-                            parentNodeId,
-                            GetFileName(relativePath),
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                    var createdSnapshot = new RemoteDirectorySnapshot
-                    {
-                        RelativePath = relativePath,
-                        Node = creation.Node,
-                    };
-                    remoteByPath[SyncPath.ToKey(relativePath)] = createdSnapshot;
-                    await _stateStore.UpsertAsync(BuildDirectoryBaseline(syncPair, relativePath, creation.Node), cancellationToken)
-                        .ConfigureAwait(false);
-                    Report(
-                        result,
-                        options,
-                        SyncActivityKind.Uploaded,
-                        relativePath,
-                        creation.ReusedExisting
-                            ? "Reused existing remote folder after create conflict."
-                            : "Created remote folder.");
-                    foldersCompleted++;
-                    ReportItemRunProgress(
-                        options,
-                        SyncRunProgressStage.ReconcilingDirectories,
-                        foldersCompleted,
-                        pathKeys.Count,
-                        relativePath,
-                        startedAtUtc,
-                        ref lastDirectoryRunProgressReportedAtUtc);
-                    continue;
-                }
-
-                if (local is not null && remote is not null)
-                {
-                    await _stateStore.UpsertAsync(BuildDirectoryBaseline(syncPair, relativePath, remote.Node), cancellationToken)
+                    await ReconcileDirectoryWithoutBaselineAsync(context, relativePath, local, remote)
                         .ConfigureAwait(false);
                 }
 
                 foldersCompleted++;
-                ReportItemRunProgress(
-                    options,
-                    SyncRunProgressStage.ReconcilingDirectories,
+                ReportDirectoryProgress(
+                    context,
                     foldersCompleted,
-                    pathKeys.Count,
                     relativePath,
-                    startedAtUtc,
                     ref lastDirectoryRunProgressReportedAtUtc);
             }
+        }
+
+        private async Task ReconcileDirectoryWithoutBaselineAsync(
+            DirectoryReconciliationContext context,
+            string relativePath,
+            LocalDirectorySnapshot? local,
+            RemoteDirectorySnapshot? remote)
+        {
+            if (local is null && remote is not null)
+            {
+                await CreateRemoteBackedLocalDirectoryAsync(
+                        context.SyncPair,
+                        relativePath,
+                        remote.Node,
+                        context.CancellationToken)
+                    .ConfigureAwait(false);
+                await _stateStore.UpsertAsync(
+                        BuildDirectoryBaseline(context.SyncPair, relativePath, remote.Node),
+                        context.CancellationToken)
+                    .ConfigureAwait(false);
+                Report(context.Result, context.Options, SyncActivityKind.Downloaded, relativePath, "Created local folder.");
+                return;
+            }
+
+            if (local is not null && remote is null && _remoteDirectories is not null)
+            {
+                await CreateRemoteDirectoryWithoutBaselineAsync(context, relativePath).ConfigureAwait(false);
+                return;
+            }
+
+            if (local is not null && remote is not null)
+            {
+                await _stateStore.UpsertAsync(
+                        BuildDirectoryBaseline(context.SyncPair, relativePath, remote.Node),
+                        context.CancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        private async Task CreateRemoteDirectoryWithoutBaselineAsync(
+            DirectoryReconciliationContext context,
+            string relativePath)
+        {
+            string parentPath = GetParentPath(relativePath);
+            string parentKey = string.IsNullOrEmpty(parentPath) ? string.Empty : SyncPath.ToKey(parentPath);
+            if (!TryGetRemoteDirectoryNodeId(
+                    context.RemoteByPath,
+                    parentKey,
+                    context.RemoteRootNode.Id,
+                    out Guid parentNodeId))
+            {
+                return;
+            }
+
+            RemoteDirectoryCreationResult creation = await CreateOrReuseRemoteDirectoryAsync(
+                    _remoteDirectories!,
+                    parentNodeId,
+                    GetFileName(relativePath),
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+            var createdSnapshot = new RemoteDirectorySnapshot
+            {
+                RelativePath = relativePath,
+                Node = creation.Node,
+            };
+            context.RemoteByPath[SyncPath.ToKey(relativePath)] = createdSnapshot;
+            await _stateStore.UpsertAsync(
+                    BuildDirectoryBaseline(context.SyncPair, relativePath, creation.Node),
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+            string details = creation.ReusedExisting
+                ? "Reused existing remote folder after create conflict."
+                : "Created remote folder.";
+            Report(context.Result, context.Options, SyncActivityKind.Uploaded, relativePath, details);
+        }
+
+        private static string ResolveDirectoryRelativePath(
+            string key,
+            LocalDirectorySnapshot? local,
+            RemoteDirectorySnapshot? remote,
+            SyncStateEntry? state)
+        {
+            if (local is not null)
+            {
+                return local.RelativePath;
+            }
+
+            if (remote is not null)
+            {
+                return remote.RelativePath;
+            }
+
+            return state is not null ? state.RelativePath : key;
+        }
+
+        private static void ReportDirectoryProgress(
+            DirectoryReconciliationContext context,
+            int foldersCompleted,
+            string relativePath,
+            ref DateTime? lastReportedAtUtc)
+        {
+            ReportItemRunProgress(
+                context.Options,
+                SyncRunProgressStage.ReconcilingDirectories,
+                foldersCompleted,
+                context.PathKeys.Count,
+                relativePath,
+                context.StartedAtUtc,
+                ref lastReportedAtUtc);
         }
 
         private async Task<RemoteDirectoryCreationResult> CreateOrReuseRemoteDirectoryAsync(
@@ -3354,103 +3364,122 @@ namespace Cotton.Sync
             return false;
         }
 
-        private async Task ReconcileDirectoryDeletesAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            SyncRunResult result,
-            SyncDeleteGuard deleteGuard,
-            IReadOnlyList<string> pathKeys,
-            IReadOnlyDictionary<string, LocalDirectorySnapshot> localByPath,
-            IReadOnlyDictionary<string, RemoteDirectorySnapshot> remoteByPath,
-            IReadOnlyDictionary<string, SyncStateEntry> stateByPath,
-            IReadOnlyDictionary<string, LocalFileSnapshot> localFilesByPath,
-            IReadOnlyDictionary<string, RemoteFileSnapshot> remoteFilesByPath,
-            IReadOnlyDictionary<string, SyncStateEntry> fileStateByPath,
-            DirectoryContentIndex localDirectoryContentIndex,
-            DirectoryContentIndex remoteDirectoryContentIndex,
-            IReadOnlySet<string>? scopedDirectoryDeleteKeys,
-            ScopedVirtualFilesDirectoryDeletePlan? scopedDirectoryDelete,
-            CancellationToken cancellationToken)
+        private async Task ReconcileDirectoryDeletesAsync(DirectoryDeleteContext context)
         {
-            foreach (string key in EnumerateDirectoryDeleteKeys(pathKeys))
+            foreach (string key in EnumerateDirectoryDeleteKeys(context.PathKeys))
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (scopedDirectoryDelete?.DirectoryKeys.Contains(key, PathComparer) == true)
+                context.CancellationToken.ThrowIfCancellationRequested();
+                if (!TryGetDirectoryDeleteState(context, key, out SyncStateEntry? state))
                 {
                     continue;
                 }
 
-                if (scopedDirectoryDeleteKeys is not null && !scopedDirectoryDeleteKeys.Contains(key))
-                {
-                    continue;
-                }
+                context.LocalByPath.TryGetValue(key, out LocalDirectorySnapshot? local);
+                context.RemoteByPath.TryGetValue(key, out RemoteDirectorySnapshot? remote);
+                string relativePath = ResolveDirectoryRelativePath(key, local, remote, state);
+                await ReconcileDirectoryDeleteAsync(context, key, relativePath, local, remote).ConfigureAwait(false);
+            }
+        }
 
-                if (!stateByPath.TryGetValue(key, out SyncStateEntry? state))
-                {
-                    continue;
-                }
+        private static bool TryGetDirectoryDeleteState(
+            DirectoryDeleteContext context,
+            string key,
+            out SyncStateEntry? state)
+        {
+            if (context.PlannedScopedDeleteKeys?.Contains(key, PathComparer) == true)
+            {
+                state = null;
+                return false;
+            }
 
-                localByPath.TryGetValue(key, out LocalDirectorySnapshot? local);
-                remoteByPath.TryGetValue(key, out RemoteDirectorySnapshot? remote);
-                string relativePath = local?.RelativePath ?? remote?.RelativePath ?? state.RelativePath;
+            if (context.ScopedDeleteKeys is not null && !context.ScopedDeleteKeys.Contains(key))
+            {
+                state = null;
+                return false;
+            }
 
-                if (local is null && remote is null)
-                {
-                    await _stateStore.DeleteAsync(syncPair.SyncPairId, relativePath, cancellationToken).ConfigureAwait(false);
-                    continue;
-                }
+            return context.StateByPath.TryGetValue(key, out state);
+        }
 
-                if (local is null && remote is not null)
-                {
-                    await DeleteRemoteDirectoryAsync(
-                        syncPair,
-                        options,
-                        result,
-                        deleteGuard,
+        private async Task ReconcileDirectoryDeleteAsync(
+            DirectoryDeleteContext context,
+            string key,
+            string relativePath,
+            LocalDirectorySnapshot? local,
+            RemoteDirectorySnapshot? remote)
+        {
+            if (local is null && remote is null)
+            {
+                await _stateStore.DeleteAsync(
+                        context.SyncPair.SyncPairId,
+                        relativePath,
+                        context.CancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            if (local is null && remote is not null)
+            {
+                await DeleteRemoteDirectoryAsync(
+                        context.SyncPair,
+                        context.Options,
+                        context.Result,
+                        context.DeleteGuard,
                         relativePath,
                         remote,
-                        remoteDirectoryContentIndex,
-                        cancellationToken).ConfigureAwait(false);
-                    continue;
-                }
-
-                if (remote is null && local is not null)
-                {
-                    if (localDirectoryContentIndex.HasChildren(relativePath)
-                        || DirectoryHasFileSystemEntries(local.FullPath))
-                    {
-                        if (CanDeferConfirmedRemoteDeletedDirectory(
-                                key,
-                                localByPath,
-                                remoteByPath,
-                                stateByPath,
-                                localFilesByPath,
-                                remoteFilesByPath,
-                                fileStateByPath))
-                        {
-                            continue;
-                        }
-
-                        Report(
-                            result,
-                            options,
-                            SyncActivityKind.Skipped,
-                            relativePath,
-                            "Local folder delete skipped because the folder is not empty.");
-                        continue;
-                    }
-
-                    await DeleteLocalDirectoryAsync(
-                        syncPair,
-                        options,
-                        result,
-                        deleteGuard,
-                        relativePath,
-                        local,
-                        localDirectoryContentIndex,
-                        cancellationToken).ConfigureAwait(false);
-                }
+                        context.RemoteContentIndex,
+                        context.CancellationToken)
+                    .ConfigureAwait(false);
+                return;
             }
+
+            if (remote is null && local is not null)
+            {
+                await ReconcileRemoteDeletedDirectoryAsync(context, key, relativePath, local).ConfigureAwait(false);
+            }
+        }
+
+        private async Task ReconcileRemoteDeletedDirectoryAsync(
+            DirectoryDeleteContext context,
+            string key,
+            string relativePath,
+            LocalDirectorySnapshot local)
+        {
+            bool isNotEmpty = context.LocalContentIndex.HasChildren(relativePath)
+                || DirectoryHasFileSystemEntries(local.FullPath);
+            if (isNotEmpty)
+            {
+                if (CanDeferConfirmedRemoteDeletedDirectory(
+                        key,
+                        context.LocalByPath,
+                        context.RemoteByPath,
+                        context.StateByPath,
+                        context.LocalFilesByPath,
+                        context.RemoteFilesByPath,
+                        context.FileStateByPath))
+                {
+                    return;
+                }
+
+                Report(
+                    context.Result,
+                    context.Options,
+                    SyncActivityKind.Skipped,
+                    relativePath,
+                    "Local folder delete skipped because the folder is not empty.");
+                return;
+            }
+
+            await DeleteLocalDirectoryAsync(
+                    context.SyncPair,
+                    context.Options,
+                    context.Result,
+                    context.DeleteGuard,
+                    relativePath,
+                    local,
+                    context.LocalContentIndex,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
         }
 
         private static bool CanDeferConfirmedRemoteDeletedDirectory(
