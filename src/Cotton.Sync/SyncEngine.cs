@@ -1323,43 +1323,23 @@ namespace Cotton.Sync
             }
 
             long startingManagedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
-            _logger.LogInformation(
-                "Starting initial streaming Windows virtual-files population for pair {SyncPairId} with queue capacity {QueueCapacity}, placeholder concurrency {PlaceholderConcurrency}, placeholder batch size {PlaceholderBatchSize}, state batch size {StateBatchSize}, and managed heap {ManagedHeapBytes} bytes.",
-                syncPair.SyncPairId,
-                options.InitialVirtualFilesPopulationQueueCapacity,
-                options.InitialVirtualFilesPlaceholderConcurrency,
-                options.InitialVirtualFilesPlaceholderBatchSize,
-                options.InitialVirtualFilesStateBatchSize,
-                startingManagedHeapBytes);
+            LogInitialVirtualFilesPopulationStarted(syncPair, options, startingManagedHeapBytes);
             Stopwatch stopwatch = Stopwatch.StartNew();
-            var result = new SyncRunResult();
-            var channel = Channel.CreateBounded<InitialVirtualFilesPopulationItem>(
+            SyncRunResult result = new();
+            Channel<InitialVirtualFilesPopulationItem> channel = Channel.CreateBounded<InitialVirtualFilesPopulationItem>(
                 new BoundedChannelOptions(options.InitialVirtualFilesPopulationQueueCapacity)
                 {
                     FullMode = BoundedChannelFullMode.Wait,
                     SingleReader = true,
                     SingleWriter = false,
                 });
-            int discoveredFiles = 0;
-            int discoveredDirectories = 0;
-            int completedFiles = 0;
-            int completedDirectories = 0;
-            int createdPlaceholders = 0;
-            int skippedCurrentPlaceholders = 0;
-            int skippedUnavailablePlaceholders = 0;
-            int stateFileRowsWritten = 0;
-            int stateFileWriteBatches = 0;
-            int stateDirectoryRowsWritten = 0;
-            long peakManagedHeapBytes = startingManagedHeapBytes;
-            DateTime? lastPlaceholderProgressReportedAtUtc = null;
-            var remoteScanProgress = new RemoteTreeScanProgressCounter();
-            var initialVirtualFilesProgress = new InitialVirtualFilesRemoteProgressReporter(
-                remoteScanProgress,
+            InitialVirtualFilesPopulationMetrics metrics = new(startingManagedHeapBytes);
+            InitialVirtualFilesRemoteProgressReporter initialVirtualFilesProgress = new(
+                metrics.RemoteScanProgress,
                 options,
                 startedAtUtc,
                 publishRunProgress: !streamingPlan.SkipCurrentPlaceholders,
-                () => Volatile.Read(ref completedFiles),
-                () => Volatile.Read(ref completedDirectories));
+                metrics);
             if (!streamingPlan.SkipCurrentPlaceholders)
             {
                 ReportRunProgress(options, SyncRunProgressStage.CreatingPlaceholders, 0, null, null, startedAtUtc);
@@ -1367,11 +1347,18 @@ namespace Cotton.Sync
 
             using IDisposable? providerWriteBurst = _remoteFilePlaceholderPopulationObserver
                 ?.BeginPopulation(syncPair.SyncPairId, syncPair.LocalRootPath);
-            using var streamingCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            var sink = new InitialVirtualFilesPopulationSink(
-                channel.Writer,
-                () => Interlocked.Increment(ref discoveredFiles),
-                () => Interlocked.Increment(ref discoveredDirectories));
+            using CancellationTokenSource streamingCancellation =
+                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            InitialVirtualFilesPopulationSink sink = new(channel.Writer, metrics);
+            InitialVirtualFilesPopulationContext context = new(
+                syncPair,
+                options,
+                result,
+                channel.Reader,
+                startedAtUtc,
+                streamingPlan,
+                metrics,
+                streamingCancellation.Token);
             Task producer = ProduceInitialWindowsVirtualFilesPopulationAsync(
                 syncPair,
                 options,
@@ -1380,78 +1367,59 @@ namespace Cotton.Sync
                 sink,
                 initialVirtualFilesProgress,
                 streamingCancellation.Token);
-            Task consumer = ConsumeInitialWindowsVirtualFilesPopulationAsync(
-                syncPair,
-                options,
-                result,
-                channel.Reader,
-                startedAtUtc,
-                streamingPlan,
-                () => Volatile.Read(ref discoveredFiles),
-                () => Volatile.Read(ref discoveredDirectories),
-                () => remoteScanProgress.EntriesExpected,
-                () => Volatile.Read(ref completedFiles),
-                value => Volatile.Write(ref completedFiles, value),
-                () => Volatile.Read(ref completedDirectories),
-                () => Interlocked.Increment(ref completedDirectories),
-                () => lastPlaceholderProgressReportedAtUtc,
-                value => lastPlaceholderProgressReportedAtUtc = value,
-                workResult =>
-                {
-                    if (workResult.ActivityKind == SyncActivityKind.PlaceholderCreated && workResult.State is not null)
-                    {
-                        createdPlaceholders++;
-                    }
-                    else if (workResult.ActivityKind == SyncActivityKind.Skipped && workResult.ReportActivity)
-                    {
-                        skippedUnavailablePlaceholders++;
-                    }
-                    else if (workResult.ActivityKind == SyncActivityKind.Skipped)
-                    {
-                        skippedCurrentPlaceholders++;
-                    }
-                },
-                writtenRows =>
-                {
-                    if (writtenRows > 0)
-                    {
-                        Interlocked.Add(ref stateFileRowsWritten, writtenRows);
-                        Interlocked.Increment(ref stateFileWriteBatches);
-                    }
-                },
-                writtenRows =>
-                {
-                    if (writtenRows > 0)
-                    {
-                        Interlocked.Add(ref stateDirectoryRowsWritten, writtenRows);
-                    }
-                },
-                streamingCancellation.Token);
-            using var heartbeatCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            Task consumer = ConsumeInitialWindowsVirtualFilesPopulationAsync(context);
+            using CancellationTokenSource heartbeatCancellation =
+                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             Task heartbeat = LogInitialVirtualFilesPopulationHeartbeatAsync(
                 syncPair,
                 options,
                 stopwatch,
-                remoteScanProgress,
-                () => Volatile.Read(ref discoveredFiles),
-                () => Volatile.Read(ref discoveredDirectories),
-                () => Volatile.Read(ref completedFiles),
-                () => Volatile.Read(ref completedDirectories),
-                () => Volatile.Read(ref createdPlaceholders),
-                () => Volatile.Read(ref skippedCurrentPlaceholders),
-                () => Volatile.Read(ref skippedUnavailablePlaceholders),
-                () => Volatile.Read(ref stateFileRowsWritten),
-                () => Volatile.Read(ref stateFileWriteBatches),
-                () => Volatile.Read(ref stateDirectoryRowsWritten),
-                value => UpdateMax(ref peakManagedHeapBytes, value),
+                metrics,
                 heartbeatCancellation.Token);
+            await RunInitialVirtualFilesPopulationPipelineAsync(
+                    producer,
+                    consumer,
+                    heartbeat,
+                    channel.Writer,
+                    streamingCancellation,
+                    heartbeatCancellation)
+                .ConfigureAwait(false);
+
+            stopwatch.Stop();
+            CompleteInitialVirtualFilesPopulation(syncPair, options, result, startedAtUtc, streamingPlan, metrics, stopwatch);
+            return result;
+        }
+
+        private void LogInitialVirtualFilesPopulationStarted(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            long startingManagedHeapBytes)
+        {
+            _logger.LogInformation(
+                "Starting initial streaming Windows virtual-files population for pair {SyncPairId} with queue capacity {QueueCapacity}, placeholder concurrency {PlaceholderConcurrency}, placeholder batch size {PlaceholderBatchSize}, state batch size {StateBatchSize}, and managed heap {ManagedHeapBytes} bytes.",
+                syncPair.SyncPairId,
+                options.InitialVirtualFilesPopulationQueueCapacity,
+                options.InitialVirtualFilesPlaceholderConcurrency,
+                options.InitialVirtualFilesPlaceholderBatchSize,
+                options.InitialVirtualFilesStateBatchSize,
+                startingManagedHeapBytes);
+        }
+
+        private static async Task RunInitialVirtualFilesPopulationPipelineAsync(
+            Task producer,
+            Task consumer,
+            Task heartbeat,
+            ChannelWriter<InitialVirtualFilesPopulationItem> writer,
+            CancellationTokenSource streamingCancellation,
+            CancellationTokenSource heartbeatCancellation)
+        {
             try
             {
                 Task firstCompleted = await Task.WhenAny(producer, consumer).ConfigureAwait(false);
                 if (firstCompleted.IsFaulted || firstCompleted.IsCanceled)
                 {
                     await streamingCancellation.CancelAsync().ConfigureAwait(false);
-                    channel.Writer.TryComplete(firstCompleted.Exception);
+                    writer.TryComplete(firstCompleted.Exception);
                 }
 
                 await Task.WhenAll(producer, consumer).ConfigureAwait(false);
@@ -1461,14 +1429,21 @@ namespace Cotton.Sync
                 await heartbeatCancellation.CancelAsync().ConfigureAwait(false);
                 await IgnoreExpectedHeartbeatCancellationAsync(heartbeat, heartbeatCancellation.Token).ConfigureAwait(false);
             }
+        }
 
-            stopwatch.Stop();
-            int completedItems = GetInitialVirtualFilesItemCount(completedFiles, Volatile.Read(ref completedDirectories));
-            int discoveredItems = GetInitialVirtualFilesItemCount(
-                Volatile.Read(ref discoveredFiles),
-                Volatile.Read(ref discoveredDirectories));
+        private void CompleteInitialVirtualFilesPopulation(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            SyncRunResult result,
+            DateTime startedAtUtc,
+            InitialVirtualFilesStreamingPlan streamingPlan,
+            InitialVirtualFilesPopulationMetrics metrics,
+            Stopwatch stopwatch)
+        {
+            int completedItems = GetInitialVirtualFilesItemCount(metrics.CompletedFiles, metrics.CompletedDirectories);
+            int discoveredItems = GetInitialVirtualFilesItemCount(metrics.DiscoveredFiles, metrics.DiscoveredDirectories);
             int totalItems = Math.Max(completedItems, discoveredItems);
-            if (!streamingPlan.SkipCurrentPlaceholders || lastPlaceholderProgressReportedAtUtc.HasValue)
+            if (!streamingPlan.SkipCurrentPlaceholders || metrics.LastPlaceholderProgressReportedAtUtc.HasValue)
             {
                 ReportRunProgress(
                     options,
@@ -1489,18 +1464,20 @@ namespace Cotton.Sync
             double elapsedSeconds = stopwatch.Elapsed.TotalSeconds <= 0d
                 ? 1d
                 : stopwatch.Elapsed.TotalSeconds;
-            int finalDiscoveredDirectoryCount = Volatile.Read(ref discoveredDirectories);
-            int finalDiscoveredFileCount = Volatile.Read(ref discoveredFiles);
+            int finalDiscoveredDirectoryCount = metrics.DiscoveredDirectories;
+            int finalDiscoveredFileCount = metrics.DiscoveredFiles;
             double discoveredDirectoryRatePerSecond = finalDiscoveredDirectoryCount / elapsedSeconds;
             double discoveredFileRatePerSecond = finalDiscoveredFileCount / elapsedSeconds;
-            double createdPlaceholderRatePerSecond = createdPlaceholders / elapsedSeconds;
-            double stateWriteRatePerSecond = (stateFileRowsWritten + stateDirectoryRowsWritten) / elapsedSeconds;
+            double createdPlaceholderRatePerSecond = metrics.CreatedPlaceholders / elapsedSeconds;
+            double stateWriteRatePerSecond =
+                (metrics.StateFileRowsWritten + metrics.StateDirectoryRowsWritten) / elapsedSeconds;
+            RemoteTreeScanProgressCounter remoteScanProgress = metrics.RemoteScanProgress;
             int remotePageCount = remoteScanProgress.PagesScanned;
             double remotePageAverageLatencyMilliseconds = remotePageCount <= 0
                 ? 0d
                 : remoteScanProgress.PageReadLatencyTotal.TotalMilliseconds / remotePageCount;
             long completedManagedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
-            UpdateMax(ref peakManagedHeapBytes, completedManagedHeapBytes);
+            metrics.RecordManagedHeapSample(completedManagedHeapBytes);
             _logger.LogInformation(
                 "Completed initial streaming Windows virtual-files population for pair {SyncPairId} with {DirectoryCount} directories discovered at {DirectoryDiscoveryRatePerSecond:F2} dirs/sec, {FileCount} files discovered at {FileDiscoveryRatePerSecond:F2} files/sec, remote pages read={RemotePageCount}, remote page latency total={RemotePageLatencyTotalMilliseconds:F0} ms, avg={RemotePageLatencyAverageMilliseconds:F2} ms, max={RemotePageLatencyMaxMilliseconds:F0} ms, last={RemotePageLatencyLastMilliseconds:F0} ms, {CompletedFileCount} file items completed, {CreatedPlaceholderCount} placeholders created or refreshed, {SkippedCurrentPlaceholderCount} current placeholders skipped, {SkippedUnavailablePlaceholderCount} placeholders skipped with user action in {ElapsedMilliseconds} ms at {CreatedPlaceholderRatePerSecond:F2} placeholders/sec; state writes {StateFileRowsWritten} file rows, file write batches {StateFileWriteBatchCount}, directory rows {StateDirectoryRowsWritten}, state write rate={StateWriteRatePerSecond:F2} rows/sec; managed heap start={StartingManagedHeapBytes} bytes, completed={CompletedManagedHeapBytes} bytes, peak={PeakManagedHeapBytes} bytes, delta={ManagedHeapDeltaBytes} bytes; queue capacity={QueueCapacity}, placeholder concurrency={PlaceholderConcurrency}, placeholder batch size={PlaceholderBatchSize}, state batch size={StateBatchSize}; activities retained {RetainedActivityCount}/{TotalActivityCount}, truncated={ActivityListTruncated}.",
                 syncPair.SyncPairId,
@@ -1513,20 +1490,20 @@ namespace Cotton.Sync
                 remotePageAverageLatencyMilliseconds,
                 remoteScanProgress.PageReadLatencyMax.TotalMilliseconds,
                 remoteScanProgress.LastPageReadLatency.TotalMilliseconds,
-                completedFiles,
-                createdPlaceholders,
-                skippedCurrentPlaceholders,
-                skippedUnavailablePlaceholders,
+                metrics.CompletedFiles,
+                metrics.CreatedPlaceholders,
+                metrics.SkippedCurrentPlaceholders,
+                metrics.SkippedUnavailablePlaceholders,
                 stopwatch.ElapsedMilliseconds,
                 createdPlaceholderRatePerSecond,
-                stateFileRowsWritten,
-                stateFileWriteBatches,
-                stateDirectoryRowsWritten,
+                metrics.StateFileRowsWritten,
+                metrics.StateFileWriteBatches,
+                metrics.StateDirectoryRowsWritten,
                 stateWriteRatePerSecond,
-                startingManagedHeapBytes,
+                metrics.StartingManagedHeapBytes,
                 completedManagedHeapBytes,
-                Volatile.Read(ref peakManagedHeapBytes),
-                completedManagedHeapBytes - startingManagedHeapBytes,
+                metrics.PeakManagedHeapBytes,
+                completedManagedHeapBytes - metrics.StartingManagedHeapBytes,
                 options.InitialVirtualFilesPopulationQueueCapacity,
                 options.InitialVirtualFilesPlaceholderConcurrency,
                 options.InitialVirtualFilesPlaceholderBatchSize,
@@ -1534,7 +1511,6 @@ namespace Cotton.Sync
                 result.Activities.Count,
                 result.TotalActivityCount,
                 result.IsActivityListTruncated);
-            return result;
         }
 
         private async Task<InitialVirtualFilesStreamingPlanDecision> CreateInitialWindowsVirtualFilesStreamingPlanDecisionAsync(
@@ -1888,231 +1864,229 @@ namespace Cotton.Sync
         }
 
         private async Task ConsumeInitialWindowsVirtualFilesPopulationAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            SyncRunResult result,
-            ChannelReader<InitialVirtualFilesPopulationItem> reader,
-            DateTime startedAtUtc,
-            InitialVirtualFilesStreamingPlan streamingPlan,
-            Func<int> getDiscoveredFiles,
-            Func<int> getDiscoveredDirectories,
-            Func<int> getExpectedItems,
-            Func<int> getCompletedFiles,
-            Action<int> setCompletedFiles,
-            Func<int> getCompletedDirectories,
-            Func<int> incrementCompletedDirectories,
-            Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
-            Action<DateTime?> setLastPlaceholderProgressReportedAtUtc,
-            Action<InitialVirtualFilesFileWorkResult> recordFileWorkResult,
-            Action<int> recordFileStateWrite,
-            Action<int> recordDirectoryStateWrite,
-            CancellationToken cancellationToken)
+            InitialVirtualFilesPopulationContext context)
         {
-            var pendingFileStates = new List<SyncStateEntry>(options.InitialVirtualFilesStateBatchSize);
-            var pendingDirectoryStates = new List<SyncStateEntry>(options.InitialVirtualFilesStateBatchSize);
             int placeholderBatchSize = _remoteFilePlaceholderWriter is IRemoteFilePlaceholderBatchWriter
-                ? options.InitialVirtualFilesPlaceholderBatchSize
+                ? context.Options.InitialVirtualFilesPlaceholderBatchSize
                 : 1;
-            var pendingFileBatch = new List<RemoteFileSnapshot>(placeholderBatchSize);
-            var pendingFileTasks = new List<Task<IReadOnlyList<InitialVirtualFilesFileWorkResult>>>(
-                options.InitialVirtualFilesPlaceholderConcurrency);
-            Dictionary<string, RemoteDirectoryMaterializationRequest>? directoryTreeFinalizationRequests =
-                _remoteDirectoryTreePopulationObserver is null
-                    ? null
-                    : new Dictionary<string, RemoteDirectoryMaterializationRequest>(PathComparer);
-            HashSet<string> streamedRemoteFileKeys = new(PathComparer);
-
-            Task DrainPendingFileWorkAsync(bool waitForOne)
-            {
-                return DrainCompletedInitialVirtualFilesAsync(
-                    pendingFileTasks,
-                    pendingFileStates,
-                    syncPair,
-                    options,
-                    result,
-                    startedAtUtc,
-                    getDiscoveredFiles,
-                    getDiscoveredDirectories,
-                    getExpectedItems,
-                    getCompletedFiles,
-                    setCompletedFiles,
-                    getCompletedDirectories,
-                    getLastPlaceholderProgressReportedAtUtc,
-                    setLastPlaceholderProgressReportedAtUtc,
-                    recordFileWorkResult,
-                    recordFileStateWrite,
-                    waitForOne,
-                    cancellationToken);
-            }
+            InitialVirtualFilesConsumerState state = new(
+                context.Options.InitialVirtualFilesStateBatchSize,
+                placeholderBatchSize,
+                context.Options.InitialVirtualFilesPlaceholderConcurrency,
+                _remoteDirectoryTreePopulationObserver is not null,
+                PathComparer);
 
             try
             {
-                await foreach (InitialVirtualFilesPopulationItem item in reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                await foreach (InitialVirtualFilesPopulationItem item in context.Reader
+                                   .ReadAllAsync(context.CancellationToken)
+                                   .ConfigureAwait(false))
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
+                    context.CancellationToken.ThrowIfCancellationRequested();
                     switch (item)
                     {
                         case InitialVirtualFilesDirectoryPopulationItem directoryItem:
-                            EnqueueInitialVirtualFilesFileBatchWork(
-                                pendingFileTasks,
-                                pendingFileBatch,
-                                syncPair,
-                                options,
-                                cancellationToken);
-                            await DrainPendingFileWorkAsync(waitForOne: false).ConfigureAwait(false);
-                            await CreateRemoteBackedLocalDirectoryAsync(
-                                    syncPair,
-                                    directoryItem.Directory.RelativePath,
-                                    directoryItem.Directory.Node,
-                                    cancellationToken)
+                            await ProcessInitialVirtualFilesDirectoryAsync(context, state, directoryItem.Directory)
                                 .ConfigureAwait(false);
-                            if (directoryTreeFinalizationRequests is not null)
-                            {
-                                RemoteDirectoryMaterializationRequest finalizationRequest =
-                                    CreateRemoteDirectoryMaterializationRequest(
-                                        syncPair,
-                                        directoryItem.Directory.RelativePath,
-                                        directoryItem.Directory.Node);
-                                directoryTreeFinalizationRequests[SyncPath.ToKey(finalizationRequest.RelativePath)] =
-                                    finalizationRequest;
-                            }
-
-                            pendingDirectoryStates.Add(BuildDirectoryBaseline(
-                                syncPair,
-                                directoryItem.Directory.RelativePath,
-                                directoryItem.Directory.Node));
-                            if (pendingDirectoryStates.Count >= options.InitialVirtualFilesStateBatchSize)
-                            {
-                                int flushedDirectoryRows =
-                                    await FlushInitialVirtualFilesStateBatchAsync(pendingDirectoryStates, cancellationToken).ConfigureAwait(false);
-                                recordDirectoryStateWrite(flushedDirectoryRows);
-                            }
-
-                            int completedDirectories = incrementCompletedDirectories();
-                            ReportStreamingVirtualFilesProgress(
-                                options,
-                                getCompletedFiles(),
-                                getDiscoveredFiles(),
-                                completedDirectories,
-                                getDiscoveredDirectories(),
-                                getExpectedItems(),
-                                directoryItem.Directory.RelativePath,
-                                startedAtUtc,
-                                getLastPlaceholderProgressReportedAtUtc(),
-                                setLastPlaceholderProgressReportedAtUtc);
                             break;
 
                         case InitialVirtualFilesFilePopulationItem fileItem:
-                            streamedRemoteFileKeys.Add(SyncPath.ToKey(fileItem.File.RelativePath));
-                            InitialVirtualFilesFileWorkResult? currentPlaceholderWorkResult =
-                                TryCreateCurrentInitialVirtualFilesFileWorkResult(syncPair, fileItem.File, streamingPlan);
-                            if (currentPlaceholderWorkResult is null)
-                            {
-                                pendingFileBatch.Add(fileItem.File);
-                                if (pendingFileBatch.Count >= placeholderBatchSize)
-                                {
-                                    EnqueueInitialVirtualFilesFileBatchWork(
-                                        pendingFileTasks,
-                                        pendingFileBatch,
-                                        syncPair,
-                                        options,
-                                        cancellationToken);
-                                }
-
-                                if (pendingFileTasks.Count >= options.InitialVirtualFilesPlaceholderConcurrency)
-                                {
-                                    await DrainPendingFileWorkAsync(waitForOne: true).ConfigureAwait(false);
-                                }
-
-                                break;
-                            }
-
-                            await CompleteInitialVirtualFilesFileWorkAsync(
-                                    currentPlaceholderWorkResult,
-                                    pendingFileStates,
-                                    syncPair,
-                                    options,
-                                    result,
-                                    startedAtUtc,
-                                    getDiscoveredFiles,
-                                    getDiscoveredDirectories,
-                                    getExpectedItems,
-                                    getCompletedFiles,
-                                    setCompletedFiles,
-                                    getCompletedDirectories,
-                                    getLastPlaceholderProgressReportedAtUtc,
-                                    setLastPlaceholderProgressReportedAtUtc,
-                                    recordFileWorkResult,
-                                    recordFileStateWrite,
-                                    cancellationToken)
+                            await ProcessInitialVirtualFilesFileAsync(context, state, fileItem.File)
                                 .ConfigureAwait(false);
                             break;
+
+                        default:
+                            throw new InvalidOperationException(
+                                $"Unsupported initial virtual-files population item type '{item.GetType().FullName}'.");
                     }
                 }
 
-                EnqueueInitialVirtualFilesFileBatchWork(
-                    pendingFileTasks,
-                    pendingFileBatch,
-                    syncPair,
-                    options,
-                    cancellationToken);
-                while (pendingFileTasks.Count > 0)
-                {
-                    await DrainPendingFileWorkAsync(waitForOne: true).ConfigureAwait(false);
-                }
-
-                await DeleteMissingInitialVirtualFilesRemoteDeletesAsync(
-                        syncPair,
-                        options,
-                        result,
-                        streamingPlan,
-                        streamedRemoteFileKeys,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-
-                int finalFlushedFileRows =
-                    await FlushInitialVirtualFilesStateBatchAsync(pendingFileStates, cancellationToken).ConfigureAwait(false);
-                recordFileStateWrite(finalFlushedFileRows);
-                int finalFlushedDirectoryRows =
-                    await FlushInitialVirtualFilesStateBatchAsync(pendingDirectoryStates, cancellationToken).ConfigureAwait(false);
-                recordDirectoryStateWrite(finalFlushedDirectoryRows);
-                if (directoryTreeFinalizationRequests is { Count: > 0 }
-                    && _remoteDirectoryTreePopulationObserver is not null)
-                {
-                    int directoriesDiscovered = Math.Max(
-                        directoryTreeFinalizationRequests.Count,
-                        getDiscoveredDirectories());
-                    ReportRunProgress(
-                        options,
-                        SyncRunProgressStage.FinalizingCloudFiles,
-                        0,
-                        directoriesDiscovered,
-                        null,
-                        startedAtUtc);
-                    await _remoteDirectoryTreePopulationObserver
-                        .AfterDirectoryTreePopulationAsync(
-                            directoryTreeFinalizationRequests.Values.ToArray(),
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                    ReportRunProgress(
-                        options,
-                        SyncRunProgressStage.FinalizingCloudFiles,
-                        directoryTreeFinalizationRequests.Count,
-                        directoriesDiscovered,
-                        null,
-                        startedAtUtc,
-                        isCompleted: true);
-                }
+                await FinalizeInitialVirtualFilesPopulationAsync(context, state).ConfigureAwait(false);
             }
             finally
             {
-                int flushedFileRows =
-                    await FlushInitialVirtualFilesStateBatchAsync(pendingFileStates, cancellationToken).ConfigureAwait(false);
-                recordFileStateWrite(flushedFileRows);
-                int flushedDirectoryRows =
-                    await FlushInitialVirtualFilesStateBatchAsync(pendingDirectoryStates, cancellationToken).ConfigureAwait(false);
-                recordDirectoryStateWrite(flushedDirectoryRows);
+                await FlushInitialVirtualFilesPopulationStateAsync(context, state).ConfigureAwait(false);
             }
+        }
+
+        private async Task ProcessInitialVirtualFilesDirectoryAsync(
+            InitialVirtualFilesPopulationContext context,
+            InitialVirtualFilesConsumerState state,
+            RemoteDirectorySnapshot directory)
+        {
+            EnqueueInitialVirtualFilesFileBatchWork(
+                state.PendingFileTasks,
+                state.PendingFileBatch,
+                context.SyncPair,
+                context.Options,
+                context.CancellationToken);
+            await DrainCompletedInitialVirtualFilesAsync(
+                    state.PendingFileTasks,
+                    state.PendingFileStates,
+                    context,
+                    waitForOne: false)
+                .ConfigureAwait(false);
+            await CreateRemoteBackedLocalDirectoryAsync(
+                    context.SyncPair,
+                    directory.RelativePath,
+                    directory.Node,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+            RecordInitialVirtualFilesDirectoryFinalization(context.SyncPair, state, directory);
+            state.PendingDirectoryStates.Add(BuildDirectoryBaseline(
+                context.SyncPair,
+                directory.RelativePath,
+                directory.Node));
+            if (state.PendingDirectoryStates.Count >= context.Options.InitialVirtualFilesStateBatchSize)
+            {
+                int flushedDirectoryRows = await FlushInitialVirtualFilesStateBatchAsync(
+                        state.PendingDirectoryStates,
+                        context.CancellationToken)
+                    .ConfigureAwait(false);
+                context.Metrics.RecordDirectoryStateWrite(flushedDirectoryRows);
+            }
+
+            context.Metrics.RecordCompletedDirectory();
+            ReportInitialVirtualFilesStreamingProgress(context, directory.RelativePath);
+        }
+
+        private static void RecordInitialVirtualFilesDirectoryFinalization(
+            SyncPair syncPair,
+            InitialVirtualFilesConsumerState state,
+            RemoteDirectorySnapshot directory)
+        {
+            if (state.DirectoryFinalizationRequests is null)
+            {
+                return;
+            }
+
+            RemoteDirectoryMaterializationRequest request = CreateRemoteDirectoryMaterializationRequest(
+                syncPair,
+                directory.RelativePath,
+                directory.Node);
+            state.DirectoryFinalizationRequests[SyncPath.ToKey(request.RelativePath)] = request;
+        }
+
+        private async Task ProcessInitialVirtualFilesFileAsync(
+            InitialVirtualFilesPopulationContext context,
+            InitialVirtualFilesConsumerState state,
+            RemoteFileSnapshot file)
+        {
+            state.StreamedRemoteFileKeys.Add(SyncPath.ToKey(file.RelativePath));
+            InitialVirtualFilesFileWorkResult? currentPlaceholderWorkResult =
+                TryCreateCurrentInitialVirtualFilesFileWorkResult(context.SyncPair, file, context.StreamingPlan);
+            if (currentPlaceholderWorkResult is not null)
+            {
+                await CompleteInitialVirtualFilesFileWorkAsync(
+                        currentPlaceholderWorkResult,
+                        state.PendingFileStates,
+                        context)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            state.PendingFileBatch.Add(file);
+            int placeholderBatchSize = _remoteFilePlaceholderWriter is IRemoteFilePlaceholderBatchWriter
+                ? context.Options.InitialVirtualFilesPlaceholderBatchSize
+                : 1;
+            if (state.PendingFileBatch.Count >= placeholderBatchSize)
+            {
+                EnqueueInitialVirtualFilesFileBatchWork(
+                    state.PendingFileTasks,
+                    state.PendingFileBatch,
+                    context.SyncPair,
+                    context.Options,
+                    context.CancellationToken);
+            }
+
+            if (state.PendingFileTasks.Count >= context.Options.InitialVirtualFilesPlaceholderConcurrency)
+            {
+                await DrainCompletedInitialVirtualFilesAsync(
+                        state.PendingFileTasks,
+                        state.PendingFileStates,
+                        context,
+                        waitForOne: true)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        private async Task FinalizeInitialVirtualFilesPopulationAsync(
+            InitialVirtualFilesPopulationContext context,
+            InitialVirtualFilesConsumerState state)
+        {
+            EnqueueInitialVirtualFilesFileBatchWork(
+                state.PendingFileTasks,
+                state.PendingFileBatch,
+                context.SyncPair,
+                context.Options,
+                context.CancellationToken);
+            while (state.PendingFileTasks.Count > 0)
+            {
+                await DrainCompletedInitialVirtualFilesAsync(
+                        state.PendingFileTasks,
+                        state.PendingFileStates,
+                        context,
+                        waitForOne: true)
+                    .ConfigureAwait(false);
+            }
+
+            await DeleteMissingInitialVirtualFilesRemoteDeletesAsync(
+                    context.SyncPair,
+                    context.Options,
+                    context.Result,
+                    context.StreamingPlan,
+                    state.StreamedRemoteFileKeys,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+            await FlushInitialVirtualFilesPopulationStateAsync(context, state).ConfigureAwait(false);
+            await FinalizeInitialVirtualFilesDirectoryTreeAsync(context, state).ConfigureAwait(false);
+        }
+
+        private async Task FinalizeInitialVirtualFilesDirectoryTreeAsync(
+            InitialVirtualFilesPopulationContext context,
+            InitialVirtualFilesConsumerState state)
+        {
+            if (state.DirectoryFinalizationRequests is not { Count: > 0 } requests
+                || _remoteDirectoryTreePopulationObserver is null)
+            {
+                return;
+            }
+
+            int directoriesDiscovered = Math.Max(requests.Count, context.Metrics.DiscoveredDirectories);
+            ReportRunProgress(
+                context.Options,
+                SyncRunProgressStage.FinalizingCloudFiles,
+                0,
+                directoriesDiscovered,
+                null,
+                context.StartedAtUtc);
+            await _remoteDirectoryTreePopulationObserver
+                .AfterDirectoryTreePopulationAsync(requests.Values.ToArray(), context.CancellationToken)
+                .ConfigureAwait(false);
+            ReportRunProgress(
+                context.Options,
+                SyncRunProgressStage.FinalizingCloudFiles,
+                requests.Count,
+                directoriesDiscovered,
+                null,
+                context.StartedAtUtc,
+                isCompleted: true);
+        }
+
+        private async Task FlushInitialVirtualFilesPopulationStateAsync(
+            InitialVirtualFilesPopulationContext context,
+            InitialVirtualFilesConsumerState state)
+        {
+            int flushedFileRows = await FlushInitialVirtualFilesStateBatchAsync(
+                    state.PendingFileStates,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+            context.Metrics.RecordFileStateWrite(flushedFileRows);
+            int flushedDirectoryRows = await FlushInitialVirtualFilesStateBatchAsync(
+                    state.PendingDirectoryStates,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+            context.Metrics.RecordDirectoryStateWrite(flushedDirectoryRows);
         }
 
         private async Task DeleteMissingInitialVirtualFilesRemoteDeletesAsync(
@@ -2159,22 +2133,8 @@ namespace Cotton.Sync
         private async Task DrainCompletedInitialVirtualFilesAsync(
             List<Task<IReadOnlyList<InitialVirtualFilesFileWorkResult>>> pendingFileTasks,
             List<SyncStateEntry> pendingFileStates,
-            SyncPair syncPair,
-            SyncRunOptions options,
-            SyncRunResult result,
-            DateTime startedAtUtc,
-            Func<int> getDiscoveredFiles,
-            Func<int> getDiscoveredDirectories,
-            Func<int> getExpectedItems,
-            Func<int> getCompletedFiles,
-            Action<int> setCompletedFiles,
-            Func<int> getCompletedDirectories,
-            Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
-            Action<DateTime?> setLastPlaceholderProgressReportedAtUtc,
-            Action<InitialVirtualFilesFileWorkResult> recordFileWorkResult,
-            Action<int> recordFileStateWrite,
-            bool waitForOne,
-            CancellationToken cancellationToken)
+            InitialVirtualFilesPopulationContext context,
+            bool waitForOne)
         {
             if (pendingFileTasks.Count == 0)
             {
@@ -2189,21 +2149,7 @@ namespace Cotton.Sync
                 await CompleteInitialVirtualFilesFileWorkBatchAsync(
                         await completedTask.ConfigureAwait(false),
                         pendingFileStates,
-                        syncPair,
-                        options,
-                        result,
-                        startedAtUtc,
-                        getDiscoveredFiles,
-                        getDiscoveredDirectories,
-                        getExpectedItems,
-                        getCompletedFiles,
-                        setCompletedFiles,
-                        getCompletedDirectories,
-                        getLastPlaceholderProgressReportedAtUtc,
-                        setLastPlaceholderProgressReportedAtUtc,
-                        recordFileWorkResult,
-                        recordFileStateWrite,
-                        cancellationToken)
+                        context)
                     .ConfigureAwait(false);
             }
 
@@ -2219,21 +2165,7 @@ namespace Cotton.Sync
                 await CompleteInitialVirtualFilesFileWorkBatchAsync(
                         await task.ConfigureAwait(false),
                         pendingFileStates,
-                        syncPair,
-                        options,
-                        result,
-                        startedAtUtc,
-                        getDiscoveredFiles,
-                        getDiscoveredDirectories,
-                        getExpectedItems,
-                        getCompletedFiles,
-                        setCompletedFiles,
-                        getCompletedDirectories,
-                        getLastPlaceholderProgressReportedAtUtc,
-                        setLastPlaceholderProgressReportedAtUtc,
-                        recordFileWorkResult,
-                        recordFileStateWrite,
-                        cancellationToken)
+                        context)
                     .ConfigureAwait(false);
             }
         }
@@ -2401,42 +2333,14 @@ namespace Cotton.Sync
         private async Task CompleteInitialVirtualFilesFileWorkBatchAsync(
             IReadOnlyList<InitialVirtualFilesFileWorkResult> workResults,
             List<SyncStateEntry> pendingFileStates,
-            SyncPair syncPair,
-            SyncRunOptions options,
-            SyncRunResult result,
-            DateTime startedAtUtc,
-            Func<int> getDiscoveredFiles,
-            Func<int> getDiscoveredDirectories,
-            Func<int> getExpectedItems,
-            Func<int> getCompletedFiles,
-            Action<int> setCompletedFiles,
-            Func<int> getCompletedDirectories,
-            Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
-            Action<DateTime?> setLastPlaceholderProgressReportedAtUtc,
-            Action<InitialVirtualFilesFileWorkResult> recordFileWorkResult,
-            Action<int> recordFileStateWrite,
-            CancellationToken cancellationToken)
+            InitialVirtualFilesPopulationContext context)
         {
             foreach (InitialVirtualFilesFileWorkResult workResult in workResults)
             {
                 await CompleteInitialVirtualFilesFileWorkAsync(
                         workResult,
                         pendingFileStates,
-                        syncPair,
-                        options,
-                        result,
-                        startedAtUtc,
-                        getDiscoveredFiles,
-                        getDiscoveredDirectories,
-                        getExpectedItems,
-                        getCompletedFiles,
-                        setCompletedFiles,
-                        getCompletedDirectories,
-                        getLastPlaceholderProgressReportedAtUtc,
-                        setLastPlaceholderProgressReportedAtUtc,
-                        recordFileWorkResult,
-                        recordFileStateWrite,
-                        cancellationToken)
+                        context)
                     .ConfigureAwait(false);
             }
         }
@@ -2444,56 +2348,33 @@ namespace Cotton.Sync
         private async Task CompleteInitialVirtualFilesFileWorkAsync(
             InitialVirtualFilesFileWorkResult workResult,
             List<SyncStateEntry> pendingFileStates,
-            SyncPair syncPair,
-            SyncRunOptions options,
-            SyncRunResult result,
-            DateTime startedAtUtc,
-            Func<int> getDiscoveredFiles,
-            Func<int> getDiscoveredDirectories,
-            Func<int> getExpectedItems,
-            Func<int> getCompletedFiles,
-            Action<int> setCompletedFiles,
-            Func<int> getCompletedDirectories,
-            Func<DateTime?> getLastPlaceholderProgressReportedAtUtc,
-            Action<DateTime?> setLastPlaceholderProgressReportedAtUtc,
-            Action<InitialVirtualFilesFileWorkResult> recordFileWorkResult,
-            Action<int> recordFileStateWrite,
-            CancellationToken cancellationToken)
+            InitialVirtualFilesPopulationContext context)
         {
-            recordFileWorkResult(workResult);
+            context.Metrics.RecordFileWorkResult(workResult);
 
             if (workResult.State is not null)
             {
                 pendingFileStates.Add(workResult.State);
-                if (pendingFileStates.Count >= options.InitialVirtualFilesStateBatchSize)
+                if (pendingFileStates.Count >= context.Options.InitialVirtualFilesStateBatchSize)
                 {
-                    int flushedFileRows =
-                        await FlushInitialVirtualFilesStateBatchAsync(pendingFileStates, cancellationToken).ConfigureAwait(false);
-                    recordFileStateWrite(flushedFileRows);
+                    int flushedFileRows = await FlushInitialVirtualFilesStateBatchAsync(
+                            pendingFileStates,
+                            context.CancellationToken)
+                        .ConfigureAwait(false);
+                    context.Metrics.RecordFileStateWrite(flushedFileRows);
                 }
             }
 
-            int completedFiles = getCompletedFiles() + 1;
-            setCompletedFiles(completedFiles);
+            int completedFiles = context.Metrics.RecordCompletedFile();
             if (ShouldReportInitialVirtualFilesFileProgress(workResult))
             {
-                ReportStreamingVirtualFilesProgress(
-                    options,
-                    completedFiles,
-                    getDiscoveredFiles(),
-                    getCompletedDirectories(),
-                    getDiscoveredDirectories(),
-                    getExpectedItems(),
-                    workResult.RelativePath,
-                    startedAtUtc,
-                    getLastPlaceholderProgressReportedAtUtc(),
-                    setLastPlaceholderProgressReportedAtUtc);
+                ReportInitialVirtualFilesStreamingProgress(context, workResult.RelativePath);
             }
             if (workResult.ReportActivity)
             {
                 Report(
-                    result,
-                    options,
+                    context.Result,
+                    context.Options,
                     workResult.ActivityKind,
                     workResult.RelativePath,
                     workResult.Details,
@@ -2502,13 +2383,32 @@ namespace Cotton.Sync
             }
 
             await YieldAfterLargeBatchAsync(
-                    options,
-                    GetInitialVirtualFilesItemCount(completedFiles, getCompletedDirectories()),
+                    context.Options,
+                    GetInitialVirtualFilesItemCount(completedFiles, context.Metrics.CompletedDirectories),
                     Math.Max(
-                        GetInitialVirtualFilesItemCount(completedFiles, getCompletedDirectories()),
-                        GetInitialVirtualFilesItemCount(getDiscoveredFiles(), getDiscoveredDirectories())),
-                    cancellationToken)
+                        GetInitialVirtualFilesItemCount(completedFiles, context.Metrics.CompletedDirectories),
+                        GetInitialVirtualFilesItemCount(
+                            context.Metrics.DiscoveredFiles,
+                            context.Metrics.DiscoveredDirectories)),
+                    context.CancellationToken)
                 .ConfigureAwait(false);
+        }
+
+        private static void ReportInitialVirtualFilesStreamingProgress(
+            InitialVirtualFilesPopulationContext context,
+            string relativePath)
+        {
+            ReportStreamingVirtualFilesProgress(
+                context.Options,
+                context.Metrics.CompletedFiles,
+                context.Metrics.DiscoveredFiles,
+                context.Metrics.CompletedDirectories,
+                context.Metrics.DiscoveredDirectories,
+                context.Metrics.ExpectedItems,
+                relativePath,
+                context.StartedAtUtc,
+                context.Metrics.LastPlaceholderProgressReportedAtUtc,
+                value => context.Metrics.LastPlaceholderProgressReportedAtUtc = value);
         }
 
         private async Task<int> FlushInitialVirtualFilesStateBatchAsync(
@@ -7074,94 +6974,33 @@ namespace Cotton.Sync
             return keys;
         }
 
-        private abstract record InitialVirtualFilesPopulationItem;
-
-        private sealed record InitialVirtualFilesDirectoryPopulationItem(RemoteDirectorySnapshot Directory)
-            : InitialVirtualFilesPopulationItem;
-
-        private sealed record InitialVirtualFilesFilePopulationItem(RemoteFileSnapshot File)
-            : InitialVirtualFilesPopulationItem;
-
-        private sealed record InitialVirtualFilesFileWorkResult(
-            string RelativePath,
-            SyncStateEntry? State,
-            SyncActivityKind ActivityKind,
-            string? Details,
-            bool RequiresUserAction,
-            bool ReportActivity);
-
-        private sealed class InitialVirtualFilesPopulationSink : IRemoteTreeStreamSink
-        {
-            private readonly ChannelWriter<InitialVirtualFilesPopulationItem> _writer;
-            private readonly Action _onFileDiscovered;
-            private readonly Action _onDirectoryDiscovered;
-
-            public InitialVirtualFilesPopulationSink(
-                ChannelWriter<InitialVirtualFilesPopulationItem> writer,
-                Action onFileDiscovered,
-                Action onDirectoryDiscovered)
-            {
-                _writer = writer ?? throw new ArgumentNullException(nameof(writer));
-                _onFileDiscovered = onFileDiscovered ?? throw new ArgumentNullException(nameof(onFileDiscovered));
-                _onDirectoryDiscovered = onDirectoryDiscovered ?? throw new ArgumentNullException(nameof(onDirectoryDiscovered));
-            }
-
-            public async ValueTask AddDirectoryAsync(
-                RemoteDirectorySnapshot directory,
-                CancellationToken cancellationToken = default)
-            {
-                ArgumentNullException.ThrowIfNull(directory);
-                await _writer.WriteAsync(new InitialVirtualFilesDirectoryPopulationItem(directory), cancellationToken)
-                    .ConfigureAwait(false);
-                _onDirectoryDiscovered();
-            }
-
-            public async ValueTask AddFileAsync(RemoteFileSnapshot file, CancellationToken cancellationToken = default)
-            {
-                ArgumentNullException.ThrowIfNull(file);
-                await _writer.WriteAsync(new InitialVirtualFilesFilePopulationItem(file), cancellationToken)
-                    .ConfigureAwait(false);
-                _onFileDiscovered();
-            }
-        }
-
         private async Task LogInitialVirtualFilesPopulationHeartbeatAsync(
             SyncPair syncPair,
             SyncRunOptions options,
             Stopwatch stopwatch,
-            RemoteTreeScanProgressCounter remoteScanProgress,
-            Func<int> getDiscoveredFiles,
-            Func<int> getDiscoveredDirectories,
-            Func<int> getCompletedFiles,
-            Func<int> getCompletedDirectories,
-            Func<int> getCreatedPlaceholders,
-            Func<int> getSkippedCurrentPlaceholders,
-            Func<int> getSkippedUnavailablePlaceholders,
-            Func<int> getStateFileRowsWritten,
-            Func<int> getStateFileWriteBatches,
-            Func<int> getStateDirectoryRowsWritten,
-            Action<long> recordManagedHeapSample,
+            InitialVirtualFilesPopulationMetrics metrics,
             CancellationToken cancellationToken)
         {
             using var timer = new PeriodicTimer(InitialVirtualFilesHeartbeatLogInterval);
             while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
             {
-                int createdPlaceholders = getCreatedPlaceholders();
+                int createdPlaceholders = metrics.CreatedPlaceholders;
                 double elapsedSeconds = Math.Max(stopwatch.Elapsed.TotalSeconds, 0.001d);
-                int discoveredDirectoryCount = getDiscoveredDirectories();
-                int discoveredFileCount = getDiscoveredFiles();
-                int stateFileRowsWritten = getStateFileRowsWritten();
-                int stateDirectoryRowsWritten = getStateDirectoryRowsWritten();
+                int discoveredDirectoryCount = metrics.DiscoveredDirectories;
+                int discoveredFileCount = metrics.DiscoveredFiles;
+                int stateFileRowsWritten = metrics.StateFileRowsWritten;
+                int stateDirectoryRowsWritten = metrics.StateDirectoryRowsWritten;
                 double discoveredDirectoryRatePerSecond = discoveredDirectoryCount / elapsedSeconds;
                 double discoveredFileRatePerSecond = discoveredFileCount / elapsedSeconds;
                 double createdPlaceholderRatePerSecond = createdPlaceholders / elapsedSeconds;
                 double stateWriteRatePerSecond = (stateFileRowsWritten + stateDirectoryRowsWritten) / elapsedSeconds;
+                RemoteTreeScanProgressCounter remoteScanProgress = metrics.RemoteScanProgress;
                 int remotePageCount = remoteScanProgress.PagesScanned;
                 double remotePageAverageLatencyMilliseconds = remotePageCount <= 0
                     ? 0d
                     : remoteScanProgress.PageReadLatencyTotal.TotalMilliseconds / remotePageCount;
                 long managedHeapBytes = GC.GetTotalMemory(forceFullCollection: false);
-                recordManagedHeapSample(managedHeapBytes);
+                metrics.RecordManagedHeapSample(managedHeapBytes);
                 _logger.LogInformation(
                     "Initial streaming Windows virtual-files population heartbeat for pair {SyncPairId}: elapsed={ElapsedMilliseconds} ms; discovered directories={DirectoryCount} at {DirectoryDiscoveryRatePerSecond:F2} dirs/sec, files={FileCount} at {FileDiscoveryRatePerSecond:F2} files/sec; completed directories={CompletedDirectoryCount}, files={CompletedFileCount}; remote pages read={RemotePageCount}, remote page latency total={RemotePageLatencyTotalMilliseconds:F0} ms, avg={RemotePageLatencyAverageMilliseconds:F2} ms, max={RemotePageLatencyMaxMilliseconds:F0} ms, last={RemotePageLatencyLastMilliseconds:F0} ms; placeholders created or refreshed={CreatedPlaceholderCount}, current skipped={SkippedCurrentPlaceholderCount}, user-action skipped={SkippedUnavailablePlaceholderCount}, rate={CreatedPlaceholderRatePerSecond:F2} placeholders/sec; state writes file rows={StateFileRowsWritten}, file batches={StateFileWriteBatchCount}, directory rows={StateDirectoryRowsWritten}, state write rate={StateWriteRatePerSecond:F2} rows/sec; managed heap={ManagedHeapBytes} bytes; queue capacity={QueueCapacity}, placeholder concurrency={PlaceholderConcurrency}, placeholder batch size={PlaceholderBatchSize}, state batch size={StateBatchSize}.",
                     syncPair.SyncPairId,
@@ -7170,19 +7009,19 @@ namespace Cotton.Sync
                     discoveredDirectoryRatePerSecond,
                     discoveredFileCount,
                     discoveredFileRatePerSecond,
-                    getCompletedDirectories(),
-                    getCompletedFiles(),
+                    metrics.CompletedDirectories,
+                    metrics.CompletedFiles,
                     remotePageCount,
                     remoteScanProgress.PageReadLatencyTotal.TotalMilliseconds,
                     remotePageAverageLatencyMilliseconds,
                     remoteScanProgress.PageReadLatencyMax.TotalMilliseconds,
                     remoteScanProgress.LastPageReadLatency.TotalMilliseconds,
                     createdPlaceholders,
-                    getSkippedCurrentPlaceholders(),
-                    getSkippedUnavailablePlaceholders(),
+                    metrics.SkippedCurrentPlaceholders,
+                    metrics.SkippedUnavailablePlaceholders,
                     createdPlaceholderRatePerSecond,
                     stateFileRowsWritten,
-                    getStateFileWriteBatches(),
+                    metrics.StateFileWriteBatches,
                     stateDirectoryRowsWritten,
                     stateWriteRatePerSecond,
                     managedHeapBytes,
@@ -7206,85 +7045,26 @@ namespace Cotton.Sync
             }
         }
 
-        private static void UpdateMax(ref long target, long value)
-        {
-            long current;
-            do
-            {
-                current = Volatile.Read(ref target);
-                if (value <= current)
-                {
-                    return;
-                }
-            }
-            while (Interlocked.CompareExchange(ref target, value, current) != current);
-        }
-
-        private sealed class RemoteTreeScanProgressCounter : IProgress<RemoteTreeScanProgress>
-        {
-            private int _pagesScanned;
-            private int _entriesExpected;
-            private long _pageReadLatencyTotalTicks;
-            private long _pageReadLatencyMaxTicks;
-            private long _lastPageReadLatencyTicks;
-
-            public int PagesScanned => Volatile.Read(ref _pagesScanned);
-
-            public int EntriesExpected => Volatile.Read(ref _entriesExpected);
-
-            public TimeSpan PageReadLatencyTotal => TimeSpan.FromTicks(Volatile.Read(ref _pageReadLatencyTotalTicks));
-
-            public TimeSpan PageReadLatencyMax => TimeSpan.FromTicks(Volatile.Read(ref _pageReadLatencyMaxTicks));
-
-            public TimeSpan LastPageReadLatency => TimeSpan.FromTicks(Volatile.Read(ref _lastPageReadLatencyTicks));
-
-            public void Report(RemoteTreeScanProgress value)
-            {
-                ArgumentNullException.ThrowIfNull(value);
-                int current;
-                do
-                {
-                    current = Volatile.Read(ref _pagesScanned);
-                    if (value.PagesScanned <= current)
-                    {
-                        return;
-                    }
-                }
-                while (Interlocked.CompareExchange(ref _pagesScanned, value.PagesScanned, current) != current);
-
-                Volatile.Write(ref _pageReadLatencyTotalTicks, value.PageReadLatencyTotal.Ticks);
-                Volatile.Write(ref _pageReadLatencyMaxTicks, value.PageReadLatencyMax.Ticks);
-                Volatile.Write(ref _lastPageReadLatencyTicks, value.LastPageReadLatency.Ticks);
-                if (value.EntriesExpected is { } entriesExpected)
-                {
-                    Volatile.Write(ref _entriesExpected, entriesExpected);
-                }
-            }
-        }
-
         private sealed class InitialVirtualFilesRemoteProgressReporter : IProgress<RemoteTreeScanProgress>
         {
             private readonly IProgress<RemoteTreeScanProgress> _inner;
             private readonly SyncRunOptions _options;
             private readonly DateTime _startedAtUtc;
             private readonly bool _publishRunProgress;
-            private readonly Func<int> _getCompletedFiles;
-            private readonly Func<int> _getCompletedDirectories;
+            private readonly InitialVirtualFilesPopulationMetrics _metrics;
 
             public InitialVirtualFilesRemoteProgressReporter(
                 IProgress<RemoteTreeScanProgress> inner,
                 SyncRunOptions options,
                 DateTime startedAtUtc,
                 bool publishRunProgress,
-                Func<int> getCompletedFiles,
-                Func<int> getCompletedDirectories)
+                InitialVirtualFilesPopulationMetrics metrics)
             {
                 _inner = inner;
                 _options = options;
                 _startedAtUtc = startedAtUtc;
                 _publishRunProgress = publishRunProgress;
-                _getCompletedFiles = getCompletedFiles;
-                _getCompletedDirectories = getCompletedDirectories;
+                _metrics = metrics;
             }
 
             public void Report(RemoteTreeScanProgress value)
@@ -7302,7 +7082,9 @@ namespace Cotton.Sync
                     return;
                 }
 
-                int itemsCompleted = GetInitialVirtualFilesItemCount(_getCompletedFiles(), _getCompletedDirectories());
+                int itemsCompleted = GetInitialVirtualFilesItemCount(
+                    _metrics.CompletedFiles,
+                    _metrics.CompletedDirectories);
                 int knownItemsTotal = value.EntriesExpected.GetValueOrDefault(itemsDiscovered);
                 int itemsTotal = Math.Max(itemsCompleted, Math.Max(itemsDiscovered, knownItemsTotal));
                 ReportRunProgress(
