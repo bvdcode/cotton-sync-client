@@ -259,12 +259,13 @@ namespace Cotton.Sync
                 BuildConfirmedScopedVirtualFilesDirectoryDeletePlan(
                     syncPair,
                     options,
-                    localDirectoriesByPath,
-                    remoteDirectoriesByPath,
-                    localByPath,
-                    remoteByPath,
-                    directoryStateByPath,
-                    stateByPath);
+                    new ScopedVirtualFilesDirectoryDeleteContext(
+                        localDirectoriesByPath,
+                        remoteDirectoriesByPath,
+                        localByPath,
+                        remoteByPath,
+                        directoryStateByPath,
+                        stateByPath));
             IReadOnlySet<string>? scopedFileDeleteKeys = options.Scope.IsFull
                 ? null
                 : BuildExactScopedPathKeys(options.Scope.LocalChangedPaths);
@@ -480,56 +481,89 @@ namespace Cotton.Sync
                     .ConfigureAwait(false);
             }
 
-            LocalTreeLookupSnapshot? localTreeLookups = await ScanLocalTreeLookupsAsync(
-                    syncPair.LocalRootPath,
-                    options,
-                    startedAtUtc,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            LocalTreeSnapshot? localTree = null;
-            if (localTreeLookups is null)
-            {
-                localTree = await ScanLocalTreeAsync(syncPair.LocalRootPath, options, startedAtUtc, cancellationToken)
+            (Dictionary<string, LocalDirectorySnapshot> Directories, Dictionary<string, LocalFileSnapshot> Files) local =
+                await ScanCompleteLocalTreeLookupsAsync(
+                        syncPair.LocalRootPath,
+                        options,
+                        startedAtUtc,
+                        cancellationToken)
                     .ConfigureAwait(false);
-            }
-
-            RemoteTreeLookupSnapshot? remoteTreeLookups = await ScanRemoteTreeLookupsAsync(
-                    syncPair.RemoteRootNodeId,
-                    options,
-                    startedAtUtc,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            RemoteTreeSnapshot? remoteTree = null;
-            if (remoteTreeLookups is null)
-            {
-                remoteTree = await ScanRemoteTreeAsync(syncPair.RemoteRootNodeId, options, startedAtUtc, cancellationToken)
+            (Dictionary<string, RemoteDirectorySnapshot> Directories, Dictionary<string, RemoteFileSnapshot> Files, NodeDto RootNode) remote =
+                await ScanCompleteRemoteTreeLookupsAsync(
+                        syncPair.RemoteRootNodeId,
+                        options,
+                        startedAtUtc,
+                        cancellationToken)
                     .ConfigureAwait(false);
-            }
-
-            Dictionary<string, LocalDirectorySnapshot> localDirectoriesByPath = localTreeLookups?.DirectoriesByPath
-                ?? ToDictionary(localTree!.Directories, directory => directory.RelativePath);
-            Dictionary<string, RemoteDirectorySnapshot> remoteDirectoriesByPath = remoteTreeLookups?.DirectoriesByPath
-                ?? ToDictionary(remoteTree!.Directories, directory => directory.RelativePath);
-            Dictionary<string, LocalFileSnapshot> localByPath = localTreeLookups?.FilesByPath
-                ?? ToDictionary(localTree!.Files, file => file.RelativePath);
-            Dictionary<string, RemoteFileSnapshot> remoteByPath = remoteTreeLookups?.FilesByPath
-                ?? ToDictionary(remoteTree!.Files, file => file.RelativePath);
             ThrowIfPathKindCollisions(
-                localDirectoriesByPath,
-                localByPath,
+                local.Directories,
+                local.Files,
                 directory => directory.RelativePath,
                 file => file.RelativePath);
             ThrowIfPathKindCollisions(
-                remoteDirectoriesByPath,
-                remoteByPath,
+                remote.Directories,
+                remote.Files,
                 directory => directory.RelativePath,
                 file => file.RelativePath);
             return new SyncTreeLookups(
-                localDirectoriesByPath,
-                remoteDirectoriesByPath,
-                localByPath,
-                remoteByPath,
-                remoteTreeLookups?.RootNode ?? remoteTree!.RootNode);
+                local.Directories,
+                remote.Directories,
+                local.Files,
+                remote.Files,
+                remote.RootNode);
+        }
+
+        private async Task<(Dictionary<string, LocalDirectorySnapshot> Directories, Dictionary<string, LocalFileSnapshot> Files)>
+            ScanCompleteLocalTreeLookupsAsync(
+                string localRootPath,
+                SyncRunOptions options,
+                DateTime startedAtUtc,
+                CancellationToken cancellationToken)
+        {
+            LocalTreeLookupSnapshot? lookups = await ScanLocalTreeLookupsAsync(
+                    localRootPath,
+                    options,
+                    startedAtUtc,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (lookups is not null)
+            {
+                return (lookups.DirectoriesByPath, lookups.FilesByPath);
+            }
+
+            LocalTreeSnapshot tree = await ScanLocalTreeAsync(localRootPath, options, startedAtUtc, cancellationToken)
+                .ConfigureAwait(false);
+            return (
+                ToDictionary(tree.Directories, directory => directory.RelativePath),
+                ToDictionary(tree.Files, file => file.RelativePath));
+        }
+
+        private async Task<(
+            Dictionary<string, RemoteDirectorySnapshot> Directories,
+            Dictionary<string, RemoteFileSnapshot> Files,
+            NodeDto RootNode)> ScanCompleteRemoteTreeLookupsAsync(
+                Guid remoteRootNodeId,
+                SyncRunOptions options,
+                DateTime startedAtUtc,
+                CancellationToken cancellationToken)
+        {
+            RemoteTreeLookupSnapshot? lookups = await ScanRemoteTreeLookupsAsync(
+                    remoteRootNodeId,
+                    options,
+                    startedAtUtc,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (lookups is not null)
+            {
+                return (lookups.DirectoriesByPath, lookups.FilesByPath, lookups.RootNode);
+            }
+
+            RemoteTreeSnapshot tree = await ScanRemoteTreeAsync(remoteRootNodeId, options, startedAtUtc, cancellationToken)
+                .ConfigureAwait(false);
+            return (
+                ToDictionary(tree.Directories, directory => directory.RelativePath),
+                ToDictionary(tree.Files, file => file.RelativePath),
+                tree.RootNode);
         }
 
         private async Task<SyncTreeLookups> ScanScopedTreesAndBuildLookupsAsync(
@@ -580,32 +614,25 @@ namespace Cotton.Sync
                 remoteTreeLookups.RootNode);
         }
 
-        private async Task<ScopedVirtualFilesDirectoryRenamePlan?> ExpandScopedVirtualFilesDirectoryRenameLookupsAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            SyncTreeLookups treeLookups,
-            IDictionary<string, SyncStateEntry> directoryStateByPath,
-            IDictionary<string, SyncStateEntry> fileStateByPath,
-            CancellationToken cancellationToken)
+        private bool CanExpandScopedVirtualFilesDirectoryRename(SyncPair syncPair, SyncRunOptions options)
         {
-            if (options.Scope.IsFull
-                || syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles
-                || _localMetadataPathLookupScanner is null
-                || _remotePathLookupCrawler is null)
-            {
-                return null;
-            }
+            return !options.Scope.IsFull
+                && syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
+                && _localMetadataPathLookupScanner is not null
+                && _remotePathLookupCrawler is not null;
+        }
 
-            HashSet<string> scopedKeys = options.Scope.LocalChangedPaths
-                .Select(SyncPath.ToKey)
-                .ToHashSet(PathComparer);
-            List<(string Key, SyncStateEntry State)> sourceDirectories = directoryStateByPath
+        private static ScopedVirtualFilesDirectoryRenameCandidate? TryCreateScopedDirectoryRenameCandidate(
+            IReadOnlySet<string> scopedKeys,
+            SyncTreeLookups treeLookups,
+            IDictionary<string, SyncStateEntry> directoryStateByPath)
+        {
+            List<KeyValuePair<string, SyncStateEntry>> sourceDirectories = directoryStateByPath
                 .Where(state =>
                     scopedKeys.Contains(state.Key)
                     && !treeLookups.LocalDirectoriesByPath.ContainsKey(state.Key)
                     && treeLookups.RemoteDirectoriesByPath.TryGetValue(state.Key, out RemoteDirectorySnapshot? remote)
                     && state.Value.RemoteNodeId == remote.Node.Id)
-                .Select(state => (state.Key, state.Value))
                 .ToList();
             List<KeyValuePair<string, LocalDirectorySnapshot>> targetDirectories = treeLookups.LocalDirectoriesByPath
                 .Where(local =>
@@ -613,7 +640,7 @@ namespace Cotton.Sync
                     && !treeLookups.RemoteDirectoriesByPath.ContainsKey(local.Key)
                     && !directoryStateByPath.ContainsKey(local.Key))
                 .ToList();
-            List<(string Key, SyncStateEntry State)> sourceRootCandidates = sourceDirectories
+            List<KeyValuePair<string, SyncStateEntry>> sourceRootCandidates = sourceDirectories
                 .Where(candidate => sourceDirectories.All(item => IsSameOrDescendantPathKey(item.Key, candidate.Key)))
                 .ToList();
             List<KeyValuePair<string, LocalDirectorySnapshot>> targetRootCandidates = targetDirectories
@@ -624,65 +651,151 @@ namespace Cotton.Sync
                 return null;
             }
 
-            (string sourceKey, SyncStateEntry sourceDirectoryState) = sourceRootCandidates[0];
-            KeyValuePair<string, LocalDirectorySnapshot> targetDirectory = targetRootCandidates[0];
-            if (scopedKeys.Any(key =>
-                    !IsSameOrDescendantPathKey(key, sourceKey)
-                    && !IsSameOrDescendantPathKey(sourceKey, key)
-                    && !IsSameOrDescendantPathKey(key, targetDirectory.Key)
-                    && !IsSameOrDescendantPathKey(targetDirectory.Key, key)))
+            KeyValuePair<string, SyncStateEntry> source = sourceRootCandidates[0];
+            KeyValuePair<string, LocalDirectorySnapshot> target = targetRootCandidates[0];
+            bool hasUnrelatedScopedPath = scopedKeys.Any(key =>
+                !IsSameOrDescendantPathKey(key, source.Key)
+                && !IsSameOrDescendantPathKey(source.Key, key)
+                && !IsSameOrDescendantPathKey(key, target.Key)
+                && !IsSameOrDescendantPathKey(target.Key, key));
+            if (hasUnrelatedScopedPath)
             {
                 return null;
             }
-            string sourcePath = SyncPath.Normalize(sourceDirectoryState.RelativePath);
-            string targetPath = SyncPath.Normalize(targetDirectory.Value.RelativePath);
+
+            return new ScopedVirtualFilesDirectoryRenameCandidate(
+                source.Key,
+                SyncPath.Normalize(source.Value.RelativePath),
+                target.Key,
+                SyncPath.Normalize(target.Value.RelativePath));
+        }
+
+        private async Task<List<SyncStateEntry>> LoadScopedRenameDescendantStatesAsync(
+            string syncPairId,
+            ScopedVirtualFilesDirectoryRenameCandidate candidate,
+            CancellationToken cancellationToken)
+        {
             List<SyncStateEntry> descendantStates = [];
             await foreach (SyncStateEntry state in _stateStore
-                               .LoadEntriesByPathPrefixAsync(syncPair.SyncPairId, sourcePath, cancellationToken)
+                               .LoadEntriesByPathPrefixAsync(syncPairId, candidate.SourcePath, cancellationToken)
                                .WithCancellation(cancellationToken)
                                .ConfigureAwait(false))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!string.Equals(SyncPath.ToKey(state.RelativePath), sourceKey, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(
+                        SyncPath.ToKey(state.RelativePath),
+                        candidate.SourceKey,
+                        StringComparison.OrdinalIgnoreCase))
                 {
                     descendantStates.Add(state);
                 }
             }
 
-            if (descendantStates.Count == 0)
-            {
-                return null;
-            }
+            return descendantStates;
+        }
 
+        private async Task<bool> HasStateAtPathPrefixAsync(
+            string syncPairId,
+            string relativePath,
+            CancellationToken cancellationToken)
+        {
             await foreach (SyncStateEntry _ in _stateStore
-                               .LoadEntriesByPathPrefixAsync(syncPair.SyncPairId, targetPath, cancellationToken)
+                               .LoadEntriesByPathPrefixAsync(syncPairId, relativePath, cancellationToken)
                                .WithCancellation(cancellationToken)
                                .ConfigureAwait(false))
             {
+                return true;
+            }
+
+            return false;
+        }
+
+        private async Task<ScopedVirtualFilesDirectoryRenamePlan?> ExpandScopedVirtualFilesDirectoryRenameLookupsAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            SyncTreeLookups treeLookups,
+            IDictionary<string, SyncStateEntry> directoryStateByPath,
+            IDictionary<string, SyncStateEntry> fileStateByPath,
+            CancellationToken cancellationToken)
+        {
+            if (!CanExpandScopedVirtualFilesDirectoryRename(syncPair, options))
+            {
                 return null;
             }
 
+            HashSet<string> scopedKeys = options.Scope.LocalChangedPaths
+                .Select(SyncPath.ToKey)
+                .ToHashSet(PathComparer);
+            ScopedVirtualFilesDirectoryRenameCandidate? candidate = TryCreateScopedDirectoryRenameCandidate(
+                scopedKeys,
+                treeLookups,
+                directoryStateByPath);
+            if (candidate is null)
+            {
+                return null;
+            }
+
+            List<SyncStateEntry> descendantStates = await LoadScopedRenameDescendantStatesAsync(
+                    syncPair.SyncPairId,
+                    candidate,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (descendantStates.Count == 0
+                || await HasStateAtPathPrefixAsync(syncPair.SyncPairId, candidate.TargetPath, cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                return null;
+            }
+
+            ScopedVirtualFilesDirectoryRenameValidation validation = await ScanScopedDirectoryRenameValidationAsync(
+                    syncPair,
+                    candidate,
+                    descendantStates,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!IsScopedDirectoryRenameShapeConfirmed(candidate, validation)
+                || !AreScopedDirectoryRenameStatesConfirmed(descendantStates, validation))
+            {
+                return null;
+            }
+
+            MergeScopedDirectoryRenameLookups(treeLookups, validation);
+            MergeScopedDirectoryRenameState(directoryStateByPath, fileStateByPath, descendantStates);
+            string[] sourceDirectoryKeys = [
+                candidate.SourceKey,
+                .. validation.ExpectedSourceDirectoryKeys.OrderBy(static key => key, StringComparer.OrdinalIgnoreCase),
+            ];
+            return new ScopedVirtualFilesDirectoryRenamePlan(
+                candidate.SourcePath,
+                sourceDirectoryKeys,
+                validation.ExpectedSourceFileKeys.OrderBy(static key => key, StringComparer.OrdinalIgnoreCase).ToArray());
+        }
+
+        private async Task<ScopedVirtualFilesDirectoryRenameValidation> ScanScopedDirectoryRenameValidationAsync(
+            SyncPair syncPair,
+            ScopedVirtualFilesDirectoryRenameCandidate candidate,
+            IReadOnlyList<SyncStateEntry> descendantStates,
+            CancellationToken cancellationToken)
+        {
             Dictionary<string, string> targetPathBySourceKey = descendantStates.ToDictionary(
                 state => SyncPath.ToKey(state.RelativePath),
-                state => targetPath + SyncPath.Normalize(state.RelativePath)[sourcePath.Length..],
+                state => candidate.TargetPath + SyncPath.Normalize(state.RelativePath)[candidate.SourcePath.Length..],
                 PathComparer);
-            string[] targetDescendantPaths = targetPathBySourceKey.Values.ToArray();
-            LocalTreeLookupSnapshot localDescendants = await _localMetadataPathLookupScanner
+            LocalTreeLookupSnapshot localDescendants = await _localMetadataPathLookupScanner!
                 .ScanPathMetadataLookupsAsync(
                     syncPair.LocalRootPath,
-                    targetDescendantPaths,
+                    targetPathBySourceKey.Values.ToArray(),
                     progress: null,
                     includeDirectoryDescendants: false,
                     cancellationToken)
                 .ConfigureAwait(false);
-            RemoteTreeLookupSnapshot remoteDescendants = await _remotePathLookupCrawler
+            RemoteTreeLookupSnapshot remoteDescendants = await _remotePathLookupCrawler!
                 .CrawlPathLookupsAsync(
                     syncPair.RemoteRootNodeId,
-                    [sourcePath],
+                    [candidate.SourcePath],
                     progress: null,
                     cancellationToken)
                 .ConfigureAwait(false);
-
             HashSet<string> expectedSourceDirectoryKeys = descendantStates
                 .Where(static state => state.Kind == SyncEntryKind.Directory)
                 .Select(state => SyncPath.ToKey(state.RelativePath))
@@ -691,78 +804,111 @@ namespace Cotton.Sync
                 .Where(static state => state.Kind == SyncEntryKind.File)
                 .Select(state => SyncPath.ToKey(state.RelativePath))
                 .ToHashSet(PathComparer);
-            HashSet<string> expectedTargetDirectoryKeys = expectedSourceDirectoryKeys
-                .Select(sourceDirectoryKey => SyncPath.ToKey(targetPathBySourceKey[sourceDirectoryKey]))
-                .ToHashSet(PathComparer);
-            HashSet<string> expectedTargetFileKeys = expectedSourceFileKeys
-                .Select(sourceFileKey => SyncPath.ToKey(targetPathBySourceKey[sourceFileKey]))
-                .ToHashSet(PathComparer);
-            string sourcePrefix = sourceKey.TrimEnd('/') + "/";
-            string targetRootKey = targetDirectory.Key;
-            string targetPrefix = targetRootKey.TrimEnd('/') + "/";
-            HashSet<string> actualSourceDirectoryKeys = remoteDescendants.DirectoriesByPath.Keys
-                .Where(key => key.StartsWith(sourcePrefix, StringComparison.OrdinalIgnoreCase))
-                .ToHashSet(PathComparer);
-            HashSet<string> actualSourceFileKeys = remoteDescendants.FilesByPath.Keys
-                .Where(key => key.StartsWith(sourcePrefix, StringComparison.OrdinalIgnoreCase))
-                .ToHashSet(PathComparer);
-            HashSet<string> actualTargetDirectoryKeys = localDescendants.DirectoriesByPath.Keys
-                .Where(key => key.StartsWith(targetPrefix, StringComparison.OrdinalIgnoreCase))
-                .ToHashSet(PathComparer);
-            HashSet<string> actualTargetFileKeys = localDescendants.FilesByPath.Keys
-                .Where(key => key.StartsWith(targetPrefix, StringComparison.OrdinalIgnoreCase))
-                .ToHashSet(PathComparer);
-            if (!remoteDescendants.DirectoriesByPath.ContainsKey(sourceKey)
-                || !actualSourceDirectoryKeys.SetEquals(expectedSourceDirectoryKeys)
-                || !actualSourceFileKeys.SetEquals(expectedSourceFileKeys)
-                || !actualTargetDirectoryKeys.SetEquals(expectedTargetDirectoryKeys)
-                || !actualTargetFileKeys.SetEquals(expectedTargetFileKeys))
-            {
-                return null;
-            }
+            return new ScopedVirtualFilesDirectoryRenameValidation(
+                targetPathBySourceKey,
+                expectedSourceDirectoryKeys,
+                expectedSourceFileKeys,
+                localDescendants,
+                remoteDescendants);
+        }
 
+        private static bool IsScopedDirectoryRenameShapeConfirmed(
+            ScopedVirtualFilesDirectoryRenameCandidate candidate,
+            ScopedVirtualFilesDirectoryRenameValidation validation)
+        {
+            string sourcePrefix = candidate.SourceKey.TrimEnd('/') + "/";
+            string targetPrefix = candidate.TargetKey.TrimEnd('/') + "/";
+            HashSet<string> actualSourceDirectoryKeys = validation.RemoteDescendants.DirectoriesByPath.Keys
+                .Where(key => key.StartsWith(sourcePrefix, StringComparison.OrdinalIgnoreCase))
+                .ToHashSet(PathComparer);
+            HashSet<string> actualSourceFileKeys = validation.RemoteDescendants.FilesByPath.Keys
+                .Where(key => key.StartsWith(sourcePrefix, StringComparison.OrdinalIgnoreCase))
+                .ToHashSet(PathComparer);
+            HashSet<string> actualTargetDirectoryKeys = validation.LocalDescendants.DirectoriesByPath.Keys
+                .Where(key => key.StartsWith(targetPrefix, StringComparison.OrdinalIgnoreCase))
+                .ToHashSet(PathComparer);
+            HashSet<string> actualTargetFileKeys = validation.LocalDescendants.FilesByPath.Keys
+                .Where(key => key.StartsWith(targetPrefix, StringComparison.OrdinalIgnoreCase))
+                .ToHashSet(PathComparer);
+            HashSet<string> expectedTargetDirectoryKeys = validation.ExpectedSourceDirectoryKeys
+                .Select(key => SyncPath.ToKey(validation.TargetPathBySourceKey[key]))
+                .ToHashSet(PathComparer);
+            HashSet<string> expectedTargetFileKeys = validation.ExpectedSourceFileKeys
+                .Select(key => SyncPath.ToKey(validation.TargetPathBySourceKey[key]))
+                .ToHashSet(PathComparer);
+            return validation.RemoteDescendants.DirectoriesByPath.ContainsKey(candidate.SourceKey)
+                && actualSourceDirectoryKeys.SetEquals(validation.ExpectedSourceDirectoryKeys)
+                && actualSourceFileKeys.SetEquals(validation.ExpectedSourceFileKeys)
+                && actualTargetDirectoryKeys.SetEquals(expectedTargetDirectoryKeys)
+                && actualTargetFileKeys.SetEquals(expectedTargetFileKeys);
+        }
+
+        private static bool AreScopedDirectoryRenameStatesConfirmed(
+            IReadOnlyList<SyncStateEntry> descendantStates,
+            ScopedVirtualFilesDirectoryRenameValidation validation)
+        {
             foreach (SyncStateEntry state in descendantStates)
             {
                 string stateKey = SyncPath.ToKey(state.RelativePath);
-                string targetKey = SyncPath.ToKey(targetPathBySourceKey[stateKey]);
+                string targetKey = SyncPath.ToKey(validation.TargetPathBySourceKey[stateKey]);
                 bool isConfirmed = state.Kind switch
                 {
                     SyncEntryKind.Directory =>
-                        localDescendants.DirectoriesByPath.ContainsKey(targetKey)
-                        && remoteDescendants.DirectoriesByPath.TryGetValue(stateKey, out RemoteDirectorySnapshot? remote)
+                        validation.LocalDescendants.DirectoriesByPath.ContainsKey(targetKey)
+                        && validation.RemoteDescendants.DirectoriesByPath.TryGetValue(
+                            stateKey,
+                            out RemoteDirectorySnapshot? remote)
                         && state.RemoteNodeId == remote.Node.Id,
                     SyncEntryKind.File =>
-                        localDescendants.FilesByPath.ContainsKey(targetKey)
-                        && remoteDescendants.FilesByPath.TryGetValue(stateKey, out RemoteFileSnapshot? remote)
+                        validation.LocalDescendants.FilesByPath.ContainsKey(targetKey)
+                        && validation.RemoteDescendants.FilesByPath.TryGetValue(
+                            stateKey,
+                            out RemoteFileSnapshot? remote)
                         && RemoteMatchesBaseline(remote.File, state),
-                    _ => throw new ArgumentOutOfRangeException(nameof(state), state.Kind, "Unknown sync state entry kind."),
+                    _ => throw new ArgumentOutOfRangeException(
+                        nameof(state),
+                        state.Kind,
+                        "Unknown sync state entry kind."),
                 };
                 if (!isConfirmed)
                 {
-                    return null;
+                    return false;
                 }
             }
 
-            foreach (KeyValuePair<string, LocalDirectorySnapshot> local in localDescendants.DirectoriesByPath)
+            return true;
+        }
+
+        private static void MergeScopedDirectoryRenameLookups(
+            SyncTreeLookups treeLookups,
+            ScopedVirtualFilesDirectoryRenameValidation validation)
+        {
+            foreach (KeyValuePair<string, LocalDirectorySnapshot> local in validation.LocalDescendants.DirectoriesByPath)
             {
                 treeLookups.LocalDirectoriesByPath[local.Key] = local.Value;
             }
 
-            foreach (KeyValuePair<string, LocalFileSnapshot> local in localDescendants.FilesByPath)
+            foreach (KeyValuePair<string, LocalFileSnapshot> local in validation.LocalDescendants.FilesByPath)
             {
                 treeLookups.LocalFilesByPath[local.Key] = local.Value;
             }
 
-            foreach (KeyValuePair<string, RemoteDirectorySnapshot> remote in remoteDescendants.DirectoriesByPath)
+            foreach (KeyValuePair<string, RemoteDirectorySnapshot> remote in validation.RemoteDescendants.DirectoriesByPath)
             {
                 treeLookups.RemoteDirectoriesByPath[remote.Key] = remote.Value;
             }
 
-            foreach (KeyValuePair<string, RemoteFileSnapshot> remote in remoteDescendants.FilesByPath)
+            foreach (KeyValuePair<string, RemoteFileSnapshot> remote in validation.RemoteDescendants.FilesByPath)
             {
                 treeLookups.RemoteFilesByPath[remote.Key] = remote.Value;
             }
+        }
 
+        private static void MergeScopedDirectoryRenameState(
+            IDictionary<string, SyncStateEntry> directoryStateByPath,
+            IDictionary<string, SyncStateEntry> fileStateByPath,
+            IReadOnlyList<SyncStateEntry> descendantStates)
+        {
             foreach (SyncStateEntry state in descendantStates)
             {
                 string key = SyncPath.ToKey(state.RelativePath);
@@ -775,29 +921,18 @@ namespace Cotton.Sync
                         fileStateByPath[key] = state;
                         break;
                     default:
-                        throw new ArgumentOutOfRangeException(nameof(state), state.Kind, "Unknown sync state entry kind.");
+                        throw new ArgumentOutOfRangeException(
+                            nameof(state),
+                            state.Kind,
+                            "Unknown sync state entry kind.");
                 }
             }
-
-            string[] sourceDirectoryKeys = [
-                sourceKey,
-                .. expectedSourceDirectoryKeys.OrderBy(static key => key, StringComparer.OrdinalIgnoreCase),
-            ];
-            return new ScopedVirtualFilesDirectoryRenamePlan(
-                sourcePath,
-                sourceDirectoryKeys,
-                expectedSourceFileKeys.OrderBy(static key => key, StringComparer.OrdinalIgnoreCase).ToArray());
         }
 
         private static ScopedVirtualFilesDirectoryDeletePlan? BuildConfirmedScopedVirtualFilesDirectoryDeletePlan(
             SyncPair syncPair,
             SyncRunOptions options,
-            IReadOnlyDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath,
-            IReadOnlyDictionary<string, RemoteDirectorySnapshot> remoteDirectoriesByPath,
-            IReadOnlyDictionary<string, LocalFileSnapshot> localFilesByPath,
-            IReadOnlyDictionary<string, RemoteFileSnapshot> remoteFilesByPath,
-            IReadOnlyDictionary<string, SyncStateEntry> directoryStateByPath,
-            IReadOnlyDictionary<string, SyncStateEntry> fileStateByPath)
+            ScopedVirtualFilesDirectoryDeleteContext context)
         {
             if (options.Scope.IsFull
                 || syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles)
@@ -806,11 +941,11 @@ namespace Cotton.Sync
             }
 
             IReadOnlySet<string> deletedKeys = BuildExactScopedPathKeys(options.Scope.LocalDeletedPaths);
-            List<string> candidateKeys = directoryStateByPath.Keys
+            List<string> candidateKeys = context.DirectoryStateByPath.Keys
                 .Where(key =>
                     deletedKeys.Contains(key)
-                    && !localDirectoriesByPath.ContainsKey(key)
-                    && remoteDirectoriesByPath.ContainsKey(key))
+                    && !context.LocalDirectoriesByPath.ContainsKey(key)
+                    && context.RemoteDirectoriesByPath.ContainsKey(key))
                 .ToList();
             string[] rootKeys = candidateKeys
                 .Where(candidate => candidateKeys.All(other =>
@@ -828,53 +963,17 @@ namespace Cotton.Sync
             List<string> rootPaths = [];
             foreach (string rootKey in rootKeys)
             {
-                if (localDirectoriesByPath.Keys.Any(key => IsSameOrDescendantPathKey(key, rootKey))
-                    || localFilesByPath.Keys.Any(key => IsSameOrDescendantPathKey(key, rootKey)))
+                ScopedVirtualFilesDirectoryDeleteRoot? root = TryCreateConfirmedScopedDirectoryDeleteRoot(
+                    context,
+                    rootKey);
+                if (root is null)
                 {
                     return null;
                 }
 
-                HashSet<string> expectedDirectoryKeys = directoryStateByPath.Keys
-                    .Where(key => IsSameOrDescendantPathKey(key, rootKey))
-                    .ToHashSet(PathComparer);
-                HashSet<string> expectedFileKeys = fileStateByPath.Keys
-                    .Where(key => IsSameOrDescendantPathKey(key, rootKey))
-                    .ToHashSet(PathComparer);
-                HashSet<string> actualDirectoryKeys = remoteDirectoriesByPath.Keys
-                    .Where(key => IsSameOrDescendantPathKey(key, rootKey))
-                    .ToHashSet(PathComparer);
-                HashSet<string> actualFileKeys = remoteFilesByPath.Keys
-                    .Where(key => IsSameOrDescendantPathKey(key, rootKey))
-                    .ToHashSet(PathComparer);
-                if (!actualDirectoryKeys.SetEquals(expectedDirectoryKeys)
-                    || !actualFileKeys.SetEquals(expectedFileKeys))
-                {
-                    return null;
-                }
-
-                foreach (string key in expectedDirectoryKeys)
-                {
-                    SyncStateEntry state = directoryStateByPath[key];
-                    RemoteDirectorySnapshot remote = remoteDirectoriesByPath[key];
-                    if (state.RemoteNodeId != remote.Node.Id)
-                    {
-                        return null;
-                    }
-                }
-
-                foreach (string key in expectedFileKeys)
-                {
-                    SyncStateEntry state = fileStateByPath[key];
-                    RemoteFileSnapshot remote = remoteFilesByPath[key];
-                    if (state.RemoteFileId != remote.File.Id || !RemoteMatchesBaseline(remote.File, state))
-                    {
-                        return null;
-                    }
-                }
-
-                rootPaths.Add(directoryStateByPath[rootKey].RelativePath);
-                directoryKeys.UnionWith(expectedDirectoryKeys);
-                fileKeys.UnionWith(expectedFileKeys);
+                rootPaths.Add(root.RelativePath);
+                directoryKeys.UnionWith(root.DirectoryKeys);
+                fileKeys.UnionWith(root.FileKeys);
             }
 
             string[] orderedFileKeys = fileKeys.OrderBy(static key => key, StringComparer.OrdinalIgnoreCase).ToArray();
@@ -882,7 +981,77 @@ namespace Cotton.Sync
                 rootPaths,
                 directoryKeys.OrderBy(static key => key, StringComparer.OrdinalIgnoreCase).ToArray(),
                 orderedFileKeys,
-                orderedFileKeys.Select(key => fileStateByPath[key].RelativePath).ToArray());
+                orderedFileKeys.Select(key => context.FileStateByPath[key].RelativePath).ToArray());
+        }
+
+        private static ScopedVirtualFilesDirectoryDeleteRoot? TryCreateConfirmedScopedDirectoryDeleteRoot(
+            ScopedVirtualFilesDirectoryDeleteContext context,
+            string rootKey)
+        {
+            bool hasLocalSubtree = context.LocalDirectoriesByPath.Keys.Any(
+                    key => IsSameOrDescendantPathKey(key, rootKey))
+                || context.LocalFilesByPath.Keys.Any(key => IsSameOrDescendantPathKey(key, rootKey));
+            if (hasLocalSubtree)
+            {
+                return null;
+            }
+
+            HashSet<string> expectedDirectoryKeys = context.DirectoryStateByPath.Keys
+                .Where(key => IsSameOrDescendantPathKey(key, rootKey))
+                .ToHashSet(PathComparer);
+            HashSet<string> expectedFileKeys = context.FileStateByPath.Keys
+                .Where(key => IsSameOrDescendantPathKey(key, rootKey))
+                .ToHashSet(PathComparer);
+            HashSet<string> actualDirectoryKeys = context.RemoteDirectoriesByPath.Keys
+                .Where(key => IsSameOrDescendantPathKey(key, rootKey))
+                .ToHashSet(PathComparer);
+            HashSet<string> actualFileKeys = context.RemoteFilesByPath.Keys
+                .Where(key => IsSameOrDescendantPathKey(key, rootKey))
+                .ToHashSet(PathComparer);
+            if (!actualDirectoryKeys.SetEquals(expectedDirectoryKeys)
+                || !actualFileKeys.SetEquals(expectedFileKeys)
+                || !HaveMatchingScopedDeleteDirectoryIds(context, expectedDirectoryKeys)
+                || !HaveMatchingScopedDeleteFileBaselines(context, expectedFileKeys))
+            {
+                return null;
+            }
+
+            return new ScopedVirtualFilesDirectoryDeleteRoot(
+                context.DirectoryStateByPath[rootKey].RelativePath,
+                expectedDirectoryKeys,
+                expectedFileKeys);
+        }
+
+        private static bool HaveMatchingScopedDeleteDirectoryIds(
+            ScopedVirtualFilesDirectoryDeleteContext context,
+            IEnumerable<string> directoryKeys)
+        {
+            foreach (string key in directoryKeys)
+            {
+                if (context.DirectoryStateByPath[key].RemoteNodeId != context.RemoteDirectoriesByPath[key].Node.Id)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool HaveMatchingScopedDeleteFileBaselines(
+            ScopedVirtualFilesDirectoryDeleteContext context,
+            IEnumerable<string> fileKeys)
+        {
+            foreach (string key in fileKeys)
+            {
+                SyncStateEntry state = context.FileStateByPath[key];
+                RemoteFileSnapshot remote = context.RemoteFilesByPath[key];
+                if (state.RemoteFileId != remote.File.Id || !RemoteMatchesBaseline(remote.File, state))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private async Task<(Dictionary<string, SyncStateEntry> DirectoryStateByPath, Dictionary<string, SyncStateEntry> FileStateByPath)> LoadStateByPathAsync(
@@ -6966,17 +7135,6 @@ namespace Cotton.Sync
         private readonly record struct MoveCandidateKey(string ContentHash, long SizeBytes);
 
         private readonly record struct RemoteDirectoryCreationResult(NodeDto Node, bool ReusedExisting);
-
-        private record ScopedVirtualFilesDirectoryRenamePlan(
-            string SourceRootPath,
-            IReadOnlyList<string> SourceDirectoryKeys,
-            IReadOnlyList<string> SourceFileKeys);
-
-        private record ScopedVirtualFilesDirectoryDeletePlan(
-            IReadOnlyList<string> RootPaths,
-            IReadOnlyList<string> DirectoryKeys,
-            IReadOnlyList<string> FileKeys,
-            IReadOnlyList<string> FilePaths);
 
         private sealed record InitialVirtualFilesStreamingPlan(
             bool SkipCurrentPlaceholders,
