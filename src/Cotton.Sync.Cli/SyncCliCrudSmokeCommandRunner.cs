@@ -47,6 +47,23 @@ namespace Cotton.Sync.Cli
 
             using HttpClient? ownedHttpClient = injectedHttpClient is null ? new HttpClient() : null;
             HttpClient httpClient = injectedHttpClient ?? ownedHttpClient!;
+            return await RunWithErrorHandlingAsync(
+                firstOptions,
+                secondOptions,
+                httpClient,
+                output,
+                error,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        private static async Task<int> RunWithErrorHandlingAsync(
+            SyncCliConnectionOptions firstOptions,
+            SyncCliConnectionOptions secondOptions,
+            HttpClient httpClient,
+            TextWriter output,
+            TextWriter error,
+            CancellationToken cancellationToken)
+        {
             try
             {
                 return await RunSmokeAsync(firstOptions, secondOptions, httpClient, output, cancellationToken)

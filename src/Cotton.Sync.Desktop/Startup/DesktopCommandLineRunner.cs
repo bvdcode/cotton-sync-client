@@ -125,25 +125,40 @@ namespace Cotton.Sync.Desktop.Startup
                 .ListAsync(cancellationToken)
                 .ConfigureAwait(false);
             IWindowsCloudFilesAdapter cloudFiles = cloudFilesAdapter ?? new WindowsCloudFilesAdapter();
+            await output.WriteLineAsync("Cotton Sync Desktop Cloud Files cleanup").ConfigureAwait(false);
+            (int cleaned, int failures) = await CleanupConfiguredCloudFilesPairsAsync(
+                configuredPairs,
+                syncState,
+                cloudFiles,
+                output,
+                cancellationToken).ConfigureAwait(false);
+            IWindowsStorageProviderSyncRootRegistrar? registrar =
+                storageProviderRegistrar ?? WindowsStorageProviderSyncRootRegistrar.TryCreateDefault();
+            failures += await CleanupOrphanedStorageProviderRootsAsync(registrar, output).ConfigureAwait(false);
+            return await WriteCloudFilesCleanupResultAsync(output, cleaned, failures).ConfigureAwait(false);
+        }
+
+        private static async Task<(int Cleaned, int Failures)> CleanupConfiguredCloudFilesPairsAsync(
+            IEnumerable<SyncPairSettings> configuredPairs,
+            ISyncStateStore syncState,
+            IWindowsCloudFilesAdapter cloudFiles,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
             int cleaned = 0;
             int failures = 0;
-
-            await output.WriteLineAsync("Cotton Sync Desktop Cloud Files cleanup").ConfigureAwait(false);
             foreach (SyncPairSettings syncPair in configuredPairs.Where(static pair => pair.Mode == SyncPairMode.WindowsVirtualFiles))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
-                    SyncChangeCursor cursor = await syncState
-                        .GetChangeCursorAsync(syncPair.Id.ToString("D"), cancellationToken)
-                        .ConfigureAwait(false);
-                    cursor.HasCompletedFullReconcile = false;
-                    cursor.UpdatedAtUtc = DateTime.UtcNow;
-                    await syncState.SaveChangeCursorAsync(cursor, cancellationToken).ConfigureAwait(false);
-                    cloudFiles.UnregisterSyncRoot(syncPair);
+                    await CleanupConfiguredCloudFilesPairAsync(
+                        syncPair,
+                        syncState,
+                        cloudFiles,
+                        output,
+                        cancellationToken).ConfigureAwait(false);
                     cleaned++;
-                    await output.WriteLineAsync("Unregistered: " + syncPair.LocalRootPath).ConfigureAwait(false);
-                    await output.WriteLineAsync("Recovery queued: " + syncPair.LocalRootPath).ConfigureAwait(false);
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
@@ -154,35 +169,64 @@ namespace Cotton.Sync.Desktop.Startup
                 }
             }
 
-            IWindowsStorageProviderSyncRootRegistrar? registrar =
-                storageProviderRegistrar ?? WindowsStorageProviderSyncRootRegistrar.TryCreateDefault();
-            if (registrar is not null)
+            return (cleaned, failures);
+        }
+
+        private static async Task CleanupConfiguredCloudFilesPairAsync(
+            SyncPairSettings syncPair,
+            ISyncStateStore syncState,
+            IWindowsCloudFilesAdapter cloudFiles,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            SyncChangeCursor cursor = await syncState
+                .GetChangeCursorAsync(syncPair.Id.ToString("D"), cancellationToken)
+                .ConfigureAwait(false);
+            cursor.HasCompletedFullReconcile = false;
+            cursor.UpdatedAtUtc = DateTime.UtcNow;
+            await syncState.SaveChangeCursorAsync(cursor, cancellationToken).ConfigureAwait(false);
+            cloudFiles.UnregisterSyncRoot(syncPair);
+            await output.WriteLineAsync("Unregistered: " + syncPair.LocalRootPath).ConfigureAwait(false);
+            await output.WriteLineAsync("Recovery queued: " + syncPair.LocalRootPath).ConfigureAwait(false);
+        }
+
+        private static async Task<int> CleanupOrphanedStorageProviderRootsAsync(
+            IWindowsStorageProviderSyncRootRegistrar? registrar,
+            TextWriter output)
+        {
+            if (registrar is null)
             {
-                try
-                {
-                    if (registrar.IsSupported())
-                    {
-                        registrar.UnregisterAllForCurrentUser();
-                        await output
-                            .WriteLineAsync("Orphaned storage-provider roots cleaned.")
-                            .ConfigureAwait(false);
-                    }
-                    else
-                    {
-                        await output
-                            .WriteLineAsync("Orphaned storage-provider cleanup skipped: Windows StorageProvider is unavailable.")
-                            .ConfigureAwait(false);
-                    }
-                }
-                catch (Exception exception) when (exception is not OperationCanceledException)
-                {
-                    failures++;
-                    await output
-                        .WriteLineAsync("Failed orphaned storage-provider cleanup: " + CleanSingleLine(exception.Message))
-                        .ConfigureAwait(false);
-                }
+                return 0;
             }
 
+            try
+            {
+                if (!registrar.IsSupported())
+                {
+                    await output
+                        .WriteLineAsync("Orphaned storage-provider cleanup skipped: Windows StorageProvider is unavailable.")
+                        .ConfigureAwait(false);
+                    return 0;
+                }
+
+                registrar.UnregisterAllForCurrentUser();
+                await output.WriteLineAsync("Orphaned storage-provider roots cleaned.").ConfigureAwait(false);
+                return 0;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                await output
+                    .WriteLineAsync("Failed orphaned storage-provider cleanup: " + CleanSingleLine(exception.Message))
+                    .ConfigureAwait(false);
+                return 1;
+            }
+        }
+
+        private static async Task<int> WriteCloudFilesCleanupResultAsync(
+            TextWriter output,
+            int cleaned,
+            int failures)
+        {
             await output.WriteLineAsync("Roots cleaned: " + cleaned.ToString(System.Globalization.CultureInfo.InvariantCulture))
                 .ConfigureAwait(false);
             await output.WriteLineAsync("Failures: " + failures.ToString(System.Globalization.CultureInfo.InvariantCulture))
