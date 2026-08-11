@@ -39,14 +39,15 @@ namespace Cotton.Sync.Desktop.Startup
 {
     internal static partial class DesktopWindowsVirtualFilesSmokeRunner
     {
-        private static async Task<int> RunNonEmptyPreservationAsync(
-            DesktopAppPaths paths,
-            TextWriter output,
-            IWindowsCloudFilesAdapter cloudFiles,
-            SyncPairSettings syncPair,
-            WindowsCloudFilesDiagnostics diagnostics,
-            CancellationToken cancellationToken)
+        private static async Task<int> RunNonEmptyPreservationAsync(WindowsVirtualFilesSmokeContext context)
         {
+            DesktopAppPaths paths = context.Paths;
+            TextWriter output = context.Output;
+            IWindowsCloudFilesAdapter cloudFiles = context.CloudFiles;
+            SyncPairSettings syncPair = context.SyncPair;
+            WindowsCloudFilesDiagnostics diagnostics = context.Diagnostics;
+            CancellationToken cancellationToken = context.CancellationToken;
+
             string rootPath = syncPair.LocalRootPath;
             string rootLocalFilePath = Path.Combine(
                 rootPath,
@@ -63,13 +64,13 @@ namespace Cotton.Sync.Desktop.Startup
             string rootLocalHash = Convert.ToHexStringLower(SHA256.HashData(rootLocalContent));
             string nestedLocalHash = Convert.ToHexStringLower(SHA256.HashData(nestedLocalContent));
             string remoteOnlyHash = Convert.ToHexStringLower(SHA256.HashData(remoteOnlyContent));
-            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
-            var activityPublisher = new InMemoryAppActivityPublisher();
-            var transferProgressPublisher = new InMemoryAppTransferProgressPublisher();
-            var runProgressPublisher = new InMemoryAppRunProgressPublisher();
+            SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath);
+            InMemoryAppActivityPublisher activityPublisher = new();
+            InMemoryAppTransferProgressPublisher transferProgressPublisher = new();
+            InMemoryAppRunProgressPublisher runProgressPublisher = new();
             RecordingRunProgressObserver runProgressObserver = new();
             IDisposable runProgressSubscription = runProgressPublisher.Subscribe(runProgressObserver);
-            var localChangeSuppression = new LocalChangeSuppression();
+            LocalChangeSuppression localChangeSuppression = new();
             WindowsCloudFilesConnection? connection = null;
             int failures = 0;
 
@@ -106,7 +107,7 @@ namespace Cotton.Sync.Desktop.Startup
                     NonEmptyPreservationRemoteOnlyFilePath,
                     remoteOnlyContent.LongLength,
                     remoteOnlyHash);
-                var remoteTree = new RemoteTreeSnapshot
+                RemoteTreeSnapshot remoteTree = new()
                 {
                     RootNode = new NodeDto
                     {
@@ -130,14 +131,14 @@ namespace Cotton.Sync.Desktop.Startup
                         },
                     },
                 };
-                var crawler = new SinglePathRemoteTreeCrawler(remoteTree);
-                var remoteFiles = new RecordingUploadRemoteFileSynchronizer();
-                var remoteDirectories = new RecordingRemoteDirectorySynchronizer(syncPair.RemoteRootNodeId);
-                var placeholderWriter = new DesktopCloudFilesPlaceholderWriter(
+                SinglePathRemoteTreeCrawler crawler = new(remoteTree);
+                RecordingUploadRemoteFileSynchronizer remoteFiles = new();
+                RecordingRemoteDirectorySynchronizer remoteDirectories = new(syncPair.RemoteRootNodeId);
+                DesktopCloudFilesPlaceholderWriter placeholderWriter = new(
                     cloudFilesAdapter: cloudFiles,
                     getCapabilities: static () => new SyncPairModeCapabilitySnapshot(true, "Windows Cloud Files API is available."),
                     localChangeSuppression: localChangeSuppression);
-                var syncEngine = new SyncEngine(
+                SyncEngine syncEngine = new(
                     new LocalFileScanner(),
                     crawler,
                     remoteFiles,
@@ -176,16 +177,14 @@ namespace Cotton.Sync.Desktop.Startup
                     .ConfigureAwait(false);
                 failures += await WritePassFailAsync(
                         output,
-                        string.Equals(rootAfter.Sha256, rootLocalHash, StringComparison.OrdinalIgnoreCase)
-                        && rootAfter.Length == rootLocalContent.LongLength,
+                        HasExpectedFileContent(rootAfter, rootLocalHash, rootLocalContent.LongLength),
                         "Pre-existing root file survived with identical content.",
                         " sha256="
                         + rootAfter.Sha256)
                     .ConfigureAwait(false);
                 failures += await WritePassFailAsync(
                         output,
-                        string.Equals(nestedAfter.Sha256, nestedLocalHash, StringComparison.OrdinalIgnoreCase)
-                        && nestedAfter.Length == nestedLocalContent.LongLength,
+                        HasExpectedFileContent(nestedAfter, nestedLocalHash, nestedLocalContent.LongLength),
                         "Pre-existing nested file survived with identical content.",
                         " sha256="
                         + nestedAfter.Sha256)
@@ -200,15 +199,12 @@ namespace Cotton.Sync.Desktop.Startup
                 SyncStateEntry? remoteOnlyState = await stateStore
                     .GetAsync(syncPair.Id.ToString("D"), NonEmptyPreservationRemoteOnlyFilePath, cancellationToken)
                     .ConfigureAwait(false);
-                bool uploadedLocalFiles = remoteFiles.Uploads.Count == 2
-                    && remoteFiles.Uploads.Any(upload =>
-                        string.Equals(upload.RelativePath, NonEmptyPreservationRootFilePath, StringComparison.OrdinalIgnoreCase)
-                        && string.Equals(upload.Returned.ContentHash, rootLocalHash, StringComparison.OrdinalIgnoreCase))
-                    && remoteFiles.Uploads.Any(upload =>
-                        string.Equals(upload.RelativePath, NonEmptyPreservationNestedFilePath, StringComparison.OrdinalIgnoreCase)
-                        && string.Equals(upload.Returned.ContentHash, nestedLocalHash, StringComparison.OrdinalIgnoreCase))
-                    && rootFileState is { Kind: SyncEntryKind.File }
-                    && nestedFileState is { Kind: SyncEntryKind.File };
+                bool uploadedLocalFiles = WereNonEmptyLocalFilesUploaded(
+                    remoteFiles.Uploads,
+                    rootLocalHash,
+                    nestedLocalHash,
+                    rootFileState,
+                    nestedFileState);
                 failures += await WritePassFailAsync(
                         output,
                         uploadedLocalFiles,
@@ -259,9 +255,7 @@ namespace Cotton.Sync.Desktop.Startup
                     .ConfigureAwait(false);
                 failures += await WritePassFailAsync(
                         output,
-                        File.Exists(remoteOnlyFilePath)
-                        && remoteOnlyState is { Kind: SyncEntryKind.File }
-                        && IsRemoteOnlyPlaceholderState(remoteOnlyState.PlaceholderHydrationState),
+                        IsRemoteOnlyFileReady(remoteOnlyFilePath, remoteOnlyState),
                         "Remote-only file became an online-only placeholder.",
                         " state="
                         + FormatStateSummary(remoteOnlyState)
@@ -295,6 +289,43 @@ namespace Cotton.Sync.Desktop.Startup
             }
 
             return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
+        }
+
+        private static bool HasExpectedFileContent(FileContentHash actual, string expectedHash, long expectedLength)
+        {
+            return string.Equals(actual.Sha256, expectedHash, StringComparison.OrdinalIgnoreCase)
+                && actual.Length == expectedLength;
+        }
+
+        private static bool WereNonEmptyLocalFilesUploaded(
+            IReadOnlyList<RecordingUploadRemoteFileSynchronizer.UploadCall> uploads,
+            string rootLocalHash,
+            string nestedLocalHash,
+            SyncStateEntry? rootFileState,
+            SyncStateEntry? nestedFileState)
+        {
+            return uploads.Count == 2
+                && HasUploadedFile(uploads, NonEmptyPreservationRootFilePath, rootLocalHash)
+                && HasUploadedFile(uploads, NonEmptyPreservationNestedFilePath, nestedLocalHash)
+                && rootFileState is { Kind: SyncEntryKind.File }
+                && nestedFileState is { Kind: SyncEntryKind.File };
+        }
+
+        private static bool HasUploadedFile(
+            IReadOnlyList<RecordingUploadRemoteFileSynchronizer.UploadCall> uploads,
+            string relativePath,
+            string contentHash)
+        {
+            return uploads.Any(upload =>
+                string.Equals(upload.RelativePath, relativePath, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(upload.Returned.ContentHash, contentHash, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsRemoteOnlyFileReady(string filePath, SyncStateEntry? state)
+        {
+            return File.Exists(filePath)
+                && state is { Kind: SyncEntryKind.File }
+                && IsRemoteOnlyPlaceholderState(state.PlaceholderHydrationState);
         }
 
         private static SyncStateEntry CreatePlaceholderState(

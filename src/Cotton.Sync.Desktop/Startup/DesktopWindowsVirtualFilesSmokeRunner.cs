@@ -134,13 +134,7 @@ namespace Cotton.Sync.Desktop.Startup
                     GetLargeTreePlaceholderCount(context.StartupOptions),
                     context.Diagnostics,
                     context.CancellationToken),
-                [WindowsVirtualFilesSmokePhase.NonEmptyPreservation] = context => RunNonEmptyPreservationAsync(
-                    context.Paths,
-                    context.Output,
-                    context.CloudFiles,
-                    context.SyncPair,
-                    context.Diagnostics,
-                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.NonEmptyPreservation] = RunNonEmptyPreservationAsync,
                 [WindowsVirtualFilesSmokePhase.RemovePairCleanup] = context => RunRemovePairCleanupAsync(
                     context.Paths,
                     context.Output,
