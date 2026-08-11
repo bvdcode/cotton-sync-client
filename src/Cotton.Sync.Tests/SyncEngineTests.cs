@@ -7353,6 +7353,11 @@ namespace Cotton.Sync.Tests
 
         private class FakeRemoteFileSynchronizer : IRemoteFileSynchronizer
         {
+            private const string UploadedContentType = "application/octet-stream";
+            private const string UploadedEtagPrefix = "sha256-";
+            private static readonly Guid UploadedOwnerId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+            private static readonly DateTime UploadedAt = new(2026, 6, 2, 14, 0, 0, DateTimeKind.Utc);
+
             public List<UploadCall> Uploads { get; } = [];
 
             public List<MoveCall> Moves { get; } = [];
@@ -7367,7 +7372,7 @@ namespace Cotton.Sync.Tests
 
             public HashSet<Guid> UploadFailureIds { get; } = [];
 
-            public HashSet<string> UploadFailureRelativePaths { get; } = [];
+            public HashSet<string> UploadFailureRelativePaths { get; } = new(StringComparer.OrdinalIgnoreCase);
 
             public HashSet<string> CreateConflictRelativePaths { get; } = new(StringComparer.OrdinalIgnoreCase);
 
@@ -7394,6 +7399,24 @@ namespace Cotton.Sync.Tests
                 NodeFileManifestDto? existingRemoteFile = null,
                 CancellationToken cancellationToken = default)
             {
+                ThrowIfUploadShouldFail(relativePath, localFile, existingRemoteFile);
+                UploadInputContentHashes.Add(localFile.ContentHash);
+                string uploadedContentHash = ResolveUploadedContentHash(localFile);
+                NodeFileManifestDto uploaded = CreateUploadedManifest(
+                    rootNodeId,
+                    relativePath,
+                    localFile,
+                    existingRemoteFile,
+                    uploadedContentHash);
+                Uploads.Add(new UploadCall(rootNodeId, relativePath, localFile, existingRemoteFile, uploaded));
+                return Task.FromResult(uploaded);
+            }
+
+            private void ThrowIfUploadShouldFail(
+                string relativePath,
+                LocalFileSnapshot localFile,
+                NodeFileManifestDto? existingRemoteFile)
+            {
                 if (existingRemoteFile is null && CreateConflictRelativePaths.Contains(relativePath))
                 {
                     throw new HttpRequestException(
@@ -7415,7 +7438,7 @@ namespace Cotton.Sync.Tests
                     throw new InvalidOperationException("Remote upload failed.");
                 }
 
-                if (UploadFailureRelativePaths.Contains(relativePath, StringComparer.OrdinalIgnoreCase))
+                if (UploadFailureRelativePaths.Contains(relativePath))
                 {
                     throw new HttpRequestException(
                         "Remote upload failed.",
@@ -7430,12 +7453,23 @@ namespace Cotton.Sync.Tests
                         localFile.FullPath,
                         "the file changed during upload.");
                 }
+            }
 
-                UploadInputContentHashes.Add(localFile.ContentHash);
-                string uploadedContentHash = string.IsNullOrWhiteSpace(localFile.ContentHash)
+            private string ResolveUploadedContentHash(LocalFileSnapshot localFile)
+            {
+                return string.IsNullOrWhiteSpace(localFile.ContentHash)
                     ? EmptyLocalHashUploadContentHash ?? localFile.ContentHash
                     : localFile.ContentHash;
-                var returned = new NodeFileManifestDto
+            }
+
+            private static NodeFileManifestDto CreateUploadedManifest(
+                Guid rootNodeId,
+                string relativePath,
+                LocalFileSnapshot localFile,
+                NodeFileManifestDto? existingRemoteFile,
+                string uploadedContentHash)
+            {
+                return new NodeFileManifestDto
                 {
                     Id = existingRemoteFile?.Id ?? Guid.NewGuid(),
                     NodeId = existingRemoteFile?.NodeId ?? rootNodeId,
@@ -7443,18 +7477,16 @@ namespace Cotton.Sync.Tests
                     OriginalNodeFileId = existingRemoteFile?.OriginalNodeFileId == Guid.Empty
                         ? Guid.NewGuid()
                         : existingRemoteFile?.OriginalNodeFileId ?? Guid.NewGuid(),
-                    OwnerId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                    OwnerId = UploadedOwnerId,
                     Name = relativePath.Split('/')[^1],
-                    ContentType = "application/octet-stream",
+                    ContentType = UploadedContentType,
                     SizeBytes = localFile.SizeBytes,
                     ContentHash = uploadedContentHash,
-                    ETag = "sha256-" + uploadedContentHash,
-                    CreatedAt = new DateTime(2026, 6, 2, 14, 0, 0, DateTimeKind.Utc),
-                    UpdatedAt = new DateTime(2026, 6, 2, 14, 0, 0, DateTimeKind.Utc),
+                    ETag = UploadedEtagPrefix + uploadedContentHash,
+                    CreatedAt = UploadedAt,
+                    UpdatedAt = UploadedAt,
                     Metadata = new Dictionary<string, string> { ["relativePath"] = relativePath.Replace('\\', '/') },
                 };
-                Uploads.Add(new UploadCall(rootNodeId, relativePath, localFile, existingRemoteFile, returned));
-                return Task.FromResult(returned);
             }
 
             public Task<NodeFileManifestDto> MoveFileAsync(
