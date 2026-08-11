@@ -107,14 +107,15 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateReparseTagOpenPath_UsesExtendedSyntaxBeyondLegacyLimit()
         {
-            string longPath = @"C:\Cloud\" + new string('a', 250) + @"\placeholder";
+            const string extendedPathPrefix = "\\\\?\\";
+            string longPath = "C:\\Cloud\\" + new string('a', 250) + "\\placeholder";
 
             string openPath = WindowsCloudFilesAdapter.CreateReparseTagOpenPath(longPath);
 
             Assert.Multiple(() =>
             {
                 Assert.That(longPath.Length, Is.GreaterThan(260));
-                Assert.That(openPath, Is.EqualTo(@"\\?\" + longPath));
+                Assert.That(openPath, Is.EqualTo(extendedPathPrefix + longPath));
             });
         }
 
