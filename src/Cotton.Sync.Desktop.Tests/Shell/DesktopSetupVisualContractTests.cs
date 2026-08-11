@@ -953,8 +953,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             Assert.Multiple(() =>
             {
-                Assert.That(mainWindowCode, Does.Contain("FocusOverlayAction(addSyncPairViewModel.IsAddSyncPairWizardVisible, CancelAddSyncPairButton);"));
-                Assert.That(mainWindowCode, Does.Contain("FocusOverlayAction(settingsViewModel.IsSettingsVisible, CloseSettingsButton);"));
+                Assert.That(mainWindowCode, Does.Contain("FocusOverlayAction(viewModel.IsAddSyncPairWizardVisible, CancelAddSyncPairButton);"));
+                Assert.That(mainWindowCode, Does.Contain("FocusOverlayAction(viewModel.IsSettingsVisible, CloseSettingsButton);"));
                 Assert.That(mainWindowCode, Does.Contain("protected override void OnKeyDown(KeyEventArgs e)"));
                 Assert.That(mainWindowCode, Does.Contain("TryCycleSettingsFocus(e)"));
                 Assert.That(mainWindowCode, Does.Contain("SettingsTabControl.SelectedItem is Control selectedTab"));
