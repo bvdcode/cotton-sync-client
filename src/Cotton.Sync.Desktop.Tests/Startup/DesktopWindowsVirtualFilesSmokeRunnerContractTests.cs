@@ -31,9 +31,9 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void Program_PreparesVfsSmokeEnvironmentBeforePathAndTraceBootstrap()
         {
-            string program = File.ReadAllText(GetDesktopFilePath("Program.cs"));
+            string program = File.ReadAllText(GetDesktopFilePath(Path.Combine("Startup", "DesktopProgramRunner.cs")));
             int startupSetupIndex = program.IndexOf(
-                "PrepareStartupEnvironmentAsync(startupOptions",
+                "PrepareStartupEnvironment(startupOptions)",
                 StringComparison.Ordinal);
             int pathResolverIndex = program.IndexOf(
                 "DesktopStartupPathResolver.Resolve(startupOptions)",

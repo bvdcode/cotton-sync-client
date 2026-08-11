@@ -1,6 +1,8 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using Cotton.Sync.Desktop.Startup;
+
 namespace Cotton.Sync.Desktop.Tests.Startup
 {
     public class DesktopSingleInstanceStartupContractTests
@@ -8,7 +10,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void Program_RequestsExistingInstanceActivationWhenLockIsHeld()
         {
-            string program = File.ReadAllText(GetDesktopFilePath("Program.cs"));
+            string program = File.ReadAllText(GetDesktopFilePath(Path.Combine("Startup", "DesktopProgramRunner.cs")));
             int lockHeldIndex = program.IndexOf("singleInstance is null", StringComparison.Ordinal);
             int hiddenLaunchCheckIndex = program.IndexOf("!startupOptions.StartMinimizedToTray", StringComparison.Ordinal);
             int requestShowIndex = program.IndexOf("TryRequestShowAsync(paths.SingleInstanceLockPath)", StringComparison.Ordinal);
@@ -26,7 +28,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void Program_HoldsInstallerRuntimeMutexForWindowsSetupDetection()
         {
-            string program = File.ReadAllText(GetDesktopFilePath("Program.cs"));
+            string program = File.ReadAllText(GetDesktopFilePath(Path.Combine("Startup", "DesktopProgramRunner.cs")));
             string installerMutex = File.ReadAllText(GetDesktopFilePath(Path.Combine("Platform", "DesktopInstallerRuntimeMutex.cs")));
 
             Assert.Multiple(() =>
@@ -41,25 +43,25 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void Program_InstallsTraceAndCrashLoggingBeforeCommandLineModes()
         {
-            string program = File.ReadAllText(GetDesktopFilePath("Program.cs"));
+            string program = File.ReadAllText(GetDesktopFilePath(Path.Combine("Startup", "DesktopProgramRunner.cs")));
             int traceLoggingIndex = program.IndexOf("DesktopTraceLogging.Install(paths)", StringComparison.Ordinal);
             int crashReporterIndex = program.IndexOf("DesktopUnhandledExceptionReporter.Install()", StringComparison.Ordinal);
-            int selfTestIndex = program.IndexOf("startupOptions.RunSelfTest", StringComparison.Ordinal);
-            int exportIndex = program.IndexOf("startupOptions.ExportDiagnostics", StringComparison.Ordinal);
+            int commandResolverIndex = program.IndexOf(
+                "DesktopStartupCommandResolver.Resolve(startupOptions)",
+                StringComparison.Ordinal);
 
             Assert.Multiple(() =>
             {
                 Assert.That(traceLoggingIndex, Is.GreaterThanOrEqualTo(0));
                 Assert.That(crashReporterIndex, Is.GreaterThan(traceLoggingIndex));
-                Assert.That(selfTestIndex, Is.GreaterThan(crashReporterIndex));
-                Assert.That(exportIndex, Is.GreaterThan(crashReporterIndex));
+                Assert.That(commandResolverIndex, Is.GreaterThan(crashReporterIndex));
             });
         }
 
         [Test]
         public void Program_AppliesPendingUpdateBeforeSingleInstanceGuard()
         {
-            string program = File.ReadAllText(GetDesktopFilePath("Program.cs"));
+            string program = File.ReadAllText(GetDesktopFilePath(Path.Combine("Startup", "DesktopProgramRunner.cs")));
             int pendingUpdateIndex = program.IndexOf("DesktopPendingUpdateStartup.TryStartPendingUpdate", StringComparison.Ordinal);
             int singleInstanceIndex = program.IndexOf("DesktopSingleInstanceGuard", StringComparison.Ordinal);
 
@@ -73,57 +75,64 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void Program_TreatsWindowsVirtualFilesSmokeAsHeadlessCommandMode()
         {
-            string program = File.ReadAllText(GetDesktopFilePath("Program.cs"));
+            string program = File.ReadAllText(GetDesktopFilePath(Path.Combine("Startup", "DesktopProgramRunner.cs")));
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(["--windows-virtual-files-smoke"]);
             int pendingUpdateIndex = program.IndexOf("DesktopPendingUpdateStartup.TryStartPendingUpdate", StringComparison.Ordinal);
-            int commandIndex = program.IndexOf("startupOptions.RunWindowsVirtualFilesSmoke", StringComparison.Ordinal);
-            int runnerIndex = program.IndexOf("RunWindowsVirtualFilesSmokeAsync", StringComparison.Ordinal);
+            int commandResolverIndex = program.IndexOf(
+                "DesktopStartupCommandResolver.Resolve(startupOptions)",
+                StringComparison.Ordinal);
+            int commandRunnerIndex = program.IndexOf("return RunCommand(command", StringComparison.Ordinal);
             int singleInstanceIndex = program.IndexOf("DesktopSingleInstanceGuard", StringComparison.Ordinal);
 
             Assert.Multiple(() =>
             {
-                Assert.That(commandIndex, Is.GreaterThanOrEqualTo(0));
-                Assert.That(commandIndex, Is.LessThan(pendingUpdateIndex));
-                Assert.That(runnerIndex, Is.GreaterThan(pendingUpdateIndex));
-                Assert.That(runnerIndex, Is.LessThan(singleInstanceIndex));
+                Assert.That(
+                    DesktopStartupCommandResolver.Resolve(options),
+                    Is.EqualTo(DesktopStartupCommand.WindowsVirtualFilesSmoke));
+                Assert.That(commandResolverIndex, Is.GreaterThanOrEqualTo(0));
+                Assert.That(commandResolverIndex, Is.LessThan(pendingUpdateIndex));
+                Assert.That(commandRunnerIndex, Is.GreaterThan(pendingUpdateIndex));
+                Assert.That(commandRunnerIndex, Is.LessThan(singleInstanceIndex));
+                Assert.That(program, Does.Contain("DesktopStartupCommand.WindowsVirtualFilesSmoke"));
+                Assert.That(program, Does.Contain("RunWindowsVirtualFilesSmokeAsync"));
             });
         }
 
         [Test]
         public void Program_TreatsSelfTestAndDiagnosticsExportAsHeadlessCommandModes()
         {
-            string program = File.ReadAllText(GetDesktopFilePath("Program.cs"));
-            int selfTestIndex = program.IndexOf("startupOptions.RunSelfTest", StringComparison.Ordinal);
-            int selfTestRunnerIndex = program.IndexOf("RunSelfTestAsync(paths, startupOptions, Console.Out)", StringComparison.Ordinal);
-            int exportIndex = program.IndexOf("startupOptions.ExportDiagnostics", StringComparison.Ordinal);
-            int exportRunnerIndex = program.IndexOf("RunExportDiagnosticsAsync(paths, startupOptions, Console.Out)", StringComparison.Ordinal);
-            int singleInstanceIndex = program.IndexOf("DesktopSingleInstanceGuard", StringComparison.Ordinal);
+            string program = File.ReadAllText(GetDesktopFilePath(Path.Combine("Startup", "DesktopProgramRunner.cs")));
+            DesktopStartupOptions selfTestOptions = DesktopStartupOptions.Parse(["--self-test"]);
+            DesktopStartupOptions exportOptions = DesktopStartupOptions.Parse(["--export-diagnostics"]);
 
             Assert.Multiple(() =>
             {
-                Assert.That(selfTestIndex, Is.GreaterThanOrEqualTo(0));
-                Assert.That(selfTestRunnerIndex, Is.GreaterThan(selfTestIndex));
-                Assert.That(selfTestRunnerIndex, Is.LessThan(singleInstanceIndex));
-                Assert.That(exportIndex, Is.GreaterThanOrEqualTo(0));
-                Assert.That(exportRunnerIndex, Is.GreaterThan(exportIndex));
-                Assert.That(exportRunnerIndex, Is.LessThan(singleInstanceIndex));
+                Assert.That(
+                    DesktopStartupCommandResolver.Resolve(selfTestOptions),
+                    Is.EqualTo(DesktopStartupCommand.SelfTest));
+                Assert.That(
+                    DesktopStartupCommandResolver.Resolve(exportOptions),
+                    Is.EqualTo(DesktopStartupCommand.ExportDiagnostics));
+                Assert.That(program, Does.Contain("DesktopStartupCommand.SelfTest"));
+                Assert.That(program, Does.Contain("RunSelfTestAsync"));
+                Assert.That(program, Does.Contain("DesktopStartupCommand.ExportDiagnostics"));
+                Assert.That(program, Does.Contain("RunExportDiagnosticsAsync"));
             });
         }
 
         [Test]
         public void Program_TreatsSocketCleanupSmokeAsHeadlessCommandMode()
         {
-            string program = File.ReadAllText(GetDesktopFilePath("Program.cs"));
-            int pendingUpdateIndex = program.IndexOf("DesktopPendingUpdateStartup.TryStartPendingUpdate", StringComparison.Ordinal);
-            int commandIndex = program.IndexOf("startupOptions.RunSocketCleanupSmoke", StringComparison.Ordinal);
-            int runnerIndex = program.IndexOf("RunSocketCleanupSmokeAsync", StringComparison.Ordinal);
-            int singleInstanceIndex = program.IndexOf("DesktopSingleInstanceGuard", StringComparison.Ordinal);
+            string program = File.ReadAllText(GetDesktopFilePath(Path.Combine("Startup", "DesktopProgramRunner.cs")));
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(["--socket-cleanup-smoke"]);
 
             Assert.Multiple(() =>
             {
-                Assert.That(commandIndex, Is.GreaterThanOrEqualTo(0));
-                Assert.That(commandIndex, Is.LessThan(pendingUpdateIndex));
-                Assert.That(runnerIndex, Is.GreaterThan(pendingUpdateIndex));
-                Assert.That(runnerIndex, Is.LessThan(singleInstanceIndex));
+                Assert.That(
+                    DesktopStartupCommandResolver.Resolve(options),
+                    Is.EqualTo(DesktopStartupCommand.SocketCleanupSmoke));
+                Assert.That(program, Does.Contain("DesktopStartupCommand.SocketCleanupSmoke"));
+                Assert.That(program, Does.Contain("RunSocketCleanupSmokeAsync"));
             });
         }
 

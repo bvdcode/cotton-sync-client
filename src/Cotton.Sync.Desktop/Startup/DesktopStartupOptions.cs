@@ -9,273 +9,162 @@ namespace Cotton.Sync.Desktop.Startup
 {
     internal class DesktopStartupOptions
     {
-        private DesktopStartupOptions(
-            Uri? serverUrl,
-            string? username,
-            string? dataDirectory,
-            bool startMinimizedToTray,
-            bool runSelfTest,
-            bool exportDiagnostics,
-            bool exportPrivateSupportDiagnostics,
-            bool cleanupCloudFiles,
-            bool runWindowsVirtualFilesSmoke,
-            bool runLiveSyncSmoke,
-            bool runUpdateDiscoverySmoke,
-            bool runUpdateInstallSmoke,
-            bool runShellShareLinkSmoke,
-            bool runSocketCleanupSmoke,
-            bool printVersion,
-            string? shellShareLinkTargetPath,
-            string? shellCopyShareLinkTargetPath,
-            DesktopVisualSmokeScenario? visualSmokeScenario,
-            double? visualSmokeScale,
-            Uri? updateManifestUri,
-            string? expectedUpdateVersion,
-            string? updateInstallerPath,
-            TimeSpan windowsVirtualFilesSmokeHoldAfterPlaceholder,
-            string? windowsVirtualFilesSmokePhase,
-            int? windowsVirtualFilesSmokePlaceholderCount,
-            TimeSpan liveSyncSmokeApprovalHold,
-            bool liveSyncSmokePreserveExistingLocalFiles,
-            int? liveSyncSmokeSeedFileCount,
-            string? localRoot,
-            string? secondLocalRoot,
-            string? remotePath,
-            SyncPairMode syncMode,
-            string? syncModeError)
+        private DesktopStartupOptions()
         {
-            ServerUrl = serverUrl;
-            Username = username;
-            DataDirectory = dataDirectory;
-            StartMinimizedToTray = startMinimizedToTray;
-            RunSelfTest = runSelfTest;
-            ExportDiagnostics = exportDiagnostics;
-            ExportPrivateSupportDiagnostics = exportPrivateSupportDiagnostics;
-            CleanupCloudFiles = cleanupCloudFiles;
-            RunWindowsVirtualFilesSmoke = runWindowsVirtualFilesSmoke;
-            RunLiveSyncSmoke = runLiveSyncSmoke;
-            RunUpdateDiscoverySmoke = runUpdateDiscoverySmoke;
-            RunUpdateInstallSmoke = runUpdateInstallSmoke;
-            RunShellShareLinkSmoke = runShellShareLinkSmoke;
-            RunSocketCleanupSmoke = runSocketCleanupSmoke;
-            PrintVersion = printVersion;
-            ShellShareLinkTargetPath = shellShareLinkTargetPath;
-            ShellCopyShareLinkTargetPath = shellCopyShareLinkTargetPath;
-            VisualSmokeScenario = visualSmokeScenario;
-            VisualSmokeScale = visualSmokeScale;
-            UpdateManifestUri = updateManifestUri;
-            ExpectedUpdateVersion = expectedUpdateVersion;
-            UpdateInstallerPath = updateInstallerPath;
-            WindowsVirtualFilesSmokeHoldAfterPlaceholder = windowsVirtualFilesSmokeHoldAfterPlaceholder;
-            WindowsVirtualFilesSmokePhase = windowsVirtualFilesSmokePhase;
-            WindowsVirtualFilesSmokePlaceholderCount = windowsVirtualFilesSmokePlaceholderCount;
-            LiveSyncSmokeApprovalHold = liveSyncSmokeApprovalHold;
-            LiveSyncSmokePreserveExistingLocalFiles = liveSyncSmokePreserveExistingLocalFiles;
-            LiveSyncSmokeSeedFileCount = liveSyncSmokeSeedFileCount;
-            LocalRoot = localRoot;
-            SecondLocalRoot = secondLocalRoot;
-            RemotePath = remotePath;
-            SyncMode = syncMode;
-            SyncModeError = syncModeError;
         }
 
-        public static DesktopStartupOptions Empty { get; } = new(
-            null,
-            null,
-            null,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            TimeSpan.Zero,
-            null,
-            null,
-            TimeSpan.Zero,
-            false,
-            null,
-            null,
-            null,
-            null,
-            SyncPairMode.FullMirror,
-            null);
+        public static DesktopStartupOptions Empty { get; } = new();
 
-        public Uri? ServerUrl { get; }
+        public Uri? ServerUrl { get; private init; }
 
-        public string? Username { get; }
+        public string? Username { get; private init; }
 
-        public string? DataDirectory { get; }
+        public string? DataDirectory { get; private init; }
 
-        public bool StartMinimizedToTray { get; }
+        public bool StartMinimizedToTray { get; private init; }
 
-        public bool RunSelfTest { get; }
+        public bool RunSelfTest { get; private init; }
 
-        public bool ExportDiagnostics { get; }
+        public bool ExportDiagnostics { get; private init; }
 
-        public bool ExportPrivateSupportDiagnostics { get; }
+        public bool ExportPrivateSupportDiagnostics { get; private init; }
 
-        public bool CleanupCloudFiles { get; }
+        public bool CleanupCloudFiles { get; private init; }
 
-        public bool RunWindowsVirtualFilesSmoke { get; }
+        public bool RunWindowsVirtualFilesSmoke { get; private init; }
 
-        public bool RunLiveSyncSmoke { get; }
+        public bool RunLiveSyncSmoke { get; private init; }
 
-        public bool RunUpdateDiscoverySmoke { get; }
+        public bool RunUpdateDiscoverySmoke { get; private init; }
 
-        public bool RunUpdateInstallSmoke { get; }
+        public bool RunUpdateInstallSmoke { get; private init; }
 
-        public bool RunShellShareLinkSmoke { get; }
+        public bool RunShellShareLinkSmoke { get; private init; }
 
-        public bool RunSocketCleanupSmoke { get; }
+        public bool RunSocketCleanupSmoke { get; private init; }
 
-        public bool PrintVersion { get; }
+        public bool PrintVersion { get; private init; }
 
-        public string? ShellShareLinkTargetPath { get; }
+        public string? ShellShareLinkTargetPath { get; private init; }
 
-        public string? ShellCopyShareLinkTargetPath { get; }
+        public string? ShellCopyShareLinkTargetPath { get; private init; }
 
-        public DesktopVisualSmokeScenario? VisualSmokeScenario { get; }
+        public DesktopVisualSmokeScenario? VisualSmokeScenario { get; private init; }
 
-        public double? VisualSmokeScale { get; }
+        public double? VisualSmokeScale { get; private init; }
 
-        public Uri? UpdateManifestUri { get; }
+        public Uri? UpdateManifestUri { get; private init; }
 
-        public string? ExpectedUpdateVersion { get; }
+        public string? ExpectedUpdateVersion { get; private init; }
 
-        public string? UpdateInstallerPath { get; }
+        public string? UpdateInstallerPath { get; private init; }
 
-        public TimeSpan WindowsVirtualFilesSmokeHoldAfterPlaceholder { get; }
+        public TimeSpan WindowsVirtualFilesSmokeHoldAfterPlaceholder { get; private init; }
 
-        public string? WindowsVirtualFilesSmokePhase { get; }
+        public string? WindowsVirtualFilesSmokePhase { get; private init; }
 
-        public int? WindowsVirtualFilesSmokePlaceholderCount { get; }
+        public int? WindowsVirtualFilesSmokePlaceholderCount { get; private init; }
 
-        public TimeSpan LiveSyncSmokeApprovalHold { get; }
+        public TimeSpan LiveSyncSmokeApprovalHold { get; private init; }
 
-        public bool LiveSyncSmokePreserveExistingLocalFiles { get; }
+        public bool LiveSyncSmokePreserveExistingLocalFiles { get; private init; }
 
-        public int? LiveSyncSmokeSeedFileCount { get; }
+        public int? LiveSyncSmokeSeedFileCount { get; private init; }
 
-        public string? LocalRoot { get; }
+        public string? LocalRoot { get; private init; }
 
-        public string? SecondLocalRoot { get; }
+        public string? SecondLocalRoot { get; private init; }
 
-        public string? RemotePath { get; }
+        public string? RemotePath { get; private init; }
 
-        public SyncPairMode SyncMode { get; }
+        public SyncPairMode SyncMode { get; private init; } = SyncPairMode.FullMirror;
 
-        public string? SyncModeError { get; }
+        public string? SyncModeError { get; private init; }
 
         public static DesktopStartupOptions Parse(IReadOnlyList<string> args)
         {
             ArgumentNullException.ThrowIfNull(args);
-            string? serverUrl = ReadOption(args, "--server-url") ?? ReadOption(args, "--server");
-            string? username = ReadOption(args, "--username") ?? ReadOption(args, "--user");
-            string? dataDirectory = ReadOption(args, "--data-dir") ?? ReadOption(args, "--data-directory");
-            string? visualSmokeScenario = ReadOption(args, "--visual-smoke") ?? ReadOption(args, "--screenshot-state");
-            string? visualSmokeScale = ReadOption(args, "--visual-scale");
-            string? windowsVirtualFilesSmokeHoldAfterPlaceholder =
-                ReadOption(args, "--vfs-smoke-hold-after-placeholder-seconds");
-            string? windowsVirtualFilesSmokePhase = ReadOption(args, "--vfs-smoke-phase");
-            string? windowsVirtualFilesSmokePlaceholderCount =
-                ReadOption(args, "--vfs-smoke-placeholder-count") ?? ReadOption(args, "--vfs-smoke-file-count");
-            string? liveSyncSmokeApprovalHold = ReadOption(args, "--live-sync-smoke-approval-hold-seconds")
-                ?? ReadOption(args, "--desktop-live-sync-smoke-approval-hold-seconds");
-            string? liveSyncSmokeSeedFileCount = ReadOption(args, "--live-sync-smoke-seed-file-count");
-            string? localRoot = ReadOption(args, "--local-root");
-            string? secondLocalRoot = ReadOption(args, "--second-local-root");
-            string? remotePath = ReadOption(args, "--remote-path");
-            string? syncMode = ReadOption(args, "--sync-mode") ?? ReadOption(args, "--materialization-mode");
-            string? updateManifestUri = ReadOption(args, "--update-manifest-url")
-                ?? ReadOption(args, "--update-manifest-uri");
-            string? expectedUpdateVersion = ReadOption(args, "--expected-update-version")
-                ?? ReadOption(args, "--expected-latest-version");
-            string? updateInstallerPath = ReadOption(args, "--update-installer-path")
-                ?? ReadOption(args, "--installer-path");
-            string? shellShareLinkTargetPath = ReadOption(args, "--resolve-shell-share-link-target")
-                ?? ReadOption(args, "--shell-share-link-target");
-            string? shellCopyShareLinkTargetPath = ReadOption(args, "--copy-shell-share-link")
-                ?? ReadOption(args, "--copy-shell-share-link-target");
-            (SyncPairMode parsedSyncMode, string? syncModeError) = ParseSyncMode(syncMode);
+            string? visualSmokeScenario = ReadFirstOption(args, "--visual-smoke", "--screenshot-state");
             DesktopVisualSmokeScenario? parsedVisualSmokeScenario = ParseVisualSmokeScenario(visualSmokeScenario);
-            bool startMinimizedToTray = HasFlag(args, "--start-minimized")
-                || HasFlag(args, "--minimized")
-                || HasFlag(args, "--tray");
-            bool runSelfTest = HasFlag(args, "--self-test")
-                || HasFlag(args, "--smoke-test");
-            bool exportPrivateSupportDiagnostics = HasFlag(args, "--export-diagnostics-private")
-                || HasFlag(args, "--include-private-diagnostics")
-                || HasFlag(args, "--private-support-diagnostics");
-            bool exportDiagnostics = HasFlag(args, "--export-diagnostics")
-                || HasFlag(args, "--diagnostics")
-                || exportPrivateSupportDiagnostics;
-            bool cleanupCloudFiles = HasFlag(args, "--cleanup-cloud-files")
-                || HasFlag(args, "--cleanup-sync-roots");
-            bool runWindowsVirtualFilesSmoke = HasFlag(args, "--windows-virtual-files-smoke")
-                || HasFlag(args, "--vfs-smoke");
-            bool runLiveSyncSmoke = HasFlag(args, "--live-sync-smoke")
-                || HasFlag(args, "--desktop-live-sync-smoke");
-            bool runUpdateDiscoverySmoke = HasFlag(args, "--update-discovery-smoke")
-                || HasFlag(args, "--desktop-update-smoke");
-            bool runUpdateInstallSmoke = HasFlag(args, "--update-install-smoke")
-                || HasFlag(args, "--desktop-update-install-smoke");
-            bool runShellShareLinkSmoke = HasFlag(args, "--shell-share-link-smoke")
-                || HasFlag(args, "--desktop-shell-share-link-smoke");
-            bool runSocketCleanupSmoke = HasFlag(args, "--socket-cleanup-smoke")
-                || HasFlag(args, "--desktop-socket-cleanup-smoke");
-            bool liveSyncSmokePreserveExistingLocalFiles =
-                HasFlag(args, "--live-sync-smoke-preserve-existing-local-files");
-            bool printVersion = HasFlag(args, "--version")
-                || HasFlag(args, "-v")
-                || HasFlag(args, "version");
-            return new DesktopStartupOptions(
-                DesktopServerUrl.NormalizeOptional(serverUrl),
-                NormalizeOptional(username),
-                NormalizeOptional(dataDirectory),
-                startMinimizedToTray,
-                runSelfTest,
-                exportDiagnostics,
-                exportPrivateSupportDiagnostics,
-                cleanupCloudFiles,
-                runWindowsVirtualFilesSmoke,
-                runLiveSyncSmoke,
-                runUpdateDiscoverySmoke,
-                runUpdateInstallSmoke,
-                runShellShareLinkSmoke,
-                runSocketCleanupSmoke,
-                printVersion,
-                NormalizeOptional(shellShareLinkTargetPath),
-                NormalizeOptional(shellCopyShareLinkTargetPath),
-                parsedVisualSmokeScenario,
-                ParseVisualSmokeScale(visualSmokeScale, parsedVisualSmokeScenario),
-                ParseAbsoluteUri(updateManifestUri),
-                NormalizeOptional(expectedUpdateVersion),
-                NormalizeOptional(updateInstallerPath),
-                ParseNonNegativeSeconds(windowsVirtualFilesSmokeHoldAfterPlaceholder),
-                NormalizeOptional(windowsVirtualFilesSmokePhase),
-                ParsePositiveInt32(windowsVirtualFilesSmokePlaceholderCount),
-                ParseNonNegativeSeconds(liveSyncSmokeApprovalHold),
-                liveSyncSmokePreserveExistingLocalFiles,
-                ParsePositiveInt32(liveSyncSmokeSeedFileCount),
-                NormalizeOptional(localRoot),
-                NormalizeOptional(secondLocalRoot),
-                NormalizeOptional(remotePath),
-                parsedSyncMode,
-                syncModeError);
+            bool exportPrivateDiagnostics = HasAnyFlag(
+                args,
+                "--export-diagnostics-private",
+                "--include-private-diagnostics",
+                "--private-support-diagnostics");
+            (SyncPairMode syncMode, string? syncModeError) = ParseSyncMode(
+                ReadFirstOption(args, "--sync-mode", "--materialization-mode"));
+            return new DesktopStartupOptions
+            {
+                CleanupCloudFiles = HasAnyFlag(args, "--cleanup-cloud-files", "--cleanup-sync-roots"),
+                DataDirectory = NormalizeOptional(ReadFirstOption(args, "--data-dir", "--data-directory")),
+                ExpectedUpdateVersion = NormalizeOptional(
+                    ReadFirstOption(args, "--expected-update-version", "--expected-latest-version")),
+                ExportDiagnostics = exportPrivateDiagnostics
+                    || HasAnyFlag(args, "--export-diagnostics", "--diagnostics"),
+                ExportPrivateSupportDiagnostics = exportPrivateDiagnostics,
+                LiveSyncSmokeApprovalHold = ParseNonNegativeSeconds(ReadFirstOption(
+                    args,
+                    "--live-sync-smoke-approval-hold-seconds",
+                    "--desktop-live-sync-smoke-approval-hold-seconds")),
+                LiveSyncSmokePreserveExistingLocalFiles = HasFlag(
+                    args,
+                    "--live-sync-smoke-preserve-existing-local-files"),
+                LiveSyncSmokeSeedFileCount = ParsePositiveInt32(
+                    ReadOption(args, "--live-sync-smoke-seed-file-count")),
+                LocalRoot = NormalizeOptional(ReadOption(args, "--local-root")),
+                PrintVersion = HasAnyFlag(args, "--version", "-v", "version"),
+                RemotePath = NormalizeOptional(ReadOption(args, "--remote-path")),
+                RunLiveSyncSmoke = HasAnyFlag(args, "--live-sync-smoke", "--desktop-live-sync-smoke"),
+                RunSelfTest = HasAnyFlag(args, "--self-test", "--smoke-test"),
+                RunShellShareLinkSmoke = HasAnyFlag(
+                    args,
+                    "--shell-share-link-smoke",
+                    "--desktop-shell-share-link-smoke"),
+                RunSocketCleanupSmoke = HasAnyFlag(
+                    args,
+                    "--socket-cleanup-smoke",
+                    "--desktop-socket-cleanup-smoke"),
+                RunUpdateDiscoverySmoke = HasAnyFlag(
+                    args,
+                    "--update-discovery-smoke",
+                    "--desktop-update-smoke"),
+                RunUpdateInstallSmoke = HasAnyFlag(
+                    args,
+                    "--update-install-smoke",
+                    "--desktop-update-install-smoke"),
+                RunWindowsVirtualFilesSmoke = HasAnyFlag(
+                    args,
+                    "--windows-virtual-files-smoke",
+                    "--vfs-smoke"),
+                SecondLocalRoot = NormalizeOptional(ReadOption(args, "--second-local-root")),
+                ServerUrl = DesktopServerUrl.NormalizeOptional(ReadFirstOption(args, "--server-url", "--server")),
+                ShellCopyShareLinkTargetPath = NormalizeOptional(
+                    ReadFirstOption(args, "--copy-shell-share-link", "--copy-shell-share-link-target")),
+                ShellShareLinkTargetPath = NormalizeOptional(
+                    ReadFirstOption(args, "--resolve-shell-share-link-target", "--shell-share-link-target")),
+                StartMinimizedToTray = HasAnyFlag(args, "--start-minimized", "--minimized", "--tray"),
+                SyncMode = syncMode,
+                SyncModeError = syncModeError,
+                UpdateInstallerPath = NormalizeOptional(
+                    ReadFirstOption(args, "--update-installer-path", "--installer-path")),
+                UpdateManifestUri = ParseAbsoluteUri(
+                    ReadFirstOption(args, "--update-manifest-url", "--update-manifest-uri")),
+                Username = NormalizeOptional(ReadFirstOption(args, "--username", "--user")),
+                VisualSmokeScale = ParseVisualSmokeScale(
+                    ReadOption(args, "--visual-scale"),
+                    parsedVisualSmokeScenario),
+                VisualSmokeScenario = parsedVisualSmokeScenario,
+                WindowsVirtualFilesSmokeHoldAfterPlaceholder = ParseNonNegativeSeconds(
+                    ReadOption(args, "--vfs-smoke-hold-after-placeholder-seconds")),
+                WindowsVirtualFilesSmokePhase = NormalizeOptional(ReadOption(args, "--vfs-smoke-phase")),
+                WindowsVirtualFilesSmokePlaceholderCount = ParsePositiveInt32(
+                    ReadFirstOption(args, "--vfs-smoke-placeholder-count", "--vfs-smoke-file-count")),
+            };
+        }
+
+        private static bool HasAnyFlag(IReadOnlyList<string> args, params string[] names)
+        {
+            return names.Any(name => HasFlag(args, name));
         }
 
         private static bool HasFlag(IReadOnlyList<string> args, string name)
@@ -336,6 +225,20 @@ namespace Cotton.Sync.Desktop.Startup
             return Enum.TryParse(enumName, ignoreCase: true, out DesktopVisualSmokeScenario scenario)
                 ? scenario
                 : null;
+        }
+
+        private static string? ReadFirstOption(IReadOnlyList<string> args, params string[] names)
+        {
+            foreach (string name in names)
+            {
+                string? value = ReadOption(args, name);
+                if (value is not null)
+                {
+                    return value;
+                }
+            }
+
+            return null;
         }
 
         private static double? ParseVisualSmokeScale(
