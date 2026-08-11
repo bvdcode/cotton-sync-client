@@ -15,6 +15,7 @@ namespace Cotton.Sync.Desktop.Updates
             "https://github.com/bvdcode/cotton-sync-client/releases/latest/download/release-manifest.json");
 
         private const string WindowsInstallerAssetName = "CottonSync-Windows-Setup.exe";
+        private const int DownloadBufferSize = 128 * 1024;
 
         private readonly HttpClient _httpClient;
         private readonly string _currentVersion;
@@ -127,85 +128,27 @@ namespace Cotton.Sync.Desktop.Updates
                 asset.Name,
                 asset.Url,
                 _updateCacheDirectory);
-            if (File.Exists(finalPath))
+            DesktopUpdateDownloadResult? cachedResult = await TryReuseCachedInstallerAsync(
+                    checkResult,
+                    asset,
+                    finalPath,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (cachedResult is not null)
             {
-                FileHashSnapshot existing = await HashFileAsync(finalPath, cancellationToken).ConfigureAwait(false);
-                if (string.Equals(existing.Sha256, asset.Sha256, StringComparison.OrdinalIgnoreCase)
-                    && existing.SizeBytes == asset.SizeBytes)
-                {
-                    Trace.TraceInformation(
-                        "Desktop update installer download reused cached file: version={0}, asset={1}, sizeBytes={2}.",
-                        checkResult.LatestVersion,
-                        asset.Name,
-                        existing.SizeBytes);
-                    return new DesktopUpdateDownloadResult(
-                        checkResult.Manifest,
-                        asset,
-                        finalPath,
-                        existing.Sha256,
-                        existing.SizeBytes);
-                }
-
-                File.Delete(finalPath);
+                return cachedResult;
             }
 
             string tempPath = finalPath + ".download";
-            if (File.Exists(tempPath))
-            {
-                File.Delete(tempPath);
-            }
+            DeleteFileIfExists(tempPath);
 
             try
             {
-                using HttpResponseMessage response = await SendWithRetryAsync(
-                        token => _httpClient.GetAsync(
-                            asset.Url,
-                            HttpCompletionOption.ResponseHeadersRead,
-                            token),
-                        cancellationToken)
+                await DownloadInstallerFileAsync(checkResult, asset, tempPath, progress, cancellationToken)
                     .ConfigureAwait(false);
-                response.EnsureSuccessStatusCode();
-                long? totalBytes = response.Content.Headers.ContentLength ?? asset.SizeBytes;
-                progress?.Report(new DesktopUpdateDownloadProgress(
-                    checkResult.LatestVersion.ToString(),
-                    asset.Name,
-                    0,
-                    totalBytes));
-                await using (Stream remote = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false))
-                await using (FileStream local = new(
-                    tempPath,
-                    FileMode.CreateNew,
-                    FileAccess.Write,
-                    FileShare.None,
-                    bufferSize: 1024 * 128,
-                    useAsync: true))
-                {
-                    await CopyToAsync(
-                            remote,
-                            local,
-                            checkResult.LatestVersion.ToString(),
-                            asset.Name,
-                            totalBytes,
-                            progress,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                }
 
                 FileHashSnapshot hash = await HashFileAsync(tempPath, cancellationToken).ConfigureAwait(false);
-                if (hash.SizeBytes != asset.SizeBytes)
-                {
-                    throw new InvalidDataException(
-                        "Downloaded update size "
-                        + hash.SizeBytes.ToString(CultureInfo.InvariantCulture)
-                        + " does not match manifest size "
-                        + asset.SizeBytes.ToString(CultureInfo.InvariantCulture)
-                        + ".");
-                }
-
-                if (!string.Equals(hash.Sha256, asset.Sha256, StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new InvalidDataException("Downloaded update SHA-256 does not match release manifest.");
-                }
+                ValidateDownloadedInstaller(asset, hash);
 
                 File.Move(tempPath, finalPath);
                 Trace.TraceInformation(
@@ -222,17 +165,106 @@ namespace Cotton.Sync.Desktop.Updates
             }
             catch
             {
-                if (File.Exists(tempPath))
-                {
-                    File.Delete(tempPath);
-                }
-
-                if (File.Exists(finalPath))
-                {
-                    File.Delete(finalPath);
-                }
+                DeleteFileIfExists(tempPath);
+                DeleteFileIfExists(finalPath);
 
                 throw;
+            }
+        }
+
+        private async Task<DesktopUpdateDownloadResult?> TryReuseCachedInstallerAsync(
+            DesktopUpdateCheckResult checkResult,
+            DesktopReleaseAsset asset,
+            string finalPath,
+            CancellationToken cancellationToken)
+        {
+            if (!File.Exists(finalPath))
+            {
+                return null;
+            }
+
+            FileHashSnapshot existing = await HashFileAsync(finalPath, cancellationToken).ConfigureAwait(false);
+            bool matchesManifest = string.Equals(existing.Sha256, asset.Sha256, StringComparison.OrdinalIgnoreCase)
+                && existing.SizeBytes == asset.SizeBytes;
+            if (!matchesManifest)
+            {
+                File.Delete(finalPath);
+                return null;
+            }
+
+            Trace.TraceInformation(
+                "Desktop update installer download reused cached file: version={0}, asset={1}, sizeBytes={2}.",
+                checkResult.LatestVersion,
+                asset.Name,
+                existing.SizeBytes);
+            return new DesktopUpdateDownloadResult(
+                checkResult.Manifest,
+                asset,
+                finalPath,
+                existing.Sha256,
+                existing.SizeBytes);
+        }
+
+        private async Task DownloadInstallerFileAsync(
+            DesktopUpdateCheckResult checkResult,
+            DesktopReleaseAsset asset,
+            string tempPath,
+            IProgress<DesktopUpdateDownloadProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            using HttpResponseMessage response = await SendWithRetryAsync(
+                    token => _httpClient.GetAsync(
+                        asset.Url,
+                        HttpCompletionOption.ResponseHeadersRead,
+                        token),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            long? totalBytes = response.Content.Headers.ContentLength ?? asset.SizeBytes;
+            string version = checkResult.LatestVersion.ToString();
+            progress?.Report(new DesktopUpdateDownloadProgress(version, asset.Name, 0, totalBytes));
+            await using Stream remote = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            await using FileStream local = new(
+                tempPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: DownloadBufferSize,
+                useAsync: true);
+            await CopyToAsync(
+                    remote,
+                    local,
+                    version,
+                    asset.Name,
+                    totalBytes,
+                    progress,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        private static void ValidateDownloadedInstaller(DesktopReleaseAsset asset, FileHashSnapshot hash)
+        {
+            if (hash.SizeBytes != asset.SizeBytes)
+            {
+                throw new InvalidDataException(
+                    "Downloaded update size "
+                    + hash.SizeBytes.ToString(CultureInfo.InvariantCulture)
+                    + " does not match manifest size "
+                    + asset.SizeBytes.ToString(CultureInfo.InvariantCulture)
+                    + ".");
+            }
+
+            if (!string.Equals(hash.Sha256, asset.Sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException("Downloaded update SHA-256 does not match release manifest.");
+            }
+        }
+
+        private static void DeleteFileIfExists(string path)
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
             }
         }
 
