@@ -1825,6 +1825,30 @@ namespace Cotton.Sync
                     ? null
                     : new Dictionary<string, RemoteDirectoryMaterializationRequest>(PathComparer);
             HashSet<string> streamedRemoteFileKeys = new(PathComparer);
+
+            Task DrainPendingFileWorkAsync(bool waitForOne)
+            {
+                return DrainCompletedInitialVirtualFilesAsync(
+                    pendingFileTasks,
+                    pendingFileStates,
+                    syncPair,
+                    options,
+                    result,
+                    startedAtUtc,
+                    getDiscoveredFiles,
+                    getDiscoveredDirectories,
+                    getExpectedItems,
+                    getCompletedFiles,
+                    setCompletedFiles,
+                    getCompletedDirectories,
+                    getLastPlaceholderProgressReportedAtUtc,
+                    setLastPlaceholderProgressReportedAtUtc,
+                    recordFileWorkResult,
+                    recordFileStateWrite,
+                    waitForOne,
+                    cancellationToken);
+            }
+
             try
             {
                 await foreach (InitialVirtualFilesPopulationItem item in reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
@@ -1839,26 +1863,7 @@ namespace Cotton.Sync
                                 syncPair,
                                 options,
                                 cancellationToken);
-                            await DrainCompletedInitialVirtualFilesAsync(
-                                    pendingFileTasks,
-                                    pendingFileStates,
-                                    syncPair,
-                                    options,
-                                    result,
-                                    startedAtUtc,
-                                    getDiscoveredFiles,
-                                    getDiscoveredDirectories,
-                                    getExpectedItems,
-                                    getCompletedFiles,
-                                    setCompletedFiles,
-                                    getCompletedDirectories,
-                                    getLastPlaceholderProgressReportedAtUtc,
-                                    setLastPlaceholderProgressReportedAtUtc,
-                                    recordFileWorkResult,
-                                    recordFileStateWrite,
-                                    waitForOne: false,
-                                    cancellationToken)
-                                .ConfigureAwait(false);
+                            await DrainPendingFileWorkAsync(waitForOne: false).ConfigureAwait(false);
                             await CreateRemoteBackedLocalDirectoryAsync(
                                     syncPair,
                                     directoryItem.Directory.RelativePath,
@@ -1920,26 +1925,7 @@ namespace Cotton.Sync
 
                                 if (pendingFileTasks.Count >= options.InitialVirtualFilesPlaceholderConcurrency)
                                 {
-                                    await DrainCompletedInitialVirtualFilesAsync(
-                                            pendingFileTasks,
-                                            pendingFileStates,
-                                            syncPair,
-                                            options,
-                                            result,
-                                            startedAtUtc,
-                                            getDiscoveredFiles,
-                                            getDiscoveredDirectories,
-                                            getExpectedItems,
-                                            getCompletedFiles,
-                                            setCompletedFiles,
-                                            getCompletedDirectories,
-                                            getLastPlaceholderProgressReportedAtUtc,
-                                            setLastPlaceholderProgressReportedAtUtc,
-                                            recordFileWorkResult,
-                                            recordFileStateWrite,
-                                            waitForOne: true,
-                                            cancellationToken)
-                                        .ConfigureAwait(false);
+                                    await DrainPendingFileWorkAsync(waitForOne: true).ConfigureAwait(false);
                                 }
 
                                 break;
@@ -1976,26 +1962,7 @@ namespace Cotton.Sync
                     cancellationToken);
                 while (pendingFileTasks.Count > 0)
                 {
-                    await DrainCompletedInitialVirtualFilesAsync(
-                            pendingFileTasks,
-                            pendingFileStates,
-                            syncPair,
-                            options,
-                            result,
-                            startedAtUtc,
-                            getDiscoveredFiles,
-                            getDiscoveredDirectories,
-                            getExpectedItems,
-                            getCompletedFiles,
-                            setCompletedFiles,
-                            getCompletedDirectories,
-                            getLastPlaceholderProgressReportedAtUtc,
-                            setLastPlaceholderProgressReportedAtUtc,
-                            recordFileWorkResult,
-                            recordFileStateWrite,
-                            waitForOne: true,
-                            cancellationToken)
-                        .ConfigureAwait(false);
+                    await DrainPendingFileWorkAsync(waitForOne: true).ConfigureAwait(false);
                 }
 
                 await DeleteMissingInitialVirtualFilesRemoteDeletesAsync(

@@ -6,6 +6,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using Cotton.Auth;
+using Cotton.Nodes;
 
 namespace Cotton.Sync.Cli.Tests.TestSupport
 {
@@ -85,6 +87,64 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
             HttpListenerResponse response,
             HttpRequestSnapshot request,
             CancellationToken cancellationToken);
+
+        protected static async Task<bool> TryWriteCommonResponseAsync(
+            HttpListenerResponse response,
+            HttpRequestSnapshot request,
+            Guid remoteRootId,
+            NodeContentDto rootContent,
+            CancellationToken cancellationToken)
+        {
+            if (request.Method == HttpMethod.Post && request.PathAndQuery == "/api/v1/auth/login")
+            {
+                await WriteJsonAsync(response, HttpStatusCode.OK, new TokenPairDto
+                {
+                    AccessToken = "access-token",
+                    RefreshToken = "refresh-token",
+                }, cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+
+            if (request.Method == HttpMethod.Post
+                && request.PathAndQuery == "/api/v1/auth/logout?refreshToken=refresh-token")
+            {
+                response.StatusCode = (int)HttpStatusCode.NoContent;
+                return true;
+            }
+
+            if (!string.Equals(request.AuthorizationParameter, "access-token", StringComparison.Ordinal))
+            {
+                await WriteTextAsync(response, HttpStatusCode.Unauthorized, "Missing bearer token.", cancellationToken)
+                    .ConfigureAwait(false);
+                return true;
+            }
+
+            if (request.Method == HttpMethod.Get
+                && request.PathAndQuery == "/api/v1/layouts/nodes/" + remoteRootId.ToString("D"))
+            {
+                await WriteJsonAsync(response, HttpStatusCode.OK, new NodeDto
+                {
+                    Id = remoteRootId,
+                    LayoutId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+                    ParentId = null,
+                    Name = "root",
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                }, cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+
+            if (request.Method == HttpMethod.Get
+                && request.PathAndQuery == "/api/v1/layouts/nodes/"
+                    + remoteRootId.ToString("D")
+                    + "/children?page=1&pageSize=500&depth=0")
+            {
+                await WriteJsonAsync(response, HttpStatusCode.OK, rootContent, cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+
+            return false;
+        }
 
         protected static async Task WriteJsonAsync(
             HttpListenerResponse response,

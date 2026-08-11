@@ -809,52 +809,20 @@ namespace Cotton.Sync.Desktop.Platform
             SyncRunRequest request,
             CancellationToken cancellationToken)
         {
-            if (!TryNormalizePath(relativePath, out string normalizedPath))
-            {
-                return false;
-            }
-
-            SyncStateEntry? state = await _stateStore
-                .GetAsync(syncPair.Id.ToString("D"), normalizedPath, cancellationToken)
+            (string NormalizedPath, string FullPath, SyncStateEntry State, WindowsVirtualFileDiskState DiskState)?
+                context = await TryResolveTrackedVirtualFileAsync(syncPair, relativePath, cancellationToken)
                 .ConfigureAwait(false);
-            if (!IsTrackedVirtualFile(state))
+            if (!context.HasValue)
             {
                 return false;
             }
 
-            string fullPath;
-            try
+            (string normalizedPath, string fullPath, SyncStateEntry state, WindowsVirtualFileDiskState diskState) =
+                context.Value;
+            if (!IsManualAlwaysKeepCandidate(diskState.Attributes, state.PlaceholderHydrationState))
             {
-                fullPath = ResolveFullPath(syncPair.LocalRootPath, normalizedPath);
-            }
-            catch (ArgumentException)
-            {
-                return false;
-            }
-            catch (NotSupportedException)
-            {
-                return false;
-            }
-
-            WindowsVirtualFileDiskState? diskState;
-            try
-            {
-                diskState = _readDiskState(fullPath);
-            }
-            catch (IOException)
-            {
-                return false;
-            }
-            catch (UnauthorizedAccessException)
-            {
-                return false;
-            }
-
-            if (diskState is null || !IsManualAlwaysKeepCandidate(diskState.Attributes, state!.PlaceholderHydrationState))
-            {
-                if (diskState is not null
-                    && HasRawAttribute(diskState.Attributes, FileAttributePinned)
-                    && IsHydrationComplete(diskState.Attributes, state!.PlaceholderHydrationState))
+                if (HasRawAttribute(diskState.Attributes, FileAttributePinned)
+                    && IsHydrationComplete(diskState.Attributes, state.PlaceholderHydrationState))
                 {
                     _diagnostics.Record(
                         "manual-always-keep",
@@ -885,7 +853,7 @@ namespace Cotton.Sync.Desktop.Platform
                         syncPair,
                         normalizedPath,
                         fullPath,
-                        state!,
+                        state,
                         persistState: true,
                         suppressProviderWrite: true,
                         cancellationToken: cancellationToken)
@@ -1180,61 +1148,21 @@ namespace Cotton.Sync.Desktop.Platform
             Action<string>? dehydrationStarting,
             CancellationToken cancellationToken)
         {
-            string normalizedPath;
-            try
-            {
-                normalizedPath = SyncPath.Normalize(relativePath);
-            }
-            catch (ArgumentException)
-            {
-                return false;
-            }
-
-            SyncStateEntry? state = await _stateStore
-                .GetAsync(syncPair.Id.ToString("D"), normalizedPath, cancellationToken)
+            (string NormalizedPath, string FullPath, SyncStateEntry State, WindowsVirtualFileDiskState DiskState)?
+                context = await TryResolveTrackedVirtualFileAsync(syncPair, relativePath, cancellationToken)
                 .ConfigureAwait(false);
-            if (!IsTrackedVirtualFile(state))
+            if (!context.HasValue)
             {
                 return false;
             }
 
-            string fullPath;
-            try
-            {
-                fullPath = ResolveFullPath(syncPair.LocalRootPath, normalizedPath);
-            }
-            catch (ArgumentException)
-            {
-                return false;
-            }
-            catch (NotSupportedException)
-            {
-                return false;
-            }
-
-            WindowsVirtualFileDiskState? diskState;
-            try
-            {
-                diskState = _readDiskState(fullPath);
-            }
-            catch (IOException)
-            {
-                return false;
-            }
-            catch (UnauthorizedAccessException)
-            {
-                return false;
-            }
-
-            if (diskState is null)
-            {
-                return false;
-            }
+            (string normalizedPath, string fullPath, SyncStateEntry state, WindowsVirtualFileDiskState diskState) =
+                context.Value;
 
             if (IsCompletedManualFreeUpSpaceCandidate(diskState.Attributes))
             {
                 dehydrationStarting?.Invoke(normalizedPath);
-                await MarkDehydratedAsync(state!, cancellationToken).ConfigureAwait(false);
+                await MarkDehydratedAsync(state, cancellationToken).ConfigureAwait(false);
                 _diagnostics.Record(
                     "manual-free-up-space",
                     "completed",
@@ -1246,7 +1174,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             if (IsManualPinRemovalFileCandidate(diskState.Attributes)
-                && MaterializedBaselineMatches(state!, diskState))
+                && MaterializedBaselineMatches(state, diskState))
             {
                 _diagnostics.Record(
                     "manual-always-keep",
@@ -1258,16 +1186,16 @@ namespace Cotton.Sync.Desktop.Platform
                 return true;
             }
 
-            if (IsCompletedOnDemandHydrationCandidate(state!, diskState.Attributes))
+            if (IsCompletedOnDemandHydrationCandidate(state, diskState.Attributes))
             {
-                if (!SizeMatchesBaseline(state!, diskState.Length)
-                    || !await ContentMatchesRemoteAsync(state!, normalizedPath, fullPath, diskState, cancellationToken)
+                if (!SizeMatchesBaseline(state, diskState.Length)
+                    || !await ContentMatchesRemoteAsync(state, normalizedPath, fullPath, diskState, cancellationToken)
                         .ConfigureAwait(false))
                 {
                     return false;
                 }
 
-                state!.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
+                state.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
                 state.LocalContentHash = state.RemoteContentHash;
                 state.LocalLastWriteUtc = diskState.LastWriteUtc;
                 state.LocalSizeBytes = diskState.Length;
@@ -1288,13 +1216,13 @@ namespace Cotton.Sync.Desktop.Platform
                 return false;
             }
 
-            if (!SizeMatchesBaseline(state!, diskState.Length))
+            if (!SizeMatchesBaseline(state, diskState.Length))
             {
                 RecordSkipped(syncPair, normalizedPath, "Local size differs from the tracked remote file.");
                 return false;
             }
 
-            if (!await ContentMatchesRemoteAsync(state!, normalizedPath, fullPath, diskState, cancellationToken)
+            if (!await ContentMatchesRemoteAsync(state, normalizedPath, fullPath, diskState, cancellationToken)
                     .ConfigureAwait(false))
             {
                 RecordSkipped(syncPair, normalizedPath, "Local content differs from the tracked remote file.");
@@ -1304,7 +1232,7 @@ namespace Cotton.Sync.Desktop.Platform
             dehydrationStarting?.Invoke(normalizedPath);
             _localChangeSuppression?.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, normalizedPath);
             _cloudFiles.DehydratePlaceholder(syncPair, normalizedPath);
-            await MarkDehydratedAsync(state!, cancellationToken).ConfigureAwait(false);
+            await MarkDehydratedAsync(state, cancellationToken).ConfigureAwait(false);
             _diagnostics.Record(
                 "manual-free-up-space",
                 "completed",
@@ -1313,6 +1241,48 @@ namespace Cotton.Sync.Desktop.Platform
                 normalizedPath,
                 "Explorer Free up space dehydrated the tracked placeholder.");
             return true;
+        }
+
+        private async Task<(
+            string NormalizedPath,
+            string FullPath,
+            SyncStateEntry State,
+            WindowsVirtualFileDiskState DiskState)?> TryResolveTrackedVirtualFileAsync(
+            SyncPairSettings syncPair,
+            string relativePath,
+            CancellationToken cancellationToken)
+        {
+            if (!TryNormalizePath(relativePath, out string normalizedPath))
+            {
+                return null;
+            }
+
+            SyncStateEntry? state = await _stateStore
+                .GetAsync(syncPair.Id.ToString("D"), normalizedPath, cancellationToken)
+                .ConfigureAwait(false);
+            if (state is null || !IsTrackedVirtualFile(state))
+            {
+                return null;
+            }
+
+            string fullPath;
+            try
+            {
+                fullPath = ResolveFullPath(syncPair.LocalRootPath, normalizedPath);
+            }
+            catch (ArgumentException)
+            {
+                return null;
+            }
+            catch (NotSupportedException)
+            {
+                return null;
+            }
+
+            WindowsVirtualFileDiskState? diskState = TryReadDiskState(fullPath);
+            return diskState is null
+                ? null
+                : (normalizedPath, fullPath, state, diskState);
         }
 
         private async Task MarkDehydratedAsync(

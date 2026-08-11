@@ -778,10 +778,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
             finally
             {
@@ -792,20 +789,7 @@ namespace Cotton.Sync.Desktop.Startup
                 }
             }
 
-            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
-            {
-                await output.WriteLineAsync(
-                    "Diagnostic: "
-                    + item.Operation
-                    + " "
-                    + item.Status
-                    + " "
-                    + CleanSingleLine(item.Details))
-                    .ConfigureAwait(false);
-            }
-
-            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-            return failures == 0 ? 0 : 1;
+            return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
         }
 
         private static async Task<int> RunProviderMetadataUserEditAsync(
@@ -909,10 +893,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
             finally
             {
@@ -1015,10 +996,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
             finally
             {
@@ -1126,10 +1104,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
             finally
             {
@@ -1339,10 +1314,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
             finally
             {
@@ -1630,10 +1602,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
             finally
             {
@@ -1641,20 +1610,7 @@ namespace Cotton.Sync.Desktop.Startup
                 failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
             }
 
-            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
-            {
-                await output.WriteLineAsync(
-                    "Diagnostic: "
-                    + item.Operation
-                    + " "
-                    + item.Status
-                    + " "
-                    + CleanSingleLine(item.Details))
-                    .ConfigureAwait(false);
-            }
-
-            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-            return failures == 0 ? 0 : 1;
+            return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
         }
 
         private static async Task<int> RunExplorerAlwaysKeepAsync(
@@ -1961,10 +1917,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
             finally
             {
@@ -1972,20 +1925,7 @@ namespace Cotton.Sync.Desktop.Startup
                 failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
             }
 
-            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
-            {
-                await output.WriteLineAsync(
-                    "Diagnostic: "
-                    + item.Operation
-                    + " "
-                    + item.Status
-                    + " "
-                    + CleanSingleLine(item.Details))
-                    .ConfigureAwait(false);
-            }
-
-            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-            return failures == 0 ? 0 : 1;
+            return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
         }
 
         private static async Task<int> RunExplorerAlwaysKeepDuringPopulationAsync(
@@ -2383,10 +2323,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
             finally
             {
@@ -2409,20 +2346,7 @@ namespace Cotton.Sync.Desktop.Startup
                 failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
             }
 
-            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
-            {
-                await output.WriteLineAsync(
-                    "Diagnostic: "
-                    + item.Operation
-                    + " "
-                    + item.Status
-                    + " "
-                    + CleanSingleLine(item.Details))
-                    .ConfigureAwait(false);
-            }
-
-            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-            return failures == 0 ? 0 : 1;
+            return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
         }
 
         private static async Task<int> RunNonEmptyPreservationAsync(
@@ -2671,10 +2595,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
             finally
             {
@@ -2683,20 +2604,7 @@ namespace Cotton.Sync.Desktop.Startup
                 failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
             }
 
-            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
-            {
-                await output.WriteLineAsync(
-                    "Diagnostic: "
-                    + item.Operation
-                    + " "
-                    + item.Status
-                    + " "
-                    + CleanSingleLine(item.Details))
-                    .ConfigureAwait(false);
-            }
-
-            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-            return failures == 0 ? 0 : 1;
+            return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
         }
 
         private static SyncStateEntry CreatePlaceholderState(
@@ -2961,10 +2869,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
             finally
             {
@@ -2972,20 +2877,7 @@ namespace Cotton.Sync.Desktop.Startup
                 failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
             }
 
-            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
-            {
-                await output.WriteLineAsync(
-                    "Diagnostic: "
-                    + item.Operation
-                    + " "
-                    + item.Status
-                    + " "
-                    + CleanSingleLine(item.Details))
-                    .ConfigureAwait(false);
-            }
-
-            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-            return failures == 0 ? 0 : 1;
+            return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
         }
 
         private static async Task<int> RunDesktopRootLifecycleAsync(
@@ -3261,10 +3153,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                        FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
             finally
             {
@@ -3292,20 +3181,7 @@ namespace Cotton.Sync.Desktop.Startup
                 }
             }
 
-            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
-            {
-                await output.WriteLineAsync(
-                    "Diagnostic: "
-                    + item.Operation
-                    + " "
-                    + item.Status
-                    + " "
-                    + CleanSingleLine(item.Details))
-                    .ConfigureAwait(false);
-            }
-
-            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-            return failures == 0 ? 0 : 1;
+            return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
         }
 
         private static async Task<int> RunDesktopSessionRestoreAsync(
@@ -3455,10 +3331,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                        FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
             finally
             {
@@ -3490,20 +3363,7 @@ namespace Cotton.Sync.Desktop.Startup
                 }
             }
 
-            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
-            {
-                await output.WriteLineAsync(
-                    "Diagnostic: "
-                    + item.Operation
-                    + " "
-                    + item.Status
-                    + " "
-                    + CleanSingleLine(item.Details))
-                    .ConfigureAwait(false);
-            }
-
-            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-            return failures == 0 ? 0 : 1;
+            return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
         }
 
         private static async Task<int> WaitForSessionRestoreSyncRootAsync(
@@ -3796,10 +3656,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
             finally
             {
@@ -3807,20 +3664,7 @@ namespace Cotton.Sync.Desktop.Startup
                 failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
             }
 
-            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
-            {
-                await output.WriteLineAsync(
-                    "Diagnostic: "
-                    + item.Operation
-                    + " "
-                    + item.Status
-                    + " "
-                    + CleanSingleLine(item.Details))
-                    .ConfigureAwait(false);
-            }
-
-            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-            return failures == 0 ? 0 : 1;
+            return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
         }
 
         private static SyncStateEntry CreateDirectoryState(SyncPairSettings syncPair, string relativePath)
@@ -4112,10 +3956,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
             finally
             {
@@ -4123,20 +3964,7 @@ namespace Cotton.Sync.Desktop.Startup
                 failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
             }
 
-            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
-            {
-                await output.WriteLineAsync(
-                    "Diagnostic: "
-                    + item.Operation
-                    + " "
-                    + item.Status
-                    + " "
-                    + CleanSingleLine(item.Details))
-                    .ConfigureAwait(false);
-            }
-
-            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-            return failures == 0 ? 0 : 1;
+            return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
         }
 
         private static async Task<int> RunInitialStreamingLoggingAsync(
@@ -4296,10 +4124,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
             finally
             {
@@ -4307,20 +4132,26 @@ namespace Cotton.Sync.Desktop.Startup
                 failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
             }
 
-            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
-            {
-                await output.WriteLineAsync(
-                    "Diagnostic: "
-                    + item.Operation
-                    + " "
-                    + item.Status
-                    + " "
-                    + CleanSingleLine(item.Details))
-                    .ConfigureAwait(false);
-            }
+            return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
+        }
 
-            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-            return failures == 0 ? 0 : 1;
+        private static async Task<int> RecordSmokeFailureAsync(
+            TextWriter output,
+            int failures,
+            Exception exception)
+        {
+            await output.WriteLineAsync(
+                FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
+                .ConfigureAwait(false);
+            return failures + 1;
+        }
+
+        private static async Task<int> WriteSmokeResultAsync(
+            TextWriter output,
+            WindowsCloudFilesDiagnostics diagnostics,
+            int failures)
+        {
+            return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
         }
 
         private static async Task<int> WriteCheckAsync(
@@ -4728,10 +4559,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
             finally
             {
@@ -4750,20 +4578,7 @@ namespace Cotton.Sync.Desktop.Startup
                 failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
             }
 
-            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
-            {
-                await output.WriteLineAsync(
-                    "Diagnostic: "
-                    + item.Operation
-                    + " "
-                    + item.Status
-                    + " "
-                    + CleanSingleLine(item.Details))
-                    .ConfigureAwait(false);
-            }
-
-            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-            return failures == 0 ? 0 : 1;
+            return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
         }
 
         private static async Task<int> RunRemovePairCleanupAsync(
@@ -4853,26 +4668,10 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
 
-            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
-            {
-                await output.WriteLineAsync(
-                    "Diagnostic: "
-                    + item.Operation
-                    + " "
-                    + item.Status
-                    + " "
-                    + CleanSingleLine(item.Details))
-                    .ConfigureAwait(false);
-            }
-
-            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-            return failures == 0 ? 0 : 1;
+            return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
         }
 
         private static async Task<int> RunLargeRemovePairCleanupAsync(
@@ -5061,26 +4860,10 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
 
-            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
-            {
-                await output.WriteLineAsync(
-                    "Diagnostic: "
-                    + item.Operation
-                    + " "
-                    + item.Status
-                    + " "
-                    + CleanSingleLine(item.Details))
-                    .ConfigureAwait(false);
-            }
-
-            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-            return failures == 0 ? 0 : 1;
+            return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
         }
 
         private static async Task<int> RunLargeHydrationAsync(
@@ -5216,10 +4999,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
             finally
             {
@@ -5227,20 +5007,7 @@ namespace Cotton.Sync.Desktop.Startup
                 failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
             }
 
-            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
-            {
-                await output.WriteLineAsync(
-                    "Diagnostic: "
-                    + item.Operation
-                    + " "
-                    + item.Status
-                    + " "
-                    + CleanSingleLine(item.Details))
-                    .ConfigureAwait(false);
-            }
-
-            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-            return failures == 0 ? 0 : 1;
+            return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
         }
 
         private static async Task<bool> RunLargeHydrationCancellationProbeAsync(
@@ -5483,10 +5250,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                failures++;
-                await output.WriteLineAsync(
-                    FormatCheck(false, exception.GetType().Name + ": " + CleanSingleLine(exception.Message)))
-                    .ConfigureAwait(false);
+                failures = await RecordSmokeFailureAsync(output, failures, exception).ConfigureAwait(false);
             }
             finally
             {
@@ -6024,11 +5788,12 @@ namespace Cotton.Sync.Desktop.Startup
                 return await File.ReadAllBytesAsync(filePath, cancellationToken).ConfigureAwait(false);
             }
 
-            string base64 = await RunPowerShellFileReadAsync(
+            string base64 = await DesktopPowerShellFileReader.ReadAsync(
                 "$ErrorActionPreference='Stop'; "
                 + "$bytes=[System.IO.File]::ReadAllBytes($env:COTTON_SYNC_EXTERNAL_READ_PATH); "
                 + "[Convert]::ToBase64String($bytes)",
                 filePath,
+                ExternalFileReadTimeout,
                 cancellationToken)
                 .ConfigureAwait(false);
             return Convert.FromBase64String(base64.Trim());
@@ -6045,7 +5810,7 @@ namespace Cotton.Sync.Desktop.Startup
                 return new FileContentHash(stream.Length, Convert.ToHexStringLower(hash));
             }
 
-            string output = await RunPowerShellFileReadAsync(
+            string output = await DesktopPowerShellFileReader.ReadAsync(
                 "$ErrorActionPreference='Stop'; "
                 + "$stream=[System.IO.File]::OpenRead($env:COTTON_SYNC_EXTERNAL_READ_PATH); "
                 + "try { "
@@ -6055,6 +5820,7 @@ namespace Cotton.Sync.Desktop.Startup
                 + "'{0}|{1}' -f $stream.Length,$hex "
                 + "} finally { $stream.Dispose(); if ($sha) { $sha.Dispose(); } }",
                 filePath,
+                ExternalFileReadTimeout,
                 cancellationToken)
                 .ConfigureAwait(false);
             string[] parts = output.Trim().Split('|', 2);
@@ -6069,74 +5835,6 @@ namespace Cotton.Sync.Desktop.Startup
             }
 
             return new FileContentHash(length, parts[1]);
-        }
-
-        private static async Task<string> RunPowerShellFileReadAsync(
-            string script,
-            string filePath,
-            CancellationToken cancellationToken)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "powershell.exe",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            startInfo.ArgumentList.Add("-NoProfile");
-            startInfo.ArgumentList.Add("-NonInteractive");
-            startInfo.ArgumentList.Add("-ExecutionPolicy");
-            startInfo.ArgumentList.Add("Bypass");
-            startInfo.ArgumentList.Add("-Command");
-            startInfo.ArgumentList.Add(script);
-            startInfo.Environment["COTTON_SYNC_EXTERNAL_READ_PATH"] = filePath;
-
-            using var process = new Process { StartInfo = startInfo };
-            if (!process.Start())
-            {
-                throw new InvalidOperationException("Failed to start the external file-read helper process.");
-            }
-
-            Task<string> stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            Task<string> stderr = process.StandardError.ReadToEndAsync(cancellationToken);
-            using var timeoutCancellation = new CancellationTokenSource(ExternalFileReadTimeout);
-            using CancellationTokenSource linkedCancellation =
-                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCancellation.Token);
-            try
-            {
-                await process.WaitForExitAsync(linkedCancellation.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeoutCancellation.IsCancellationRequested)
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-
-                throw new TimeoutException(
-                    "External file-read helper timed out after "
-                    + ExternalFileReadTimeout.TotalSeconds.ToString(
-                        "0",
-                        System.Globalization.CultureInfo.InvariantCulture)
-                    + " seconds while reading "
-                    + filePath
-                    + ".");
-            }
-
-            string output = await stdout.ConfigureAwait(false);
-            string error = await stderr.ConfigureAwait(false);
-            if (process.ExitCode != 0)
-            {
-                throw new IOException(
-                    "External file-read helper failed with exit code "
-                    + process.ExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                    + ": "
-                    + CleanSingleLine(error));
-            }
-
-            return output;
         }
 
         private static bool HasIntermediateProgress(IReadOnlyList<SyncTransferProgress> progress)
@@ -6296,7 +5994,7 @@ namespace Cotton.Sync.Desktop.Startup
                 return new ShellItemStatusSnapshot([]);
             }
 
-            string output = await RunPowerShellFileReadAsync(
+            string output = await DesktopPowerShellFileReader.ReadAsync(
                 "$ErrorActionPreference='Stop'; "
                 + "$target=$env:COTTON_SYNC_EXTERNAL_READ_PATH; "
                 + "$parent=[System.IO.Path]::GetDirectoryName($target); "
@@ -6317,6 +6015,7 @@ namespace Cotton.Sync.Desktop.Startup
                 + "'{0}|{1}|{2}' -f $index,$headerEncoded,$valueEncoded "
                 + "}",
                 itemPath,
+                ExternalFileReadTimeout,
                 cancellationToken)
                 .ConfigureAwait(false);
 

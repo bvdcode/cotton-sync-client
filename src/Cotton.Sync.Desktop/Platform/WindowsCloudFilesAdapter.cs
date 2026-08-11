@@ -595,47 +595,19 @@ namespace Cotton.Sync.Desktop.Platform
             WindowsCloudFilesNativePlaceholder directoryPlaceholder)
         {
             const string operation = "create-directory-placeholder";
-            try
-            {
-                WindowsCloudFilesPinState pinState = ResolveNewPlaceholderPinState(
-                    directoryPlaceholder.BaseDirectoryPath);
-                ExecuteNativeOperationWithTransientPathRetry(
+            ApplyDirectoryPlaceholderOperation(
+                request,
+                localRootPath,
+                normalizedPath,
+                fullPlaceholderPath,
+                directoryPlaceholder.BaseDirectoryPath,
+                operation,
+                () => ExecuteNativeOperationWithTransientPathRetry(
                     () => _nativeApi.CreatePlaceholder(directoryPlaceholder),
                     operation,
                     request.SyncPairId,
                     localRootPath,
-                    normalizedPath);
-                ExecuteNativeOperationWithTransientPathRetry(
-                    () => _nativeApi.SetPinState(fullPlaceholderPath, pinState),
-                    "set-pin-state",
-                    request.SyncPairId,
-                    localRootPath,
-                    normalizedPath);
-                ExecuteNativeOperationWithTransientPathRetry(
-                    () => SetAndVerifyInSyncState(fullPlaceholderPath),
-                    "set-in-sync-state",
-                    request.SyncPairId,
-                    localRootPath,
-                    normalizedPath);
-                _shellChangeNotifier.NotifyDirectoryUpdated(fullPlaceholderPath);
-            }
-            catch (Exception exception)
-            {
-                RecordFailure(
-                    operation,
-                    request.SyncPairId,
-                    localRootPath,
-                    normalizedPath,
-                    exception);
-                throw;
-            }
-
-            _diagnostics.Record(
-                operation,
-                "completed",
-                request.SyncPairId,
-                localRootPath,
-                normalizedPath,
+                    normalizedPath),
                 "Windows Cloud Files directory placeholder was created and marked in sync.");
         }
 
@@ -648,26 +620,49 @@ namespace Cotton.Sync.Desktop.Platform
             WindowsCloudFilesNativePlaceholder directoryPlaceholder)
         {
             const string operation = "convert-directory-placeholder";
+            ApplyDirectoryPlaceholderOperation(
+                request,
+                localRootPath,
+                normalizedPath,
+                fullPlaceholderPath,
+                directoryPlaceholder.BaseDirectoryPath,
+                operation,
+                () =>
+                {
+                    ExecuteNativeOperationWithTransientPathRetry(
+                        () => _nativeApi.ConvertToPlaceholder(
+                            fullPlaceholderPath,
+                            directoryIdentity,
+                            isDirectory: true,
+                            markInSync: true),
+                        operation,
+                        request.SyncPairId,
+                        localRootPath,
+                        normalizedPath);
+                    ExecuteNativeOperationWithTransientPathRetry(
+                        () => _nativeApi.UpdatePlaceholder(directoryPlaceholder),
+                        "update-directory-placeholder",
+                        request.SyncPairId,
+                        localRootPath,
+                        normalizedPath);
+                },
+                "Windows Cloud Files directory placeholder was converted and marked in sync.");
+        }
+
+        private void ApplyDirectoryPlaceholderOperation(
+            RemoteDirectoryMaterializationRequest request,
+            string localRootPath,
+            string normalizedPath,
+            string fullPlaceholderPath,
+            string baseDirectoryPath,
+            string operation,
+            Action placeholderOperation,
+            string completedDetails)
+        {
             try
             {
-                WindowsCloudFilesPinState pinState = ResolveNewPlaceholderPinState(
-                    directoryPlaceholder.BaseDirectoryPath);
-                ExecuteNativeOperationWithTransientPathRetry(
-                    () => _nativeApi.ConvertToPlaceholder(
-                        fullPlaceholderPath,
-                        directoryIdentity,
-                        isDirectory: true,
-                        markInSync: true),
-                    operation,
-                    request.SyncPairId,
-                    localRootPath,
-                    normalizedPath);
-                ExecuteNativeOperationWithTransientPathRetry(
-                    () => _nativeApi.UpdatePlaceholder(directoryPlaceholder),
-                    "update-directory-placeholder",
-                    request.SyncPairId,
-                    localRootPath,
-                    normalizedPath);
+                WindowsCloudFilesPinState pinState = ResolveNewPlaceholderPinState(baseDirectoryPath);
+                placeholderOperation();
                 ExecuteNativeOperationWithTransientPathRetry(
                     () => _nativeApi.SetPinState(fullPlaceholderPath, pinState),
                     "set-pin-state",
@@ -699,7 +694,7 @@ namespace Cotton.Sync.Desktop.Platform
                 request.SyncPairId,
                 localRootPath,
                 normalizedPath,
-                "Windows Cloud Files directory placeholder was converted and marked in sync.");
+                completedDetails);
         }
 
         private static bool TryDeleteEmptyDirectory(string directoryPath)

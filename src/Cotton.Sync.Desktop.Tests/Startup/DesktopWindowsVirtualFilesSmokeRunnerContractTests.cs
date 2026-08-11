@@ -136,14 +136,17 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         public void RunAsync_BoundsExternalPlaceholderHydrationReads()
         {
             string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string fileReader = File.ReadAllText(GetDesktopFilePath("Startup/DesktopPowerShellFileReader.cs"));
 
             Assert.Multiple(() =>
             {
                 Assert.That(runner, Does.Contain("ExternalFileReadTimeout = TimeSpan.FromSeconds(30)"));
-                Assert.That(runner, Does.Contain("CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCancellation.Token)"));
-                Assert.That(runner, Does.Contain("process.WaitForExitAsync(linkedCancellation.Token)"));
-                Assert.That(runner, Does.Contain("External file-read helper timed out after "));
-                Assert.That(runner, Does.Contain("process.Kill(entireProcessTree: true)"));
+                Assert.That(runner, Does.Contain("DesktopPowerShellFileReader.ReadAsync("));
+                Assert.That(runner, Does.Contain("ExternalFileReadTimeout,"));
+                Assert.That(fileReader, Does.Contain("CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCancellation.Token)"));
+                Assert.That(fileReader, Does.Contain("process.WaitForExitAsync(linkedCancellation.Token)"));
+                Assert.That(fileReader, Does.Contain("External file-read helper timed out after "));
+                Assert.That(fileReader, Does.Contain("process.Kill(entireProcessTree: true)"));
             });
         }
 

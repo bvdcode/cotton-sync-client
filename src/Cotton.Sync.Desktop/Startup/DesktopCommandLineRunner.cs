@@ -2151,59 +2151,15 @@ namespace Cotton.Sync.Desktop.Startup
                 return await File.ReadAllBytesAsync(filePath, cancellationToken).ConfigureAwait(false);
             }
 
-            string base64 = await RunPowerShellFileReadAsync(
+            string base64 = await DesktopPowerShellFileReader.ReadAsync(
                 "$ErrorActionPreference='Stop'; "
                 + "$bytes=[System.IO.File]::ReadAllBytes($env:COTTON_SYNC_EXTERNAL_READ_PATH); "
                 + "[Convert]::ToBase64String($bytes)",
                 filePath,
+                timeout: null,
                 cancellationToken)
                 .ConfigureAwait(false);
             return Convert.FromBase64String(base64.Trim());
-        }
-
-        private static async Task<string> RunPowerShellFileReadAsync(
-            string script,
-            string filePath,
-            CancellationToken cancellationToken)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "powershell.exe",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            startInfo.ArgumentList.Add("-NoProfile");
-            startInfo.ArgumentList.Add("-NonInteractive");
-            startInfo.ArgumentList.Add("-ExecutionPolicy");
-            startInfo.ArgumentList.Add("Bypass");
-            startInfo.ArgumentList.Add("-Command");
-            startInfo.ArgumentList.Add(script);
-            startInfo.Environment["COTTON_SYNC_EXTERNAL_READ_PATH"] = filePath;
-
-            using var process = new Process { StartInfo = startInfo };
-            if (!process.Start())
-            {
-                throw new InvalidOperationException("Failed to start the external file-read helper process.");
-            }
-
-            Task<string> stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            Task<string> stderr = process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-            string output = await stdout.ConfigureAwait(false);
-            string error = await stderr.ConfigureAwait(false);
-            if (process.ExitCode != 0)
-            {
-                throw new IOException(
-                    "External file-read helper failed with exit code "
-                    + process.ExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                    + ": "
-                    + CleanSingleLine(error));
-            }
-
-            return output;
         }
 
         private static RenameSnapshot CaptureRename(

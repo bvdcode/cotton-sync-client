@@ -432,7 +432,7 @@ namespace Cotton.Sync.Cli
                 return null;
             }
 
-            if (IsSamePath(firstOptions.DatabasePath, databasePath))
+            if (SyncCliPath.AreSame(firstOptions.DatabasePath, databasePath))
             {
                 error.WriteLine("sync-crud-smoke databases must be different.");
                 return null;
@@ -448,7 +448,7 @@ namespace Cotton.Sync.Cli
 
         private static string? ValidateLocalRoots(string firstRoot, string secondRoot)
         {
-            if (IsSameOrNestedPath(firstRoot, secondRoot))
+            if (SyncCliPath.AreSameOrNested(firstRoot, secondRoot))
             {
                 return "sync-crud-smoke local roots must be different and non-nested.";
             }
@@ -472,45 +472,6 @@ namespace Cotton.Sync.Cli
             return Directory.EnumerateFileSystemEntries(path).Any()
                 ? optionName + " must be empty or missing because sync-crud-smoke creates, renames, and deletes files inside it."
                 : null;
-        }
-
-        private static bool IsSameOrNestedPath(string firstPath, string secondPath)
-        {
-            string first = NormalizeFullPath(firstPath);
-            string second = NormalizeFullPath(secondPath);
-            StringComparison comparison = GetPathComparison();
-            return string.Equals(first, second, comparison)
-                || second.StartsWith(EnsureTrailingSeparator(first), comparison)
-                || first.StartsWith(EnsureTrailingSeparator(second), comparison);
-        }
-
-        private static bool IsSamePath(string firstPath, string secondPath)
-        {
-            return string.Equals(NormalizeFullPath(firstPath), NormalizeFullPath(secondPath), GetPathComparison());
-        }
-
-        private static string NormalizeFullPath(string path)
-        {
-            string fullPath = Path.GetFullPath(path);
-            string? root = Path.GetPathRoot(fullPath);
-            if (!string.IsNullOrEmpty(root) && string.Equals(fullPath, root, GetPathComparison()))
-            {
-                return root;
-            }
-
-            return fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        }
-
-        private static string EnsureTrailingSeparator(string path)
-        {
-            return path.EndsWith(Path.DirectorySeparatorChar)
-                ? path
-                : path + Path.DirectorySeparatorChar;
-        }
-
-        private static StringComparison GetPathComparison()
-        {
-            return OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         }
 
         private static string FormatRemoteRoot(SyncCliConnectionOptions options)

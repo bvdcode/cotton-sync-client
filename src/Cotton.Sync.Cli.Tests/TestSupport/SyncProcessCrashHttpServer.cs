@@ -57,47 +57,14 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
             HttpRequestSnapshot request,
             CancellationToken cancellationToken)
         {
-            if (request.Method == HttpMethod.Post && request.PathAndQuery == "/api/v1/auth/login")
+            if (await TryWriteCommonResponseAsync(
+                    response,
+                    request,
+                    _remoteRootId,
+                    CreateRootContent(),
+                    cancellationToken)
+                .ConfigureAwait(false))
             {
-                await WriteJsonAsync(response, HttpStatusCode.OK, new TokenPairDto
-                {
-                    AccessToken = "access-token",
-                    RefreshToken = "refresh-token",
-                }, cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            if (request.Method == HttpMethod.Post && request.PathAndQuery == "/api/v1/auth/logout?refreshToken=refresh-token")
-            {
-                response.StatusCode = (int)HttpStatusCode.NoContent;
-                return;
-            }
-
-            if (!string.Equals(request.AuthorizationParameter, "access-token", StringComparison.Ordinal))
-            {
-                await WriteTextAsync(response, HttpStatusCode.Unauthorized, "Missing bearer token.", cancellationToken)
-                    .ConfigureAwait(false);
-                return;
-            }
-
-            if (request.Method == HttpMethod.Get && request.PathAndQuery == "/api/v1/layouts/nodes/" + _remoteRootId.ToString("D"))
-            {
-                await WriteJsonAsync(response, HttpStatusCode.OK, new NodeDto
-                {
-                    Id = _remoteRootId,
-                    LayoutId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-                    ParentId = null,
-                    Name = "root",
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow,
-                }, cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            if (request.Method == HttpMethod.Get
-                && request.PathAndQuery == "/api/v1/layouts/nodes/" + _remoteRootId.ToString("D") + "/children?page=1&pageSize=500&depth=0")
-            {
-                await WriteJsonAsync(response, HttpStatusCode.OK, CreateRootContent(), cancellationToken).ConfigureAwait(false);
                 return;
             }
 
