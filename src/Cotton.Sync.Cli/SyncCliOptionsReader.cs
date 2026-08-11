@@ -14,21 +14,8 @@ namespace Cotton.Sync.Cli
             string command,
             bool allowBrowserLogin = false)
         {
-            bool useBrowserLogin = allowBrowserLogin && HasFlag(args, "--browser-login");
-            string? server = ReadOption(args, "--server");
-            string? username = ReadOption(args, "--username");
-            string? password = ReadPassword(args);
-            string? localRoot = ReadOption(args, "--local-root");
-            string? remoteRoot = ReadOption(args, "--remote-root");
-            string? remotePath = ReadOption(args, "--remote-path");
-            string? syncPairId = ReadOption(args, "--sync-pair");
-            string? databasePath = ReadOption(args, "--database");
-            string? twoFactorCode = ReadOption(args, "--two-factor-code");
-            if (string.IsNullOrWhiteSpace(server)
-                || string.IsNullOrWhiteSpace(localRoot)
-                || (string.IsNullOrWhiteSpace(remoteRoot) && string.IsNullOrWhiteSpace(remotePath))
-                || string.IsNullOrWhiteSpace(syncPairId)
-                || string.IsNullOrWhiteSpace(databasePath))
+            SyncCliConnectionArguments arguments = ReadConnectionArguments(args, allowBrowserLogin);
+            if (HasMissingConnectionOption(arguments))
             {
                 error.WriteLine(
                     command
@@ -36,55 +23,126 @@ namespace Cotton.Sync.Cli
                 return null;
             }
 
-            if (useBrowserLogin)
+            if (!HasValidSignInOptions(arguments, command, error))
             {
-                if (!string.IsNullOrWhiteSpace(username)
-                    || !string.IsNullOrWhiteSpace(password)
-                    || !string.IsNullOrWhiteSpace(twoFactorCode))
-                {
-                    error.WriteLine("--browser-login cannot be combined with password sign-in options.");
-                    return null;
-                }
-            }
-            else if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
-            {
-                error.WriteLine(
-                    command + " requires --username and --password or --password-env unless --browser-login is used.");
                 return null;
             }
 
-            Uri? serverUri = CottonServerUrl.NormalizeOptional(server);
+            Uri? serverUri = CottonServerUrl.NormalizeOptional(arguments.Server);
             if (serverUri is null)
             {
                 error.WriteLine("--server must be an HTTP or HTTPS URL.");
                 return null;
             }
 
-            if (!Guid.TryParse(remoteRoot, out Guid remoteRootNodeId))
+            if (!TryReadRemoteRoot(arguments.RemoteRoot, arguments.RemotePath, error, out Guid? remoteRootNodeId))
             {
-                if (!string.IsNullOrWhiteSpace(remoteRoot))
-                {
-                    error.WriteLine("--remote-root must be a node id GUID.");
-                    return null;
-                }
-            }
-            else if (!string.IsNullOrWhiteSpace(remotePath))
-            {
-                error.WriteLine("--remote-root and --remote-path cannot be used together.");
                 return null;
             }
 
+            return CreateConnectionOptions(arguments, serverUri, remoteRootNodeId);
+        }
+
+        private static SyncCliConnectionArguments ReadConnectionArguments(
+            IReadOnlyList<string> args,
+            bool allowBrowserLogin)
+        {
+            return new SyncCliConnectionArguments
+            {
+                DatabasePath = ReadOption(args, "--database"),
+                LocalRoot = ReadOption(args, "--local-root"),
+                Password = ReadPassword(args),
+                RemotePath = ReadOption(args, "--remote-path"),
+                RemoteRoot = ReadOption(args, "--remote-root"),
+                Server = ReadOption(args, "--server"),
+                SyncPairId = ReadOption(args, "--sync-pair"),
+                TwoFactorCode = ReadOption(args, "--two-factor-code"),
+                UseBrowserLogin = allowBrowserLogin && HasFlag(args, "--browser-login"),
+                Username = ReadOption(args, "--username"),
+            };
+        }
+
+        private static SyncCliConnectionOptions CreateConnectionOptions(
+            SyncCliConnectionArguments arguments,
+            Uri serverUri,
+            Guid? remoteRootNodeId)
+        {
             return new SyncCliConnectionOptions(
                 serverUri,
-                useBrowserLogin ? null : username!.Trim(),
-                useBrowserLogin ? null : password!,
-                localRoot,
-                string.IsNullOrWhiteSpace(remoteRoot) ? null : remoteRootNodeId,
-                NormalizeOptional(remotePath),
-                syncPairId.Trim(),
-                databasePath,
-                string.IsNullOrWhiteSpace(twoFactorCode) ? null : twoFactorCode.Trim(),
-                useBrowserLogin);
+                arguments.UseBrowserLogin ? null : arguments.Username!.Trim(),
+                arguments.UseBrowserLogin ? null : arguments.Password!,
+                arguments.LocalRoot!,
+                remoteRootNodeId,
+                NormalizeOptional(arguments.RemotePath),
+                arguments.SyncPairId!.Trim(),
+                arguments.DatabasePath!,
+                NormalizeOptional(arguments.TwoFactorCode),
+                arguments.UseBrowserLogin);
+        }
+
+        private static bool HasMissingConnectionOption(SyncCliConnectionArguments arguments)
+        {
+            return string.IsNullOrWhiteSpace(arguments.Server)
+                || string.IsNullOrWhiteSpace(arguments.LocalRoot)
+                || (string.IsNullOrWhiteSpace(arguments.RemoteRoot) && string.IsNullOrWhiteSpace(arguments.RemotePath))
+                || string.IsNullOrWhiteSpace(arguments.SyncPairId)
+                || string.IsNullOrWhiteSpace(arguments.DatabasePath);
+        }
+
+        private static bool HasValidSignInOptions(
+            SyncCliConnectionArguments arguments,
+            string command,
+            TextWriter error)
+        {
+            if (arguments.UseBrowserLogin)
+            {
+                if (string.IsNullOrWhiteSpace(arguments.Username)
+                    && string.IsNullOrWhiteSpace(arguments.Password)
+                    && string.IsNullOrWhiteSpace(arguments.TwoFactorCode))
+                {
+                    return true;
+                }
+
+                error.WriteLine("--browser-login cannot be combined with password sign-in options.");
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(arguments.Username) && !string.IsNullOrWhiteSpace(arguments.Password))
+            {
+                return true;
+            }
+
+            error.WriteLine(
+                command + " requires --username and --password or --password-env unless --browser-login is used.");
+            return false;
+        }
+
+        private static bool TryReadRemoteRoot(
+            string? remoteRoot,
+            string? remotePath,
+            TextWriter error,
+            out Guid? remoteRootNodeId)
+        {
+            remoteRootNodeId = null;
+            if (string.IsNullOrWhiteSpace(remoteRoot))
+            {
+                return true;
+            }
+
+            if (!Guid.TryParse(remoteRoot, out Guid parsedRemoteRootNodeId))
+            {
+                error.WriteLine("--remote-root must be a node id GUID.");
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(remotePath))
+            {
+                error.WriteLine("--remote-root and --remote-path cannot be used together.");
+                return false;
+            }
+
+            remoteRootNodeId = parsedRemoteRootNodeId;
+            return true;
         }
 
         public static SyncCliBrowserAuthOptions? ReadBrowserAuthOptions(

@@ -112,7 +112,7 @@ namespace Cotton.Sync.Cli
 
             using HttpClient? ownedHttpClient = injectedHttpClient is null ? new HttpClient() : null;
             HttpClient httpClient = injectedHttpClient ?? ownedHttpClient!;
-            await using var client = new CottonCloudClient(
+            await using CottonCloudClient client = new(
                 httpClient,
                 new InMemoryCottonTokenStore(),
                 new CottonSdkOptions
@@ -122,11 +122,20 @@ namespace Cotton.Sync.Cli
                     UserAgent = "CottonSyncCli",
                     DeviceName = options.DeviceName,
                 });
-            var authFlow = new AppCodeBrowserAuthFlow(
+            await output.WriteLineAsync("Cotton Sync browser sign-in").ConfigureAwait(false);
+            return await RunBrowserSignInAsync(options, client, output, error, cancellationToken).ConfigureAwait(false);
+        }
+
+        private static async Task<int> RunBrowserSignInAsync(
+            SyncCliBrowserAuthOptions options,
+            CottonCloudClient client,
+            TextWriter output,
+            TextWriter error,
+            CancellationToken cancellationToken)
+        {
+            AppCodeBrowserAuthFlow authFlow = new(
                 client.Auth,
                 new SyncCliApprovalUrlWriter(output));
-
-            await output.WriteLineAsync("Cotton Sync browser sign-in").ConfigureAwait(false);
             using CancellationTokenSource? timeoutCancellation = options.TimeoutSeconds.HasValue
                 ? new CancellationTokenSource(TimeSpan.FromSeconds(options.TimeoutSeconds.Value))
                 : null;
@@ -160,12 +169,7 @@ namespace Cotton.Sync.Cli
             }
             catch (AppCodeBrowserSignInException exception)
             {
-                await error.WriteLineAsync(exception.Message).ConfigureAwait(false);
-                if (!string.IsNullOrWhiteSpace(exception.Error))
-                {
-                    await error.WriteLineAsync("Error: " + exception.Error).ConfigureAwait(false);
-                }
-
+                await SyncCliErrorWriter.WriteBrowserSignInAsync(error, exception).ConfigureAwait(false);
                 return 1;
             }
         }
@@ -264,12 +268,7 @@ namespace Cotton.Sync.Cli
             }
             catch (AppCodeBrowserSignInException exception)
             {
-                await error.WriteLineAsync(exception.Message).ConfigureAwait(false);
-                if (!string.IsNullOrWhiteSpace(exception.Error))
-                {
-                    await error.WriteLineAsync("Error: " + exception.Error).ConfigureAwait(false);
-                }
-
+                await SyncCliErrorWriter.WriteBrowserSignInAsync(error, exception).ConfigureAwait(false);
                 return 1;
             }
             catch (Exception exception) when (IsSupportableSyncOnceException(exception))
