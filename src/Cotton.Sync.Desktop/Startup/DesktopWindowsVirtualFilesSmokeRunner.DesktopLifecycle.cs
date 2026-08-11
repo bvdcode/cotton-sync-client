@@ -39,15 +39,16 @@ namespace Cotton.Sync.Desktop.Startup
 {
     internal static partial class DesktopWindowsVirtualFilesSmokeRunner
     {
-        private static async Task<int> RunDesktopRootLifecycleAsync(
-            DesktopAppPaths paths,
-            TextWriter output,
-            IWindowsCloudFilesAdapter cloudFiles,
-            IWindowsCloudFilesNativeApi? nativeApi,
-            SyncPairSettings baseSyncPair,
-            WindowsCloudFilesDiagnostics diagnostics,
-            CancellationToken cancellationToken)
+        private static async Task<int> RunDesktopRootLifecycleAsync(WindowsVirtualFilesSmokeContext context)
         {
+            DesktopAppPaths paths = context.Paths;
+            TextWriter output = context.Output;
+            IWindowsCloudFilesAdapter cloudFiles = context.CloudFiles;
+            IWindowsCloudFilesNativeApi? nativeApi = context.NativeApi;
+            SyncPairSettings baseSyncPair = context.SyncPair;
+            WindowsCloudFilesDiagnostics diagnostics = context.Diagnostics;
+            CancellationToken cancellationToken = context.CancellationToken;
+
             if (nativeApi is null)
             {
                 await output.WriteLineAsync(
@@ -57,13 +58,7 @@ namespace Cotton.Sync.Desktop.Startup
                 return 2;
             }
 
-            string baseRootPath = NormalizeFullPath(baseSyncPair.LocalRootPath);
-            string rootPath = string.Equals(
-                    Path.GetFileName(baseRootPath),
-                    DesktopRootDirectoryName,
-                    StringComparison.OrdinalIgnoreCase)
-                ? baseRootPath
-                : Path.Combine(baseRootPath, DesktopRootDirectoryName);
+            string rootPath = ResolveDesktopScenarioRoot(baseSyncPair.LocalRootPath, DesktopRootDirectoryName);
             SyncPairSettings syncPair = CreateDesktopRootSyncPair(rootPath);
             string remoteFilePath = ToFullPath(rootPath, DesktopRootRemoteFilePath);
             byte[] remoteContent = Encoding.UTF8.GetBytes("Cotton Sync Desktop root lifecycle cloud file\n");
@@ -130,7 +125,7 @@ namespace Cotton.Sync.Desktop.Startup
                 NoTransferRemoteFileSynchronizer remoteFiles = new();
                 DesktopCloudFilesPlaceholderWriter placeholderWriter = new(
                     cloudFilesAdapter: cloudFiles,
-                    getCapabilities: static () => new SyncPairModeCapabilitySnapshot(true, "Windows Cloud Files API is available."),
+                    getCapabilities: CreateAvailableCloudFilesCapability,
                     localChangeSuppression: localChangeSuppression);
                 SyncEngine syncEngine = new(
                     new LocalFileScanner(),
@@ -170,31 +165,26 @@ namespace Cotton.Sync.Desktop.Startup
                 SyncPairSettings? savedPair = await pairStore.GetAsync(syncPair.Id, cancellationToken).ConfigureAwait(false);
                 failures += await WriteCheckAsync(
                         output,
-                        saveResult.IsSaved
-                        && savedPair is not null
-                        && string.Equals(savedPair.LocalRootPath, rootPath, StringComparison.OrdinalIgnoreCase)
-                        && savedPair.Mode == SyncPairMode.WindowsVirtualFiles,
+                        IsDesktopRootPairSaved(saveResult, savedPair, rootPath),
                         "Desktop root sync pair was saved through the app service.",
                         "mode="
-                        + (savedPair?.Mode.ToString() ?? "missing")
+                        + FormatSyncPairMode(savedPair)
                         + ", errors="
                         + saveResult.Validation.Errors.Count.ToString(System.Globalization.CultureInfo.InvariantCulture))
                     .ConfigureAwait(false);
 
                 await app.StartSyncAsync(cancellationToken).ConfigureAwait(false);
-                SyncPairStatus? startedStatus = statusPublisher.Current.SyncPairs
-                    .FirstOrDefault(item => item.SyncPairId == syncPair.Id);
+                SyncPairStatus? startedStatus = FindSyncPairStatus(statusPublisher, syncPair.Id);
                 failures += await WriteCheckAsync(
                         output,
                         startedStatus is { State: SyncPairRunState.Idle },
                         "Desktop root sync core started with an idle VFS runner.",
                         "state="
-                        + (startedStatus?.State.ToString() ?? "missing"))
+                        + FormatSyncPairState(startedStatus))
                     .ConfigureAwait(false);
 
                 await app.SyncNowAsync(syncPair.Id, cancellationToken).ConfigureAwait(false);
-                SyncPairStatus? syncedStatus = statusPublisher.Current.SyncPairs
-                    .FirstOrDefault(item => item.SyncPairId == syncPair.Id);
+                SyncPairStatus? syncedStatus = FindSyncPairStatus(statusPublisher, syncPair.Id);
                 SyncStateEntry? remoteFileState = await stateStore
                     .GetAsync(syncPair.Id.ToString("D"), DesktopRootRemoteFilePath, cancellationToken)
                     .ConfigureAwait(false);
@@ -203,15 +193,13 @@ namespace Cotton.Sync.Desktop.Startup
                         syncedStatus is { State: SyncPairRunState.Idle, LastSuccessfulSyncAtUtc: not null },
                         "Desktop root sync pass completed with a successful runner status.",
                         "state="
-                        + (syncedStatus?.State.ToString() ?? "missing")
+                        + FormatSyncPairState(syncedStatus)
                         + ", lastSuccess="
-                        + (syncedStatus?.LastSuccessfulSyncAtUtc.HasValue ?? false).ToString(System.Globalization.CultureInfo.InvariantCulture))
+                        + HasSuccessfulSync(syncedStatus).ToString(System.Globalization.CultureInfo.InvariantCulture))
                     .ConfigureAwait(false);
                 failures += await WriteCheckAsync(
                         output,
-                        File.Exists(remoteFilePath)
-                        && remoteFileState is { Kind: SyncEntryKind.File }
-                        && IsRemoteOnlyPlaceholderState(remoteFileState.PlaceholderHydrationState),
+                        IsDesktopRemotePlaceholderReady(remoteFilePath, remoteFileState),
                         "Desktop root remote file became an online-only placeholder.",
                         "state="
                         + FormatStateSummary(remoteFileState))
@@ -260,27 +248,20 @@ namespace Cotton.Sync.Desktop.Startup
                     diagnostics);
                 syncCoreStopped = false;
                 await app.StartSyncAsync(cancellationToken).ConfigureAwait(false);
-                SyncPairStatus? restartedStatus = restartedStatusPublisher.Current.SyncPairs
-                    .FirstOrDefault(item => item.SyncPairId == syncPair.Id);
+                SyncPairStatus? restartedStatus = FindSyncPairStatus(restartedStatusPublisher, syncPair.Id);
                 failures += await WriteCheckAsync(
                         output,
                         restartedStatus is { State: SyncPairRunState.Idle },
                         "Desktop root sync root reconnected from persisted settings after app restart.",
                         "state="
-                        + (restartedStatus?.State.ToString() ?? "missing"))
+                        + FormatSyncPairState(restartedStatus))
                     .ConfigureAwait(false);
 
                 string restartedHydratedText = await ReadAllTextThroughExternalProcessAsync(remoteFilePath, cancellationToken)
                     .ConfigureAwait(false);
                 failures += await WriteCheckAsync(
                         output,
-                        string.Equals(
-                            restartedHydratedText,
-                            Encoding.UTF8.GetString(remoteContent),
-                            StringComparison.Ordinal)
-                        && contentProvider.DownloadedPaths.Contains(
-                            SyncPath.Normalize(DesktopRootRemoteFilePath),
-                            StringComparer.OrdinalIgnoreCase),
+                        DidRestartedDesktopRootHydrate(restartedHydratedText, remoteContent, contentProvider),
                         "Restarted Desktop root callbacks hydrated the persisted placeholder.",
                         "downloads="
                         + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
@@ -317,41 +298,86 @@ namespace Cotton.Sync.Desktop.Startup
             finally
             {
                 runProgressSubscription.Dispose();
-                if (app is not null && !syncCoreStopped)
+                failures += await CleanupDesktopLifecycleAsync(new DesktopLifecycleCleanupContext
                 {
-                    try
-                    {
-                        await app.StopSyncAsync(CancellationToken.None).ConfigureAwait(false);
-                    }
-                    catch (Exception exception) when (exception is not OperationCanceledException)
-                    {
-                        failures++;
-                        await output.WriteLineAsync(
-                                FormatCheck(false, "Desktop root sync core cleanup failed.")
-                                + " "
-                                + CleanSingleLine(exception.Message))
-                            .ConfigureAwait(false);
-                    }
-                }
-
-                if (!pairDeleted)
-                {
-                    failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
-                }
+                    OwnedController = null,
+                    Application = app,
+                    SyncCoreStopped = syncCoreStopped,
+                    PairDeleted = pairDeleted,
+                    CloudFiles = cloudFiles,
+                    SyncPair = syncPair,
+                    Output = output,
+                    StopFailureLabel = "Desktop root sync core cleanup failed.",
+                }).ConfigureAwait(false);
             }
 
             return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
         }
 
-        private static async Task<int> RunDesktopSessionRestoreAsync(
-            DesktopAppPaths paths,
-            TextWriter output,
-            IWindowsCloudFilesAdapter cloudFiles,
-            IWindowsCloudFilesNativeApi? nativeApi,
-            SyncPairSettings baseSyncPair,
-            WindowsCloudFilesDiagnostics diagnostics,
-            CancellationToken cancellationToken)
+        private static bool IsDesktopRootPairSaved(
+            SyncPairSaveResult saveResult,
+            SyncPairSettings? savedPair,
+            string expectedRootPath)
         {
+            return saveResult.IsSaved
+                && savedPair is not null
+                && string.Equals(savedPair.LocalRootPath, expectedRootPath, StringComparison.OrdinalIgnoreCase)
+                && savedPair.Mode == SyncPairMode.WindowsVirtualFiles;
+        }
+
+        private static SyncPairModeCapabilitySnapshot CreateAvailableCloudFilesCapability()
+        {
+            return new SyncPairModeCapabilitySnapshot(true, "Windows Cloud Files API is available.");
+        }
+
+        private static SyncPairStatus? FindSyncPairStatus(InMemoryAppStatusPublisher publisher, Guid syncPairId)
+        {
+            return publisher.Current.SyncPairs.FirstOrDefault(item => item.SyncPairId == syncPairId);
+        }
+
+        private static string FormatSyncPairMode(SyncPairSettings? syncPair)
+        {
+            return syncPair is null ? "missing" : syncPair.Mode.ToString();
+        }
+
+        private static string FormatSyncPairState(SyncPairStatus? status)
+        {
+            return status is null ? "missing" : status.State.ToString();
+        }
+
+        private static bool HasSuccessfulSync(SyncPairStatus? status)
+        {
+            return status?.LastSuccessfulSyncAtUtc.HasValue == true;
+        }
+
+        private static bool IsDesktopRemotePlaceholderReady(string filePath, SyncStateEntry? state)
+        {
+            return File.Exists(filePath)
+                && state is { Kind: SyncEntryKind.File }
+                && IsRemoteOnlyPlaceholderState(state.PlaceholderHydrationState);
+        }
+
+        private static bool DidRestartedDesktopRootHydrate(
+            string hydratedText,
+            byte[] expectedContent,
+            DictionarySmokeContentProvider contentProvider)
+        {
+            return string.Equals(hydratedText, Encoding.UTF8.GetString(expectedContent), StringComparison.Ordinal)
+                && contentProvider.DownloadedPaths.Contains(
+                    SyncPath.Normalize(DesktopRootRemoteFilePath),
+                    StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static async Task<int> RunDesktopSessionRestoreAsync(WindowsVirtualFilesSmokeContext context)
+        {
+            DesktopAppPaths paths = context.Paths;
+            TextWriter output = context.Output;
+            IWindowsCloudFilesAdapter cloudFiles = context.CloudFiles;
+            IWindowsCloudFilesNativeApi? nativeApi = context.NativeApi;
+            SyncPairSettings baseSyncPair = context.SyncPair;
+            WindowsCloudFilesDiagnostics diagnostics = context.Diagnostics;
+            CancellationToken cancellationToken = context.CancellationToken;
+
             if (nativeApi is null)
             {
                 await output.WriteLineAsync(
@@ -361,13 +387,9 @@ namespace Cotton.Sync.Desktop.Startup
                 return 2;
             }
 
-            string baseRootPath = NormalizeFullPath(baseSyncPair.LocalRootPath);
-            string rootPath = string.Equals(
-                    Path.GetFileName(baseRootPath),
-                    DesktopSessionRestoreDirectoryName,
-                    StringComparison.OrdinalIgnoreCase)
-                ? baseRootPath
-                : Path.Combine(baseRootPath, DesktopSessionRestoreDirectoryName);
+            string rootPath = ResolveDesktopScenarioRoot(
+                baseSyncPair.LocalRootPath,
+                DesktopSessionRestoreDirectoryName);
             SyncPairSettings syncPair = CreateDesktopSessionRestoreSyncPair(rootPath);
             SqliteAppPreferencesStore preferencesStore = new(paths.AppDatabasePath);
             SqliteSyncPairSettingsStore pairStore = new(paths.AppDatabasePath);
@@ -434,7 +456,7 @@ namespace Cotton.Sync.Desktop.Startup
                 DesktopShellSnapshot snapshot = await controller.LoadAsync(cancellationToken).ConfigureAwait(false);
                 failures += await WriteCheckAsync(
                         output,
-                        snapshot.IsSignedIn && string.Equals(snapshot.AccountName, "smoke", StringComparison.Ordinal),
+                        IsDesktopSessionRestored(snapshot),
                         "Desktop startup restored the saved signed-in session.",
                         "signedIn="
                         + snapshot.IsSignedIn.ToString(System.Globalization.CultureInfo.InvariantCulture)
@@ -443,8 +465,7 @@ namespace Cotton.Sync.Desktop.Startup
                     .ConfigureAwait(false);
                 failures += await WriteCheckAsync(
                         output,
-                        factory.CreatedServerUrls.Count == 1
-                        && factory.CreatedServerUrls[0] == serverUrl,
+                        DidDesktopSessionUseRememberedServer(factory, serverUrl),
                         "Desktop startup used the remembered server for session restore.",
                         "hosts="
                         + factory.CreatedServerUrls.Count.ToString(System.Globalization.CultureInfo.InvariantCulture))
@@ -453,9 +474,7 @@ namespace Cotton.Sync.Desktop.Startup
                     .FirstOrDefault(item => item.Id == syncPair.Id);
                 failures += await WriteCheckAsync(
                         output,
-                        restoredPair is not null
-                        && string.Equals(restoredPair.LocalPath, rootPath, StringComparison.OrdinalIgnoreCase)
-                        && restoredPair.Mode == SyncPairMode.WindowsVirtualFiles,
+                        IsRestoredDesktopPairExpected(restoredPair, rootPath),
                         "Desktop startup loaded the persisted virtual-files sync pair.",
                         "pair="
                         + (restoredPair?.DisplayName ?? "missing")
@@ -497,35 +516,85 @@ namespace Cotton.Sync.Desktop.Startup
             }
             finally
             {
-                if (controller is not null)
+                failures += await CleanupDesktopLifecycleAsync(new DesktopLifecycleCleanupContext
                 {
-                    await controller.DisposeAsync().ConfigureAwait(false);
-                }
-
-                if (app is not null && !syncCoreStopped)
-                {
-                    try
-                    {
-                        await app.StopSyncAsync(CancellationToken.None).ConfigureAwait(false);
-                    }
-                    catch (Exception exception) when (exception is not OperationCanceledException)
-                    {
-                        failures++;
-                        await output.WriteLineAsync(
-                                FormatCheck(false, "Desktop session restore sync core cleanup failed.")
-                                + " "
-                                + CleanSingleLine(exception.Message))
-                            .ConfigureAwait(false);
-                    }
-                }
-
-                if (!pairDeleted)
-                {
-                    failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
-                }
+                    OwnedController = controller,
+                    Application = app,
+                    SyncCoreStopped = syncCoreStopped,
+                    PairDeleted = pairDeleted,
+                    CloudFiles = cloudFiles,
+                    SyncPair = syncPair,
+                    Output = output,
+                    StopFailureLabel = "Desktop session restore sync core cleanup failed.",
+                }).ConfigureAwait(false);
             }
 
             return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
+        }
+
+        private static bool IsDesktopSessionRestored(DesktopShellSnapshot snapshot)
+        {
+            return snapshot.IsSignedIn
+                && string.Equals(snapshot.AccountName, "smoke", StringComparison.Ordinal);
+        }
+
+        private static bool DidDesktopSessionUseRememberedServer(
+            SessionRestoreApplicationFactory factory,
+            Uri serverUrl)
+        {
+            return factory.CreatedServerUrls.Count == 1
+                && factory.CreatedServerUrls[0] == serverUrl;
+        }
+
+        private static bool IsRestoredDesktopPairExpected(DesktopSyncPairSnapshot? pair, string expectedRootPath)
+        {
+            return pair is not null
+                && string.Equals(pair.LocalPath, expectedRootPath, StringComparison.OrdinalIgnoreCase)
+                && pair.Mode == SyncPairMode.WindowsVirtualFiles;
+        }
+
+        private static string ResolveDesktopScenarioRoot(string configuredRootPath, string scenarioDirectoryName)
+        {
+            string rootPath = NormalizeFullPath(configuredRootPath);
+            return string.Equals(
+                    Path.GetFileName(rootPath),
+                    scenarioDirectoryName,
+                    StringComparison.OrdinalIgnoreCase)
+                ? rootPath
+                : Path.Combine(rootPath, scenarioDirectoryName);
+        }
+
+        private static async Task<int> CleanupDesktopLifecycleAsync(DesktopLifecycleCleanupContext context)
+        {
+            int failures = 0;
+            if (context.OwnedController is not null)
+            {
+                await context.OwnedController.DisposeAsync().ConfigureAwait(false);
+            }
+
+            if (context.Application is not null && !context.SyncCoreStopped)
+            {
+                try
+                {
+                    await context.Application.StopSyncAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    failures++;
+                    await context.Output.WriteLineAsync(
+                            FormatCheck(false, context.StopFailureLabel)
+                            + " "
+                            + CleanSingleLine(exception.Message))
+                        .ConfigureAwait(false);
+                }
+            }
+
+            if (!context.PairDeleted)
+            {
+                failures += TryUnregisterSmokeRoot(context.CloudFiles, context.SyncPair, context.Output);
+            }
+
+            return failures;
         }
 
         private static async Task<int> WaitForSessionRestoreSyncRootAsync(
@@ -546,16 +615,14 @@ namespace Cotton.Sync.Desktop.Startup
                     lastState = cloudFiles.GetPlaceholderState(syncPair);
                     SyncPairStatus? status = statusPublisher.Current.SyncPairs
                         .FirstOrDefault(item => item.SyncPairId == syncPair.Id);
-                    if (lastState.Value.HasFlag(WindowsCloudFilesPlaceholderState.SyncRoot)
-                        && lastState.Value.HasFlag(WindowsCloudFilesPlaceholderState.InSync)
-                        && status is { State: SyncPairRunState.Idle })
+                    if (IsRestoredSyncRootReady(lastState.Value, status))
                     {
                         await output.WriteLineAsync(
                                 FormatCheck(true, "Desktop startup reconnected the persisted Cloud Files sync root.")
                                 + " state="
                                 + lastState.Value
                                 + ", runner="
-                                + status.State)
+                                + FormatSyncPairState(status))
                             .ConfigureAwait(false);
                         return 0;
                     }
@@ -576,6 +643,15 @@ namespace Cotton.Sync.Desktop.Startup
                     + (lastException is null ? "none" : CleanSingleLine(lastException.Message)))
                 .ConfigureAwait(false);
             return 1;
+        }
+
+        private static bool IsRestoredSyncRootReady(
+            WindowsCloudFilesPlaceholderState state,
+            SyncPairStatus? status)
+        {
+            return state.HasFlag(WindowsCloudFilesPlaceholderState.SyncRoot)
+                && state.HasFlag(WindowsCloudFilesPlaceholderState.InSync)
+                && status is { State: SyncPairRunState.Idle };
         }
 
         private static SyncApplicationService CreateDesktopRootLifecycleApplication(
