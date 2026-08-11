@@ -6061,40 +6061,8 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private string CreateRunTransferRateDetails()
         {
-            var parts = new List<string>();
-            bool hasAggregateTransferBytes = TryCalculateAggregateRunTransferBytes(
-                out long transferredBytes,
-                out long totalBytes);
-            bool hasByteRate = false;
-            bool hasByteEstimate = false;
-            if (hasAggregateTransferBytes && TryGetRunTransferSpeed(out double bytesPerSecond))
-            {
-                parts.Add(FormatBytes(bytesPerSecond) + "/s");
-                hasByteRate = true;
-                if (totalBytes > transferredBytes)
-                {
-                    TimeSpan estimatedTimeRemaining = _runTransferEstimatedTimeRemaining
-                        ?? TimeSpan.FromSeconds((totalBytes - transferredBytes) / bytesPerSecond);
-                    parts.Add(FormatDuration(estimatedTimeRemaining) + " left");
-                    hasByteEstimate = true;
-                }
-            }
-            else if (HasActiveTransferProgress && !hasAggregateTransferBytes)
-            {
-                string activeTransferRate = CreateAggregateTransferMetricDetails(
-                    _transferProgressByKey.Values,
-                    includeEstimatedTimeRemaining: false).Rate;
-                if (!string.IsNullOrWhiteSpace(activeTransferRate))
-                {
-                    parts.Add(activeTransferRate);
-                    hasByteRate = true;
-                }
-            }
-            else if (_runTransferSpeedBytesPerSecond is > 0)
-            {
-                parts.Add(FormatBytes(_runTransferSpeedBytesPerSecond.Value) + "/s");
-                hasByteRate = true;
-            }
+            List<string> parts = [];
+            (bool hasByteRate, bool hasByteEstimate) = AddRunByteRateDetails(parts);
 
             if (!hasByteRate && _currentRunProgressFilesPerSecond is > 0)
             {
@@ -6107,6 +6075,89 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
 
             return string.Join(" · ", parts);
+        }
+
+        private (bool HasByteRate, bool HasByteEstimate) AddRunByteRateDetails(List<string> parts)
+        {
+            bool hasAggregateTransferBytes = TryCalculateAggregateRunTransferBytes(
+                out long transferredBytes,
+                out long totalBytes);
+            if (hasAggregateTransferBytes
+                && TryAddAggregateRunTransferRate(
+                    parts,
+                    transferredBytes,
+                    totalBytes,
+                    out bool hasByteEstimate))
+            {
+                return (true, hasByteEstimate);
+            }
+
+            if (!hasAggregateTransferBytes && TryAddActiveTransferRate(parts))
+            {
+                return (true, false);
+            }
+
+            if (TryAddRecordedRunTransferRate(parts))
+            {
+                return (true, false);
+            }
+
+            return (false, false);
+        }
+
+        private bool TryAddAggregateRunTransferRate(
+            List<string> parts,
+            long transferredBytes,
+            long totalBytes,
+            out bool hasByteEstimate)
+        {
+            hasByteEstimate = false;
+            if (!TryGetRunTransferSpeed(out double bytesPerSecond))
+            {
+                return false;
+            }
+
+            parts.Add(FormatBytes(bytesPerSecond) + "/s");
+            if (totalBytes <= transferredBytes)
+            {
+                return true;
+            }
+
+            TimeSpan estimatedTimeRemaining = _runTransferEstimatedTimeRemaining
+                ?? TimeSpan.FromSeconds((totalBytes - transferredBytes) / bytesPerSecond);
+            parts.Add(FormatDuration(estimatedTimeRemaining) + " left");
+            hasByteEstimate = true;
+            return true;
+        }
+
+        private bool TryAddActiveTransferRate(List<string> parts)
+        {
+            if (!HasActiveTransferProgress)
+            {
+                return false;
+            }
+
+            string activeTransferRate = CreateAggregateTransferMetricDetails(
+                _transferProgressByKey.Values,
+                includeEstimatedTimeRemaining: false).Rate;
+            if (string.IsNullOrWhiteSpace(activeTransferRate))
+            {
+                return false;
+            }
+
+            parts.Add(activeTransferRate);
+            return true;
+        }
+
+        private bool TryAddRecordedRunTransferRate(List<string> parts)
+        {
+            if (_runTransferSpeedBytesPerSecond is not > 0)
+            {
+                return false;
+            }
+
+            parts.Add(FormatBytes(_runTransferSpeedBytesPerSecond.Value) + "/s");
+            return true;
         }
 
         private string FormatCurrentRunProgressRate(double unitsPerSecond)
@@ -7332,38 +7383,12 @@ namespace Cotton.Sync.Desktop.ViewModels
             IEnumerable<DesktopTransferProgressSnapshot> progressValues,
             bool includeEstimatedTimeRemaining = true)
         {
-            long transferredBytes = 0;
-            long totalBytes = 0;
-            bool hasTotalBytes = true;
-            double speedBytesPerSecond = 0;
-            TimeSpan? longestEstimatedTimeRemaining = null;
-            foreach (DesktopTransferProgressSnapshot progress in progressValues)
-            {
-                transferredBytes += progress.TransferredBytes;
-                if (progress.TotalBytes.HasValue)
-                {
-                    totalBytes += progress.TotalBytes.Value;
-                }
-                else
-                {
-                    hasTotalBytes = false;
-                }
-
-                if (progress.SpeedBytesPerSecond is > 0)
-                {
-                    speedBytesPerSecond += progress.SpeedBytesPerSecond.Value;
-                    if (progress.TotalBytes is > 0 && progress.TotalBytes.Value > progress.TransferredBytes)
-                    {
-                        TimeSpan transferRemaining = progress.EstimatedTimeRemaining
-                            ?? TimeSpan.FromSeconds((progress.TotalBytes.Value - progress.TransferredBytes) / progress.SpeedBytesPerSecond.Value);
-                        if (!longestEstimatedTimeRemaining.HasValue || transferRemaining > longestEstimatedTimeRemaining.Value)
-                        {
-                            longestEstimatedTimeRemaining = transferRemaining;
-                        }
-                    }
-                }
-            }
-
+            (
+                long transferredBytes,
+                long totalBytes,
+                bool hasTotalBytes,
+                double speedBytesPerSecond,
+                TimeSpan? longestEstimatedTimeRemaining) = AggregateTransferMetrics(progressValues);
             string details = hasTotalBytes
                 ? FormatBytes(transferredBytes) + " / " + FormatBytes(totalBytes)
                 : FormatBytes(transferredBytes);
@@ -7379,6 +7404,64 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
 
             return new TransferMetricDetails(details, rate);
+        }
+
+        private static (long TransferredBytes, long TotalBytes, bool HasTotalBytes,
+            double SpeedBytesPerSecond, TimeSpan? LongestEstimatedTimeRemaining) AggregateTransferMetrics(
+            IEnumerable<DesktopTransferProgressSnapshot> progressValues)
+        {
+            long transferredBytes = 0;
+            long totalBytes = 0;
+            bool hasTotalBytes = true;
+            double speedBytesPerSecond = 0;
+            TimeSpan? longestEstimatedTimeRemaining = null;
+            foreach (DesktopTransferProgressSnapshot progress in progressValues)
+            {
+                transferredBytes += progress.TransferredBytes;
+                (totalBytes, hasTotalBytes) = AccumulateTotalBytes(progress, totalBytes, hasTotalBytes);
+                speedBytesPerSecond += GetPositiveTransferSpeed(progress);
+                TimeSpan? estimatedTimeRemaining = GetTransferEstimatedTimeRemaining(progress);
+                if (estimatedTimeRemaining.HasValue
+                    && (!longestEstimatedTimeRemaining.HasValue
+                        || estimatedTimeRemaining.Value > longestEstimatedTimeRemaining.Value))
+                {
+                    longestEstimatedTimeRemaining = estimatedTimeRemaining;
+                }
+            }
+
+            return (transferredBytes, totalBytes, hasTotalBytes, speedBytesPerSecond, longestEstimatedTimeRemaining);
+        }
+
+        private static (long TotalBytes, bool HasTotalBytes) AccumulateTotalBytes(
+            DesktopTransferProgressSnapshot progress,
+            long currentTotalBytes,
+            bool hasTotalBytes)
+        {
+            if (!progress.TotalBytes.HasValue)
+            {
+                return (currentTotalBytes, false);
+            }
+
+            return (currentTotalBytes + progress.TotalBytes.Value, hasTotalBytes);
+        }
+
+        private static double GetPositiveTransferSpeed(DesktopTransferProgressSnapshot progress)
+        {
+            return progress.SpeedBytesPerSecond is > 0 ? progress.SpeedBytesPerSecond.Value : 0;
+        }
+
+        private static TimeSpan? GetTransferEstimatedTimeRemaining(DesktopTransferProgressSnapshot progress)
+        {
+            if (progress.SpeedBytesPerSecond is not > 0
+                || progress.TotalBytes is not > 0
+                || progress.TotalBytes.Value <= progress.TransferredBytes)
+            {
+                return null;
+            }
+
+            return progress.EstimatedTimeRemaining
+                ?? TimeSpan.FromSeconds(
+                    (progress.TotalBytes.Value - progress.TransferredBytes) / progress.SpeedBytesPerSecond.Value);
         }
 
         private static string GetDisplayFileName(string relativePath)
