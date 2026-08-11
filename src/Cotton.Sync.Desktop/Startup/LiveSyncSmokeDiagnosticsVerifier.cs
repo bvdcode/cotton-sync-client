@@ -124,5 +124,4 @@ namespace Cotton.Sync.Desktop.Startup
                 || entryName.EndsWith(".sqlite", StringComparison.OrdinalIgnoreCase);
         }
     }
-
 }

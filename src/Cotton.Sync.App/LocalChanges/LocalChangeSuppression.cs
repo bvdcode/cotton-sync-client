@@ -358,23 +358,47 @@ namespace Cotton.Sync.App.LocalChanges
             LocalSyncRootChangeKind changeKind,
             SuppressionEntry entry)
         {
-            bool userRemovalMustRemainVisible = !entry.SuppressDeleteEvents
+            return MustPreserveUserRemoval(changeKind, entry)
+                || HasOnlineOnlyConditionEnded(fullPath, entry)
+                || MustPreserveContentChange(changeKind, entry)
+                || MustPreserveNonCreationChange(changeKind, entry)
+                || HasProviderMaterializationChanged(fullPath, entry);
+        }
+
+        private static bool MustPreserveUserRemoval(
+            LocalSyncRootChangeKind changeKind,
+            SuppressionEntry entry)
+        {
+            return !entry.SuppressDeleteEvents
                 && changeKind is LocalSyncRootChangeKind.Deleted or LocalSyncRootChangeKind.Renamed;
-            bool onlineOnlyConditionEnded = entry.OnlyWhileOnlineOnly
-                && !_onlineOnlyCloudFilesPlaceholderProbe(fullPath);
-            bool contentChangeMustRemainVisible = entry.MetadataOnly
-                && changeKind != LocalSyncRootChangeKind.AttributesChanged;
-            bool nonCreationChangeMustRemainVisible = entry.CreationOnly
+        }
+
+        private bool HasOnlineOnlyConditionEnded(string fullPath, SuppressionEntry entry)
+        {
+            return entry.OnlyWhileOnlineOnly && !_onlineOnlyCloudFilesPlaceholderProbe(fullPath);
+        }
+
+        private static bool MustPreserveContentChange(
+            LocalSyncRootChangeKind changeKind,
+            SuppressionEntry entry)
+        {
+            return entry.MetadataOnly && changeKind != LocalSyncRootChangeKind.AttributesChanged;
+        }
+
+        private static bool MustPreserveNonCreationChange(
+            LocalSyncRootChangeKind changeKind,
+            SuppressionEntry entry)
+        {
+            return entry.CreationOnly
                 && !entry.ExpectedSizeBytes.HasValue
                 && changeKind is not LocalSyncRootChangeKind.Created and not LocalSyncRootChangeKind.Renamed;
-            bool providerMaterializationChanged = entry.CreationOnly
+        }
+
+        private bool HasProviderMaterializationChanged(string fullPath, SuppressionEntry entry)
+        {
+            return entry.CreationOnly
                 && entry.ExpectedSizeBytes.HasValue
                 && !MatchesExpectedFileMetadata(fullPath, entry);
-            return userRemovalMustRemainVisible
-                || onlineOnlyConditionEnded
-                || contentChangeMustRemainVisible
-                || nonCreationChangeMustRemainVisible
-                || providerMaterializationChanged;
         }
 
         private void RemoveSuppressionEntry(

@@ -71,21 +71,9 @@ namespace Cotton.Sync.Desktop.Startup
 
                 File.SetAttributes(filePath, File.GetAttributes(filePath) | FileAttributes.NotContentIndexed);
                 await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken).ConfigureAwait(false);
-                if (supervisor.SyncNowCallCount == 0)
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, "Provider metadata attribute echo was suppressed without starting sync."))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "Provider metadata attribute echo started an unexpected sync request.")
-                        + " requests="
-                        + supervisor.SyncNowCallCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                        .ConfigureAwait(false);
-                }
+                failures += await VerifyProviderMetadataEchoSuppressionAsync(
+                    output,
+                    supervisor.SyncNowCallCount).ConfigureAwait(false);
 
                 await File.WriteAllTextAsync(filePath, userContent, cancellationToken).ConfigureAwait(false);
                 SyncRunRequest request = await supervisor
@@ -93,50 +81,16 @@ namespace Cotton.Sync.Desktop.Startup
                     .ConfigureAwait(false);
                 await Task.Delay(TimeSpan.FromMilliseconds(300), cancellationToken).ConfigureAwait(false);
 
-                bool exactUserEditScope = !request.IsFull
-                    && request.LocalChangedPaths.Count == 1
-                    && request.LocalChangedPaths.Contains(ProviderMetadataUserEditPath, StringComparer.OrdinalIgnoreCase)
-                    && request.LocalDeletedPaths.Count == 0;
-                if (exactUserEditScope)
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, "Real watcher preserved a user content edit after provider metadata finalization."))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "Provider metadata suppression hid or widened the user content edit scope.")
-                        + " requestedPaths="
-                        + string.Join(",", request.LocalChangedPaths))
-                        .ConfigureAwait(false);
-                }
-
-                if (supervisor.SyncNowCallCount == 1)
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, "Post-finalization content edit stayed scoped and emitted one request."))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "Post-finalization content edit emitted an unexpected request count.")
-                        + " requests="
-                        + supervisor.SyncNowCallCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                        .ConfigureAwait(false);
-                }
+                failures += await VerifyProviderMetadataUserEditScopeAsync(output, request).ConfigureAwait(false);
+                failures += await VerifyProviderMetadataUserEditRequestCountAsync(
+                    output,
+                    supervisor.SyncNowCallCount).ConfigureAwait(false);
 
                 string actualContent = await File.ReadAllTextAsync(filePath, cancellationToken).ConfigureAwait(false);
-                if (!string.Equals(actualContent, userContent, StringComparison.Ordinal))
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "Post-finalization user content was not preserved on disk."))
-                        .ConfigureAwait(false);
-                }
+                failures += await VerifyProviderMetadataUserContentAsync(
+                    output,
+                    actualContent,
+                    userContent).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -154,6 +108,86 @@ namespace Cotton.Sync.Desktop.Startup
 
             await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
             return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> VerifyProviderMetadataEchoSuppressionAsync(
+            TextWriter output,
+            int syncRequestCount)
+        {
+            if (syncRequestCount == 0)
+            {
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Provider metadata attribute echo was suppressed without starting sync."))
+                    .ConfigureAwait(false);
+                return 0;
+            }
+
+            await output.WriteLineAsync(
+                FormatCheck(false, "Provider metadata attribute echo started an unexpected sync request.")
+                + " requests="
+                + syncRequestCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .ConfigureAwait(false);
+            return 1;
+        }
+
+        private static async Task<int> VerifyProviderMetadataUserEditScopeAsync(
+            TextWriter output,
+            SyncRunRequest request)
+        {
+            bool exactUserEditScope = !request.IsFull
+                && request.LocalChangedPaths.Count == 1
+                && request.LocalChangedPaths.Contains(ProviderMetadataUserEditPath, StringComparer.OrdinalIgnoreCase)
+                && request.LocalDeletedPaths.Count == 0;
+            if (exactUserEditScope)
+            {
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Real watcher preserved a user content edit after provider metadata finalization."))
+                    .ConfigureAwait(false);
+                return 0;
+            }
+
+            await output.WriteLineAsync(
+                FormatCheck(false, "Provider metadata suppression hid or widened the user content edit scope.")
+                + " requestedPaths="
+                + string.Join(",", request.LocalChangedPaths))
+                .ConfigureAwait(false);
+            return 1;
+        }
+
+        private static async Task<int> VerifyProviderMetadataUserEditRequestCountAsync(
+            TextWriter output,
+            int syncRequestCount)
+        {
+            if (syncRequestCount == 1)
+            {
+                await output.WriteLineAsync(
+                    FormatCheck(true, "Post-finalization content edit stayed scoped and emitted one request."))
+                    .ConfigureAwait(false);
+                return 0;
+            }
+
+            await output.WriteLineAsync(
+                FormatCheck(false, "Post-finalization content edit emitted an unexpected request count.")
+                + " requests="
+                + syncRequestCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .ConfigureAwait(false);
+            return 1;
+        }
+
+        private static async Task<int> VerifyProviderMetadataUserContentAsync(
+            TextWriter output,
+            string actualContent,
+            string expectedContent)
+        {
+            if (string.Equals(actualContent, expectedContent, StringComparison.Ordinal))
+            {
+                return 0;
+            }
+
+            await output.WriteLineAsync(
+                FormatCheck(false, "Post-finalization user content was not preserved on disk."))
+                .ConfigureAwait(false);
+            return 1;
         }
 
         private static async Task<int> RunLocalRenameAfterProviderWriteAsync(

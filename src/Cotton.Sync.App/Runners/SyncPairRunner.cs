@@ -885,6 +885,5 @@ namespace Cotton.Sync.App.Runners
                 ? SyncPairRunState.Offline
                 : SyncPairRunState.Error;
         }
-
     }
 }

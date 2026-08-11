@@ -104,27 +104,11 @@ namespace Cotton.Sync.Desktop.Startup
 
                 await connectionCoordinator.StopAsync(cancellationToken).ConfigureAwait(false);
                 FileAttributes stoppedAttributes = File.GetAttributes(placeholderPath);
-                if (File.Exists(placeholderPath) && HasRecallOnDataAccess(stoppedAttributes))
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, "Tray quit lifecycle stop disconnected callbacks without corrupting the placeholder.")
-                        + " attributes="
-                        + FormatAttributes(stoppedAttributes)
-                        + ", downloads="
-                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "Placeholder was missing or lost online-only state after tray quit lifecycle stop.")
-                        + " exists="
-                        + File.Exists(placeholderPath).ToString()
-                        + ", attributes="
-                        + (File.Exists(placeholderPath) ? FormatAttributes(stoppedAttributes) : "missing"))
-                        .ConfigureAwait(false);
-                }
+                failures += await VerifyTrayQuitStoppedPlaceholderAsync(
+                    output,
+                    placeholderPath,
+                    stoppedAttributes,
+                    contentProvider.DownloadCount).ConfigureAwait(false);
 
                 int downloadsBeforeReconnect = contentProvider.DownloadCount;
                 await connectionCoordinator.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -135,33 +119,14 @@ namespace Cotton.Sync.Desktop.Startup
                 string hydratedText = await ReadAllTextThroughExternalProcessAsync(placeholderPath, cancellationToken)
                     .ConfigureAwait(false);
                 string hydratedHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(hydratedText)));
-                if (string.Equals(hydratedText, expectedText, StringComparison.Ordinal)
-                    && string.Equals(hydratedHash, expectedHash, StringComparison.OrdinalIgnoreCase)
-                    && contentProvider.DownloadCount == downloadsBeforeReconnect + 1)
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, "Reconnected callbacks hydrated exact remote content after tray quit simulation.")
-                        + " sha256="
-                        + hydratedHash
-                        + ", downloads="
-                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "Reconnected callbacks did not hydrate exact content after tray quit simulation.")
-                        + " expectedSha256="
-                        + expectedHash
-                        + ", actualSha256="
-                        + hydratedHash
-                        + ", downloadsBeforeReconnect="
-                        + downloadsBeforeReconnect.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                        + ", downloadsAfterReconnect="
-                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                        .ConfigureAwait(false);
-                }
+                failures += await VerifyTrayQuitReconnectedHydrationAsync(
+                    output,
+                    hydratedText,
+                    hydratedHash,
+                    expectedText,
+                    expectedHash,
+                    downloadsBeforeReconnect,
+                    contentProvider.DownloadCount).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -169,22 +134,82 @@ namespace Cotton.Sync.Desktop.Startup
             }
             finally
             {
-                try
-                {
-                    await connectionCoordinator.StopAsync(CancellationToken.None).ConfigureAwait(false);
-                }
-                catch (Exception exception) when (exception is not OperationCanceledException)
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "Final lifecycle disconnect failed: " + CleanSingleLine(exception.Message)))
-                        .ConfigureAwait(false);
-                }
-
+                failures += await StopTrayQuitConnectionAsync(connectionCoordinator, output).ConfigureAwait(false);
                 failures += TryUnregisterSmokeRoot(cloudFiles, syncPair, output);
             }
 
             return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
+        }
+
+        private static async Task<int> VerifyTrayQuitStoppedPlaceholderAsync(
+            TextWriter output,
+            string placeholderPath,
+            FileAttributes attributes,
+            int downloadCount)
+        {
+            bool exists = File.Exists(placeholderPath);
+            bool passed = exists && HasRecallOnDataAccess(attributes);
+            string details = passed
+                ? "attributes=" + FormatAttributes(attributes)
+                    + ", downloads="
+                    + downloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : "exists=" + exists.ToString()
+                    + ", attributes="
+                    + (exists ? FormatAttributes(attributes) : "missing");
+            return await WriteOutcomeAsync(
+                output,
+                passed,
+                "Tray quit lifecycle stop disconnected callbacks without corrupting the placeholder.",
+                "Placeholder was missing or lost online-only state after tray quit lifecycle stop.",
+                details).ConfigureAwait(false);
+        }
+
+        private static async Task<int> VerifyTrayQuitReconnectedHydrationAsync(
+            TextWriter output,
+            string hydratedText,
+            string hydratedHash,
+            string expectedText,
+            string expectedHash,
+            int downloadsBeforeReconnect,
+            int downloadsAfterReconnect)
+        {
+            bool passed = string.Equals(hydratedText, expectedText, StringComparison.Ordinal)
+                && string.Equals(hydratedHash, expectedHash, StringComparison.OrdinalIgnoreCase)
+                && downloadsAfterReconnect == downloadsBeforeReconnect + 1;
+            string details = passed
+                ? "sha256=" + hydratedHash
+                    + ", downloads="
+                    + downloadsAfterReconnect.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : "expectedSha256=" + expectedHash
+                    + ", actualSha256=" + hydratedHash
+                    + ", downloadsBeforeReconnect="
+                    + downloadsBeforeReconnect.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", downloadsAfterReconnect="
+                    + downloadsAfterReconnect.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return await WriteOutcomeAsync(
+                output,
+                passed,
+                "Reconnected callbacks hydrated exact remote content after tray quit simulation.",
+                "Reconnected callbacks did not hydrate exact content after tray quit simulation.",
+                details).ConfigureAwait(false);
+        }
+
+        private static async Task<int> StopTrayQuitConnectionAsync(
+            WindowsCloudFilesSyncRootConnectionCoordinator connectionCoordinator,
+            TextWriter output)
+        {
+            try
+            {
+                await connectionCoordinator.StopAsync(CancellationToken.None).ConfigureAwait(false);
+                return 0;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                await output.WriteLineAsync(
+                    FormatCheck(false, "Final lifecycle disconnect failed: " + CleanSingleLine(exception.Message)))
+                    .ConfigureAwait(false);
+                return 1;
+            }
         }
 
         private static async Task<int> RunRemovePairCleanupAsync(

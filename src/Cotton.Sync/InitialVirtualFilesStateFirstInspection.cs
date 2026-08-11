@@ -100,6 +100,5 @@ namespace Cotton.Sync
             StateRelativePaths.Add(entry.RelativePath);
             return null;
         }
-
     }
 }
