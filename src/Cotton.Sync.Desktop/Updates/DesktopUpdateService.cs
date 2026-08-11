@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Globalization;
@@ -9,7 +9,7 @@ using System.Text;
 
 namespace Cotton.Sync.Desktop.Updates
 {
-    internal sealed class DesktopUpdateService : IDesktopUpdateService, IDisposable
+    internal class DesktopUpdateService : IDesktopUpdateService, IDisposable
     {
         public static readonly Uri DefaultManifestUri = new(
             "https://github.com/bvdcode/cotton-sync-client/releases/latest/download/release-manifest.json");
@@ -364,6 +364,6 @@ namespace Cotton.Sync.Desktop.Updates
             return new FileHashSnapshot(Convert.ToHexString(hash).ToLowerInvariant(), stream.Length);
         }
 
-        private sealed record FileHashSnapshot(string Sha256, long SizeBytes);
+        private record FileHashSnapshot(string Sha256, long SizeBytes);
     }
 }

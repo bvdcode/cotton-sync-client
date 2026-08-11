@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Files;
@@ -759,7 +759,7 @@ namespace Cotton.Sync.Remote
             NodeContentDto Children,
             TimeSpan Elapsed);
 
-        private sealed record RemotePathResolution(RemoteDirectorySnapshot? Directory, RemoteFileSnapshot? File)
+        private record RemotePathResolution(RemoteDirectorySnapshot? Directory, RemoteFileSnapshot? File)
         {
             public static RemotePathResolution NotFound { get; } = new(null, null);
 

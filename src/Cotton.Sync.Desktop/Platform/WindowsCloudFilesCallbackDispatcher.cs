@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Collections.Concurrent;
@@ -6,7 +6,7 @@ using System.Threading.Channels;
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal sealed class WindowsCloudFilesCallbackDispatcher : IDisposable
+    internal class WindowsCloudFilesCallbackDispatcher : IDisposable
     {
         private readonly IWindowsCloudFilesCallbackHandler _handler;
         private readonly Action<WindowsCloudFilesTransferData> _transferData;
@@ -356,7 +356,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
-        private sealed class PendingFetchData : IDisposable
+        private class PendingFetchData : IDisposable
         {
             private readonly CancellationTokenSource _cancellation;
 
@@ -391,7 +391,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
-        private sealed class PendingDehydrateData : IDisposable
+        private class PendingDehydrateData : IDisposable
         {
             private readonly CancellationTokenSource _cancellation;
 

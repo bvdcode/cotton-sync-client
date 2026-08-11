@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Data.Common;
@@ -1154,7 +1154,7 @@ namespace Cotton.Sync.Tests.State
             }
         }
 
-        private sealed record SqlitePageUsage(long PageCount, long FreelistCount, long PageSize)
+        private record SqlitePageUsage(long PageCount, long FreelistCount, long PageSize)
         {
             public long FileBytes => PageCount * PageSize;
 

@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.SyncPairs;
@@ -6,7 +6,7 @@ using Cotton.Sync.Desktop.Platform;
 
 namespace Cotton.Sync.Desktop.Diagnostics
 {
-    internal sealed record DesktopCloudFilesRegistrationDiagnosticsSnapshot(
+    internal record DesktopCloudFilesRegistrationDiagnosticsSnapshot(
         bool IsWindows,
         bool IsStorageProviderHelperAvailable,
         bool? IsStorageProviderSupported,
@@ -137,7 +137,7 @@ namespace Cotton.Sync.Desktop.Diagnostics
         }
     }
 
-    internal sealed record DesktopCloudFilesSyncPairRegistrationSnapshot(
+    internal record DesktopCloudFilesSyncPairRegistrationSnapshot(
         Guid SyncPairId,
         string DisplayName,
         string LocalRootPath,

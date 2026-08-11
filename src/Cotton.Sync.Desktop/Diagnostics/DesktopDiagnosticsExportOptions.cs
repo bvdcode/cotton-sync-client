@@ -1,9 +1,9 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 namespace Cotton.Sync.Desktop.Diagnostics
 {
-    internal sealed record DesktopDiagnosticsExportOptions(bool IncludePrivateSupportData)
+    internal record DesktopDiagnosticsExportOptions(bool IncludePrivateSupportData)
     {
         public static DesktopDiagnosticsExportOptions Public { get; } = new(false);
 

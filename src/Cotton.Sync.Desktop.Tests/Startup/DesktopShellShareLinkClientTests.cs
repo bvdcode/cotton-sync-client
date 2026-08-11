@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Net;
@@ -123,7 +123,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             };
         }
 
-        private sealed class RecordingHttpHandler : HttpMessageHandler
+        private class RecordingHttpHandler : HttpMessageHandler
         {
             private readonly Func<HttpRequestMessage, HttpResponseMessage> _handler;
 
@@ -150,7 +150,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             }
         }
 
-        private sealed class MemoryCottonTokenStore : ICottonTokenStore
+        private class MemoryCottonTokenStore : ICottonTokenStore
         {
             private TokenPairDto? _tokens;
 
@@ -181,7 +181,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             }
         }
 
-        private sealed class FakeAuthClient : ICottonAuthClient
+        private class FakeAuthClient : ICottonAuthClient
         {
             private readonly ICottonTokenStore _tokenStore;
 

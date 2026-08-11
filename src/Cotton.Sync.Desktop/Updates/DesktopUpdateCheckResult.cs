@@ -1,9 +1,9 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 namespace Cotton.Sync.Desktop.Updates
 {
-    internal sealed record DesktopUpdateCheckResult(
+    internal record DesktopUpdateCheckResult(
         DesktopReleaseManifest Manifest,
         DesktopSemanticVersion CurrentVersion,
         DesktopSemanticVersion LatestVersion,

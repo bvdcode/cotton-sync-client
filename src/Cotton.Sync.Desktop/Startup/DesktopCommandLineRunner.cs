@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sdk;
@@ -2712,7 +2712,7 @@ namespace Cotton.Sync.Desktop.Startup
             string DirectoryPath,
             string LocalOnlyPath);
 
-        private sealed record LiveSyncSmokeSeededLocalFile(string FullPath, string RelativePath, string Sha256);
+        private record LiveSyncSmokeSeededLocalFile(string FullPath, string RelativePath, string Sha256);
 
         private class ShellShareLinkSmokeClient : IDesktopShellShareLinkClient
         {
@@ -2756,7 +2756,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class SocketCleanupSmokeTraceListener : TraceListener
+        private class SocketCleanupSmokeTraceListener : TraceListener
         {
             private readonly StringWriter _writer = new();
 
@@ -2773,7 +2773,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class LiveSmokePlatformCommandService(TextWriter output, TimeSpan approvalHold) : IPlatformCommandService
+        private class LiveSmokePlatformCommandService(TextWriter output, TimeSpan approvalHold) : IPlatformCommandService
         {
             public Task OpenFolderAsync(string localPath, CancellationToken cancellationToken = default)
             {

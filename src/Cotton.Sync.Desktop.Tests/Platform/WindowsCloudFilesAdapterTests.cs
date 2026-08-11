@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Files;
@@ -1783,7 +1783,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 });
         }
 
-        private sealed class FakeCloudFilesNativeApi : IWindowsCloudFilesNativeApi
+        private class FakeCloudFilesNativeApi : IWindowsCloudFilesNativeApi
         {
             public List<string>? OperationLog { get; init; }
 
@@ -1960,16 +1960,16 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 HydrateAction?.Invoke(filePath);
             }
 
-            public sealed record PinStateCall(string FilePath, WindowsCloudFilesPinState PinState);
+            public record PinStateCall(string FilePath, WindowsCloudFilesPinState PinState);
 
-            public sealed record ConvertedPlaceholderCall(
+            public record ConvertedPlaceholderCall(
                 string FilePath,
                 byte[] FileIdentity,
                 bool IsDirectory,
                 bool MarkInSync);
         }
 
-        private sealed class RecordingShellChangeNotifier : IWindowsShellChangeNotifier
+        private class RecordingShellChangeNotifier : IWindowsShellChangeNotifier
         {
             public List<string> ItemUpdates { get; } = [];
 
@@ -1986,7 +1986,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class FakeStorageProviderSyncRootRegistrar : IWindowsStorageProviderSyncRootRegistrar
+        private class FakeStorageProviderSyncRootRegistrar : IWindowsStorageProviderSyncRootRegistrar
         {
             private readonly List<string> _operationLog;
 
@@ -2033,7 +2033,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class RecordingCallbackHandler : IWindowsCloudFilesCallbackHandler
+        private class RecordingCallbackHandler : IWindowsCloudFilesCallbackHandler
         {
             public Task HandleFetchDataAsync(
                 WindowsCloudFilesFetchDataRequest request,

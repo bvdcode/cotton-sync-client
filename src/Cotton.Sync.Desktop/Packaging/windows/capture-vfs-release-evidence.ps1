@@ -262,7 +262,7 @@ using System.Text;
 
 public static class CottonReleaseEvidenceWindowProbe
 {
-    public sealed class WindowSnapshot
+    public class WindowSnapshot
     {
         public IntPtr Handle { get; set; }
         public string Title { get; set; }

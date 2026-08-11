@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 namespace Cotton.Sync.State
@@ -6,7 +6,7 @@ namespace Cotton.Sync.State
     /// <summary>
     /// Captures SQLite sync-state storage usage without exposing local filesystem paths.
     /// </summary>
-    public sealed record SyncStateStoreDiagnostics(
+    public record SyncStateStoreDiagnostics(
         long FileSizeBytes,
         long PageCount,
         long FreelistCount,

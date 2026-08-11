@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.IO.Compression;
@@ -1088,7 +1088,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             return reader.ReadToEnd();
         }
 
-        private sealed class SlowServerInfoEndpoint : IAsyncDisposable
+        private class SlowServerInfoEndpoint : IAsyncDisposable
         {
             private readonly HttpListener _listener = new();
             private readonly CancellationTokenSource _cancellation = new();
@@ -1194,7 +1194,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             }
         }
 
-        private sealed class FakeUpdateService : IDesktopUpdateService
+        private class FakeUpdateService : IDesktopUpdateService
         {
             private readonly DesktopUpdateCheckResult _checkResult;
             private readonly DesktopUpdateDownloadResult? _downloadResult;
@@ -1237,7 +1237,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             }
         }
 
-        private sealed class FakeUpdateInstaller : IDesktopUpdateInstaller
+        private class FakeUpdateInstaller : IDesktopUpdateInstaller
         {
             public string? InstallerPath { get; private set; }
 

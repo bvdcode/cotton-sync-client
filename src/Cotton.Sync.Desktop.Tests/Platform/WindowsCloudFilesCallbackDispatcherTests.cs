@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.Desktop.Platform;
@@ -302,7 +302,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class BlockingCallbackHandler : IWindowsCloudFilesCallbackHandler
+        private class BlockingCallbackHandler : IWindowsCloudFilesCallbackHandler
         {
             private readonly object _gate = new();
             private readonly SemaphoreSlim _started = new(0);
@@ -413,7 +413,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class ThrowingCallbackHandler : IWindowsCloudFilesCallbackHandler
+        private class ThrowingCallbackHandler : IWindowsCloudFilesCallbackHandler
         {
             private readonly Exception _exception;
 

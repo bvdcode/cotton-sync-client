@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Files;
@@ -218,7 +218,7 @@ namespace Cotton.Sync.Desktop.Platform
                 });
         }
 
-        private sealed class NoopWindowsCloudFilesCallbackHandler : IWindowsCloudFilesCallbackHandler
+        private class NoopWindowsCloudFilesCallbackHandler : IWindowsCloudFilesCallbackHandler
         {
             public static NoopWindowsCloudFilesCallbackHandler Instance { get; } = new();
 
@@ -246,7 +246,7 @@ namespace Cotton.Sync.Desktop.Platform
         }
     }
 
-    internal sealed record DesktopCloudFilesSelfTestCapabilitySnapshot(
+    internal record DesktopCloudFilesSelfTestCapabilitySnapshot(
         bool Passed,
         bool Skipped,
         string Details);

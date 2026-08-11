@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.SyncPairs;
@@ -250,7 +250,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             };
         }
 
-        private sealed class FakeCloudFilesAdapter : IWindowsCloudFilesAdapter
+        private class FakeCloudFilesAdapter : IWindowsCloudFilesAdapter
         {
             private readonly List<string>? _operations;
             private readonly Dictionary<string, WindowsCloudFilesPlaceholderState> _placeholderStates =
@@ -315,7 +315,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class FakeRootCleaner : IWindowsVirtualFilesRootCleaner
+        private class FakeRootCleaner : IWindowsVirtualFilesRootCleaner
         {
             private readonly List<string> _operations;
             private readonly bool _shouldRemoveRoot;

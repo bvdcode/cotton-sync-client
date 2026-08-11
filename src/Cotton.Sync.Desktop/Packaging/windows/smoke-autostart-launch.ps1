@@ -70,7 +70,7 @@ using System.Text;
 
 public static class CottonAutostartWindowProbe
 {
-    public sealed class WindowSnapshot
+    public class WindowSnapshot
     {
         public IntPtr Handle { get; set; }
         public string Title { get; set; }

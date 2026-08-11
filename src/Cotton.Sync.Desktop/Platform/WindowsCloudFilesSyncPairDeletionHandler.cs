@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.SyncApplication;
@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal sealed class WindowsCloudFilesSyncPairDeletionHandler : ISyncPairDeletionHandler
+    internal class WindowsCloudFilesSyncPairDeletionHandler : ISyncPairDeletionHandler
     {
         private readonly IWindowsCloudFilesAdapter _cloudFiles;
         private readonly IWindowsCloudFilesDiagnostics _diagnostics;

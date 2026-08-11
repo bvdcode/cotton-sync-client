@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.LocalChanges;
@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal sealed class DesktopCloudFilesPlaceholderWriter :
+    internal class DesktopCloudFilesPlaceholderWriter :
         IRemoteFilePlaceholderBatchWriter,
         IRemoteFilePlaceholderPopulationObserver,
         IRemoteFileMaterializationObserver,
@@ -388,7 +388,7 @@ namespace Cotton.Sync.Desktop.Platform
             _localChangeSuppression.SuppressProviderOnlineOnlyWrite(syncPairId, localRootPath, relativePath);
         }
 
-        private sealed class NoopDisposable : IDisposable
+        private class NoopDisposable : IDisposable
         {
             public static NoopDisposable Instance { get; } = new();
 

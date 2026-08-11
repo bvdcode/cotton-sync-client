@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Microsoft.Win32.SafeHandles;
@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal sealed class WindowsCloudFilesNativeApi : IWindowsCloudFilesNativeApi
+    internal class WindowsCloudFilesNativeApi : IWindowsCloudFilesNativeApi
     {
         private const int Succeeded = 0;
 
@@ -1212,7 +1212,7 @@ namespace Cotton.Sync.Desktop.Platform
             public uint FileIdentityLength;
         }
 
-        private sealed class NativeCallbackState : IDisposable
+        private class NativeCallbackState : IDisposable
         {
             private readonly WindowsCloudFilesCallbackDispatcher _dispatcher;
             private readonly GCHandle _contextHandle;

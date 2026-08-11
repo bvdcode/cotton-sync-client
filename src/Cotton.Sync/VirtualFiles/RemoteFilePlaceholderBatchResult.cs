@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 namespace Cotton.Sync.VirtualFiles
@@ -6,7 +6,7 @@ namespace Cotton.Sync.VirtualFiles
     /// <summary>
     /// Describes the result of one item in a placeholder batch.
     /// </summary>
-    public sealed record RemoteFilePlaceholderBatchResult(
+    public record RemoteFilePlaceholderBatchResult(
         string RelativePath,
         RemoteFilePlaceholderResult? Placeholder,
         string? UnavailableReason)

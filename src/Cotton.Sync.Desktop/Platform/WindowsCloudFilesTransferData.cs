@@ -1,9 +1,9 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal sealed record WindowsCloudFilesTransferData(
+    internal record WindowsCloudFilesTransferData(
         WindowsCloudFilesConnectionKey ConnectionKey,
         WindowsCloudFilesTransferKey TransferKey,
         WindowsCloudFilesRequestKey RequestKey,

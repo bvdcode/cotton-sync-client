@@ -1,11 +1,11 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Globalization;
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal sealed class WindowsCloudFilesNativeException : Exception
+    internal class WindowsCloudFilesNativeException : Exception
     {
         public WindowsCloudFilesNativeException(string operation, int hresult)
             : base(CreateMessage(operation, hresult))

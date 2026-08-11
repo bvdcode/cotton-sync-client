@@ -1,11 +1,11 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Diagnostics;
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal sealed class WindowsStorageProviderSyncRootRegistrar : IWindowsStorageProviderSyncRootRegistrar
+    internal class WindowsStorageProviderSyncRootRegistrar : IWindowsStorageProviderSyncRootRegistrar
     {
         private const int CommandTimeoutMilliseconds = 30_000;
         private const string HelperRelativePath = "WindowsShell";

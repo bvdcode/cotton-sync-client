@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.Desktop.Diagnostics;
@@ -126,7 +126,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
             }
         }
 
-        private sealed class CollectingTraceListener : TraceListener
+        private class CollectingTraceListener : TraceListener
         {
             private readonly StringWriter _writer = new();
 

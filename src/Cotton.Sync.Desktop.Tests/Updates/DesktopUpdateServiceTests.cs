@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Net;
@@ -402,7 +402,7 @@ namespace Cotton.Sync.Desktop.Tests.Updates
             };
         }
 
-        private sealed class InlineProgress<T> : IProgress<T>
+        private class InlineProgress<T> : IProgress<T>
         {
             private readonly Action<T> _report;
 
@@ -417,7 +417,7 @@ namespace Cotton.Sync.Desktop.Tests.Updates
             }
         }
 
-        private sealed class StubHttpMessageHandler : HttpMessageHandler
+        private class StubHttpMessageHandler : HttpMessageHandler
         {
             private readonly Dictionary<string, byte[]> _responses;
 
@@ -448,7 +448,7 @@ namespace Cotton.Sync.Desktop.Tests.Updates
             }
         }
 
-        private sealed class SequenceHttpMessageHandler : HttpMessageHandler
+        private class SequenceHttpMessageHandler : HttpMessageHandler
         {
             private readonly Queue<Func<HttpRequestMessage, HttpResponseMessage>> _responses;
 

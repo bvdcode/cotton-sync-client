@@ -1,11 +1,11 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Text.Json;
 
 namespace Cotton.Sync.Desktop.Updates
 {
-    internal sealed record DesktopReleaseManifest(
+    internal record DesktopReleaseManifest(
         int SchemaVersion,
         string Product,
         string Version,
@@ -101,7 +101,7 @@ namespace Cotton.Sync.Desktop.Updates
             return text.ToLowerInvariant();
         }
 
-        private sealed class ManifestDto
+        private class ManifestDto
         {
             public int SchemaVersion { get; set; }
 
@@ -120,7 +120,7 @@ namespace Cotton.Sync.Desktop.Updates
             public List<AssetDto>? Assets { get; set; }
         }
 
-        private sealed class AssetDto
+        private class AssetDto
         {
             public string? Name { get; set; }
 

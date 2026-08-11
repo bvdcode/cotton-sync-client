@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.Auth;
@@ -1724,7 +1724,7 @@ namespace Cotton.Sync.App.Tests.SyncApplication
             }
         }
 
-        private sealed class FakeSyncPairDeletionHandler : ISyncPairDeletionHandler
+        private class FakeSyncPairDeletionHandler : ISyncPairDeletionHandler
         {
             private readonly ICollection<string> _calls;
 

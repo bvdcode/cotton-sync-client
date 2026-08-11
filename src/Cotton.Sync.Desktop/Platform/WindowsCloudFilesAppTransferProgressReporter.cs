@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync;
@@ -6,7 +6,7 @@ using Cotton.Sync.App.Progress;
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal sealed class WindowsCloudFilesAppTransferProgressReporter : IProgress<SyncTransferProgress>
+    internal class WindowsCloudFilesAppTransferProgressReporter : IProgress<SyncTransferProgress>
     {
         private readonly AppTransferProgressEstimator _estimator = new();
         private readonly IAppTransferProgressPublisher _publisher;

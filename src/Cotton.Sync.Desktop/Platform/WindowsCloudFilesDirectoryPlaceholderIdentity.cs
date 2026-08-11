@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.VirtualFiles;
@@ -6,7 +6,7 @@ using System.Text.Json;
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal sealed record WindowsCloudFilesDirectoryPlaceholderIdentity(
+    internal record WindowsCloudFilesDirectoryPlaceholderIdentity(
         int Schema,
         string Product,
         Guid SyncPairId,

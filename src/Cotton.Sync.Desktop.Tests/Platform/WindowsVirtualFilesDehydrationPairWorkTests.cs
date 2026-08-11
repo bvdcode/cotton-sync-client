@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.LocalChanges;
@@ -1197,7 +1197,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             };
         }
 
-        private sealed class RecordingSyncPairWork : ISyncPairWork
+        private class RecordingSyncPairWork : ISyncPairWork
         {
             public List<SyncRunRequest> Requests { get; } = [];
 
@@ -1217,7 +1217,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class FakeContentHasher : ILocalFileContentHasher
+        private class FakeContentHasher : ILocalFileContentHasher
         {
             private readonly string _hash;
 
@@ -1234,9 +1234,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed record SuppressedWrite(Guid SyncPairId, string LocalRootPath, string RelativePath);
+        private record SuppressedWrite(Guid SyncPairId, string LocalRootPath, string RelativePath);
 
-        private sealed class RecordingLocalChangeSuppression : ILocalChangeSuppression
+        private class RecordingLocalChangeSuppression : ILocalChangeSuppression
         {
             public List<SuppressedWrite> SuppressedWrites { get; } = [];
 
@@ -1278,7 +1278,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class NoopDisposable : IDisposable
+        private class NoopDisposable : IDisposable
         {
             public static NoopDisposable Instance { get; } = new();
 
@@ -1287,7 +1287,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class FakeCloudFilesAdapter : IWindowsCloudFilesAdapter
+        private class FakeCloudFilesAdapter : IWindowsCloudFilesAdapter
         {
             public List<string> DehydratedPaths { get; } = [];
 
@@ -1352,7 +1352,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class FakeSyncStateStore : ISyncStateStore
+        private class FakeSyncStateStore : ISyncStateStore
         {
             private readonly Dictionary<string, SyncStateEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
 

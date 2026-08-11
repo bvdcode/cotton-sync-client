@@ -1,11 +1,11 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.VirtualFiles;
 
 namespace Cotton.Sync.Cli
 {
-    internal sealed class SyncCliRunProgressWriter : IProgress<SyncRunProgress>
+    internal class SyncCliRunProgressWriter : IProgress<SyncRunProgress>
     {
         private static readonly TimeSpan DefaultMinimumFirstReportElapsed = TimeSpan.FromSeconds(5);
         private static readonly TimeSpan DefaultMinimumReportInterval = TimeSpan.FromSeconds(5);

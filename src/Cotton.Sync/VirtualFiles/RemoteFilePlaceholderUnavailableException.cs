@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.State;
@@ -8,7 +8,7 @@ namespace Cotton.Sync.VirtualFiles
     /// <summary>
     /// Indicates that a virtual-files placeholder cannot be created for a recoverable, user-actionable reason.
     /// </summary>
-    public sealed class RemoteFilePlaceholderUnavailableException : Exception
+    public class RemoteFilePlaceholderUnavailableException : Exception
     {
         public RemoteFilePlaceholderUnavailableException(string relativePath, string reason)
             : base(CreateMessage(relativePath, reason))

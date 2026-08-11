@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Diagnostics;
@@ -1263,7 +1263,7 @@ namespace Cotton.Sync.Tests
             }
         }
 
-        private sealed class EmptyLocalFileScanner : ILocalFileScanner
+        private class EmptyLocalFileScanner : ILocalFileScanner
         {
             public Task<IReadOnlyList<LocalFileSnapshot>> ScanAsync(
                 string rootPath,
@@ -1273,7 +1273,7 @@ namespace Cotton.Sync.Tests
             }
         }
 
-        private sealed class FailOnFullScanLocalFileScanner :
+        private class FailOnFullScanLocalFileScanner :
             ILocalFileScanner,
             ILocalFileMetadataPathLookupScanner
         {
@@ -1483,7 +1483,7 @@ namespace Cotton.Sync.Tests
             }
         }
 
-        private sealed class CountingVirtualPlaceholderStateStore : ISyncStateStore
+        private class CountingVirtualPlaceholderStateStore : ISyncStateStore
         {
             private readonly Dictionary<string, SyncStateEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
             private readonly List<int> _upsertManyEntryCounts = [];
@@ -1662,7 +1662,7 @@ namespace Cotton.Sync.Tests
             }
         }
 
-        private sealed class CountingRemoteFilePlaceholderWriter :
+        private class CountingRemoteFilePlaceholderWriter :
             IRemoteFilePlaceholderWriter,
             IRemoteFilePlaceholderPopulationObserver
         {
@@ -1733,7 +1733,7 @@ namespace Cotton.Sync.Tests
                 }
             }
 
-            private sealed class PopulationLease : IDisposable
+            private class PopulationLease : IDisposable
             {
                 private CountingRemoteFilePlaceholderWriter? _owner;
 
@@ -1883,7 +1883,7 @@ namespace Cotton.Sync.Tests
 
         private record MemorySample(long ManagedHeapBytes, long WorkingSetBytes);
 
-        private sealed record VirtualPlaceholderPopulationSmokeResult(
+        private record VirtualPlaceholderPopulationSmokeResult(
             TimeSpan Elapsed,
             long ManagedHeapDeltaBytes,
             int PlaceholderCount,
@@ -1894,7 +1894,7 @@ namespace Cotton.Sync.Tests
             int RetainedActivityCount,
             bool IsActivityListTruncated);
 
-        private sealed record VirtualPlaceholderRepeatPassSmokeResult(
+        private record VirtualPlaceholderRepeatPassSmokeResult(
             TimeSpan Elapsed,
             int LocalFullScanCalls,
             int PlaceholderWrites,

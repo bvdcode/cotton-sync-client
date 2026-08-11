@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.Desktop.Composition;
@@ -950,7 +950,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             };
         }
 
-        private sealed class FakeDesktopUpdateService : IDesktopUpdateService
+        private class FakeDesktopUpdateService : IDesktopUpdateService
         {
             public const long InstallerSizeBytes = 9;
             private const string LatestVersion = "0.1.1";
@@ -1013,7 +1013,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             }
         }
 
-        private sealed class FakeDesktopShellShareLinkClient : IDesktopShellShareLinkClient
+        private class FakeDesktopShellShareLinkClient : IDesktopShellShareLinkClient
         {
             private readonly DesktopShellShareLinkResult _result;
 
@@ -1053,7 +1053,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             }
         }
 
-        private sealed class FakeCloudFilesAdapter : IWindowsCloudFilesAdapter
+        private class FakeCloudFilesAdapter : IWindowsCloudFilesAdapter
         {
             public List<SyncPairSettings> UnregisteredPairs { get; } = [];
 
@@ -1096,7 +1096,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             }
         }
 
-        private sealed class FakeStorageProviderSyncRootRegistrar : IWindowsStorageProviderSyncRootRegistrar
+        private class FakeStorageProviderSyncRootRegistrar : IWindowsStorageProviderSyncRootRegistrar
         {
             public int UnregisterAllCalls { get; private set; }
 
@@ -1132,7 +1132,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             }
         }
 
-        private sealed class FakeDesktopUpdateInstaller : IDesktopUpdateInstaller
+        private class FakeDesktopUpdateInstaller : IDesktopUpdateInstaller
         {
             public int Calls { get; private set; }
 

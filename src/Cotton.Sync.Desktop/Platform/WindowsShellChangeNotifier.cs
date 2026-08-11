@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal sealed class WindowsShellChangeNotifier : IWindowsShellChangeNotifier
+    internal class WindowsShellChangeNotifier : IWindowsShellChangeNotifier
     {
         private const int ShcneAttributes = 0x00000800;
         private const int ShcneUpdatedir = 0x00001000;

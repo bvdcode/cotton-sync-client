@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.LocalChanges;
@@ -1745,7 +1745,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             }
         }
 
-        private sealed class MutableTimeProvider : TimeProvider
+        private class MutableTimeProvider : TimeProvider
         {
             private DateTimeOffset _utcNow = new(2026, 6, 23, 0, 0, 0, TimeSpan.Zero);
 
@@ -1760,7 +1760,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             }
         }
 
-        private sealed class BlockingLocalChangeSuppression : ILocalChangeSuppression
+        private class BlockingLocalChangeSuppression : ILocalChangeSuppression
         {
             private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -1792,7 +1792,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             }
         }
 
-        private sealed class NoopDisposable : IDisposable
+        private class NoopDisposable : IDisposable
         {
             public static NoopDisposable Instance { get; } = new();
 

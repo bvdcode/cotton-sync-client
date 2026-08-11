@@ -153,7 +153,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             File.WriteAllText(fullPath, "test");
         }
 
-        private sealed class RecordingSyncPairWork : ISyncPairWork
+        private class RecordingSyncPairWork : ISyncPairWork
         {
             public List<SyncRunRequest> Requests { get; } = [];
 
@@ -172,7 +172,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class RecordingCloudFilesAdapter : IWindowsCloudFilesAdapter
+        private class RecordingCloudFilesAdapter : IWindowsCloudFilesAdapter
         {
             public Dictionary<string, WindowsCloudFilesPlaceholderState> States { get; } =
                 new(StringComparer.OrdinalIgnoreCase);
@@ -232,7 +232,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class RecordingRunProgressPublisher : IAppRunProgressPublisher
+        private class RecordingRunProgressPublisher : IAppRunProgressPublisher
         {
             public List<AppRunProgress> Progress { get; } = [];
 
@@ -247,7 +247,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class FakeSyncStateStore : ISyncStateStore
+        private class FakeSyncStateStore : ISyncStateStore
         {
             private readonly List<SyncStateEntry> _entries;
 

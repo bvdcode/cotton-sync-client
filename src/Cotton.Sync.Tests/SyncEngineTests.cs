@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Globalization;
@@ -6766,7 +6766,7 @@ namespace Cotton.Sync.Tests
             }
         }
 
-        private sealed class BlockingStreamingRemoteTreeCrawler : IRemoteTreeStreamingCrawler
+        private class BlockingStreamingRemoteTreeCrawler : IRemoteTreeStreamingCrawler
         {
             private readonly Guid _rootNodeId;
             private readonly IReadOnlyList<RemoteFileSnapshot> _files;
@@ -6867,7 +6867,7 @@ namespace Cotton.Sync.Tests
             }
         }
 
-        private sealed class StreamingRemoteTreeCrawler : IRemoteTreeStreamingCrawler
+        private class StreamingRemoteTreeCrawler : IRemoteTreeStreamingCrawler
         {
             private readonly Guid _rootNodeId;
             private readonly IReadOnlyList<RemoteFileSnapshot> _files;
@@ -7269,7 +7269,7 @@ namespace Cotton.Sync.Tests
                     LocalLastWriteUtc));
             }
 
-            private sealed class PopulationLease : IDisposable
+            private class PopulationLease : IDisposable
             {
                 private FakeRemoteFilePlaceholderWriter? _owner;
 
@@ -7289,7 +7289,7 @@ namespace Cotton.Sync.Tests
             }
         }
 
-        private sealed class SignalingRemoteFilePlaceholderWriter : IRemoteFilePlaceholderWriter
+        private class SignalingRemoteFilePlaceholderWriter : IRemoteFilePlaceholderWriter
         {
             private static readonly byte[] PlaceholderIdentity = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E];
             private readonly object _requestsLock = new();
@@ -7321,7 +7321,7 @@ namespace Cotton.Sync.Tests
             }
         }
 
-        private sealed class BatchRemoteFilePlaceholderWriter : IRemoteFilePlaceholderBatchWriter
+        private class BatchRemoteFilePlaceholderWriter : IRemoteFilePlaceholderBatchWriter
         {
             private static readonly byte[] PlaceholderIdentity = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E];
 

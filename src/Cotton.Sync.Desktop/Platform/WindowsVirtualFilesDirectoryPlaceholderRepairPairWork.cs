@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Nodes;
@@ -12,7 +12,7 @@ using System.Diagnostics;
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal sealed class WindowsVirtualFilesDirectoryPlaceholderRepairPairWork : ISyncPairWork
+    internal class WindowsVirtualFilesDirectoryPlaceholderRepairPairWork : ISyncPairWork
     {
         private readonly ISyncPairWork _inner;
         private readonly ISyncStateStore _stateStore;

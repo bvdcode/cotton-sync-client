@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.State;
@@ -8,7 +8,7 @@ namespace Cotton.Sync
     /// <summary>
     /// Defines the filesystem surface that a sync pass must reconcile.
     /// </summary>
-    public sealed class SyncRunScope
+    public class SyncRunScope
     {
         private SyncRunScope(
             bool isFull,

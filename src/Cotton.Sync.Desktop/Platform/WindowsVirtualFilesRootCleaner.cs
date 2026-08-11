@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.SyncPairs;
@@ -6,7 +6,7 @@ using Cotton.Sync.State;
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal sealed class WindowsVirtualFilesRootCleaner : IWindowsVirtualFilesRootCleaner
+    internal class WindowsVirtualFilesRootCleaner : IWindowsVirtualFilesRootCleaner
     {
         private const int FileAttributeRecallOnOpen = 0x00040000;
         private const int FileAttributeUnpinned = 0x00100000;

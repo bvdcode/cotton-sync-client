@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 namespace Cotton.Sync.App.SyncPairs
@@ -6,7 +6,7 @@ namespace Cotton.Sync.App.SyncPairs
     /// <summary>
     /// Describes which synchronization modes are available on the current host.
     /// </summary>
-    public sealed record SyncPairModeCapabilitySnapshot(
+    public record SyncPairModeCapabilitySnapshot(
         bool IsWindowsVirtualFilesSupported,
         string WindowsVirtualFilesDetails)
     {

@@ -1,11 +1,11 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.Desktop.Updates;
 
 namespace Cotton.Sync.Desktop.Diagnostics
 {
-    internal sealed record DesktopUpdateDiagnosticsSnapshot(
+    internal record DesktopUpdateDiagnosticsSnapshot(
         string CurrentVersion,
         bool IsUpdateCacheDirectoryPresent,
         bool HasPendingUpdate,

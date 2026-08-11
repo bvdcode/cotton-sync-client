@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Collections.ObjectModel;
@@ -7721,7 +7721,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             return lastSlash <= 0 ? "/" : normalized[..lastSlash];
         }
 
-        private sealed class ActionProgress<T> : IProgress<T>
+        private class ActionProgress<T> : IProgress<T>
         {
             private readonly Action<T> _report;
 

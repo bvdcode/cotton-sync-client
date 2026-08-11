@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.SyncPairs;
@@ -15,7 +15,7 @@ using System.Text.Json;
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal sealed class WindowsCloudFilesAdapter : IWindowsCloudFilesAdapter
+    internal class WindowsCloudFilesAdapter : IWindowsCloudFilesAdapter
     {
         public const string ProviderId = "Cotton.Sync.Desktop";
         public const string ProviderName = "Cotton Cloud";
@@ -1767,9 +1767,9 @@ namespace Cotton.Sync.Desktop.Platform
             return version.Length <= 255 ? version : version[..255];
         }
 
-        private sealed record PlaceholderPath(string BaseDirectoryPath, string RelativeFileName);
+        private record PlaceholderPath(string BaseDirectoryPath, string RelativeFileName);
 
-        private sealed record PreparedFilePlaceholder(
+        private record PreparedFilePlaceholder(
             int Index,
             string SyncPairId,
             string LocalRootPath,

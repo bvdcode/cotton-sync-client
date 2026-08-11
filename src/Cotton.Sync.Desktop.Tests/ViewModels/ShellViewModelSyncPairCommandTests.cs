@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Globalization;
@@ -8206,7 +8206,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 storedSessionRetryDelayAsync);
         }
 
-        private sealed class ManualPeriodicUpdateDelay : IDisposable
+        private class ManualPeriodicUpdateDelay : IDisposable
         {
             private readonly Queue<TaskCompletionSource> _pendingDelays = new();
             private bool _disposed;
@@ -8351,7 +8351,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             }
         }
 
-        private sealed class QueuedAccessDesktopUiDispatcher : IDesktopUiDispatcher
+        private class QueuedAccessDesktopUiDispatcher : IDesktopUiDispatcher
         {
             private readonly Queue<Action> _actions = [];
 

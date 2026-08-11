@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.LocalChanges;
@@ -247,9 +247,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             };
         }
 
-        private sealed record SuppressedWrite(Guid SyncPairId, string LocalRootPath, string RelativePath);
+        private record SuppressedWrite(Guid SyncPairId, string LocalRootPath, string RelativePath);
 
-        private sealed class RecordingRunProgressPublisher : IAppRunProgressPublisher
+        private class RecordingRunProgressPublisher : IAppRunProgressPublisher
         {
             public List<AppRunProgress> Progress { get; } = [];
 
@@ -264,7 +264,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class RecordingSyncPairWork : ISyncPairWork
+        private class RecordingSyncPairWork : ISyncPairWork
         {
             public List<SyncRunRequest> Requests { get; } = [];
 
@@ -283,7 +283,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class RecordingCloudFilesAdapter : IWindowsCloudFilesAdapter
+        private class RecordingCloudFilesAdapter : IWindowsCloudFilesAdapter
         {
             public List<RemoteDirectoryMaterializationRequest> DirectoryPlaceholders { get; } = [];
 
@@ -343,7 +343,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class FakeSyncStateStore : ISyncStateStore
+        private class FakeSyncStateStore : ISyncStateStore
         {
             private readonly Dictionary<string, SyncStateEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
 
@@ -497,7 +497,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class RecordingLocalChangeSuppression : ILocalChangeSuppression
+        private class RecordingLocalChangeSuppression : ILocalChangeSuppression
         {
             public List<SuppressedWrite> SuppressedWrites { get; } = [];
 
@@ -531,7 +531,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class NoopDisposable : IDisposable
+        private class NoopDisposable : IDisposable
         {
             public static readonly NoopDisposable Instance = new();
 

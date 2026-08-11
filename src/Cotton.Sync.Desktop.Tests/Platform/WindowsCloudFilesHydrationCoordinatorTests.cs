@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Files;
@@ -660,7 +660,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class FakeContentProvider : IWindowsCloudFilesRemoteContentProvider
+        private class FakeContentProvider : IWindowsCloudFilesRemoteContentProvider
         {
             private readonly byte[] _content;
 
@@ -682,7 +682,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class VerifiedRangeContentProvider :
+        private class VerifiedRangeContentProvider :
             IWindowsCloudFilesRemoteContentProvider,
             IWindowsCloudFilesVerifiedRangeContentProvider
         {
@@ -725,7 +725,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class ProgressContentProvider : IWindowsCloudFilesRemoteContentProvider
+        private class ProgressContentProvider : IWindowsCloudFilesRemoteContentProvider
         {
             private readonly byte[] _content;
 
@@ -761,7 +761,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class BlockingStartContentProvider : IWindowsCloudFilesRemoteContentProvider
+        private class BlockingStartContentProvider : IWindowsCloudFilesRemoteContentProvider
         {
             private readonly byte[] _content;
             private readonly TaskCompletionSource _release =
@@ -792,7 +792,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class SequencedContentProvider : IWindowsCloudFilesRemoteContentProvider
+        private class SequencedContentProvider : IWindowsCloudFilesRemoteContentProvider
         {
             private readonly Queue<byte[]> _contents;
 
@@ -815,7 +815,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class PartialCanceledContentProvider : IWindowsCloudFilesRemoteContentProvider
+        private class PartialCanceledContentProvider : IWindowsCloudFilesRemoteContentProvider
         {
             private readonly byte[] _content;
 
@@ -838,7 +838,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class CanceledContentProvider : IWindowsCloudFilesRemoteContentProvider
+        private class CanceledContentProvider : IWindowsCloudFilesRemoteContentProvider
         {
             public Task DownloadAsync(
                 WindowsCloudFilesPlaceholderIdentity identity,
@@ -851,7 +851,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class ProgressRemoteFileSynchronizer :
+        private class ProgressRemoteFileSynchronizer :
             IRemoteFileTransferProgressSynchronizer,
             IRemoteFileRangeSynchronizer
         {
@@ -957,7 +957,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class RecordingProgress<T> : IProgress<T>
+        private class RecordingProgress<T> : IProgress<T>
         {
             public List<T> Values { get; } = [];
 
@@ -967,7 +967,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class RecordingObserver<T> : IObserver<T>
+        private class RecordingObserver<T> : IObserver<T>
         {
             public List<T> Values { get; } = [];
 
@@ -986,7 +986,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class FakeCloudFilesNativeApi : IWindowsCloudFilesNativeApi
+        private class FakeCloudFilesNativeApi : IWindowsCloudFilesNativeApi
         {
             public List<WindowsCloudFilesTransferData> Transfers { get; } = [];
 

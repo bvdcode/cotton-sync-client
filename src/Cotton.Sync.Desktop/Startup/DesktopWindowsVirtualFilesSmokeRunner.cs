@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Files;
@@ -4566,7 +4566,7 @@ namespace Cotton.Sync.Desktop.Startup
                 : "unavailable";
         }
 
-        private sealed class RecordingSyncRunProgress : IProgress<SyncRunProgress>
+        private class RecordingSyncRunProgress : IProgress<SyncRunProgress>
         {
             private readonly object _sync = new();
             private readonly List<SyncRunProgress> _items = [];
@@ -6406,7 +6406,7 @@ namespace Cotton.Sync.Desktop.Startup
                 || value.Contains("\u0425\u0440\u0430\u043d\u0438\u0442\u044c \u044d\u0442\u0438 \u0444\u0430\u0439\u043b\u044b \u043d\u0430 \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0435", StringComparison.OrdinalIgnoreCase);
         }
 
-        private sealed record ShellVerbInvocationResult(
+        private record ShellVerbInvocationResult(
             bool Invoked,
             string? InvokedVerbName,
             IReadOnlyList<string> AvailableVerbNames);
@@ -6442,7 +6442,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class RecordingTransferProgress : IProgress<SyncTransferProgress>
+        private class RecordingTransferProgress : IProgress<SyncTransferProgress>
         {
             private readonly object _gate = new();
             private readonly List<SyncTransferProgress> _values = [];
@@ -6491,7 +6491,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class RecordingRunProgressObserver : IObserver<AppRunProgress>
+        private class RecordingRunProgressObserver : IObserver<AppRunProgress>
         {
             private readonly object _gate = new();
             private readonly List<AppRunProgress> _values = [];
@@ -6522,7 +6522,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class ChunkedSmokeContentProvider : IWindowsCloudFilesRemoteContentProvider
+        private class ChunkedSmokeContentProvider : IWindowsCloudFilesRemoteContentProvider
         {
             private readonly byte[] _content;
             private readonly int _chunkSize;
@@ -6600,7 +6600,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class RecordingCallbackHandler : IWindowsCloudFilesCallbackHandler
+        private class RecordingCallbackHandler : IWindowsCloudFilesCallbackHandler
         {
             private readonly IWindowsCloudFilesCallbackHandler _inner;
 
@@ -6637,7 +6637,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class SinglePathRemoteTreeCrawler : IRemoteTreeCrawler, IRemotePathLookupCrawler
+        private class SinglePathRemoteTreeCrawler : IRemoteTreeCrawler, IRemotePathLookupCrawler
         {
             private readonly RemoteTreeSnapshot _tree;
 
@@ -6703,7 +6703,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class RecordingUploadRemoteFileSynchronizer : IRemoteFileSynchronizer
+        private class RecordingUploadRemoteFileSynchronizer : IRemoteFileSynchronizer
         {
             public List<UploadCall> Uploads { get; } = [];
 
@@ -6767,7 +6767,7 @@ namespace Cotton.Sync.Desktop.Startup
                 throw new InvalidOperationException("Cloud-only replacement smoke must not delete remote files.");
             }
 
-            public sealed record UploadCall(
+            public record UploadCall(
                 Guid RootNodeId,
                 string RelativePath,
                 LocalFileSnapshot LocalFile,
@@ -6834,7 +6834,7 @@ namespace Cotton.Sync.Desktop.Startup
             public record CreateDirectoryCall(Guid ParentNodeId, string Name, NodeDto ReturnedNode);
         }
 
-        private sealed class GuardLocalScanner :
+        private class GuardLocalScanner :
             ILocalFileScanner,
             ILocalTreeScanner,
             ILocalFileMetadataTreeScanner,
@@ -6905,7 +6905,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class GuardRemoteFilePlaceholderWriter :
+        private class GuardRemoteFilePlaceholderWriter :
             IRemoteFilePlaceholderWriter,
             IRemoteFilePlaceholderPopulationObserver
         {
@@ -6934,7 +6934,7 @@ namespace Cotton.Sync.Desktop.Startup
                     "Steady-state repeat smoke must not create or refresh placeholders.");
             }
 
-            private sealed class PopulationLease : IDisposable
+            private class PopulationLease : IDisposable
             {
                 private GuardRemoteFilePlaceholderWriter? _owner;
 
@@ -6954,7 +6954,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class LargeStateFirstRemoteCrawler : IRemoteTreeStreamingCrawler
+        private class LargeStateFirstRemoteCrawler : IRemoteTreeStreamingCrawler
         {
             private readonly Guid _rootNodeId;
             private readonly IReadOnlyList<RemoteFileSnapshot> _files;
@@ -7088,7 +7088,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class NoTransferRemoteFileSynchronizer : IRemoteFileSynchronizer
+        private class NoTransferRemoteFileSynchronizer : IRemoteFileSynchronizer
         {
             public int TransferCalls { get; private set; }
 
@@ -7156,7 +7156,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class NoopSyncPairWork : ISyncPairWork
+        private class NoopSyncPairWork : ISyncPairWork
         {
             public static NoopSyncPairWork Instance { get; } = new();
 
@@ -7178,7 +7178,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class FailOnInnerSyncPairWork : ISyncPairWork
+        private class FailOnInnerSyncPairWork : ISyncPairWork
         {
             private readonly string _message;
 
@@ -7205,7 +7205,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class RecordingCloudFilesNativeApi : IWindowsCloudFilesNativeApi
+        private class RecordingCloudFilesNativeApi : IWindowsCloudFilesNativeApi
         {
             public List<WindowsCloudFilesTransferData> Transfers { get; } = [];
 
@@ -7275,7 +7275,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class StaticSmokeContentProvider : IWindowsCloudFilesRemoteContentProvider
+        private class StaticSmokeContentProvider : IWindowsCloudFilesRemoteContentProvider
         {
             private byte[] _content;
 
@@ -7407,11 +7407,11 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed record SubstResult(int ExitCode, string Output, string Error);
+        private record SubstResult(int ExitCode, string Output, string Error);
 
-        private sealed record FileContentHash(long Length, string Sha256);
+        private record FileContentHash(long Length, string Sha256);
 
-        private sealed class SessionRestoreApplicationFactory : IDesktopSyncApplicationFactory
+        private class SessionRestoreApplicationFactory : IDesktopSyncApplicationFactory
         {
             private readonly SyncApplicationService _app;
             private readonly Uri _expectedServerUrl;
@@ -7456,7 +7456,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class SessionRestoreMemoryTokenStore : ICottonTokenStore
+        private class SessionRestoreMemoryTokenStore : ICottonTokenStore
         {
             private TokenPairDto? _tokens = new()
             {
@@ -7495,7 +7495,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class SessionRestoreRemoteRootResolver : IRemoteRootResolver
+        private class SessionRestoreRemoteRootResolver : IRemoteRootResolver
         {
             public Task<NodeDto> EnsureAsync(string? remotePath = null, CancellationToken cancellationToken = default)
             {
@@ -7512,7 +7512,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class SessionRestoreNodeClient : ICottonNodeClient
+        private class SessionRestoreNodeClient : ICottonNodeClient
         {
             public Task<NodeDto> ResolveAsync(string? path = null, CancellationToken cancellationToken = default)
             {
@@ -7576,7 +7576,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class SessionRestoreSyncClient : ICottonSyncClient
+        private class SessionRestoreSyncClient : ICottonSyncClient
         {
             public Task<SyncChangesResponseDto> GetChangesAsync(
                 long sinceCursor = 0,
@@ -7593,7 +7593,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class SmokeAutostartService : IAutostartService
+        private class SmokeAutostartService : IAutostartService
         {
             public bool IsSupported => true;
 
@@ -7610,7 +7610,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class NoopSyncPairPrerequisiteValidator : ISyncPairPrerequisiteValidator
+        private class NoopSyncPairPrerequisiteValidator : ISyncPairPrerequisiteValidator
         {
             public static NoopSyncPairPrerequisiteValidator Instance { get; } = new();
 
@@ -7622,7 +7622,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class NoopAppPreferencesStore : IAppPreferencesStore
+        private class NoopAppPreferencesStore : IAppPreferencesStore
         {
             private AppPreferences _preferences = new();
 
@@ -7643,7 +7643,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class NoopAuthFlow : IAuthFlow
+        private class NoopAuthFlow : IAuthFlow
         {
             public static NoopAuthFlow Instance { get; } = new();
 
@@ -7674,7 +7674,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class NoopAppCodeBrowserAuthFlow : IAppCodeBrowserAuthFlow
+        private class NoopAppCodeBrowserAuthFlow : IAppCodeBrowserAuthFlow
         {
             public static NoopAppCodeBrowserAuthFlow Instance { get; } = new();
 
@@ -7690,7 +7690,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class NoopPlatformCommandService : IPlatformCommandService
+        private class NoopPlatformCommandService : IPlatformCommandService
         {
             public static NoopPlatformCommandService Instance { get; } = new();
 
@@ -7790,7 +7790,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class NoopSyncSupervisor : ISyncSupervisor
+        private class NoopSyncSupervisor : ISyncSupervisor
         {
             public IReadOnlyList<SyncPairStatus> CurrentStatuses => [];
 
@@ -7855,7 +7855,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class NoopCloudFilesCallbackHandler : IWindowsCloudFilesCallbackHandler
+        private class NoopCloudFilesCallbackHandler : IWindowsCloudFilesCallbackHandler
         {
             public Task HandleFetchDataAsync(
                 WindowsCloudFilesFetchDataRequest request,
@@ -7880,7 +7880,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
         }
 
-        private sealed class SingleSyncPairSettingsStore : ISyncPairSettingsStore
+        private class SingleSyncPairSettingsStore : ISyncPairSettingsStore
         {
             private SyncPairSettings? _syncPair;
 

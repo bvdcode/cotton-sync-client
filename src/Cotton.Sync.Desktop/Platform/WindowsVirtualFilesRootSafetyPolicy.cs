@@ -1,9 +1,9 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal sealed class WindowsVirtualFilesRootSafetyPolicy
+    internal class WindowsVirtualFilesRootSafetyPolicy
     {
         private readonly Func<string> _getCurrentDirectory;
         private readonly Func<Environment.SpecialFolder, string> _getSpecialFolderPath;

@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.SyncApplication;
@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal sealed class WindowsCloudFilesSyncRootConnectionCoordinator : ISyncCoreLifecycleComponent
+    internal class WindowsCloudFilesSyncRootConnectionCoordinator : ISyncCoreLifecycleComponent
     {
         private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
         private readonly IWindowsCloudFilesAdapter _cloudFiles;

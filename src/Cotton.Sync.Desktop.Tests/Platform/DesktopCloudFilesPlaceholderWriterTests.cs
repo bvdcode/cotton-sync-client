@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.LocalChanges;
@@ -399,16 +399,16 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 });
         }
 
-        private sealed record SuppressedWrite(Guid SyncPairId, string LocalRootPath, string RelativePath);
+        private record SuppressedWrite(Guid SyncPairId, string LocalRootPath, string RelativePath);
 
-        private sealed record SuppressedFileMaterialization(
+        private record SuppressedFileMaterialization(
             Guid SyncPairId,
             string LocalRootPath,
             string RelativePath,
             long ExpectedSizeBytes,
             DateTime? ExpectedLastWriteUtc);
 
-        private sealed class RecordingLocalChangeSuppression : ILocalChangeSuppression
+        private class RecordingLocalChangeSuppression : ILocalChangeSuppression
         {
             public List<SuppressedWrite> SuppressedWrites { get; } = [];
 
@@ -496,7 +496,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class NoopDisposable : IDisposable
+        private class NoopDisposable : IDisposable
         {
             public static NoopDisposable Instance { get; } = new();
 
@@ -505,7 +505,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private sealed class FakeCloudFilesAdapter : IWindowsCloudFilesAdapter
+        private class FakeCloudFilesAdapter : IWindowsCloudFilesAdapter
         {
             public byte[] PlaceholderIdentity { get; } = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E];
 

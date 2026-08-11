@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Security.Cryptography;
@@ -145,7 +145,7 @@ namespace Cotton.Sync.Desktop.Tests.Updates
             return Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
         }
 
-        private sealed class FakeUpdateInstaller : IDesktopUpdateInstaller
+        private class FakeUpdateInstaller : IDesktopUpdateInstaller
         {
             public string? InstallerPath { get; private set; }
 

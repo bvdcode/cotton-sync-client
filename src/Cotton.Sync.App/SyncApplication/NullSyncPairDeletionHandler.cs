@@ -1,11 +1,11 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.SyncPairs;
 
 namespace Cotton.Sync.App.SyncApplication
 {
-    internal sealed class NullSyncPairDeletionHandler : ISyncPairDeletionHandler
+    internal class NullSyncPairDeletionHandler : ISyncPairDeletionHandler
     {
         public static NullSyncPairDeletionHandler Instance { get; } = new();
 

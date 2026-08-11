@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Diagnostics;
@@ -7147,7 +7147,7 @@ namespace Cotton.Sync
             }
         }
 
-        private sealed class InitialVirtualFilesRemoteProgressReporter : IProgress<RemoteTreeScanProgress>
+        private class InitialVirtualFilesRemoteProgressReporter : IProgress<RemoteTreeScanProgress>
         {
             private readonly IProgress<RemoteTreeScanProgress> _inner;
             private readonly SyncRunOptions _options;

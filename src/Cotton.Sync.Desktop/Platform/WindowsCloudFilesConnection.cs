@@ -1,9 +1,9 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal sealed class WindowsCloudFilesConnection : IDisposable
+    internal class WindowsCloudFilesConnection : IDisposable
     {
         private readonly Action<WindowsCloudFilesConnectionKey> _disconnect;
         private readonly IDisposable? _lifetime;

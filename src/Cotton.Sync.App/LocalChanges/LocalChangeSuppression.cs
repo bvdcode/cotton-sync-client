@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.State;
@@ -8,7 +8,7 @@ namespace Cotton.Sync.App.LocalChanges
     /// <summary>
     /// Suppresses short-lived filesystem watcher echoes produced by provider-side virtual file work.
     /// </summary>
-    public sealed class LocalChangeSuppression : ILocalChangeSuppression
+    public class LocalChangeSuppression : ILocalChangeSuppression
     {
         private const int FileAttributeRecallOnOpen = 0x00040000;
         private const int FileAttributeRecallOnDataAccess = 0x00400000;
@@ -709,7 +709,7 @@ namespace Cotton.Sync.App.LocalChanges
             return string.Equals(trimmedFullPath, trimmedRoot, StringComparison.OrdinalIgnoreCase);
         }
 
-        private sealed class SuppressionEntry
+        private class SuppressionEntry
         {
             public SuppressionEntry(
                 DateTimeOffset expiresAt,
@@ -748,7 +748,7 @@ namespace Cotton.Sync.App.LocalChanges
             public DateTime? ExpectedLastWriteUtc { get; set; }
         }
 
-        private sealed class ProviderWriteBurstScope
+        private class ProviderWriteBurstScope
         {
             public ProviderWriteBurstScope(string rootPath)
             {
@@ -766,7 +766,7 @@ namespace Cotton.Sync.App.LocalChanges
             public HashSet<string> RegisteredPathKeys { get; } = new(StringComparer.OrdinalIgnoreCase);
         }
 
-        private sealed class ProviderWriteBurstLease : IDisposable
+        private class ProviderWriteBurstLease : IDisposable
         {
             private LocalChangeSuppression? _owner;
             private readonly Guid _syncPairId;
