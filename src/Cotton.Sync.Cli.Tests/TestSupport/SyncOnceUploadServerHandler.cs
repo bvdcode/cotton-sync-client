@@ -69,6 +69,22 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
 
         private HttpResponseMessage CreateResponse(HttpRequestSnapshot request)
         {
+            HttpResponseMessage? response = CreatePasswordAuthenticationResponse(request)
+                ?? CreateAppCodeAuthenticationResponse(request)
+                ?? CreateExpiredTokenResponse(request);
+            if (response is not null)
+            {
+                return response;
+            }
+
+            Assert.That(request.AuthorizationParameter, Is.EqualTo(_refreshed ? "refreshed-access-token" : "access-token"));
+            response = CreateRemoteTreeResponse(request) ?? CreateFileTransferResponse(request);
+            return response
+                ?? throw new InvalidOperationException("Unexpected request: " + request.Method + " " + request.PathAndQuery);
+        }
+
+        private HttpResponseMessage? CreatePasswordAuthenticationResponse(HttpRequestSnapshot request)
+        {
             if (request.Method == HttpMethod.Post && request.PathAndQuery == "/api/v1/auth/login")
             {
                 Assert.That(request.Body, Does.Contain("\"username\":\"testuser\""));
@@ -91,8 +107,24 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
                 });
             }
 
-            if (_allowAppCodeAuth
-                && request.Method == HttpMethod.Post
+            if (request.Method == HttpMethod.Post
+                && request.PathAndQuery is "/api/v1/auth/logout?refreshToken=refresh-token"
+                    or "/api/v1/auth/logout?refreshToken=refreshed-refresh-token")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            return null;
+        }
+
+        private HttpResponseMessage? CreateAppCodeAuthenticationResponse(HttpRequestSnapshot request)
+        {
+            if (!_allowAppCodeAuth)
+            {
+                return null;
+            }
+
+            if (request.Method == HttpMethod.Post
                 && request.PathAndQuery == "/api/v1/oauth/app-code/start")
             {
                 if (_appCodeStartNetworkFailuresRemaining > 0)
@@ -111,8 +143,7 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
                 });
             }
 
-            if (_allowAppCodeAuth
-                && request.Method == HttpMethod.Post
+            if (request.Method == HttpMethod.Post
                 && request.PathAndQuery == "/api/v1/oauth/app-code/poll")
             {
                 Assert.That(request.Body, Does.Contain("\"pollToken\":\"poll-token\""));
@@ -123,8 +154,7 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
                 });
             }
 
-            if (_allowAppCodeAuth
-                && request.Method == HttpMethod.Get
+            if (request.Method == HttpMethod.Get
                 && request.PathAndQuery == "/api/v1/auth/me")
             {
                 return Json(HttpStatusCode.OK, new UserDto
@@ -135,16 +165,11 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
                 });
             }
 
-            if (request.Method == HttpMethod.Post && request.PathAndQuery == "/api/v1/auth/logout?refreshToken=refresh-token")
-            {
-                return new HttpResponseMessage(HttpStatusCode.NoContent);
-            }
+            return null;
+        }
 
-            if (request.Method == HttpMethod.Post && request.PathAndQuery == "/api/v1/auth/logout?refreshToken=refreshed-refresh-token")
-            {
-                return new HttpResponseMessage(HttpStatusCode.NoContent);
-            }
-
+        private HttpResponseMessage? CreateExpiredTokenResponse(HttpRequestSnapshot request)
+        {
             if (_expireAccessTokenBeforeChunkExists
                 && !_chunkExistsExpiredOnce
                 && request.Method == HttpMethod.Get
@@ -155,53 +180,26 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
                 return Text(HttpStatusCode.Unauthorized, "expired access token");
             }
 
-            Assert.That(request.AuthorizationParameter, Is.EqualTo(_refreshed ? "refreshed-access-token" : "access-token"));
+            return null;
+        }
 
+        private HttpResponseMessage? CreateRemoteTreeResponse(HttpRequestSnapshot request)
+        {
             if (request.Method == HttpMethod.Get
                 && (request.PathAndQuery == "/api/v1/layouts/resolver" || request.PathAndQuery == "/api/v1/layouts/resolver/"))
             {
-                return Json(HttpStatusCode.OK, new NodeDto
-                {
-                    Id = _remoteRootId,
-                    LayoutId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-                    ParentId = null,
-                    Name = "root",
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow,
-                });
+                return Json(HttpStatusCode.OK, CreateRootNode());
             }
 
             if (request.Method == HttpMethod.Get && request.PathAndQuery == "/api/v1/layouts/nodes/" + _remoteRootId.ToString("D"))
             {
-                return Json(HttpStatusCode.OK, new NodeDto
-                {
-                    Id = _remoteRootId,
-                    LayoutId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-                    ParentId = null,
-                    Name = "root",
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow,
-                });
+                return Json(HttpStatusCode.OK, CreateRootNode());
             }
 
             if (request.Method == HttpMethod.Get
                 && request.PathAndQuery == "/api/v1/layouts/nodes/" + _remoteRootId.ToString("D") + "/children?page=1&pageSize=500&depth=0")
             {
-                if (_fileCreated && _exposeCreatedFileInChildren)
-                {
-                    return Json(HttpStatusCode.OK, new NodeContentDto
-                    {
-                        Id = _remoteRootId,
-                        TotalCount = 1,
-                        Files = [CreateManifest()],
-                    });
-                }
-
-                return Json(HttpStatusCode.OK, new NodeContentDto
-                {
-                    Id = _remoteRootId,
-                    TotalCount = 0,
-                });
+                return Json(HttpStatusCode.OK, CreateRootContent());
             }
 
             if (request.Method == HttpMethod.Get && request.PathAndQuery == "/api/v1/settings")
@@ -214,6 +212,11 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
                 });
             }
 
+            return null;
+        }
+
+        private HttpResponseMessage? CreateFileTransferResponse(HttpRequestSnapshot request)
+        {
             if (request.Method == HttpMethod.Get && request.PathAndQuery == "/api/v1/chunks/" + _expectedContentHash + "/exists")
             {
                 return Text(HttpStatusCode.OK, "false");
@@ -252,7 +255,36 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
                 };
             }
 
-            throw new InvalidOperationException("Unexpected request: " + request.Method + " " + request.PathAndQuery);
+            return null;
+        }
+
+        private NodeDto CreateRootNode()
+        {
+            return new NodeDto
+            {
+                Id = _remoteRootId,
+                LayoutId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+                ParentId = null,
+                Name = "root",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            };
+        }
+
+        private NodeContentDto CreateRootContent()
+        {
+            return _fileCreated && _exposeCreatedFileInChildren
+                ? new NodeContentDto
+                {
+                    Id = _remoteRootId,
+                    TotalCount = 1,
+                    Files = [CreateManifest()],
+                }
+                : new NodeContentDto
+                {
+                    Id = _remoteRootId,
+                    TotalCount = 0,
+                };
         }
 
         private NodeFileManifestDto CreateManifest()

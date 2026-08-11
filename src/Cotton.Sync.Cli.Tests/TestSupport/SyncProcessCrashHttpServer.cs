@@ -68,6 +68,19 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
                 return;
             }
 
+            if (await TryWriteUploadResponseAsync(response, request, cancellationToken).ConfigureAwait(false))
+            {
+                return;
+            }
+
+            throw new InvalidOperationException("Unexpected request: " + request.Method + " " + request.PathAndQuery);
+        }
+
+        private async Task<bool> TryWriteUploadResponseAsync(
+            HttpListenerResponse response,
+            HttpRequestSnapshot request,
+            CancellationToken cancellationToken)
+        {
             if (request.Method == HttpMethod.Get && request.PathAndQuery == "/api/v1/settings")
             {
                 await WriteJsonAsync(response, HttpStatusCode.OK, new ClientSettingsDto
@@ -76,13 +89,13 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
                     MaxChunkSizeBytes = 1024,
                     SupportedHashAlgorithm = "SHA-256",
                 }, cancellationToken).ConfigureAwait(false);
-                return;
+                return true;
             }
 
             if (request.Method == HttpMethod.Get && request.PathAndQuery == "/api/v1/chunks/" + _expectedContentHash + "/exists")
             {
                 await WriteTextAsync(response, HttpStatusCode.OK, "false", cancellationToken).ConfigureAwait(false);
-                return;
+                return true;
             }
 
             if (request.Method == HttpMethod.Post && request.PathAndQuery == "/api/v1/chunks/raw?hash=" + _expectedContentHash)
@@ -93,7 +106,7 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
                 }
 
                 await WriteTextAsync(response, HttpStatusCode.Created, string.Empty, cancellationToken).ConfigureAwait(false);
-                return;
+                return true;
             }
 
             if (request.Method == HttpMethod.Post && request.PathAndQuery == "/api/v1/files/from-chunks")
@@ -113,10 +126,10 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
                 _fileCommitted.TrySetResult();
                 await _releaseCreateResponse.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
                 await WriteJsonAsync(response, HttpStatusCode.OK, CreateManifest(), cancellationToken).ConfigureAwait(false);
-                return;
+                return true;
             }
 
-            throw new InvalidOperationException("Unexpected request: " + request.Method + " " + request.PathAndQuery);
+            return false;
         }
 
         private NodeContentDto CreateRootContent()
