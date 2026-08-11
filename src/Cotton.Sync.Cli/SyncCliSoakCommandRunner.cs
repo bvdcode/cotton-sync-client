@@ -19,44 +19,8 @@ namespace Cotton.Sync.Cli
             HttpClient? injectedHttpClient,
             CancellationToken cancellationToken)
         {
-            SyncCliConnectionOptions? options = SyncCliOptionsReader.ReadConnectionOptions(
-                args,
-                error,
-                "sync-soak",
-                allowBrowserLogin: true);
-            if (options is null)
-            {
-                return 2;
-            }
-
-            if (!SyncCliOptionsReader.TryReadOptionalPositiveInt(args, "--iterations", error, out int? iterations)
-                || !SyncCliOptionsReader.TryReadOptionalPositiveInt(args, "--duration-seconds", error, out int? durationSeconds)
-                || !SyncCliOptionsReader.TryReadOptionalPositiveInt(args, "--interval-seconds", error, out int? intervalSeconds))
-            {
-                return 2;
-            }
-
-            if (!iterations.HasValue && !durationSeconds.HasValue)
-            {
-                await error.WriteLineAsync("sync-soak requires --iterations or --duration-seconds.").ConfigureAwait(false);
-                return 2;
-            }
-
-            string? probeFile = SyncCliOptionsReader.ReadOption(args, "--probe-file");
-            string? normalizedProbeFile = null;
-            if (!string.IsNullOrWhiteSpace(probeFile)
-                && !SyncCliOptionsReader.TryNormalizeProbeFile(
-                    options.LocalRoot,
-                    probeFile,
-                    out normalizedProbeFile,
-                    out string probeError))
-            {
-                await error.WriteLineAsync(probeError).ConfigureAwait(false);
-                return 2;
-            }
-
-            SyncCliConnectionOptions? secondClientOptions = ReadSecondClientOptions(args, options, error);
-            if (HasSecondClientOption(args) && secondClientOptions is null)
+            SyncCliSoakSettings? settings = await ReadSettingsAsync(args, error).ConfigureAwait(false);
+            if (settings is null)
             {
                 return 2;
             }
@@ -65,50 +29,122 @@ namespace Cotton.Sync.Cli
             HttpClient httpClient = injectedHttpClient ?? ownedHttpClient!;
             try
             {
-                await using SyncCliRuntime runtime = await CreateRuntimeAsync(options, httpClient, output, cancellationToken)
-                    .ConfigureAwait(false);
-                if (secondClientOptions is null)
-                {
-                    return await RunLoopAsync(
-                        options,
-                        runtime,
-                        secondClientOptions,
-                        null,
-                        output,
-                        iterations,
-                        durationSeconds,
-                        intervalSeconds ?? 30,
-                        normalizedProbeFile,
-                        cancellationToken).ConfigureAwait(false);
-                }
-
-                await using SyncCliRuntime secondRuntime = await CreateRuntimeAsync(
-                    secondClientOptions,
-                    httpClient,
-                    output,
-                    cancellationToken).ConfigureAwait(false);
-                return await RunLoopAsync(
-                    options,
-                    runtime,
-                    secondClientOptions,
-                    secondRuntime,
-                    output,
-                    iterations,
-                    durationSeconds,
-                    intervalSeconds ?? 30,
-                    normalizedProbeFile,
-                    cancellationToken).ConfigureAwait(false);
+                return await RunWithRuntimesAsync(settings, httpClient, output, cancellationToken).ConfigureAwait(false);
             }
             catch (AppCodeBrowserSignInException exception)
             {
-                await error.WriteLineAsync(exception.Message).ConfigureAwait(false);
-                if (!string.IsNullOrWhiteSpace(exception.Error))
-                {
-                    await error.WriteLineAsync("Error: " + exception.Error).ConfigureAwait(false);
-                }
-
+                await SyncCliErrorWriter.WriteBrowserSignInAsync(error, exception).ConfigureAwait(false);
                 return 1;
             }
+        }
+
+        private static async Task<SyncCliSoakSettings?> ReadSettingsAsync(
+            IReadOnlyList<string> args,
+            TextWriter error)
+        {
+            SyncCliConnectionOptions? options = SyncCliOptionsReader.ReadConnectionOptions(
+                args,
+                error,
+                "sync-soak",
+                allowBrowserLogin: true);
+            if (options is null
+                || !TryReadRunLimits(args, error, out int? iterations, out int? durationSeconds, out int intervalSeconds))
+            {
+                return null;
+            }
+
+            if (!TryReadProbeFile(args, options.LocalRoot, out string? normalizedProbeFile, out string probeError))
+            {
+                await error.WriteLineAsync(probeError).ConfigureAwait(false);
+                return null;
+            }
+
+            SyncCliConnectionOptions? secondClientOptions = ReadSecondClientOptions(args, options, error);
+            if (HasSecondClientOption(args) && secondClientOptions is null)
+            {
+                return null;
+            }
+
+            return new SyncCliSoakSettings(
+                options,
+                secondClientOptions,
+                iterations,
+                durationSeconds,
+                intervalSeconds,
+                normalizedProbeFile);
+        }
+
+        private static bool TryReadRunLimits(
+            IReadOnlyList<string> args,
+            TextWriter error,
+            out int? iterations,
+            out int? durationSeconds,
+            out int intervalSeconds)
+        {
+            iterations = null;
+            durationSeconds = null;
+            intervalSeconds = 30;
+            if (!SyncCliOptionsReader.TryReadOptionalPositiveInt(args, "--iterations", error, out iterations)
+                || !SyncCliOptionsReader.TryReadOptionalPositiveInt(args, "--duration-seconds", error, out durationSeconds)
+                || !SyncCliOptionsReader.TryReadOptionalPositiveInt(args, "--interval-seconds", error, out int? parsedInterval))
+            {
+                return false;
+            }
+
+            if (!iterations.HasValue && !durationSeconds.HasValue)
+            {
+                error.WriteLine("sync-soak requires --iterations or --duration-seconds.");
+                return false;
+            }
+
+            intervalSeconds = parsedInterval ?? intervalSeconds;
+            return true;
+        }
+
+        private static bool TryReadProbeFile(
+            IReadOnlyList<string> args,
+            string localRoot,
+            out string? normalizedProbeFile,
+            out string error)
+        {
+            string? probeFile = SyncCliOptionsReader.ReadOption(args, "--probe-file");
+            if (string.IsNullOrWhiteSpace(probeFile))
+            {
+                normalizedProbeFile = null;
+                error = string.Empty;
+                return true;
+            }
+
+            return SyncCliOptionsReader.TryNormalizeProbeFile(
+                localRoot,
+                probeFile,
+                out normalizedProbeFile,
+                out error);
+        }
+
+        private static async Task<int> RunWithRuntimesAsync(
+            SyncCliSoakSettings settings,
+            HttpClient httpClient,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            await using SyncCliRuntime runtime = await CreateRuntimeAsync(
+                settings.ConnectionOptions,
+                httpClient,
+                output,
+                cancellationToken).ConfigureAwait(false);
+            if (settings.SecondConnectionOptions is null)
+            {
+                return await RunLoopAsync(settings, runtime, secondRuntime: null, output, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            await using SyncCliRuntime secondRuntime = await CreateRuntimeAsync(
+                settings.SecondConnectionOptions,
+                httpClient,
+                output,
+                cancellationToken).ConfigureAwait(false);
+            return await RunLoopAsync(settings, runtime, secondRuntime, output, cancellationToken).ConfigureAwait(false);
         }
 
         private static Task<SyncCliRuntime> CreateRuntimeAsync(
@@ -127,122 +163,125 @@ namespace Cotton.Sync.Cli
         }
 
         private static async Task<int> RunLoopAsync(
-            SyncCliConnectionOptions options,
+            SyncCliSoakSettings settings,
             SyncCliRuntime runtime,
-            SyncCliConnectionOptions? secondClientOptions,
             SyncCliRuntime? secondRuntime,
             TextWriter output,
-            int? iterations,
-            int? durationSeconds,
-            int intervalSeconds,
-            string? normalizedProbeFile,
             CancellationToken cancellationToken)
         {
-            using Process process = Process.GetCurrentProcess();
-            DateTime startedAtUtc = DateTime.UtcNow;
-            TimeSpan startedCpu = process.TotalProcessorTime;
-            long startedWorkingSetBytes = GetWorkingSetBytes(process);
-            long startedManagedMemoryBytes = GC.GetTotalMemory(forceFullCollection: false);
-            DateTime? stopAtUtc = durationSeconds.HasValue
-                ? startedAtUtc.AddSeconds(durationSeconds.Value)
-                : null;
-            int completedIterations = 0;
-            int totalActivities = 0;
-            int syncErrors = 0;
-            int? finalConvergenceActivities = null;
-            int? finalStateEntries = null;
-            TimeSpan totalIterationElapsed = TimeSpan.Zero;
-            TimeSpan longestIterationElapsed = TimeSpan.Zero;
-            long peakWorkingSetBytes = startedWorkingSetBytes;
-            long peakManagedMemoryBytes = startedManagedMemoryBytes;
-            await output.WriteLineAsync("Cotton Sync soak run").ConfigureAwait(false);
-            await output.WriteLineAsync("Sync pair: " + options.SyncPairId).ConfigureAwait(false);
-            if (secondClientOptions is not null)
-            {
-                await output.WriteLineAsync("Second sync pair: " + secondClientOptions.SyncPairId).ConfigureAwait(false);
-            }
-
-            await output.WriteLineAsync("Started UTC: " + SyncCliFormat.FormatUtc(startedAtUtc)).ConfigureAwait(false);
-
+            using SyncCliSoakStatistics statistics = new(settings.DurationSeconds);
+            await WriteRunHeaderAsync(settings, statistics, output).ConfigureAwait(false);
             try
             {
-                while (ShouldRunNextSoakIteration(completedIterations, iterations, stopAtUtc))
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    int iteration = completedIterations + 1;
-                    long iterationStartedTimestamp = Stopwatch.GetTimestamp();
-                    if (normalizedProbeFile is not null)
-                    {
-                        await WriteProbeFileAsync(options.LocalRoot, normalizedProbeFile, iteration, cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-
-                    SyncCliPassResult pass = await SyncCliRuntimeFactory
-                        .RunSinglePassAsync(runtime, CreateSoakRunOptions(), cancellationToken)
-                        .ConfigureAwait(false);
-                    SyncCliPassResult? secondPass = secondRuntime is null
-                        ? null
-                        : await SyncCliRuntimeFactory
-                            .RunSinglePassAsync(secondRuntime, CreateSoakRunOptions(), cancellationToken)
-                            .ConfigureAwait(false);
-                    TimeSpan iterationElapsed = Stopwatch.GetElapsedTime(iterationStartedTimestamp);
-                    totalIterationElapsed += iterationElapsed;
-                    if (iterationElapsed > longestIterationElapsed)
-                    {
-                        longestIterationElapsed = iterationElapsed;
-                    }
-
-                    completedIterations++;
-                    totalActivities += GetActivityCount(pass) + (secondPass is null ? 0 : GetActivityCount(secondPass));
-                    peakWorkingSetBytes = Math.Max(peakWorkingSetBytes, GetWorkingSetBytes(process));
-                    peakManagedMemoryBytes = Math.Max(peakManagedMemoryBytes, GC.GetTotalMemory(forceFullCollection: false));
-                    await WriteIterationAsync(output, iteration, pass, secondPass, process, iterationElapsed).ConfigureAwait(false);
-
-                    if (!ShouldRunNextSoakIteration(completedIterations, iterations, stopAtUtc))
-                    {
-                        break;
-                    }
-
-                    await Task.Delay(GetNextSoakDelay(intervalSeconds, stopAtUtc), cancellationToken).ConfigureAwait(false);
-                }
-
-                SyncCliPassResult convergencePass = await RunFinalConvergenceAsync(runtime, cancellationToken)
+                await RunIterationsAsync(settings, runtime, secondRuntime, statistics, output, cancellationToken)
                     .ConfigureAwait(false);
-                SyncCliPassResult? secondConvergencePass = secondRuntime is null
-                    ? null
-                    : await RunFinalConvergenceAsync(secondRuntime, cancellationToken)
-                        .ConfigureAwait(false);
-                peakWorkingSetBytes = Math.Max(peakWorkingSetBytes, GetWorkingSetBytes(process));
-                peakManagedMemoryBytes = Math.Max(peakManagedMemoryBytes, GC.GetTotalMemory(forceFullCollection: false));
-                finalConvergenceActivities = GetActivityCount(convergencePass)
-                    + (secondConvergencePass is null ? 0 : GetActivityCount(secondConvergencePass));
-                finalStateEntries = convergencePass.StateEntries.Count + (secondConvergencePass?.StateEntries.Count ?? 0);
+                await CaptureFinalConvergenceAsync(runtime, secondRuntime, statistics, cancellationToken)
+                    .ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
-                syncErrors++;
-                peakWorkingSetBytes = Math.Max(peakWorkingSetBytes, GetWorkingSetBytes(process));
-                peakManagedMemoryBytes = Math.Max(peakManagedMemoryBytes, GC.GetTotalMemory(forceFullCollection: false));
+                statistics.RecordError();
                 await output.WriteLineAsync("Sync error: " + FormatException(exception)).ConfigureAwait(false);
             }
 
-            await WriteSummaryAsync(
-                output,
-                startedAtUtc,
-                startedCpu,
-                process,
-                startedWorkingSetBytes,
-                startedManagedMemoryBytes,
-                peakWorkingSetBytes,
-                peakManagedMemoryBytes,
-                completedIterations,
-                totalIterationElapsed,
-                longestIterationElapsed,
-                totalActivities,
-                syncErrors,
-                finalConvergenceActivities,
-                finalStateEntries).ConfigureAwait(false);
-            return syncErrors == 0 && finalConvergenceActivities == 0 ? 0 : 1;
+            await WriteSummaryAsync(output, statistics).ConfigureAwait(false);
+            return statistics.IsConverged ? 0 : 1;
+        }
+
+        private static async Task WriteRunHeaderAsync(
+            SyncCliSoakSettings settings,
+            SyncCliSoakStatistics statistics,
+            TextWriter output)
+        {
+            await output.WriteLineAsync("Cotton Sync soak run").ConfigureAwait(false);
+            await output.WriteLineAsync("Sync pair: " + settings.ConnectionOptions.SyncPairId).ConfigureAwait(false);
+            if (settings.SecondConnectionOptions is not null)
+            {
+                await output.WriteLineAsync("Second sync pair: " + settings.SecondConnectionOptions.SyncPairId)
+                    .ConfigureAwait(false);
+            }
+
+            await output.WriteLineAsync("Started UTC: " + SyncCliFormat.FormatUtc(statistics.StartedAt))
+                .ConfigureAwait(false);
+        }
+
+        private static async Task RunIterationsAsync(
+            SyncCliSoakSettings settings,
+            SyncCliRuntime runtime,
+            SyncCliRuntime? secondRuntime,
+            SyncCliSoakStatistics statistics,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            while (ShouldRunNextSoakIteration(statistics.CompletedIterations, settings.Iterations, statistics.StopAt))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                int iteration = statistics.CompletedIterations + 1;
+                long iterationStartedTimestamp = Stopwatch.GetTimestamp();
+                await WriteProbeFileIfConfiguredAsync(settings, iteration, cancellationToken).ConfigureAwait(false);
+                SyncCliPassResult pass = await RunSoakPassAsync(runtime, cancellationToken).ConfigureAwait(false);
+                SyncCliPassResult? secondPass = await RunOptionalSoakPassAsync(secondRuntime, cancellationToken)
+                    .ConfigureAwait(false);
+                TimeSpan iterationElapsed = Stopwatch.GetElapsedTime(iterationStartedTimestamp);
+                statistics.RecordIteration(pass, secondPass, iterationElapsed);
+                await WriteIterationAsync(output, iteration, pass, secondPass, statistics, iterationElapsed)
+                    .ConfigureAwait(false);
+
+                if (!ShouldRunNextSoakIteration(statistics.CompletedIterations, settings.Iterations, statistics.StopAt))
+                {
+                    break;
+                }
+
+                await Task.Delay(GetNextSoakDelay(settings.IntervalSeconds, statistics.StopAt), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        private static async Task WriteProbeFileIfConfiguredAsync(
+            SyncCliSoakSettings settings,
+            int iteration,
+            CancellationToken cancellationToken)
+        {
+            if (settings.ProbeFile is null)
+            {
+                return;
+            }
+
+            await WriteProbeFileAsync(
+                    settings.ConnectionOptions.LocalRoot,
+                    settings.ProbeFile,
+                    iteration,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        private static Task<SyncCliPassResult> RunSoakPassAsync(
+            SyncCliRuntime runtime,
+            CancellationToken cancellationToken)
+        {
+            return SyncCliRuntimeFactory.RunSinglePassAsync(runtime, CreateSoakRunOptions(), cancellationToken);
+        }
+
+        private static async Task<SyncCliPassResult?> RunOptionalSoakPassAsync(
+            SyncCliRuntime? runtime,
+            CancellationToken cancellationToken)
+        {
+            return runtime is null
+                ? null
+                : await RunSoakPassAsync(runtime, cancellationToken).ConfigureAwait(false);
+        }
+
+        private static async Task CaptureFinalConvergenceAsync(
+            SyncCliRuntime runtime,
+            SyncCliRuntime? secondRuntime,
+            SyncCliSoakStatistics statistics,
+            CancellationToken cancellationToken)
+        {
+            SyncCliPassResult pass = await RunFinalConvergenceAsync(runtime, cancellationToken).ConfigureAwait(false);
+            SyncCliPassResult? secondPass = secondRuntime is null
+                ? null
+                : await RunFinalConvergenceAsync(secondRuntime, cancellationToken).ConfigureAwait(false);
+            statistics.RecordConvergence(pass, secondPass);
         }
 
         private static async Task<SyncCliPassResult> RunFinalConvergenceAsync(
@@ -369,22 +408,16 @@ namespace Cotton.Sync.Cli
             return remaining >= interval ? interval : remaining;
         }
 
-        private static long GetWorkingSetBytes(Process process)
-        {
-            process.Refresh();
-            return process.WorkingSet64;
-        }
-
         private static async Task WriteIterationAsync(
             TextWriter output,
             int iteration,
             SyncCliPassResult pass,
             SyncCliPassResult? secondPass,
-            Process process,
+            SyncCliSoakStatistics statistics,
             TimeSpan iterationElapsed)
         {
-            string metrics = ", workingSetBytes=" + GetWorkingSetBytes(process).ToStringInvariant()
-                + ", managedMemoryBytes=" + GC.GetTotalMemory(forceFullCollection: false).ToStringInvariant()
+            string metrics = ", workingSetBytes=" + statistics.GetWorkingSetBytes().ToStringInvariant()
+                + ", managedMemoryBytes=" + statistics.GetManagedMemoryBytes().ToStringInvariant()
                 + ", elapsedSeconds=" + iterationElapsed.TotalSeconds.ToStringInvariant();
             if (secondPass is null)
             {
@@ -412,12 +445,6 @@ namespace Cotton.Sync.Cli
                 .ConfigureAwait(false);
         }
 
-        private static TimeSpan GetTotalProcessorTime(Process process)
-        {
-            process.Refresh();
-            return process.TotalProcessorTime;
-        }
-
         private static async Task WriteProbeFileAsync(
             string localRoot,
             string relativePath,
@@ -434,60 +461,40 @@ namespace Cotton.Sync.Cli
 
         private static async Task WriteSummaryAsync(
             TextWriter output,
-            DateTime startedAtUtc,
-            TimeSpan startedCpu,
-            Process process,
-            long startedWorkingSetBytes,
-            long startedManagedMemoryBytes,
-            long peakWorkingSetBytes,
-            long peakManagedMemoryBytes,
-            int completedIterations,
-            TimeSpan totalIterationElapsed,
-            TimeSpan longestIterationElapsed,
-            int totalActivities,
-            int syncErrors,
-            int? finalConvergenceActivities,
-            int? finalStateEntries)
+            SyncCliSoakStatistics statistics)
         {
             DateTime completedAtUtc = DateTime.UtcNow;
-            TimeSpan elapsed = completedAtUtc - startedAtUtc;
-            TimeSpan cpu = GetTotalProcessorTime(process) - startedCpu;
+            TimeSpan elapsed = completedAtUtc - statistics.StartedAt;
+            TimeSpan cpu = statistics.GetCpuTime();
             double cpuUtilizationPercent = CalculateCpuUtilizationPercent(cpu, elapsed);
-            long completedWorkingSetBytes = GetWorkingSetBytes(process);
-            long completedManagedMemoryBytes = GC.GetTotalMemory(forceFullCollection: false);
-            peakWorkingSetBytes = Math.Max(peakWorkingSetBytes, completedWorkingSetBytes);
-            peakManagedMemoryBytes = Math.Max(peakManagedMemoryBytes, completedManagedMemoryBytes);
-            bool converged = syncErrors == 0 && finalConvergenceActivities == 0;
-            int failures = syncErrors;
-            if (syncErrors == 0 && finalConvergenceActivities.GetValueOrDefault() > 0)
-            {
-                failures++;
-            }
+            long completedWorkingSetBytes = statistics.GetWorkingSetBytes();
+            long completedManagedMemoryBytes = statistics.GetManagedMemoryBytes();
+            statistics.CaptureResourcePeaks();
 
             await output.WriteLineAsync("Completed UTC: " + SyncCliFormat.FormatUtc(completedAtUtc)).ConfigureAwait(false);
             await output.WriteLineAsync("Elapsed seconds: " + elapsed.TotalSeconds.ToStringInvariant()).ConfigureAwait(false);
             await output.WriteLineAsync("CPU seconds: " + cpu.TotalSeconds.ToStringInvariant()).ConfigureAwait(false);
             await output.WriteLineAsync("CPU utilization percent: " + cpuUtilizationPercent.ToStringInvariant()).ConfigureAwait(false);
-            await output.WriteLineAsync("Start working set bytes: " + startedWorkingSetBytes.ToStringInvariant()).ConfigureAwait(false);
+            await output.WriteLineAsync("Start working set bytes: " + statistics.StartedWorkingSetBytes.ToStringInvariant()).ConfigureAwait(false);
             await output.WriteLineAsync("End working set bytes: " + completedWorkingSetBytes.ToStringInvariant()).ConfigureAwait(false);
-            await output.WriteLineAsync("Working set growth bytes: " + (completedWorkingSetBytes - startedWorkingSetBytes).ToStringInvariant()).ConfigureAwait(false);
-            await output.WriteLineAsync("Peak working set bytes: " + peakWorkingSetBytes.ToStringInvariant()).ConfigureAwait(false);
-            await output.WriteLineAsync("Peak working set growth bytes: " + (peakWorkingSetBytes - startedWorkingSetBytes).ToStringInvariant()).ConfigureAwait(false);
-            await output.WriteLineAsync("Start managed memory bytes: " + startedManagedMemoryBytes.ToStringInvariant()).ConfigureAwait(false);
+            await output.WriteLineAsync("Working set growth bytes: " + (completedWorkingSetBytes - statistics.StartedWorkingSetBytes).ToStringInvariant()).ConfigureAwait(false);
+            await output.WriteLineAsync("Peak working set bytes: " + statistics.PeakWorkingSetBytes.ToStringInvariant()).ConfigureAwait(false);
+            await output.WriteLineAsync("Peak working set growth bytes: " + (statistics.PeakWorkingSetBytes - statistics.StartedWorkingSetBytes).ToStringInvariant()).ConfigureAwait(false);
+            await output.WriteLineAsync("Start managed memory bytes: " + statistics.StartedManagedMemoryBytes.ToStringInvariant()).ConfigureAwait(false);
             await output.WriteLineAsync("End managed memory bytes: " + completedManagedMemoryBytes.ToStringInvariant()).ConfigureAwait(false);
-            await output.WriteLineAsync("Managed memory growth bytes: " + (completedManagedMemoryBytes - startedManagedMemoryBytes).ToStringInvariant()).ConfigureAwait(false);
-            await output.WriteLineAsync("Peak managed memory bytes: " + peakManagedMemoryBytes.ToStringInvariant()).ConfigureAwait(false);
-            await output.WriteLineAsync("Peak managed memory growth bytes: " + (peakManagedMemoryBytes - startedManagedMemoryBytes).ToStringInvariant()).ConfigureAwait(false);
-            await output.WriteLineAsync("Iterations completed: " + completedIterations.ToStringInvariant()).ConfigureAwait(false);
-            await output.WriteLineAsync("Iteration seconds total: " + totalIterationElapsed.TotalSeconds.ToStringInvariant()).ConfigureAwait(false);
-            await output.WriteLineAsync("Iteration seconds average: " + CalculateAverageIterationSeconds(totalIterationElapsed, completedIterations).ToStringInvariant()).ConfigureAwait(false);
-            await output.WriteLineAsync("Iteration seconds max: " + longestIterationElapsed.TotalSeconds.ToStringInvariant()).ConfigureAwait(false);
-            await output.WriteLineAsync("Total activities: " + totalActivities.ToStringInvariant()).ConfigureAwait(false);
-            await output.WriteLineAsync("Sync errors: " + syncErrors.ToStringInvariant()).ConfigureAwait(false);
-            await output.WriteLineAsync("Final convergence activities: " + FormatOptionalInt(finalConvergenceActivities)).ConfigureAwait(false);
-            await output.WriteLineAsync("Final state entries: " + FormatOptionalInt(finalStateEntries)).ConfigureAwait(false);
-            await output.WriteLineAsync("Converged: " + (converged ? "yes" : "no")).ConfigureAwait(false);
-            await output.WriteLineAsync("Failures: " + failures.ToStringInvariant()).ConfigureAwait(false);
+            await output.WriteLineAsync("Managed memory growth bytes: " + (completedManagedMemoryBytes - statistics.StartedManagedMemoryBytes).ToStringInvariant()).ConfigureAwait(false);
+            await output.WriteLineAsync("Peak managed memory bytes: " + statistics.PeakManagedMemoryBytes.ToStringInvariant()).ConfigureAwait(false);
+            await output.WriteLineAsync("Peak managed memory growth bytes: " + (statistics.PeakManagedMemoryBytes - statistics.StartedManagedMemoryBytes).ToStringInvariant()).ConfigureAwait(false);
+            await output.WriteLineAsync("Iterations completed: " + statistics.CompletedIterations.ToStringInvariant()).ConfigureAwait(false);
+            await output.WriteLineAsync("Iteration seconds total: " + statistics.TotalIterationElapsed.TotalSeconds.ToStringInvariant()).ConfigureAwait(false);
+            await output.WriteLineAsync("Iteration seconds average: " + CalculateAverageIterationSeconds(statistics.TotalIterationElapsed, statistics.CompletedIterations).ToStringInvariant()).ConfigureAwait(false);
+            await output.WriteLineAsync("Iteration seconds max: " + statistics.LongestIterationElapsed.TotalSeconds.ToStringInvariant()).ConfigureAwait(false);
+            await output.WriteLineAsync("Total activities: " + statistics.TotalActivities.ToStringInvariant()).ConfigureAwait(false);
+            await output.WriteLineAsync("Sync errors: " + statistics.SyncErrors.ToStringInvariant()).ConfigureAwait(false);
+            await output.WriteLineAsync("Final convergence activities: " + FormatOptionalInt(statistics.FinalConvergenceActivities)).ConfigureAwait(false);
+            await output.WriteLineAsync("Final state entries: " + FormatOptionalInt(statistics.FinalStateEntries)).ConfigureAwait(false);
+            await output.WriteLineAsync("Converged: " + (statistics.IsConverged ? "yes" : "no")).ConfigureAwait(false);
+            await output.WriteLineAsync("Failures: " + statistics.FailureCount.ToStringInvariant()).ConfigureAwait(false);
         }
 
         private static string FormatOptionalInt(int? value)
