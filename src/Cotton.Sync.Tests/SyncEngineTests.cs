@@ -6483,7 +6483,8 @@ namespace Cotton.Sync.Tests
                 string key = SyncPath.ToKey(relativePath);
                 return requestedKeys.Contains(key)
                     || requestedPaths.Any(path => IsDescendantPath(path, relativePath))
-                    || includeDirectoryDescendants && requestedPaths.Any(path => IsDescendantPath(relativePath, path));
+                    || (includeDirectoryDescendants
+                        && requestedPaths.Any(path => IsDescendantPath(relativePath, path)));
             }
 
             private static bool IsDescendantPath(string relativePath, string parentPath)

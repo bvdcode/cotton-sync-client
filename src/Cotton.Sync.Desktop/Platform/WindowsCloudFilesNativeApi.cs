@@ -487,7 +487,6 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
-
         private static void ThrowIfFailed(int hresult, string operation)
         {
             if (hresult < Succeeded)

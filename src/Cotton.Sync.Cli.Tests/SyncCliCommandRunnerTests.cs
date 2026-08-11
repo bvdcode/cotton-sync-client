@@ -2518,6 +2518,5 @@ namespace Cotton.Sync.Cli.Tests
                 };
             }
         }
-
     }
 }

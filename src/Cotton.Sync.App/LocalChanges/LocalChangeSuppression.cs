@@ -434,7 +434,6 @@ namespace Cotton.Sync.App.LocalChanges
                             }
                         }
                     }
-
                 }
             }
         }

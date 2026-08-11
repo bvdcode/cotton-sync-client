@@ -172,6 +172,5 @@ namespace Cotton.Sync.Desktop
                 .WithInterFont()
                 .LogToTrace();
         }
-
     }
 }

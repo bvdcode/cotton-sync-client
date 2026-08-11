@@ -4233,13 +4233,16 @@ namespace Cotton.Sync.Desktop.Startup
                 IReadOnlyList<SyncRunProgress> placeholderProgress = progressSamples
                     .Where(static progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders)
                     .ToArray();
+                SyncRunProgress? finalPlaceholderProgress = placeholderProgress.Count > 0
+                    ? placeholderProgress[^1]
+                    : null;
                 int expectedPlaceholderProgressItems = largeTreePlaceholderCount + 1;
-                bool hasProgressSummary = placeholderProgress.Count > 0
+                bool hasProgressSummary = finalPlaceholderProgress is not null
                     && progressSamples.Any(static progress => progress.Stage == SyncRunProgressStage.Completed && progress.IsCompleted)
                     && !progressSamples.Any(static progress =>
                         progress.Stage is SyncRunProgressStage.ScanningLocal or SyncRunProgressStage.ScanningRemote)
-                    && placeholderProgress.Last().FilesCompleted == expectedPlaceholderProgressItems
-                    && placeholderProgress.Last().FilesTotal == expectedPlaceholderProgressItems;
+                    && finalPlaceholderProgress.FilesCompleted == expectedPlaceholderProgressItems
+                    && finalPlaceholderProgress.FilesTotal == expectedPlaceholderProgressItems;
                 failures += await WriteCheckAsync(
                         output,
                         hasProgressSummary,
@@ -4249,13 +4252,13 @@ namespace Cotton.Sync.Desktop.Startup
                         + ", placeholderSamples="
                         + placeholderProgress.Count.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
                         + ", finalItems="
-                        + (placeholderProgress.Count == 0
+                        + (finalPlaceholderProgress is null
                             ? "0"
-                            : placeholderProgress.Last().FilesCompleted.ToString("N0", System.Globalization.CultureInfo.InvariantCulture))
+                            : finalPlaceholderProgress.FilesCompleted.ToString("N0", System.Globalization.CultureInfo.InvariantCulture))
                         + "/"
-                        + (placeholderProgress.Count == 0
+                        + (finalPlaceholderProgress is null
                             ? "0"
-                            : placeholderProgress.Last().FilesTotal.GetValueOrDefault().ToString(
+                            : finalPlaceholderProgress.FilesTotal.GetValueOrDefault().ToString(
                                 "N0",
                                 System.Globalization.CultureInfo.InvariantCulture))
                         + ", completed="
@@ -4507,7 +4510,7 @@ namespace Cotton.Sync.Desktop.Startup
             byte[] identity = new byte[1024];
             for (int offset = 0; offset < identity.Length; offset++)
             {
-                identity[offset] = (byte)((index + offset * 17) & 0xff);
+                identity[offset] = (byte)((index + (offset * 17)) & 0xff);
             }
 
             return identity;
@@ -5997,7 +6000,7 @@ namespace Cotton.Sync.Desktop.Startup
             byte[] content = new byte[LargeHydrationSizeBytes];
             for (int index = 0; index < content.Length; index++)
             {
-                content[index] = (byte)((index * 31 + index / 8191) & 0xff);
+                content[index] = (byte)(((index * 31) + (index / 8191)) & 0xff);
             }
 
             return content;
@@ -7205,25 +7208,25 @@ namespace Cotton.Sync.Desktop.Startup
                     if ((index + 1) % 1_000 == 0 || index == _files.Count - 1)
                     {
                         int pagesScanned = (index / 1_000) + 2;
-                        TimeSpan latency = TimeSpan.FromMilliseconds(4 + pagesScanned % 7);
+                        TimeSpan latency = TimeSpan.FromMilliseconds(4 + (pagesScanned % 7));
                         progress?.Report(new RemoteTreeScanProgress(
                             index + 1,
                             1,
                             file.RelativePath,
                             pagesScanned: pagesScanned,
-                            pageReadLatencyTotal: TimeSpan.FromMilliseconds(3 + pagesScanned * 5),
+                            pageReadLatencyTotal: TimeSpan.FromMilliseconds(3 + (pagesScanned * 5)),
                             pageReadLatencyMax: latency,
                             lastPageReadLatency: latency));
                     }
                 }
 
-                int totalPages = Math.Max(2, (_files.Count + 999) / 1_000 + 1);
+                int totalPages = Math.Max(2, ((_files.Count + 999) / 1_000) + 1);
                 progress?.Report(new RemoteTreeScanProgress(
                     _files.Count,
                     1,
                     currentPath: null,
                     pagesScanned: totalPages,
-                    pageReadLatencyTotal: TimeSpan.FromMilliseconds(3 + totalPages * 5),
+                    pageReadLatencyTotal: TimeSpan.FromMilliseconds(3 + (totalPages * 5)),
                     pageReadLatencyMax: TimeSpan.FromMilliseconds(10),
                     lastPageReadLatency: TimeSpan.FromMilliseconds(5)));
                 return root;

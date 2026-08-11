@@ -71,6 +71,5 @@ namespace Cotton.Sync.App.Status
                 _observers.Remove(observer);
             }
         }
-
     }
 }

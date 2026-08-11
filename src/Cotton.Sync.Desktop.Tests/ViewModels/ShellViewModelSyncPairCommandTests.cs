@@ -5487,7 +5487,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task OpenRemoteFolderCommand_NavigatesToSelectedCloudFolder()
         {

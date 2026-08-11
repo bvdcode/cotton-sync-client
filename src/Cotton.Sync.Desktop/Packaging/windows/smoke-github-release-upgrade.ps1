@@ -111,12 +111,12 @@ function Get-ManifestAsset {
         [string]$Name
     )
 
-    $matches = @($Manifest.assets | Where-Object { $_.name -eq $Name })
-    if ($matches.Count -ne 1) {
-        throw "release-manifest.json contained $($matches.Count) entries named '$Name'; expected 1."
+    $assetMatches = @($Manifest.assets | Where-Object { $_.name -eq $Name })
+    if ($assetMatches.Count -ne 1) {
+        throw "release-manifest.json contained $($assetMatches.Count) entries named '$Name'; expected 1."
     }
 
-    return $matches[0]
+    return $assetMatches[0]
 }
 
 function Assert-DownloadedAssetMatchesManifest {

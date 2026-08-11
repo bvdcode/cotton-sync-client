@@ -72,6 +72,7 @@ function Add-PathRedaction {
         }
     }
     catch {
+        Write-Error -ErrorRecord $_ -ErrorAction Continue
     }
 }
 
@@ -363,7 +364,7 @@ function Capture-CloudFilesExplorerRegistrations {
         "HKCU\Software\Classes\CLSID",
         "HKCU\Software\Classes\WOW6432Node\CLSID"
     )
-    $matches = New-Object System.Collections.Generic.List[string]
+    $registryMatches = New-Object System.Collections.Generic.List[string]
     foreach ($root in $roots) {
         foreach ($pattern in $patterns) {
             foreach ($mode in @("/d", "/k")) {
@@ -374,15 +375,15 @@ function Capture-CloudFilesExplorerRegistrations {
 
                 foreach ($line in $output) {
                     if (-not [string]::IsNullOrWhiteSpace($line)) {
-                        $matches.Add($root + " :: " + $pattern + " :: " + $line)
+                        $registryMatches.Add($root + " :: " + $pattern + " :: " + $line)
                     }
                 }
             }
         }
     }
 
-    "MatchCount: $($matches.Count)"
-    foreach ($match in $matches) {
+    "MatchCount: $($registryMatches.Count)"
+    foreach ($match in $registryMatches) {
         Redact-Text $match
     }
 }

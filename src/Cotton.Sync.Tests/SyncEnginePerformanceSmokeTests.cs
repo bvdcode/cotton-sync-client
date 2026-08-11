@@ -1062,7 +1062,7 @@ namespace Cotton.Sync.Tests
             byte[] bytes = new byte[length];
             for (int index = 0; index < bytes.Length; index++)
             {
-                bytes[index] = (byte)((index * 31 + index / 17) % 251);
+                bytes[index] = (byte)(((index * 31) + (index / 17)) % 251);
             }
 
             return bytes;

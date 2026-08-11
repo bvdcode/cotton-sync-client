@@ -420,10 +420,7 @@ namespace Cotton.Sync.Desktop
             int workingAreaPixelHeight,
             double renderScaling)
         {
-            if (desiredHeight <= 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(desiredHeight));
-            }
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(desiredHeight);
 
             if (minimumHeight <= 0 || minimumHeight > desiredHeight)
             {
@@ -437,7 +434,7 @@ namespace Cotton.Sync.Desktop
 
             double availableHeight = Math.Max(
                 1,
-                workingAreaPixelHeight / renderScaling - WindowFrameHeightAllowance);
+                (workingAreaPixelHeight / renderScaling) - WindowFrameHeightAllowance);
             return (
                 Math.Min(desiredHeight, availableHeight),
                 Math.Min(minimumHeight, availableHeight));
@@ -477,8 +474,8 @@ namespace Cotton.Sync.Desktop
             int pixelHeight = (int)Math.Round(Height * scale);
             PixelRect workingArea = screen.WorkingArea;
             Position = new PixelPoint(
-                workingArea.X + Math.Max(0, workingArea.Width - pixelWidth) / 2,
-                workingArea.Y + Math.Max(0, workingArea.Height - pixelHeight) / 2);
+                workingArea.X + (Math.Max(0, workingArea.Width - pixelWidth) / 2),
+                workingArea.Y + (Math.Max(0, workingArea.Height - pixelHeight) / 2));
         }
 
         private enum WindowProfile

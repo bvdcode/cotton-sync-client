@@ -332,9 +332,9 @@ namespace Cotton.Sync.Desktop.Shell
                 return null;
             }
 
-            int detailStart = message.LastIndexOf(".", markerIndex, StringComparison.Ordinal);
+            int detailStart = message.LastIndexOf('.', markerIndex);
             int detailContentStart = detailStart >= 0 ? detailStart + 1 : 0;
-            int detailEnd = message.IndexOf(".", markerIndex, StringComparison.Ordinal);
+            int detailEnd = message.IndexOf('.', markerIndex);
             string details = detailEnd > detailContentStart
                 ? message[detailContentStart..detailEnd].Trim()
                 : message[detailContentStart..].Trim();

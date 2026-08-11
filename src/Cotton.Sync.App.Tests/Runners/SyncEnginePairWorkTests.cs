@@ -517,6 +517,5 @@ namespace Cotton.Sync.App.Tests.Runners
                 return Task.FromResult(result);
             }
         }
-
     }
 }

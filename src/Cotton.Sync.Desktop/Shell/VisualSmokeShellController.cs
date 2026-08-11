@@ -27,10 +27,7 @@ namespace Cotton.Sync.Desktop.Shell
             DesktopVisualSmokeScenario scenario,
             TimeSpan progressAnimationInterval)
         {
-            if (progressAnimationInterval <= TimeSpan.Zero)
-            {
-                throw new ArgumentOutOfRangeException(nameof(progressAnimationInterval));
-            }
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(progressAnimationInterval, TimeSpan.Zero);
 
             _scenario = scenario;
             _progressAnimationInterval = progressAnimationInterval;

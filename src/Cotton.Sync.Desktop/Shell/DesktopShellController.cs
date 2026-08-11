@@ -2295,6 +2295,5 @@ namespace Cotton.Sync.Desktop.Shell
             Guid SyncPairId,
             SyncTransferDirection Direction,
             string RelativePath);
-
     }
 }

@@ -5748,7 +5748,7 @@ namespace Cotton.Sync
             DirectoryContentIndex localDirectoryContentIndex,
             DirectoryContentIndex remoteDirectoryContentIndex)
         {
-            if (state.RemoteNodeId is null || local is null && remote is null)
+            if (state.RemoteNodeId is null || (local is null && remote is null))
             {
                 return SyncDeleteDirection.None;
             }

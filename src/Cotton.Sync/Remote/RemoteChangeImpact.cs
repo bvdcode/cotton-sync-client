@@ -146,7 +146,6 @@ namespace Cotton.Sync.Remote
             {
                 yield return NodeFileId.Value;
             }
-
         }
 
         private static (RemoteChangeTargetKind TargetKind, RemoteChangeAction Action) MapKind(SyncChangeKind kind)

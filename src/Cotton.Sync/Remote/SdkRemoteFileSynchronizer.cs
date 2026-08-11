@@ -645,6 +645,5 @@ namespace Cotton.Sync.Remote
 
             return total;
         }
-
     }
 }

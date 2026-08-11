@@ -67,7 +67,7 @@ namespace Cotton.Sync.Desktop.Platform
 
             string? executablePath = NormalizeExecutablePath(processPath)
                 ?? NormalizeExecutablePath(Process.GetCurrentProcess().MainModule?.FileName)
-                ?? NormalizeExecutablePath(commandLineArguments.FirstOrDefault());
+                ?? NormalizeExecutablePath(commandLineArguments.Count > 0 ? commandLineArguments[0] : null);
             if (executablePath is null || IsDevelopmentBuildOutput(executablePath, baseDirectory))
             {
                 return null;
@@ -199,7 +199,7 @@ namespace Cotton.Sync.Desktop.Platform
 
                 if (character == '"')
                 {
-                    builder.Append('\\', backslashes * 2 + 1);
+                    builder.Append('\\', (backslashes * 2) + 1);
                     builder.Append('"');
                     backslashes = 0;
                     continue;
@@ -217,7 +217,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         private static string QuoteWindowsExecutableArgument(string value)
         {
-            if (value.StartsWith("\"", StringComparison.Ordinal) && value.EndsWith("\"", StringComparison.Ordinal))
+            if (value.StartsWith('"') && value.EndsWith('"'))
             {
                 return value;
             }

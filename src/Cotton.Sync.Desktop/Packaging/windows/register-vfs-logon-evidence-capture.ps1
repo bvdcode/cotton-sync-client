@@ -178,6 +178,7 @@ function Invoke-ProfileSelfTestPreflight {
             $process.Kill()
         }
         catch {
+            Write-Error -ErrorRecord $_ -ErrorAction Continue
         }
 
         throw "Installed profile self-test timed out before logon capture could be armed."

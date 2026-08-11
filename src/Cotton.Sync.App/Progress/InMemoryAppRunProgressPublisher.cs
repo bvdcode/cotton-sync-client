@@ -46,6 +46,5 @@ namespace Cotton.Sync.App.Progress
                 _observers.Remove(observer);
             }
         }
-
     }
 }

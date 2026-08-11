@@ -76,6 +76,5 @@ namespace Cotton.Sync.App.Tests.Activities
 
             Assert.That(observer.Values, Is.Empty);
         }
-
     }
 }

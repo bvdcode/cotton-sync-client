@@ -108,6 +108,5 @@ namespace Cotton.Sync.App.ShellIntegration
                 _ => throw new ArgumentOutOfRangeException(nameof(state), state.Kind, "Unknown sync state entry kind."),
             };
         }
-
     }
 }
