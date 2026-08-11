@@ -81,8 +81,10 @@ namespace Cotton.Sync.Desktop.Startup
         private const string LargeHydrationRelativePath = "large-hydration-smoke.bin";
         private const int LargeHydrationSizeBytes = 32 * 1024 * 1024;
         private const int LargeHydrationChunkBytes = 1024 * 1024;
+        private const int SteadyStateProgressInterval = 1_000;
         private const string SmokeContentText = "Cotton Sync Windows virtual files smoke content\n";
         private static readonly TimeSpan ExternalFileReadTimeout = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan SteadyStateRepeatTimeout = TimeSpan.FromSeconds(30);
         private static readonly IReadOnlyDictionary<WindowsVirtualFilesSmokePhase, Func<WindowsVirtualFilesSmokeContext, Task<int>>>
             PhaseHandlers = new Dictionary<WindowsVirtualFilesSmokePhase, Func<WindowsVirtualFilesSmokeContext, Task<int>>>
             {
@@ -110,22 +112,8 @@ namespace Cotton.Sync.Desktop.Startup
                     context.CloudFiles,
                     context.SyncPair,
                     context.CancellationToken),
-                [WindowsVirtualFilesSmokePhase.InitialStreamingLogging] = context => RunInitialStreamingLoggingAsync(
-                    context.Paths,
-                    context.Output,
-                    context.CloudFiles,
-                    context.SyncPair,
-                    GetLargeTreePlaceholderCount(context.StartupOptions),
-                    context.Diagnostics,
-                    context.CancellationToken),
-                [WindowsVirtualFilesSmokePhase.SteadyStateRepeat] = context => RunSteadyStateRepeatAsync(
-                    context.Paths,
-                    context.Output,
-                    context.CloudFiles,
-                    context.SyncPair,
-                    GetLargeTreePlaceholderCount(context.StartupOptions),
-                    context.Diagnostics,
-                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.InitialStreamingLogging] = RunInitialStreamingLoggingAsync,
+                [WindowsVirtualFilesSmokePhase.SteadyStateRepeat] = RunSteadyStateRepeatAsync,
                 [WindowsVirtualFilesSmokePhase.LargeTree] = context => RunLargeTreeAsync(
                     context.StartupOptions,
                     context.Output,

@@ -39,21 +39,22 @@ namespace Cotton.Sync.Desktop.Startup
 {
     internal static partial class DesktopWindowsVirtualFilesSmokeRunner
     {
-        private static async Task<int> RunSteadyStateRepeatAsync(
-            DesktopAppPaths paths,
-            TextWriter output,
-            IWindowsCloudFilesAdapter cloudFiles,
-            SyncPairSettings syncPair,
-            int largeTreePlaceholderCount,
-            WindowsCloudFilesDiagnostics diagnostics,
-            CancellationToken cancellationToken)
+        private static async Task<int> RunSteadyStateRepeatAsync(WindowsVirtualFilesSmokeContext context)
         {
+            DesktopAppPaths paths = context.Paths;
+            TextWriter output = context.Output;
+            IWindowsCloudFilesAdapter cloudFiles = context.CloudFiles;
+            SyncPairSettings syncPair = context.SyncPair;
+            int largeTreePlaceholderCount = GetLargeTreePlaceholderCount(context.StartupOptions);
+            WindowsCloudFilesDiagnostics diagnostics = context.Diagnostics;
+            CancellationToken cancellationToken = context.CancellationToken;
+
             string rootPath = syncPair.LocalRootPath;
             string largeTreePath = Path.Combine(rootPath, LargeTreeDirectoryName);
             byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
             string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
-            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
-            var remoteFiles = new List<RemoteFileSnapshot>(largeTreePlaceholderCount);
+            SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath);
+            List<RemoteFileSnapshot> remoteFiles = new(largeTreePlaceholderCount);
             WindowsCloudFilesConnection? connection = null;
             int failures = 0;
 
@@ -76,8 +77,8 @@ namespace Cotton.Sync.Desktop.Startup
                     + connection.LocalRootPath)
                     .ConfigureAwait(false);
 
-                var createdEntries = new List<SyncStateEntry>(largeTreePlaceholderCount);
-                var createTimer = Stopwatch.StartNew();
+                List<SyncStateEntry> createdEntries = new(largeTreePlaceholderCount);
+                Stopwatch createTimer = Stopwatch.StartNew();
                 for (int index = 0; index < largeTreePlaceholderCount; index++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -100,7 +101,7 @@ namespace Cotton.Sync.Desktop.Startup
                         File = request.RemoteFile,
                     });
 
-                    if ((index + 1) % 1_000 == 0)
+                    if ((index + 1) % SteadyStateProgressInterval == 0)
                     {
                         await output.WriteLineAsync(
                             "Progress: created "
@@ -126,85 +127,50 @@ namespace Cotton.Sync.Desktop.Startup
                     + createTimer.ElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture))
                     .ConfigureAwait(false);
 
-                var scanner = new GuardLocalScanner();
-                var crawler = new LargeStateFirstRemoteCrawler(syncPair.RemoteRootNodeId, remoteFiles);
-                var noTransfers = new NoTransferRemoteFileSynchronizer();
-                var placeholderWriter = new GuardRemoteFilePlaceholderWriter();
-                var engine = new SyncEngine(
+                GuardLocalScanner scanner = new();
+                LargeStateFirstRemoteCrawler crawler = new(syncPair.RemoteRootNodeId, remoteFiles);
+                NoTransferRemoteFileSynchronizer noTransfers = new();
+                GuardRemoteFilePlaceholderWriter placeholderWriter = new();
+                SyncEngine engine = new(
                     scanner,
                     crawler,
                     noTransfers,
                     stateStore,
                     remoteFilePlaceholderWriter: placeholderWriter);
-                var syncPairCore = new SyncPair
+                SyncPair syncPairCore = new()
                 {
                     SyncPairId = syncPair.Id.ToString("D"),
                     LocalRootPath = syncPair.LocalRootPath,
                     RemoteRootNodeId = syncPair.RemoteRootNodeId,
                     MaterializationMode = SyncPairMaterializationMode.WindowsVirtualFiles,
                 };
-                var syncTimer = Stopwatch.StartNew();
+                Stopwatch syncTimer = Stopwatch.StartNew();
                 SyncRunResult result = await engine
                     .RunOnceAsync(syncPairCore, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
                 syncTimer.Stop();
 
-                bool passed = !result.RequiresUserAction
-                    && scanner.FullScanCalls == 0
-                    && scanner.MetadataTreeScanCalls == 0
-                    && scanner.PathLookupCalls == 1
-                    && crawler.StreamingCrawlCalls == 1
-                    && crawler.SnapshotCrawlCalls == 0
-                    && noTransfers.TransferCalls == 0
-                    && placeholderWriter.PlaceholderWriteCalls == 0
-                    && syncTimer.Elapsed <= TimeSpan.FromSeconds(30);
-                if (passed)
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, "Steady-state repeat pass used scoped path validation without local placeholder-tree scanning.")
-                        + " files="
-                        + largeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
-                        + ", syncElapsedMs="
-                        + syncTimer.ElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                        + ", streamingCrawls="
-                        + crawler.StreamingCrawlCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                        + ", fullLocalScans="
-                        + scanner.FullScanCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                        + ", metadataTreeScans="
-                        + scanner.MetadataTreeScanCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                        + ", pathLookups="
-                        + scanner.PathLookupCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                        + ", transfers="
-                        + noTransfers.TransferCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                        + ", placeholderWrites="
-                        + placeholderWriter.PlaceholderWriteCalls.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "Steady-state repeat pass did not stay on the state-first fast path.")
-                        + " requiresAction="
-                        + result.RequiresUserAction.ToString()
-                        + ", syncElapsedMs="
-                        + syncTimer.ElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                        + ", streamingCrawls="
-                        + crawler.StreamingCrawlCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                        + ", snapshotCrawls="
-                        + crawler.SnapshotCrawlCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                        + ", fullLocalScans="
-                        + scanner.FullScanCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                        + ", metadataTreeScans="
-                        + scanner.MetadataTreeScanCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                        + ", pathLookups="
-                        + scanner.PathLookupCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                        + ", transfers="
-                        + noTransfers.TransferCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                        + ", placeholderWrites="
-                        + placeholderWriter.PlaceholderWriteCalls.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                        .ConfigureAwait(false);
-                }
+                bool passed = DidSteadyStateFastPathPass(
+                    result,
+                    scanner,
+                    crawler,
+                    noTransfers,
+                    placeholderWriter,
+                    syncTimer.Elapsed);
+                failures += await WriteOutcomeAsync(
+                        output,
+                        passed,
+                        "Steady-state repeat pass used scoped path validation without local placeholder-tree scanning.",
+                        "Steady-state repeat pass did not stay on the state-first fast path.",
+                        FormatSteadyStateRepeatDetails(
+                            largeTreePlaceholderCount,
+                            result,
+                            scanner,
+                            crawler,
+                            noTransfers,
+                            placeholderWriter,
+                            syncTimer.ElapsedMilliseconds))
+                    .ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -219,15 +185,66 @@ namespace Cotton.Sync.Desktop.Startup
             return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
         }
 
-        private static async Task<int> RunInitialStreamingLoggingAsync(
-            DesktopAppPaths paths,
-            TextWriter output,
-            IWindowsCloudFilesAdapter cloudFiles,
-            SyncPairSettings syncPair,
-            int largeTreePlaceholderCount,
-            WindowsCloudFilesDiagnostics diagnostics,
-            CancellationToken cancellationToken)
+        private static bool DidSteadyStateFastPathPass(
+            SyncRunResult result,
+            GuardLocalScanner scanner,
+            LargeStateFirstRemoteCrawler crawler,
+            NoTransferRemoteFileSynchronizer remoteFiles,
+            GuardRemoteFilePlaceholderWriter placeholderWriter,
+            TimeSpan elapsed)
         {
+            return !result.RequiresUserAction
+                && scanner.FullScanCalls == 0
+                && scanner.MetadataTreeScanCalls == 0
+                && scanner.PathLookupCalls == 1
+                && crawler.StreamingCrawlCalls == 1
+                && crawler.SnapshotCrawlCalls == 0
+                && remoteFiles.TransferCalls == 0
+                && placeholderWriter.PlaceholderWriteCalls == 0
+                && elapsed <= SteadyStateRepeatTimeout;
+        }
+
+        private static string FormatSteadyStateRepeatDetails(
+            int fileCount,
+            SyncRunResult result,
+            GuardLocalScanner scanner,
+            LargeStateFirstRemoteCrawler crawler,
+            NoTransferRemoteFileSynchronizer remoteFiles,
+            GuardRemoteFilePlaceholderWriter placeholderWriter,
+            long elapsedMilliseconds)
+        {
+            return "files="
+                + fileCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                + ", requiresAction="
+                + result.RequiresUserAction.ToString()
+                + ", syncElapsedMs="
+                + elapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", streamingCrawls="
+                + crawler.StreamingCrawlCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", snapshotCrawls="
+                + crawler.SnapshotCrawlCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", fullLocalScans="
+                + scanner.FullScanCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", metadataTreeScans="
+                + scanner.MetadataTreeScanCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", pathLookups="
+                + scanner.PathLookupCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", transfers="
+                + remoteFiles.TransferCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", placeholderWrites="
+                + placeholderWriter.PlaceholderWriteCalls.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        private static async Task<int> RunInitialStreamingLoggingAsync(WindowsVirtualFilesSmokeContext context)
+        {
+            DesktopAppPaths paths = context.Paths;
+            TextWriter output = context.Output;
+            IWindowsCloudFilesAdapter cloudFiles = context.CloudFiles;
+            SyncPairSettings syncPair = context.SyncPair;
+            int largeTreePlaceholderCount = GetLargeTreePlaceholderCount(context.StartupOptions);
+            WindowsCloudFilesDiagnostics diagnostics = context.Diagnostics;
+            CancellationToken cancellationToken = context.CancellationToken;
+
             string rootPath = syncPair.LocalRootPath;
             SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath);
             IReadOnlyList<RemoteFileSnapshot> remoteFiles = CreateLargeTreeRemoteFiles(syncPair, largeTreePlaceholderCount);
@@ -296,9 +313,7 @@ namespace Cotton.Sync.Desktop.Startup
                     .ConfigureAwait(false);
                 failures += await WriteCheckAsync(
                         output,
-                        !result.RequiresUserAction
-                            && result.TotalActivityCount == 0
-                            && state.Count == largeTreePlaceholderCount + 1,
+                        IsInitialStreamingBaselineValid(result, state.Count, largeTreePlaceholderCount),
                         "Initial VFS streaming run created a large placeholder baseline without per-placeholder activities.",
                         "files="
                         + largeTreePlaceholderCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
@@ -317,12 +332,10 @@ namespace Cotton.Sync.Desktop.Startup
                     ? placeholderProgress[^1]
                     : null;
                 int expectedPlaceholderProgressItems = largeTreePlaceholderCount + 1;
-                bool hasProgressSummary = finalPlaceholderProgress is not null
-                    && progressSamples.Any(static progress => progress.Stage == SyncRunProgressStage.Completed && progress.IsCompleted)
-                    && !progressSamples.Any(static progress =>
-                        progress.Stage is SyncRunProgressStage.ScanningLocal or SyncRunProgressStage.ScanningRemote)
-                    && finalPlaceholderProgress.FilesCompleted == expectedPlaceholderProgressItems
-                    && finalPlaceholderProgress.FilesTotal == expectedPlaceholderProgressItems;
+                bool hasProgressSummary = HasExpectedInitialStreamingProgress(
+                    progressSamples,
+                    finalPlaceholderProgress,
+                    expectedPlaceholderProgressItems);
                 failures += await WriteCheckAsync(
                         output,
                         hasProgressSummary,
@@ -356,9 +369,7 @@ namespace Cotton.Sync.Desktop.Startup
                     .ConfigureAwait(false);
                 failures += await WriteCheckAsync(
                         output,
-                        afterStreamingHealth.WorkingSetBytes > 0
-                            && afterStreamingHealth.ThreadCount.GetValueOrDefault() > 0
-                            && afterStreamingHealth.HandleCount.GetValueOrDefault() > 0,
+                        HasValidRuntimeHealth(afterStreamingHealth),
                         "Initial VFS runtime health captured.",
                         "before="
                         + FormatRuntimeHealth(beforeStreamingHealth)
@@ -385,6 +396,36 @@ namespace Cotton.Sync.Desktop.Startup
             }
 
             return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
+        }
+
+        private static bool IsInitialStreamingBaselineValid(
+            SyncRunResult result,
+            int stateEntryCount,
+            int expectedFileCount)
+        {
+            return !result.RequiresUserAction
+                && result.TotalActivityCount == 0
+                && stateEntryCount == expectedFileCount + 1;
+        }
+
+        private static bool HasExpectedInitialStreamingProgress(
+            IReadOnlyList<SyncRunProgress> progressSamples,
+            SyncRunProgress? finalPlaceholderProgress,
+            int expectedItemCount)
+        {
+            return finalPlaceholderProgress is not null
+                && progressSamples.Any(static progress => progress.Stage == SyncRunProgressStage.Completed && progress.IsCompleted)
+                && !progressSamples.Any(static progress =>
+                    progress.Stage is SyncRunProgressStage.ScanningLocal or SyncRunProgressStage.ScanningRemote)
+                && finalPlaceholderProgress.FilesCompleted == expectedItemCount
+                && finalPlaceholderProgress.FilesTotal == expectedItemCount;
+        }
+
+        private static bool HasValidRuntimeHealth(DesktopRuntimeHealthSnapshot runtimeHealth)
+        {
+            return runtimeHealth.WorkingSetBytes > 0
+                && runtimeHealth.ThreadCount.GetValueOrDefault() > 0
+                && runtimeHealth.HandleCount.GetValueOrDefault() > 0;
         }
 
         private static async Task<int> RecordSmokeFailureAsync(

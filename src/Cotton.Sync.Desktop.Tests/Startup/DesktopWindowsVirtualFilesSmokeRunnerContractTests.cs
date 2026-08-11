@@ -89,11 +89,11 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             {
                 Assert.That(runner, Does.Contain("\"steady-state-repeat\""));
                 Assert.That(runner, Does.Contain("RunSteadyStateRepeatAsync("));
-                Assert.That(runner, Does.Contain("new SqliteSyncStateStore(paths.SyncStateDatabasePath)"));
-                Assert.That(runner, Does.Contain("new GuardLocalScanner()"));
-                Assert.That(runner, Does.Contain("new LargeStateFirstRemoteCrawler("));
-                Assert.That(runner, Does.Contain("new NoTransferRemoteFileSynchronizer()"));
-                Assert.That(runner, Does.Contain("new GuardRemoteFilePlaceholderWriter()"));
+                Assert.That(runner, Does.Contain("SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath)"));
+                Assert.That(runner, Does.Contain("GuardLocalScanner scanner = new();"));
+                Assert.That(runner, Does.Contain("LargeStateFirstRemoteCrawler crawler = new("));
+                Assert.That(runner, Does.Contain("NoTransferRemoteFileSynchronizer noTransfers = new();"));
+                Assert.That(runner, Does.Contain("GuardRemoteFilePlaceholderWriter placeholderWriter = new();"));
                 Assert.That(runner, Does.Contain("remoteFilePlaceholderWriter: placeholderWriter"));
                 Assert.That(runner, Does.Contain("Steady-state repeat pass used scoped path validation without local placeholder-tree scanning."));
                 Assert.That(runner, Does.Contain("Steady-state repeat smoke must not scan the local placeholder tree."));
