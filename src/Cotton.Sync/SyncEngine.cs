@@ -2729,161 +2729,276 @@ namespace Cotton.Sync
             Dictionary<Guid, RemoteDirectorySnapshot> remoteDirectoriesById = BuildUniqueRemoteDirectoriesById(
                 remoteDirectoriesByPath.Values);
             Dictionary<Guid, RemoteFileSnapshot> remoteFilesById = BuildUniqueRemoteFilesById(remoteFilesByPath.Values);
+            List<RemoteDirectoryMoveCandidate> accepted = FindRemoteDirectoryMoveCandidates(
+                localDirectoriesByPath,
+                localFilesByPath,
+                directoryStateByPath,
+                fileStateByPath,
+                remoteDirectoriesById,
+                remoteFilesById,
+                cancellationToken);
+            foreach (RemoteDirectoryMoveCandidate candidate in accepted)
+            {
+                await ApplyRemoteDirectoryMoveAsync(
+                    syncPair,
+                    options,
+                    result,
+                    candidate,
+                    localDirectoriesByPath,
+                    localFilesByPath,
+                    directoryStateByPath,
+                    fileStateByPath,
+                    remoteDirectoriesById,
+                    remoteFilesById,
+                    cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        private List<RemoteDirectoryMoveCandidate> FindRemoteDirectoryMoveCandidates(
+            IDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath,
+            IDictionary<string, LocalFileSnapshot> localFilesByPath,
+            IDictionary<string, SyncStateEntry> directoryStateByPath,
+            IDictionary<string, SyncStateEntry> fileStateByPath,
+            IReadOnlyDictionary<Guid, RemoteDirectorySnapshot> remoteDirectoriesById,
+            IReadOnlyDictionary<Guid, RemoteFileSnapshot> remoteFilesById,
+            CancellationToken cancellationToken)
+        {
             List<RemoteDirectoryMoveCandidate> accepted = [];
             foreach (KeyValuePair<string, SyncStateEntry> source in directoryStateByPath
                          .OrderBy(entry => GetPathDepth(entry.Value.RelativePath))
                          .ThenBy(entry => entry.Value.RelativePath, StringComparer.OrdinalIgnoreCase))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!source.Value.RemoteNodeId.HasValue)
-                {
-                    continue;
-                }
-
-                if (!localDirectoriesByPath.ContainsKey(source.Key))
-                {
-                    continue;
-                }
-
-                if (!remoteDirectoriesById.TryGetValue(
-                        source.Value.RemoteNodeId.Value,
-                        out RemoteDirectorySnapshot? target))
-                {
-                    continue;
-                }
-
-                if (string.Equals(source.Value.RelativePath, target.RelativePath, StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                string sourceKey = SyncPath.ToKey(source.Value.RelativePath);
-                if (accepted.Any(candidate => IsSameOrDescendantPathKey(sourceKey, candidate.SourceKey)))
-                {
-                    continue;
-                }
-
-                var candidate = new RemoteDirectoryMoveCandidate(
-                    source.Value.RelativePath,
-                    target.RelativePath,
-                    sourceKey,
-                    SyncPath.ToKey(target.RelativePath));
-                if (!CanCoalesceRemoteDirectoryMove(
-                        candidate,
+                if (TryCreateRemoteDirectoryMoveCandidate(
+                        source,
+                        accepted,
                         localDirectoriesByPath,
                         localFilesByPath,
                         directoryStateByPath,
                         fileStateByPath,
                         remoteDirectoriesById,
                         remoteFilesById,
-                        out string? rejectionReason))
+                        out RemoteDirectoryMoveCandidate candidate))
                 {
-                    _logger.LogInformation(
-                        "Remote directory move from {SourcePath} to {TargetPath} was not coalesced: {Reason}",
-                        candidate.SourcePath,
-                        candidate.TargetPath,
-                        rejectionReason);
-                    continue;
+                    accepted.Add(candidate);
                 }
-
-                _logger.LogInformation(
-                    "Remote directory move from {SourcePath} to {TargetPath} passed stable-id validation.",
-                    candidate.SourcePath,
-                    candidate.TargetPath);
-                accepted.Add(candidate);
             }
 
-            foreach (RemoteDirectoryMoveCandidate candidate in accepted)
+            return accepted;
+        }
+
+        private bool TryCreateRemoteDirectoryMoveCandidate(
+            KeyValuePair<string, SyncStateEntry> source,
+            IReadOnlyCollection<RemoteDirectoryMoveCandidate> accepted,
+            IDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath,
+            IDictionary<string, LocalFileSnapshot> localFilesByPath,
+            IDictionary<string, SyncStateEntry> directoryStateByPath,
+            IDictionary<string, SyncStateEntry> fileStateByPath,
+            IReadOnlyDictionary<Guid, RemoteDirectorySnapshot> remoteDirectoriesById,
+            IReadOnlyDictionary<Guid, RemoteFileSnapshot> remoteFilesById,
+            out RemoteDirectoryMoveCandidate candidate)
+        {
+            candidate = default;
+            if (!source.Value.RemoteNodeId.HasValue || !localDirectoriesByPath.ContainsKey(source.Key))
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                await EnsureRemoteDirectoryMoveLocalHashesAsync(
-                    syncPair,
-                    options,
+                return false;
+            }
+
+            if (!remoteDirectoriesById.TryGetValue(
+                    source.Value.RemoteNodeId.Value,
+                    out RemoteDirectorySnapshot? target)
+                || string.Equals(source.Value.RelativePath, target.RelativePath, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            string sourceKey = SyncPath.ToKey(source.Value.RelativePath);
+            if (accepted.Any(existing => IsSameOrDescendantPathKey(sourceKey, existing.SourceKey)))
+            {
+                return false;
+            }
+
+            candidate = new RemoteDirectoryMoveCandidate(
+                source.Value.RelativePath,
+                target.RelativePath,
+                sourceKey,
+                SyncPath.ToKey(target.RelativePath));
+            if (!CanCoalesceRemoteDirectoryMove(
                     candidate,
+                    localDirectoriesByPath,
                     localFilesByPath,
+                    directoryStateByPath,
                     fileStateByPath,
-                    cancellationToken).ConfigureAwait(false);
-                await _localWriter.MoveDirectoryAsync(
-                    syncPair.LocalRootPath,
+                    remoteDirectoriesById,
+                    remoteFilesById,
+                    out string? rejectionReason))
+            {
+                _logger.LogInformation(
+                    "Remote directory move from {SourcePath} to {TargetPath} was not coalesced: {Reason}",
                     candidate.SourcePath,
                     candidate.TargetPath,
-                    cancellationToken).ConfigureAwait(false);
-                MoveLocalDirectoryLookups(syncPair.LocalRootPath, candidate, localDirectoriesByPath);
-                MoveLocalFileLookups(syncPair.LocalRootPath, candidate, localFilesByPath);
+                    rejectionReason);
+                return false;
+            }
 
-                List<KeyValuePair<string, SyncStateEntry>> movedDirectoryStates = directoryStateByPath
-                    .Where(entry => IsSameOrDescendantPathKey(entry.Key, candidate.SourceKey))
-                    .OrderBy(entry => GetPathDepth(entry.Value.RelativePath))
-                    .ToList();
-                if (_remoteDirectoryTreePopulationObserver is not null)
-                {
-                    List<RemoteDirectoryMaterializationRequest> directoryRequests = movedDirectoryStates
-                        .Select(entry =>
-                        {
-                            RemoteDirectorySnapshot remote = remoteDirectoriesById[entry.Value.RemoteNodeId!.Value];
-                            string targetPath = ReplacePathPrefix(
-                                entry.Value.RelativePath,
-                                candidate.SourcePath,
-                                candidate.TargetPath);
-                            return CreateRemoteDirectoryMaterializationRequest(syncPair, targetPath, remote.Node);
-                        })
-                        .ToList();
-                    await _remoteDirectoryTreePopulationObserver
-                        .AfterDirectoryTreePopulationAsync(directoryRequests, cancellationToken)
-                        .ConfigureAwait(false);
-                }
+            _logger.LogInformation(
+                "Remote directory move from {SourcePath} to {TargetPath} passed stable-id validation.",
+                candidate.SourcePath,
+                candidate.TargetPath);
+            return true;
+        }
 
-                foreach (KeyValuePair<string, SyncStateEntry> entry in movedDirectoryStates)
+        private async Task ApplyRemoteDirectoryMoveAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            SyncRunResult result,
+            RemoteDirectoryMoveCandidate candidate,
+            IDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath,
+            IDictionary<string, LocalFileSnapshot> localFilesByPath,
+            IDictionary<string, SyncStateEntry> directoryStateByPath,
+            IDictionary<string, SyncStateEntry> fileStateByPath,
+            IReadOnlyDictionary<Guid, RemoteDirectorySnapshot> remoteDirectoriesById,
+            IReadOnlyDictionary<Guid, RemoteFileSnapshot> remoteFilesById,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await EnsureRemoteDirectoryMoveLocalHashesAsync(
+                syncPair,
+                options,
+                candidate,
+                localFilesByPath,
+                fileStateByPath,
+                cancellationToken).ConfigureAwait(false);
+            await _localWriter.MoveDirectoryAsync(
+                syncPair.LocalRootPath,
+                candidate.SourcePath,
+                candidate.TargetPath,
+                cancellationToken).ConfigureAwait(false);
+            MoveLocalDirectoryLookups(syncPair.LocalRootPath, candidate, localDirectoriesByPath);
+            MoveLocalFileLookups(syncPair.LocalRootPath, candidate, localFilesByPath);
+
+            List<KeyValuePair<string, SyncStateEntry>> movedDirectoryStates = directoryStateByPath
+                .Where(entry => IsSameOrDescendantPathKey(entry.Key, candidate.SourceKey))
+                .OrderBy(entry => GetPathDepth(entry.Value.RelativePath))
+                .ToList();
+            await NotifyRemoteDirectoryMovePopulationAsync(
+                syncPair,
+                candidate,
+                movedDirectoryStates,
+                remoteDirectoriesById,
+                cancellationToken).ConfigureAwait(false);
+            await MoveRemoteDirectoryStatesAsync(
+                syncPair,
+                candidate,
+                movedDirectoryStates,
+                directoryStateByPath,
+                remoteDirectoriesById,
+                cancellationToken).ConfigureAwait(false);
+            await MoveRemoteFileStatesAsync(
+                syncPair,
+                options,
+                candidate,
+                localFilesByPath,
+                fileStateByPath,
+                remoteFilesById,
+                cancellationToken).ConfigureAwait(false);
+            Report(
+                result,
+                options,
+                SyncActivityKind.Moved,
+                candidate.TargetPath,
+                "Moved local folder to follow the remote folder path.");
+        }
+
+        private async Task NotifyRemoteDirectoryMovePopulationAsync(
+            SyncPair syncPair,
+            RemoteDirectoryMoveCandidate candidate,
+            IEnumerable<KeyValuePair<string, SyncStateEntry>> movedDirectoryStates,
+            IReadOnlyDictionary<Guid, RemoteDirectorySnapshot> remoteDirectoriesById,
+            CancellationToken cancellationToken)
+        {
+            if (_remoteDirectoryTreePopulationObserver is null)
+            {
+                return;
+            }
+
+            List<RemoteDirectoryMaterializationRequest> directoryRequests = movedDirectoryStates
+                .Select(entry =>
                 {
-                    string targetPath = ReplacePathPrefix(
-                        entry.Value.RelativePath,
-                        candidate.SourcePath,
-                        candidate.TargetPath);
                     RemoteDirectorySnapshot remote = remoteDirectoriesById[entry.Value.RemoteNodeId!.Value];
-                    SyncStateEntry movedState = BuildDirectoryBaseline(syncPair, targetPath, remote.Node);
-                    await MoveStateEntryAsync(
-                        syncPair.SyncPairId,
-                        entry.Value.RelativePath,
-                        movedState,
-                        directoryStateByPath,
-                        cancellationToken).ConfigureAwait(false);
-                }
-
-                List<KeyValuePair<string, SyncStateEntry>> movedFileStates = fileStateByPath
-                    .Where(entry => IsSameOrDescendantPathKey(entry.Key, candidate.SourceKey))
-                    .OrderBy(entry => entry.Value.RelativePath, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-                foreach (KeyValuePair<string, SyncStateEntry> entry in movedFileStates)
-                {
                     string targetPath = ReplacePathPrefix(
                         entry.Value.RelativePath,
                         candidate.SourcePath,
                         candidate.TargetPath);
-                    string targetKey = SyncPath.ToKey(targetPath);
-                    RemoteFileSnapshot remote = remoteFilesById[entry.Value.RemoteFileId!.Value];
-                    LocalFileSnapshot local = localFilesByPath[targetKey];
-                    SyncStateEntry movedState = await BuildMovedRemoteFileStateAsync(
-                        syncPair,
-                        options,
-                        targetPath,
-                        local,
-                        remote.File,
-                        entry.Value,
-                        cancellationToken).ConfigureAwait(false);
-                    await MoveStateEntryAsync(
-                        syncPair.SyncPairId,
-                        entry.Value.RelativePath,
-                        movedState,
-                        fileStateByPath,
-                        cancellationToken).ConfigureAwait(false);
-                }
+                    return CreateRemoteDirectoryMaterializationRequest(syncPair, targetPath, remote.Node);
+                })
+                .ToList();
+            await _remoteDirectoryTreePopulationObserver
+                .AfterDirectoryTreePopulationAsync(directoryRequests, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
-                Report(
-                    result,
+        private async Task MoveRemoteDirectoryStatesAsync(
+            SyncPair syncPair,
+            RemoteDirectoryMoveCandidate candidate,
+            IEnumerable<KeyValuePair<string, SyncStateEntry>> movedDirectoryStates,
+            IDictionary<string, SyncStateEntry> directoryStateByPath,
+            IReadOnlyDictionary<Guid, RemoteDirectorySnapshot> remoteDirectoriesById,
+            CancellationToken cancellationToken)
+        {
+            foreach (KeyValuePair<string, SyncStateEntry> entry in movedDirectoryStates)
+            {
+                string targetPath = ReplacePathPrefix(
+                    entry.Value.RelativePath,
+                    candidate.SourcePath,
+                    candidate.TargetPath);
+                RemoteDirectorySnapshot remote = remoteDirectoriesById[entry.Value.RemoteNodeId!.Value];
+                SyncStateEntry movedState = BuildDirectoryBaseline(syncPair, targetPath, remote.Node);
+                await MoveStateEntryAsync(
+                    syncPair.SyncPairId,
+                    entry.Value.RelativePath,
+                    movedState,
+                    directoryStateByPath,
+                    cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        private async Task MoveRemoteFileStatesAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            RemoteDirectoryMoveCandidate candidate,
+            IDictionary<string, LocalFileSnapshot> localFilesByPath,
+            IDictionary<string, SyncStateEntry> fileStateByPath,
+            IReadOnlyDictionary<Guid, RemoteFileSnapshot> remoteFilesById,
+            CancellationToken cancellationToken)
+        {
+            List<KeyValuePair<string, SyncStateEntry>> movedFileStates = fileStateByPath
+                .Where(entry => IsSameOrDescendantPathKey(entry.Key, candidate.SourceKey))
+                .OrderBy(entry => entry.Value.RelativePath, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            foreach (KeyValuePair<string, SyncStateEntry> entry in movedFileStates)
+            {
+                string targetPath = ReplacePathPrefix(
+                    entry.Value.RelativePath,
+                    candidate.SourcePath,
+                    candidate.TargetPath);
+                string targetKey = SyncPath.ToKey(targetPath);
+                RemoteFileSnapshot remote = remoteFilesById[entry.Value.RemoteFileId!.Value];
+                LocalFileSnapshot local = localFilesByPath[targetKey];
+                SyncStateEntry movedState = await BuildMovedRemoteFileStateAsync(
+                    syncPair,
                     options,
-                    SyncActivityKind.Moved,
-                    candidate.TargetPath,
-                    "Moved local folder to follow the remote folder path.");
+                    targetPath,
+                    local,
+                    remote.File,
+                    entry.Value,
+                    cancellationToken).ConfigureAwait(false);
+                await MoveStateEntryAsync(
+                    syncPair.SyncPairId,
+                    entry.Value.RelativePath,
+                    movedState,
+                    fileStateByPath,
+                    cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -3304,8 +3419,13 @@ namespace Cotton.Sync
             LocalDirectorySnapshot? local,
             RemoteDirectorySnapshot? remote)
         {
-            if (local is null && remote is not null)
+            if (local is null)
             {
+                if (remote is null)
+                {
+                    return;
+                }
+
                 await CreateRemoteBackedLocalDirectoryAsync(
                         context.SyncPair,
                         relativePath,
@@ -3320,19 +3440,20 @@ namespace Cotton.Sync
                 return;
             }
 
-            if (local is not null && remote is null && _remoteDirectories is not null)
+            if (remote is null)
             {
-                await CreateRemoteDirectoryWithoutBaselineAsync(context, relativePath).ConfigureAwait(false);
+                if (_remoteDirectories is not null)
+                {
+                    await CreateRemoteDirectoryWithoutBaselineAsync(context, relativePath).ConfigureAwait(false);
+                }
+
                 return;
             }
 
-            if (local is not null && remote is not null)
-            {
-                await _stateStore.UpsertAsync(
-                        BuildDirectoryBaseline(context.SyncPair, relativePath, remote.Node),
-                        context.CancellationToken)
-                    .ConfigureAwait(false);
-            }
+            await _stateStore.UpsertAsync(
+                    BuildDirectoryBaseline(context.SyncPair, relativePath, remote.Node),
+                    context.CancellationToken)
+                .ConfigureAwait(false);
         }
 
         private async Task CreateRemoteDirectoryWithoutBaselineAsync(
@@ -3764,7 +3885,24 @@ namespace Cotton.Sync
             bool blockLocalOnlyUploads,
             CancellationToken cancellationToken)
         {
-            if (local is not null && remote is null)
+            if (local is null)
+            {
+                if (remote is not null)
+                {
+                    await MaterializeRemoteOnlyFileAsync(
+                            syncPair,
+                            options,
+                            result,
+                            relativePath,
+                            remote.File,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                return;
+            }
+
+            if (remote is null)
             {
                 await ReconcileLocalOnlyWithoutBaselineAsync(
                         syncPair,
@@ -3778,25 +3916,15 @@ namespace Cotton.Sync
                 return;
             }
 
-            if (local is null && remote is not null)
-            {
-                await MaterializeRemoteOnlyFileAsync(syncPair, options, result, relativePath, remote.File, cancellationToken)
-                    .ConfigureAwait(false);
-                return;
-            }
-
-            if (local is not null && remote is not null)
-            {
-                await ReconcileLocalAndRemoteWithoutBaselineAsync(
-                        syncPair,
-                        options,
-                        result,
-                        relativePath,
-                        local,
-                        remote.File,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
+            await ReconcileLocalAndRemoteWithoutBaselineAsync(
+                    syncPair,
+                    options,
+                    result,
+                    relativePath,
+                    local,
+                    remote.File,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
 
         private async Task ReconcileLocalOnlyWithoutBaselineAsync(
@@ -4663,67 +4791,123 @@ namespace Cotton.Sync
             IDictionary<string, SyncStateEntry> directoryStateByPath,
             CancellationToken cancellationToken)
         {
-            foreach (string relativePath in plan.FilePaths)
+            if (await HasRemainingScopedVirtualFilesAsync(
+                    syncPair.SyncPairId,
+                    plan.FilePaths,
+                    cancellationToken).ConfigureAwait(false))
             {
-                SyncStateEntry? remaining = await _stateStore
-                    .GetAsync(syncPair.SyncPairId, relativePath, cancellationToken)
-                    .ConfigureAwait(false);
-                if (remaining is not null)
-                {
-                    return;
-                }
-            }
-
-            if (_remoteDirectories is null)
-            {
-                foreach (string rootPath in plan.RootPaths)
-                {
-                    Report(
-                        result,
-                        options,
-                        SyncActivityKind.Skipped,
-                        rootPath,
-                        "Remote folder cleanup is not available after the confirmed local subtree delete.",
-                        requiresUserAction: true);
-                }
-
                 return;
             }
 
-            foreach (string key in plan.DirectoryKeys)
+            IRemoteDirectorySynchronizer? remoteDirectories = _remoteDirectories;
+            if (remoteDirectories is null)
+            {
+                ReportScopedDirectoryDeleteSkipped(
+                    result,
+                    options,
+                    plan.RootPaths,
+                    "Remote folder cleanup is not available after the confirmed local subtree delete.");
+                return;
+            }
+
+            if (!AreScopedRemoteDirectoriesCurrent(
+                    plan.DirectoryKeys,
+                    remoteDirectoriesByPath,
+                    directoryStateByPath))
+            {
+                return;
+            }
+
+            if (!deleteGuard.CanDeleteRemote(out string? details))
+            {
+                ReportScopedDirectoryDeleteSkipped(result, options, plan.RootPaths, details);
+                return;
+            }
+
+            await DeleteScopedRemoteDirectoriesAsync(
+                syncPair,
+                options,
+                result,
+                remoteDirectories,
+                plan.DirectoryKeys,
+                remoteDirectoriesByPath,
+                directoryStateByPath,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task<bool> HasRemainingScopedVirtualFilesAsync(
+            string syncPairId,
+            IEnumerable<string> relativePaths,
+            CancellationToken cancellationToken)
+        {
+            foreach (string relativePath in relativePaths)
+            {
+                SyncStateEntry? remaining = await _stateStore
+                    .GetAsync(syncPairId, relativePath, cancellationToken)
+                    .ConfigureAwait(false);
+                if (remaining is not null)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool AreScopedRemoteDirectoriesCurrent(
+            IEnumerable<string> directoryKeys,
+            IDictionary<string, RemoteDirectorySnapshot> remoteDirectoriesByPath,
+            IDictionary<string, SyncStateEntry> directoryStateByPath)
+        {
+            foreach (string key in directoryKeys)
             {
                 if (!directoryStateByPath.TryGetValue(key, out SyncStateEntry? state)
                     || !remoteDirectoriesByPath.TryGetValue(key, out RemoteDirectorySnapshot? remote)
                     || state.RemoteNodeId != remote.Node.Id)
                 {
-                    return;
+                    return false;
                 }
             }
 
-            if (!deleteGuard.CanDeleteRemote(out string? details))
+            return true;
+        }
+
+        private static void ReportScopedDirectoryDeleteSkipped(
+            SyncRunResult result,
+            SyncRunOptions options,
+            IEnumerable<string> rootPaths,
+            string? details)
+        {
+            foreach (string rootPath in rootPaths)
             {
-                foreach (string rootPath in plan.RootPaths)
-                {
-                    Report(
-                        result,
-                        options,
-                        SyncActivityKind.Skipped,
-                        rootPath,
-                        details,
-                        requiresUserAction: true);
-                }
-
-                return;
+                Report(
+                    result,
+                    options,
+                    SyncActivityKind.Skipped,
+                    rootPath,
+                    details,
+                    requiresUserAction: true);
             }
+        }
 
-            foreach (string key in plan.DirectoryKeys
+        private async Task DeleteScopedRemoteDirectoriesAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            SyncRunResult result,
+            IRemoteDirectorySynchronizer remoteDirectories,
+            IEnumerable<string> directoryKeys,
+            IDictionary<string, RemoteDirectorySnapshot> remoteDirectoriesByPath,
+            IDictionary<string, SyncStateEntry> directoryStateByPath,
+            CancellationToken cancellationToken)
+        {
+            foreach (string key in directoryKeys
                          .OrderByDescending(GetPathDepth)
                          .ThenBy(static key => key, StringComparer.OrdinalIgnoreCase))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 SyncStateEntry state = directoryStateByPath[key];
                 RemoteDirectorySnapshot remote = remoteDirectoriesByPath[key];
-                await _remoteDirectories
+                await remoteDirectories
                     .DeleteDirectoryAsync(remote.Node.Id, options.DeleteRemotePermanently, cancellationToken)
                     .ConfigureAwait(false);
                 await _stateStore
@@ -5344,15 +5528,11 @@ namespace Cotton.Sync
             NodeFileManifestDto remoteFile,
             CancellationToken cancellationToken)
         {
-            RemoteFileMaterializationRequest? request = CreateRemoteFileMaterializationRequest(
+            RemoteFileMaterializationRequest? request = await PrepareRemoteFileMaterializationAsync(
                 syncPair,
                 targetRelativePath,
-                remoteFile);
-            if (request is not null)
-            {
-                await _remoteFileMaterializationObserver!.BeforeWriteFileAsync(request, cancellationToken)
-                    .ConfigureAwait(false);
-            }
+                remoteFile,
+                cancellationToken).ConfigureAwait(false);
 
             await WriteRemoteFileContentAsync(
                     syncPair,
@@ -5377,6 +5557,28 @@ namespace Cotton.Sync
             NodeFileManifestDto remoteFile,
             CancellationToken cancellationToken)
         {
+            await PrepareRemoteFileMaterializationAsync(
+                syncPair,
+                targetRelativePath,
+                remoteFile,
+                cancellationToken).ConfigureAwait(false);
+
+            await WriteRemoteFileContentAsync(
+                    syncPair,
+                    options,
+                    targetRelativePath,
+                    remoteRelativePath,
+                    remoteFile,
+                cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        private async Task<RemoteFileMaterializationRequest?> PrepareRemoteFileMaterializationAsync(
+            SyncPair syncPair,
+            string targetRelativePath,
+            NodeFileManifestDto remoteFile,
+            CancellationToken cancellationToken)
+        {
             RemoteFileMaterializationRequest? request = CreateRemoteFileMaterializationRequest(
                 syncPair,
                 targetRelativePath,
@@ -5387,14 +5589,7 @@ namespace Cotton.Sync
                     .ConfigureAwait(false);
             }
 
-            await WriteRemoteFileContentAsync(
-                    syncPair,
-                    options,
-                    targetRelativePath,
-                    remoteRelativePath,
-                    remoteFile,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            return request;
         }
 
         private async Task WriteRemoteFileContentAsync(
@@ -6004,28 +6199,18 @@ namespace Cotton.Sync
             RemoteFileSnapshot? remote,
             out long transferBytes)
         {
-            if (local is not null && remote is null)
+            if (local is null)
+            {
+                return TryCalculateRemoteOnlyTransferBytes(syncPair, remote, out transferBytes);
+            }
+
+            if (remote is null)
             {
                 transferBytes = local.SizeBytes;
                 return true;
             }
 
-            if (local is null && remote is not null)
-            {
-                if (syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles)
-                {
-                    transferBytes = 0;
-                    return false;
-                }
-
-                transferBytes = remote.File.SizeBytes;
-                return true;
-            }
-
-            if (local is not null
-                && remote is not null
-                && !string.IsNullOrWhiteSpace(local.ContentHash)
-                && !ContentMatches(local.ContentHash, remote.File.ContentHash))
+            if (IsUntrackedRemoteReplacement(local, remote))
             {
                 transferBytes = remote.File.SizeBytes;
                 return true;
@@ -6033,6 +6218,29 @@ namespace Cotton.Sync
 
             transferBytes = 0;
             return false;
+        }
+
+        private static bool TryCalculateRemoteOnlyTransferBytes(
+            SyncPair syncPair,
+            RemoteFileSnapshot? remote,
+            out long transferBytes)
+        {
+            if (remote is null || syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles)
+            {
+                transferBytes = 0;
+                return false;
+            }
+
+            transferBytes = remote.File.SizeBytes;
+            return true;
+        }
+
+        private static bool IsUntrackedRemoteReplacement(
+            LocalFileSnapshot local,
+            RemoteFileSnapshot remote)
+        {
+            return !string.IsNullOrWhiteSpace(local.ContentHash)
+                && !ContentMatches(local.ContentHash, remote.File.ContentHash);
         }
 
         private static bool TryCalculateConflictTransferBytes(
@@ -6315,7 +6523,6 @@ namespace Cotton.Sync
                     state.Value,
                     local,
                     remote,
-                    localDirectoryContentIndex,
                     remoteDirectoryContentIndex);
                 CountScopedDelete(
                     direction,
@@ -6422,26 +6629,38 @@ namespace Cotton.Sync
             SyncStateEntry state,
             LocalDirectorySnapshot? local,
             RemoteDirectorySnapshot? remote,
-            DirectoryContentIndex localDirectoryContentIndex,
             DirectoryContentIndex remoteDirectoryContentIndex)
         {
-            if (state.RemoteNodeId is null || (local is null && remote is null))
+            if (state.RemoteNodeId is null)
             {
                 return SyncDeleteDirection.None;
             }
 
-            string relativePath = ResolveDirectoryRelativePath(state.RelativePath, local, remote, state);
-            if (local is null && remote is not null && !remoteDirectoryContentIndex.HasChildren(relativePath))
+            if (local is null)
             {
-                return SyncDeleteDirection.Remote;
+                return GetMissingLocalDirectoryDeleteDirection(
+                    state,
+                    remote,
+                    remoteDirectoryContentIndex);
             }
 
-            if (remote is null && local is not null)
+            return remote is null ? SyncDeleteDirection.Local : SyncDeleteDirection.None;
+        }
+
+        private static SyncDeleteDirection GetMissingLocalDirectoryDeleteDirection(
+            SyncStateEntry state,
+            RemoteDirectorySnapshot? remote,
+            DirectoryContentIndex remoteDirectoryContentIndex)
+        {
+            if (remote is null)
             {
-                return SyncDeleteDirection.Local;
+                return SyncDeleteDirection.None;
             }
 
-            return SyncDeleteDirection.None;
+            string relativePath = ResolveDirectoryRelativePath(state.RelativePath, null, remote, state);
+            return remoteDirectoryContentIndex.HasChildren(relativePath)
+                ? SyncDeleteDirection.None
+                : SyncDeleteDirection.Remote;
         }
 
         private static SyncDeleteDirection GetPlannedDeleteDirection(
@@ -6450,32 +6669,39 @@ namespace Cotton.Sync
             RemoteFileSnapshot? remote,
             bool exactLocalDelete)
         {
-            if (state is null)
+            if (state is null || local is null && remote is null)
             {
                 return SyncDeleteDirection.None;
             }
 
-            if (local is null && remote is null)
+            if (IsMissingOnlineOnlyPlaceholder(state, local, remote))
             {
-                return SyncDeleteDirection.None;
+                return exactLocalDelete ? SyncDeleteDirection.Remote : SyncDeleteDirection.None;
             }
 
-            if (local is null && remote is not null && IsOnlineOnlyPlaceholderState(state))
-            {
-                if (exactLocalDelete)
-                {
-                    return SyncDeleteDirection.Remote;
-                }
-
-                return SyncDeleteDirection.None;
-            }
-
-            if (local is not null && remote is not null && ContentMatches(local.ContentHash, remote.File.ContentHash))
+            if (LocalAndRemoteContentMatches(local, remote))
             {
                 return SyncDeleteDirection.None;
             }
 
             return ToDeleteDirection(ResolveTrackedFileChange(CreateFileChangeState(state, local, remote)));
+        }
+
+        private static bool IsMissingOnlineOnlyPlaceholder(
+            SyncStateEntry state,
+            LocalFileSnapshot? local,
+            RemoteFileSnapshot? remote)
+        {
+            return local is null && remote is not null && IsOnlineOnlyPlaceholderState(state);
+        }
+
+        private static bool LocalAndRemoteContentMatches(
+            LocalFileSnapshot? local,
+            RemoteFileSnapshot? remote)
+        {
+            return local is not null
+                && remote is not null
+                && ContentMatches(local.ContentHash, remote.File.ContentHash);
         }
 
         private static SyncDeleteDirection ToDeleteDirection(SyncFileChangeKind changeKind)
