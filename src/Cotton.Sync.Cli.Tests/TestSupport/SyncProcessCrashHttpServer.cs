@@ -12,6 +12,8 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
 {
     internal class SyncProcessCrashHttpServer : SyncProcessCrashHttpServerBase
     {
+        private const string ClientSettingsPath = "/api/v1/settings";
+        private const string CreateFileFromChunksPath = "/api/v1/files/from-chunks";
         private readonly TaskCompletionSource _fileCommitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _releaseCreateResponse = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly byte[] _expectedContent;
@@ -81,55 +83,114 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
             HttpRequestSnapshot request,
             CancellationToken cancellationToken)
         {
-            if (request.Method == HttpMethod.Get && request.PathAndQuery == "/api/v1/settings")
+            if (await TryWriteClientSettingsAsync(response, request, cancellationToken).ConfigureAwait(false))
             {
-                await WriteJsonAsync(response, HttpStatusCode.OK, new ClientSettingsDto
-                {
-                    Version = "test",
-                    MaxChunkSizeBytes = 1024,
-                    SupportedHashAlgorithm = "SHA-256",
-                }, cancellationToken).ConfigureAwait(false);
                 return true;
             }
 
-            if (request.Method == HttpMethod.Get && request.PathAndQuery == "/api/v1/chunks/" + _expectedContentHash + "/exists")
+            if (await TryWriteChunkExistsAsync(response, request, cancellationToken).ConfigureAwait(false))
             {
-                await WriteTextAsync(response, HttpStatusCode.OK, "false", cancellationToken).ConfigureAwait(false);
                 return true;
             }
 
-            if (request.Method == HttpMethod.Post && request.PathAndQuery == "/api/v1/chunks/raw?hash=" + _expectedContentHash)
+            if (await TryWriteChunkUploadAsync(response, request, cancellationToken).ConfigureAwait(false))
             {
-                if (!request.RawBody.SequenceEqual(_expectedContent))
-                {
-                    throw new InvalidOperationException("Unexpected uploaded chunk content.");
-                }
-
-                await WriteTextAsync(response, HttpStatusCode.Created, string.Empty, cancellationToken).ConfigureAwait(false);
                 return true;
             }
 
-            if (request.Method == HttpMethod.Post && request.PathAndQuery == "/api/v1/files/from-chunks")
-            {
-                CreateFileFromChunksRequestDto createRequest = JsonSerializer.Deserialize<CreateFileFromChunksRequestDto>(
-                    request.Body,
-                    JsonOptions) ?? throw new InvalidOperationException("File-create request body is missing.");
-                if (createRequest.NodeId != _remoteRootId
-                    || !string.Equals(createRequest.Name, Path.GetFileName(_expectedRelativePath), StringComparison.Ordinal)
-                    || !string.Equals(createRequest.Hash, _expectedContentHash, StringComparison.Ordinal)
-                    || !createRequest.ChunkHashes.SequenceEqual(new[] { _expectedContentHash }))
-                {
-                    throw new InvalidOperationException("Unexpected file-create request.");
-                }
+            return await TryWriteFileCreateAsync(response, request, cancellationToken).ConfigureAwait(false);
+        }
 
-                _fileCreated = true;
-                _fileCommitted.TrySetResult();
-                await _releaseCreateResponse.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-                await WriteJsonAsync(response, HttpStatusCode.OK, CreateManifest(), cancellationToken).ConfigureAwait(false);
-                return true;
+        private async Task<bool> TryWriteClientSettingsAsync(
+            HttpListenerResponse response,
+            HttpRequestSnapshot request,
+            CancellationToken cancellationToken)
+        {
+            if (!IsRequest(request, HttpMethod.Get, ClientSettingsPath))
+            {
+                return false;
             }
 
-            return false;
+            await WriteJsonAsync(response, HttpStatusCode.OK, new ClientSettingsDto
+            {
+                Version = "test",
+                MaxChunkSizeBytes = 1024,
+                SupportedHashAlgorithm = "SHA-256",
+            }, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
+        private async Task<bool> TryWriteChunkExistsAsync(
+            HttpListenerResponse response,
+            HttpRequestSnapshot request,
+            CancellationToken cancellationToken)
+        {
+            string path = "/api/v1/chunks/" + _expectedContentHash + "/exists";
+            if (!IsRequest(request, HttpMethod.Get, path))
+            {
+                return false;
+            }
+
+            await WriteTextAsync(response, HttpStatusCode.OK, "false", cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
+        private async Task<bool> TryWriteChunkUploadAsync(
+            HttpListenerResponse response,
+            HttpRequestSnapshot request,
+            CancellationToken cancellationToken)
+        {
+            string path = "/api/v1/chunks/raw?hash=" + _expectedContentHash;
+            if (!IsRequest(request, HttpMethod.Post, path))
+            {
+                return false;
+            }
+
+            if (!request.RawBody.SequenceEqual(_expectedContent))
+            {
+                throw new InvalidOperationException("Unexpected uploaded chunk content.");
+            }
+
+            await WriteTextAsync(response, HttpStatusCode.Created, string.Empty, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
+        private async Task<bool> TryWriteFileCreateAsync(
+            HttpListenerResponse response,
+            HttpRequestSnapshot request,
+            CancellationToken cancellationToken)
+        {
+            if (!IsRequest(request, HttpMethod.Post, CreateFileFromChunksPath))
+            {
+                return false;
+            }
+
+            CreateFileFromChunksRequestDto createRequest = JsonSerializer.Deserialize<CreateFileFromChunksRequestDto>(
+                request.Body,
+                JsonOptions) ?? throw new InvalidOperationException("File-create request body is missing.");
+            if (!IsExpectedFileCreateRequest(createRequest))
+            {
+                throw new InvalidOperationException("Unexpected file-create request.");
+            }
+
+            _fileCreated = true;
+            _fileCommitted.TrySetResult();
+            await _releaseCreateResponse.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await WriteJsonAsync(response, HttpStatusCode.OK, CreateManifest(), cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
+        private bool IsExpectedFileCreateRequest(CreateFileFromChunksRequestDto request)
+        {
+            return request.NodeId == _remoteRootId
+                && string.Equals(request.Name, Path.GetFileName(_expectedRelativePath), StringComparison.Ordinal)
+                && string.Equals(request.Hash, _expectedContentHash, StringComparison.Ordinal)
+                && request.ChunkHashes.SequenceEqual([_expectedContentHash]);
+        }
+
+        private static bool IsRequest(HttpRequestSnapshot request, HttpMethod method, string path)
+        {
+            return request.Method == method && request.PathAndQuery == path;
         }
 
         private NodeContentDto CreateRootContent()
