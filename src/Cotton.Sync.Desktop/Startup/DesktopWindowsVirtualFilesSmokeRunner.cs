@@ -179,14 +179,7 @@ namespace Cotton.Sync.Desktop.Startup
                     context.SyncPair,
                     context.Diagnostics,
                     context.CancellationToken),
-                [WindowsVirtualFilesSmokePhase.ShellShareLinkTargets] = context => RunShellShareLinkTargetsAsync(
-                    context.Paths,
-                    context.Output,
-                    context.CloudFiles,
-                    context.NativeApi,
-                    context.SyncPair,
-                    context.Diagnostics,
-                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.ShellShareLinkTargets] = RunShellShareLinkTargetsAsync,
                 [WindowsVirtualFilesSmokePhase.DesktopRootLifecycle] = context => RunDesktopRootLifecycleAsync(
                     context.Paths,
                     context.Output,
@@ -2747,15 +2740,16 @@ namespace Cotton.Sync.Desktop.Startup
             };
         }
 
-        private static async Task<int> RunShellShareLinkTargetsAsync(
-            DesktopAppPaths paths,
-            TextWriter output,
-            IWindowsCloudFilesAdapter cloudFiles,
-            IWindowsCloudFilesNativeApi? nativeApi,
-            SyncPairSettings syncPair,
-            WindowsCloudFilesDiagnostics diagnostics,
-            CancellationToken cancellationToken)
+        private static async Task<int> RunShellShareLinkTargetsAsync(WindowsVirtualFilesSmokeContext context)
         {
+            DesktopAppPaths paths = context.Paths;
+            TextWriter output = context.Output;
+            IWindowsCloudFilesAdapter cloudFiles = context.CloudFiles;
+            IWindowsCloudFilesNativeApi? nativeApi = context.NativeApi;
+            SyncPairSettings syncPair = context.SyncPair;
+            WindowsCloudFilesDiagnostics diagnostics = context.Diagnostics;
+            CancellationToken cancellationToken = context.CancellationToken;
+
             if (nativeApi is null)
             {
                 await output.WriteLineAsync(
@@ -2882,56 +2876,48 @@ namespace Cotton.Sync.Desktop.Startup
                         + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
                     .ConfigureAwait(false);
 
-                failures += await RunVfsShellShareLinkCopyCaseAsync(
-                    paths,
-                    "VFS synced file share link copied",
-                    syncedFilePath,
-                    ShellShareLinkSyncedFilePath,
-                    ShellShareLinkTargetKind.File,
-                    expectCopied: true,
-                    expectedFailureReason: null,
-                    output,
-                    cancellationToken).ConfigureAwait(false);
-                failures += await RunVfsShellShareLinkCopyCaseAsync(
-                    paths,
-                    "VFS remote-only placeholder share link copied",
-                    remoteOnlyFilePath,
-                    ShellShareLinkRemoteOnlyFilePath,
-                    ShellShareLinkTargetKind.File,
-                    expectCopied: true,
-                    expectedFailureReason: null,
-                    output,
-                    cancellationToken).ConfigureAwait(false);
-                failures += await RunVfsShellShareLinkCopyCaseAsync(
-                    paths,
-                    "VFS hydrated placeholder share link copied",
-                    hydratedFilePath,
-                    ShellShareLinkHydratedFilePath,
-                    ShellShareLinkTargetKind.File,
-                    expectCopied: true,
-                    expectedFailureReason: null,
-                    output,
-                    cancellationToken).ConfigureAwait(false);
-                failures += await RunVfsShellShareLinkCopyCaseAsync(
-                    paths,
-                    "VFS folder share link copied",
-                    folderPath,
-                    ShellShareLinkFolderPath,
-                    ShellShareLinkTargetKind.Directory,
-                    expectCopied: true,
-                    expectedFailureReason: null,
-                    output,
-                    cancellationToken).ConfigureAwait(false);
-                failures += await RunVfsShellShareLinkCopyCaseAsync(
-                    paths,
-                    "VFS local-only item is rejected without clipboard write",
-                    localOnlyFilePath,
-                    ShellShareLinkLocalOnlyFilePath,
-                    ShellShareLinkTargetKind.Unknown,
-                    expectCopied: false,
-                    expectedFailureReason: "target-missing-baseline",
-                    output,
-                    cancellationToken).ConfigureAwait(false);
+                VfsShellShareLinkScenario[] scenarios =
+                [
+                    new(
+                        "VFS synced file share link copied",
+                        syncedFilePath,
+                        ShellShareLinkSyncedFilePath,
+                        ShellShareLinkTargetKind.File,
+                        ExpectCopied: true,
+                        ExpectedFailureReason: null),
+                    new(
+                        "VFS remote-only placeholder share link copied",
+                        remoteOnlyFilePath,
+                        ShellShareLinkRemoteOnlyFilePath,
+                        ShellShareLinkTargetKind.File,
+                        ExpectCopied: true,
+                        ExpectedFailureReason: null),
+                    new(
+                        "VFS hydrated placeholder share link copied",
+                        hydratedFilePath,
+                        ShellShareLinkHydratedFilePath,
+                        ShellShareLinkTargetKind.File,
+                        ExpectCopied: true,
+                        ExpectedFailureReason: null),
+                    new(
+                        "VFS folder share link copied",
+                        folderPath,
+                        ShellShareLinkFolderPath,
+                        ShellShareLinkTargetKind.Directory,
+                        ExpectCopied: true,
+                        ExpectedFailureReason: null),
+                    new(
+                        "VFS local-only item is rejected without clipboard write",
+                        localOnlyFilePath,
+                        ShellShareLinkLocalOnlyFilePath,
+                        ShellShareLinkTargetKind.Unknown,
+                        ExpectCopied: false,
+                        ExpectedFailureReason: "target-missing-baseline"),
+                ];
+                foreach (VfsShellShareLinkScenario scenario in scenarios)
+                {
+                    failures += await RunVfsShellShareLinkCopyCaseAsync(context, scenario).ConfigureAwait(false);
+                }
 
                 failures += await VerifyCloudFilesInSyncStateAsync(
                         output,
@@ -3817,22 +3803,15 @@ namespace Cotton.Sync.Desktop.Startup
         }
 
         private static async Task<int> RunVfsShellShareLinkCopyCaseAsync(
-            DesktopAppPaths paths,
-            string label,
-            string selectedPath,
-            string expectedRelativePath,
-            ShellShareLinkTargetKind expectedKind,
-            bool expectCopied,
-            string? expectedFailureReason,
-            TextWriter output,
-            CancellationToken cancellationToken)
+            WindowsVirtualFilesSmokeContext context,
+            VfsShellShareLinkScenario scenario)
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(
                 [
                     "--data-dir",
-                    paths.DataDirectory,
+                    context.Paths.DataDirectory,
                     "--copy-shell-share-link",
-                    selectedPath,
+                    scenario.SelectedPath,
                 ]);
             using StringWriter caseOutput = new StringWriter();
             VfsShellShareLinkSmokeClient shareLinkClient = new();
@@ -3840,53 +3819,28 @@ namespace Cotton.Sync.Desktop.Startup
             VfsShellShareLinkSmokeNotificationService notifications = new();
 
             int exitCode = await DesktopCommandLineRunner.RunShellShareLinkCopyAsync(
-                    paths,
+                    context.Paths,
                     options,
                     caseOutput,
                     shareLinkClient: shareLinkClient,
                     clipboardService: clipboard,
                     notificationService: notifications,
-                    cancellationToken: cancellationToken)
+                    cancellationToken: context.CancellationToken)
                 .ConfigureAwait(false);
 
             string report = caseOutput.ToString();
-            bool copiedMatches = expectCopied
-                ? exitCode == 0 && !string.IsNullOrWhiteSpace(clipboard.CopiedText)
-                : exitCode != 0 && clipboard.CopiedText is null;
-            bool failureMatches = expectedFailureReason is null
-                ? !report.Contains("FailureReason:", StringComparison.Ordinal)
-                : report.Contains("FailureReason: " + expectedFailureReason, StringComparison.Ordinal);
-            bool notificationMatches = expectCopied
-                ? string.Equals(notifications.LastMessage, "Share link copied to clipboard.", StringComparison.Ordinal)
-                : !string.IsNullOrWhiteSpace(notifications.LastMessage);
-            bool statusMatches = expectCopied
-                ? report.Contains("Status: resolved", StringComparison.Ordinal)
-                : report.Contains("Status: missing-baseline", StringComparison.Ordinal);
-            bool targetMatches = expectCopied
-                ? shareLinkClient.LastTarget is not null
-                    && string.Equals(
-                        shareLinkClient.LastTarget.RelativePath,
-                        SyncPath.Normalize(expectedRelativePath),
-                        StringComparison.OrdinalIgnoreCase)
-                    && shareLinkClient.LastTarget.Kind == expectedKind
-                    && ((expectedKind == ShellShareLinkTargetKind.File && shareLinkClient.LastTarget.RemoteFileId.HasValue)
-                        || (expectedKind == ShellShareLinkTargetKind.Directory && shareLinkClient.LastTarget.RemoteNodeId.HasValue))
-                : shareLinkClient.LastTarget is null;
-            bool noPathLeak = !report.Contains(selectedPath, StringComparison.OrdinalIgnoreCase)
-                && !report.Contains(Path.GetFileName(selectedPath), StringComparison.OrdinalIgnoreCase);
-            bool resultMatches = report.Contains(expectCopied ? "Result: passed" : "Result: failed", StringComparison.Ordinal);
-            bool passed = copiedMatches
-                && failureMatches
-                && notificationMatches
-                && statusMatches
-                && targetMatches
-                && noPathLeak
-                && resultMatches;
+            bool passed = DoesShellShareLinkCopyMatch(scenario, exitCode, clipboard)
+                && DoesShellShareLinkFailureMatch(scenario, report)
+                && DoesShellShareLinkNotificationMatch(scenario, notifications)
+                && DoesShellShareLinkStatusMatch(scenario, report)
+                && DoesShellShareLinkTargetMatch(scenario, shareLinkClient.LastTarget)
+                && DoesShellShareLinkReportHideLocalPath(scenario, report)
+                && DoesShellShareLinkResultMatch(scenario, report);
 
             return await WriteCheckAsync(
-                    output,
+                    context.Output,
                     passed,
-                    label,
+                    scenario.Label,
                     "exitCode="
                     + exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture)
                     + ", copied="
@@ -3895,6 +3849,83 @@ namespace Cotton.Sync.Desktop.Startup
                     + (!string.IsNullOrWhiteSpace(notifications.LastMessage))
                         .ToString(System.Globalization.CultureInfo.InvariantCulture))
                 .ConfigureAwait(false);
+        }
+
+        private static bool DoesShellShareLinkCopyMatch(
+            VfsShellShareLinkScenario scenario,
+            int exitCode,
+            VfsShellShareLinkSmokeClipboardService clipboard)
+        {
+            return scenario.ExpectCopied
+                ? exitCode == 0 && !string.IsNullOrWhiteSpace(clipboard.CopiedText)
+                : exitCode != 0 && clipboard.CopiedText is null;
+        }
+
+        private static bool DoesShellShareLinkFailureMatch(VfsShellShareLinkScenario scenario, string report)
+        {
+            return scenario.ExpectedFailureReason is null
+                ? !report.Contains("FailureReason:", StringComparison.Ordinal)
+                : report.Contains("FailureReason: " + scenario.ExpectedFailureReason, StringComparison.Ordinal);
+        }
+
+        private static bool DoesShellShareLinkNotificationMatch(
+            VfsShellShareLinkScenario scenario,
+            VfsShellShareLinkSmokeNotificationService notifications)
+        {
+            return scenario.ExpectCopied
+                ? string.Equals(notifications.LastMessage, "Share link copied to clipboard.", StringComparison.Ordinal)
+                : !string.IsNullOrWhiteSpace(notifications.LastMessage);
+        }
+
+        private static bool DoesShellShareLinkStatusMatch(VfsShellShareLinkScenario scenario, string report)
+        {
+            string expectedStatus = scenario.ExpectCopied ? "Status: resolved" : "Status: missing-baseline";
+            return report.Contains(expectedStatus, StringComparison.Ordinal);
+        }
+
+        private static bool DoesShellShareLinkTargetMatch(
+            VfsShellShareLinkScenario scenario,
+            ShellShareLinkTarget? target)
+        {
+            if (!scenario.ExpectCopied)
+            {
+                return target is null;
+            }
+
+            return target is not null
+                && string.Equals(
+                    target.RelativePath,
+                    SyncPath.Normalize(scenario.ExpectedRelativePath),
+                    StringComparison.OrdinalIgnoreCase)
+                && target.Kind == scenario.ExpectedKind
+                && HasExpectedShellShareLinkIdentity(scenario.ExpectedKind, target);
+        }
+
+        private static bool HasExpectedShellShareLinkIdentity(
+            ShellShareLinkTargetKind expectedKind,
+            ShellShareLinkTarget target)
+        {
+            return expectedKind switch
+            {
+                ShellShareLinkTargetKind.File => target.RemoteFileId.HasValue,
+                ShellShareLinkTargetKind.Directory => target.RemoteNodeId.HasValue,
+                ShellShareLinkTargetKind.Unknown => false,
+                _ => throw new ArgumentOutOfRangeException(nameof(expectedKind), expectedKind, null),
+            };
+        }
+
+        private static bool DoesShellShareLinkReportHideLocalPath(
+            VfsShellShareLinkScenario scenario,
+            string report)
+        {
+            return !report.Contains(scenario.SelectedPath, StringComparison.OrdinalIgnoreCase)
+                && !report.Contains(Path.GetFileName(scenario.SelectedPath), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool DoesShellShareLinkResultMatch(VfsShellShareLinkScenario scenario, string report)
+        {
+            string expectedResult = scenario.ExpectCopied ? "Result: passed" : "Result: failed";
+            return report.Contains(expectedResult, StringComparison.Ordinal);
         }
 
         private static async Task<int> RunSteadyStateRepeatAsync(
@@ -4311,23 +4342,27 @@ namespace Cotton.Sync.Desktop.Startup
                     "Completed initial streaming Windows virtual-files population",
                     StringComparison.Ordinal));
             string expectedFileCount = largeTreePlaceholderCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            string[] requiredMetrics =
+            [
+                "1 directories discovered",
+                "dirs/sec",
+                expectedFileCount + " files discovered",
+                "files/sec",
+                "remote pages read=",
+                "remote page latency total=",
+                expectedFileCount + " placeholders created or refreshed",
+                "placeholders/sec",
+                "state writes " + expectedFileCount + " file rows",
+                "file write batches",
+                "directory rows 1",
+                "state write rate=",
+                "rows/sec",
+                "managed heap start=",
+                "peak=",
+                "activities retained 0/0",
+            ];
             bool hasMetrics = completionLog is not null
-                && completionLog.Contains("1 directories discovered", StringComparison.Ordinal)
-                && completionLog.Contains("dirs/sec", StringComparison.Ordinal)
-                && completionLog.Contains(expectedFileCount + " files discovered", StringComparison.Ordinal)
-                && completionLog.Contains("files/sec", StringComparison.Ordinal)
-                && completionLog.Contains("remote pages read=", StringComparison.Ordinal)
-                && completionLog.Contains("remote page latency total=", StringComparison.Ordinal)
-                && completionLog.Contains(expectedFileCount + " placeholders created or refreshed", StringComparison.Ordinal)
-                && completionLog.Contains("placeholders/sec", StringComparison.Ordinal)
-                && completionLog.Contains("state writes " + expectedFileCount + " file rows", StringComparison.Ordinal)
-                && completionLog.Contains("file write batches", StringComparison.Ordinal)
-                && completionLog.Contains("directory rows 1", StringComparison.Ordinal)
-                && completionLog.Contains("state write rate=", StringComparison.Ordinal)
-                && completionLog.Contains("rows/sec", StringComparison.Ordinal)
-                && completionLog.Contains("managed heap start=", StringComparison.Ordinal)
-                && completionLog.Contains("peak=", StringComparison.Ordinal)
-                && completionLog.Contains("activities retained 0/0", StringComparison.Ordinal);
+                && requiredMetrics.All(metric => completionLog.Contains(metric, StringComparison.Ordinal));
             await output.WriteLineAsync(
                     FormatCheck(hasMetrics, "Initial VFS trace log contains large-run metrics.")
                     + " hasCompletionLog="
