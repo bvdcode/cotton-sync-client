@@ -4276,60 +4276,96 @@ namespace Cotton.Sync
                 return;
             }
 
+            var context = new OnlineOnlyPlaceholderMoveContext(
+                syncPair,
+                options,
+                result,
+                localByPath,
+                remoteByPath,
+                stateByPath,
+                cancellationToken);
             IReadOnlySet<string> scopedKeys = BuildExactScopedPathKeys(options.Scope.LocalChangedPaths);
             IReadOnlySet<string> explicitlyDeletedKeys = BuildExactScopedPathKeys(options.Scope.LocalDeletedPaths);
-
-            List<(string SourceKey, SyncStateEntry State, RemoteFileSnapshot Remote)> sources = [];
-            foreach (KeyValuePair<string, SyncStateEntry> state in stateByPath)
-            {
-                if (!IsOnlineOnlyPlaceholderState(state.Value)
-                    || state.Value.PlaceholderIdentity is not { Length: > 0 }
-                    || explicitlyDeletedKeys.Contains(state.Key)
-                    || localByPath.ContainsKey(state.Key)
-                    || !remoteByPath.TryGetValue(state.Key, out RemoteFileSnapshot? remote)
-                    || !RemoteMatchesBaseline(remote.File, state.Value))
-                {
-                    continue;
-                }
-
-                sources.Add((state.Key, state.Value, remote));
-            }
-
+            IReadOnlyList<OnlineOnlyPlaceholderMoveSource> sources = FindOnlineOnlyPlaceholderMoveSources(
+                context,
+                explicitlyDeletedKeys);
             if (sources.Count == 0)
             {
                 return;
             }
 
-            List<(string TargetKey, LocalFileSnapshot Local)> targets = [];
-            foreach (KeyValuePair<string, LocalFileSnapshot> local in localByPath)
+            IReadOnlyList<OnlineOnlyPlaceholderMoveTarget> targets = FindOnlineOnlyPlaceholderMoveTargets(context);
+            IReadOnlyList<OnlineOnlyPlaceholderMoveMatch> matches = FindUnambiguousOnlineOnlyPlaceholderMoveMatches(
+                options,
+                scopedKeys,
+                sources,
+                targets);
+            foreach (OnlineOnlyPlaceholderMoveMatch match in matches)
+            {
+                await ApplyOnlineOnlyPlaceholderMoveAsync(context, match).ConfigureAwait(false);
+            }
+        }
+
+        private static IReadOnlyList<OnlineOnlyPlaceholderMoveSource> FindOnlineOnlyPlaceholderMoveSources(
+            OnlineOnlyPlaceholderMoveContext context,
+            IReadOnlySet<string> explicitlyDeletedKeys)
+        {
+            List<OnlineOnlyPlaceholderMoveSource> sources = [];
+            foreach (KeyValuePair<string, SyncStateEntry> state in context.StateByPath)
+            {
+                if (!IsOnlineOnlyPlaceholderState(state.Value)
+                    || state.Value.PlaceholderIdentity is not { Length: > 0 }
+                    || explicitlyDeletedKeys.Contains(state.Key)
+                    || context.LocalByPath.ContainsKey(state.Key)
+                    || !context.RemoteByPath.TryGetValue(state.Key, out RemoteFileSnapshot? remote)
+                    || !RemoteMatchesBaseline(remote.File, state.Value))
+                {
+                    continue;
+                }
+
+                sources.Add(new OnlineOnlyPlaceholderMoveSource(state.Key, state.Value, remote));
+            }
+
+            return sources;
+        }
+
+        private static IReadOnlyList<OnlineOnlyPlaceholderMoveTarget> FindOnlineOnlyPlaceholderMoveTargets(
+            OnlineOnlyPlaceholderMoveContext context)
+        {
+            List<OnlineOnlyPlaceholderMoveTarget> targets = [];
+            foreach (KeyValuePair<string, LocalFileSnapshot> local in context.LocalByPath)
             {
                 if (local.Value.IsCloudFilesOnlineOnlyPlaceholder
-                    && !stateByPath.ContainsKey(local.Key)
-                    && !remoteByPath.ContainsKey(local.Key))
+                    && !context.StateByPath.ContainsKey(local.Key)
+                    && !context.RemoteByPath.ContainsKey(local.Key))
                 {
-                    targets.Add((local.Key, local.Value));
+                    targets.Add(new OnlineOnlyPlaceholderMoveTarget(local.Key, local.Value));
                 }
             }
 
-            List<(
-                string SourceKey,
-                SyncStateEntry State,
-                RemoteFileSnapshot Remote,
-                string TargetKey,
-                LocalFileSnapshot Local)> matches = [];
-            foreach ((string sourceKey, SyncStateEntry state, RemoteFileSnapshot remote) in sources)
+            return targets;
+        }
+
+        private static IReadOnlyList<OnlineOnlyPlaceholderMoveMatch> FindUnambiguousOnlineOnlyPlaceholderMoveMatches(
+            SyncRunOptions options,
+            IReadOnlySet<string> scopedKeys,
+            IReadOnlyList<OnlineOnlyPlaceholderMoveSource> sources,
+            IReadOnlyList<OnlineOnlyPlaceholderMoveTarget> targets)
+        {
+            List<OnlineOnlyPlaceholderMoveMatch> matches = [];
+            foreach (OnlineOnlyPlaceholderMoveSource source in sources)
             {
-                (string TargetKey, LocalFileSnapshot Local)[] matchingTargets = targets
+                OnlineOnlyPlaceholderMoveTarget[] matchingTargets = targets
                     .Where(target => CanCoalesceOnlineOnlyPlaceholderMove(
-                        state,
-                        remote.File,
+                        source.State,
+                        source.Remote.File,
                         target.Local,
                         CanUseScopedOnlineOnlyPlaceholderRename(
                             options,
                             scopedKeys,
-                            sourceKey,
+                            source.SourceKey,
                             target.TargetKey,
-                            state.RelativePath,
+                            source.State.RelativePath,
                             target.Local.RelativePath)))
                     .ToArray();
                 if (matchingTargets.Length != 1)
@@ -4337,86 +4373,109 @@ namespace Cotton.Sync
                     continue;
                 }
 
-                (string targetKey, LocalFileSnapshot local) = matchingTargets[0];
+                OnlineOnlyPlaceholderMoveTarget target = matchingTargets[0];
                 int matchingSourceCount = sources.Count(
-                    source => CanCoalesceOnlineOnlyPlaceholderMove(
-                        source.State,
-                        source.Remote.File,
-                        local,
+                    candidate => CanCoalesceOnlineOnlyPlaceholderMove(
+                        candidate.State,
+                        candidate.Remote.File,
+                        target.Local,
                         CanUseScopedOnlineOnlyPlaceholderRename(
                             options,
                             scopedKeys,
-                            source.SourceKey,
-                            targetKey,
-                            source.State.RelativePath,
-                            local.RelativePath)));
+                            candidate.SourceKey,
+                            target.TargetKey,
+                            candidate.State.RelativePath,
+                            target.Local.RelativePath)));
                 if (matchingSourceCount == 1)
                 {
-                    matches.Add((sourceKey, state, remote, targetKey, local));
+                    matches.Add(new OnlineOnlyPlaceholderMoveMatch(
+                        source.SourceKey,
+                        source.State,
+                        source.Remote,
+                        target.TargetKey,
+                        target.Local));
                 }
             }
 
-            foreach ((
-                string sourceKey,
-                SyncStateEntry sourceState,
-                RemoteFileSnapshot remote,
-                string targetKey,
-                LocalFileSnapshot local) in matches)
+            return matches;
+        }
+
+        private async Task ApplyOnlineOnlyPlaceholderMoveAsync(
+            OnlineOnlyPlaceholderMoveContext context,
+            OnlineOnlyPlaceholderMoveMatch match)
+        {
+            context.CancellationToken.ThrowIfCancellationRequested();
+            NodeFileManifestDto? moved = await TryMoveOnlineOnlyPlaceholderRemoteFileAsync(context, match)
+                .ConfigureAwait(false);
+            if (moved is null)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                string sourcePath = sourceState.RelativePath;
-                string targetPath = local.RelativePath;
-                NodeFileManifestDto moved;
-                try
-                {
-                    moved = await _remoteFiles
-                        .MoveFileAsync(syncPair.RemoteRootNodeId, targetPath, remote.File, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                catch (HttpRequestException exception) when (IsRemotePreconditionFailed(exception))
-                {
-                    NodeFileManifestDto? latestRemoteFile = await FindLatestRemoteFileAsync(syncPair, sourcePath, cancellationToken)
-                        .ConfigureAwait(false);
-                    if (latestRemoteFile is null)
-                    {
-                        remoteByPath.Remove(sourceKey);
-                    }
-                    else
-                    {
-                        remoteByPath[sourceKey] = new RemoteFileSnapshot
-                        {
-                            RelativePath = sourcePath,
-                            File = latestRemoteFile,
-                        };
-                    }
+                return;
+            }
 
-                    continue;
-                }
+            string sourcePath = match.SourceState.RelativePath;
+            string targetPath = match.Local.RelativePath;
+            SyncStateEntry? targetState = await TryCreateRemoteOnlyFilePlaceholderStateAsync(
+                    context.SyncPair,
+                    context.Options,
+                    targetPath,
+                    moved,
+                    context.CancellationToken,
+                    match.SourceState.PlaceholderHydrationState)
+                .ConfigureAwait(false);
+            if (targetState is null)
+            {
+                throw new InvalidOperationException("Cloud Files placeholder refresh returned no state for " + targetPath + ".");
+            }
 
-                SyncStateEntry? targetState = await TryCreateRemoteOnlyFilePlaceholderStateAsync(
-                        syncPair,
-                        options,
-                        targetPath,
-                        moved,
-                        cancellationToken,
-                        sourceState.PlaceholderHydrationState)
+            context.RemoteByPath.Remove(match.SourceKey);
+            context.RemoteByPath[match.TargetKey] = new RemoteFileSnapshot
+            {
+                RelativePath = targetPath,
+                File = moved,
+            };
+            context.StateByPath.Remove(match.SourceKey);
+            context.StateByPath[match.TargetKey] = targetState;
+            await _stateStore.DeleteAsync(context.SyncPair.SyncPairId, sourcePath, context.CancellationToken)
+                .ConfigureAwait(false);
+            await _stateStore.UpsertAsync(targetState, context.CancellationToken).ConfigureAwait(false);
+            Report(context.Result, context.Options, SyncActivityKind.Moved, targetPath, "Moved from " + sourcePath + ".");
+        }
+
+        private async Task<NodeFileManifestDto?> TryMoveOnlineOnlyPlaceholderRemoteFileAsync(
+            OnlineOnlyPlaceholderMoveContext context,
+            OnlineOnlyPlaceholderMoveMatch match)
+        {
+            try
+            {
+                return await _remoteFiles
+                    .MoveFileAsync(
+                        context.SyncPair.RemoteRootNodeId,
+                        match.Local.RelativePath,
+                        match.Remote.File,
+                        context.CancellationToken)
                     .ConfigureAwait(false);
-                if (targetState is null)
+            }
+            catch (HttpRequestException exception) when (IsRemotePreconditionFailed(exception))
+            {
+                NodeFileManifestDto? latestRemoteFile = await FindLatestRemoteFileAsync(
+                        context.SyncPair,
+                        match.SourceState.RelativePath,
+                        context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (latestRemoteFile is null)
                 {
-                    throw new InvalidOperationException("Cloud Files placeholder refresh returned no state for " + targetPath + ".");
+                    context.RemoteByPath.Remove(match.SourceKey);
+                }
+                else
+                {
+                    context.RemoteByPath[match.SourceKey] = new RemoteFileSnapshot
+                    {
+                        RelativePath = match.SourceState.RelativePath,
+                        File = latestRemoteFile,
+                    };
                 }
 
-                remoteByPath.Remove(sourceKey);
-                remoteByPath[targetKey] = new RemoteFileSnapshot
-                {
-                    RelativePath = targetPath,
-                    File = moved,
-                };
-                stateByPath.Remove(sourceKey);
-                stateByPath[targetKey] = targetState;
-                await _stateStore.DeleteAsync(syncPair.SyncPairId, sourcePath, cancellationToken).ConfigureAwait(false);
-                await _stateStore.UpsertAsync(targetState, cancellationToken).ConfigureAwait(false);
-                Report(result, options, SyncActivityKind.Moved, targetPath, "Moved from " + sourcePath + ".");
+                return null;
             }
         }
 
