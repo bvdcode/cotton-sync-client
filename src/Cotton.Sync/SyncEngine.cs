@@ -5303,16 +5303,9 @@ namespace Cotton.Sync
                 return TryCalculateUntrackedTransferBytes(syncPair, local, remote, out transferBytes);
             }
 
-            if (local is not null && IsLocalOnlineOnlyPlaceholderBaseline(syncPair, local, state))
+            if (TryCalculateOnlineOnlyPlaceholderTransferBytes(syncPair, state, local, remote, out transferBytes))
             {
-                if (remote is not null && !RemoteMatchesBaseline(remote.File, state))
-                {
-                    transferBytes = remote.File.SizeBytes;
-                    return true;
-                }
-
-                transferBytes = 0;
-                return false;
+                return transferBytes > 0;
             }
 
             if (local is not null && remote is not null && ContentMatches(local.ContentHash, remote.File.ContentHash))
@@ -5321,59 +5314,53 @@ namespace Cotton.Sync
                 return false;
             }
 
-            bool localDeleted = local is null && !string.IsNullOrWhiteSpace(state.LocalContentHash);
-            bool remoteDeleted = remote is null && state.RemoteFileId.HasValue;
-            bool localChanged = local is not null && !ContentMatches(local.ContentHash, state.LocalContentHash);
-            bool remoteChanged = remote is not null && RemoteMatchesBaseline(remote.File, state) is false;
-            bool baselineDiverged = !ContentMatches(state.LocalContentHash, state.RemoteContentHash);
+            SyncFileChangeKind changeKind = ResolveTrackedFileChange(CreateFileChangeState(state, local, remote));
+            return TryCalculateTrackedTransferBytes(changeKind, local, remote, out transferBytes);
+        }
 
-            if (baselineDiverged)
-            {
-                if (!localDeleted && !remoteDeleted && !localChanged && !remoteChanged)
-                {
-                    transferBytes = 0;
-                    return false;
-                }
-
-                return TryCalculateConflictTransferBytes(local, remote?.File, out transferBytes);
-            }
-
-            if (!localDeleted && !remoteDeleted && !localChanged && !remoteChanged)
+        private static bool TryCalculateOnlineOnlyPlaceholderTransferBytes(
+            SyncPair syncPair,
+            SyncStateEntry state,
+            LocalFileSnapshot? local,
+            RemoteFileSnapshot? remote,
+            out long transferBytes)
+        {
+            if (local is null || !IsLocalOnlineOnlyPlaceholderBaseline(syncPair, local, state))
             {
                 transferBytes = 0;
                 return false;
             }
 
-            if (localDeleted && remoteChanged)
-            {
-                return TryCalculateConflictTransferBytes(local, remote?.File, out transferBytes);
-            }
+            bool remoteChanged = remote is not null && !RemoteMatchesBaseline(remote.File, state);
+            transferBytes = remoteChanged ? remote!.File.SizeBytes : 0;
+            return true;
+        }
 
-            if (remoteDeleted && localChanged && local is not null)
+        private static bool TryCalculateTrackedTransferBytes(
+            SyncFileChangeKind changeKind,
+            LocalFileSnapshot? local,
+            RemoteFileSnapshot? remote,
+            out long transferBytes)
+        {
+            switch (changeKind)
             {
-                transferBytes = local.SizeBytes;
-                return true;
+                case SyncFileChangeKind.Upload:
+                    transferBytes = local!.SizeBytes;
+                    return true;
+                case SyncFileChangeKind.Download:
+                    transferBytes = remote!.File.SizeBytes;
+                    return true;
+                case SyncFileChangeKind.Conflict:
+                    return TryCalculateConflictTransferBytes(local, remote?.File, out transferBytes);
+                case SyncFileChangeKind.None:
+                case SyncFileChangeKind.DeleteState:
+                case SyncFileChangeKind.DeleteLocal:
+                case SyncFileChangeKind.DeleteRemote:
+                    transferBytes = 0;
+                    return false;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(changeKind), changeKind, null);
             }
-
-            if (localChanged && !remoteChanged && local is not null)
-            {
-                transferBytes = local.SizeBytes;
-                return true;
-            }
-
-            if (remoteChanged && !localChanged && remote is not null)
-            {
-                transferBytes = remote.File.SizeBytes;
-                return true;
-            }
-
-            if ((localChanged && remoteChanged) || (localDeleted && remoteChanged) || (remoteDeleted && localChanged))
-            {
-                return TryCalculateConflictTransferBytes(local, remote?.File, out transferBytes);
-            }
-
-            transferBytes = 0;
-            return false;
         }
 
         private static bool TryCalculateUntrackedTransferBytes(
@@ -5447,68 +5434,118 @@ namespace Cotton.Sync
             localByPath.TryGetValue(key, out LocalFileSnapshot? local);
             remoteByPath.TryGetValue(key, out RemoteFileSnapshot? remote);
             stateByPath.TryGetValue(key, out SyncStateEntry? state);
-            relativePath = local?.RelativePath ?? remote?.RelativePath ?? state?.RelativePath ?? key;
+            relativePath = ResolvePlannedTransferRelativePath(key, local, remote, state);
 
             if (state is null)
             {
                 return TryCreateRemoteOnlyDownload(syncPair, local, remote, out downloadBytes, out replacedLocalBytes);
             }
 
-            if (local is not null && IsLocalOnlineOnlyPlaceholderBaseline(syncPair, local, state))
+            if (TryCreateOnlineOnlyPlaceholderDownload(
+                    syncPair,
+                    state,
+                    local,
+                    remote,
+                    out downloadBytes,
+                    out replacedLocalBytes))
             {
-                bool placeholderRemoteChanged = remote is not null && !RemoteMatchesBaseline(remote.File, state);
-                downloadBytes = placeholderRemoteChanged ? remote!.File.SizeBytes : 0;
-                replacedLocalBytes = 0;
-                return placeholderRemoteChanged;
+                return downloadBytes > 0;
             }
 
-            if (local is not null && remote is not null && ContentMatches(local.ContentHash, remote.File.ContentHash))
+            if (LocalAndRemoteContentMatch(local, remote))
             {
                 downloadBytes = 0;
                 replacedLocalBytes = 0;
                 return false;
             }
 
-            bool localDeleted = local is null && !string.IsNullOrWhiteSpace(state.LocalContentHash);
-            bool remoteDeleted = remote is null && state.RemoteFileId.HasValue;
-            bool localChanged = local is not null && !ContentMatches(local.ContentHash, state.LocalContentHash);
-            bool remoteChanged = remote is not null && !RemoteMatchesBaseline(remote.File, state);
-            bool baselineDiverged = !ContentMatches(state.LocalContentHash, state.RemoteContentHash);
+            SyncFileChangeKind changeKind = ResolveTrackedFileChange(CreateFileChangeState(state, local, remote));
+            return TryCreateTrackedLocalDownload(changeKind, local, remote, out downloadBytes, out replacedLocalBytes);
+        }
 
-            if (baselineDiverged)
+        private static string ResolvePlannedTransferRelativePath(
+            string key,
+            LocalFileSnapshot? local,
+            RemoteFileSnapshot? remote,
+            SyncStateEntry? state)
+        {
+            if (local is not null)
             {
-                if (!localDeleted && !remoteDeleted && !localChanged && !remoteChanged)
-                {
+                return local.RelativePath;
+            }
+
+            if (remote is not null)
+            {
+                return remote.RelativePath;
+            }
+
+            return state is not null ? state.RelativePath : key;
+        }
+
+        private static bool LocalAndRemoteContentMatch(
+            LocalFileSnapshot? local,
+            RemoteFileSnapshot? remote)
+        {
+            return local is not null
+                && remote is not null
+                && ContentMatches(local.ContentHash, remote.File.ContentHash);
+        }
+
+        private static bool TryCreateOnlineOnlyPlaceholderDownload(
+            SyncPair syncPair,
+            SyncStateEntry state,
+            LocalFileSnapshot? local,
+            RemoteFileSnapshot? remote,
+            out long downloadBytes,
+            out long replacedLocalBytes)
+        {
+            if (local is null || !IsLocalOnlineOnlyPlaceholderBaseline(syncPair, local, state))
+            {
+                downloadBytes = 0;
+                replacedLocalBytes = 0;
+                return false;
+            }
+
+            bool remoteChanged = remote is not null && !RemoteMatchesBaseline(remote.File, state);
+            if (remoteChanged)
+            {
+                downloadBytes = remote!.File.SizeBytes;
+            }
+            else
+            {
+                downloadBytes = 0;
+            }
+
+            replacedLocalBytes = 0;
+            return true;
+        }
+
+        private static bool TryCreateTrackedLocalDownload(
+            SyncFileChangeKind changeKind,
+            LocalFileSnapshot? local,
+            RemoteFileSnapshot? remote,
+            out long downloadBytes,
+            out long replacedLocalBytes)
+        {
+            switch (changeKind)
+            {
+                case SyncFileChangeKind.Download:
+                    downloadBytes = remote!.File.SizeBytes;
+                    replacedLocalBytes = local?.SizeBytes ?? 0;
+                    return true;
+                case SyncFileChangeKind.Conflict:
+                    return TryCreateConflictDownload(remote, out downloadBytes, out replacedLocalBytes);
+                case SyncFileChangeKind.None:
+                case SyncFileChangeKind.DeleteState:
+                case SyncFileChangeKind.DeleteLocal:
+                case SyncFileChangeKind.DeleteRemote:
+                case SyncFileChangeKind.Upload:
                     downloadBytes = 0;
                     replacedLocalBytes = 0;
                     return false;
-                }
-
-                return TryCreateConflictDownload(remote, out downloadBytes, out replacedLocalBytes);
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(changeKind), changeKind, null);
             }
-
-            if (!localDeleted && !remoteDeleted && !localChanged && !remoteChanged)
-            {
-                downloadBytes = 0;
-                replacedLocalBytes = 0;
-                return false;
-            }
-
-            if (localDeleted && remoteChanged)
-            {
-                return TryCreateConflictDownload(remote, out downloadBytes, out replacedLocalBytes);
-            }
-
-            if (remoteChanged && !localChanged && remote is not null)
-            {
-                downloadBytes = remote.File.SizeBytes;
-                replacedLocalBytes = local?.SizeBytes ?? 0;
-                return true;
-            }
-
-            downloadBytes = 0;
-            replacedLocalBytes = 0;
-            return false;
         }
 
         private static bool TryCreateRemoteOnlyDownload(
@@ -5574,36 +5611,62 @@ namespace Cotton.Sync
                 return new SyncDeleteGuard(options, plannedLocalDeletes: 0, plannedRemoteDeletes: 0);
             }
 
-            int plannedLocalDeletes = 0;
-            int plannedRemoteDeletes = 0;
+            (int LocalDeletes, int RemoteDeletes) fileDeletes = CountPlannedFileDeletes(
+                stateByPath,
+                localByPath,
+                remoteByPath,
+                scopedFileDeleteKeys,
+                scopedLocalDeletedFileKeys);
+            (int LocalDeletes, int RemoteDeletes) directoryDeletes = CountPlannedDirectoryDeletes(
+                directoryStateByPath,
+                localDirectoriesByPath,
+                remoteDirectoriesByPath,
+                localDirectoryContentIndex,
+                remoteDirectoryContentIndex,
+                scopedDirectoryDeleteKeys,
+                scopedDirectoryDelete);
+            int scopedRemoteDirectoryDeletes = scopedDirectoryDelete?.DirectoryKeys.Count ?? 0;
+            return new SyncDeleteGuard(
+                options,
+                fileDeletes.LocalDeletes + directoryDeletes.LocalDeletes,
+                fileDeletes.RemoteDeletes + directoryDeletes.RemoteDeletes + scopedRemoteDirectoryDeletes);
+        }
 
+        private static (int LocalDeletes, int RemoteDeletes) CountPlannedFileDeletes(
+            IReadOnlyDictionary<string, SyncStateEntry> stateByPath,
+            IReadOnlyDictionary<string, LocalFileSnapshot> localByPath,
+            IReadOnlyDictionary<string, RemoteFileSnapshot> remoteByPath,
+            IReadOnlySet<string>? scopedFileDeleteKeys,
+            IReadOnlySet<string> scopedLocalDeletedFileKeys)
+        {
+            int localDeletes = 0;
+            int remoteDeletes = 0;
             foreach (KeyValuePair<string, SyncStateEntry> state in stateByPath)
             {
                 localByPath.TryGetValue(state.Key, out LocalFileSnapshot? local);
                 remoteByPath.TryGetValue(state.Key, out RemoteFileSnapshot? remote);
-
-                bool exactLocalDelete = scopedLocalDeletedFileKeys.Contains(state.Key);
-                switch (GetPlannedDeleteDirection(state.Value, local, remote, exactLocalDelete))
-                {
-                    case SyncDeleteDirection.Local:
-                        if (!IsScopedDeleteAllowed(scopedFileDeleteKeys, state.Key))
-                        {
-                            break;
-                        }
-
-                        plannedLocalDeletes++;
-                        break;
-                    case SyncDeleteDirection.Remote:
-                        if (!IsScopedDeleteAllowed(scopedFileDeleteKeys, state.Key))
-                        {
-                            break;
-                        }
-
-                        plannedRemoteDeletes++;
-                        break;
-                }
+                SyncDeleteDirection direction = GetPlannedDeleteDirection(
+                    state.Value,
+                    local,
+                    remote,
+                    scopedLocalDeletedFileKeys.Contains(state.Key));
+                CountScopedDelete(direction, scopedFileDeleteKeys, state.Key, ref localDeletes, ref remoteDeletes);
             }
 
+            return (localDeletes, remoteDeletes);
+        }
+
+        private static (int LocalDeletes, int RemoteDeletes) CountPlannedDirectoryDeletes(
+            IReadOnlyDictionary<string, SyncStateEntry> directoryStateByPath,
+            IReadOnlyDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath,
+            IReadOnlyDictionary<string, RemoteDirectorySnapshot> remoteDirectoriesByPath,
+            DirectoryContentIndex localDirectoryContentIndex,
+            DirectoryContentIndex remoteDirectoryContentIndex,
+            IReadOnlySet<string>? scopedDirectoryDeleteKeys,
+            ScopedVirtualFilesDirectoryDeletePlan? scopedDirectoryDelete)
+        {
+            int localDeletes = 0;
+            int remoteDeletes = 0;
             foreach (KeyValuePair<string, SyncStateEntry> state in directoryStateByPath)
             {
                 if (scopedDirectoryDelete?.DirectoryKeys.Contains(state.Key, PathComparer) == true)
@@ -5613,36 +5676,48 @@ namespace Cotton.Sync
 
                 localDirectoriesByPath.TryGetValue(state.Key, out LocalDirectorySnapshot? local);
                 remoteDirectoriesByPath.TryGetValue(state.Key, out RemoteDirectorySnapshot? remote);
-
-                switch (GetPlannedDirectoryDeleteDirection(
+                SyncDeleteDirection direction = GetPlannedDirectoryDeleteDirection(
                     state.Value,
                     local,
                     remote,
                     localDirectoryContentIndex,
-                    remoteDirectoryContentIndex))
-                {
-                    case SyncDeleteDirection.Local:
-                        if (!IsScopedDeleteAllowed(scopedDirectoryDeleteKeys, state.Key))
-                        {
-                            break;
-                        }
-
-                        plannedLocalDeletes++;
-                        break;
-                    case SyncDeleteDirection.Remote:
-                        if (!IsScopedDeleteAllowed(scopedDirectoryDeleteKeys, state.Key))
-                        {
-                            break;
-                        }
-
-                        plannedRemoteDeletes++;
-                        break;
-                }
+                    remoteDirectoryContentIndex);
+                CountScopedDelete(
+                    direction,
+                    scopedDirectoryDeleteKeys,
+                    state.Key,
+                    ref localDeletes,
+                    ref remoteDeletes);
             }
 
-            plannedRemoteDeletes += scopedDirectoryDelete?.DirectoryKeys.Count ?? 0;
+            return (localDeletes, remoteDeletes);
+        }
 
-            return new SyncDeleteGuard(options, plannedLocalDeletes, plannedRemoteDeletes);
+        private static void CountScopedDelete(
+            SyncDeleteDirection direction,
+            IReadOnlySet<string>? scopedDeleteKeys,
+            string pathKey,
+            ref int localDeletes,
+            ref int remoteDeletes)
+        {
+            if (!IsScopedDeleteAllowed(scopedDeleteKeys, pathKey))
+            {
+                return;
+            }
+
+            switch (direction)
+            {
+                case SyncDeleteDirection.None:
+                    return;
+                case SyncDeleteDirection.Local:
+                    localDeletes++;
+                    return;
+                case SyncDeleteDirection.Remote:
+                    remoteDeletes++;
+                    return;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(direction), direction, null);
+            }
         }
 
         private static bool IsScopedDeleteAllowed(IReadOnlySet<string>? scopedDeleteKeys, string pathKey)
@@ -5760,38 +5835,50 @@ namespace Cotton.Sync
                 return SyncDeleteDirection.None;
             }
 
-            bool localDeleted = local is null && !string.IsNullOrWhiteSpace(state.LocalContentHash);
-            bool remoteDeleted = remote is null && state.RemoteFileId.HasValue;
-            bool localChanged = local is not null && !ContentMatches(local.ContentHash, state.LocalContentHash);
-            bool remoteChanged = remote is not null && !RemoteMatchesBaseline(remote.File, state);
-            bool baselineDiverged = !ContentMatches(state.LocalContentHash, state.RemoteContentHash);
-
-            if (baselineDiverged)
+            SyncFileChangeKind changeKind = ResolveTrackedFileChange(CreateFileChangeState(state, local, remote));
+            return changeKind switch
             {
-                return SyncDeleteDirection.None;
+                SyncFileChangeKind.DeleteLocal => SyncDeleteDirection.Local,
+                SyncFileChangeKind.DeleteRemote => SyncDeleteDirection.Remote,
+                SyncFileChangeKind.None => SyncDeleteDirection.None,
+                SyncFileChangeKind.DeleteState => SyncDeleteDirection.None,
+                SyncFileChangeKind.Upload => SyncDeleteDirection.None,
+                SyncFileChangeKind.Download => SyncDeleteDirection.None,
+                SyncFileChangeKind.Conflict => SyncDeleteDirection.None,
+                _ => throw new ArgumentOutOfRangeException(nameof(changeKind), changeKind, null)
+            };
+        }
+
+        private static SyncFileChangeState CreateFileChangeState(
+            SyncStateEntry state,
+            LocalFileSnapshot? local,
+            RemoteFileSnapshot? remote)
+        {
+            return new SyncFileChangeState(
+                LocalDeleted: local is null && !string.IsNullOrWhiteSpace(state.LocalContentHash),
+                RemoteDeleted: remote is null && state.RemoteFileId.HasValue,
+                LocalChanged: local is not null && !ContentMatches(local.ContentHash, state.LocalContentHash),
+                RemoteChanged: remote is not null && !RemoteMatchesBaseline(remote.File, state),
+                BaselineDiverged: !ContentMatches(state.LocalContentHash, state.RemoteContentHash));
+        }
+
+        private static SyncFileChangeKind ResolveTrackedFileChange(SyncFileChangeState changeState)
+        {
+            if (changeState.BaselineDiverged)
+            {
+                return changeState.HasChanges ? SyncFileChangeKind.Conflict : SyncFileChangeKind.None;
             }
 
-            if (!localDeleted && !remoteDeleted && !localChanged && !remoteChanged)
+            return (changeState.LocalDeleted, changeState.RemoteDeleted, changeState.LocalChanged, changeState.RemoteChanged) switch
             {
-                return SyncDeleteDirection.None;
-            }
-
-            if (localDeleted && remoteDeleted)
-            {
-                return SyncDeleteDirection.None;
-            }
-
-            if (localDeleted && !remoteChanged && remote is not null)
-            {
-                return SyncDeleteDirection.Remote;
-            }
-
-            if (remoteDeleted && !localChanged && local is not null)
-            {
-                return SyncDeleteDirection.Local;
-            }
-
-            return SyncDeleteDirection.None;
+                (false, false, false, false) => SyncFileChangeKind.None,
+                (true, true, false, false) => SyncFileChangeKind.DeleteState,
+                (false, true, false, false) => SyncFileChangeKind.DeleteLocal,
+                (true, false, false, false) => SyncFileChangeKind.DeleteRemote,
+                (false, false, true, false) => SyncFileChangeKind.Upload,
+                (false, false, false, true) => SyncFileChangeKind.Download,
+                _ => SyncFileChangeKind.Conflict
+            };
         }
 
         private static bool HasMissingRemoteOnlyPlaceholder(
