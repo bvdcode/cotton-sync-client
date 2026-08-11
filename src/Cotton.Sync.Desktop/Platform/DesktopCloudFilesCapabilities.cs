@@ -79,7 +79,14 @@ namespace Cotton.Sync.Desktop.Platform
 
             IWindowsCloudFilesAdapter cloudFiles = cloudFilesAdapter ?? new WindowsCloudFilesAdapter();
             string probeRoot = (createProbeRoot ?? CreateProbeRoot)();
-            var syncPair = new SyncPairSettings
+            SyncPairSettings syncPair = CreateSelfTestSyncPair(probeRoot);
+            (Exception? Failure, Exception? CleanupFailure) result = ExecuteSelfTest(cloudFiles, syncPair);
+            return CreateSelfTestResult(result.Failure, result.CleanupFailure);
+        }
+
+        private static SyncPairSettings CreateSelfTestSyncPair(string probeRoot)
+        {
+            return new SyncPairSettings
             {
                 Id = SelfTestSyncPairId,
                 DisplayName = "Cotton Sync self-test",
@@ -89,13 +96,19 @@ namespace Cotton.Sync.Desktop.Platform
                 Mode = SyncPairMode.WindowsVirtualFiles,
                 IsEnabled = true,
             };
+        }
+
+        private static (Exception? Failure, Exception? CleanupFailure) ExecuteSelfTest(
+            IWindowsCloudFilesAdapter cloudFiles,
+            SyncPairSettings syncPair)
+        {
             WindowsCloudFilesConnection? connection = null;
             Exception? failure = null;
             Exception? cleanupFailure = null;
 
             try
             {
-                Directory.CreateDirectory(probeRoot);
+                Directory.CreateDirectory(syncPair.LocalRootPath);
                 cloudFiles.CreateFilePlaceholder(CreateSelfTestPlaceholderRequest(syncPair));
                 connection = cloudFiles.ConnectSyncRoot(syncPair, NoopWindowsCloudFilesCallbackHandler.Instance);
             }
@@ -105,37 +118,41 @@ namespace Cotton.Sync.Desktop.Platform
             }
             finally
             {
-                try
-                {
-                    connection?.Dispose();
-                }
-                catch (Exception exception)
-                {
-                    cleanupFailure ??= exception;
-                }
-
-                try
-                {
-                    cloudFiles.UnregisterSyncRoot(syncPair);
-                }
-                catch (Exception exception)
-                {
-                    cleanupFailure ??= exception;
-                }
-
-                try
-                {
-                    if (Directory.Exists(probeRoot))
-                    {
-                        Directory.Delete(probeRoot, recursive: true);
-                    }
-                }
-                catch (Exception exception)
-                {
-                    cleanupFailure ??= exception;
-                }
+                cleanupFailure = CaptureCleanupFailure(cleanupFailure, () => connection?.Dispose());
+                cleanupFailure = CaptureCleanupFailure(cleanupFailure, () => cloudFiles.UnregisterSyncRoot(syncPair));
+                cleanupFailure = CaptureCleanupFailure(
+                    cleanupFailure,
+                    () => DeleteProbeRoot(syncPair.LocalRootPath));
             }
 
+            return (failure, cleanupFailure);
+        }
+
+        private static Exception? CaptureCleanupFailure(Exception? currentFailure, Action cleanup)
+        {
+            try
+            {
+                cleanup();
+                return currentFailure;
+            }
+            catch (Exception exception)
+            {
+                return currentFailure ?? exception;
+            }
+        }
+
+        private static void DeleteProbeRoot(string probeRoot)
+        {
+            if (Directory.Exists(probeRoot))
+            {
+                Directory.Delete(probeRoot, recursive: true);
+            }
+        }
+
+        private static DesktopCloudFilesSelfTestCapabilitySnapshot CreateSelfTestResult(
+            Exception? failure,
+            Exception? cleanupFailure)
+        {
             if (failure is not null)
             {
                 return new DesktopCloudFilesSelfTestCapabilitySnapshot(

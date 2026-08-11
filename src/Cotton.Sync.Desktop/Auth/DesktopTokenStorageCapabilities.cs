@@ -102,11 +102,22 @@ namespace Cotton.Sync.Desktop.Auth
             }
             finally
             {
-                if (cleanupRequired && protectedPayload is not null && deletableProtector is not null)
-                {
-                    await TryDeleteProbePayloadAsync(deletableProtector, protectedPayload).ConfigureAwait(false);
-                }
+                await TryDeleteProbePayloadIfRequiredAsync(
+                        cleanupRequired,
+                        deletableProtector,
+                        protectedPayload)
+                    .ConfigureAwait(false);
             }
+        }
+
+        private static Task TryDeleteProbePayloadIfRequiredAsync(
+            bool cleanupRequired,
+            IDeletableTokenPayloadProtector? protector,
+            byte[]? protectedPayload)
+        {
+            return cleanupRequired && protector is not null && protectedPayload is not null
+                ? TryDeleteProbePayloadAsync(protector, protectedPayload)
+                : Task.CompletedTask;
         }
 
         private static async Task TryDeleteProbePayloadAsync(

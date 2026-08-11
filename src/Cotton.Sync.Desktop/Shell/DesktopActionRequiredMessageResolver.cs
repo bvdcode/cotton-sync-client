@@ -107,39 +107,26 @@ namespace Cotton.Sync.Desktop.Shell
         public static string FromException(Exception exception)
         {
             ArgumentNullException.ThrowIfNull(exception);
-            if (exception is CottonApiException apiException)
+            switch (exception)
             {
-                return NormalizeApiException(apiException)
-                    ?? "Cotton API request failed. Check diagnostics and retry.";
+                case CottonApiException apiException:
+                    return NormalizeApiException(apiException)
+                        ?? "Cotton API request failed. Check diagnostics and retry.";
+                case WindowsCloudFilesNativeException cloudFilesException:
+                    return NormalizeCloudFilesNativeOperation(cloudFilesException.Operation)
+                        ?? "Windows virtual files hit a Windows Cloud Files error. Restart Cotton Sync, then export diagnostics if it repeats.";
+                case LocalFilePermissionDeniedException permissionDeniedException:
+                    return CreateLocalPermissionDeniedMessage(permissionDeniedException.RelativePath);
+                case LocalFileUnavailableException unavailableException:
+                    return CreateLocalFileUnavailableMessage(unavailableException.RelativePath);
+                case DirectoryNotFoundException when LooksLikeLocalSyncFolderMissing(exception.Message):
+                    return LocalSyncFolderMissingMessage;
+                case IOException when LooksLikeDiskFull(exception.Message):
+                    return DiskFullMessage;
+                default:
+                    return Normalize(exception.Message)
+                        ?? "Operation could not be completed. Check diagnostics and retry.";
             }
-
-            if (exception is WindowsCloudFilesNativeException cloudFilesException)
-            {
-                return NormalizeCloudFilesNativeOperation(cloudFilesException.Operation)
-                    ?? "Windows virtual files hit a Windows Cloud Files error. Restart Cotton Sync, then export diagnostics if it repeats.";
-            }
-
-            if (exception is LocalFilePermissionDeniedException permissionDeniedException)
-            {
-                return CreateLocalPermissionDeniedMessage(permissionDeniedException.RelativePath);
-            }
-
-            if (exception is LocalFileUnavailableException unavailableException)
-            {
-                return CreateLocalFileUnavailableMessage(unavailableException.RelativePath);
-            }
-
-            if (exception is DirectoryNotFoundException && LooksLikeLocalSyncFolderMissing(exception.Message))
-            {
-                return LocalSyncFolderMissingMessage;
-            }
-
-            if (exception is IOException && LooksLikeDiskFull(exception.Message))
-            {
-                return DiskFullMessage;
-            }
-
-            return Normalize(exception.Message) ?? "Operation could not be completed. Check diagnostics and retry.";
         }
 
         internal static bool IsMissingDesktopSyncChangesApi(string? message)
@@ -218,22 +205,28 @@ namespace Cotton.Sync.Desktop.Shell
                 return DiskFullMessage;
             }
 
-            string? remoteMassDeleteGuardMessage = NormalizeRemoteMassDeleteGuardMessage(message);
-            if (remoteMassDeleteGuardMessage is not null)
-            {
-                return remoteMassDeleteGuardMessage;
-            }
+            return NormalizeRemoteMassDeleteGuardMessage(message)
+                ?? NormalizeLocalFileMessage(message)
+                ?? NormalizeLocalStateMessage(message)
+                ?? NormalizeCloudFilesNativeMessage(message)
+                ?? NormalizeEmbeddedApiFailureMessage(message)
+                ?? DesktopUserMessageFormatter.Compact(message);
+        }
 
+        private static string? NormalizeLocalFileMessage(string message)
+        {
             if (LooksLikeLocalPermissionDenied(message))
             {
                 return CreateLocalPermissionDeniedMessage(ExtractSingleQuotedPath(message));
             }
 
-            if (LooksLikeLocalFileUnavailable(message))
-            {
-                return CreateLocalFileUnavailableMessage(ExtractSingleQuotedPath(message));
-            }
+            return LooksLikeLocalFileUnavailable(message)
+                ? CreateLocalFileUnavailableMessage(ExtractSingleQuotedPath(message))
+                : null;
+        }
 
+        private static string? NormalizeLocalStateMessage(string message)
+        {
             if (LooksLikeLocalSyncFolderMissing(message))
             {
                 return LocalSyncFolderMissingMessage;
@@ -244,24 +237,9 @@ namespace Cotton.Sync.Desktop.Shell
                 return LocalSyncStateDatabaseUnavailableMessage;
             }
 
-            if (LooksLikeLocalStateDatabaseCorrupt(message))
-            {
-                return LocalStateDatabaseCorruptMessage;
-            }
-
-            string? cloudFilesMessage = NormalizeCloudFilesNativeMessage(message);
-            if (cloudFilesMessage is not null)
-            {
-                return cloudFilesMessage;
-            }
-
-            string? apiFailureMessage = NormalizeEmbeddedApiFailureMessage(message);
-            if (apiFailureMessage is not null)
-            {
-                return apiFailureMessage;
-            }
-
-            return DesktopUserMessageFormatter.Compact(message);
+            return LooksLikeLocalStateDatabaseCorrupt(message)
+                ? LocalStateDatabaseCorruptMessage
+                : null;
         }
 
         internal static bool TryGetRemoteMassDeleteCount(string? message, out int deleteCount)
@@ -274,36 +252,41 @@ namespace Cotton.Sync.Desktop.Shell
                 return false;
             }
 
-            const string marker = "pending deletes exceed limit";
-            int markerIndex = message.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-            if (markerIndex < 0)
+            if (!TryGetRemoteMassDeleteCountSpan(message, out int start, out int length))
             {
                 return false;
             }
 
+            return int.TryParse(
+                    message.AsSpan(start, length),
+                    NumberStyles.None,
+                    CultureInfo.InvariantCulture,
+                    out deleteCount)
+                && deleteCount > 0;
+        }
+
+        private static bool TryGetRemoteMassDeleteCountSpan(
+            string message,
+            out int start,
+            out int length)
+        {
+            const string marker = "pending deletes exceed limit";
+            int markerIndex = message.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
             int end = markerIndex - 1;
             while (end >= 0 && char.IsWhiteSpace(message[end]))
             {
                 end--;
             }
 
-            int start = end;
+            start = end;
             while (start >= 0 && char.IsDigit(message[start]))
             {
                 start--;
             }
 
-            if (end < 0 || start == end)
-            {
-                return false;
-            }
-
-            return int.TryParse(
-                    message.AsSpan(start + 1, end - start),
-                    NumberStyles.None,
-                    CultureInfo.InvariantCulture,
-                    out deleteCount)
-                && deleteCount > 0;
+            length = end - start;
+            start++;
+            return markerIndex >= 0 && end >= 0 && length > 0;
         }
 
         private static string? NormalizeRemoteMassDeleteGuardMessage(string message)

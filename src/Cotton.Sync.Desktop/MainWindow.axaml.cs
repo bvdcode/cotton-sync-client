@@ -179,37 +179,29 @@ namespace Cotton.Sync.Desktop
 
         private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(ShellViewModel.IsDashboardVisible) && sender is ShellViewModel viewModel)
+            if (sender is not ShellViewModel viewModel)
             {
-                ApplyWindowMode(viewModel);
                 return;
             }
 
-            if (e.PropertyName == nameof(ShellViewModel.IsSignInStepVisible) && sender is ShellViewModel setupViewModel)
+            switch (e.PropertyName)
             {
-                ApplyWindowMode(setupViewModel);
-                return;
-            }
-
-            if (e.PropertyName == nameof(ShellViewModel.IsAddSyncPairWizardVisible)
-                && sender is ShellViewModel addSyncPairViewModel)
-            {
-                FocusOverlayAction(addSyncPairViewModel.IsAddSyncPairWizardVisible, CancelAddSyncPairButton);
-                return;
-            }
-
-            if (e.PropertyName == nameof(ShellViewModel.IsSettingsVisible)
-                && sender is ShellViewModel settingsViewModel)
-            {
-                FocusOverlayAction(settingsViewModel.IsSettingsVisible, CloseSettingsButton);
-                return;
-            }
-
-            if ((e.PropertyName == nameof(ShellViewModel.IsSelectedSyncPairEditorVisible)
-                || e.PropertyName == nameof(ShellViewModel.SelectedSyncPair))
-                && sender is ShellViewModel syncPairViewModel)
-            {
-                ScrollSelectedSyncPairIntoView(syncPairViewModel);
+                case nameof(ShellViewModel.IsDashboardVisible):
+                case nameof(ShellViewModel.IsSignInStepVisible):
+                    ApplyWindowMode(viewModel);
+                    return;
+                case nameof(ShellViewModel.IsAddSyncPairWizardVisible):
+                    FocusOverlayAction(viewModel.IsAddSyncPairWizardVisible, CancelAddSyncPairButton);
+                    return;
+                case nameof(ShellViewModel.IsSettingsVisible):
+                    FocusOverlayAction(viewModel.IsSettingsVisible, CloseSettingsButton);
+                    return;
+                case nameof(ShellViewModel.IsSelectedSyncPairEditorVisible):
+                case nameof(ShellViewModel.SelectedSyncPair):
+                    ScrollSelectedSyncPairIntoView(viewModel);
+                    return;
+                default:
+                    return;
             }
         }
 
