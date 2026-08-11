@@ -221,7 +221,22 @@ namespace Cotton.Sync.Desktop.Startup
                     cancellationToken).ConfigureAwait(false);
             bool targetResolved = target.Status == ShellShareLinkTargetStatus.Resolved;
             bool canCreateShareLink = target.CanCreateShareLink && shareLinkResult.IsCreated;
+            await WriteShellShareLinkTargetReportAsync(
+                output,
+                target,
+                shareLinkResult,
+                targetResolved,
+                canCreateShareLink).ConfigureAwait(false);
+            return canCreateShareLink ? 0 : 1;
+        }
 
+        private static async Task WriteShellShareLinkTargetReportAsync(
+            TextWriter output,
+            ShellShareLinkTarget target,
+            DesktopShellShareLinkResult shareLinkResult,
+            bool targetResolved,
+            bool canCreateShareLink)
+        {
             await output.WriteLineAsync("Cotton Sync Desktop shell share-link target").ConfigureAwait(false);
             await output.WriteLineAsync("Status: " + FormatShellShareLinkTargetStatus(target.Status))
                 .ConfigureAwait(false);
@@ -257,7 +272,6 @@ namespace Cotton.Sync.Desktop.Startup
                 .ConfigureAwait(false);
             await output.WriteLineAsync(canCreateShareLink ? "Result: passed" : "Result: failed")
                 .ConfigureAwait(false);
-            return canCreateShareLink ? 0 : 1;
         }
 
         internal static async Task<int> RunShellShareLinkCopyAsync(
@@ -290,39 +304,65 @@ namespace Cotton.Sync.Desktop.Startup
                     resolver,
                     shareLinkClient,
                     cancellationToken).ConfigureAwait(false);
-            bool copied = false;
-            string? failureReason = null;
-            if (!target.CanCreateShareLink)
-            {
-                failureReason = "target-" + FormatShellShareLinkTargetStatus(target.Status);
-            }
-            else if (!shareLinkResult.IsCreated || string.IsNullOrWhiteSpace(shareLinkResult.ShareLink))
-            {
-                failureReason = string.IsNullOrWhiteSpace(shareLinkResult.FailureReason)
-                    ? "share-link-unavailable"
-                    : shareLinkResult.FailureReason;
-            }
-            else
-            {
-                IDesktopClipboardService effectiveClipboardService =
-                    clipboardService ?? DesktopClipboardServiceFactory.CreateDefault();
-                try
-                {
-                    await effectiveClipboardService.CopyTextAsync(shareLinkResult.ShareLink, cancellationToken)
-                        .ConfigureAwait(false);
-                    copied = true;
-                }
-                catch (Exception exception) when (IsExpectedClipboardFailure(exception))
-                {
-                    Trace.TraceWarning("Failed to copy shell share link to clipboard: {0}", exception);
-                    failureReason = "clipboard-unavailable";
-                }
-            }
-
+            (bool copied, string? failureReason) = await TryCopyShellShareLinkAsync(
+                    target,
+                    shareLinkResult,
+                    clipboardService,
+                    cancellationToken)
+                .ConfigureAwait(false);
             IDesktopNotificationService effectiveNotificationService =
                 notificationService ?? DesktopNotificationServiceFactory.CreateDefault();
             ShowShellShareLinkCopyNotification(effectiveNotificationService, copied, failureReason);
+            await WriteShellShareLinkCopyReportAsync(
+                output,
+                target,
+                shareLinkResult,
+                copied,
+                failureReason).ConfigureAwait(false);
+            return copied ? 0 : 1;
+        }
 
+        private static async Task<(bool Copied, string? FailureReason)> TryCopyShellShareLinkAsync(
+            ShellShareLinkTarget target,
+            DesktopShellShareLinkResult shareLinkResult,
+            IDesktopClipboardService? clipboardService,
+            CancellationToken cancellationToken)
+        {
+            if (!target.CanCreateShareLink)
+            {
+                return (false, "target-" + FormatShellShareLinkTargetStatus(target.Status));
+            }
+
+            if (!shareLinkResult.IsCreated || string.IsNullOrWhiteSpace(shareLinkResult.ShareLink))
+            {
+                string failureReason = string.IsNullOrWhiteSpace(shareLinkResult.FailureReason)
+                    ? "share-link-unavailable"
+                    : shareLinkResult.FailureReason;
+                return (false, failureReason);
+            }
+
+            IDesktopClipboardService effectiveClipboardService =
+                clipboardService ?? DesktopClipboardServiceFactory.CreateDefault();
+            try
+            {
+                await effectiveClipboardService.CopyTextAsync(shareLinkResult.ShareLink, cancellationToken)
+                    .ConfigureAwait(false);
+                return (true, null);
+            }
+            catch (Exception exception) when (IsExpectedClipboardFailure(exception))
+            {
+                Trace.TraceWarning("Failed to copy shell share link to clipboard: {0}", exception);
+                return (false, "clipboard-unavailable");
+            }
+        }
+
+        private static async Task WriteShellShareLinkCopyReportAsync(
+            TextWriter output,
+            ShellShareLinkTarget target,
+            DesktopShellShareLinkResult shareLinkResult,
+            bool copied,
+            string? failureReason)
+        {
             await output.WriteLineAsync("Cotton Sync Desktop copy share link").ConfigureAwait(false);
             await output.WriteLineAsync("Status: " + FormatShellShareLinkTargetStatus(target.Status))
                 .ConfigureAwait(false);
@@ -339,7 +379,6 @@ namespace Cotton.Sync.Desktop.Startup
             }
 
             await output.WriteLineAsync(copied ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-            return copied ? 0 : 1;
         }
 
         internal static async Task<int> RunSocketCleanupSmokeAsync(
@@ -614,17 +653,14 @@ namespace Cotton.Sync.Desktop.Startup
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
             string report = caseOutput.ToString();
-            bool copiedMatches = expectCopied
-                ? exitCode == 0 && clipboard.CopiedText == shareLinkResult.ShareLink
-                : exitCode != 0 && clipboard.CopiedText is null;
-            bool failureMatches = expectedFailureReason is null
-                ? !report.Contains("FailureReason:", StringComparison.Ordinal)
-                : report.Contains("FailureReason: " + expectedFailureReason, StringComparison.Ordinal);
-            bool notificationMatches = expectCopied
-                ? notifications.LastMessage == "Share link copied to clipboard."
-                : !string.IsNullOrWhiteSpace(notifications.LastMessage);
-            bool noPathLeak = !report.Contains(selectedPath, StringComparison.OrdinalIgnoreCase)
-                && !report.Contains(Path.GetFileName(selectedPath), StringComparison.OrdinalIgnoreCase);
+            bool copiedMatches = ShellShareLinkCopyOutcomeMatches(
+                expectCopied,
+                exitCode,
+                clipboard.CopiedText,
+                shareLinkResult.ShareLink);
+            bool failureMatches = ShellShareLinkFailureMatches(report, expectedFailureReason);
+            bool notificationMatches = ShellShareLinkNotificationMatches(expectCopied, notifications.LastMessage);
+            bool noPathLeak = ShellShareLinkReportHasNoPathLeak(report, selectedPath);
             bool resultMatches = report.Contains(expectCopied ? "Result: passed" : "Result: failed", StringComparison.Ordinal);
             bool passed = copiedMatches
                 && failureMatches
@@ -640,6 +676,37 @@ namespace Cotton.Sync.Desktop.Startup
                     + ", copied=" + FormatBoolean(clipboard.CopiedText is not null)
                     + ", notification=" + FormatBoolean(!string.IsNullOrWhiteSpace(notifications.LastMessage)))
                 .ConfigureAwait(false);
+        }
+
+        private static bool ShellShareLinkCopyOutcomeMatches(
+            bool expectCopied,
+            int exitCode,
+            string? copiedText,
+            string? shareLink)
+        {
+            return expectCopied
+                ? exitCode == 0 && copiedText == shareLink
+                : exitCode != 0 && copiedText is null;
+        }
+
+        private static bool ShellShareLinkFailureMatches(string report, string? expectedFailureReason)
+        {
+            return expectedFailureReason is null
+                ? !report.Contains("FailureReason:", StringComparison.Ordinal)
+                : report.Contains("FailureReason: " + expectedFailureReason, StringComparison.Ordinal);
+        }
+
+        private static bool ShellShareLinkNotificationMatches(bool expectCopied, string? notification)
+        {
+            return expectCopied
+                ? notification == "Share link copied to clipboard."
+                : !string.IsNullOrWhiteSpace(notification);
+        }
+
+        private static bool ShellShareLinkReportHasNoPathLeak(string report, string selectedPath)
+        {
+            return !report.Contains(selectedPath, StringComparison.OrdinalIgnoreCase)
+                && !report.Contains(Path.GetFileName(selectedPath), StringComparison.OrdinalIgnoreCase);
         }
 
         private static async Task<DesktopShellShareLinkResult> CreateShellShareLinkAsync(
@@ -807,81 +874,18 @@ namespace Cotton.Sync.Desktop.Startup
 
             Directory.CreateDirectory(paths.DataDirectory);
             DesktopTraceLogging.Install(paths);
-            IDesktopUpdateService effectiveUpdateService = updateService ?? new DesktopUpdateService(
-                DesktopHttpClientFactory.Create(TimeSpan.FromSeconds(30)),
-                DesktopAppVersion.Current,
-                paths.UpdateCacheDirectory,
-                startupOptions.UpdateManifestUri,
-                DesktopUpdatePlatform.WindowsX64,
-                DesktopUpdateSourceTrustPolicy.CreateForSmokeManifest(startupOptions.UpdateManifestUri!),
-                disposeHttpClient: true);
-            IDisposable? updateServiceLifetime = updateService is null ? effectiveUpdateService as IDisposable : null;
+            (IDesktopUpdateService effectiveUpdateService, IDisposable? updateServiceLifetime) =
+                CreateUpdateDiscoveryService(paths, startupOptions, updateService);
 
             try
             {
-                await using DesktopShellController controller = CreateUpdateSmokeController(
-                    paths,
-                    startupOptions,
-                    effectiveUpdateService);
-                await output.WriteLineAsync("Cotton Sync Desktop update discovery smoke").ConfigureAwait(false);
-                await output.WriteLineAsync("Current version: " + DesktopAppVersion.Current).ConfigureAwait(false);
-                await output.WriteLineAsync("Manifest: " + startupOptions.UpdateManifestUri).ConfigureAwait(false);
-
-                DesktopUpdateStatusSnapshot status = await controller
-                    .DownloadUpdateAsync(DesktopUpdateCheckSource.Download, cancellationToken: cancellationToken)
+                return await RunUpdateDiscoveryWorkflowAsync(
+                        paths,
+                        startupOptions,
+                        effectiveUpdateService,
+                        output,
+                        cancellationToken)
                     .ConfigureAwait(false);
-                DesktopPendingUpdate? pendingUpdate = new DesktopPendingUpdateStore(paths.UpdateCacheDirectory).TryLoad();
-                int failures = 0;
-                failures += await WriteCheckAsync(
-                    output,
-                    status.IsUpdateAvailable,
-                    "Installed version discovers a newer release",
-                    "current=" + status.CurrentVersion + ", latest=" + (status.LatestVersion ?? "<none>")).ConfigureAwait(false);
-                failures += await WriteCheckAsync(
-                    output,
-                    string.IsNullOrWhiteSpace(startupOptions.ExpectedUpdateVersion)
-                        || string.Equals(status.LatestVersion, startupOptions.ExpectedUpdateVersion, StringComparison.Ordinal),
-                    "Latest version matches expected release",
-                    "expected=" + (startupOptions.ExpectedUpdateVersion ?? "<not-set>")
-                        + ", latest=" + (status.LatestVersion ?? "<none>")).ConfigureAwait(false);
-                failures += await WriteCheckAsync(
-                    output,
-                    status.IsInstallerReady
-                        && !string.IsNullOrWhiteSpace(status.InstallerPath)
-                        && File.Exists(status.InstallerPath),
-                    "Update installer is downloaded into cache",
-                    "installerReady=" + status.IsInstallerReady).ConfigureAwait(false);
-                failures += await WriteCheckAsync(
-                    output,
-                    pendingUpdate is not null
-                        && string.Equals(pendingUpdate.Version, status.LatestVersion, StringComparison.Ordinal)
-                        && !string.IsNullOrWhiteSpace(pendingUpdate.InstallerPath)
-                        && File.Exists(pendingUpdate.InstallerPath)
-                        && pendingUpdate.SizeBytes > 0,
-                    "Pending update metadata is persisted",
-                    "pendingVersion=" + (pendingUpdate?.Version ?? "<none>")).ConfigureAwait(false);
-
-                string diagnosticsBundlePath = await controller
-                    .ExportDiagnosticsAsync(DesktopDiagnosticsExportOptions.Public, cancellationToken)
-                    .ConfigureAwait(false);
-                failures += await WriteCheckAsync(
-                    output,
-                    File.Exists(diagnosticsBundlePath),
-                    "Diagnostics bundle records update status",
-                    "bundle=" + diagnosticsBundlePath).ConfigureAwait(false);
-                failures += await WriteCheckAsync(
-                    output,
-                    File.Exists(paths.LogFilePath),
-                    "Update flow wrote a trace log",
-                    "log=" + paths.LogFilePath).ConfigureAwait(false);
-
-                await output.WriteLineAsync("Latest version: " + (status.LatestVersion ?? "<none>")).ConfigureAwait(false);
-                await output.WriteLineAsync("Installer ready: " + (status.IsInstallerReady ? "yes" : "no")).ConfigureAwait(false);
-                await output.WriteLineAsync("Bundle: " + diagnosticsBundlePath).ConfigureAwait(false);
-                await output.WriteLineAsync("Failures: " + failures.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                    .ConfigureAwait(false);
-                await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-                return failures == 0 ? 0 : 1;
             }
             catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
@@ -895,6 +899,133 @@ namespace Cotton.Sync.Desktop.Startup
             {
                 updateServiceLifetime?.Dispose();
             }
+        }
+
+        private static (IDesktopUpdateService Service, IDisposable? Lifetime) CreateUpdateDiscoveryService(
+            DesktopAppPaths paths,
+            DesktopStartupOptions startupOptions,
+            IDesktopUpdateService? configuredService)
+        {
+            if (configuredService is not null)
+            {
+                return (configuredService, null);
+            }
+
+            DesktopUpdateService service = new(
+                DesktopHttpClientFactory.Create(TimeSpan.FromSeconds(30)),
+                DesktopAppVersion.Current,
+                paths.UpdateCacheDirectory,
+                startupOptions.UpdateManifestUri,
+                DesktopUpdatePlatform.WindowsX64,
+                DesktopUpdateSourceTrustPolicy.CreateForSmokeManifest(startupOptions.UpdateManifestUri!),
+                disposeHttpClient: true);
+            return (service, service);
+        }
+
+        private static async Task<int> RunUpdateDiscoveryWorkflowAsync(
+            DesktopAppPaths paths,
+            DesktopStartupOptions startupOptions,
+            IDesktopUpdateService updateService,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            await using DesktopShellController controller = CreateUpdateSmokeController(
+                paths,
+                startupOptions,
+                updateService);
+            await output.WriteLineAsync("Cotton Sync Desktop update discovery smoke").ConfigureAwait(false);
+            await output.WriteLineAsync("Current version: " + DesktopAppVersion.Current).ConfigureAwait(false);
+            await output.WriteLineAsync("Manifest: " + startupOptions.UpdateManifestUri).ConfigureAwait(false);
+
+            DesktopUpdateStatusSnapshot status = await controller
+                .DownloadUpdateAsync(DesktopUpdateCheckSource.Download, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            DesktopPendingUpdate? pendingUpdate = new DesktopPendingUpdateStore(paths.UpdateCacheDirectory).TryLoad();
+            int failures = await VerifyUpdateDiscoveryAsync(
+                    paths,
+                    startupOptions,
+                    controller,
+                    status,
+                    pendingUpdate,
+                    output,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            await output.WriteLineAsync("Latest version: " + (status.LatestVersion ?? "<none>")).ConfigureAwait(false);
+            await output.WriteLineAsync("Installer ready: " + (status.IsInstallerReady ? "yes" : "no")).ConfigureAwait(false);
+            await output.WriteLineAsync("Failures: " + failures.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .ConfigureAwait(false);
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> VerifyUpdateDiscoveryAsync(
+            DesktopAppPaths paths,
+            DesktopStartupOptions startupOptions,
+            DesktopShellController controller,
+            DesktopUpdateStatusSnapshot status,
+            DesktopPendingUpdate? pendingUpdate,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            int failures = 0;
+            failures += await WriteCheckAsync(
+                output,
+                status.IsUpdateAvailable,
+                "Installed version discovers a newer release",
+                "current=" + status.CurrentVersion + ", latest=" + (status.LatestVersion ?? "<none>")).ConfigureAwait(false);
+            failures += await WriteCheckAsync(
+                output,
+                ExpectedUpdateVersionMatches(startupOptions.ExpectedUpdateVersion, status.LatestVersion),
+                "Latest version matches expected release",
+                "expected=" + (startupOptions.ExpectedUpdateVersion ?? "<not-set>")
+                    + ", latest=" + (status.LatestVersion ?? "<none>")).ConfigureAwait(false);
+            failures += await WriteCheckAsync(
+                output,
+                IsUpdateInstallerReady(status),
+                "Update installer is downloaded into cache",
+                "installerReady=" + status.IsInstallerReady).ConfigureAwait(false);
+            failures += await WriteCheckAsync(
+                output,
+                IsPendingUpdateReady(pendingUpdate, status.LatestVersion),
+                "Pending update metadata is persisted",
+                "pendingVersion=" + (pendingUpdate?.Version ?? "<none>")).ConfigureAwait(false);
+            string diagnosticsBundlePath = await controller
+                .ExportDiagnosticsAsync(DesktopDiagnosticsExportOptions.Public, cancellationToken)
+                .ConfigureAwait(false);
+            failures += await WriteCheckAsync(
+                output,
+                File.Exists(diagnosticsBundlePath),
+                "Diagnostics bundle records update status",
+                "bundle=" + diagnosticsBundlePath).ConfigureAwait(false);
+            failures += await WriteCheckAsync(
+                output,
+                File.Exists(paths.LogFilePath),
+                "Update flow wrote a trace log",
+                "log=" + paths.LogFilePath).ConfigureAwait(false);
+            await output.WriteLineAsync("Bundle: " + diagnosticsBundlePath).ConfigureAwait(false);
+            return failures;
+        }
+
+        private static bool ExpectedUpdateVersionMatches(string? expectedVersion, string? latestVersion)
+        {
+            return string.IsNullOrWhiteSpace(expectedVersion)
+                || string.Equals(latestVersion, expectedVersion, StringComparison.Ordinal);
+        }
+
+        private static bool IsUpdateInstallerReady(DesktopUpdateStatusSnapshot status)
+        {
+            return status.IsInstallerReady
+                && !string.IsNullOrWhiteSpace(status.InstallerPath)
+                && File.Exists(status.InstallerPath);
+        }
+
+        private static bool IsPendingUpdateReady(DesktopPendingUpdate? pendingUpdate, string? latestVersion)
+        {
+            return pendingUpdate is not null
+                && string.Equals(pendingUpdate.Version, latestVersion, StringComparison.Ordinal)
+                && !string.IsNullOrWhiteSpace(pendingUpdate.InstallerPath)
+                && File.Exists(pendingUpdate.InstallerPath)
+                && pendingUpdate.SizeBytes > 0;
         }
 
         internal static async Task<int> RunUpdateInstallSmokeAsync(
@@ -921,47 +1052,14 @@ namespace Cotton.Sync.Desktop.Startup
             DesktopTraceLogging.Install(paths);
             try
             {
-                await using DesktopShellController controller = CreateUpdateSmokeController(
-                    paths,
-                    startupOptions,
-                    updateInstaller: updateInstaller ?? CreateUpdateInstallSmokeInstaller());
-                await output.WriteLineAsync("Cotton Sync Desktop update install smoke").ConfigureAwait(false);
-
-                DesktopUpdateInstallResult result = await controller
-                    .InstallDownloadedUpdateAsync(startupOptions.UpdateInstallerPath!, cancellationToken)
+                IDesktopUpdateInstaller effectiveInstaller = updateInstaller ?? CreateUpdateInstallSmokeInstaller();
+                return await RunUpdateInstallWorkflowAsync(
+                        paths,
+                        startupOptions,
+                        effectiveInstaller,
+                        output,
+                        cancellationToken)
                     .ConfigureAwait(false);
-                string diagnosticsBundlePath = await controller
-                    .ExportDiagnosticsAsync(DesktopDiagnosticsExportOptions.Public, cancellationToken)
-                    .ConfigureAwait(false);
-                int failures = 0;
-                failures += await WriteCheckAsync(
-                    output,
-                    result.ProcessId > 0,
-                    "Update installer launch returns a process id",
-                    "processId=" + result.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                    .ConfigureAwait(false);
-                failures += await WriteCheckAsync(
-                    output,
-                    !result.ExitedDuringStartupProbe || result.ExitCode.GetValueOrDefault() == 0,
-                    "Update installer startup probe does not fail",
-                    "exitedDuringProbe=" + result.ExitedDuringStartupProbe
-                        + ", exitCode=" + (result.ExitCode?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "<running>"))
-                    .ConfigureAwait(false);
-                failures += await WriteCheckAsync(
-                    output,
-                    File.Exists(diagnosticsBundlePath),
-                    "Diagnostics bundle records installer launch outcome",
-                    "bundle=" + diagnosticsBundlePath).ConfigureAwait(false);
-                failures += await WriteCheckAsync(
-                    output,
-                    File.Exists(paths.LogFilePath),
-                    "Installer launch wrote a trace log",
-                    "log=" + paths.LogFilePath).ConfigureAwait(false);
-
-                await output.WriteLineAsync("Failures: " + failures.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                    .ConfigureAwait(false);
-                await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-                return failures == 0 ? 0 : 1;
             }
             catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
@@ -971,6 +1069,74 @@ namespace Cotton.Sync.Desktop.Startup
                     .ConfigureAwait(false);
                 return 1;
             }
+        }
+
+        private static async Task<int> RunUpdateInstallWorkflowAsync(
+            DesktopAppPaths paths,
+            DesktopStartupOptions startupOptions,
+            IDesktopUpdateInstaller updateInstaller,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            await using DesktopShellController controller = CreateUpdateSmokeController(
+                paths,
+                startupOptions,
+                updateInstaller: updateInstaller);
+            await output.WriteLineAsync("Cotton Sync Desktop update install smoke").ConfigureAwait(false);
+            DesktopUpdateInstallResult result = await controller
+                .InstallDownloadedUpdateAsync(startupOptions.UpdateInstallerPath!, cancellationToken)
+                .ConfigureAwait(false);
+            string diagnosticsBundlePath = await controller
+                .ExportDiagnosticsAsync(DesktopDiagnosticsExportOptions.Public, cancellationToken)
+                .ConfigureAwait(false);
+            int failures = await VerifyUpdateInstallAsync(
+                    paths,
+                    result,
+                    diagnosticsBundlePath,
+                    output)
+                .ConfigureAwait(false);
+            await output.WriteLineAsync("Failures: " + failures.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .ConfigureAwait(false);
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task<int> VerifyUpdateInstallAsync(
+            DesktopAppPaths paths,
+            DesktopUpdateInstallResult result,
+            string diagnosticsBundlePath,
+            TextWriter output)
+        {
+            int failures = 0;
+            failures += await WriteCheckAsync(
+                output,
+                result.ProcessId > 0,
+                "Update installer launch returns a process id",
+                "processId=" + result.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .ConfigureAwait(false);
+            failures += await WriteCheckAsync(
+                output,
+                InstallerStartupProbePassed(result),
+                "Update installer startup probe does not fail",
+                "exitedDuringProbe=" + result.ExitedDuringStartupProbe
+                    + ", exitCode=" + (result.ExitCode?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "<running>"))
+                .ConfigureAwait(false);
+            failures += await WriteCheckAsync(
+                output,
+                File.Exists(diagnosticsBundlePath),
+                "Diagnostics bundle records installer launch outcome",
+                "bundle=" + diagnosticsBundlePath).ConfigureAwait(false);
+            failures += await WriteCheckAsync(
+                output,
+                File.Exists(paths.LogFilePath),
+                "Installer launch wrote a trace log",
+                "log=" + paths.LogFilePath).ConfigureAwait(false);
+            return failures;
+        }
+
+        private static bool InstallerStartupProbePassed(DesktopUpdateInstallResult result)
+        {
+            return !result.ExitedDuringStartupProbe || result.ExitCode.GetValueOrDefault() == 0;
         }
 
         internal static async Task<int> RunWindowsVirtualFilesSmokeAsync(
@@ -1014,10 +1180,11 @@ namespace Cotton.Sync.Desktop.Startup
             Directory.CreateDirectory(paths.DataDirectory);
             Directory.CreateDirectory(startupOptions.LocalRoot!);
             Directory.CreateDirectory(startupOptions.SecondLocalRoot!);
-            IReadOnlyList<LiveSyncSmokeSeededLocalFile> seededLocalFiles =
-                startupOptions.LiveSyncSmokePreserveExistingLocalFiles
-                    ? await SeedExistingLocalFilesAsync(startupOptions, output, cancellationToken).ConfigureAwait(false)
-                    : [];
+            IReadOnlyList<LiveSyncSmokeSeededLocalFile> seededLocalFiles = await PrepareLiveSmokeSeedFilesAsync(
+                    startupOptions,
+                    output,
+                    cancellationToken)
+                .ConfigureAwait(false);
             DesktopTraceLogging.Install(paths);
 
             DesktopAppPaths firstPaths = DesktopAppPaths.CreateForDataDirectory(
@@ -1033,141 +1200,21 @@ namespace Cotton.Sync.Desktop.Startup
                 startupOptions,
                 output);
 
-            int failures = 0;
-            bool firstSignedIn = false;
-            bool secondSignedIn = false;
-            SyncPairSettings? firstPair = null;
-            SyncPairSettings? secondPair = null;
+            DesktopLiveSyncSmokeSession session = new(
+                firstPaths,
+                secondPaths,
+                firstController,
+                secondController);
             try
             {
-                await output.WriteLineAsync("Cotton Sync Desktop live sync smoke").ConfigureAwait(false);
-                await output.WriteLineAsync("Server: " + startupOptions.ServerUrl).ConfigureAwait(false);
-                await output.WriteLineAsync("Remote root: " + startupOptions.RemotePath).ConfigureAwait(false);
-                await output.WriteLineAsync("Local root: " + startupOptions.LocalRoot).ConfigureAwait(false);
-                await output.WriteLineAsync("Second local root: " + startupOptions.SecondLocalRoot).ConfigureAwait(false);
-                await output.WriteLineAsync("Sync mode: " + startupOptions.SyncMode).ConfigureAwait(false);
-                await output.WriteLineAsync("Data root: " + paths.DataDirectory).ConfigureAwait(false);
-
-                await output.WriteLineAsync("Approving first desktop client...").ConfigureAwait(false);
-                await firstController.SignInWithBrowserAsync(
-                    startupOptions.ServerUrl!.AbsoluteUri,
-                    cancellationToken).ConfigureAwait(false);
-                firstSignedIn = true;
-                await output.WriteLineAsync("Approving second desktop client...").ConfigureAwait(false);
-                await secondController.SignInWithBrowserAsync(
-                    startupOptions.ServerUrl.AbsoluteUri,
-                    cancellationToken).ConfigureAwait(false);
-                secondSignedIn = true;
-
-                firstPair = await firstController.AddSyncPairAsync(
-                    new DesktopSyncPairRequest(startupOptions.LocalRoot!, startupOptions.RemotePath!, startupOptions.SyncMode),
-                    cancellationToken).ConfigureAwait(false);
-                secondPair = await secondController.AddSyncPairAsync(
-                    new DesktopSyncPairRequest(startupOptions.SecondLocalRoot!, startupOptions.RemotePath!, startupOptions.SyncMode),
-                    cancellationToken).ConfigureAwait(false);
-
-                failures += await WaitForLiveSmokeConvergenceAsync(
-                    startupOptions,
-                    seededLocalFiles,
-                    firstController,
-                    secondController,
-                    firstPair.Id,
-                    secondPair.Id,
-                    output,
-                    cancellationToken).ConfigureAwait(false);
-                failures += await VerifyIdleAsync(
-                    firstController,
-                    secondController,
-                    firstPair.Id,
-                    secondPair.Id,
-                    "Initial desktop sync reached idle/up-to-date.",
-                    output,
-                    cancellationToken).ConfigureAwait(false);
-                failures += await VerifySeededLocalFilesAsync(
-                    seededLocalFiles,
-                    "Pre-existing local files survived sync pair creation.",
-                    output,
-                    cancellationToken).ConfigureAwait(false);
-                string diagnosticsBundlePath = await firstController
-                    .ExportDiagnosticsAsync(DesktopDiagnosticsExportOptions.Public, cancellationToken)
+                return await RunLiveSyncWorkflowAsync(
+                        paths,
+                        startupOptions,
+                        seededLocalFiles,
+                        session,
+                        output,
+                        cancellationToken)
                     .ConfigureAwait(false);
-                LiveSyncSmokeDiagnosticsVerification diagnosticsVerification =
-                    LiveSyncSmokeDiagnosticsVerifier.Verify(diagnosticsBundlePath, firstPair.Id);
-                await output.WriteLineAsync(FormatCheck(
-                    diagnosticsVerification.Passed,
-                    "Connected public diagnostics bundle is complete and sanitized. "
-                    + diagnosticsVerification.Details)).ConfigureAwait(false);
-                if (!diagnosticsVerification.Passed)
-                {
-                    failures++;
-                }
-
-                failures += await RunClientACreateAsync(
-                    startupOptions,
-                    firstController,
-                    secondController,
-                    output,
-                    cancellationToken).ConfigureAwait(false);
-                failures += await RunClientBCreateAsync(
-                    startupOptions,
-                    firstController,
-                    secondController,
-                    output,
-                    cancellationToken).ConfigureAwait(false);
-                failures += await RunClientARenameAsync(
-                    startupOptions,
-                    firstController,
-                    secondController,
-                    output,
-                    cancellationToken).ConfigureAwait(false);
-                failures += await RunClientBRenameAsync(
-                    startupOptions,
-                    firstController,
-                    secondController,
-                    output,
-                    cancellationToken).ConfigureAwait(false);
-                failures += await RunClientADeleteAsync(
-                    startupOptions,
-                    firstController,
-                    secondController,
-                    output,
-                    cancellationToken).ConfigureAwait(false);
-                failures += await RunClientBDeleteAsync(
-                    startupOptions,
-                    firstController,
-                    secondController,
-                    output,
-                    cancellationToken).ConfigureAwait(false);
-
-                await RunFinalConvergenceAsync(firstController, secondController, cancellationToken)
-                    .ConfigureAwait(false);
-                failures += await VerifySeededLocalFilesAsync(
-                    seededLocalFiles,
-                    "Pre-existing local files survived final convergence.",
-                    output,
-                    cancellationToken).ConfigureAwait(false);
-                int finalStateEntries = await CountStateEntriesAsync(firstPaths, firstPair.Id, cancellationToken)
-                    .ConfigureAwait(false)
-                    + await CountStateEntriesAsync(secondPaths, secondPair.Id, cancellationToken)
-                        .ConfigureAwait(false);
-                IReadOnlyList<string> expectedStatePaths = LiveSyncSmokeStateExpectation.BuildRelativePaths(
-                    seededLocalFiles.Select(static file => file.RelativePath));
-                int expectedFinalStateEntries = expectedStatePaths.Count * 2;
-                await output.WriteLineAsync("Final state entries: " + finalStateEntries.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                    .ConfigureAwait(false);
-                await output.WriteLineAsync(
-                    "Expected final state entries: "
-                    + expectedFinalStateEntries.ToString(System.Globalization.CultureInfo.InvariantCulture)).ConfigureAwait(false);
-                if (finalStateEntries != expectedFinalStateEntries)
-                {
-                    failures++;
-                }
-
-                await output.WriteLineAsync("Converged: " + (failures == 0 ? "yes" : "no")).ConfigureAwait(false);
-                await output.WriteLineAsync("Failures: " + failures.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                    .ConfigureAwait(false);
-                await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-                return failures == 0 ? 0 : 1;
             }
             catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
@@ -1178,27 +1225,275 @@ namespace Cotton.Sync.Desktop.Startup
             }
             finally
             {
-                if (firstPair is not null)
-                {
-                    await TryRemoveLiveSmokeSyncPairAsync(firstController, firstPair, output, "first")
-                        .ConfigureAwait(false);
-                }
+                await CleanupLiveSyncSmokeAsync(session, output).ConfigureAwait(false);
+            }
+        }
 
-                if (secondPair is not null)
-                {
-                    await TryRemoveLiveSmokeSyncPairAsync(secondController, secondPair, output, "second")
-                        .ConfigureAwait(false);
-                }
+        private static async Task<IReadOnlyList<LiveSyncSmokeSeededLocalFile>> PrepareLiveSmokeSeedFilesAsync(
+            DesktopStartupOptions startupOptions,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            if (!startupOptions.LiveSyncSmokePreserveExistingLocalFiles)
+            {
+                return [];
+            }
 
-                if (firstSignedIn)
-                {
-                    await TrySignOutAsync(firstController, output, "first").ConfigureAwait(false);
-                }
+            return await SeedExistingLocalFilesAsync(startupOptions, output, cancellationToken).ConfigureAwait(false);
+        }
 
-                if (secondSignedIn)
-                {
-                    await TrySignOutAsync(secondController, output, "second").ConfigureAwait(false);
-                }
+        private static async Task<int> RunLiveSyncWorkflowAsync(
+            DesktopAppPaths paths,
+            DesktopStartupOptions startupOptions,
+            IReadOnlyList<LiveSyncSmokeSeededLocalFile> seededLocalFiles,
+            DesktopLiveSyncSmokeSession session,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            await WriteLiveSyncSmokeHeaderAsync(paths, startupOptions, output).ConfigureAwait(false);
+            await SignInLiveSmokeClientsAsync(startupOptions, session, output, cancellationToken).ConfigureAwait(false);
+            await AddLiveSmokeSyncPairsAsync(startupOptions, session, cancellationToken).ConfigureAwait(false);
+
+            int failures = await VerifyInitialLiveSyncStateAsync(
+                    startupOptions,
+                    seededLocalFiles,
+                    session,
+                    output,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            failures += await RunLiveSyncMutationSequenceAsync(
+                    startupOptions,
+                    session,
+                    output,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            failures += await VerifyFinalLiveSyncStateAsync(
+                    seededLocalFiles,
+                    session,
+                    output,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            await output.WriteLineAsync("Converged: " + (failures == 0 ? "yes" : "no")).ConfigureAwait(false);
+            await output.WriteLineAsync("Failures: " + failures.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .ConfigureAwait(false);
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
+        }
+
+        private static async Task WriteLiveSyncSmokeHeaderAsync(
+            DesktopAppPaths paths,
+            DesktopStartupOptions startupOptions,
+            TextWriter output)
+        {
+            await output.WriteLineAsync("Cotton Sync Desktop live sync smoke").ConfigureAwait(false);
+            await output.WriteLineAsync("Server: " + startupOptions.ServerUrl).ConfigureAwait(false);
+            await output.WriteLineAsync("Remote root: " + startupOptions.RemotePath).ConfigureAwait(false);
+            await output.WriteLineAsync("Local root: " + startupOptions.LocalRoot).ConfigureAwait(false);
+            await output.WriteLineAsync("Second local root: " + startupOptions.SecondLocalRoot).ConfigureAwait(false);
+            await output.WriteLineAsync("Sync mode: " + startupOptions.SyncMode).ConfigureAwait(false);
+            await output.WriteLineAsync("Data root: " + paths.DataDirectory).ConfigureAwait(false);
+        }
+
+        private static async Task SignInLiveSmokeClientsAsync(
+            DesktopStartupOptions startupOptions,
+            DesktopLiveSyncSmokeSession session,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            await output.WriteLineAsync("Approving first desktop client...").ConfigureAwait(false);
+            await session.FirstController.SignInWithBrowserAsync(
+                startupOptions.ServerUrl!.AbsoluteUri,
+                cancellationToken).ConfigureAwait(false);
+            session.FirstSignedIn = true;
+            await output.WriteLineAsync("Approving second desktop client...").ConfigureAwait(false);
+            await session.SecondController.SignInWithBrowserAsync(
+                startupOptions.ServerUrl.AbsoluteUri,
+                cancellationToken).ConfigureAwait(false);
+            session.SecondSignedIn = true;
+        }
+
+        private static async Task AddLiveSmokeSyncPairsAsync(
+            DesktopStartupOptions startupOptions,
+            DesktopLiveSyncSmokeSession session,
+            CancellationToken cancellationToken)
+        {
+            session.FirstPair = await session.FirstController.AddSyncPairAsync(
+                new DesktopSyncPairRequest(startupOptions.LocalRoot!, startupOptions.RemotePath!, startupOptions.SyncMode),
+                cancellationToken).ConfigureAwait(false);
+            session.SecondPair = await session.SecondController.AddSyncPairAsync(
+                new DesktopSyncPairRequest(startupOptions.SecondLocalRoot!, startupOptions.RemotePath!, startupOptions.SyncMode),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        private static async Task<int> VerifyInitialLiveSyncStateAsync(
+            DesktopStartupOptions startupOptions,
+            IReadOnlyList<LiveSyncSmokeSeededLocalFile> seededLocalFiles,
+            DesktopLiveSyncSmokeSession session,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            Guid firstPairId = session.FirstPair!.Id;
+            Guid secondPairId = session.SecondPair!.Id;
+            int failures = await WaitForLiveSmokeConvergenceAsync(
+                startupOptions,
+                seededLocalFiles,
+                session.FirstController,
+                session.SecondController,
+                firstPairId,
+                secondPairId,
+                output,
+                cancellationToken).ConfigureAwait(false);
+            failures += await VerifyIdleAsync(
+                session.FirstController,
+                session.SecondController,
+                firstPairId,
+                secondPairId,
+                "Initial desktop sync reached idle/up-to-date.",
+                output,
+                cancellationToken).ConfigureAwait(false);
+            failures += await VerifySeededLocalFilesAsync(
+                seededLocalFiles,
+                "Pre-existing local files survived sync pair creation.",
+                output,
+                cancellationToken).ConfigureAwait(false);
+            failures += await VerifyLiveSyncDiagnosticsAsync(
+                session.FirstController,
+                firstPairId,
+                output,
+                cancellationToken).ConfigureAwait(false);
+            return failures;
+        }
+
+        private static async Task<int> VerifyLiveSyncDiagnosticsAsync(
+            DesktopShellController controller,
+            Guid syncPairId,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            string diagnosticsBundlePath = await controller
+                .ExportDiagnosticsAsync(DesktopDiagnosticsExportOptions.Public, cancellationToken)
+                .ConfigureAwait(false);
+            LiveSyncSmokeDiagnosticsVerification verification =
+                LiveSyncSmokeDiagnosticsVerifier.Verify(diagnosticsBundlePath, syncPairId);
+            await output.WriteLineAsync(FormatCheck(
+                verification.Passed,
+                "Connected public diagnostics bundle is complete and sanitized. " + verification.Details))
+                .ConfigureAwait(false);
+            return verification.Passed ? 0 : 1;
+        }
+
+        private static async Task<int> RunLiveSyncMutationSequenceAsync(
+            DesktopStartupOptions startupOptions,
+            DesktopLiveSyncSmokeSession session,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            int failures = 0;
+            failures += await RunClientACreateAsync(
+                startupOptions,
+                session.FirstController,
+                session.SecondController,
+                output,
+                cancellationToken).ConfigureAwait(false);
+            failures += await RunClientBCreateAsync(
+                startupOptions,
+                session.FirstController,
+                session.SecondController,
+                output,
+                cancellationToken).ConfigureAwait(false);
+            failures += await RunClientARenameAsync(
+                startupOptions,
+                session.FirstController,
+                session.SecondController,
+                output,
+                cancellationToken).ConfigureAwait(false);
+            failures += await RunClientBRenameAsync(
+                startupOptions,
+                session.FirstController,
+                session.SecondController,
+                output,
+                cancellationToken).ConfigureAwait(false);
+            failures += await RunClientADeleteAsync(
+                startupOptions,
+                session.FirstController,
+                session.SecondController,
+                output,
+                cancellationToken).ConfigureAwait(false);
+            failures += await RunClientBDeleteAsync(
+                startupOptions,
+                session.FirstController,
+                session.SecondController,
+                output,
+                cancellationToken).ConfigureAwait(false);
+            return failures;
+        }
+
+        private static async Task<int> VerifyFinalLiveSyncStateAsync(
+            IReadOnlyList<LiveSyncSmokeSeededLocalFile> seededLocalFiles,
+            DesktopLiveSyncSmokeSession session,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
+            await RunFinalConvergenceAsync(
+                session.FirstController,
+                session.SecondController,
+                cancellationToken).ConfigureAwait(false);
+            int failures = await VerifySeededLocalFilesAsync(
+                seededLocalFiles,
+                "Pre-existing local files survived final convergence.",
+                output,
+                cancellationToken).ConfigureAwait(false);
+            int finalStateEntries = await CountStateEntriesAsync(
+                    session.FirstPaths,
+                    session.FirstPair!.Id,
+                    cancellationToken)
+                .ConfigureAwait(false)
+                + await CountStateEntriesAsync(
+                        session.SecondPaths,
+                        session.SecondPair!.Id,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            IReadOnlyList<string> expectedStatePaths = LiveSyncSmokeStateExpectation.BuildRelativePaths(
+                seededLocalFiles.Select(static file => file.RelativePath));
+            int expectedFinalStateEntries = expectedStatePaths.Count * 2;
+            await output.WriteLineAsync("Final state entries: " + finalStateEntries.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .ConfigureAwait(false);
+            await output.WriteLineAsync(
+                "Expected final state entries: "
+                + expectedFinalStateEntries.ToString(System.Globalization.CultureInfo.InvariantCulture)).ConfigureAwait(false);
+            return finalStateEntries == expectedFinalStateEntries ? failures : failures + 1;
+        }
+
+        private static async Task CleanupLiveSyncSmokeAsync(
+            DesktopLiveSyncSmokeSession session,
+            TextWriter output)
+        {
+            if (session.FirstPair is not null)
+            {
+                await TryRemoveLiveSmokeSyncPairAsync(
+                    session.FirstController,
+                    session.FirstPair,
+                    output,
+                    "first").ConfigureAwait(false);
+            }
+
+            if (session.SecondPair is not null)
+            {
+                await TryRemoveLiveSmokeSyncPairAsync(
+                    session.SecondController,
+                    session.SecondPair,
+                    output,
+                    "second").ConfigureAwait(false);
+            }
+
+            if (session.FirstSignedIn)
+            {
+                await TrySignOutAsync(session.FirstController, output, "first").ConfigureAwait(false);
+            }
+
+            if (session.SecondSignedIn)
+            {
+                await TrySignOutAsync(session.SecondController, output, "second").ConfigureAwait(false);
             }
         }
 
@@ -1347,6 +1642,12 @@ namespace Cotton.Sync.Desktop.Startup
             DesktopAppPaths paths,
             DesktopStartupOptions startupOptions)
         {
+            string? requiredOptionsError = ValidateRequiredLiveSyncSmokeOptions(startupOptions);
+            return requiredOptionsError ?? ValidateLiveSyncSmokePaths(paths, startupOptions);
+        }
+
+        private static string? ValidateRequiredLiveSyncSmokeOptions(DesktopStartupOptions startupOptions)
+        {
             if (startupOptions.SyncModeError is not null)
             {
                 return startupOptions.SyncModeError;
@@ -1373,6 +1674,21 @@ namespace Cotton.Sync.Desktop.Startup
                 return "--live-sync-smoke requires --local-root and --second-local-root.";
             }
 
+            return null;
+        }
+
+        private static string? ValidateLiveSyncSmokePaths(
+            DesktopAppPaths paths,
+            DesktopStartupOptions startupOptions)
+        {
+            if (string.IsNullOrWhiteSpace(startupOptions.LocalRoot)
+                || string.IsNullOrWhiteSpace(startupOptions.SecondLocalRoot))
+            {
+                return "--live-sync-smoke requires --local-root and --second-local-root.";
+            }
+
+            string firstLocalRoot = startupOptions.LocalRoot;
+            string secondLocalRoot = startupOptions.SecondLocalRoot;
             if (startupOptions.LiveSyncSmokeSeedFileCount.HasValue
                 && !startupOptions.LiveSyncSmokePreserveExistingLocalFiles)
             {
@@ -1384,13 +1700,13 @@ namespace Cotton.Sync.Desktop.Startup
                 return "--data-dir must be empty or contain only the current smoke log for --live-sync-smoke.";
             }
 
-            if (IsSameOrNestedPath(startupOptions.LocalRoot, startupOptions.SecondLocalRoot))
+            if (IsSameOrNestedPath(firstLocalRoot, secondLocalRoot))
             {
                 return "--local-root and --second-local-root must be different and non-nested.";
             }
 
-            string? firstRootError = ValidateEmptyOrMissingDirectory(startupOptions.LocalRoot, "--local-root");
-            return firstRootError ?? ValidateEmptyOrMissingDirectory(startupOptions.SecondLocalRoot, "--second-local-root");
+            string? firstRootError = ValidateEmptyOrMissingDirectory(firstLocalRoot, "--local-root");
+            return firstRootError ?? ValidateEmptyOrMissingDirectory(secondLocalRoot, "--second-local-root");
         }
 
         private static bool DataDirectoryHasUnexpectedEntries(string dataDirectory)
@@ -1428,17 +1744,26 @@ namespace Cotton.Sync.Desktop.Startup
             DesktopShellSnapshot secondSnapshot = await secondController.LoadAsync(cancellationToken).ConfigureAwait(false);
             DesktopSyncPairSnapshot? firstPair = firstSnapshot.SyncPairs.FirstOrDefault(pair => pair.Id == firstPairId);
             DesktopSyncPairSnapshot? secondPair = secondSnapshot.SyncPairs.FirstOrDefault(pair => pair.Id == secondPairId);
-            bool passed = firstPair is not null
-                && secondPair is not null
-                && string.Equals(firstPair.Status, "Idle", StringComparison.Ordinal)
-                && string.Equals(secondPair.Status, "Idle", StringComparison.Ordinal)
-                && firstPair.LastError is null
-                && secondPair.LastError is null;
+            bool passed = AreLiveSmokePairsIdle(firstPair, secondPair);
             await output.WriteLineAsync(
                 FormatCheck(passed, label)
                 + " firstStatus=" + (firstPair?.Status ?? "<missing>")
                 + ", secondStatus=" + (secondPair?.Status ?? "<missing>")).ConfigureAwait(false);
             return passed ? 0 : 1;
+        }
+
+        private static bool AreLiveSmokePairsIdle(
+            DesktopSyncPairSnapshot? firstPair,
+            DesktopSyncPairSnapshot? secondPair)
+        {
+            return IsIdleWithoutError(firstPair) && IsIdleWithoutError(secondPair);
+        }
+
+        private static bool IsIdleWithoutError(DesktopSyncPairSnapshot? pair)
+        {
+            return pair is not null
+                && string.Equals(pair.Status, "Idle", StringComparison.Ordinal)
+                && pair.LastError is null;
         }
 
         private static async Task<int> WaitForLiveSmokeConvergenceAsync(
@@ -1511,24 +1836,94 @@ namespace Cotton.Sync.Desktop.Startup
             CancellationToken cancellationToken)
         {
             string[] localRoots = [startupOptions.LocalRoot!, startupOptions.SecondLocalRoot!];
+            IReadOnlyDictionary<string, string> expectedHashes = BuildExpectedLiveSmokeHashes(
+                localRoots,
+                seededLocalFiles);
+            IReadOnlyDictionary<string, LiveSyncSmokeFileHashReadResult> hashReads =
+                await LiveSyncSmokeFileHashReader.ReadAsync(expectedHashes.Keys, cancellationToken)
+                    .ConfigureAwait(false);
+            (int availableFiles, int hashMismatches, int readFailures) = EvaluateLiveSmokeHashes(
+                expectedHashes,
+                hashReads);
+            DesktopShellSnapshot firstSnapshot = await firstController.LoadAsync(cancellationToken).ConfigureAwait(false);
+            DesktopShellSnapshot secondSnapshot = await secondController.LoadAsync(cancellationToken).ConfigureAwait(false);
+            DesktopSyncPairSnapshot? firstPair = firstSnapshot.SyncPairs.FirstOrDefault(pair => pair.Id == firstPairId);
+            DesktopSyncPairSnapshot? secondPair = secondSnapshot.SyncPairs.FirstOrDefault(pair => pair.Id == secondPairId);
+            int expectedFiles = seededLocalFiles.Count * localRoots.Length;
+            return new LiveSyncSmokeConvergenceSnapshot(
+                LiveSmokeConverged(
+                    firstPair,
+                    secondPair,
+                    availableFiles,
+                    expectedFiles,
+                    hashMismatches,
+                    readFailures),
+                FormatLiveSmokeConvergenceDetails(
+                    firstPair,
+                    secondPair,
+                    availableFiles,
+                    expectedFiles,
+                    hashMismatches,
+                    readFailures));
+        }
+
+        private static bool LiveSmokeConverged(
+            DesktopSyncPairSnapshot? firstPair,
+            DesktopSyncPairSnapshot? secondPair,
+            int availableFiles,
+            int expectedFiles,
+            int hashMismatches,
+            int readFailures)
+        {
+            bool pairsIdle = IsSuccessfullySyncedIdlePair(firstPair)
+                && IsSuccessfullySyncedIdlePair(secondPair);
+            bool filesConverged = availableFiles == expectedFiles
+                && hashMismatches == 0
+                && readFailures == 0;
+            return pairsIdle && filesConverged;
+        }
+
+        private static string FormatLiveSmokeConvergenceDetails(
+            DesktopSyncPairSnapshot? firstPair,
+            DesktopSyncPairSnapshot? secondPair,
+            int availableFiles,
+            int expectedFiles,
+            int hashMismatches,
+            int readFailures)
+        {
+            return "availableSeedFiles="
+                + availableFiles.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + "/" + expectedFiles.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", hashMismatches=" + hashMismatches.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", readFailures=" + readFailures.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", firstStatus=" + (firstPair?.Status ?? "<missing>")
+                + ", secondStatus=" + (secondPair?.Status ?? "<missing>");
+        }
+
+        private static IReadOnlyDictionary<string, string> BuildExpectedLiveSmokeHashes(
+            IEnumerable<string> localRoots,
+            IEnumerable<LiveSyncSmokeSeededLocalFile> seededLocalFiles)
+        {
             Dictionary<string, string> expectedHashes = new(StringComparer.OrdinalIgnoreCase);
             foreach (LiveSyncSmokeSeededLocalFile file in seededLocalFiles)
             {
                 foreach (string localRoot in localRoots)
                 {
                     string fullPath = FullPath(localRoot, file.RelativePath);
-                    if (!File.Exists(fullPath))
+                    if (File.Exists(fullPath))
                     {
-                        continue;
+                        expectedHashes[fullPath] = file.Sha256;
                     }
-
-                    expectedHashes[fullPath] = file.Sha256;
                 }
             }
 
-            IReadOnlyDictionary<string, LiveSyncSmokeFileHashReadResult> hashReads =
-                await LiveSyncSmokeFileHashReader.ReadAsync(expectedHashes.Keys, cancellationToken)
-                    .ConfigureAwait(false);
+            return expectedHashes;
+        }
+
+        private static (int AvailableFiles, int HashMismatches, int ReadFailures) EvaluateLiveSmokeHashes(
+            IReadOnlyDictionary<string, string> expectedHashes,
+            IReadOnlyDictionary<string, LiveSyncSmokeFileHashReadResult> hashReads)
+        {
             int availableFiles = 0;
             int hashMismatches = 0;
             int readFailures = 0;
@@ -1538,8 +1933,10 @@ namespace Cotton.Sync.Desktop.Startup
                     || read.Sha256 is null)
                 {
                     readFailures++;
+                    continue;
                 }
-                else if (string.Equals(read.Sha256, expectedHash, StringComparison.OrdinalIgnoreCase))
+
+                if (string.Equals(read.Sha256, expectedHash, StringComparison.OrdinalIgnoreCase))
                 {
                     availableFiles++;
                 }
@@ -1549,22 +1946,7 @@ namespace Cotton.Sync.Desktop.Startup
                 }
             }
 
-            DesktopShellSnapshot firstSnapshot = await firstController.LoadAsync(cancellationToken).ConfigureAwait(false);
-            DesktopShellSnapshot secondSnapshot = await secondController.LoadAsync(cancellationToken).ConfigureAwait(false);
-            DesktopSyncPairSnapshot? firstPair = firstSnapshot.SyncPairs.FirstOrDefault(pair => pair.Id == firstPairId);
-            DesktopSyncPairSnapshot? secondPair = secondSnapshot.SyncPairs.FirstOrDefault(pair => pair.Id == secondPairId);
-            bool pairsIdle = IsSuccessfullySyncedIdlePair(firstPair) && IsSuccessfullySyncedIdlePair(secondPair);
-            int expectedFiles = seededLocalFiles.Count * localRoots.Length;
-            bool filesConverged = availableFiles == expectedFiles && hashMismatches == 0 && readFailures == 0;
-            return new LiveSyncSmokeConvergenceSnapshot(
-                pairsIdle && filesConverged,
-                "availableSeedFiles="
-                + availableFiles.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                + "/" + expectedFiles.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                + ", hashMismatches=" + hashMismatches.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                + ", readFailures=" + readFailures.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                + ", firstStatus=" + (firstPair?.Status ?? "<missing>")
-                + ", secondStatus=" + (secondPair?.Status ?? "<missing>"));
+            return (availableFiles, hashMismatches, readFailures);
         }
 
         private static bool IsSuccessfullySyncedIdlePair(DesktopSyncPairSnapshot? pair)
