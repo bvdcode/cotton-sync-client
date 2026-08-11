@@ -1,6 +1,9 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using Cotton.Sync.Desktop.Platform;
+using Cotton.Sync.Desktop.Startup;
+
 namespace Cotton.Sync.Desktop.Tests.Startup
 {
     public class DesktopWindowsVirtualFilesSmokeRunnerContractTests
@@ -149,6 +152,29 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(fileReader, Does.Contain("process.WaitForExitAsync(linkedCancellation.Token)"));
                 Assert.That(fileReader, Does.Contain("External file-read helper timed out after "));
                 Assert.That(fileReader, Does.Contain("process.Kill(entireProcessTree: true)"));
+            });
+        }
+
+        [TestCase(0, 0, "Result: passed")]
+        [TestCase(2, 1, "Result: failed")]
+        public async Task WriteSmokeResultAsync_WritesDiagnosticsAndFinalResult(
+            int failures,
+            int expectedExitCode,
+            string expectedResult)
+        {
+            WindowsCloudFilesDiagnostics diagnostics = new();
+            diagnostics.Record("hydrate", "completed", details: "first line\nsecond line");
+            using StringWriter output = new();
+
+            int exitCode = await DesktopWindowsVirtualFilesSmokeRunner
+                .WriteSmokeResultAsync(output, diagnostics, failures)
+                .ConfigureAwait(false);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(expectedExitCode));
+                Assert.That(output.ToString(), Does.Contain("Diagnostic: hydrate completed first line second line"));
+                Assert.That(output.ToString(), Does.Contain(expectedResult));
             });
         }
 

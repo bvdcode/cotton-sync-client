@@ -398,12 +398,26 @@ namespace Cotton.Sync.Desktop.Startup
             return failures + 1;
         }
 
-        private static async Task<int> WriteSmokeResultAsync(
+        internal static async Task<int> WriteSmokeResultAsync(
             TextWriter output,
             WindowsCloudFilesDiagnostics diagnostics,
             int failures)
         {
-            return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
+            foreach (WindowsCloudFilesDiagnosticEvent item in diagnostics.Snapshot())
+            {
+                await output.WriteLineAsync(
+                        "Diagnostic: "
+                        + item.Operation
+                        + " "
+                        + item.Status
+                        + " "
+                        + CleanSingleLine(item.Details))
+                    .ConfigureAwait(false);
+            }
+
+            bool passed = failures == 0;
+            await output.WriteLineAsync(passed ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return passed ? 0 : 1;
         }
 
         private static async Task<int> WriteCheckAsync(
