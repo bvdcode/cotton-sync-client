@@ -3654,257 +3654,420 @@ namespace Cotton.Sync
             RemoteFileSnapshot? remote,
             CancellationToken cancellationToken)
         {
-            if (syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
-                && local is { IsCloudFilesOnlineOnlyPlaceholder: true }
-                && remote is not null
-                && IsIncompleteOnlineOnlyPlaceholderBaseline(state))
+            var context = new SyncFileReconciliationContext(
+                syncPair,
+                options,
+                result,
+                deleteGuard,
+                scopedFileDeleteKeys,
+                scopedLocalDeletedFileKeys,
+                state,
+                relativePath,
+                local,
+                remote,
+                cancellationToken);
+            if (await TryMaterializeIncompletePlaceholderAsync(context).ConfigureAwait(false))
+            {
+                return;
+            }
+
+            await EnsureReconciliationLocalContentHashAsync(context).ConfigureAwait(false);
+            SyncFileChangeState changeState = CreateFileChangeState(state, local, remote);
+            if (IsDeleteOutsideScope(context, changeState))
+            {
+                return;
+            }
+
+            if (await TryReconcileMissingTrackedFileAsync(context).ConfigureAwait(false)
+                || await TryReconcileMissingOnlineOnlyPlaceholderAsync(context, changeState).ConfigureAwait(false)
+                || await TryReconcilePresentOnlineOnlyPlaceholderAsync(context, changeState).ConfigureAwait(false)
+                || await TryReconcileConvergedFileAsync(context).ConfigureAwait(false))
+            {
+                return;
+            }
+
+            SyncFileChangeKind changeKind = ResolveTrackedFileChange(changeState);
+            await ReconcileTrackedFileChangeAsync(context, changeKind).ConfigureAwait(false);
+        }
+
+        private async Task<bool> TryMaterializeIncompletePlaceholderAsync(SyncFileReconciliationContext context)
+        {
+            if (context.SyncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles
+                || context.Local is not { IsCloudFilesOnlineOnlyPlaceholder: true }
+                || context.Remote is null
+                || !IsIncompleteOnlineOnlyPlaceholderBaseline(context.State))
+            {
+                return false;
+            }
+
+            await MaterializeRemoteOnlyFileAsync(
+                    context.SyncPair,
+                    context.Options,
+                    context.Result,
+                    context.RelativePath,
+                    context.Remote.File,
+                    context.CancellationToken,
+                    context.State.PlaceholderHydrationState)
+                .ConfigureAwait(false);
+            return true;
+        }
+
+        private async Task EnsureReconciliationLocalContentHashAsync(SyncFileReconciliationContext context)
+        {
+            if (context.Local is null)
+            {
+                return;
+            }
+
+            await EnsureLocalContentHashForBaselineComparisonAsync(
+                    context.Local,
+                    context.State,
+                    context.Options,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        private static bool IsDeleteOutsideScope(
+            SyncFileReconciliationContext context,
+            SyncFileChangeState changeState)
+        {
+            return (changeState.LocalDeleted || changeState.RemoteDeleted)
+                && !IsScopedDeleteAllowed(context.ScopedFileDeleteKeys, context.PathKey);
+        }
+
+        private async Task<bool> TryReconcileMissingTrackedFileAsync(SyncFileReconciliationContext context)
+        {
+            if (context.Local is not null || context.Remote is not null)
+            {
+                return false;
+            }
+
+            await _stateStore.DeleteAsync(
+                    context.SyncPair.SyncPairId,
+                    context.RelativePath,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+            return true;
+        }
+
+        private async Task<bool> TryReconcileMissingOnlineOnlyPlaceholderAsync(
+            SyncFileReconciliationContext context,
+            SyncFileChangeState changeState)
+        {
+            if (!IsOnlineOnlyPlaceholderBaseline(context.SyncPair, context.State))
+            {
+                return false;
+            }
+
+            if (context.Local is null && context.Remote is not null)
+            {
+                await ReconcileMissingLocalOnlineOnlyPlaceholderAsync(context, changeState.RemoteChanged)
+                    .ConfigureAwait(false);
+                return true;
+            }
+
+            if (!changeState.RemoteDeleted)
+            {
+                return false;
+            }
+
+            await ReconcileRemoteDeletedOnlineOnlyPlaceholderAsync(context).ConfigureAwait(false);
+            return true;
+        }
+
+        private async Task ReconcileMissingLocalOnlineOnlyPlaceholderAsync(
+            SyncFileReconciliationContext context,
+            bool remoteChanged)
+        {
+            if (context.IsExactLocalDelete && remoteChanged)
+            {
+                await PreserveConflictAsync(
+                        context.SyncPair,
+                        context.Options,
+                        context.Result,
+                        context.RelativePath,
+                        null,
+                        context.Remote!.File,
+                        context.CancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            if (context.IsExactLocalDelete)
+            {
+                await DeleteRemoteAsync(
+                        context.SyncPair,
+                        context.Options,
+                        context.Result,
+                        context.DeleteGuard,
+                        context.RelativePath,
+                        context.Remote!.File,
+                        context.CancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            if (remoteChanged || context.Options.RestoreMissingRemoteOnlyPlaceholders)
             {
                 await MaterializeRemoteOnlyFileAsync(
-                        syncPair,
-                        options,
-                        result,
-                        relativePath,
-                        remote.File,
-                        cancellationToken,
-                        state.PlaceholderHydrationState)
+                        context.SyncPair,
+                        context.Options,
+                        context.Result,
+                        context.RelativePath,
+                        context.Remote!.File,
+                        context.CancellationToken,
+                        context.State.PlaceholderHydrationState)
                     .ConfigureAwait(false);
                 return;
             }
 
-            if (local is not null)
+            if (!context.Options.Scope.IsFull)
             {
-                await EnsureLocalContentHashForBaselineComparisonAsync(local, state, options, cancellationToken)
+                return;
+            }
+
+            Report(
+                context.Result,
+                context.Options,
+                SyncActivityKind.Skipped,
+                context.RelativePath,
+                VirtualFileUserFacingCopy.RemoteOnlyLocalChangeRequiresActionMessage,
+                requiresUserAction: true);
+        }
+
+        private async Task ReconcileRemoteDeletedOnlineOnlyPlaceholderAsync(SyncFileReconciliationContext context)
+        {
+            if (context.Local is null)
+            {
+                await _stateStore.DeleteAsync(
+                        context.SyncPair.SyncPairId,
+                        context.RelativePath,
+                        context.CancellationToken)
                     .ConfigureAwait(false);
-            }
-
-            bool localDeleted = local is null && !string.IsNullOrWhiteSpace(state.LocalContentHash);
-            bool remoteDeleted = remote is null && state.RemoteFileId.HasValue;
-            bool localChanged = local is not null && !ContentMatches(local.ContentHash, state.LocalContentHash);
-            bool remoteChanged = remote is not null && !RemoteMatchesBaseline(remote.File, state);
-            bool baselineDiverged = !ContentMatches(state.LocalContentHash, state.RemoteContentHash);
-            string pathKey = SyncPath.ToKey(relativePath);
-            bool exactLocalDelete = scopedLocalDeletedFileKeys.Contains(pathKey);
-
-            if ((localDeleted || remoteDeleted)
-                && !IsScopedDeleteAllowed(scopedFileDeleteKeys, pathKey))
-            {
                 return;
             }
 
-            if (local is null && remote is null)
+            if (IsLocalOnlineOnlyPlaceholderBaseline(context.SyncPair, context.Local, context.State))
             {
-                await _stateStore.DeleteAsync(syncPair.SyncPairId, relativePath, cancellationToken).ConfigureAwait(false);
+                await DeleteLocalAsync(
+                        context.SyncPair,
+                        context.Options,
+                        context.Result,
+                        context.DeleteGuard,
+                        context.RelativePath,
+                        context.CancellationToken)
+                    .ConfigureAwait(false);
                 return;
             }
 
-            if (local is null
-                && remote is not null
-                && IsOnlineOnlyPlaceholderBaseline(syncPair, state))
+            await PreserveConflictAsync(
+                    context.SyncPair,
+                    context.Options,
+                    context.Result,
+                    context.RelativePath,
+                    context.Local,
+                    null,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        private async Task<bool> TryReconcilePresentOnlineOnlyPlaceholderAsync(
+            SyncFileReconciliationContext context,
+            SyncFileChangeState changeState)
+        {
+            if (context.Local is null || context.Remote is null)
             {
-                if (exactLocalDelete && remoteChanged)
-                {
-                    await PreserveConflictAsync(syncPair, options, result, relativePath, null, remote.File, cancellationToken)
-                        .ConfigureAwait(false);
-                    return;
-                }
+                return false;
+            }
 
-                if (exactLocalDelete)
-                {
-                    await DeleteRemoteAsync(syncPair, options, result, deleteGuard, relativePath, remote.File, cancellationToken)
-                        .ConfigureAwait(false);
-                    return;
-                }
-
-                if (remoteChanged)
+            if (IsLocalOnlineOnlyPlaceholderBaseline(context.SyncPair, context.Local, context.State))
+            {
+                if (changeState.RemoteChanged)
                 {
                     await MaterializeRemoteOnlyFileAsync(
-                        syncPair,
-                        options,
-                        result,
-                        relativePath,
-                        remote.File,
-                        cancellationToken,
-                        state.PlaceholderHydrationState)
+                            context.SyncPair,
+                            context.Options,
+                            context.Result,
+                            context.RelativePath,
+                            context.Remote.File,
+                            context.CancellationToken,
+                            context.State.PlaceholderHydrationState)
                         .ConfigureAwait(false);
-                    return;
                 }
 
-                if (!options.Scope.IsFull)
-                {
-                    return;
-                }
+                return true;
+            }
 
-                if (options.RestoreMissingRemoteOnlyPlaceholders)
-                {
-                    await MaterializeRemoteOnlyFileAsync(
-                            syncPair,
-                            options,
-                            result,
-                            relativePath,
-                            remote.File,
-                            cancellationToken,
-                            state.PlaceholderHydrationState)
-                        .ConfigureAwait(false);
-                    return;
-                }
+            if (!IsOnlineOnlyPlaceholderBaseline(context.SyncPair, context.State))
+            {
+                return false;
+            }
 
+            await ReconcileHydratedOnlineOnlyPlaceholderAsync(context, changeState.RemoteChanged).ConfigureAwait(false);
+            return true;
+        }
+
+        private async Task ReconcileHydratedOnlineOnlyPlaceholderAsync(
+            SyncFileReconciliationContext context,
+            bool remoteChanged)
+        {
+            if (ContentMatches(context.Local!.ContentHash, context.Remote!.File.ContentHash))
+            {
+                await _stateStore.UpsertAsync(
+                        BuildHydratedPlaceholderBaseline(
+                            context.SyncPair,
+                            context.RelativePath,
+                            context.Local,
+                            context.Remote.File,
+                            context.State),
+                        context.CancellationToken)
+                    .ConfigureAwait(false);
                 Report(
-                    result,
-                    options,
-                    SyncActivityKind.Skipped,
-                    relativePath,
-                    VirtualFileUserFacingCopy.RemoteOnlyLocalChangeRequiresActionMessage,
-                    requiresUserAction: true);
+                    context.Result,
+                    context.Options,
+                    SyncActivityKind.Converged,
+                    context.RelativePath,
+                    "Hydrated placeholder content matches the remote file.");
                 return;
             }
 
-            if (remoteDeleted && IsOnlineOnlyPlaceholderBaseline(syncPair, state))
+            if (!remoteChanged)
             {
-                if (local is null)
-                {
-                    await _stateStore.DeleteAsync(syncPair.SyncPairId, relativePath, cancellationToken).ConfigureAwait(false);
-                    return;
-                }
-
-                if (IsLocalOnlineOnlyPlaceholderBaseline(syncPair, local, state))
-                {
-                    await DeleteLocalAsync(syncPair, options, result, deleteGuard, relativePath, cancellationToken).ConfigureAwait(false);
-                    return;
-                }
-
-                await PreserveConflictAsync(syncPair, options, result, relativePath, local, null, cancellationToken).ConfigureAwait(false);
+                await UploadAsync(
+                        context.SyncPair,
+                        context.Options,
+                        context.Result,
+                        context.RelativePath,
+                        context.Local,
+                        context.Remote.File,
+                        context.CancellationToken)
+                    .ConfigureAwait(false);
                 return;
             }
 
-            if (local is not null
-                && remote is not null
-                && IsLocalOnlineOnlyPlaceholderBaseline(syncPair, local, state))
+            await PreserveConflictAsync(
+                    context.SyncPair,
+                    context.Options,
+                    context.Result,
+                    context.RelativePath,
+                    context.Local,
+                    context.Remote.File,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        private async Task<bool> TryReconcileConvergedFileAsync(SyncFileReconciliationContext context)
+        {
+            if (context.Local is null
+                || context.Remote is null
+                || !ContentMatches(context.Local.ContentHash, context.Remote.File.ContentHash))
             {
-                if (remoteChanged)
-                {
-                    await MaterializeRemoteOnlyFileAsync(
-                            syncPair,
-                            options,
-                            result,
-                            relativePath,
-                            remote.File,
-                            cancellationToken,
-                            state.PlaceholderHydrationState)
+                return false;
+            }
+
+            if (!BaselineMatchesCurrentFile(
+                    context.SyncPair,
+                    context.RelativePath,
+                    context.State,
+                    context.Local,
+                    context.Remote.File))
+            {
+                await _stateStore.UpsertAsync(
+                        BuildBaseline(
+                            context.SyncPair,
+                            context.RelativePath,
+                            context.Local.ContentHash,
+                            context.Local.LastWriteUtc,
+                            context.Local.SizeBytes,
+                            context.Remote.File),
+                        context.CancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (ShouldFinalizeConvergedLocalFile(context.SyncPair, context.Local))
+            {
+                Report(
+                    context.Result,
+                    context.Options,
+                    SyncActivityKind.Converged,
+                    context.RelativePath,
+                    "Local and remote content are synchronized.");
+            }
+
+            return true;
+        }
+
+        private async Task ReconcileTrackedFileChangeAsync(
+            SyncFileReconciliationContext context,
+            SyncFileChangeKind changeKind)
+        {
+            switch (changeKind)
+            {
+                case SyncFileChangeKind.None:
+                    return;
+                case SyncFileChangeKind.DeleteState:
+                    await _stateStore.DeleteAsync(
+                            context.SyncPair.SyncPairId,
+                            context.RelativePath,
+                            context.CancellationToken)
                         .ConfigureAwait(false);
-                }
-
-                return;
-            }
-
-            if (local is not null
-                && remote is not null
-                && IsOnlineOnlyPlaceholderBaseline(syncPair, state))
-            {
-                if (ContentMatches(local.ContentHash, remote.File.ContentHash))
-                {
-                    await _stateStore.UpsertAsync(
-                            BuildHydratedPlaceholderBaseline(syncPair, relativePath, local, remote.File, state),
-                            cancellationToken)
+                    return;
+                case SyncFileChangeKind.DeleteLocal:
+                    await DeleteLocalAsync(
+                            context.SyncPair,
+                            context.Options,
+                            context.Result,
+                            context.DeleteGuard,
+                            context.RelativePath,
+                            context.CancellationToken)
                         .ConfigureAwait(false);
-                    Report(
-                        result,
-                        options,
-                        SyncActivityKind.Converged,
-                        relativePath,
-                        "Hydrated placeholder content matches the remote file.");
                     return;
-                }
-
-                if (!remoteChanged)
-                {
-                    await UploadAsync(syncPair, options, result, relativePath, local, remote.File, cancellationToken).ConfigureAwait(false);
-                    return;
-                }
-
-                await PreserveConflictAsync(syncPair, options, result, relativePath, local, remote.File, cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            if (local is not null && remote is not null && ContentMatches(local.ContentHash, remote.File.ContentHash))
-            {
-                if (!BaselineMatchesCurrentFile(syncPair, relativePath, state, local, remote.File))
-                {
-                    await _stateStore.UpsertAsync(BuildBaseline(syncPair, relativePath, local.ContentHash, local.LastWriteUtc, local.SizeBytes, remote.File), cancellationToken)
+                case SyncFileChangeKind.DeleteRemote:
+                    await DeleteRemoteAsync(
+                            context.SyncPair,
+                            context.Options,
+                            context.Result,
+                            context.DeleteGuard,
+                            context.RelativePath,
+                            context.Remote!.File,
+                            context.CancellationToken)
                         .ConfigureAwait(false);
-                }
-
-                if (ShouldFinalizeConvergedLocalFile(syncPair, local))
-                {
-                    Report(
-                        result,
-                        options,
-                        SyncActivityKind.Converged,
-                        relativePath,
-                        "Local and remote content are synchronized.");
-                }
-
-                return;
-            }
-
-            if (baselineDiverged)
-            {
-                if (!localDeleted && !remoteDeleted && !localChanged && !remoteChanged)
-                {
                     return;
-                }
-
-                await PreserveConflictAsync(syncPair, options, result, relativePath, local, remote?.File, cancellationToken).ConfigureAwait(false);
-                return;
+                case SyncFileChangeKind.Upload:
+                    await UploadAsync(
+                            context.SyncPair,
+                            context.Options,
+                            context.Result,
+                            context.RelativePath,
+                            context.Local!,
+                            context.Remote?.File,
+                            context.CancellationToken)
+                        .ConfigureAwait(false);
+                    return;
+                case SyncFileChangeKind.Download:
+                    await DownloadAsync(
+                            context.SyncPair,
+                            context.Options,
+                            context.Result,
+                            context.RelativePath,
+                            context.Remote!.File,
+                            context.CancellationToken)
+                        .ConfigureAwait(false);
+                    return;
+                case SyncFileChangeKind.Conflict:
+                    await PreserveConflictAsync(
+                            context.SyncPair,
+                            context.Options,
+                            context.Result,
+                            context.RelativePath,
+                            context.Local,
+                            context.Remote?.File,
+                            context.CancellationToken)
+                        .ConfigureAwait(false);
+                    return;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(changeKind), changeKind, null);
             }
-
-            if (!localDeleted && !remoteDeleted && !localChanged && !remoteChanged)
-            {
-                return;
-            }
-
-            if (localDeleted && remoteDeleted)
-            {
-                await _stateStore.DeleteAsync(syncPair.SyncPairId, relativePath, cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            if (localDeleted && !remoteChanged && remote is not null)
-            {
-                await DeleteRemoteAsync(syncPair, options, result, deleteGuard, relativePath, remote.File, cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            if (remoteDeleted && !localChanged && local is not null)
-            {
-                await DeleteLocalAsync(syncPair, options, result, deleteGuard, relativePath, cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            if (localDeleted && remoteChanged && remote is not null)
-            {
-                await PreserveConflictAsync(syncPair, options, result, relativePath, null, remote.File, cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            if (remoteDeleted && localChanged && local is not null)
-            {
-                await PreserveConflictAsync(syncPair, options, result, relativePath, local, null, cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            if (localChanged && !remoteChanged && local is not null)
-            {
-                await UploadAsync(syncPair, options, result, relativePath, local, remote?.File, cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            if (remoteChanged && !localChanged && remote is not null)
-            {
-                await DownloadAsync(syncPair, options, result, relativePath, remote.File, cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            await PreserveConflictAsync(syncPair, options, result, relativePath, local, remote?.File, cancellationToken).ConfigureAwait(false);
         }
 
         private async Task CoalesceLocalFileMovesAsync(
