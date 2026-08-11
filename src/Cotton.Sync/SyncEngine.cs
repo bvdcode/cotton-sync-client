@@ -2879,6 +2879,42 @@ namespace Cotton.Sync
             HashSet<string> sourceFileKeys = localFilesByPath.Keys
                 .Where(key => IsSameOrDescendantPathKey(key, candidate.SourceKey))
                 .ToHashSet(PathComparer);
+            rejectionReason = FindRemoteDirectoryMoveLocalCollision(
+                candidate,
+                sourceDirectoryKeys,
+                sourceFileKeys,
+                localDirectoriesByPath,
+                localFilesByPath);
+            if (rejectionReason is not null)
+            {
+                return false;
+            }
+
+            rejectionReason = ValidateTrackedRemoteDirectoryMoveDirectories(
+                candidate,
+                directoryStateByPath,
+                localDirectoriesByPath,
+                remoteDirectoriesById);
+            if (rejectionReason is not null)
+            {
+                return false;
+            }
+
+            rejectionReason = ValidateTrackedRemoteDirectoryMoveFiles(
+                candidate,
+                fileStateByPath,
+                localFilesByPath,
+                remoteFilesById);
+            return rejectionReason is null;
+        }
+
+        private static string? FindRemoteDirectoryMoveLocalCollision(
+            RemoteDirectoryMoveCandidate candidate,
+            IReadOnlySet<string> sourceDirectoryKeys,
+            IReadOnlySet<string> sourceFileKeys,
+            IDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath,
+            IDictionary<string, LocalFileSnapshot> localFilesByPath)
+        {
             foreach (string sourceKey in sourceDirectoryKeys)
             {
                 LocalDirectorySnapshot local = localDirectoriesByPath[sourceKey];
@@ -2887,8 +2923,7 @@ namespace Cotton.Sync
                 if ((localDirectoriesByPath.ContainsKey(targetKey) && !sourceDirectoryKeys.Contains(targetKey))
                     || (localFilesByPath.ContainsKey(targetKey) && !sourceFileKeys.Contains(targetKey)))
                 {
-                    rejectionReason = $"the target path '{targetPath}' collides with an existing local item";
-                    return false;
+                    return $"the target path '{targetPath}' collides with an existing local item";
                 }
             }
 
@@ -2900,32 +2935,37 @@ namespace Cotton.Sync
                 if ((localFilesByPath.ContainsKey(targetKey) && !sourceFileKeys.Contains(targetKey))
                     || (localDirectoriesByPath.ContainsKey(targetKey) && !sourceDirectoryKeys.Contains(targetKey)))
                 {
-                    rejectionReason = $"the target path '{targetPath}' collides with an existing local item";
-                    return false;
+                    return $"the target path '{targetPath}' collides with an existing local item";
                 }
             }
 
+            return null;
+        }
+
+        private static string? ValidateTrackedRemoteDirectoryMoveDirectories(
+            RemoteDirectoryMoveCandidate candidate,
+            IDictionary<string, SyncStateEntry> directoryStateByPath,
+            IDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath,
+            IReadOnlyDictionary<Guid, RemoteDirectorySnapshot> remoteDirectoriesById)
+        {
             foreach (KeyValuePair<string, SyncStateEntry> entry in directoryStateByPath
                          .Where(entry => IsSameOrDescendantPathKey(entry.Key, candidate.SourceKey)))
             {
                 if (!localDirectoriesByPath.ContainsKey(entry.Key))
                 {
-                    rejectionReason = $"tracked directory '{entry.Value.RelativePath}' is absent from the local snapshot";
-                    return false;
+                    return $"tracked directory '{entry.Value.RelativePath}' is absent from the local snapshot";
                 }
 
                 if (!entry.Value.RemoteNodeId.HasValue)
                 {
-                    rejectionReason = $"tracked directory '{entry.Value.RelativePath}' has no remote node id";
-                    return false;
+                    return $"tracked directory '{entry.Value.RelativePath}' has no remote node id";
                 }
 
                 if (!remoteDirectoriesById.TryGetValue(
                         entry.Value.RemoteNodeId.Value,
                         out RemoteDirectorySnapshot? remote))
                 {
-                    rejectionReason = $"tracked directory '{entry.Value.RelativePath}' is absent from the remote snapshot by id";
-                    return false;
+                    return $"tracked directory '{entry.Value.RelativePath}' is absent from the remote snapshot by id";
                 }
 
                 string expectedRemotePath = ReplacePathPrefix(
@@ -2934,30 +2974,35 @@ namespace Cotton.Sync
                     candidate.TargetPath);
                 if (!string.Equals(remote.RelativePath, expectedRemotePath, StringComparison.Ordinal))
                 {
-                    rejectionReason = $"tracked directory '{entry.Value.RelativePath}' maps to remote path '{remote.RelativePath}' instead of '{expectedRemotePath}'";
-                    return false;
+                    return $"tracked directory '{entry.Value.RelativePath}' maps to remote path '{remote.RelativePath}' instead of '{expectedRemotePath}'";
                 }
             }
 
+            return null;
+        }
+
+        private static string? ValidateTrackedRemoteDirectoryMoveFiles(
+            RemoteDirectoryMoveCandidate candidate,
+            IDictionary<string, SyncStateEntry> fileStateByPath,
+            IDictionary<string, LocalFileSnapshot> localFilesByPath,
+            IReadOnlyDictionary<Guid, RemoteFileSnapshot> remoteFilesById)
+        {
             foreach (KeyValuePair<string, SyncStateEntry> entry in fileStateByPath
                          .Where(entry => IsSameOrDescendantPathKey(entry.Key, candidate.SourceKey)))
             {
                 if (!localFilesByPath.ContainsKey(entry.Key))
                 {
-                    rejectionReason = $"tracked file '{entry.Value.RelativePath}' is absent from the local snapshot";
-                    return false;
+                    return $"tracked file '{entry.Value.RelativePath}' is absent from the local snapshot";
                 }
 
                 if (!entry.Value.RemoteFileId.HasValue)
                 {
-                    rejectionReason = $"tracked file '{entry.Value.RelativePath}' has no remote file id";
-                    return false;
+                    return $"tracked file '{entry.Value.RelativePath}' has no remote file id";
                 }
 
                 if (!remoteFilesById.TryGetValue(entry.Value.RemoteFileId.Value, out RemoteFileSnapshot? remote))
                 {
-                    rejectionReason = $"tracked file '{entry.Value.RelativePath}' is absent from the remote snapshot by id";
-                    return false;
+                    return $"tracked file '{entry.Value.RelativePath}' is absent from the remote snapshot by id";
                 }
 
                 string expectedRemotePath = ReplacePathPrefix(
@@ -2966,13 +3011,11 @@ namespace Cotton.Sync
                     candidate.TargetPath);
                 if (!string.Equals(remote.RelativePath, expectedRemotePath, StringComparison.Ordinal))
                 {
-                    rejectionReason = $"tracked file '{entry.Value.RelativePath}' maps to remote path '{remote.RelativePath}' instead of '{expectedRemotePath}'";
-                    return false;
+                    return $"tracked file '{entry.Value.RelativePath}' maps to remote path '{remote.RelativePath}' instead of '{expectedRemotePath}'";
                 }
             }
 
-            rejectionReason = null;
-            return true;
+            return null;
         }
 
         private static void MoveLocalDirectoryLookups(
@@ -3449,14 +3492,7 @@ namespace Cotton.Sync
                 || DirectoryHasFileSystemEntries(local.FullPath);
             if (isNotEmpty)
             {
-                if (CanDeferConfirmedRemoteDeletedDirectory(
-                        key,
-                        context.LocalByPath,
-                        context.RemoteByPath,
-                        context.StateByPath,
-                        context.LocalFilesByPath,
-                        context.RemoteFilesByPath,
-                        context.FileStateByPath))
+                if (CanDeferConfirmedRemoteDeletedDirectory(context, key))
                 {
                     return;
                 }
@@ -3483,40 +3519,59 @@ namespace Cotton.Sync
         }
 
         private static bool CanDeferConfirmedRemoteDeletedDirectory(
-            string directoryKey,
-            IReadOnlyDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath,
-            IReadOnlyDictionary<string, RemoteDirectorySnapshot> remoteDirectoriesByPath,
-            IReadOnlyDictionary<string, SyncStateEntry> directoryStateByPath,
-            IReadOnlyDictionary<string, LocalFileSnapshot> localFilesByPath,
-            IReadOnlyDictionary<string, RemoteFileSnapshot> remoteFilesByPath,
-            IReadOnlyDictionary<string, SyncStateEntry> fileStateByPath)
+            DirectoryDeleteContext context,
+            string directoryKey)
         {
-            if (!localDirectoriesByPath.TryGetValue(directoryKey, out LocalDirectorySnapshot? rootDirectory))
+            if (!context.LocalByPath.TryGetValue(directoryKey, out LocalDirectorySnapshot? rootDirectory))
             {
                 return false;
             }
 
-            foreach (string childDirectoryKey in localDirectoriesByPath.Keys
+            return !HasBlockingTrackedDirectoryDescendant(context, directoryKey)
+                && !HasBlockingTrackedFileDescendant(context, directoryKey)
+                && !HasUnknownFileSystemDirectory(rootDirectory, context.LocalByPath)
+                && !HasUnknownFileSystemFile(rootDirectory, context.LocalFilesByPath);
+        }
+
+        private static bool HasBlockingTrackedDirectoryDescendant(
+            DirectoryDeleteContext context,
+            string directoryKey)
+        {
+            foreach (string childDirectoryKey in context.LocalByPath.Keys
                          .Where(key => !PathComparer.Equals(key, directoryKey)
                              && IsSameOrDescendantPathKey(key, directoryKey)))
             {
-                if (!directoryStateByPath.ContainsKey(childDirectoryKey)
-                    || remoteDirectoriesByPath.ContainsKey(childDirectoryKey))
+                if (!context.StateByPath.ContainsKey(childDirectoryKey)
+                    || context.RemoteByPath.ContainsKey(childDirectoryKey))
                 {
-                    return false;
+                    return true;
                 }
             }
 
-            foreach (string childFileKey in localFilesByPath.Keys
+            return false;
+        }
+
+        private static bool HasBlockingTrackedFileDescendant(
+            DirectoryDeleteContext context,
+            string directoryKey)
+        {
+            foreach (string childFileKey in context.LocalFilesByPath.Keys
                          .Where(key => IsSameOrDescendantPathKey(key, directoryKey)))
             {
-                if (!fileStateByPath.ContainsKey(childFileKey)
-                    || remoteFilesByPath.ContainsKey(childFileKey))
+                if (!context.FileStateByPath.ContainsKey(childFileKey)
+                    || context.RemoteFilesByPath.ContainsKey(childFileKey))
                 {
-                    return false;
+                    return true;
                 }
             }
 
+            return false;
+        }
+
+        private static bool HasUnknownFileSystemDirectory(
+            LocalDirectorySnapshot rootDirectory,
+            IReadOnlyDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath)
+        {
             foreach (string childDirectoryPath in Directory.EnumerateDirectories(
                          rootDirectory.FullPath,
                          "*",
@@ -3528,10 +3583,17 @@ namespace Cotton.Sync
                 if (!SyncPathIgnoreRules.ShouldIgnore(relativePath)
                     && !localDirectoriesByPath.ContainsKey(SyncPath.ToKey(relativePath)))
                 {
-                    return false;
+                    return true;
                 }
             }
 
+            return false;
+        }
+
+        private static bool HasUnknownFileSystemFile(
+            LocalDirectorySnapshot rootDirectory,
+            IReadOnlyDictionary<string, LocalFileSnapshot> localFilesByPath)
+        {
             foreach (string childFilePath in Directory.EnumerateFiles(
                          rootDirectory.FullPath,
                          "*",
@@ -3543,11 +3605,11 @@ namespace Cotton.Sync
                 if (!SyncPathIgnoreRules.ShouldIgnore(relativePath)
                     && !localFilesByPath.ContainsKey(SyncPath.ToKey(relativePath)))
                 {
-                    return false;
+                    return true;
                 }
             }
 
-            return true;
+            return false;
         }
 
         private static string CombineRelativePath(string parentPath, string childPath)
@@ -6608,12 +6670,6 @@ namespace Cotton.Sync
         }
 
         private readonly record struct MoveCandidateKey(string ContentHash, long SizeBytes);
-
-        private readonly record struct RemoteDirectoryMoveCandidate(
-            string SourcePath,
-            string TargetPath,
-            string SourceKey,
-            string TargetKey);
 
         private readonly record struct RemoteDirectoryCreationResult(NodeDto Node, bool ReusedExisting);
 
