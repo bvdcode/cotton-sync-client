@@ -8,12 +8,14 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_PreparesIsolatedQaDriveBeforeCloudFilesSmoke()
         {
+            string entryPoint = File.ReadAllText(
+                GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
             string runner = ReadSmokeRunnerSources();
-            int preparationIndex = runner.IndexOf(
+            int preparationIndex = entryPoint.IndexOf(
                 "PrepareSmokeRootEnvironmentAsync(rootPath",
                 StringComparison.Ordinal);
-            int diagnosticsIndex = runner.IndexOf(
-                "new WindowsCloudFilesDiagnostics()",
+            int diagnosticsIndex = entryPoint.IndexOf(
+                "WindowsCloudFilesDiagnostics diagnostics = new();",
                 StringComparison.Ordinal);
 
             Assert.Multiple(() =>
