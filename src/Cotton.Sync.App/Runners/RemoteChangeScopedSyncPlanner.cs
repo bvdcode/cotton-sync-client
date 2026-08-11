@@ -339,14 +339,14 @@ namespace Cotton.Sync.App.Runners
             HashSet<string> paths,
             bool hasAdditionalRelation = false)
         {
-            bool currentResolved = currentStatus == RemoteNamedPathStatus.Resolved && currentPath is not null;
-            bool previousResolved = previousStatus == RemoteNamedPathStatus.Resolved && previousPath is not null;
-            bool hasRelation = hasAdditionalRelation
-                || hasExistingPath
-                || currentStatus != RemoteNamedPathStatus.UnknownParent
-                || previousStatus != RemoteNamedPathStatus.UnknownParent;
-            bool hasIgnoredPath = currentStatus == RemoteNamedPathStatus.Ignored
-                || previousStatus == RemoteNamedPathStatus.Ignored;
+            bool currentResolved = IsResolvedPath(currentStatus, currentPath);
+            bool previousResolved = IsResolvedPath(previousStatus, previousPath);
+            bool hasRelation = HasRemotePathRelation(
+                hasAdditionalRelation,
+                hasExistingPath,
+                currentStatus,
+                previousStatus);
+            bool hasIgnoredPath = HasIgnoredRemotePath(currentStatus, previousStatus);
 
             switch (action)
             {
@@ -384,6 +384,31 @@ namespace Cotton.Sync.App.Runners
                 default:
                     throw new ArgumentOutOfRangeException(nameof(action), action, "Unsupported remote change action.");
             }
+        }
+
+        private static bool IsResolvedPath(RemoteNamedPathStatus status, string? path)
+        {
+            return status == RemoteNamedPathStatus.Resolved && path is not null;
+        }
+
+        private static bool HasRemotePathRelation(
+            bool hasAdditionalRelation,
+            bool hasExistingPath,
+            RemoteNamedPathStatus currentStatus,
+            RemoteNamedPathStatus previousStatus)
+        {
+            return hasAdditionalRelation
+                || hasExistingPath
+                || currentStatus != RemoteNamedPathStatus.UnknownParent
+                || previousStatus != RemoteNamedPathStatus.UnknownParent;
+        }
+
+        private static bool HasIgnoredRemotePath(
+            RemoteNamedPathStatus currentStatus,
+            RemoteNamedPathStatus previousStatus)
+        {
+            return currentStatus == RemoteNamedPathStatus.Ignored
+                || previousStatus == RemoteNamedPathStatus.Ignored;
         }
 
         private static RemoteChangePathDisposition ResolveCreatedOrRestoredPath(

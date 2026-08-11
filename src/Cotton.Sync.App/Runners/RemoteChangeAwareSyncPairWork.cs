@@ -66,51 +66,67 @@ namespace Cotton.Sync.App.Runners
                 return;
             }
 
-            bool skippedInnerSync = CanSkipInnerSync(syncPair, effectiveRequest, remoteRead);
-            InnerRequestPlan? innerPlan = null;
-            if (!skippedInnerSync)
-            {
-                innerPlan = await CreateInnerRequestAsync(
-                        syncPair,
-                        effectiveRequest,
-                        remoteRead,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                if (innerPlan.Request is not null)
-                {
-                    await RunInnerAsync(syncPair, innerPlan.Request, cancellationToken).ConfigureAwait(false);
-                }
-
-                if (!innerPlan.RemoteChangesCovered)
-                {
-                    if (innerPlan.Request is null)
-                    {
-                        throw CreateUnresolvedRemotePathException();
-                    }
-
-                    SyncRunRequest? replayRequest = await CreateRemoteReplayRequestAsync(
-                            syncPair,
-                            effectiveRequest,
-                            remoteRead,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                    if (replayRequest is not null)
-                    {
-                        await RunInnerAsync(syncPair, replayRequest, cancellationToken).ConfigureAwait(false);
-                    }
-
-                    innerPlan = new InnerRequestPlan(replayRequest, RemoteChangesCovered: true);
-                }
-            }
+            InnerRequestPlan innerPlan = await ExecuteInnerPlanAsync(
+                    syncPair,
+                    effectiveRequest,
+                    remoteRead,
+                    cancellationToken)
+                .ConfigureAwait(false);
 
             if (ShouldAcknowledgeRemoteBatch(
                     syncPair,
                     remoteRead,
-                    innerPlan?.RemoteChangesCovered ?? true,
-                    innerPlan?.Request?.IsFull == true))
+                    innerPlan.RemoteChangesCovered,
+                    innerPlan.Request?.IsFull == true))
             {
                 await _remoteChanges.AcknowledgeAsync(remoteBatch, cancellationToken).ConfigureAwait(false);
             }
+        }
+
+        private async Task<InnerRequestPlan> ExecuteInnerPlanAsync(
+            SyncPairSettings syncPair,
+            SyncRunRequest request,
+            RemoteChangeFeedReadResult remoteRead,
+            CancellationToken cancellationToken)
+        {
+            if (CanSkipInnerSync(syncPair, request, remoteRead))
+            {
+                return new InnerRequestPlan(null, RemoteChangesCovered: true);
+            }
+
+            InnerRequestPlan innerPlan = await CreateInnerRequestAsync(
+                    syncPair,
+                    request,
+                    remoteRead,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (innerPlan.Request is not null)
+            {
+                await RunInnerAsync(syncPair, innerPlan.Request, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (innerPlan.RemoteChangesCovered)
+            {
+                return innerPlan;
+            }
+
+            if (innerPlan.Request is null)
+            {
+                throw CreateUnresolvedRemotePathException();
+            }
+
+            SyncRunRequest? replayRequest = await CreateRemoteReplayRequestAsync(
+                    syncPair,
+                    request,
+                    remoteRead,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (replayRequest is not null)
+            {
+                await RunInnerAsync(syncPair, replayRequest, cancellationToken).ConfigureAwait(false);
+            }
+
+            return new InnerRequestPlan(replayRequest, RemoteChangesCovered: true);
         }
 
         private async Task<SyncRunRequest> AddPendingFullReconcileCauseAsync(

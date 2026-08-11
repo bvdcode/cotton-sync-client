@@ -61,13 +61,21 @@ namespace Cotton.Sync.App.SyncApplication
             ISyncPairDeletionHandler? syncPairDeletionHandler = null,
             ILogger<SyncApplicationService>? logger = null)
         {
-            _syncPairs = syncPairs ?? throw new ArgumentNullException(nameof(syncPairs));
-            _prerequisites = prerequisites ?? throw new ArgumentNullException(nameof(prerequisites));
-            _preferences = preferences ?? throw new ArgumentNullException(nameof(preferences));
-            _authFlow = authFlow ?? throw new ArgumentNullException(nameof(authFlow));
-            _appCodeBrowserAuthFlow = appCodeBrowserAuthFlow ?? throw new ArgumentNullException(nameof(appCodeBrowserAuthFlow));
-            _supervisor = supervisor ?? throw new ArgumentNullException(nameof(supervisor));
-            _platformCommands = platformCommands ?? throw new ArgumentNullException(nameof(platformCommands));
+            ArgumentNullException.ThrowIfNull(syncPairs);
+            ArgumentNullException.ThrowIfNull(prerequisites);
+            ArgumentNullException.ThrowIfNull(preferences);
+            ArgumentNullException.ThrowIfNull(authFlow);
+            ArgumentNullException.ThrowIfNull(appCodeBrowserAuthFlow);
+            ArgumentNullException.ThrowIfNull(supervisor);
+            ArgumentNullException.ThrowIfNull(platformCommands);
+
+            _syncPairs = syncPairs;
+            _prerequisites = prerequisites;
+            _preferences = preferences;
+            _authFlow = authFlow;
+            _appCodeBrowserAuthFlow = appCodeBrowserAuthFlow;
+            _supervisor = supervisor;
+            _platformCommands = platformCommands;
             _localChanges = localChanges ?? NullLocalChangeSyncCoordinator.Instance;
             _remoteChanges = remoteChanges ?? NullRemoteChangeSyncCoordinator.Instance;
             _periodicSync = periodicSync ?? NullPeriodicSyncCoordinator.Instance;
