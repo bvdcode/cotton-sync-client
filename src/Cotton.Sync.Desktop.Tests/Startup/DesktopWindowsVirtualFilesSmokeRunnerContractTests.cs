@@ -275,7 +275,10 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             Assert.Multiple(() =>
             {
                 Assert.That(runner, Does.Contain("\"explorer-always-keep-missing-placeholder\""));
-                Assert.That(runner, Does.Contain("restoreMissingPlaceholder: true"));
+                Assert.That(
+                    runner,
+                    Does.Contain(
+                        "context.Phase == WindowsVirtualFilesSmokePhase.ExplorerAlwaysKeepMissingPlaceholder"));
                 Assert.That(runner, Does.Contain("Tracked placeholder was removed before Explorer Always keep recovery."));
                 Assert.That(runner, Does.Contain("Always keep restored the missing tracked placeholder before hydration."));
                 Assert.That(runner, Does.Contain("\"manual-always-keep-placeholder-repair\""));
