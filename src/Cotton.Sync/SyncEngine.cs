@@ -3668,36 +3668,17 @@ namespace Cotton.Sync
             bool blockLocalOnlyUploads,
             CancellationToken cancellationToken)
         {
-            if (syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
-                && local is { IsCloudFilesOnlineOnlyPlaceholder: true }
-                && remote is not null)
+            if (local is not null && remote is null)
             {
-                await MaterializeRemoteOnlyFileAsync(
+                await ReconcileLocalOnlyWithoutBaselineAsync(
                         syncPair,
                         options,
                         result,
                         relativePath,
-                        remote.File,
+                        local,
+                        blockLocalOnlyUploads,
                         cancellationToken)
                     .ConfigureAwait(false);
-
-                return;
-            }
-
-            if (local is not null && remote is null)
-            {
-                if (blockLocalOnlyUploads)
-                {
-                    Report(
-                        result,
-                        options,
-                        SyncActivityKind.Skipped,
-                        relativePath,
-                        "Local upload skipped because a Windows virtual-files placeholder change in the same sync pass requires review.");
-                    return;
-                }
-
-                await UploadAsync(syncPair, options, result, relativePath, local, null, cancellationToken).ConfigureAwait(false);
                 return;
             }
 
@@ -3710,25 +3691,91 @@ namespace Cotton.Sync
 
             if (local is not null && remote is not null)
             {
-                await EnsureLocalContentHashAsync(local, options, cancellationToken).ConfigureAwait(false);
-                if (ContentMatches(local.ContentHash, remote.File.ContentHash))
-                {
-                    await _stateStore.UpsertAsync(BuildBaseline(syncPair, relativePath, local.ContentHash, local.LastWriteUtc, local.SizeBytes, remote.File), cancellationToken)
-                        .ConfigureAwait(false);
-                    if (ShouldFinalizeConvergedLocalFile(syncPair, local))
-                    {
-                        Report(
-                            result,
-                            options,
-                            SyncActivityKind.Converged,
-                            relativePath,
-                            "Local and remote content already matched.");
-                    }
+                await ReconcileLocalAndRemoteWithoutBaselineAsync(
+                        syncPair,
+                        options,
+                        result,
+                        relativePath,
+                        local,
+                        remote.File,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
 
-                    return;
-                }
+        private async Task ReconcileLocalOnlyWithoutBaselineAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            SyncRunResult result,
+            string relativePath,
+            LocalFileSnapshot local,
+            bool blockLocalOnlyUploads,
+            CancellationToken cancellationToken)
+        {
+            if (blockLocalOnlyUploads)
+            {
+                Report(
+                    result,
+                    options,
+                    SyncActivityKind.Skipped,
+                    relativePath,
+                    "Local upload skipped because a Windows virtual-files placeholder change in the same sync pass requires review.");
+                return;
+            }
 
-                await PreserveConflictAsync(syncPair, options, result, relativePath, local, remote.File, cancellationToken).ConfigureAwait(false);
+            await UploadAsync(syncPair, options, result, relativePath, local, null, cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task ReconcileLocalAndRemoteWithoutBaselineAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            SyncRunResult result,
+            string relativePath,
+            LocalFileSnapshot local,
+            NodeFileManifestDto remoteFile,
+            CancellationToken cancellationToken)
+        {
+            if (syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
+                && local.IsCloudFilesOnlineOnlyPlaceholder)
+            {
+                await MaterializeRemoteOnlyFileAsync(
+                        syncPair,
+                        options,
+                        result,
+                        relativePath,
+                        remoteFile,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            await EnsureLocalContentHashAsync(local, options, cancellationToken).ConfigureAwait(false);
+            if (!ContentMatches(local.ContentHash, remoteFile.ContentHash))
+            {
+                await PreserveConflictAsync(
+                        syncPair,
+                        options,
+                        result,
+                        relativePath,
+                        local,
+                        remoteFile,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            await _stateStore.UpsertAsync(
+                    BuildBaseline(syncPair, relativePath, local.ContentHash, local.LastWriteUtc, local.SizeBytes, remoteFile),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (ShouldFinalizeConvergedLocalFile(syncPair, local))
+            {
+                Report(
+                    result,
+                    options,
+                    SyncActivityKind.Converged,
+                    relativePath,
+                    "Local and remote content already matched.");
             }
         }
 
@@ -4724,10 +4771,41 @@ namespace Cotton.Sync
             }
 
             await EnsureLocalContentHashAsync(local, options, cancellationToken).ConfigureAwait(false);
-            NodeFileManifestDto uploaded;
+            NodeFileManifestDto? uploaded = await TryUploadWithConflictHandlingAsync(
+                    syncPair,
+                    options,
+                    result,
+                    relativePath,
+                    local,
+                    existingRemoteFile,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (uploaded is null)
+            {
+                return;
+            }
+
+            string localContentHash = ResolveUploadedLocalContentHash(local, uploaded);
+            local.ContentHash = localContentHash;
+            await _stateStore.UpsertAsync(
+                    BuildBaseline(syncPair, relativePath, localContentHash, local.LastWriteUtc, local.SizeBytes, uploaded),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            Report(result, options, SyncActivityKind.Uploaded, relativePath, null);
+        }
+
+        private async Task<NodeFileManifestDto?> TryUploadWithConflictHandlingAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            SyncRunResult result,
+            string relativePath,
+            LocalFileSnapshot local,
+            NodeFileManifestDto? existingRemoteFile,
+            CancellationToken cancellationToken)
+        {
             try
             {
-                uploaded = await UploadFileWithProgressAsync(
+                return await UploadFileWithProgressAsync(
                     syncPair.RemoteRootNodeId,
                     relativePath,
                     local,
@@ -4744,50 +4822,70 @@ namespace Cotton.Sync
                     result,
                     relativePath,
                     local,
-                    latestRemoteFile ?? existingRemoteFile,
-                    cancellationToken).ConfigureAwait(false);
-                return;
+                        latestRemoteFile ?? existingRemoteFile,
+                        cancellationToken).ConfigureAwait(false);
+                return null;
             }
             catch (HttpRequestException exception) when (existingRemoteFile is null && IsRemoteConflict(exception))
             {
-                NodeFileManifestDto? latestRemoteFile = await FindLatestRemoteFileAsync(syncPair, relativePath, cancellationToken).ConfigureAwait(false);
+                NodeFileManifestDto? latestRemoteFile = await FindLatestRemoteFileAsync(
+                        syncPair,
+                        relativePath,
+                        cancellationToken)
+                    .ConfigureAwait(false);
                 if (latestRemoteFile is null)
                 {
                     throw;
                 }
 
-                if (!ContentMatches(local.ContentHash, latestRemoteFile.ContentHash)
-                    || local.SizeBytes != latestRemoteFile.SizeBytes)
-                {
-                    await PreserveConflictAsync(
+                return await ResolveRemoteCreateConflictAsync(
                         syncPair,
                         options,
                         result,
                         relativePath,
                         local,
                         latestRemoteFile,
-                        cancellationToken).ConfigureAwait(false);
-                    return;
-                }
-
-                uploaded = latestRemoteFile;
-                _logger.LogInformation(
-                    "Remote file create for {RelativePath} hit conflict after matching content was committed; reusing file {RemoteFileId}.",
-                    relativePath,
-                    uploaded.Id);
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
             catch (LocalFileUnavailableException exception)
             {
                 Report(result, options, SyncActivityKind.Skipped, relativePath, exception.Reason);
                 result.RecordDeferredLocalPath(relativePath);
-                return;
+                return null;
+            }
+        }
+
+        private async Task<NodeFileManifestDto?> ResolveRemoteCreateConflictAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            SyncRunResult result,
+            string relativePath,
+            LocalFileSnapshot local,
+            NodeFileManifestDto latestRemoteFile,
+            CancellationToken cancellationToken)
+        {
+            bool contentMatches = ContentMatches(local.ContentHash, latestRemoteFile.ContentHash)
+                && local.SizeBytes == latestRemoteFile.SizeBytes;
+            if (!contentMatches)
+            {
+                await PreserveConflictAsync(
+                        syncPair,
+                        options,
+                        result,
+                        relativePath,
+                        local,
+                        latestRemoteFile,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                return null;
             }
 
-            string localContentHash = ResolveUploadedLocalContentHash(local, uploaded);
-            local.ContentHash = localContentHash;
-            await _stateStore.UpsertAsync(BuildBaseline(syncPair, relativePath, localContentHash, local.LastWriteUtc, local.SizeBytes, uploaded), cancellationToken)
-                .ConfigureAwait(false);
-            Report(result, options, SyncActivityKind.Uploaded, relativePath, null);
+            _logger.LogInformation(
+                "Remote file create for {RelativePath} hit conflict after matching content was committed; reusing file {RemoteFileId}.",
+                relativePath,
+                latestRemoteFile.Id);
+            return latestRemoteFile;
         }
 
         private async Task DownloadAsync(
@@ -4968,88 +5066,216 @@ namespace Cotton.Sync
             string? details = null;
             if (local is not null && remoteFile is not null)
             {
-                await EnsureLocalContentHashAsync(local, options, cancellationToken).ConfigureAwait(false);
-                string conflictPath = _localWriter.CreateConflictRelativePath(syncPair.LocalRootPath, relativePath, DateTime.UtcNow);
-                EnsureEnoughLocalFreeSpace(syncPair.LocalRootPath, conflictPath, remoteFile.SizeBytes);
-                if (syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
-                    && _remoteFileMaterializationObserver is not null)
-                {
-                    await _remoteFileMaterializationObserver.BeforeWriteFileAsync(
-                        new RemoteFileMaterializationRequest(
-                            syncPair.SyncPairId,
-                            syncPair.LocalRootPath,
-                            syncPair.RemoteRootNodeId,
-                            conflictPath,
-                            remoteFile),
-                        cancellationToken).ConfigureAwait(false);
-                }
-
-                await _localWriter.WriteFileAsync(
-                    syncPair.LocalRootPath,
-                    conflictPath,
-                    (stream, token) => DownloadAndVerifyFileAsync(remoteFile, relativePath, options, stream, token),
-                    remoteFile.UpdatedAt == default ? null : remoteFile.UpdatedAt,
-                    cancellationToken).ConfigureAwait(false);
-                if (syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
-                    && _remoteFileMaterializationObserver is not null)
-                {
-                    await _remoteFileMaterializationObserver.AfterWriteFileAsync(
-                        new RemoteFileMaterializationRequest(
-                            syncPair.SyncPairId,
-                            syncPair.LocalRootPath,
-                            syncPair.RemoteRootNodeId,
-                            conflictPath,
-                            remoteFile),
-                        cancellationToken).ConfigureAwait(false);
-                }
-
-                details = "Remote version saved as " + conflictPath;
-                await _stateStore.UpsertAsync(BuildBaseline(syncPair, relativePath, local.ContentHash, local.LastWriteUtc, local.SizeBytes, remoteFile), cancellationToken)
+                details = await PreserveDivergedConflictAsync(
+                        syncPair,
+                        options,
+                        relativePath,
+                        local,
+                        remoteFile,
+                        cancellationToken)
                     .ConfigureAwait(false);
             }
             else if (local is not null)
             {
-                NodeFileManifestDto uploaded = await UploadFileWithProgressAsync(
+                details = await PreserveRemoteDeletionConflictAsync(
+                        syncPair,
+                        options,
+                        relativePath,
+                        local,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            else if (remoteFile is not null)
+            {
+                details = await PreserveLocalDeletionConflictAsync(
+                        syncPair,
+                        options,
+                        relativePath,
+                        remoteFile,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            Report(result, options, SyncActivityKind.Conflict, relativePath, details);
+        }
+
+        private async Task<string> PreserveDivergedConflictAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            string relativePath,
+            LocalFileSnapshot local,
+            NodeFileManifestDto remoteFile,
+            CancellationToken cancellationToken)
+        {
+            await EnsureLocalContentHashAsync(local, options, cancellationToken).ConfigureAwait(false);
+            string conflictPath = _localWriter.CreateConflictRelativePath(
+                syncPair.LocalRootPath,
+                relativePath,
+                DateTime.UtcNow);
+            EnsureEnoughLocalFreeSpace(syncPair.LocalRootPath, conflictPath, remoteFile.SizeBytes);
+            await WriteMaterializedRemoteFileAsync(
+                    syncPair,
+                    options,
+                    conflictPath,
+                    relativePath,
+                    remoteFile,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            await _stateStore.UpsertAsync(
+                    BuildBaseline(syncPair, relativePath, local.ContentHash, local.LastWriteUtc, local.SizeBytes, remoteFile),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return "Remote version saved as " + conflictPath;
+        }
+
+        private async Task<string> PreserveRemoteDeletionConflictAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            string relativePath,
+            LocalFileSnapshot local,
+            CancellationToken cancellationToken)
+        {
+            NodeFileManifestDto uploaded = await UploadFileWithProgressAsync(
                     syncPair.RemoteRootNodeId,
                     relativePath,
                     local,
                     null,
                     options,
-                    cancellationToken).ConfigureAwait(false);
-                details = "Remote deletion conflicted with local change; local version was uploaded again.";
-                string localContentHash = ResolveUploadedLocalContentHash(local, uploaded);
-                local.ContentHash = localContentHash;
-                await _stateStore.UpsertAsync(BuildBaseline(syncPair, relativePath, localContentHash, local.LastWriteUtc, local.SizeBytes, uploaded), cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            else if (remoteFile is not null)
-            {
-                EnsureEnoughLocalFreeSpace(syncPair.LocalRootPath, relativePath, remoteFile.SizeBytes);
-                if (syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
-                    && _remoteFileMaterializationObserver is not null)
-                {
-                    await _remoteFileMaterializationObserver.BeforeWriteFileAsync(
-                        new RemoteFileMaterializationRequest(
-                            syncPair.SyncPairId,
-                            syncPair.LocalRootPath,
-                            syncPair.RemoteRootNodeId,
-                            relativePath,
-                            remoteFile),
-                        cancellationToken).ConfigureAwait(false);
-                }
+                    cancellationToken)
+                .ConfigureAwait(false);
+            string localContentHash = ResolveUploadedLocalContentHash(local, uploaded);
+            local.ContentHash = localContentHash;
+            await _stateStore.UpsertAsync(
+                    BuildBaseline(syncPair, relativePath, localContentHash, local.LastWriteUtc, local.SizeBytes, uploaded),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return "Remote deletion conflicted with local change; local version was uploaded again.";
+        }
 
-                await _localWriter.WriteFileAsync(
-                    syncPair.LocalRootPath,
+        private async Task<string> PreserveLocalDeletionConflictAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            string relativePath,
+            NodeFileManifestDto remoteFile,
+            CancellationToken cancellationToken)
+        {
+            EnsureEnoughLocalFreeSpace(syncPair.LocalRootPath, relativePath, remoteFile.SizeBytes);
+            await WriteRemoteFileAfterLocalDeletionAsync(
+                    syncPair,
+                    options,
                     relativePath,
-                    (stream, token) => DownloadAndVerifyFileAsync(remoteFile, relativePath, options, stream, token),
-                    remoteFile.UpdatedAt == default ? null : remoteFile.UpdatedAt,
-                    cancellationToken).ConfigureAwait(false);
-                details = "Local deletion conflicted with remote change; remote version was restored locally.";
-                await _stateStore.UpsertAsync(BuildBaseline(syncPair, relativePath, remoteFile.ContentHash, remoteFile.UpdatedAt, remoteFile.SizeBytes, remoteFile), cancellationToken)
+                    relativePath,
+                    remoteFile,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            await _stateStore.UpsertAsync(
+                    BuildBaseline(
+                        syncPair,
+                        relativePath,
+                        remoteFile.ContentHash,
+                        remoteFile.UpdatedAt,
+                        remoteFile.SizeBytes,
+                        remoteFile),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return "Local deletion conflicted with remote change; remote version was restored locally.";
+        }
+
+        private async Task WriteMaterializedRemoteFileAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            string targetRelativePath,
+            string remoteRelativePath,
+            NodeFileManifestDto remoteFile,
+            CancellationToken cancellationToken)
+        {
+            RemoteFileMaterializationRequest? request = CreateRemoteFileMaterializationRequest(
+                syncPair,
+                targetRelativePath,
+                remoteFile);
+            if (request is not null)
+            {
+                await _remoteFileMaterializationObserver!.BeforeWriteFileAsync(request, cancellationToken)
                     .ConfigureAwait(false);
             }
 
-            Report(result, options, SyncActivityKind.Conflict, relativePath, details);
+            await WriteRemoteFileContentAsync(
+                    syncPair,
+                    options,
+                    targetRelativePath,
+                    remoteRelativePath,
+                    remoteFile,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (request is not null)
+            {
+                await _remoteFileMaterializationObserver!.AfterWriteFileAsync(request, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        private async Task WriteRemoteFileAfterLocalDeletionAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            string targetRelativePath,
+            string remoteRelativePath,
+            NodeFileManifestDto remoteFile,
+            CancellationToken cancellationToken)
+        {
+            RemoteFileMaterializationRequest? request = CreateRemoteFileMaterializationRequest(
+                syncPair,
+                targetRelativePath,
+                remoteFile);
+            if (request is not null)
+            {
+                await _remoteFileMaterializationObserver!.BeforeWriteFileAsync(request, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            await WriteRemoteFileContentAsync(
+                    syncPair,
+                    options,
+                    targetRelativePath,
+                    remoteRelativePath,
+                    remoteFile,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        private async Task WriteRemoteFileContentAsync(
+            SyncPair syncPair,
+            SyncRunOptions options,
+            string targetRelativePath,
+            string remoteRelativePath,
+            NodeFileManifestDto remoteFile,
+            CancellationToken cancellationToken)
+        {
+            await _localWriter.WriteFileAsync(
+                    syncPair.LocalRootPath,
+                    targetRelativePath,
+                    (stream, token) => DownloadAndVerifyFileAsync(remoteFile, remoteRelativePath, options, stream, token),
+                    remoteFile.UpdatedAt == default ? null : remoteFile.UpdatedAt,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        private RemoteFileMaterializationRequest? CreateRemoteFileMaterializationRequest(
+            SyncPair syncPair,
+            string relativePath,
+            NodeFileManifestDto remoteFile)
+        {
+            if (syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles
+                || _remoteFileMaterializationObserver is null)
+            {
+                return null;
+            }
+
+            return new RemoteFileMaterializationRequest(
+                syncPair.SyncPairId,
+                syncPair.LocalRootPath,
+                syncPair.RemoteRootNodeId,
+                relativePath,
+                remoteFile);
         }
 
         private async Task<NodeFileManifestDto> UploadFileWithProgressAsync(
@@ -6049,7 +6275,7 @@ namespace Cotton.Sync
                 return SyncDeleteDirection.None;
             }
 
-            string relativePath = local?.RelativePath ?? remote?.RelativePath ?? state.RelativePath;
+            string relativePath = ResolveDirectoryRelativePath(state.RelativePath, local, remote, state);
             if (local is null && remote is not null && !remoteDirectoryContentIndex.HasChildren(relativePath))
             {
                 return SyncDeleteDirection.Remote;
@@ -6081,7 +6307,12 @@ namespace Cotton.Sync
 
             if (local is null && remote is not null && IsOnlineOnlyPlaceholderState(state))
             {
-                return exactLocalDelete ? SyncDeleteDirection.Remote : SyncDeleteDirection.None;
+                if (exactLocalDelete)
+                {
+                    return SyncDeleteDirection.Remote;
+                }
+
+                return SyncDeleteDirection.None;
             }
 
             if (local is not null && remote is not null && ContentMatches(local.ContentHash, remote.File.ContentHash))
@@ -6089,7 +6320,11 @@ namespace Cotton.Sync
                 return SyncDeleteDirection.None;
             }
 
-            SyncFileChangeKind changeKind = ResolveTrackedFileChange(CreateFileChangeState(state, local, remote));
+            return ToDeleteDirection(ResolveTrackedFileChange(CreateFileChangeState(state, local, remote)));
+        }
+
+        private static SyncDeleteDirection ToDeleteDirection(SyncFileChangeKind changeKind)
+        {
             return changeKind switch
             {
                 SyncFileChangeKind.DeleteLocal => SyncDeleteDirection.Local,
