@@ -1252,7 +1252,10 @@ namespace Cotton.Sync.Desktop.Startup
                 new SqliteSyncPairSettingsStore(paths.AppDatabasePath),
                 platformCommands,
                 new UnsupportedAutostartService(),
-                startupOptions);
+                new DesktopShellControllerOptions
+                {
+                    StartupOptions = startupOptions,
+                });
         }
 
         private static DesktopShellController CreateUpdateSmokeController(
@@ -1271,9 +1274,12 @@ namespace Cotton.Sync.Desktop.Startup
                     Microsoft.Extensions.Logging.LoggerFactoryExtensions
                         .CreateLogger<ProcessPlatformCommandService>(loggerFactory)),
                 new UnsupportedAutostartService(),
-                startupOptions,
-                updateService: updateService,
-                updateInstaller: updateInstaller);
+                new DesktopShellControllerOptions
+                {
+                    StartupOptions = startupOptions,
+                    UpdateService = updateService,
+                    UpdateInstaller = updateInstaller,
+                });
         }
 
         private static DesktopUpdateInstaller CreateUpdateInstallSmokeInstaller()

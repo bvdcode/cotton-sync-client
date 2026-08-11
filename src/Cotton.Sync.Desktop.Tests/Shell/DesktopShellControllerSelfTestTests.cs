@@ -993,10 +993,13 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 syncPairStore,
                 new FakePlatformCommandService(),
                 autostartService ?? new FakeAutostartService(),
-                tokenStorageCapabilities: tokenStorageCapabilities,
-                serverProbeTimeout: serverProbeTimeout,
-                updateService: updateService,
-                updateInstaller: updateInstaller);
+                new DesktopShellControllerOptions
+                {
+                    TokenStorageCapabilities = tokenStorageCapabilities,
+                    ServerProbeTimeout = serverProbeTimeout,
+                    UpdateService = updateService,
+                    UpdateInstaller = updateInstaller,
+                });
         }
 
         private static DesktopUpdateCheckResult CreateUpdateCheckResult(bool isUpdateAvailable)

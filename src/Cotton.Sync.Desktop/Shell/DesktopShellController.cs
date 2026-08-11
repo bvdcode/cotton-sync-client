@@ -85,15 +85,7 @@ namespace Cotton.Sync.Desktop.Shell
             SqliteSyncPairSettingsStore syncPairStore,
             IPlatformCommandService platformCommands,
             IAutostartService autostartService,
-            DesktopStartupOptions? startupOptions = null,
-            Func<DesktopTokenStorageCapabilitySnapshot>? tokenStorageCapabilities = null,
-            Func<CancellationToken, Task<DesktopTokenStorageCapabilitySnapshot>>? tokenStorageVerifier = null,
-            TimeSpan? savedSessionRestoreTimeout = null,
-            TimeSpan? savedSessionRestoreRetryBaseDelay = null,
-            TimeSpan? serverProbeTimeout = null,
-            TimeSpan? tokenStorageVerificationTimeout = null,
-            IDesktopUpdateService? updateService = null,
-            IDesktopUpdateInstaller? updateInstaller = null)
+            DesktopShellControllerOptions? options = null)
         {
             _paths = paths ?? throw new ArgumentNullException(nameof(paths));
             _factory = factory ?? throw new ArgumentNullException(nameof(factory));
@@ -102,27 +94,80 @@ namespace Cotton.Sync.Desktop.Shell
             _platformCommands = platformCommands ?? throw new ArgumentNullException(nameof(platformCommands));
             _autostartService = autostartService ?? throw new ArgumentNullException(nameof(autostartService));
             _diagnosticsExporter = new DesktopDiagnosticsExporter();
-            _startupOptions = startupOptions ?? DesktopStartupOptions.Empty;
-            _savedSessionRestoreTimeout = savedSessionRestoreTimeout ?? SavedSessionRestoreTimeout;
-            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_savedSessionRestoreTimeout, TimeSpan.Zero);
-            _savedSessionRestoreRetryBaseDelay = savedSessionRestoreRetryBaseDelay ?? SavedSessionRestoreRetryBaseDelay;
-            ArgumentOutOfRangeException.ThrowIfLessThan(_savedSessionRestoreRetryBaseDelay, TimeSpan.Zero);
-            _serverProbeTimeout = serverProbeTimeout ?? ServerProbeTimeout;
-            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_serverProbeTimeout, TimeSpan.Zero);
-            _tokenStorageVerificationTimeout = tokenStorageVerificationTimeout ?? _savedSessionRestoreTimeout;
-            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_tokenStorageVerificationTimeout, TimeSpan.Zero);
-            _tokenStorageVerifier = tokenStorageVerifier
-                ?? (tokenStorageCapabilities is null
-                    ? DesktopTokenStorageCapabilities.CreateVerifiedSnapshotAsync
-                    : cancellationToken => Task.FromResult(tokenStorageCapabilities()));
-            _updateService = updateService
-                ?? new DesktopUpdateService(
-                    DesktopHttpClientFactory.Create(TimeSpan.FromSeconds(30)),
-                    DesktopAppVersion.Current,
-                    _paths.UpdateCacheDirectory,
-                    disposeHttpClient: true);
-            _updateServiceLifetime = updateService is null ? _updateService as IDisposable : null;
-            _updateInstaller = updateInstaller ?? new DesktopUpdateInstaller();
+            DesktopShellControllerOptions resolvedOptions = options ?? new DesktopShellControllerOptions();
+            _startupOptions = resolvedOptions.StartupOptions;
+            _savedSessionRestoreTimeout = ResolvePositiveTimeout(
+                resolvedOptions.SavedSessionRestoreTimeout,
+                SavedSessionRestoreTimeout,
+                nameof(resolvedOptions.SavedSessionRestoreTimeout));
+            _savedSessionRestoreRetryBaseDelay = ResolveNonNegativeTimeout(
+                resolvedOptions.SavedSessionRestoreRetryBaseDelay,
+                SavedSessionRestoreRetryBaseDelay,
+                nameof(resolvedOptions.SavedSessionRestoreRetryBaseDelay));
+            _serverProbeTimeout = ResolvePositiveTimeout(
+                resolvedOptions.ServerProbeTimeout,
+                ServerProbeTimeout,
+                nameof(resolvedOptions.ServerProbeTimeout));
+            _tokenStorageVerificationTimeout = ResolvePositiveTimeout(
+                resolvedOptions.TokenStorageVerificationTimeout,
+                _savedSessionRestoreTimeout,
+                nameof(resolvedOptions.TokenStorageVerificationTimeout));
+            _tokenStorageVerifier = ResolveTokenStorageVerifier(resolvedOptions);
+            (_updateService, _updateServiceLifetime) = CreateUpdateService(resolvedOptions.UpdateService, _paths);
+            _updateInstaller = resolvedOptions.UpdateInstaller ?? new DesktopUpdateInstaller();
+        }
+
+        private static TimeSpan ResolvePositiveTimeout(
+            TimeSpan? configured,
+            TimeSpan defaultValue,
+            string parameterName)
+        {
+            TimeSpan value = configured ?? defaultValue;
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(value, TimeSpan.Zero, parameterName);
+            return value;
+        }
+
+        private static TimeSpan ResolveNonNegativeTimeout(
+            TimeSpan? configured,
+            TimeSpan defaultValue,
+            string parameterName)
+        {
+            TimeSpan value = configured ?? defaultValue;
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, TimeSpan.Zero, parameterName);
+            return value;
+        }
+
+        private static Func<CancellationToken, Task<DesktopTokenStorageCapabilitySnapshot>> ResolveTokenStorageVerifier(
+            DesktopShellControllerOptions options)
+        {
+            if (options.TokenStorageVerifier is not null)
+            {
+                return options.TokenStorageVerifier;
+            }
+
+            if (options.TokenStorageCapabilities is not null)
+            {
+                return cancellationToken => Task.FromResult(options.TokenStorageCapabilities());
+            }
+
+            return DesktopTokenStorageCapabilities.CreateVerifiedSnapshotAsync;
+        }
+
+        private static (IDesktopUpdateService Service, IDisposable? Lifetime) CreateUpdateService(
+            IDesktopUpdateService? configuredService,
+            DesktopAppPaths paths)
+        {
+            if (configuredService is not null)
+            {
+                return (configuredService, null);
+            }
+
+            DesktopUpdateService service = new(
+                DesktopHttpClientFactory.Create(TimeSpan.FromSeconds(30)),
+                DesktopAppVersion.Current,
+                paths.UpdateCacheDirectory,
+                disposeHttpClient: true);
+            return (service, service);
         }
 
         public event EventHandler<DesktopSyncStatusSnapshot>? StatusChanged;
@@ -691,36 +736,45 @@ namespace Cotton.Sync.Desktop.Shell
 
         public async Task<DesktopSelfTestSnapshot> RunSelfTestAsync(CancellationToken cancellationToken = default)
         {
-            var items = new List<DesktopSelfTestItemSnapshot>();
-            AppPreferences? preferences = null;
-            IReadOnlyList<SyncPairSettings> syncPairs = [];
+            DesktopSelfTestRun run = new();
+            await AddStorageSelfTestsAsync(run, cancellationToken).ConfigureAwait(false);
+            await AddDesktopCapabilitySelfTestsAsync(run, cancellationToken).ConfigureAwait(false);
+            await AddConnectivitySelfTestsAsync(run, cancellationToken).ConfigureAwait(false);
+            await AddSyncPairSelfTestsAsync(run, cancellationToken).ConfigureAwait(false);
+            return new DesktopSelfTestSnapshot(run.Items);
+        }
 
+        private async Task AddStorageSelfTestsAsync(
+            DesktopSelfTestRun run,
+            CancellationToken cancellationToken)
+        {
             await AddSelfTestCheckAsync(
-                items,
+                run.Items,
                 "Preferences database",
                 async () =>
                 {
                     await _preferencesStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
-                    preferences = await _preferencesStore.GetAsync(cancellationToken).ConfigureAwait(false);
+                    run.Preferences = await _preferencesStore.GetAsync(cancellationToken).ConfigureAwait(false);
                     return "Ready";
                 }).ConfigureAwait(false);
 
             await AddSelfTestCheckAsync(
-                items,
+                run.Items,
                 "Sync pair database",
                 async () =>
                 {
                     await _syncPairStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
-                    syncPairs = await _syncPairStore.ListAsync(cancellationToken).ConfigureAwait(false);
-                    return syncPairs.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + " sync pair(s)";
+                    run.SyncPairs = await _syncPairStore.ListAsync(cancellationToken).ConfigureAwait(false);
+                    return run.SyncPairs.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + " sync pair(s)";
                 }).ConfigureAwait(false);
 
             await AddSelfTestCheckAsync(
-                items,
+                run.Items,
                 "Sync state database",
                 async () =>
                 {
-                    var stateStore = new SqliteSyncStateStore(_paths.SyncStateDatabasePath);
+                    SqliteSyncStateStore stateStore = new(_paths.SyncStateDatabasePath);
                     await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
                     await stateStore.GetChangeCursorAsync(SelfTestSyncPairId, cancellationToken).ConfigureAwait(false);
                     SyncStateStoreDiagnostics diagnostics = await stateStore.GetDiagnosticsAsync(cancellationToken)
@@ -729,13 +783,18 @@ namespace Cotton.Sync.Desktop.Shell
                 }).ConfigureAwait(false);
 
             await AddSelfTestCheckAsync(
-                items,
+                run.Items,
                 "Authentication state",
                 () => CheckAuthenticationStateAsync(cancellationToken)).ConfigureAwait(false);
+        }
 
+        private async Task AddDesktopCapabilitySelfTestsAsync(
+            DesktopSelfTestRun run,
+            CancellationToken cancellationToken)
+        {
             DesktopTokenStorageCapabilitySnapshot tokenStorage = await _tokenStorageVerifier(cancellationToken)
                 .ConfigureAwait(false);
-            items.Add(new DesktopSelfTestItemSnapshot(
+            run.Items.Add(new DesktopSelfTestItemSnapshot(
                 "Token storage",
                 tokenStorage.IsReleaseSecure,
                 tokenStorage.IsReleaseSecure
@@ -743,17 +802,17 @@ namespace Cotton.Sync.Desktop.Shell
                     : tokenStorage.Details + " (not release secure)"));
 
             await AddSelfTestCheckAsync(
-                items,
+                run.Items,
                 "Desktop icon",
                 () => CheckDesktopIconAsync(cancellationToken)).ConfigureAwait(false);
 
             await AddSelfTestCheckAsync(
-                items,
+                run.Items,
                 "Update cache",
                 () => CheckUpdateCacheAsync(_paths.UpdateCacheDirectory, cancellationToken)).ConfigureAwait(false);
 
             await AddSelfTestCheckAsync(
-                items,
+                run.Items,
                 "Autostart adapter",
                 async () =>
                 {
@@ -762,7 +821,7 @@ namespace Cotton.Sync.Desktop.Shell
                 }).ConfigureAwait(false);
 
             DesktopPlatformCapabilitySnapshot platformCapabilities = DesktopPlatformCapabilities.CreateSnapshot();
-            items.Add(new DesktopSelfTestItemSnapshot(
+            run.Items.Add(new DesktopSelfTestItemSnapshot(
                 "Desktop platform",
                 true,
                 platformCapabilities.OperatingSystemName
@@ -771,7 +830,7 @@ namespace Cotton.Sync.Desktop.Shell
                     + "; desktop: "
                     + platformCapabilities.CurrentDesktop));
 
-            items.Add(new DesktopSelfTestItemSnapshot(
+            run.Items.Add(new DesktopSelfTestItemSnapshot(
                 "Tray lifecycle",
                 true,
                 platformCapabilities.TrayLifecycleDetails));
@@ -779,7 +838,7 @@ namespace Cotton.Sync.Desktop.Shell
             Func<string>? cloudFilesProbeRootFactory = CreateCloudFilesSelfTestProbeRootFactory();
             DesktopCloudFilesSelfTestCapabilitySnapshot modeCapabilities =
                 DesktopCloudFilesCapabilities.CreateSelfTestCapability(createProbeRoot: cloudFilesProbeRootFactory);
-            items.Add(new DesktopSelfTestItemSnapshot(
+            run.Items.Add(new DesktopSelfTestItemSnapshot(
                 "Windows virtual files",
                 modeCapabilities.Passed,
                 modeCapabilities.Details,
@@ -787,37 +846,56 @@ namespace Cotton.Sync.Desktop.Shell
 
             DesktopNotificationCapabilitySnapshot notificationCapabilities =
                 DesktopNotificationServiceFactory.CreateSelfTestCapabilitySnapshot();
-            items.Add(CreateNotificationSelfTestItem(notificationCapabilities));
+            run.Items.Add(CreateNotificationSelfTestItem(notificationCapabilities));
 
             await AddSelfTestCheckAsync(
-                items,
+                run.Items,
                 "File watcher",
                 () => CheckFileWatcherAsync(cancellationToken)).ConfigureAwait(false);
+        }
 
-            Uri? serverUrl = _startupOptions.ServerUrl ?? preferences?.RememberedServerUrl;
+        private async Task AddConnectivitySelfTestsAsync(
+            DesktopSelfTestRun run,
+            CancellationToken cancellationToken)
+        {
+            Uri? serverUrl = _startupOptions.ServerUrl ?? run.Preferences?.RememberedServerUrl;
+            await AddServerIdentitySelfTestAsync(run.Items, serverUrl, cancellationToken).ConfigureAwait(false);
+            await AddChangeFeedSelfTestAsync(run.Items, serverUrl, cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task AddServerIdentitySelfTestAsync(
+            List<DesktopSelfTestItemSnapshot> items,
+            Uri? serverUrl,
+            CancellationToken cancellationToken)
+        {
             if (serverUrl is null)
             {
                 items.Add(new DesktopSelfTestItemSnapshot("Server identity", true, "Not configured"));
+                return;
             }
-            else
-            {
-                await AddSelfTestCheckAsync(
-                    items,
-                    "Server identity",
-                    async () =>
+
+            await AddSelfTestCheckAsync(
+                items,
+                "Server identity",
+                async () =>
+                {
+                    DesktopServerProbeResult result = await ProbeServerAsync(
+                        serverUrl.AbsoluteUri,
+                        cancellationToken).ConfigureAwait(false);
+                    if (!result.IsCottonServer)
                     {
-                        DesktopServerProbeResult result = await ProbeServerAsync(
-                            serverUrl.AbsoluteUri,
-                            cancellationToken).ConfigureAwait(false);
-                        if (!result.IsCottonServer)
-                        {
-                            throw new InvalidOperationException("Cotton server not found.");
-                        }
+                        throw new InvalidOperationException("Cotton server not found.");
+                    }
 
-                        return result.Product ?? "Cotton Cloud";
-                    }).ConfigureAwait(false);
-            }
+                    return result.Product ?? "Cotton Cloud";
+                }).ConfigureAwait(false);
+        }
 
+        private async Task AddChangeFeedSelfTestAsync(
+            List<DesktopSelfTestItemSnapshot> items,
+            Uri? serverUrl,
+            CancellationToken cancellationToken)
+        {
             DesktopSyncApplicationHost? activeHost = _host;
             if (serverUrl is null)
             {
@@ -826,33 +904,39 @@ namespace Cotton.Sync.Desktop.Shell
                     false,
                     "Not configured",
                     Skipped: true));
+                return;
             }
-            else if (activeHost is null)
+
+            if (activeHost is null)
             {
                 items.Add(new DesktopSelfTestItemSnapshot(
                     "Desktop sync change feed",
                     false,
                     "Sign in to verify",
                     Skipped: true));
-            }
-            else
-            {
-                await AddSelfTestCheckAsync(
-                    items,
-                    "Desktop sync change feed",
-                    () => CheckSyncChangeFeedAsync(activeHost, cancellationToken)).ConfigureAwait(false);
+                return;
             }
 
-            foreach (SyncPairSettings syncPair in syncPairs)
+            await AddSelfTestCheckAsync(
+                items,
+                "Desktop sync change feed",
+                () => CheckSyncChangeFeedAsync(activeHost, cancellationToken)).ConfigureAwait(false);
+        }
+
+        private async Task AddSyncPairSelfTestsAsync(
+            DesktopSelfTestRun run,
+            CancellationToken cancellationToken)
+        {
+            foreach (SyncPairSettings syncPair in run.SyncPairs)
             {
                 await AddSelfTestCheckAsync(
-                    items,
+                    run.Items,
                     "Local root: " + syncPair.DisplayName,
                     () => CheckLocalRootAsync(syncPair, cancellationToken)).ConfigureAwait(false);
                 DesktopSyncApplicationHost? host = _host;
                 if (host is null)
                 {
-                    items.Add(new DesktopSelfTestItemSnapshot(
+                    run.Items.Add(new DesktopSelfTestItemSnapshot(
                         "Remote root: " + syncPair.DisplayName,
                         false,
                         "Sign in to verify",
@@ -861,13 +945,11 @@ namespace Cotton.Sync.Desktop.Shell
                 else
                 {
                     await AddSelfTestCheckAsync(
-                        items,
+                        run.Items,
                         "Remote root: " + syncPair.DisplayName,
                         () => CheckRemoteRootAsync(host, syncPair, cancellationToken)).ConfigureAwait(false);
                 }
             }
-
-            return new DesktopSelfTestSnapshot(items);
         }
 
         private Func<string>? CreateCloudFilesSelfTestProbeRootFactory()
@@ -1131,7 +1213,10 @@ namespace Cotton.Sync.Desktop.Shell
                 new SqliteSyncPairSettingsStore(paths.AppDatabasePath),
                 new ProcessPlatformCommandService(loggerFactory.CreateLogger<ProcessPlatformCommandService>()),
                 DesktopAutostartServiceFactory.CreateDefault(),
-                startupOptions);
+                new DesktopShellControllerOptions
+                {
+                    StartupOptions = startupOptions ?? DesktopStartupOptions.Empty,
+                });
         }
 
         private async Task InitializeSyncStateStoreAsync(CancellationToken cancellationToken)
@@ -1594,9 +1679,7 @@ namespace Cotton.Sync.Desktop.Shell
             DateTime? lastSyncedAtUtc = status?.LastSuccessfulSyncAtUtc;
             lastSyncedAtUtc ??= persistedLastSyncedAtUtc;
             string? localRootError = GetLocalRootUnavailableError(settings);
-            string statusText = localRootError is null
-                ? status is null ? settings.IsEnabled ? "Idle" : "Disabled" : ToStatusText(status)
-                : "Error";
+            string statusText = ResolveSyncPairStatusText(settings, status, localRootError);
             return new DesktopSyncPairSnapshot(
                 settings.Id,
                 settings.DisplayName,
@@ -1609,6 +1692,24 @@ namespace Cotton.Sync.Desktop.Shell
                 localRootError ?? status?.LastError,
                 settings.Mode,
                 cursor?.HasCompletedFullReconcile ?? false);
+        }
+
+        private static string ResolveSyncPairStatusText(
+            SyncPairSettings settings,
+            SyncPairStatus? status,
+            string? localRootError)
+        {
+            if (localRootError is not null)
+            {
+                return "Error";
+            }
+
+            if (status is not null)
+            {
+                return ToStatusText(status);
+            }
+
+            return settings.IsEnabled ? "Idle" : "Disabled";
         }
 
         private void ReplaceKnownSyncPairSettings(IReadOnlyList<SyncPairSettings> settings)
@@ -1997,13 +2098,10 @@ namespace Cotton.Sync.Desktop.Shell
             Uri serverUrl,
             CancellationToken cancellationToken)
         {
-            DesktopSyncApplicationHost? activeHost = _host;
-            AuthSession? activeSession = _activeSession;
-            if (activeHost is not null &&
-                activeSession is not null &&
-                activeHost.ServerUrl.Equals(serverUrl))
+            DesktopStoredSessionRestoreSnapshot? activeSession = TryGetActiveSession(serverUrl);
+            if (activeSession is not null)
             {
-                return new DesktopStoredSessionRestoreSnapshot(activeSession, true, null);
+                return activeSession;
             }
 
             if (!await CanUseStoredSessionAsync(cancellationToken).ConfigureAwait(false))
@@ -2012,6 +2110,26 @@ namespace Cotton.Sync.Desktop.Shell
             }
 
             DesktopSyncApplicationHost host = _factory.Create(serverUrl);
+            return await RestoreStoredSessionAsync(host, serverUrl, cancellationToken).ConfigureAwait(false);
+        }
+
+        private DesktopStoredSessionRestoreSnapshot? TryGetActiveSession(Uri serverUrl)
+        {
+            DesktopSyncApplicationHost? activeHost = _host;
+            AuthSession? activeSession = _activeSession;
+            if (activeHost is null || activeSession is null || !activeHost.ServerUrl.Equals(serverUrl))
+            {
+                return null;
+            }
+
+            return new DesktopStoredSessionRestoreSnapshot(activeSession, true, null);
+        }
+
+        private async Task<DesktopStoredSessionRestoreSnapshot> RestoreStoredSessionAsync(
+            DesktopSyncApplicationHost host,
+            Uri serverUrl,
+            CancellationToken cancellationToken)
+        {
             bool hasStoredSession = false;
             try
             {

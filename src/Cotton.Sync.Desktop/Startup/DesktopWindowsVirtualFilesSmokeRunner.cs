@@ -3261,13 +3261,16 @@ namespace Cotton.Sync.Desktop.Startup
                     pairStore,
                     NoopPlatformCommandService.Instance,
                     new SmokeAutostartService(),
-                    tokenStorageCapabilities: static () => new DesktopTokenStorageCapabilitySnapshot(
-                        "smoke-release-secure",
-                        true,
-                        "Release-secure token storage available"),
-                    savedSessionRestoreTimeout: TimeSpan.FromSeconds(5),
-                    savedSessionRestoreRetryBaseDelay: TimeSpan.FromMilliseconds(100),
-                    tokenStorageVerificationTimeout: TimeSpan.FromSeconds(5));
+                    new DesktopShellControllerOptions
+                    {
+                        TokenStorageCapabilities = static () => new DesktopTokenStorageCapabilitySnapshot(
+                            "smoke-release-secure",
+                            true,
+                            "Release-secure token storage available"),
+                        SavedSessionRestoreTimeout = TimeSpan.FromSeconds(5),
+                        SavedSessionRestoreRetryBaseDelay = TimeSpan.FromMilliseconds(100),
+                        TokenStorageVerificationTimeout = TimeSpan.FromSeconds(5),
+                    });
 
                 DesktopShellSnapshot snapshot = await controller.LoadAsync(cancellationToken).ConfigureAwait(false);
                 failures += await WriteCheckAsync(

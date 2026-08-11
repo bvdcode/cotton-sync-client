@@ -1467,10 +1467,13 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 syncPairStore ?? new SqliteSyncPairSettingsStore(paths.AppDatabasePath),
                 new FakePlatformCommandService(),
                 autostartService ?? new FakeAutostartService(),
-                tokenStorageCapabilities: tokenStorageCapabilities ?? CreateSecureTokenStorage,
-                tokenStorageVerifier: tokenStorageVerifier,
-                savedSessionRestoreRetryBaseDelay: savedSessionRestoreRetryBaseDelay,
-                tokenStorageVerificationTimeout: tokenStorageVerificationTimeout);
+                new DesktopShellControllerOptions
+                {
+                    TokenStorageCapabilities = tokenStorageCapabilities ?? CreateSecureTokenStorage,
+                    TokenStorageVerifier = tokenStorageVerifier,
+                    SavedSessionRestoreRetryBaseDelay = savedSessionRestoreRetryBaseDelay,
+                    TokenStorageVerificationTimeout = tokenStorageVerificationTimeout,
+                });
         }
 
         private static async Task<JsonElement> ReadSyncLifecycleDiagnosticsAsync(DesktopShellController controller)
