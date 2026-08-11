@@ -204,22 +204,27 @@ namespace Cotton.Sync.Desktop.ViewModels
             TimeSpan? storedSessionRetryInterval = null,
             Func<TimeSpan, CancellationToken, Task>? storedSessionRetryDelayAsync = null)
         {
-            _controller = controller ?? throw new ArgumentNullException(nameof(controller));
-            _featureFlags = featureFlags ?? DesktopFeatureFlags.Default;
-            _folderPicker = folderPicker ?? throw new ArgumentNullException(nameof(folderPicker));
-            _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
+            _controller = RequireReference(controller, nameof(controller));
+            _featureFlags = ResolveFeatureFlags(featureFlags);
+            _folderPicker = RequireReference(folderPicker, nameof(folderPicker));
+            _notificationService = RequireReference(notificationService, nameof(notificationService));
             _checkForUpdatesOnStartup = checkForUpdatesOnStartup;
-            _periodicUpdateCheckInterval = periodicUpdateCheckInterval ?? DefaultPeriodicUpdateCheckInterval;
-            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_periodicUpdateCheckInterval, TimeSpan.Zero);
-            _updateDelayAsync = updateDelayAsync ?? Task.Delay;
+            _periodicUpdateCheckInterval = ResolvePositiveInterval(
+                periodicUpdateCheckInterval,
+                DefaultPeriodicUpdateCheckInterval,
+                nameof(periodicUpdateCheckInterval));
+            _updateDelayAsync = ResolveDelay(updateDelayAsync);
             _notifyOnSessionRestore = notifyOnSessionRestore;
-            _themeService = themeService ?? throw new ArgumentNullException(nameof(themeService));
-            _uiDispatcher = uiDispatcher ?? new AvaloniaDesktopUiDispatcher();
+            _themeService = RequireReference(themeService, nameof(themeService));
+            _uiDispatcher = ResolveUiDispatcher(uiDispatcher);
             _storedSessionRetryCoordinator = new StoredSessionRestoreRetryCoordinator(
                 _controller.RestoreStoredSessionAsync,
                 _uiDispatcher,
-                storedSessionRetryInterval ?? DefaultStoredSessionRetryInterval,
-                storedSessionRetryDelayAsync ?? Task.Delay,
+                ResolvePositiveInterval(
+                    storedSessionRetryInterval,
+                    DefaultStoredSessionRetryInterval,
+                    nameof(storedSessionRetryInterval)),
+                ResolveDelay(storedSessionRetryDelayAsync),
                 ApplyStoredSessionRestoreResult);
             Activities.CollectionChanged += OnActivitiesChanged;
             Conflicts.CollectionChanged += OnConflictsChanged;
@@ -245,16 +250,16 @@ namespace Cotton.Sync.Desktop.ViewModels
                 RetryStoredSessionAsync,
                 CanRetryStoredSession,
                 HandleCommandError);
-            ChangeServerCommand = new AsyncRelayCommand(ChangeServerAsync, () => !IsBusy, HandleCommandError);
+            ChangeServerCommand = new AsyncRelayCommand(ChangeServerAsync, CanChangeServer, HandleCommandError);
             AddSyncPairCommand = new AsyncRelayCommand(AddSyncPairAsync, CanAddSyncPair, HandleCommandError);
             BrowseLocalFolderCommand = new AsyncRelayCommand(BrowseLocalFolderAsync, CanBrowseLocalFolder, HandleCommandError);
             CancelAddSyncPairCommand = new AsyncRelayCommand(
                 CancelAddSyncPairAsync,
-                () => !IsBusy && !IsAddingSyncPair,
+                CanCancelAddSyncPair,
                 HandleCommandError);
             CancelCreateRemoteFolderCommand = new AsyncRelayCommand(
                 CancelCreateRemoteFolderAsync,
-                () => !IsBusy && !IsAddingSyncPair,
+                CanCancelAddSyncPair,
                 HandleCommandError);
             CreateRemoteFolderCommand = new AsyncRelayCommand(CreateRemoteFolderAsync, CanCreateRemoteFolder, HandleCommandError);
             OpenRemoteFolderCommand = new AsyncRelayCommand(OpenRemoteFolderAsync, CanOpenRemoteFolder, HandleCommandError);
@@ -282,43 +287,43 @@ namespace Cotton.Sync.Desktop.ViewModels
                 HandleCommandError);
             OpenConflictCommand = new AsyncRelayCommand(
                 OpenConflictAsync,
-                parameter => parameter is ConflictRowViewModel && !IsBusy,
+                CanOpenConflict,
                 HandleCommandError);
             ChangeSelectedSyncPairLocalFolderCommand = new AsyncRelayCommand(
                 ChangeSelectedSyncPairLocalFolderAsync,
-                () => IsSignedIn && SelectedSyncPair is not null && !IsBusy,
+                CanEditSelectedSyncPair,
                 HandleCommandError);
             ChangeSelectedSyncPairRemoteFolderCommand = new AsyncRelayCommand(
                 ShowSelectedSyncPairRemoteFolderAsync,
-                () => IsSignedIn && SelectedSyncPair is not null && !IsBusy && CanUseAddSyncPairFlow,
+                CanChangeSelectedRemoteFolder,
                 HandleCommandError);
             ToggleSelectedSyncPairEnabledCommand = new AsyncRelayCommand(
                 ToggleSelectedSyncPairEnabledAsync,
-                () => IsSignedIn && SelectedSyncPair is not null && !IsBusy,
+                CanEditSelectedSyncPair,
                 HandleCommandError);
             SaveSelectedSyncPairNameCommand = new AsyncRelayCommand(
                 SaveSelectedSyncPairNameAsync,
-                () => IsSignedIn && SelectedSyncPair is not null && !IsBusy,
+                CanEditSelectedSyncPair,
                 HandleCommandError);
             RemoveSelectedSyncPairCommand = new AsyncRelayCommand(
                 RequestRemoveSelectedSyncPairAsync,
-                () => IsSignedIn && SelectedSyncPair is not null && !IsBusy && !IsRemoveSyncPairConfirmationVisible,
+                CanRequestRemoveSelectedSyncPair,
                 HandleCommandError);
             ShowSelectedSyncPairEditorCommand = new AsyncRelayCommand(
                 ShowSelectedSyncPairEditorAsync,
-                parameter => IsSignedIn && ResolveSyncPairTarget(parameter) is not null && !IsBusy,
+                CanShowSelectedSyncPairEditor,
                 HandleCommandError);
             CancelSelectedSyncPairEditorCommand = new AsyncRelayCommand(
                 CancelSelectedSyncPairEditorAsync,
-                () => IsSelectedSyncPairEditorVisible && !IsBusy,
+                CanCancelSelectedSyncPairEditor,
                 HandleCommandError);
             ConfirmRemoveSelectedSyncPairCommand = new AsyncRelayCommand(
                 ConfirmRemoveSelectedSyncPairAsync,
-                () => IsSignedIn && _pendingRemoveSyncPair is not null && !IsBusy,
+                CanConfirmRemoveSelectedSyncPair,
                 HandleCommandError);
             CancelRemoveSyncPairCommand = new AsyncRelayCommand(
                 CancelRemoveSyncPairAsync,
-                () => _pendingRemoveSyncPair is not null && !IsBusy,
+                CanCancelRemoveSyncPair,
                 HandleCommandError);
             OpenWebCommand = new AsyncRelayCommand(OpenWebAsync, () => IsSignedIn, HandleCommandError);
             ToggleActivityCommand = new AsyncRelayCommand(ToggleActivityAsync, () => IsSignedIn, HandleCommandError);
@@ -341,14 +346,74 @@ namespace Cotton.Sync.Desktop.ViewModels
                 HandleCommandError);
             OpenDataFolderCommand = new AsyncRelayCommand(
                 OpenDataFolderAsync,
-                () => HasDataDirectory && !IsBusy,
+                CanOpenDataFolder,
                 HandleCommandError);
             OpenDiagnosticsBundleFolderCommand = new AsyncRelayCommand(
                 OpenDiagnosticsBundleFolderAsync,
-                () => HasLastDiagnosticsBundlePath && !IsExportingDiagnostics,
+                CanOpenDiagnosticsBundleFolder,
                 HandleCommandError);
             UseRemoteFolderCommand = new AsyncRelayCommand(UseRemoteFolderAsync, CanUseRemoteFolder, HandleCommandError);
         }
+
+        private static T RequireReference<T>(T? value, string parameterName)
+            where T : class
+        {
+            ArgumentNullException.ThrowIfNull(value, parameterName);
+            return value;
+        }
+
+        private static DesktopFeatureFlags ResolveFeatureFlags(DesktopFeatureFlags? featureFlags)
+        {
+            return featureFlags ?? DesktopFeatureFlags.Default;
+        }
+
+        private static TimeSpan ResolvePositiveInterval(
+            TimeSpan? configured,
+            TimeSpan defaultValue,
+            string parameterName)
+        {
+            TimeSpan value = configured ?? defaultValue;
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(value, TimeSpan.Zero, parameterName);
+            return value;
+        }
+
+        private static Func<TimeSpan, CancellationToken, Task> ResolveDelay(
+            Func<TimeSpan, CancellationToken, Task>? delay)
+        {
+            return delay ?? Task.Delay;
+        }
+
+        private static IDesktopUiDispatcher ResolveUiDispatcher(IDesktopUiDispatcher? uiDispatcher)
+        {
+            return uiDispatcher ?? new AvaloniaDesktopUiDispatcher();
+        }
+
+        private bool CanChangeServer() => !IsBusy;
+
+        private bool CanCancelAddSyncPair() => !IsBusy && !IsAddingSyncPair;
+
+        private bool CanOpenConflict(object? parameter) => parameter is ConflictRowViewModel && !IsBusy;
+
+        private bool CanEditSelectedSyncPair() => IsSignedIn && SelectedSyncPair is not null && !IsBusy;
+
+        private bool CanChangeSelectedRemoteFolder() => CanEditSelectedSyncPair() && CanUseAddSyncPairFlow;
+
+        private bool CanRequestRemoveSelectedSyncPair() =>
+            CanEditSelectedSyncPair() && !IsRemoveSyncPairConfirmationVisible;
+
+        private bool CanShowSelectedSyncPairEditor(object? parameter) =>
+            IsSignedIn && ResolveSyncPairTarget(parameter) is not null && !IsBusy;
+
+        private bool CanCancelSelectedSyncPairEditor() => IsSelectedSyncPairEditorVisible && !IsBusy;
+
+        private bool CanConfirmRemoveSelectedSyncPair() =>
+            IsSignedIn && _pendingRemoveSyncPair is not null && !IsBusy;
+
+        private bool CanCancelRemoveSyncPair() => _pendingRemoveSyncPair is not null && !IsBusy;
+
+        private bool CanOpenDataFolder() => HasDataDirectory && !IsBusy;
+
+        private bool CanOpenDiagnosticsBundleFolder() => HasLastDiagnosticsBundlePath && !IsExportingDiagnostics;
 
         public ObservableCollection<SyncPairRowViewModel> SyncPairs { get; } = [];
 
@@ -1919,65 +1984,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             try
             {
                 DesktopShellSnapshot snapshot = await _controller.LoadAsync().ConfigureAwait(true);
-                ServerUrl = snapshot.ServerUrl?.AbsoluteUri ?? string.Empty;
-                Username = snapshot.RememberedUsername ?? string.Empty;
-                IsStartWithOperatingSystemSupported = snapshot.PlatformCapabilities.IsAutostartSupported;
-                IsTrayLifecycleSupported = snapshot.PlatformCapabilities.IsTrayLifecycleSupported;
-                TrayLifecycleDetails = snapshot.PlatformCapabilities.TrayLifecycleDetails;
-                IsWindowsVirtualFilesSupported = snapshot.PlatformCapabilities.IsWindowsVirtualFilesSupported;
-                WindowsVirtualFilesDetails = snapshot.PlatformCapabilities.WindowsVirtualFilesDetails;
-                StartWithOperatingSystem = snapshot.StartWithOperatingSystem;
-                EnableNotifications = snapshot.EnableNotifications;
-                ThemeModeIndex = (int)snapshot.ThemeMode;
-                DataDirectory = snapshot.DataPaths.DataDirectory;
-                AppDatabasePath = snapshot.DataPaths.AppDatabasePath;
-                SyncStateDatabasePath = snapshot.DataPaths.SyncStateDatabasePath;
-                TokenStorePath = snapshot.DataPaths.TokenStorePath;
-                DeviceName = string.IsNullOrWhiteSpace(snapshot.DeviceName)
-                    ? "Cotton Sync Desktop"
-                    : snapshot.DeviceName.Trim();
-                SyncPairs.Clear();
-                foreach (DesktopSyncPairSnapshot syncPair in snapshot.SyncPairs)
-                {
-                    SyncPairs.Add(ToRow(syncPair));
-                }
-
-                SelectedSyncPair = SyncPairs.FirstOrDefault();
-                HasStoredSession = snapshot.HasStoredSession;
-                IsSignedIn = snapshot.IsSignedIn;
-                AccountName = snapshot.IsSignedIn
-                    ? ResolveAccountDisplayName(snapshot.AccountName, snapshot.RememberedUsername)
-                    : "Signed out";
-                GlobalStatus = snapshot.IsSignedIn
-                    ? "Connected"
-                    : snapshot.HasStoredSession
-                        ? "Waiting to reconnect"
-                        : SyncPairs.Count == 0 ? "Ready to connect" : "Ready";
-                RefreshCurrentProgressText();
-                AddActivity("App", string.Empty, "Settings loaded");
-                if (snapshot.IsSignedIn)
-                {
-                    AddActivity("Account", AccountName, "Session restored");
-                    if (_notifyOnSessionRestore)
-                    {
-                        ShowNativeNotification("Session restored", AccountName);
-                    }
-                }
-                else if (!string.IsNullOrWhiteSpace(snapshot.StartupErrorMessage))
-                {
-                    if (snapshot.HasStoredSession)
-                    {
-                        StoredSessionRestoreMessage = snapshot.StartupErrorMessage;
-                        ActionRequiredMessage = string.Empty;
-                        AddActivity("Warning", string.Empty, snapshot.StartupErrorMessage);
-                    }
-                    else
-                    {
-                        ActionRequiredMessage = snapshot.StartupErrorMessage;
-                        AddActivity("Error", string.Empty, snapshot.StartupErrorMessage);
-                    }
-                }
-
+                ApplyInitialSnapshot(snapshot);
                 RefreshDiagnosticsItems();
                 RaiseCommandStates();
                 BeginStartupUpdateCheck();
@@ -1994,6 +2001,119 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
         }
 
+        private void ApplyInitialSnapshot(DesktopShellSnapshot snapshot)
+        {
+            ApplyInitialConnectionSettings(snapshot);
+            ApplyInitialPlatformSettings(snapshot);
+            ApplyInitialDataPaths(snapshot);
+            ReplaceSyncPairs(snapshot.SyncPairs);
+            ApplyInitialSessionState(snapshot);
+            RefreshCurrentProgressText();
+            AddActivity("App", string.Empty, "Settings loaded");
+            ApplyInitialSessionActivity(snapshot);
+        }
+
+        private void ApplyInitialConnectionSettings(DesktopShellSnapshot snapshot)
+        {
+            ServerUrl = snapshot.ServerUrl?.AbsoluteUri ?? string.Empty;
+            Username = snapshot.RememberedUsername ?? string.Empty;
+            StartWithOperatingSystem = snapshot.StartWithOperatingSystem;
+            EnableNotifications = snapshot.EnableNotifications;
+            ThemeModeIndex = (int)snapshot.ThemeMode;
+            DeviceName = string.IsNullOrWhiteSpace(snapshot.DeviceName)
+                ? "Cotton Sync Desktop"
+                : snapshot.DeviceName.Trim();
+        }
+
+        private void ApplyInitialPlatformSettings(DesktopShellSnapshot snapshot)
+        {
+            IsStartWithOperatingSystemSupported = snapshot.PlatformCapabilities.IsAutostartSupported;
+            IsTrayLifecycleSupported = snapshot.PlatformCapabilities.IsTrayLifecycleSupported;
+            TrayLifecycleDetails = snapshot.PlatformCapabilities.TrayLifecycleDetails;
+            IsWindowsVirtualFilesSupported = snapshot.PlatformCapabilities.IsWindowsVirtualFilesSupported;
+            WindowsVirtualFilesDetails = snapshot.PlatformCapabilities.WindowsVirtualFilesDetails;
+        }
+
+        private void ApplyInitialDataPaths(DesktopShellSnapshot snapshot)
+        {
+            DataDirectory = snapshot.DataPaths.DataDirectory;
+            AppDatabasePath = snapshot.DataPaths.AppDatabasePath;
+            SyncStateDatabasePath = snapshot.DataPaths.SyncStateDatabasePath;
+            TokenStorePath = snapshot.DataPaths.TokenStorePath;
+        }
+
+        private void ReplaceSyncPairs(IReadOnlyList<DesktopSyncPairSnapshot> syncPairs)
+        {
+            SyncPairs.Clear();
+            foreach (DesktopSyncPairSnapshot syncPair in syncPairs)
+            {
+                SyncPairs.Add(ToRow(syncPair));
+            }
+
+            SelectedSyncPair = SyncPairs.FirstOrDefault();
+        }
+
+        private void ApplyInitialSessionState(DesktopShellSnapshot snapshot)
+        {
+            HasStoredSession = snapshot.HasStoredSession;
+            IsSignedIn = snapshot.IsSignedIn;
+            AccountName = snapshot.IsSignedIn
+                ? ResolveAccountDisplayName(snapshot.AccountName, snapshot.RememberedUsername)
+                : "Signed out";
+            GlobalStatus = ResolveInitialGlobalStatus(snapshot);
+        }
+
+        private string ResolveInitialGlobalStatus(DesktopShellSnapshot snapshot)
+        {
+            if (snapshot.IsSignedIn)
+            {
+                return "Connected";
+            }
+
+            if (snapshot.HasStoredSession)
+            {
+                return "Waiting to reconnect";
+            }
+
+            return SyncPairs.Count == 0 ? "Ready to connect" : "Ready";
+        }
+
+        private void ApplyInitialSessionActivity(DesktopShellSnapshot snapshot)
+        {
+            if (snapshot.IsSignedIn)
+            {
+                AddActivity("Account", AccountName, "Session restored");
+                if (_notifyOnSessionRestore)
+                {
+                    ShowNativeNotification("Session restored", AccountName);
+                }
+
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(snapshot.StartupErrorMessage))
+            {
+                return;
+            }
+
+            ApplyInitialSessionError(snapshot);
+        }
+
+        private void ApplyInitialSessionError(DesktopShellSnapshot snapshot)
+        {
+            string startupErrorMessage = snapshot.StartupErrorMessage ?? string.Empty;
+            if (snapshot.HasStoredSession)
+            {
+                StoredSessionRestoreMessage = startupErrorMessage;
+                ActionRequiredMessage = string.Empty;
+                AddActivity("Warning", string.Empty, startupErrorMessage);
+                return;
+            }
+
+            ActionRequiredMessage = startupErrorMessage;
+            AddActivity("Error", string.Empty, startupErrorMessage);
+        }
+
         internal async Task ApplyVisualSmokeScenarioAsync(DesktopVisualSmokeScenario? scenario)
         {
             if (scenario is null)
@@ -2001,11 +2121,26 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return;
             }
 
+            bool isApplied = await TryApplyVisualSmokeSetupScenarioAsync(scenario.Value).ConfigureAwait(true)
+                || TryApplyVisualSmokeProgressScenario(scenario.Value)
+                || await TryApplyVisualSmokeStateScenarioAsync(scenario.Value).ConfigureAwait(true);
+            if (!isApplied)
+            {
+                throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null);
+            }
+
+            RefreshCurrentProgressText();
+            RefreshDiagnosticsItems();
+            RaiseCommandStates();
+        }
+
+        private async Task<bool> TryApplyVisualSmokeSetupScenarioAsync(DesktopVisualSmokeScenario scenario)
+        {
             switch (scenario)
             {
                 case DesktopVisualSmokeScenario.Connecting:
                     SetSnapshotLoading(true);
-                    break;
+                    return true;
                 case DesktopVisualSmokeScenario.SignInError:
                     ServerUrl = "https://app.cottoncloud.dev/";
                     IsServerProbeChecking = false;
@@ -2017,74 +2152,93 @@ namespace Cotton.Sync.Desktop.ViewModels
                     TotpCode = string.Empty;
                     GlobalStatus = "Sign-in failed";
                     ActionRequiredMessage = "Invalid username or password.";
-                    break;
+                    return true;
                 case DesktopVisualSmokeScenario.AddFolder:
                 case DesktopVisualSmokeScenario.AddFolderManyRemoteFolders:
                     LocalFolderPath = CreateVisualSmokeLocalRootPath();
                     IsAddSyncPairWizardVisible = true;
                     await LoadRemoteFoldersAsync("/").ConfigureAwait(true);
-                    break;
+                    return true;
                 case DesktopVisualSmokeScenario.EmptyDashboard:
-                    break;
+                case DesktopVisualSmokeScenario.Dashboard:
+                    return true;
                 case DesktopVisualSmokeScenario.Settings:
                     SelectedSettingsTabIndex = 0;
                     await ShowSettingsAsync().ConfigureAwait(true);
-                    break;
+                    return true;
                 case DesktopVisualSmokeScenario.SettingsDiagnostics:
                     SelectedSettingsTabIndex = 2;
                     await ShowSettingsAsync().ConfigureAwait(true);
                     await SelfTestAsync().ConfigureAwait(true);
                     await ExportDiagnosticsAsync().ConfigureAwait(true);
-                    break;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private bool TryApplyVisualSmokeProgressScenario(DesktopVisualSmokeScenario scenario)
+        {
+            switch (scenario)
+            {
+                case DesktopVisualSmokeScenario.Progress:
+                    ApplyVisualSmokeProgressScenario();
+                    return true;
+                case DesktopVisualSmokeScenario.LongProgress:
+                    ApplyVisualSmokeLongProgressScenario();
+                    return true;
+                case DesktopVisualSmokeScenario.ManySmallDownload:
+                    ApplyVisualSmokeManySmallDownloadScenario();
+                    return true;
+                case DesktopVisualSmokeScenario.HydrationProgress:
+                    ApplyVisualSmokeHydrationProgressScenario();
+                    return true;
+                case DesktopVisualSmokeScenario.DehydrationProgress:
+                    ApplyVisualSmokeDehydrationProgressScenario();
+                    return true;
+                case DesktopVisualSmokeScenario.HighPressureStarting:
+                    ApplyVisualSmokeHighPressureStartingScenario();
+                    return true;
+                case DesktopVisualSmokeScenario.VirtualFilesSeeding:
+                    ApplyVisualSmokeVirtualFilesSeedingScenario();
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private async Task<bool> TryApplyVisualSmokeStateScenarioAsync(DesktopVisualSmokeScenario scenario)
+        {
+            switch (scenario)
+            {
                 case DesktopVisualSmokeScenario.Error:
                     GlobalStatus = "Action required";
                     ActionRequiredMessage = DesktopActionRequiredMessageResolver.MissingDesktopSyncChangesApiMessage;
                     AddActivity("Error", SelectedSyncPair?.LocalPath ?? string.Empty, ActionRequiredMessage);
-                    break;
+                    return true;
                 case DesktopVisualSmokeScenario.Offline:
                     ApplyVisualSmokeOfflineScenario();
-                    break;
+                    return true;
                 case DesktopVisualSmokeScenario.MissingLocalRoot:
                     ApplyVisualSmokeMissingLocalRootScenario();
-                    break;
-                case DesktopVisualSmokeScenario.Progress:
-                    ApplyVisualSmokeProgressScenario();
-                    break;
-                case DesktopVisualSmokeScenario.LongProgress:
-                    ApplyVisualSmokeLongProgressScenario();
-                    break;
-                case DesktopVisualSmokeScenario.ManySmallDownload:
-                    ApplyVisualSmokeManySmallDownloadScenario();
-                    break;
-                case DesktopVisualSmokeScenario.HydrationProgress:
-                    ApplyVisualSmokeHydrationProgressScenario();
-                    break;
-                case DesktopVisualSmokeScenario.DehydrationProgress:
-                    ApplyVisualSmokeDehydrationProgressScenario();
-                    break;
-                case DesktopVisualSmokeScenario.HighPressureStarting:
-                    ApplyVisualSmokeHighPressureStartingScenario();
-                    break;
-                case DesktopVisualSmokeScenario.VirtualFilesSeeding:
-                    ApplyVisualSmokeVirtualFilesSeedingScenario();
-                    break;
+                    return true;
                 case DesktopVisualSmokeScenario.UpdateDownloadProgress:
                     SelectedSettingsTabIndex = 0;
                     await ShowSettingsAsync().ConfigureAwait(true);
                     ApplyVisualSmokeUpdateDownloadProgressScenario();
-                    break;
+                    return true;
                 case DesktopVisualSmokeScenario.UpdateInstallProgress:
                     SelectedSettingsTabIndex = 0;
                     await ShowSettingsAsync().ConfigureAwait(true);
                     ApplyVisualSmokeUpdateInstallProgressScenario();
-                    break;
+                    return true;
                 case DesktopVisualSmokeScenario.FolderControls:
                     if (SyncPairs.FirstOrDefault() is { } syncPair)
                     {
                         await ShowSelectedSyncPairEditorAsync(syncPair).ConfigureAwait(true);
                     }
 
-                    break;
+                    return true;
                 case DesktopVisualSmokeScenario.Conflict:
                     AddActivity("Conflict", "Reports/budget.xlsx", "Local and cloud versions changed at the same time.");
                     AddConflict(
@@ -2092,16 +2246,10 @@ namespace Cotton.Sync.Desktop.ViewModels
                         "Reports/budget.xlsx",
                         "Local and cloud versions changed at the same time.",
                         DateTimeOffset.Now);
-                    break;
-                case DesktopVisualSmokeScenario.Dashboard:
-                    break;
+                    return true;
                 default:
-                    throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null);
+                    return false;
             }
-
-            RefreshCurrentProgressText();
-            RefreshDiagnosticsItems();
-            RaiseCommandStates();
         }
 
         private static string CreateVisualSmokeLocalRootPath()
@@ -4767,8 +4915,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
 
             RunTransferProgressKey key = CreateTransferProgressKey(progress);
-            if (_transferProgressByKey.TryGetValue(key, out DesktopTransferProgressSnapshot? currentProgress)
-                && progress.OccurredAtUtc < currentProgress.OccurredAtUtc)
+            if (IsSupersededTransferProgress(key, progress))
             {
                 return;
             }
@@ -4776,28 +4923,49 @@ namespace Cotton.Sync.Desktop.ViewModels
             TrackRunTransferProgress(progress);
             if (progress.IsCompleted)
             {
-                if (_transferProgressByKey.TryGetValue(
-                        key,
-                        out DesktopTransferProgressSnapshot? activeProgress)
-                    && CanReplacePendingTransferProgress(activeProgress, progress))
-                {
-                    _transferProgressByKey.Remove(key);
-                }
-
-                RefreshSyncPairProgressAfterTransfer(syncPair);
-                RefreshCurrentTransferSummary();
-                if (_runProgressByPair.Count > 0)
-                {
-                    RefreshRunProgressSummary();
-                }
-
-                RefreshCurrentProgressText();
+                CompleteTransferProgress(key, progress, syncPair);
                 return;
             }
 
+            ApplyActiveTransferProgress(key, progress, syncPair);
+        }
+
+        private bool IsSupersededTransferProgress(
+            RunTransferProgressKey key,
+            DesktopTransferProgressSnapshot progress)
+        {
+            return _transferProgressByKey.TryGetValue(key, out DesktopTransferProgressSnapshot? currentProgress)
+                && progress.OccurredAtUtc < currentProgress.OccurredAtUtc;
+        }
+
+        private void CompleteTransferProgress(
+            RunTransferProgressKey key,
+            DesktopTransferProgressSnapshot progress,
+            SyncPairRowViewModel syncPair)
+        {
+            if (_transferProgressByKey.TryGetValue(key, out DesktopTransferProgressSnapshot? activeProgress)
+                && CanReplacePendingTransferProgress(activeProgress, progress))
+            {
+                _transferProgressByKey.Remove(key);
+            }
+
+            RefreshSyncPairProgressAfterTransfer(syncPair);
+            RefreshCurrentTransferSummary();
+            if (_runProgressByPair.Count > 0)
+            {
+                RefreshRunProgressSummary();
+            }
+
+            RefreshCurrentProgressText();
+        }
+
+        private void ApplyActiveTransferProgress(
+            RunTransferProgressKey key,
+            DesktopTransferProgressSnapshot progress,
+            SyncPairRowViewModel syncPair)
+        {
             _transferProgressByKey[key] = progress;
             SetCurrentTransferSummary(progress, syncPair);
-
             syncPair.CurrentOperation = CreateSyncPairTransferOperation(syncPair.Id, progress);
             syncPair.HasCurrentProgress = true;
             if (_runProgressByPair.TryGetValue(progress.SyncPairId, out DesktopRunProgressSnapshot? runProgress))
@@ -5042,74 +5210,18 @@ namespace Cotton.Sync.Desktop.ViewModels
                     continue;
                 }
 
-                bool isActiveStatus = IsActiveSyncStatus(pairStatus);
-                bool hasFreshDetailedProgress = HasFreshDetailedProgress(pairStatus.Id);
-                bool keepProgressDuringCompletionSuppression =
-                    suppressedInitialSyncCompletePairIds.Contains(pairStatus.Id) && hasFreshDetailedProgress;
-                row.Status = keepProgressDuringCompletionSuppression ? "Syncing" : pairStatus.Status;
-                row.IsEnabled = !string.Equals(pairStatus.Status, "Disabled", StringComparison.Ordinal);
-                row.LastError = pairStatus.LastError;
-                if ((!isActiveStatus && !keepProgressDuringCompletionSuppression) || !hasFreshDetailedProgress)
-                {
-                    row.CurrentOperation = pairStatus.CurrentOperation ?? string.Empty;
-                }
-
-                hasActiveSyncStatus |= isActiveStatus || keepProgressDuringCompletionSuppression;
-                if (isActiveStatus || keepProgressDuringCompletionSuppression)
-                {
-                    EnsureSyncPairProgress(row);
-                }
-                else
-                {
-                    ClearSyncPairProgress(row);
-                    if (string.Equals(pairStatus.Status, "Waiting", StringComparison.Ordinal))
-                    {
-                        row.CurrentOperation = pairStatus.CurrentOperation ?? string.Empty;
-                    }
-
-                    runProgressChanged |= _runProgressByPair.Remove(pairStatus.Id);
-                    _runProgressAppliedAtUtcByPair.Remove(pairStatus.Id);
-                    transferProgressChanged |= RemoveTransferProgressForPair(pairStatus.Id);
-                }
-
-                if (pairStatus.LastSyncedAtUtc.HasValue)
-                {
-                    row.LastSyncedAtUtc = pairStatus.LastSyncedAtUtc;
-                }
-
-                if (ShouldAddStatusErrorActivity(pairStatus))
-                {
-                    string rawError = pairStatus.LastError ?? string.Empty;
-                    string activityMessage = DesktopActionRequiredMessageResolver.FromSyncPairStatus(pairStatus);
-                    AddActivity(
-                        "Error",
-                        row.LocalPath,
-                        string.IsNullOrWhiteSpace(activityMessage) ? rawError : activityMessage);
-                }
+                (bool IsActive, bool RunProgressChanged, bool TransferProgressChanged) application =
+                    ApplySyncPairStatus(row, pairStatus, suppressedInitialSyncCompletePairIds);
+                hasActiveSyncStatus |= application.IsActive;
+                runProgressChanged |= application.RunProgressChanged;
+                transferProgressChanged |= application.TransferProgressChanged;
             }
 
             GlobalStatus = ResolveGlobalStatus(status);
             ActionRequiredMessage = DesktopActionRequiredMessageResolver.FromStatus(status);
             OnPropertyChanged(nameof(IsStatusCardVisible));
             OnPropertyChanged(nameof(HasDashboardNotifications));
-            if (!hasActiveSyncStatus)
-            {
-                ClearTransferProgress();
-                ClearRunProgress();
-            }
-            else
-            {
-                if (transferProgressChanged)
-                {
-                    RefreshCurrentTransferSummary();
-                }
-
-                if (runProgressChanged)
-                {
-                    RefreshRunProgressSummary();
-                }
-            }
-
+            RefreshDetailedProgress(hasActiveSyncStatus, runProgressChanged, transferProgressChanged);
             RaiseSyncStateProperties();
             RefreshCurrentProgressText();
             AddNotifications(_notificationTracker.Apply(
@@ -5117,6 +5229,106 @@ namespace Cotton.Sync.Desktop.ViewModels
                 SyncPairs.ToDictionary(static pair => pair.Id, static pair => pair.DisplayName),
                 suppressedInitialSyncCompletePairIds));
             RefreshDiagnosticsItems();
+        }
+
+        private (bool IsActive, bool RunProgressChanged, bool TransferProgressChanged) ApplySyncPairStatus(
+            SyncPairRowViewModel row,
+            DesktopSyncPairStatusSnapshot pairStatus,
+            IReadOnlySet<Guid> suppressedInitialSyncCompletePairIds)
+        {
+            bool isActiveStatus = IsActiveSyncStatus(pairStatus);
+            bool hasFreshDetailedProgress = HasFreshDetailedProgress(pairStatus.Id);
+            bool keepProgress = suppressedInitialSyncCompletePairIds.Contains(pairStatus.Id)
+                && hasFreshDetailedProgress;
+            ApplySyncPairStatusValues(row, pairStatus, isActiveStatus, keepProgress, hasFreshDetailedProgress);
+            (bool RunProgressChanged, bool TransferProgressChanged) progressChanges =
+                ApplySyncPairStatusProgress(row, pairStatus, isActiveStatus || keepProgress);
+            ApplySyncPairStatusActivity(row, pairStatus);
+            return (isActiveStatus || keepProgress, progressChanges.RunProgressChanged, progressChanges.TransferProgressChanged);
+        }
+
+        private static void ApplySyncPairStatusValues(
+            SyncPairRowViewModel row,
+            DesktopSyncPairStatusSnapshot pairStatus,
+            bool isActiveStatus,
+            bool keepProgress,
+            bool hasFreshDetailedProgress)
+        {
+            row.Status = keepProgress ? "Syncing" : pairStatus.Status;
+            row.IsEnabled = !string.Equals(pairStatus.Status, "Disabled", StringComparison.Ordinal);
+            row.LastError = pairStatus.LastError;
+            if ((!isActiveStatus && !keepProgress) || !hasFreshDetailedProgress)
+            {
+                row.CurrentOperation = pairStatus.CurrentOperation ?? string.Empty;
+            }
+
+            if (pairStatus.LastSyncedAtUtc.HasValue)
+            {
+                row.LastSyncedAtUtc = pairStatus.LastSyncedAtUtc;
+            }
+        }
+
+        private (bool RunProgressChanged, bool TransferProgressChanged) ApplySyncPairStatusProgress(
+            SyncPairRowViewModel row,
+            DesktopSyncPairStatusSnapshot pairStatus,
+            bool isActive)
+        {
+            if (isActive)
+            {
+                EnsureSyncPairProgress(row);
+                return (false, false);
+            }
+
+            ClearSyncPairProgress(row);
+            if (string.Equals(pairStatus.Status, "Waiting", StringComparison.Ordinal))
+            {
+                row.CurrentOperation = pairStatus.CurrentOperation ?? string.Empty;
+            }
+
+            bool runProgressChanged = _runProgressByPair.Remove(pairStatus.Id);
+            _runProgressAppliedAtUtcByPair.Remove(pairStatus.Id);
+            bool transferProgressChanged = RemoveTransferProgressForPair(pairStatus.Id);
+            return (runProgressChanged, transferProgressChanged);
+        }
+
+        private void ApplySyncPairStatusActivity(
+            SyncPairRowViewModel row,
+            DesktopSyncPairStatusSnapshot pairStatus)
+        {
+            if (!ShouldAddStatusErrorActivity(pairStatus))
+            {
+                return;
+            }
+
+            string rawError = pairStatus.LastError ?? string.Empty;
+            string activityMessage = DesktopActionRequiredMessageResolver.FromSyncPairStatus(pairStatus);
+            AddActivity(
+                "Error",
+                row.LocalPath,
+                string.IsNullOrWhiteSpace(activityMessage) ? rawError : activityMessage);
+        }
+
+        private void RefreshDetailedProgress(
+            bool hasActiveSyncStatus,
+            bool runProgressChanged,
+            bool transferProgressChanged)
+        {
+            if (!hasActiveSyncStatus)
+            {
+                ClearTransferProgress();
+                ClearRunProgress();
+                return;
+            }
+
+            if (transferProgressChanged)
+            {
+                RefreshCurrentTransferSummary();
+            }
+
+            if (runProgressChanged)
+            {
+                RefreshRunProgressSummary();
+            }
         }
 
         private bool ShouldAddStatusErrorActivity(DesktopSyncPairStatusSnapshot pairStatus)
@@ -5582,105 +5794,111 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private void RefreshCurrentProgressText()
         {
-            if (!IsSignedIn && HasStoredSession)
-            {
-                CurrentProgressText = "Waiting for Cotton Cloud to reconnect.";
-                return;
-            }
+            CurrentProgressText = ResolveCurrentProgressText();
+        }
 
-            if (HasActionRequired && !IsSignedIn)
-            {
-                CurrentProgressText = "Sign in to continue.";
-                return;
-            }
-
+        private string ResolveCurrentProgressText()
+        {
             if (!IsSignedIn)
             {
-                CurrentProgressText = "Sign in to start sync.";
-                return;
+                return ResolveSignedOutProgressText();
             }
 
             if (IsExportingDiagnostics)
             {
-                CurrentProgressText = DiagnosticsExportProgressMessage;
-                return;
+                return DiagnosticsExportProgressMessage;
             }
 
             if (SyncPairs.Count == 0)
             {
-                CurrentProgressText = string.Empty;
-                return;
+                return string.Empty;
             }
 
+            string? attentionText = ResolveSyncAttentionProgressText();
+            return attentionText ?? ResolveSyncActivityProgressText();
+        }
+
+        private string ResolveSignedOutProgressText()
+        {
+            if (HasStoredSession)
+            {
+                return "Waiting for Cotton Cloud to reconnect.";
+            }
+
+            return HasActionRequired ? "Sign in to continue." : "Sign in to start sync.";
+        }
+
+        private string? ResolveSyncAttentionProgressText()
+        {
             if (HasActionRequired)
             {
-                CurrentProgressText = "Fix the issue below to continue syncing.";
-                return;
+                return "Fix the issue below to continue syncing.";
             }
 
             if (IsRemovingSyncPair)
             {
-                CurrentProgressText = RemoveSyncPairProgressMessage;
-                return;
+                return RemoveSyncPairProgressMessage;
             }
 
             if (HasOfflineSyncPairs)
             {
-                CurrentProgressText = "Waiting for connection to recover.";
-                return;
+                return "Waiting for connection to recover.";
             }
 
             SyncPairRowViewModel? waitingPair = SyncPairs.FirstOrDefault(static pair =>
                 string.Equals(pair.Status, "Waiting", StringComparison.Ordinal));
             if (waitingPair is not null)
             {
-                CurrentProgressText = string.IsNullOrWhiteSpace(waitingPair.CurrentOperation)
-                    ? waitingPair.DisplayName + ": Waiting for a local file."
-                    : waitingPair.DisplayName + ": " + waitingPair.CurrentOperation;
-                return;
+                return CreateWaitingPairProgressText(waitingPair);
             }
 
             if (HasConflicts)
             {
-                CurrentProgressText = "Review conflicts below to continue syncing.";
-                return;
+                return "Review conflicts below to continue syncing.";
             }
 
             if (HasPairStatusAttention)
             {
-                CurrentProgressText = "Fix the folder issue to continue syncing.";
-                return;
+                return "Fix the folder issue to continue syncing.";
             }
 
-            if (!HasEnabledSyncPairs)
-            {
-                CurrentProgressText = "Enable a folder to start syncing.";
-                return;
-            }
+            return !HasEnabledSyncPairs ? "Enable a folder to start syncing." : null;
+        }
 
+        private static string CreateWaitingPairProgressText(SyncPairRowViewModel waitingPair)
+        {
+            return string.IsNullOrWhiteSpace(waitingPair.CurrentOperation)
+                ? waitingPair.DisplayName + ": Waiting for a local file."
+                : waitingPair.DisplayName + ": " + waitingPair.CurrentOperation;
+        }
+
+        private string ResolveSyncActivityProgressText()
+        {
             SyncPairRowViewModel? activePair = SyncPairs.FirstOrDefault(IsActiveProgressPair);
             if (activePair is not null)
             {
-                string operation = string.IsNullOrWhiteSpace(activePair.CurrentOperation)
-                    ? activePair.Status
-                    : activePair.CurrentOperation;
-                CurrentProgressText = activePair.DisplayName + ": " + operation;
-                return;
+                return CreateActivePairProgressText(activePair);
             }
 
             if (SyncPairs.Any(static pair => string.Equals(pair.Status, "Paused", StringComparison.Ordinal)))
             {
-                CurrentProgressText = "Sync is paused.";
-                return;
+                return "Sync is paused.";
             }
 
             if (SyncPairs.Any(static pair => pair.IsEnabled && pair.LastSyncedAtUtc is null))
             {
-                CurrentProgressText = "Waiting for first sync.";
-                return;
+                return "Waiting for first sync.";
             }
 
-            CurrentProgressText = "All folders are up to date.";
+            return "All folders are up to date.";
+        }
+
+        private static string CreateActivePairProgressText(SyncPairRowViewModel activePair)
+        {
+            string operation = string.IsNullOrWhiteSpace(activePair.CurrentOperation)
+                ? activePair.Status
+                : activePair.CurrentOperation;
+            return activePair.DisplayName + ": " + operation;
         }
 
         private void ClearTransferProgress()
@@ -6565,6 +6783,34 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private static string CreateAggregateRunProgressDetails(IReadOnlyList<DesktopRunProgressSnapshot> progressValues)
         {
+            (int CompletedFiles, int TotalFiles, bool HasUnknownTotals) counts =
+                CalculateAggregateRunProgressCounts(progressValues);
+            if (counts.HasUnknownTotals)
+            {
+                return CreateUnknownAggregateRunProgressDetails(progressValues, counts.CompletedFiles);
+            }
+
+            if (counts.TotalFiles > 0 && counts.CompletedFiles == 0)
+            {
+                return ResolveAggregatePreparationLabel(progressValues)
+                    + " across "
+                    + progressValues.Count.ToString(CultureInfo.CurrentCulture)
+                    + " folders";
+            }
+
+            return counts.CompletedFiles.ToString(CultureInfo.CurrentCulture)
+                + " of "
+                + counts.TotalFiles.ToString(CultureInfo.CurrentCulture)
+                + " "
+                + ResolveAggregateProgressUnit(progressValues)
+                + " across "
+                + progressValues.Count.ToString(CultureInfo.CurrentCulture)
+                + " folders";
+        }
+
+        private static (int CompletedFiles, int TotalFiles, bool HasUnknownTotals)
+            CalculateAggregateRunProgressCounts(IReadOnlyList<DesktopRunProgressSnapshot> progressValues)
+        {
             int completedFiles = 0;
             int totalFiles = 0;
             bool hasUnknownTotals = false;
@@ -6581,61 +6827,81 @@ namespace Cotton.Sync.Desktop.ViewModels
                 totalFiles += progress.FilesTotal.Value;
             }
 
-            if (hasUnknownTotals)
+            return (completedFiles, totalFiles, hasUnknownTotals);
+        }
+
+        private static string CreateUnknownAggregateRunProgressDetails(
+            IReadOnlyList<DesktopRunProgressSnapshot> progressValues,
+            int completedFiles)
+        {
+            if (completedFiles > 0
+                && progressValues.All(static progress => progress.Stage == SyncRunProgressStage.ScanningLocal))
             {
-                if (completedFiles > 0 && progressValues.All(static progress => progress.Stage == SyncRunProgressStage.ScanningLocal))
-                {
-                    return completedFiles.ToString(CultureInfo.CurrentCulture)
-                        + (completedFiles == 1 ? " file found across " : " files found across ")
-                        + progressValues.Count.ToString(CultureInfo.CurrentCulture)
-                        + " folders";
-                }
-
-                if (completedFiles > 0 && progressValues.All(static progress => progress.Stage == SyncRunProgressStage.ScanningRemote))
-                {
-                    return completedFiles.ToString(CultureInfo.CurrentCulture)
-                        + (completedFiles == 1 ? " cloud file found across " : " cloud files found across ")
-                        + progressValues.Count.ToString(CultureInfo.CurrentCulture)
-                        + " folders";
-                }
-
-                return progressValues.Count.ToString(CultureInfo.CurrentCulture) + " folders are syncing.";
-            }
-
-            if (totalFiles > 0 && completedFiles == 0)
-            {
-                string prefix = progressValues.All(static progress => progress.Stage == SyncRunProgressStage.ReconcilingDirectories)
-                    ? "Preparing folders"
-                    : progressValues.All(static progress => progress.Stage == SyncRunProgressStage.ReconcilingFiles)
-                        ? "Preparing file checks"
-                        : progressValues.All(static progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders)
-                            ? VirtualFileUserFacingCopy.PreparingCloudFilesProgressLabel
-                            : progressValues.All(static progress => progress.Stage == SyncRunProgressStage.HydratingCloudFiles)
-                                ? "Preparing files"
-                            : progressValues.All(static progress => progress.Stage == SyncRunProgressStage.DehydratingCloudFiles)
-                                ? "Preparing to free up space"
-                            : "Preparing sync";
-                return prefix
-                    + " across "
+                return completedFiles.ToString(CultureInfo.CurrentCulture)
+                    + (completedFiles == 1 ? " file found across " : " files found across ")
                     + progressValues.Count.ToString(CultureInfo.CurrentCulture)
                     + " folders";
             }
 
-            string aggregateUnitName = progressValues.All(static progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders)
-                ? VirtualFileUserFacingCopy.CloudFilesProgressUnit
-                : progressValues.All(static progress => progress.Stage == SyncRunProgressStage.ScanningRemote)
-                    ? "cloud items"
-                : progressValues.All(static progress => progress.Stage == SyncRunProgressStage.FinalizingCloudFiles)
-                    ? "folders"
+            if (completedFiles > 0
+                && progressValues.All(static progress => progress.Stage == SyncRunProgressStage.ScanningRemote))
+            {
+                return completedFiles.ToString(CultureInfo.CurrentCulture)
+                    + (completedFiles == 1 ? " cloud file found across " : " cloud files found across ")
+                    + progressValues.Count.ToString(CultureInfo.CurrentCulture)
+                    + " folders";
+            }
+
+            return progressValues.Count.ToString(CultureInfo.CurrentCulture) + " folders are syncing.";
+        }
+
+        private static string ResolveAggregatePreparationLabel(
+            IReadOnlyList<DesktopRunProgressSnapshot> progressValues)
+        {
+            if (progressValues.All(static progress => progress.Stage == SyncRunProgressStage.ReconcilingDirectories))
+            {
+                return "Preparing folders";
+            }
+
+            if (progressValues.All(static progress => progress.Stage == SyncRunProgressStage.ReconcilingFiles))
+            {
+                return "Preparing file checks";
+            }
+
+            if (progressValues.All(static progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders))
+            {
+                return VirtualFileUserFacingCopy.PreparingCloudFilesProgressLabel;
+            }
+
+            if (progressValues.All(static progress => progress.Stage == SyncRunProgressStage.HydratingCloudFiles))
+            {
+                return "Preparing files";
+            }
+
+            if (progressValues.All(static progress => progress.Stage == SyncRunProgressStage.DehydratingCloudFiles))
+            {
+                return "Preparing to free up space";
+            }
+
+            return "Preparing sync";
+        }
+
+        private static string ResolveAggregateProgressUnit(
+            IReadOnlyList<DesktopRunProgressSnapshot> progressValues)
+        {
+            if (progressValues.All(static progress => progress.Stage == SyncRunProgressStage.CreatingPlaceholders))
+            {
+                return VirtualFileUserFacingCopy.CloudFilesProgressUnit;
+            }
+
+            if (progressValues.All(static progress => progress.Stage == SyncRunProgressStage.ScanningRemote))
+            {
+                return "cloud items";
+            }
+
+            return progressValues.All(static progress => progress.Stage == SyncRunProgressStage.FinalizingCloudFiles)
+                ? "folders"
                 : "files";
-            return completedFiles.ToString(CultureInfo.CurrentCulture)
-                + " of "
-                + totalFiles.ToString(CultureInfo.CurrentCulture)
-                + " "
-                + aggregateUnitName
-                + " across "
-                + progressValues.Count.ToString(CultureInfo.CurrentCulture)
-                + " folders";
         }
 
         private static string CreateSingleRunProgressDetails(DesktopRunProgressSnapshot progress)
