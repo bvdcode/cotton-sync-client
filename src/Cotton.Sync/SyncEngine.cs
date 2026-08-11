@@ -1577,145 +1577,87 @@ namespace Cotton.Sync
             CancellationToken cancellationToken)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
-            int entriesSeen = 0;
-            int directoryEntries = 0;
-            int fileEntries = 0;
-            int onlineOnlyFileEntries = 0;
-            int materializedFileEntries = 0;
-            HashSet<string> directoryStateKeys = new(PathComparer);
-            Dictionary<string, InitialVirtualFilesPlaceholderBaseline> fileBaselineByPath = new(PathComparer);
-            List<string> stateRelativePaths = [];
-            InitialVirtualFilesStreamingPlanDecision? InspectLocalTree(string reason)
-            {
-                stopwatch.Stop();
-                _logger.LogInformation(
-                    "Skipping Windows virtual-files state-first resume plan for pair {SyncPairId}: {Reason}. Entries seen={EntryStateCount}, directories={DirectoryStateCount}, files={FileStateCount}, online-only files={OnlineOnlyFileStateCount}, materialized files={MaterializedFileStateCount}, elapsed={ElapsedMilliseconds} ms.",
-                    syncPair.SyncPairId,
-                    reason,
-                    entriesSeen,
-                    directoryEntries,
-                    fileEntries,
-                    onlineOnlyFileEntries,
-                    materializedFileEntries,
-                    stopwatch.ElapsedMilliseconds);
-                return null;
-            }
-
-            InitialVirtualFilesStreamingPlanDecision DisableStreaming(string reason)
-            {
-                stopwatch.Stop();
-                _logger.LogInformation(
-                    "Skipping Windows virtual-files state-first resume plan for pair {SyncPairId}: {Reason}. Entries seen={EntryStateCount}, directories={DirectoryStateCount}, files={FileStateCount}, online-only files={OnlineOnlyFileStateCount}, materialized files={MaterializedFileStateCount}, elapsed={ElapsedMilliseconds} ms.",
-                    syncPair.SyncPairId,
-                    reason,
-                    entriesSeen,
-                    directoryEntries,
-                    fileEntries,
-                    onlineOnlyFileEntries,
-                    materializedFileEntries,
-                    stopwatch.ElapsedMilliseconds);
-                return InitialVirtualFilesStreamingPlanDecision.NotApplicable;
-            }
-
+            var inspection = new InitialVirtualFilesStateFirstInspection();
             await foreach (SyncStateEntry entry in _stateStore
                                .LoadPairEntriesAsync(syncPair.SyncPairId, cancellationToken)
                                .WithCancellation(cancellationToken)
                                .ConfigureAwait(false))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                entriesSeen++;
                 if (SyncPathIgnoreRules.ShouldIgnore(entry.RelativePath))
                 {
                     await _stateStore.DeleteAsync(syncPair.SyncPairId, entry.RelativePath, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
-                switch (entry.Kind)
+                string? issue = inspection.Add(entry);
+                if (issue is not null)
                 {
-                    case SyncEntryKind.Directory:
-                        if (entry.RemoteNodeId is null)
-                        {
-                            return DisableStreaming("directory state is missing a remote folder id");
-                        }
-
-                        directoryEntries++;
-                        directoryStateKeys.Add(SyncPath.ToKey(entry.RelativePath));
-                        stateRelativePaths.Add(entry.RelativePath);
-                        break;
-                    case SyncEntryKind.File:
-                        fileEntries++;
-                        if (!HasRemoteFileBaseline(entry))
-                        {
-                            return DisableStreaming("file state is missing a remote baseline");
-                        }
-
-                        if (IsOnlineOnlyPlaceholderState(entry))
-                        {
-                            onlineOnlyFileEntries++;
-                        }
-                        else
-                        {
-                            materializedFileEntries++;
-                        }
-
-                        string fileKey = SyncPath.ToKey(entry.RelativePath);
-                        fileBaselineByPath[fileKey] = InitialVirtualFilesPlaceholderBaseline.FromState(entry);
-                        stateRelativePaths.Add(entry.RelativePath);
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(entry), entry.Kind, "Unknown sync state entry kind.");
+                    LogStateFirstPlanSkipped(syncPair, inspection, stopwatch, issue);
+                    return InitialVirtualFilesStreamingPlanDecision.NotApplicable;
                 }
             }
 
-            if (entriesSeen == 0)
+            if (inspection.EntriesSeen == 0)
             {
-                return InspectLocalTree("no persisted state entries");
+                LogStateFirstPlanSkipped(syncPair, inspection, stopwatch, "no persisted state entries");
+                return null;
             }
 
             if (_localMetadataPathLookupScanner is null)
             {
-                return DisableStreaming("local path metadata lookup is unavailable");
+                LogStateFirstPlanSkipped(syncPair, inspection, stopwatch, "local path metadata lookup is unavailable");
+                return InitialVirtualFilesStreamingPlanDecision.NotApplicable;
             }
 
             LocalTreeLookupSnapshot localStateLookups = await _localMetadataPathLookupScanner
                 .ScanPathMetadataLookupsAsync(
                     syncPair.LocalRootPath,
-                    stateRelativePaths,
+                    inspection.StateRelativePaths,
                     progress: null,
                     includeDirectoryDescendants: false,
                     cancellationToken)
                 .ConfigureAwait(false);
-            foreach (string directoryKey in directoryStateKeys)
+            string? incompatibility = inspection.FindLocalIncompatibility(localStateLookups);
+            if (incompatibility is not null)
             {
-                if (!localStateLookups.DirectoriesByPath.ContainsKey(directoryKey))
-                {
-                    return DisableStreaming("tracked directory placeholder is missing locally");
-                }
-            }
-
-            foreach ((string fileKey, InitialVirtualFilesPlaceholderBaseline baseline) in fileBaselineByPath)
-            {
-                if (!localStateLookups.FilesByPath.TryGetValue(fileKey, out LocalFileSnapshot? local)
-                    || !IsResumeCompatibleVirtualFilesPlaceholder(local, baseline))
-                {
-                    return DisableStreaming("tracked file placeholder is missing or incompatible with its persisted availability state");
-                }
+                LogStateFirstPlanSkipped(syncPair, inspection, stopwatch, incompatibility);
+                return InitialVirtualFilesStreamingPlanDecision.NotApplicable;
             }
 
             stopwatch.Stop();
             _logger.LogInformation(
                 "Loaded Windows virtual-files state-first resume plan for pair {SyncPairId} with {DirectoryStateCount} directories and {FileStateCount} files ({OnlineOnlyFileStateCount} online-only, {MaterializedFileStateCount} materialized) in {ElapsedMilliseconds} ms without scanning the local placeholder tree.",
                 syncPair.SyncPairId,
-                directoryEntries,
-                fileEntries,
-                onlineOnlyFileEntries,
-                materializedFileEntries,
+                inspection.DirectoryEntries,
+                inspection.FileEntries,
+                inspection.OnlineOnlyFileEntries,
+                inspection.MaterializedFileEntries,
                 stopwatch.ElapsedMilliseconds);
             return InitialVirtualFilesStreamingPlanDecision.FromPlan(
                 new InitialVirtualFilesStreamingPlan(
                     SkipCurrentPlaceholders: true,
-                    CurrentPlaceholderBaselineByPath: fileBaselineByPath,
+                    CurrentPlaceholderBaselineByPath: inspection.FileBaselineByPath,
                     AdoptableUntrackedPlaceholderByPath: new Dictionary<string, LocalFileSnapshot>(PathComparer)));
+        }
+
+        private void LogStateFirstPlanSkipped(
+            SyncPair syncPair,
+            InitialVirtualFilesStateFirstInspection inspection,
+            Stopwatch stopwatch,
+            string reason)
+        {
+            stopwatch.Stop();
+            _logger.LogInformation(
+                "Skipping Windows virtual-files state-first resume plan for pair {SyncPairId}: {Reason}. Entries seen={EntryStateCount}, directories={DirectoryStateCount}, files={FileStateCount}, online-only files={OnlineOnlyFileStateCount}, materialized files={MaterializedFileStateCount}, elapsed={ElapsedMilliseconds} ms.",
+                syncPair.SyncPairId,
+                reason,
+                inspection.EntriesSeen,
+                inspection.DirectoryEntries,
+                inspection.FileEntries,
+                inspection.OnlineOnlyFileEntries,
+                inspection.MaterializedFileEntries,
+                stopwatch.ElapsedMilliseconds);
         }
 
         private async Task<InitialVirtualFilesStreamingPlanDecision> InspectLocalTreeForInitialWindowsVirtualFilesStreamingDecisionAsync(
@@ -1915,24 +1857,7 @@ namespace Cotton.Sync
             LocalFileSnapshot local,
             InitialVirtualFilesPlaceholderBaseline baseline)
         {
-            if (!local.IsCloudFilesPlaceholder
-                || !IsVirtualFilesResumeCandidateState(baseline)
-                || !baseline.RemoteFileId.HasValue)
-            {
-                return false;
-            }
-
-            if (baseline.PlaceholderHydrationState != SyncPlaceholderHydrationState.Hydrated)
-            {
-                return local.IsCloudFilesOnlineOnlyPlaceholder;
-            }
-
-            return !local.IsCloudFilesOnlineOnlyPlaceholder
-                && !string.IsNullOrWhiteSpace(baseline.LocalContentHash)
-                && baseline.LocalSizeBytes.HasValue
-                && baseline.LocalSizeBytes.Value == local.SizeBytes
-                && baseline.LocalLastWriteUtc.HasValue
-                && baseline.LocalLastWriteUtc.Value.ToUniversalTime() == local.LastWriteUtc.ToUniversalTime();
+            return InitialVirtualFilesPlaceholderPolicy.IsResumeCompatible(local, baseline);
         }
 
         private async Task ProduceInitialWindowsVirtualFilesPopulationAsync(
@@ -6647,10 +6572,7 @@ namespace Cotton.Sync
 
         private static bool IsOnlineOnlyPlaceholderState(SyncStateEntry state)
         {
-            return state.Kind == SyncEntryKind.File
-                && (state.PlaceholderHydrationState == SyncPlaceholderHydrationState.RemoteOnly
-                    || state.PlaceholderHydrationState == SyncPlaceholderHydrationState.Dehydrated)
-                && state.PlaceholderIdentity is { Length: > 0 };
+            return InitialVirtualFilesPlaceholderPolicy.IsOnlineOnly(state);
         }
 
         private static bool IsIncompleteOnlineOnlyPlaceholderBaseline(SyncStateEntry state)
@@ -6664,32 +6586,22 @@ namespace Cotton.Sync
 
         private static bool HasRemoteFileBaseline(SyncStateEntry state)
         {
-            return state.Kind == SyncEntryKind.File
-                && (!string.IsNullOrWhiteSpace(state.RemoteContentHash)
-                    || !string.IsNullOrWhiteSpace(state.RemoteETag)
-                    || state.RemoteFileId.HasValue);
+            return InitialVirtualFilesPlaceholderPolicy.HasRemoteBaseline(state);
         }
 
         private static bool IsOnlineOnlyPlaceholderState(InitialVirtualFilesPlaceholderBaseline baseline)
         {
-            return (baseline.PlaceholderHydrationState == SyncPlaceholderHydrationState.RemoteOnly
-                    || baseline.PlaceholderHydrationState == SyncPlaceholderHydrationState.Dehydrated)
-                && baseline.HasPlaceholderIdentity;
+            return InitialVirtualFilesPlaceholderPolicy.IsOnlineOnly(baseline);
         }
 
         private static bool IsVirtualFilesResumeCandidateState(InitialVirtualFilesPlaceholderBaseline baseline)
         {
-            return (baseline.PlaceholderHydrationState == SyncPlaceholderHydrationState.RemoteOnly
-                    || baseline.PlaceholderHydrationState == SyncPlaceholderHydrationState.Hydrated
-                    || baseline.PlaceholderHydrationState == SyncPlaceholderHydrationState.Dehydrated)
-                && baseline.HasPlaceholderIdentity;
+            return InitialVirtualFilesPlaceholderPolicy.IsResumeCandidate(baseline);
         }
 
         private static bool HasRemoteFileBaseline(InitialVirtualFilesPlaceholderBaseline baseline)
         {
-            return !string.IsNullOrWhiteSpace(baseline.RemoteContentHash)
-                || !string.IsNullOrWhiteSpace(baseline.RemoteETag)
-                || baseline.RemoteFileId.HasValue;
+            return InitialVirtualFilesPlaceholderPolicy.HasRemoteBaseline(baseline);
         }
 
         private static bool ContentMatches(string? left, string? right)
@@ -7136,22 +7048,6 @@ namespace Cotton.Sync
 
         private readonly record struct RemoteDirectoryCreationResult(NodeDto Node, bool ReusedExisting);
 
-        private sealed record InitialVirtualFilesStreamingPlan(
-            bool SkipCurrentPlaceholders,
-            IReadOnlyDictionary<string, InitialVirtualFilesPlaceholderBaseline> CurrentPlaceholderBaselineByPath,
-            IReadOnlyDictionary<string, LocalFileSnapshot> AdoptableUntrackedPlaceholderByPath);
-
-        private sealed record InitialVirtualFilesStreamingPlanDecision(InitialVirtualFilesStreamingPlan? Plan)
-        {
-            public static InitialVirtualFilesStreamingPlanDecision NotApplicable { get; } = new(Plan: null);
-
-            public static InitialVirtualFilesStreamingPlanDecision FromPlan(InitialVirtualFilesStreamingPlan plan)
-            {
-                ArgumentNullException.ThrowIfNull(plan);
-                return new InitialVirtualFilesStreamingPlanDecision(plan);
-            }
-        }
-
         private static IReadOnlySet<string> BuildExactScopedPathKeys(IEnumerable<string> relativePaths)
         {
             HashSet<string> keys = new(PathComparer);
@@ -7176,47 +7072,6 @@ namespace Cotton.Sync
             HashSet<string> keys = new(existingKeys, PathComparer);
             keys.UnionWith(additionalKeys);
             return keys;
-        }
-
-        private readonly record struct InitialVirtualFilesPlaceholderBaseline(
-            string RelativePath,
-            Guid? RemoteFileId,
-            string? RemoteContentHash,
-            string? RemoteETag,
-            string? LocalContentHash,
-            long? LocalSizeBytes,
-            DateTime? LocalLastWriteUtc,
-            SyncPlaceholderHydrationState PlaceholderHydrationState,
-            bool HasPlaceholderIdentity)
-        {
-            public static InitialVirtualFilesPlaceholderBaseline FromState(SyncStateEntry state)
-            {
-                return new InitialVirtualFilesPlaceholderBaseline(
-                    state.RelativePath,
-                    state.RemoteFileId,
-                    state.RemoteContentHash,
-                    state.RemoteETag,
-                    state.LocalContentHash,
-                    state.LocalSizeBytes,
-                    state.LocalLastWriteUtc,
-                    state.PlaceholderHydrationState,
-                    state.PlaceholderIdentity is { Length: > 0 });
-            }
-
-            public static InitialVirtualFilesPlaceholderBaseline FromResumeEntry(
-                SyncVirtualFilesResumeEntry entry)
-            {
-                return new InitialVirtualFilesPlaceholderBaseline(
-                    entry.RelativePath,
-                    entry.RemoteFileId,
-                    entry.RemoteContentHash,
-                    entry.RemoteETag,
-                    LocalContentHash: null,
-                    LocalSizeBytes: null,
-                    LocalLastWriteUtc: null,
-                    entry.PlaceholderHydrationState,
-                    entry.HasPlaceholderIdentity);
-            }
         }
 
         private abstract record InitialVirtualFilesPopulationItem;
