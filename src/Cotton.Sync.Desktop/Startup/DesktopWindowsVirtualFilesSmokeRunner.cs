@@ -84,6 +84,166 @@ namespace Cotton.Sync.Desktop.Startup
         private const int LargeHydrationChunkBytes = 1024 * 1024;
         private const string SmokeContentText = "Cotton Sync Windows virtual files smoke content\n";
         private static readonly TimeSpan ExternalFileReadTimeout = TimeSpan.FromSeconds(30);
+        private static readonly IReadOnlyDictionary<WindowsVirtualFilesSmokePhase, Func<WindowsVirtualFilesSmokeContext, Task<int>>>
+            PhaseHandlers = new Dictionary<WindowsVirtualFilesSmokePhase, Func<WindowsVirtualFilesSmokeContext, Task<int>>>
+            {
+                [WindowsVirtualFilesSmokePhase.Default] = RunDefaultWindowsVirtualFilesSmokeAsync,
+                [WindowsVirtualFilesSmokePhase.LeaveRegistered] = RunDefaultWindowsVirtualFilesSmokeAsync,
+                [WindowsVirtualFilesSmokePhase.ReconnectExisting] = RunDefaultWindowsVirtualFilesSmokeAsync,
+                [WindowsVirtualFilesSmokePhase.RemoteUpdateAfterDehydrate] = RunDefaultWindowsVirtualFilesSmokeAsync,
+                [WindowsVirtualFilesSmokePhase.ExcelAtomicSave] = context => RunExcelAtomicSaveAsync(
+                    context.Output,
+                    context.CloudFiles,
+                    context.SyncPair,
+                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.ProviderMetadataUserEdit] = context => RunProviderMetadataUserEditAsync(
+                    context.Output,
+                    context.CloudFiles,
+                    context.SyncPair,
+                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.LocalRenameAfterProviderWrite] = context => RunLocalRenameAfterProviderWriteAsync(
+                    context.Output,
+                    context.CloudFiles,
+                    context.SyncPair,
+                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.LocalMoveAfterProviderWrite] = context => RunLocalMoveAfterProviderWriteAsync(
+                    context.Output,
+                    context.CloudFiles,
+                    context.SyncPair,
+                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.InitialStreamingLogging] = context => RunInitialStreamingLoggingAsync(
+                    context.Paths,
+                    context.Output,
+                    context.CloudFiles,
+                    context.SyncPair,
+                    GetLargeTreePlaceholderCount(context.StartupOptions),
+                    context.Diagnostics,
+                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.SteadyStateRepeat] = context => RunSteadyStateRepeatAsync(
+                    context.Paths,
+                    context.Output,
+                    context.CloudFiles,
+                    context.SyncPair,
+                    GetLargeTreePlaceholderCount(context.StartupOptions),
+                    context.Diagnostics,
+                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.LargeTree] = context => RunLargeTreeAsync(
+                    context.StartupOptions,
+                    context.Output,
+                    context.CloudFiles,
+                    context.SyncPair,
+                    GetLargeTreePlaceholderCount(context.StartupOptions),
+                    context.Diagnostics,
+                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.NonEmptyPreservation] = context => RunNonEmptyPreservationAsync(
+                    context.Paths,
+                    context.Output,
+                    context.CloudFiles,
+                    context.SyncPair,
+                    context.Diagnostics,
+                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.RemovePairCleanup] = context => RunRemovePairCleanupAsync(
+                    context.Paths,
+                    context.Output,
+                    context.CloudFiles,
+                    context.NativeApi,
+                    context.SyncPair,
+                    context.Diagnostics,
+                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.LargeRemovePairCleanup] = context => RunLargeRemovePairCleanupAsync(
+                    context.Paths,
+                    context.Output,
+                    context.CloudFiles,
+                    context.NativeApi,
+                    context.SyncPair,
+                    GetLargeTreePlaceholderCount(context.StartupOptions),
+                    context.Diagnostics,
+                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.TrayQuitDisconnect] = context => RunTrayQuitDisconnectAsync(
+                    context.Paths,
+                    context.Output,
+                    context.CloudFiles,
+                    context.NativeApi,
+                    context.SyncPair,
+                    context.Diagnostics,
+                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.ExplorerFreeUpSpace] = context => RunExplorerFreeUpSpaceAsync(
+                    context.StartupOptions,
+                    context.Paths,
+                    context.Output,
+                    context.CloudFiles,
+                    context.NativeApi,
+                    context.SyncPair,
+                    context.Diagnostics,
+                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.ExplorerAlwaysKeep] = context => RunExplorerAlwaysKeepAsync(
+                    context.Paths,
+                    context.Output,
+                    context.CloudFiles,
+                    context.NativeApi,
+                    context.SyncPair,
+                    context.Diagnostics,
+                    restoreMissingPlaceholder: false,
+                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.ExplorerAlwaysKeepMissingPlaceholder] = context => RunExplorerAlwaysKeepAsync(
+                    context.Paths,
+                    context.Output,
+                    context.CloudFiles,
+                    context.NativeApi,
+                    context.SyncPair,
+                    context.Diagnostics,
+                    restoreMissingPlaceholder: true,
+                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.ExplorerAlwaysKeepDuringPopulation] = context =>
+                    RunExplorerAlwaysKeepDuringPopulationAsync(
+                        context.StartupOptions,
+                        context.Paths,
+                        context.Output,
+                        context.CloudFiles,
+                        context.NativeApi,
+                        context.SyncPair,
+                        context.Diagnostics,
+                        context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.ReplaceCloudOnlyUpload] = context => RunReplaceCloudOnlyUploadAsync(
+                    context.Paths,
+                    context.Output,
+                    context.CloudFiles,
+                    context.SyncPair,
+                    context.Diagnostics,
+                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.ShellShareLinkTargets] = context => RunShellShareLinkTargetsAsync(
+                    context.Paths,
+                    context.Output,
+                    context.CloudFiles,
+                    context.NativeApi,
+                    context.SyncPair,
+                    context.Diagnostics,
+                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.DesktopRootLifecycle] = context => RunDesktopRootLifecycleAsync(
+                    context.Paths,
+                    context.Output,
+                    context.CloudFiles,
+                    context.NativeApi,
+                    context.SyncPair,
+                    context.Diagnostics,
+                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.DesktopSessionRestore] = context => RunDesktopSessionRestoreAsync(
+                    context.Paths,
+                    context.Output,
+                    context.CloudFiles,
+                    context.NativeApi,
+                    context.SyncPair,
+                    context.Diagnostics,
+                    context.CancellationToken),
+                [WindowsVirtualFilesSmokePhase.LargeHydrationProgress] = context => RunLargeHydrationAsync(
+                    context.Paths,
+                    context.Output,
+                    context.CloudFiles,
+                    context.NativeApi,
+                    context.SyncPair,
+                    context.Diagnostics,
+                    context.CancellationToken),
+            };
 
         internal static async Task<int> PrepareStartupEnvironmentAsync(
             DesktopStartupOptions startupOptions,
@@ -132,378 +292,161 @@ namespace Cotton.Sync.Desktop.Startup
             ArgumentNullException.ThrowIfNull(output);
 
             await output.WriteLineAsync("Cotton Sync Desktop Windows virtual files smoke").ConfigureAwait(false);
+            WindowsVirtualFilesSmokeContext? context = await CreateSmokeContextAsync(
+                    paths,
+                    startupOptions,
+                    output,
+                    cloudFilesAdapter,
+                    readAllTextAsync,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (context is null)
+            {
+                return 2;
+            }
 
+            return await PhaseHandlers[context.Phase](context).ConfigureAwait(false);
+        }
+
+        private static async Task<WindowsVirtualFilesSmokeContext?> CreateSmokeContextAsync(
+            DesktopAppPaths paths,
+            DesktopStartupOptions startupOptions,
+            TextWriter output,
+            IWindowsCloudFilesAdapter? cloudFilesAdapter,
+            Func<string, CancellationToken, Task<string>>? readAllTextAsync,
+            CancellationToken cancellationToken)
+        {
+            string? rootPath = await PrepareSmokeExecutionRootAsync(startupOptions, output, cancellationToken)
+                .ConfigureAwait(false);
+            if (rootPath is null)
+            {
+                return null;
+            }
+
+            WindowsCloudFilesDiagnostics diagnostics = new();
+            if (!WindowsVirtualFilesSmokePhaseCatalog.TryParse(
+                    startupOptions.WindowsVirtualFilesSmokePhase,
+                    out WindowsVirtualFilesSmokePhase phase))
+            {
+                string unsupportedPhase = (startupOptions.WindowsVirtualFilesSmokePhase ?? string.Empty).Trim();
+                await WriteSmokeSetupFailureAsync(
+                        output,
+                        "Unsupported Windows virtual-files smoke phase: " + unsupportedPhase)
+                    .ConfigureAwait(false);
+                return null;
+            }
+
+            WindowsVirtualFilesSmokeCloudRuntime? cloudRuntime = await CreateSmokeCloudRuntimeAsync(
+                    cloudFilesAdapter,
+                    phase,
+                    diagnostics,
+                    output)
+                .ConfigureAwait(false);
+            if (cloudRuntime is null)
+            {
+                return null;
+            }
+
+            SyncPairSettings syncPair = CreateSyncPair(rootPath);
+            Func<string, CancellationToken, Task<string>> reader =
+                readAllTextAsync ?? ReadAllTextThroughExternalProcessAsync;
+            return new WindowsVirtualFilesSmokeContext(
+                paths,
+                startupOptions,
+                output,
+                cloudRuntime.CloudFiles,
+                cloudRuntime.NativeApi,
+                syncPair,
+                diagnostics,
+                reader,
+                phase,
+                cancellationToken);
+        }
+
+        private static async Task<string?> PrepareSmokeExecutionRootAsync(
+            DesktopStartupOptions startupOptions,
+            TextWriter output,
+            CancellationToken cancellationToken)
+        {
             if (!OperatingSystem.IsWindows())
             {
-                await output.WriteLineAsync(FormatCheck(false, "Windows Cloud Files API is only available on Windows."))
+                await WriteSmokeSetupFailureAsync(
+                        output,
+                        "Windows Cloud Files API is only available on Windows.")
                     .ConfigureAwait(false);
-                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
-                return 2;
+                return null;
             }
 
             string rootPath = ResolveSmokeRoot(startupOptions.LocalRoot);
             await output.WriteLineAsync("Destructive root: " + rootPath).ConfigureAwait(false);
-
             string? rootError = ValidateSmokeRoot(rootPath);
             if (rootError is not null)
             {
-                await output.WriteLineAsync(FormatCheck(false, rootError)).ConfigureAwait(false);
-                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
-                return 2;
+                await WriteSmokeSetupFailureAsync(output, rootError).ConfigureAwait(false);
+                return null;
             }
 
             string? setupError = await PrepareSmokeRootEnvironmentAsync(rootPath, output, cancellationToken)
                 .ConfigureAwait(false);
             if (setupError is not null)
             {
-                await output.WriteLineAsync(FormatCheck(false, setupError)).ConfigureAwait(false);
-                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
-                return 2;
+                await WriteSmokeSetupFailureAsync(output, setupError).ConfigureAwait(false);
+                return null;
             }
 
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            string phase = (startupOptions.WindowsVirtualFilesSmokePhase ?? string.Empty).Trim().ToLowerInvariant();
-            bool leaveRegistered = string.Equals(phase, "leave-registered", StringComparison.Ordinal);
-            bool reconnectExisting = string.Equals(phase, "reconnect-existing", StringComparison.Ordinal);
-            bool initialStreamingLogging = string.Equals(phase, "initial-streaming-logging", StringComparison.Ordinal);
-            bool steadyStateRepeat = string.Equals(phase, "steady-state-repeat", StringComparison.Ordinal);
-            bool largeTree = string.Equals(phase, "large-tree", StringComparison.Ordinal);
-            bool nonEmptyPreservation = string.Equals(phase, "non-empty-preservation", StringComparison.Ordinal);
-            bool largeHydration = string.Equals(phase, "large-hydration-progress", StringComparison.Ordinal);
-            bool removePairCleanup = string.Equals(phase, "remove-pair-cleanup", StringComparison.Ordinal);
-            bool largeRemovePairCleanup = string.Equals(phase, "large-remove-pair-cleanup", StringComparison.Ordinal);
-            bool trayQuitDisconnect = string.Equals(phase, "tray-quit-disconnect", StringComparison.Ordinal);
-            bool explorerFreeUpSpace = string.Equals(phase, "explorer-free-up-space", StringComparison.Ordinal);
-            bool explorerAlwaysKeep = string.Equals(phase, "explorer-always-keep", StringComparison.Ordinal);
-            bool explorerAlwaysKeepMissingPlaceholder = string.Equals(
-                phase,
-                "explorer-always-keep-missing-placeholder",
-                StringComparison.Ordinal);
-            bool explorerAlwaysKeepDuringPopulation = string.Equals(
-                phase,
-                "explorer-always-keep-during-population",
-                StringComparison.Ordinal);
-            bool remoteUpdateAfterDehydrate = string.Equals(phase, "remote-update-after-dehydrate", StringComparison.Ordinal);
-            bool replaceCloudOnlyUpload = string.Equals(phase, "replace-cloud-only-upload", StringComparison.Ordinal);
-            bool excelAtomicSave = string.Equals(phase, "excel-atomic-save", StringComparison.Ordinal);
-            bool providerMetadataUserEdit = string.Equals(phase, "provider-metadata-user-edit", StringComparison.Ordinal);
-            bool localRenameAfterProviderWrite = string.Equals(phase, "local-rename-after-provider-write", StringComparison.Ordinal);
-            bool localMoveAfterProviderWrite = string.Equals(phase, "local-move-after-provider-write", StringComparison.Ordinal);
-            bool shellShareLinkTargets = string.Equals(phase, "shell-share-link-targets", StringComparison.Ordinal);
-            bool desktopRootLifecycle = string.Equals(phase, "desktop-root-lifecycle", StringComparison.Ordinal);
-            bool desktopSessionRestore = string.Equals(phase, "desktop-session-restore", StringComparison.Ordinal);
-            if (!string.IsNullOrEmpty(phase)
-                && !leaveRegistered
-                && !reconnectExisting
-                && !initialStreamingLogging
-                && !steadyStateRepeat
-                && !largeTree
-                && !nonEmptyPreservation
-                && !largeHydration
-                && !removePairCleanup
-                && !largeRemovePairCleanup
-                && !trayQuitDisconnect
-                && !explorerFreeUpSpace
-                && !explorerAlwaysKeep
-                && !explorerAlwaysKeepMissingPlaceholder
-                && !explorerAlwaysKeepDuringPopulation
-                && !remoteUpdateAfterDehydrate
-                && !replaceCloudOnlyUpload
-                && !excelAtomicSave
-                && !providerMetadataUserEdit
-                && !localRenameAfterProviderWrite
-                && !localMoveAfterProviderWrite
-                && !shellShareLinkTargets
-                && !desktopRootLifecycle
-                && !desktopSessionRestore)
+            return rootPath;
+        }
+
+        private static async Task<WindowsVirtualFilesSmokeCloudRuntime?> CreateSmokeCloudRuntimeAsync(
+            IWindowsCloudFilesAdapter? configuredAdapter,
+            WindowsVirtualFilesSmokePhase phase,
+            WindowsCloudFilesDiagnostics diagnostics,
+            TextWriter output)
+        {
+            if (configuredAdapter is not null)
             {
-                await output.WriteLineAsync(FormatCheck(false, "Unsupported Windows virtual-files smoke phase: " + phase))
-                    .ConfigureAwait(false);
-                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
-                return 2;
+                return new WindowsVirtualFilesSmokeCloudRuntime(configuredAdapter, NativeApi: null);
             }
 
-            bool requiresExplorerAvailabilityVerbs = explorerFreeUpSpace
-                || explorerAlwaysKeep
-                || explorerAlwaysKeepMissingPlaceholder
-                || explorerAlwaysKeepDuringPopulation;
-            IWindowsStorageProviderSyncRootRegistrar? storageProviderRegistrar = cloudFilesAdapter is null
-                ? WindowsStorageProviderSyncRootRegistrar.TryCreateDefault()
-                : null;
-            if (cloudFilesAdapter is null
-                && requiresExplorerAvailabilityVerbs
-                && storageProviderRegistrar is null)
+            IWindowsStorageProviderSyncRootRegistrar? storageProviderRegistrar =
+                WindowsStorageProviderSyncRootRegistrar.TryCreateDefault();
+            bool requiresExplorerAvailabilityVerbs =
+                WindowsVirtualFilesSmokePhaseCatalog.RequiresExplorerAvailabilityVerbs(phase);
+            if (requiresExplorerAvailabilityVerbs && storageProviderRegistrar is null)
             {
-                await output.WriteLineAsync(
-                        FormatCheck(
-                            false,
-                            "Explorer availability smoke requires the packaged Windows shell helper beside the desktop app."))
+                await WriteSmokeSetupFailureAsync(
+                        output,
+                        "Explorer availability smoke requires the packaged Windows shell helper beside the desktop app.")
                     .ConfigureAwait(false);
-                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
-                return 2;
+                return null;
             }
 
-            IWindowsCloudFilesNativeApi? nativeApi = cloudFilesAdapter is null
-                ? new WindowsCloudFilesNativeApi()
-                : null;
-            IWindowsCloudFilesAdapter cloudFiles = cloudFilesAdapter
-                ?? new WindowsCloudFilesAdapter(
-                    nativeApi: nativeApi,
-                    storageProviderRegistrar: storageProviderRegistrar,
-                    diagnostics: diagnostics);
-            SyncPairSettings syncPair = CreateSyncPair(rootPath);
-            int largeTreePlaceholderCount = GetLargeTreePlaceholderCount(startupOptions);
-            if (excelAtomicSave)
-            {
-                return await RunExcelAtomicSaveAsync(
-                    output,
-                    cloudFiles,
-                    syncPair,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
+            IWindowsCloudFilesNativeApi nativeApi = new WindowsCloudFilesNativeApi();
+            IWindowsCloudFilesAdapter cloudFiles = new WindowsCloudFilesAdapter(
+                nativeApi: nativeApi,
+                storageProviderRegistrar: storageProviderRegistrar,
+                diagnostics: diagnostics);
+            return new WindowsVirtualFilesSmokeCloudRuntime(cloudFiles, nativeApi);
+        }
 
-            if (providerMetadataUserEdit)
-            {
-                return await RunProviderMetadataUserEditAsync(
-                    output,
-                    cloudFiles,
-                    syncPair,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
+        private static async Task WriteSmokeSetupFailureAsync(TextWriter output, string message)
+        {
+            await output.WriteLineAsync(FormatCheck(false, message)).ConfigureAwait(false);
+            await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+        }
 
-            if (localRenameAfterProviderWrite)
-            {
-                return await RunLocalRenameAfterProviderWriteAsync(
-                    output,
-                    cloudFiles,
-                    syncPair,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (localMoveAfterProviderWrite)
-            {
-                return await RunLocalMoveAfterProviderWriteAsync(
-                    output,
-                    cloudFiles,
-                    syncPair,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (initialStreamingLogging)
-            {
-                return await RunInitialStreamingLoggingAsync(
-                    paths,
-                    output,
-                    cloudFiles,
-                    syncPair,
-                    largeTreePlaceholderCount,
-                    diagnostics,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (steadyStateRepeat)
-            {
-                return await RunSteadyStateRepeatAsync(
-                    paths,
-                    output,
-                    cloudFiles,
-                    syncPair,
-                    largeTreePlaceholderCount,
-                    diagnostics,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (largeTree)
-            {
-                return await RunLargeTreeAsync(
-                    startupOptions,
-                    output,
-                    cloudFiles,
-                    syncPair,
-                    largeTreePlaceholderCount,
-                    diagnostics,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (nonEmptyPreservation)
-            {
-                return await RunNonEmptyPreservationAsync(
-                    paths,
-                    output,
-                    cloudFiles,
-                    syncPair,
-                    diagnostics,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (removePairCleanup)
-            {
-                return await RunRemovePairCleanupAsync(
-                    paths,
-                    output,
-                    cloudFiles,
-                    nativeApi,
-                    syncPair,
-                    diagnostics,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (largeRemovePairCleanup)
-            {
-                return await RunLargeRemovePairCleanupAsync(
-                    paths,
-                    output,
-                    cloudFiles,
-                    nativeApi,
-                    syncPair,
-                    largeTreePlaceholderCount,
-                    diagnostics,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (trayQuitDisconnect)
-            {
-                return await RunTrayQuitDisconnectAsync(
-                    paths,
-                    output,
-                    cloudFiles,
-                    nativeApi,
-                    syncPair,
-                    diagnostics,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (explorerFreeUpSpace)
-            {
-                return await RunExplorerFreeUpSpaceAsync(
-                    startupOptions,
-                    paths,
-                    output,
-                    cloudFiles,
-                    nativeApi,
-                    syncPair,
-                    diagnostics,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (explorerAlwaysKeep)
-            {
-                return await RunExplorerAlwaysKeepAsync(
-                    paths,
-                    output,
-                    cloudFiles,
-                    nativeApi,
-                    syncPair,
-                    diagnostics,
-                    restoreMissingPlaceholder: false,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (explorerAlwaysKeepMissingPlaceholder)
-            {
-                return await RunExplorerAlwaysKeepAsync(
-                    paths,
-                    output,
-                    cloudFiles,
-                    nativeApi,
-                    syncPair,
-                    diagnostics,
-                    restoreMissingPlaceholder: true,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (explorerAlwaysKeepDuringPopulation)
-            {
-                return await RunExplorerAlwaysKeepDuringPopulationAsync(
-                    startupOptions,
-                    paths,
-                    output,
-                    cloudFiles,
-                    nativeApi,
-                    syncPair,
-                    diagnostics,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (replaceCloudOnlyUpload)
-            {
-                return await RunReplaceCloudOnlyUploadAsync(
-                    paths,
-                    output,
-                    cloudFiles,
-                    syncPair,
-                    diagnostics,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (shellShareLinkTargets)
-            {
-                return await RunShellShareLinkTargetsAsync(
-                    paths,
-                    output,
-                    cloudFiles,
-                    nativeApi,
-                    syncPair,
-                    diagnostics,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (desktopRootLifecycle)
-            {
-                return await RunDesktopRootLifecycleAsync(
-                    paths,
-                    output,
-                    cloudFiles,
-                    nativeApi,
-                    syncPair,
-                    diagnostics,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (desktopSessionRestore)
-            {
-                return await RunDesktopSessionRestoreAsync(
-                    paths,
-                    output,
-                    cloudFiles,
-                    nativeApi,
-                    syncPair,
-                    diagnostics,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (largeHydration)
-            {
-                return await RunLargeHydrationAsync(
-                    paths,
-                    output,
-                    cloudFiles,
-                    nativeApi,
-                    syncPair,
-                    diagnostics,
-                    cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
+        private static async Task<int> RunDefaultWindowsVirtualFilesSmokeAsync(
+            WindowsVirtualFilesSmokeContext context)
+        {
+            DesktopAppPaths paths = context.Paths;
+            TextWriter output = context.Output;
+            IWindowsCloudFilesAdapter cloudFiles = context.CloudFiles;
+            IWindowsCloudFilesNativeApi? nativeApi = context.NativeApi;
+            SyncPairSettings syncPair = context.SyncPair;
+            WindowsCloudFilesDiagnostics diagnostics = context.Diagnostics;
+            string rootPath = syncPair.LocalRootPath;
+            bool leaveRegistered = context.Phase == WindowsVirtualFilesSmokePhase.LeaveRegistered;
+            bool reconnectExisting = context.Phase == WindowsVirtualFilesSmokePhase.ReconnectExisting;
             byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
             string expectedText = Encoding.UTF8.GetString(expectedContent);
             string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
@@ -520,8 +463,6 @@ namespace Cotton.Sync.Desktop.Startup
                     nativeApi,
                     Path.Combine(paths.DataDirectory, "vfs-smoke-temp"),
                     diagnostics);
-            Func<string, CancellationToken, Task<string>> reader =
-                readAllTextAsync ?? ReadAllTextThroughExternalProcessAsync;
             WindowsCloudFilesConnection? connection = null;
             int failures = 0;
 
@@ -530,44 +471,19 @@ namespace Cotton.Sync.Desktop.Startup
                 string placeholderPath = Path.Combine(rootPath, RelativePlaceholderPath);
                 if (!reconnectExisting)
                 {
-                    TryUnregisterExistingRoot(cloudFiles, syncPair, output);
-                    PrepareRoot(rootPath);
-                    await output.WriteLineAsync(FormatCheck(true, "Isolated QA root prepared.") + " root=" + rootPath)
+                    failures += await PrepareDefaultPlaceholderAsync(
+                            context,
+                            placeholderRequest,
+                            contentProvider)
                         .ConfigureAwait(false);
-
-                    RemoteFilePlaceholderResult placeholder = cloudFiles.CreateFilePlaceholder(placeholderRequest);
-                    if (contentProvider.DownloadCount == 0)
-                    {
-                        await output.WriteLineAsync(
-                            FormatCheck(true, "Placeholder creation did not download remote content.")
-                            + " identityBytes=" + (placeholder.PlaceholderIdentity?.Length ?? 0).ToString(System.Globalization.CultureInfo.InvariantCulture))
-                            .ConfigureAwait(false);
-                    }
-                    else
-                    {
-                        failures++;
-                        await output.WriteLineAsync(FormatCheck(false, "Placeholder creation unexpectedly downloaded remote content."))
-                            .ConfigureAwait(false);
-                    }
                 }
 
-                if (File.Exists(placeholderPath))
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, reconnectExisting
-                            ? "Existing remote-only placeholder is available before reconnect hydration."
-                            : "Remote-only placeholder exists before hydration.")
-                        + " path=" + placeholderPath
-                        + ", attributes=" + FormatAttributes(File.GetAttributes(placeholderPath))
-                        + ", downloads=" + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(FormatCheck(false, "Remote-only placeholder file was not created."))
-                        .ConfigureAwait(false);
-                }
+                failures += await VerifyDefaultPlaceholderExistsAsync(
+                        context,
+                        contentProvider,
+                        placeholderPath,
+                        reconnectExisting)
+                    .ConfigureAwait(false);
 
                 connection = cloudFiles.ConnectSyncRoot(syncPair, callbackHandler);
                 await output.WriteLineAsync(
@@ -575,21 +491,7 @@ namespace Cotton.Sync.Desktop.Startup
                     + " root=" + connection.LocalRootPath)
                     .ConfigureAwait(false);
 
-                if (startupOptions.WindowsVirtualFilesSmokeHoldAfterPlaceholder > TimeSpan.Zero)
-                {
-                    await output.WriteLineAsync(
-                        "Holding after remote-only placeholder creation for "
-                        + startupOptions.WindowsVirtualFilesSmokeHoldAfterPlaceholder.TotalSeconds.ToString(
-                            "0.###",
-                            System.Globalization.CultureInfo.InvariantCulture)
-                        + " seconds; inspect "
-                        + placeholderPath
-                        + " before hydration starts.")
-                        .ConfigureAwait(false);
-                    await Task
-                        .Delay(startupOptions.WindowsVirtualFilesSmokeHoldAfterPlaceholder, cancellationToken)
-                        .ConfigureAwait(false);
-                }
+                await HoldDefaultPlaceholderAsync(context, placeholderPath).ConfigureAwait(false);
 
                 if (leaveRegistered)
                 {
@@ -600,179 +502,27 @@ namespace Cotton.Sync.Desktop.Startup
                 }
                 else
                 {
-                    string hydratedText = await reader(placeholderPath, cancellationToken).ConfigureAwait(false);
-                    byte[] hydratedBytes = Encoding.UTF8.GetBytes(hydratedText);
-                    string hydratedHash = Convert.ToHexStringLower(SHA256.HashData(hydratedBytes));
-                    if (string.Equals(hydratedText, expectedText, StringComparison.Ordinal)
-                        && string.Equals(hydratedHash, expectedHash, StringComparison.OrdinalIgnoreCase))
-                    {
-                        await output.WriteLineAsync(
-                            FormatCheck(true, "Opening the placeholder hydrated exact remote content.")
-                            + " sha256=" + hydratedHash
-                            + ", downloads=" + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                            .ConfigureAwait(false);
-                    }
-                    else
-                    {
-                        failures++;
-                        await output.WriteLineAsync(
-                            FormatCheck(false, "Hydrated content did not match expected remote content.")
-                            + " expectedSha256=" + expectedHash
-                            + ", actualSha256=" + hydratedHash)
-                            .ConfigureAwait(false);
-                    }
-
-                    if (nativeApi is not null && contentProvider.DownloadCount == 0)
-                    {
-                        failures++;
-                        await output.WriteLineAsync(FormatCheck(false, "Opening the placeholder did not trigger a Cloud Files fetch callback."))
-                            .ConfigureAwait(false);
-                    }
+                    failures += await VerifyDefaultHydratedContentAsync(
+                            context,
+                            contentProvider,
+                            placeholderPath,
+                            expectedText,
+                            expectedHash)
+                        .ConfigureAwait(false);
 
                     if (nativeApi is not null)
                     {
-                        int downloadsBeforeDehydrate = contentProvider.DownloadCount;
-                        nativeApi.DehydratePlaceholder(placeholderPath);
-                        FileAttributes dehydratedAttributes = File.GetAttributes(placeholderPath);
-                        if (HasRecallOnDataAccess(dehydratedAttributes)
-                            && contentProvider.DownloadCount == downloadsBeforeDehydrate)
-                        {
-                            await output.WriteLineAsync(
-                                FormatCheck(true, "Dehydrating the hydrated placeholder freed local content without remote transfer.")
-                                + " attributes=" + FormatAttributes(dehydratedAttributes)
-                                + ", downloads=" + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                                .ConfigureAwait(false);
-                        }
-                        else
-                        {
-                            failures++;
-                            await output.WriteLineAsync(
-                                FormatCheck(false, "Dehydrating the hydrated placeholder did not return it to online-only state.")
-                                + " attributes=" + FormatAttributes(dehydratedAttributes)
-                                + ", downloadsBefore="
-                                + downloadsBeforeDehydrate.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                                + ", downloadsAfter="
-                                + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                                .ConfigureAwait(false);
-                        }
-
-                        if (remoteUpdateAfterDehydrate)
-                        {
-                            byte[] updatedContent = Encoding.UTF8.GetBytes(
-                                "Cotton Sync Windows virtual files updated smoke content\n");
-                            string updatedText = Encoding.UTF8.GetString(updatedContent);
-                            string updatedHash = Convert.ToHexStringLower(SHA256.HashData(updatedContent));
-                            int downloadsBeforeUpdate = contentProvider.DownloadCount;
-                            cloudFiles.CreateFilePlaceholder(CreatePlaceholderRequest(
-                                syncPair,
-                                RelativePlaceholderPath,
-                                updatedContent.LongLength,
-                                updatedHash));
-                            contentProvider.SetContent(updatedContent);
-
-                            var updatedInfo = new FileInfo(placeholderPath);
-                            FileAttributes updatedAttributes = updatedInfo.Attributes;
-                            if (updatedInfo.Length == updatedContent.LongLength
-                                && HasRecallOnDataAccess(updatedAttributes)
-                                && contentProvider.DownloadCount == downloadsBeforeUpdate)
-                            {
-                                await output.WriteLineAsync(
-                                    FormatCheck(true, "Remote update after dehydration refreshed placeholder metadata without downloading content.")
-                                    + " sizeBytes="
-                                    + updatedInfo.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                                    + ", attributes="
-                                    + FormatAttributes(updatedAttributes)
-                                    + ", downloads="
-                                    + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                                    .ConfigureAwait(false);
-                            }
-                            else
-                            {
-                                failures++;
-                                await output.WriteLineAsync(
-                                    FormatCheck(false, "Remote update after dehydration did not refresh placeholder metadata correctly.")
-                                    + " expectedSizeBytes="
-                                    + updatedContent.LongLength.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                                    + ", actualSizeBytes="
-                                    + updatedInfo.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                                    + ", attributes="
-                                    + FormatAttributes(updatedAttributes)
-                                    + ", downloadsBeforeUpdate="
-                                    + downloadsBeforeUpdate.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                                    + ", downloadsAfterUpdate="
-                                    + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                                    .ConfigureAwait(false);
-                            }
-
-                            string updatedHydratedText = await reader(placeholderPath, cancellationToken).ConfigureAwait(false);
-                            string updatedHydratedHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(updatedHydratedText)));
-                            if (string.Equals(updatedHydratedText, updatedText, StringComparison.Ordinal)
-                                && string.Equals(updatedHydratedHash, updatedHash, StringComparison.OrdinalIgnoreCase)
-                                && contentProvider.DownloadCount == downloadsBeforeUpdate + 1)
-                            {
-                                await output.WriteLineAsync(
-                                    FormatCheck(true, "Opening the updated dehydrated placeholder hydrated the latest remote content.")
-                                    + " sha256="
-                                    + updatedHydratedHash
-                                    + ", downloads="
-                                    + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                                    .ConfigureAwait(false);
-                            }
-                            else
-                            {
-                                failures++;
-                                await output.WriteLineAsync(
-                                    FormatCheck(false, "Opening the updated dehydrated placeholder did not hydrate the latest remote content.")
-                                    + " expectedSha256="
-                                    + updatedHash
-                                    + ", actualSha256="
-                                    + updatedHydratedHash
-                                    + ", downloadsBeforeUpdate="
-                                    + downloadsBeforeUpdate.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                                    + ", downloadsAfterHydration="
-                                    + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                                    .ConfigureAwait(false);
-                            }
-                        }
-                        else
-                        {
-                            connection.Dispose();
-                            connection = null;
-                            int downloadsBeforeReconnect = contentProvider.DownloadCount;
-                            await output.WriteLineAsync("Disconnected Cloud Files sync root before reconnect smoke.").ConfigureAwait(false);
-
-                            connection = cloudFiles.ConnectSyncRoot(syncPair, callbackHandler);
-                            await output.WriteLineAsync(
-                                FormatCheck(true, "Cloud Files sync root reconnected after provider restart simulation.")
-                                + " root=" + connection.LocalRootPath)
-                                .ConfigureAwait(false);
-
-                            string rehydratedText = await reader(placeholderPath, cancellationToken).ConfigureAwait(false);
-                            string rehydratedHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(rehydratedText)));
-                            if (string.Equals(rehydratedText, expectedText, StringComparison.Ordinal)
-                                && string.Equals(rehydratedHash, expectedHash, StringComparison.OrdinalIgnoreCase)
-                                && contentProvider.DownloadCount == downloadsBeforeReconnect + 1)
-                            {
-                                await output.WriteLineAsync(
-                                    FormatCheck(true, "Reconnected Cloud Files callbacks hydrated the placeholder without duplicate registration.")
-                                    + " sha256=" + rehydratedHash
-                                    + ", downloads=" + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                                    .ConfigureAwait(false);
-                            }
-                            else
-                            {
-                                failures++;
-                                await output.WriteLineAsync(
-                                    FormatCheck(false, "Reconnected Cloud Files callbacks did not hydrate the placeholder correctly.")
-                                    + " expectedSha256=" + expectedHash
-                                    + ", actualSha256=" + rehydratedHash
-                                    + ", downloadsBeforeReconnect="
-                                    + downloadsBeforeReconnect.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                                    + ", downloadsAfterReconnect="
-                                    + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                                    .ConfigureAwait(false);
-                            }
-                        }
+                        DefaultVirtualFilesHydrationResult nativeResult = await RunDefaultNativeLifecycleAsync(
+                                context,
+                                contentProvider,
+                                callbackHandler,
+                                connection,
+                                placeholderPath,
+                                expectedText,
+                                expectedHash)
+                            .ConfigureAwait(false);
+                        failures += nativeResult.Failures;
+                        connection = nativeResult.Connection;
                     }
                 }
             }
@@ -790,6 +540,372 @@ namespace Cotton.Sync.Desktop.Startup
             }
 
             return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
+        }
+
+        private static async Task<int> PrepareDefaultPlaceholderAsync(
+            WindowsVirtualFilesSmokeContext context,
+            RemoteFilePlaceholderRequest placeholderRequest,
+            StaticSmokeContentProvider contentProvider)
+        {
+            TryUnregisterExistingRoot(context.CloudFiles, context.SyncPair, context.Output);
+            PrepareRoot(context.SyncPair.LocalRootPath);
+            await context.Output.WriteLineAsync(
+                    FormatCheck(true, "Isolated QA root prepared.") + " root=" + context.SyncPair.LocalRootPath)
+                .ConfigureAwait(false);
+            RemoteFilePlaceholderResult placeholder = context.CloudFiles.CreateFilePlaceholder(placeholderRequest);
+            if (contentProvider.DownloadCount == 0)
+            {
+                await context.Output.WriteLineAsync(
+                        FormatCheck(true, "Placeholder creation did not download remote content.")
+                        + " identityBytes="
+                        + (placeholder.PlaceholderIdentity?.Length ?? 0).ToString(
+                            System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+                return 0;
+            }
+
+            await context.Output.WriteLineAsync(
+                    FormatCheck(false, "Placeholder creation unexpectedly downloaded remote content."))
+                .ConfigureAwait(false);
+            return 1;
+        }
+
+        private static async Task<int> VerifyDefaultPlaceholderExistsAsync(
+            WindowsVirtualFilesSmokeContext context,
+            StaticSmokeContentProvider contentProvider,
+            string placeholderPath,
+            bool reconnectExisting)
+        {
+            if (!File.Exists(placeholderPath))
+            {
+                await context.Output.WriteLineAsync(
+                        FormatCheck(false, "Remote-only placeholder file was not created."))
+                    .ConfigureAwait(false);
+                return 1;
+            }
+
+            string message = reconnectExisting
+                ? "Existing remote-only placeholder is available before reconnect hydration."
+                : "Remote-only placeholder exists before hydration.";
+            await context.Output.WriteLineAsync(
+                    FormatCheck(true, message)
+                    + " path=" + placeholderPath
+                    + ", attributes=" + FormatAttributes(File.GetAttributes(placeholderPath))
+                    + ", downloads="
+                    + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .ConfigureAwait(false);
+            return 0;
+        }
+
+        private static async Task HoldDefaultPlaceholderAsync(
+            WindowsVirtualFilesSmokeContext context,
+            string placeholderPath)
+        {
+            TimeSpan holdDuration = context.StartupOptions.WindowsVirtualFilesSmokeHoldAfterPlaceholder;
+            if (holdDuration <= TimeSpan.Zero)
+            {
+                return;
+            }
+
+            await context.Output.WriteLineAsync(
+                    "Holding after remote-only placeholder creation for "
+                    + holdDuration.TotalSeconds.ToString(
+                        "0.###",
+                        System.Globalization.CultureInfo.InvariantCulture)
+                    + " seconds; inspect "
+                    + placeholderPath
+                    + " before hydration starts.")
+                .ConfigureAwait(false);
+            await Task.Delay(holdDuration, context.CancellationToken).ConfigureAwait(false);
+        }
+
+        private static async Task<int> VerifyDefaultHydratedContentAsync(
+            WindowsVirtualFilesSmokeContext context,
+            StaticSmokeContentProvider contentProvider,
+            string placeholderPath,
+            string expectedText,
+            string expectedHash)
+        {
+            string hydratedText = await context.ReadAllTextAsync(placeholderPath, context.CancellationToken)
+                .ConfigureAwait(false);
+            string hydratedHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(hydratedText)));
+            bool contentMatches = string.Equals(hydratedText, expectedText, StringComparison.Ordinal)
+                && string.Equals(hydratedHash, expectedHash, StringComparison.OrdinalIgnoreCase);
+            if (contentMatches)
+            {
+                await context.Output.WriteLineAsync(
+                        FormatCheck(true, "Opening the placeholder hydrated exact remote content.")
+                        + " sha256=" + hydratedHash
+                        + ", downloads="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+                return 0;
+            }
+
+            await context.Output.WriteLineAsync(
+                    FormatCheck(false, "Hydrated content did not match expected remote content.")
+                    + " expectedSha256=" + expectedHash
+                    + ", actualSha256=" + hydratedHash)
+                .ConfigureAwait(false);
+            return 1;
+        }
+
+        private static async Task<DefaultVirtualFilesHydrationResult> RunDefaultNativeLifecycleAsync(
+            WindowsVirtualFilesSmokeContext context,
+            StaticSmokeContentProvider contentProvider,
+            IWindowsCloudFilesCallbackHandler callbackHandler,
+            WindowsCloudFilesConnection connection,
+            string placeholderPath,
+            string expectedText,
+            string expectedHash)
+        {
+            int failures = await VerifyDefaultFetchCallbackAsync(context.Output, contentProvider).ConfigureAwait(false);
+            failures += await DehydrateDefaultPlaceholderAsync(context, contentProvider, placeholderPath)
+                .ConfigureAwait(false);
+            if (context.Phase == WindowsVirtualFilesSmokePhase.RemoteUpdateAfterDehydrate)
+            {
+                failures += await RunRemoteUpdateAfterDehydrateAsync(context, contentProvider, placeholderPath)
+                    .ConfigureAwait(false);
+                return new DefaultVirtualFilesHydrationResult(failures, connection);
+            }
+
+            connection.Dispose();
+            DefaultVirtualFilesHydrationResult reconnectResult = await ReconnectDefaultPlaceholderAsync(
+                    context,
+                    contentProvider,
+                    callbackHandler,
+                    placeholderPath,
+                    expectedText,
+                    expectedHash)
+                .ConfigureAwait(false);
+            return new DefaultVirtualFilesHydrationResult(
+                failures + reconnectResult.Failures,
+                reconnectResult.Connection);
+        }
+
+        private static async Task<int> VerifyDefaultFetchCallbackAsync(
+            TextWriter output,
+            StaticSmokeContentProvider contentProvider)
+        {
+            if (contentProvider.DownloadCount > 0)
+            {
+                return 0;
+            }
+
+            await output.WriteLineAsync(
+                    FormatCheck(false, "Opening the placeholder did not trigger a Cloud Files fetch callback."))
+                .ConfigureAwait(false);
+            return 1;
+        }
+
+        private static async Task<int> DehydrateDefaultPlaceholderAsync(
+            WindowsVirtualFilesSmokeContext context,
+            StaticSmokeContentProvider contentProvider,
+            string placeholderPath)
+        {
+            int downloadsBeforeDehydrate = contentProvider.DownloadCount;
+            context.NativeApi!.DehydratePlaceholder(placeholderPath);
+            FileAttributes attributes = File.GetAttributes(placeholderPath);
+            bool passed = HasRecallOnDataAccess(attributes)
+                && contentProvider.DownloadCount == downloadsBeforeDehydrate;
+            string details = " attributes=" + FormatAttributes(attributes)
+                + ", downloadsBefore="
+                + downloadsBeforeDehydrate.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", downloadsAfter="
+                + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (passed)
+            {
+                await context.Output.WriteLineAsync(
+                        FormatCheck(true, "Dehydrating the hydrated placeholder freed local content without remote transfer.")
+                        + " attributes=" + FormatAttributes(attributes)
+                        + ", downloads="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+                return 0;
+            }
+
+            await context.Output.WriteLineAsync(
+                    FormatCheck(false, "Dehydrating the hydrated placeholder did not return it to online-only state.")
+                    + details)
+                .ConfigureAwait(false);
+            return 1;
+        }
+
+        private static async Task<int> RunRemoteUpdateAfterDehydrateAsync(
+            WindowsVirtualFilesSmokeContext context,
+            StaticSmokeContentProvider contentProvider,
+            string placeholderPath)
+        {
+            byte[] updatedContent = Encoding.UTF8.GetBytes(
+                "Cotton Sync Windows virtual files updated smoke content\n");
+            string updatedText = Encoding.UTF8.GetString(updatedContent);
+            string updatedHash = Convert.ToHexStringLower(SHA256.HashData(updatedContent));
+            int downloadsBeforeUpdate = contentProvider.DownloadCount;
+            context.CloudFiles.CreateFilePlaceholder(CreatePlaceholderRequest(
+                context.SyncPair,
+                RelativePlaceholderPath,
+                updatedContent.LongLength,
+                updatedHash));
+            contentProvider.SetContent(updatedContent);
+            int failures = await VerifyUpdatedPlaceholderMetadataAsync(
+                    context.Output,
+                    contentProvider,
+                    placeholderPath,
+                    updatedContent.LongLength,
+                    downloadsBeforeUpdate)
+                .ConfigureAwait(false);
+            failures += await VerifyUpdatedPlaceholderHydrationAsync(
+                    context,
+                    contentProvider,
+                    placeholderPath,
+                    updatedText,
+                    updatedHash,
+                    downloadsBeforeUpdate)
+                .ConfigureAwait(false);
+            return failures;
+        }
+
+        private static async Task<int> VerifyUpdatedPlaceholderMetadataAsync(
+            TextWriter output,
+            StaticSmokeContentProvider contentProvider,
+            string placeholderPath,
+            long expectedSize,
+            int downloadsBeforeUpdate)
+        {
+            FileInfo updatedInfo = new(placeholderPath);
+            FileAttributes attributes = updatedInfo.Attributes;
+            bool passed = updatedInfo.Length == expectedSize
+                && HasRecallOnDataAccess(attributes)
+                && contentProvider.DownloadCount == downloadsBeforeUpdate;
+            if (passed)
+            {
+                await output.WriteLineAsync(
+                        FormatCheck(true, "Remote update after dehydration refreshed placeholder metadata without downloading content.")
+                        + " sizeBytes="
+                        + updatedInfo.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ", attributes=" + FormatAttributes(attributes)
+                        + ", downloads="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+                return 0;
+            }
+
+            await output.WriteLineAsync(
+                    FormatCheck(false, "Remote update after dehydration did not refresh placeholder metadata correctly.")
+                    + " expectedSizeBytes=" + expectedSize.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", actualSizeBytes="
+                    + updatedInfo.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", attributes=" + FormatAttributes(attributes)
+                    + ", downloadsBeforeUpdate="
+                    + downloadsBeforeUpdate.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", downloadsAfterUpdate="
+                    + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .ConfigureAwait(false);
+            return 1;
+        }
+
+        private static async Task<int> VerifyUpdatedPlaceholderHydrationAsync(
+            WindowsVirtualFilesSmokeContext context,
+            StaticSmokeContentProvider contentProvider,
+            string placeholderPath,
+            string expectedText,
+            string expectedHash,
+            int downloadsBeforeUpdate)
+        {
+            string hydratedText = await context.ReadAllTextAsync(placeholderPath, context.CancellationToken)
+                .ConfigureAwait(false);
+            string hydratedHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(hydratedText)));
+            bool passed = string.Equals(hydratedText, expectedText, StringComparison.Ordinal)
+                && string.Equals(hydratedHash, expectedHash, StringComparison.OrdinalIgnoreCase)
+                && contentProvider.DownloadCount == downloadsBeforeUpdate + 1;
+            if (passed)
+            {
+                await context.Output.WriteLineAsync(
+                        FormatCheck(true, "Opening the updated dehydrated placeholder hydrated the latest remote content.")
+                        + " sha256=" + hydratedHash
+                        + ", downloads="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+                return 0;
+            }
+
+            await context.Output.WriteLineAsync(
+                    FormatCheck(false, "Opening the updated dehydrated placeholder did not hydrate the latest remote content.")
+                    + " expectedSha256=" + expectedHash
+                    + ", actualSha256=" + hydratedHash
+                    + ", downloadsBeforeUpdate="
+                    + downloadsBeforeUpdate.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", downloadsAfterHydration="
+                    + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .ConfigureAwait(false);
+            return 1;
+        }
+
+        private static async Task<DefaultVirtualFilesHydrationResult> ReconnectDefaultPlaceholderAsync(
+            WindowsVirtualFilesSmokeContext context,
+            StaticSmokeContentProvider contentProvider,
+            IWindowsCloudFilesCallbackHandler callbackHandler,
+            string placeholderPath,
+            string expectedText,
+            string expectedHash)
+        {
+            int downloadsBeforeReconnect = contentProvider.DownloadCount;
+            await context.Output.WriteLineAsync(
+                    "Disconnected Cloud Files sync root before reconnect smoke.")
+                .ConfigureAwait(false);
+            WindowsCloudFilesConnection connection = context.CloudFiles.ConnectSyncRoot(
+                context.SyncPair,
+                callbackHandler);
+            await context.Output.WriteLineAsync(
+                    FormatCheck(true, "Cloud Files sync root reconnected after provider restart simulation.")
+                    + " root=" + connection.LocalRootPath)
+                .ConfigureAwait(false);
+            int failures = await VerifyReconnectedPlaceholderAsync(
+                    context,
+                    contentProvider,
+                    placeholderPath,
+                    expectedText,
+                    expectedHash,
+                    downloadsBeforeReconnect)
+                .ConfigureAwait(false);
+            return new DefaultVirtualFilesHydrationResult(failures, connection);
+        }
+
+        private static async Task<int> VerifyReconnectedPlaceholderAsync(
+            WindowsVirtualFilesSmokeContext context,
+            StaticSmokeContentProvider contentProvider,
+            string placeholderPath,
+            string expectedText,
+            string expectedHash,
+            int downloadsBeforeReconnect)
+        {
+            string hydratedText = await context.ReadAllTextAsync(placeholderPath, context.CancellationToken)
+                .ConfigureAwait(false);
+            string hydratedHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(hydratedText)));
+            bool passed = string.Equals(hydratedText, expectedText, StringComparison.Ordinal)
+                && string.Equals(hydratedHash, expectedHash, StringComparison.OrdinalIgnoreCase)
+                && contentProvider.DownloadCount == downloadsBeforeReconnect + 1;
+            if (passed)
+            {
+                await context.Output.WriteLineAsync(
+                        FormatCheck(true, "Reconnected Cloud Files callbacks hydrated the placeholder without duplicate registration.")
+                        + " sha256=" + hydratedHash
+                        + ", downloads="
+                        + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
+                return 0;
+            }
+
+            await context.Output.WriteLineAsync(
+                    FormatCheck(false, "Reconnected Cloud Files callbacks did not hydrate the placeholder correctly.")
+                    + " expectedSha256=" + expectedHash
+                    + ", actualSha256=" + hydratedHash
+                    + ", downloadsBeforeReconnect="
+                    + downloadsBeforeReconnect.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ", downloadsAfterReconnect="
+                    + contentProvider.DownloadCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .ConfigureAwait(false);
+            return 1;
         }
 
         private static async Task<int> RunProviderMetadataUserEditAsync(

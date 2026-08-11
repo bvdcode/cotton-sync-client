@@ -8,7 +8,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_PreparesIsolatedQaDriveBeforeCloudFilesSmoke()
         {
-            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string runner = ReadSmokeRunnerSources();
             int preparationIndex = runner.IndexOf(
                 "PrepareSmokeRootEnvironmentAsync(rootPath",
                 StringComparison.Ordinal);
@@ -53,7 +53,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_ExposesLargeRemovePairCleanupPhaseThroughProductDeletionPath()
         {
-            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string runner = ReadSmokeRunnerSources();
 
             Assert.Multiple(() =>
             {
@@ -78,7 +78,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_ExposesSteadyStateRepeatPhaseWithLocalScanGuard()
         {
-            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string runner = ReadSmokeRunnerSources();
 
             Assert.Multiple(() =>
             {
@@ -105,7 +105,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_ExposesInitialStreamingLoggingPhaseWithTraceMetrics()
         {
-            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string runner = ReadSmokeRunnerSources();
 
             Assert.Multiple(() =>
             {
@@ -135,7 +135,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_BoundsExternalPlaceholderHydrationReads()
         {
-            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string runner = ReadSmokeRunnerSources();
             string fileReader = File.ReadAllText(GetDesktopFilePath("Startup/DesktopPowerShellFileReader.cs"));
 
             Assert.Multiple(() =>
@@ -153,7 +153,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_LargeTreePhaseVerifiesCloudFilesDirectoryStatusFinalization()
         {
-            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string runner = ReadSmokeRunnerSources();
 
             Assert.Multiple(() =>
             {
@@ -173,7 +173,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_ReplaceCloudOnlyUploadPhaseVerifiesNativeCloudFilesStatus()
         {
-            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string runner = ReadSmokeRunnerSources();
 
             Assert.Multiple(() =>
             {
@@ -196,7 +196,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_LocalRenameAfterProviderWriteUsesRealWatcherAndPreservesBothPaths()
         {
-            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string runner = ReadSmokeRunnerSources();
 
             Assert.Multiple(() =>
             {
@@ -214,7 +214,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_ProviderMetadataUserEditUsesRealWatcherAndPreservesContentChange()
         {
-            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string runner = ReadSmokeRunnerSources();
 
             Assert.Multiple(() =>
             {
@@ -231,7 +231,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_LocalMoveAfterProviderWriteUsesRealWatcherAndPreservesDeleteAndCreate()
         {
-            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string runner = ReadSmokeRunnerSources();
 
             Assert.Multiple(() =>
             {
@@ -251,7 +251,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_ExplorerAlwaysKeepPhaseVerifiesPinnedHydrationPath()
         {
-            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string runner = ReadSmokeRunnerSources();
 
             Assert.Multiple(() =>
             {
@@ -270,7 +270,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_ExplorerAlwaysKeepMissingPlaceholderPhaseVerifiesNativeRecovery()
         {
-            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string runner = ReadSmokeRunnerSources();
 
             Assert.Multiple(() =>
             {
@@ -285,7 +285,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_ExplorerAlwaysKeepDuringPopulationUsesRealWatcherAndQueuedRunner()
         {
-            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string runner = ReadSmokeRunnerSources();
 
             Assert.Multiple(() =>
             {
@@ -307,14 +307,16 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_ExplorerAvailabilityPhasesRequirePackagedShellRegistration()
         {
-            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string runner = ReadSmokeRunnerSources();
 
             Assert.Multiple(() =>
             {
-                Assert.That(runner, Does.Contain("bool requiresExplorerAvailabilityVerbs = explorerFreeUpSpace"));
-                Assert.That(runner, Does.Contain("|| explorerAlwaysKeep"));
-                Assert.That(runner, Does.Contain("|| explorerAlwaysKeepMissingPlaceholder"));
-                Assert.That(runner, Does.Contain("|| explorerAlwaysKeepDuringPopulation"));
+                Assert.That(runner, Does.Contain("ExplorerAvailabilityPhases"));
+                Assert.That(runner, Does.Contain("WindowsVirtualFilesSmokePhase.ExplorerFreeUpSpace"));
+                Assert.That(runner, Does.Contain("WindowsVirtualFilesSmokePhase.ExplorerAlwaysKeep"));
+                Assert.That(runner, Does.Contain("WindowsVirtualFilesSmokePhase.ExplorerAlwaysKeepMissingPlaceholder"));
+                Assert.That(runner, Does.Contain("WindowsVirtualFilesSmokePhase.ExplorerAlwaysKeepDuringPopulation"));
+                Assert.That(runner, Does.Contain("RequiresExplorerAvailabilityVerbs(phase)"));
                 Assert.That(runner, Does.Contain("WindowsStorageProviderSyncRootRegistrar.TryCreateDefault()"));
                 Assert.That(
                     runner,
@@ -327,7 +329,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_ExplorerFreeUpSpacePhaseSupportsInteractiveFolderSubtree()
         {
-            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string runner = ReadSmokeRunnerSources();
             int interactiveSetup = runner.IndexOf("if (interactiveFolderSmoke)", StringComparison.Ordinal);
             int connect = runner.IndexOf("connection = cloudFiles.ConnectSyncRoot(syncPair, callbackHandler)", interactiveSetup, StringComparison.Ordinal);
             int directoryPlaceholder = runner.IndexOf("cloudFiles.CreateDirectoryPlaceholder", connect, StringComparison.Ordinal);
@@ -350,7 +352,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_ShellShareLinkTargetsPhaseVerifiesRealVfsTargets()
         {
-            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string runner = ReadSmokeRunnerSources();
 
             Assert.Multiple(() =>
             {
@@ -376,7 +378,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_DesktopRootLifecyclePhaseUsesAppServiceAndNativeVfsCleanup()
         {
-            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string runner = ReadSmokeRunnerSources();
 
             Assert.Multiple(() =>
             {
@@ -405,7 +407,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_DesktopSessionRestorePhaseVerifiesSavedSessionAndVfsReconnect()
         {
-            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string runner = ReadSmokeRunnerSources();
 
             Assert.Multiple(() =>
             {
@@ -428,7 +430,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public void RunAsync_NonEmptyPreservationPhaseVerifiesPreExistingLocalFiles()
         {
-            string runner = File.ReadAllText(GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs"));
+            string runner = ReadSmokeRunnerSources();
 
             Assert.Multiple(() =>
             {
@@ -450,6 +452,17 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(runner, Does.Contain("RecordingRunProgressObserver"));
                 Assert.That(runner, Does.Contain("RecordingRemoteDirectorySynchronizer"));
             });
+        }
+
+        private static string ReadSmokeRunnerSources()
+        {
+            string runnerPath = GetDesktopFilePath("Startup/DesktopWindowsVirtualFilesSmokeRunner.cs");
+            string startupDirectory = Path.GetDirectoryName(runnerPath)
+                ?? throw new DirectoryNotFoundException("Desktop startup source directory was not found.");
+            IEnumerable<string> sourceFiles = Directory
+                .EnumerateFiles(startupDirectory, "*WindowsVirtualFilesSmoke*.cs", SearchOption.TopDirectoryOnly)
+                .OrderBy(static path => path, StringComparer.Ordinal);
+            return string.Join(Environment.NewLine, sourceFiles.Select(File.ReadAllText));
         }
 
         private static string GetDesktopFilePath(string relativePath)
