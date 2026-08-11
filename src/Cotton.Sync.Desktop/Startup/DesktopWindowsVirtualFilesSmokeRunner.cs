@@ -1066,49 +1066,26 @@ namespace Cotton.Sync.Desktop.Startup
                     && request.LocalChangedPaths.Contains(ProviderWriteRenameSourcePath, StringComparer.OrdinalIgnoreCase)
                     && request.LocalChangedPaths.Contains(ProviderWriteRenameTargetPath, StringComparer.OrdinalIgnoreCase)
                     && request.LocalDeletedPaths.Count == 0;
-                if (preservedBothPaths)
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, "Real watcher preserved both paths for a user rename after provider write suppression."))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "Provider write suppression hid part of the user rename scope."))
-                        .ConfigureAwait(false);
-                }
-
-                if (supervisor.SyncNowCallCount == 1)
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, "Provider-suppressed user rename stayed scoped and emitted one request."))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "Provider-suppressed user rename emitted an unexpected request count.")
-                        + " requests="
+                failures += await WriteOutcomeAsync(
+                        output,
+                        preservedBothPaths,
+                        "Real watcher preserved both paths for a user rename after provider write suppression.",
+                        "Provider write suppression hid part of the user rename scope.")
+                    .ConfigureAwait(false);
+                failures += await WriteOutcomeAsync(
+                        output,
+                        supervisor.SyncNowCallCount == 1,
+                        "Provider-suppressed user rename stayed scoped and emitted one request.",
+                        "Provider-suppressed user rename emitted an unexpected request count.",
+                        "requests="
                         + supervisor.SyncNowCallCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                        .ConfigureAwait(false);
-                }
-
-                if (!File.Exists(sourcePath) && File.Exists(targetPath))
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, "File-system rename completed without duplicating the local file."))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "File-system rename did not leave exactly the target file."))
-                        .ConfigureAwait(false);
-                }
+                    .ConfigureAwait(false);
+                failures += await WriteOutcomeAsync(
+                        output,
+                        !File.Exists(sourcePath) && File.Exists(targetPath),
+                        "File-system rename completed without duplicating the local file.",
+                        "File-system rename did not leave exactly the target file.")
+                    .ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -1168,55 +1145,31 @@ namespace Cotton.Sync.Desktop.Startup
                     && request.LocalChangedPaths.Contains(ExcelAtomicSaveFirstWorkbookPath, StringComparer.OrdinalIgnoreCase)
                     && request.LocalChangedPaths.Contains(ExcelAtomicSaveSecondWorkbookPath, StringComparer.OrdinalIgnoreCase)
                     && request.LocalDeletedPaths.Count == 0;
-                if (exactWorkbookScope)
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, "Excel-style atomic saves stayed scoped to exactly the two workbook paths."))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "Excel-style atomic saves included a parent, lock, or temporary path in the sync request.")
-                        + " requestedPaths="
-                        + string.Join(",", request.LocalChangedPaths))
-                        .ConfigureAwait(false);
-                }
-
+                failures += await WriteOutcomeAsync(
+                        output,
+                        exactWorkbookScope,
+                        "Excel-style atomic saves stayed scoped to exactly the two workbook paths.",
+                        "Excel-style atomic saves included a parent, lock, or temporary path in the sync request.",
+                        "requestedPaths=" + string.Join(",", request.LocalChangedPaths))
+                    .ConfigureAwait(false);
                 bool temporaryArtifactsGone = !Directory
                     .EnumerateFileSystemEntries(Path.GetDirectoryName(firstWorkbookPath)!)
                     .Any(path => Path.GetFileName(path).StartsWith("~$", StringComparison.Ordinal)
                         || path.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase));
-                if (temporaryArtifactsGone)
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, "Excel lock and temporary artifacts were ignored and removed."))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "Excel lock or temporary artifacts remained after the save burst."))
-                        .ConfigureAwait(false);
-                }
-
-                if (supervisor.SyncNowCallCount == 1)
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, "Two Excel-style saves emitted one debounced scoped request."))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "Excel-style saves emitted an unexpected request count.")
-                        + " requests="
+                failures += await WriteOutcomeAsync(
+                        output,
+                        temporaryArtifactsGone,
+                        "Excel lock and temporary artifacts were ignored and removed.",
+                        "Excel lock or temporary artifacts remained after the save burst.")
+                    .ConfigureAwait(false);
+                failures += await WriteOutcomeAsync(
+                        output,
+                        supervisor.SyncNowCallCount == 1,
+                        "Two Excel-style saves emitted one debounced scoped request.",
+                        "Excel-style saves emitted an unexpected request count.",
+                        "requests="
                         + supervisor.SyncNowCallCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                        .ConfigureAwait(false);
-                }
+                    .ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -1295,54 +1248,26 @@ namespace Cotton.Sync.Desktop.Startup
                     .ConfigureAwait(false);
                 await Task.Delay(TimeSpan.FromMilliseconds(300), cancellationToken).ConfigureAwait(false);
 
-                bool preservedMoveScope = !request.IsFull
-                    && request.LocalChangedPaths.Contains(ProviderWriteMoveSourcePath, StringComparer.OrdinalIgnoreCase)
-                    && request.LocalChangedPaths.Contains(ProviderWriteMoveTargetPath, StringComparer.OrdinalIgnoreCase)
-                    && request.LocalDeletedPaths.Count == 1
-                    && request.LocalDeletedPaths.Contains(ProviderWriteMoveSourcePath, StringComparer.OrdinalIgnoreCase);
-                if (preservedMoveScope)
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, "Real watcher preserved delete and create paths for a cross-directory move after provider metadata finalization."))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "Provider metadata suppression hid part of the cross-directory move scope."))
-                        .ConfigureAwait(false);
-                }
-
-                if (supervisor.SyncNowCallCount == 1)
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, "Cross-directory move stayed scoped and emitted one request."))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "Cross-directory move emitted an unexpected request count.")
-                        + " requests="
+                failures += await WriteOutcomeAsync(
+                        output,
+                        IsExpectedFileMoveRequest(request),
+                        "Real watcher preserved delete and create paths for a cross-directory move after provider metadata finalization.",
+                        "Provider metadata suppression hid part of the cross-directory move scope.")
+                    .ConfigureAwait(false);
+                failures += await WriteOutcomeAsync(
+                        output,
+                        supervisor.SyncNowCallCount == 1,
+                        "Cross-directory move stayed scoped and emitted one request.",
+                        "Cross-directory move emitted an unexpected request count.",
+                        "requests="
                         + supervisor.SyncNowCallCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                        .ConfigureAwait(false);
-                }
-
-                if (!File.Exists(sourcePath) && File.Exists(targetPath))
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, "File-system cross-directory move left exactly the target file."))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "File-system cross-directory move did not leave exactly the target file."))
-                        .ConfigureAwait(false);
-                }
+                    .ConfigureAwait(false);
+                failures += await WriteOutcomeAsync(
+                        output,
+                        IsFileMoveComplete(sourcePath, targetPath),
+                        "File-system cross-directory move left exactly the target file.",
+                        "File-system cross-directory move did not leave exactly the target file.")
+                    .ConfigureAwait(false);
 
                 await coordinator.StopAsync(CancellationToken.None).ConfigureAwait(false);
                 coordinator = null;
@@ -1371,62 +1296,30 @@ namespace Cotton.Sync.Desktop.Startup
                     .ConfigureAwait(false);
                 await Task.Delay(TimeSpan.FromMilliseconds(300), cancellationToken).ConfigureAwait(false);
 
-                bool preservedDirectoryMoveScope = !directoryRequest.IsFull
-                    && directoryRequest.LocalChangedPaths.Contains(
-                        ProviderWriteDirectoryMoveSourcePath,
-                        StringComparer.OrdinalIgnoreCase)
-                    && directoryRequest.LocalChangedPaths.Contains(
-                        ProviderWriteDirectoryMoveTargetPath,
-                        StringComparer.OrdinalIgnoreCase)
-                    && directoryRequest.LocalDeletedPaths.Contains(
-                        ProviderWriteDirectoryMoveSourcePath,
-                        StringComparer.OrdinalIgnoreCase);
-                if (preservedDirectoryMoveScope)
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, "Real watcher preserved the deleted source and created target for a directory move after placeholder repair metadata finalization."))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "Placeholder repair metadata suppression hid part of the directory move scope."))
-                        .ConfigureAwait(false);
-                }
-
-                if (directorySupervisor.SyncNowCallCount == 1)
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, "Directory move after placeholder repair stayed scoped and emitted one request."))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "Directory move after placeholder repair emitted an unexpected request count.")
-                        + " requests="
+                failures += await WriteOutcomeAsync(
+                        output,
+                        IsExpectedDirectoryMoveRequest(directoryRequest),
+                        "Real watcher preserved the deleted source and created target for a directory move after placeholder repair metadata finalization.",
+                        "Placeholder repair metadata suppression hid part of the directory move scope.")
+                    .ConfigureAwait(false);
+                failures += await WriteOutcomeAsync(
+                        output,
+                        directorySupervisor.SyncNowCallCount == 1,
+                        "Directory move after placeholder repair stayed scoped and emitted one request.",
+                        "Directory move after placeholder repair emitted an unexpected request count.",
+                        "requests="
                         + directorySupervisor.SyncNowCallCount.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                        .ConfigureAwait(false);
-                }
-
-                if (!Directory.Exists(directorySourcePath)
-                    && Directory.Exists(directoryTargetPath)
-                    && !File.Exists(directorySourceFilePath)
-                    && File.Exists(directoryTargetFilePath))
-                {
-                    await output.WriteLineAsync(
-                        FormatCheck(true, "File-system directory move preserved the nested file only at the target."))
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    failures++;
-                    await output.WriteLineAsync(
-                        FormatCheck(false, "File-system directory move did not preserve exactly the target subtree."))
-                        .ConfigureAwait(false);
-                }
+                    .ConfigureAwait(false);
+                failures += await WriteOutcomeAsync(
+                        output,
+                        IsDirectoryMoveComplete(
+                            directorySourcePath,
+                            directoryTargetPath,
+                            directorySourceFilePath,
+                            directoryTargetFilePath),
+                        "File-system directory move preserved the nested file only at the target.",
+                        "File-system directory move did not preserve exactly the target subtree.")
+                    .ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -1444,6 +1337,52 @@ namespace Cotton.Sync.Desktop.Startup
 
             await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
             return failures == 0 ? 0 : 1;
+        }
+
+        private static bool IsExpectedFileMoveRequest(SyncRunRequest request)
+        {
+            return !request.IsFull
+                && request.LocalChangedPaths.Contains(
+                    ProviderWriteMoveSourcePath,
+                    StringComparer.OrdinalIgnoreCase)
+                && request.LocalChangedPaths.Contains(
+                    ProviderWriteMoveTargetPath,
+                    StringComparer.OrdinalIgnoreCase)
+                && request.LocalDeletedPaths.Count == 1
+                && request.LocalDeletedPaths.Contains(
+                    ProviderWriteMoveSourcePath,
+                    StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static bool IsFileMoveComplete(string sourcePath, string targetPath)
+        {
+            return !File.Exists(sourcePath) && File.Exists(targetPath);
+        }
+
+        private static bool IsExpectedDirectoryMoveRequest(SyncRunRequest request)
+        {
+            return !request.IsFull
+                && request.LocalChangedPaths.Contains(
+                    ProviderWriteDirectoryMoveSourcePath,
+                    StringComparer.OrdinalIgnoreCase)
+                && request.LocalChangedPaths.Contains(
+                    ProviderWriteDirectoryMoveTargetPath,
+                    StringComparer.OrdinalIgnoreCase)
+                && request.LocalDeletedPaths.Contains(
+                    ProviderWriteDirectoryMoveSourcePath,
+                    StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static bool IsDirectoryMoveComplete(
+            string sourcePath,
+            string targetPath,
+            string sourceFilePath,
+            string targetFilePath)
+        {
+            return !Directory.Exists(sourcePath)
+                && Directory.Exists(targetPath)
+                && !File.Exists(sourceFilePath)
+                && File.Exists(targetFilePath);
         }
 
         private static async Task<int> RunExplorerFreeUpSpaceAsync(
@@ -4285,6 +4224,17 @@ namespace Cotton.Sync.Desktop.Startup
                     + CleanSingleLine(details))
                 .ConfigureAwait(false);
             return passed ? 0 : 1;
+        }
+
+        private static async Task<int> WriteOutcomeAsync(
+            TextWriter output,
+            bool passed,
+            string passedLabel,
+            string failedLabel,
+            string details = "")
+        {
+            string label = passed ? passedLabel : failedLabel;
+            return await WriteCheckAsync(output, passed, label, details).ConfigureAwait(false);
         }
 
         private static async Task<int> VerifyInitialStreamingLogMetricsAsync(
