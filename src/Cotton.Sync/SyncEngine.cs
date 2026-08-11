@@ -6669,7 +6669,7 @@ namespace Cotton.Sync
             RemoteFileSnapshot? remote,
             bool exactLocalDelete)
         {
-            if (state is null || local is null && remote is null)
+            if (state is null || (local is null && remote is null))
             {
                 return SyncDeleteDirection.None;
             }
