@@ -524,15 +524,26 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                     "--shell-share-link-smoke",
                     "--data-dir",
                     _tempDirectory,
+                    "--server-url",
+                    "https://share-link-smoke.example.test/",
                 ]);
             using StringWriter output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunShellShareLinkSmokeAsync(paths, options, output);
+            int repeatExitCode = await DesktopCommandLineRunner.RunShellShareLinkSmokeAsync(paths, options, output);
+            SqliteAppPreferencesStore preferencesStore = new(paths.AppDatabasePath);
+            await preferencesStore.InitializeAsync();
+            AppPreferences preferences = await preferencesStore.GetAsync();
+            SqliteSyncPairSettingsStore pairStore = new(paths.AppDatabasePath);
+            await pairStore.InitializeAsync();
+            IReadOnlyList<SyncPairSettings> syncPairs = await pairStore.ListAsync();
 
             string report = output.ToString();
             Assert.Multiple(() =>
             {
                 Assert.That(exitCode, Is.EqualTo(0));
+                Assert.That(repeatExitCode, Is.EqualTo(0));
+                Assert.That(syncPairs, Has.Count.EqualTo(1));
                 Assert.That(report, Does.Contain("PASS: State-backed file share link copied"));
                 Assert.That(report, Does.Contain("PASS: State-backed remote-only placeholder share link copied"));
                 Assert.That(report, Does.Contain("PASS: State-backed hydrated placeholder share link copied"));
@@ -544,6 +555,9 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(report, Does.Not.Contain(_tempDirectory));
                 Assert.That(report, Does.Not.Contain("synced-file.txt"));
                 Assert.That(report, Does.Not.Contain("local-only.txt"));
+                Assert.That(
+                    preferences.RememberedServerUrl,
+                    Is.EqualTo(new Uri("https://share-link-smoke.example.test/")));
             });
         }
 

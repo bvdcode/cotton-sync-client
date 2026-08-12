@@ -29,6 +29,7 @@ namespace Cotton.Sync.Desktop.Startup
         private const string RemoteRenamedPath = "remote-renamed.txt";
         private const string PreExistingClientAPath = "pre-existing/client-a/original-a.txt";
         private const string PreExistingClientBPath = "pre-existing/client-b/original-b.txt";
+        private static readonly Guid ShellShareLinkSmokePairId = Guid.Parse("22222222-2222-2222-2222-222222222222");
         private static readonly TimeSpan DesktopLocalQuietWindow = TimeSpan.FromMilliseconds(2300);
         private static readonly TimeSpan InitialConvergenceTimeout = TimeSpan.FromMinutes(2);
         private static readonly TimeSpan PropagationTimeout = TimeSpan.FromSeconds(45);
@@ -509,6 +510,8 @@ namespace Cotton.Sync.Desktop.Startup
 
             Directory.CreateDirectory(paths.DataDirectory);
             DesktopTraceLogging.Install(paths);
+            await RememberShellShareLinkSmokeServerAsync(paths, startupOptions.ServerUrl, cancellationToken)
+                .ConfigureAwait(false);
             ShellShareLinkSmokeData smokeData = await PrepareShellShareLinkSmokeDataAsync(paths, cancellationToken)
                 .ConfigureAwait(false);
 
@@ -575,6 +578,23 @@ namespace Cotton.Sync.Desktop.Startup
             return failures == 0 ? 0 : 1;
         }
 
+        private static async Task RememberShellShareLinkSmokeServerAsync(
+            DesktopAppPaths paths,
+            Uri? serverUrl,
+            CancellationToken cancellationToken)
+        {
+            if (serverUrl is null)
+            {
+                return;
+            }
+
+            SqliteAppPreferencesStore preferencesStore = new(paths.AppDatabasePath);
+            await preferencesStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            AppPreferences preferences = await preferencesStore.GetAsync(cancellationToken).ConfigureAwait(false);
+            preferences.RememberedServerUrl = serverUrl;
+            await preferencesStore.SaveAsync(preferences, cancellationToken).ConfigureAwait(false);
+        }
+
         private static async Task<(ShellShareLinkTarget Target, DesktopShellShareLinkResult ShareLinkResult)>
             ResolveShellShareLinkAsync(
                 DesktopAppPaths paths,
@@ -615,7 +635,7 @@ namespace Cotton.Sync.Desktop.Startup
 
             SyncPairSettings syncPair = new SyncPairSettings
             {
-                Id = Guid.CreateVersion7(),
+                Id = ShellShareLinkSmokePairId,
                 DisplayName = "Cloud",
                 LocalRootPath = localRoot,
                 RemoteRootNodeId = Guid.CreateVersion7(),

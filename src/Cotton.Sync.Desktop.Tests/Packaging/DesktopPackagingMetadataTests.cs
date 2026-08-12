@@ -2263,6 +2263,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(script, Does.Contain("Assert-ShellVerbVisibility"));
                 Assert.That(script, Does.Contain("Assert-InstalledShellVerbInvocation"));
                 Assert.That(script, Does.Contain("ConvertTo-PowerShellSingleQuotedString"));
+                Assert.That(script, Does.Contain("--shell-share-link-smoke\", \"--server-url\", $ServerUrl"));
                 Assert.That(script, Does.Contain(@"$arguments = @(""--server-url"""));
                 Assert.That(script, Does.Contain("Start-Process -FilePath {0} -ArgumentList $arguments"));
                 Assert.That(script, Does.Not.Contain("'$process = Start-Process -FilePath ' +"));

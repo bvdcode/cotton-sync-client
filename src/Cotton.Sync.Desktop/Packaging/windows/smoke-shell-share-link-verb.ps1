@@ -314,23 +314,22 @@ function Wait-File {
 function Ensure-ShellShareLinkSmokeData {
     param(
         [string]$AppExecutable,
-        [string]$DataDirectory
+        [string]$DataDirectory,
+        [string]$ServerUrl
     )
 
     New-Item -ItemType Directory -Path $DataDirectory -Force | Out-Null
     $targetPath = Join-Path $DataDirectory "shell-share-link-root\synced-file.txt"
-    if (-not (Test-Path -LiteralPath $targetPath)) {
-        $prepareStdout = Join-Path $DataDirectory "shell-share-link-prepare.stdout.log"
-        $prepareStderr = Join-Path $DataDirectory "shell-share-link-prepare.stderr.log"
-        $exitCode = Invoke-ProcessCapture `
-            -FilePath $AppExecutable `
-            -Arguments @("--shell-share-link-smoke", "--data-dir", $DataDirectory) `
-            -StandardOutputPath $prepareStdout `
-            -StandardErrorPath $prepareStderr
-        $prepareOutput = if (Test-Path -LiteralPath $prepareStdout) { Get-Content -LiteralPath $prepareStdout } else { @() }
-        if ($exitCode -ne 0 -or -not ($prepareOutput | Where-Object { $_ -eq "Result: passed" } | Select-Object -First 1)) {
-            throw "Shell share-link smoke data preparation failed."
-        }
+    $prepareStdout = Join-Path $DataDirectory "shell-share-link-prepare.stdout.log"
+    $prepareStderr = Join-Path $DataDirectory "shell-share-link-prepare.stderr.log"
+    $exitCode = Invoke-ProcessCapture `
+        -FilePath $AppExecutable `
+        -Arguments @("--shell-share-link-smoke", "--server-url", $ServerUrl, "--data-dir", $DataDirectory) `
+        -StandardOutputPath $prepareStdout `
+        -StandardErrorPath $prepareStderr
+    $prepareOutput = if (Test-Path -LiteralPath $prepareStdout) { Get-Content -LiteralPath $prepareStdout } else { @() }
+    if ($exitCode -ne 0 -or -not ($prepareOutput | Where-Object { $_ -eq "Result: passed" } | Select-Object -First 1)) {
+        throw "Shell share-link smoke data preparation failed."
     }
 
     Write-SmokeTokenStore -DataDirectory $DataDirectory
@@ -343,9 +342,12 @@ function Assert-InstalledShellVerbInvocation {
         [string]$DataDirectory
     )
 
-    $targetPath = Ensure-ShellShareLinkSmokeData -AppExecutable $AppExecutable -DataDirectory $DataDirectory
     $port = Get-FreeLoopbackPort
     $serverUrl = "http://127.0.0.1:$port/"
+    $targetPath = Ensure-ShellShareLinkSmokeData `
+        -AppExecutable $AppExecutable `
+        -DataDirectory $DataDirectory `
+        -ServerUrl $serverUrl
     $shareToken = "shell-verb-smoke-token"
     $serverReadyPath = Join-Path $DataDirectory "shell-share-link-server-ready.txt"
     $requestPath = Join-Path $DataDirectory "shell-share-link-server-request.txt"
