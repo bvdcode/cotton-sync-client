@@ -116,6 +116,56 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task LocalChanges_DuringConnectionOutageShareOneRecoveryLoop()
+        {
+            SyncPairSettings syncPair = CreatePair(isEnabled: true);
+            FakeWatcherFactory watcherFactory = new();
+            FakeSyncSupervisor supervisor = new();
+            supervisor.SyncNowExceptions.Enqueue(new HttpRequestException("Network unavailable."));
+            TaskCompletionSource retryDelayStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource releaseRetry = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            LocalChangeSyncCoordinator coordinator = new(
+                new FakeSyncPairSettingsStore([syncPair]),
+                supervisor,
+                watcherFactory,
+                TimeSpan.Zero,
+                connectionRetryInterval: TimeSpan.FromSeconds(15),
+                delayAsync: async (_, cancellationToken) =>
+                {
+                    retryDelayStarted.TrySetResult();
+                    await releaseRetry.Task.WaitAsync(cancellationToken);
+                });
+            await coordinator.StartAsync();
+
+            watcherFactory.CreatedWatchers[syncPair.Id].Raise(FullPath(syncPair, "first.txt"));
+            await retryDelayStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            watcherFactory.CreatedWatchers[syncPair.Id].Raise(FullPath(syncPair, "second.txt"));
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(1));
+                Assert.That(coordinator.PendingRequestCount, Is.EqualTo(1));
+            });
+
+            releaseRetry.TrySetResult();
+            bool completedFollowUp = await supervisor.WaitForSyncCallCountAsync(3, TimeSpan.FromSeconds(2));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(completedFollowUp, Is.True);
+                Assert.That(supervisor.Requests, Has.Count.EqualTo(3));
+                Assert.That(supervisor.Requests[0].LocalChangedPaths, Is.EqualTo(new[] { "first.txt" }));
+                Assert.That(supervisor.Requests[1].LocalChangedPaths, Is.EqualTo(new[] { "first.txt" }));
+                Assert.That(
+                    supervisor.Requests[2].LocalChangedPaths,
+                    Is.EqualTo(new[] { "first.txt", "second.txt" }));
+                Assert.That(coordinator.PendingRequestCount, Is.Zero);
+            });
+        }
+
+        [Test]
         public async Task NonTransientFailure_DoesNotRetryScopedRequest()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);

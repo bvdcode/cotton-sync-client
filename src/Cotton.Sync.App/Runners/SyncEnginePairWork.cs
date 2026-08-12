@@ -19,6 +19,7 @@ namespace Cotton.Sync.App.Runners
     public class SyncEnginePairWork : ISyncPairWork
     {
         private static readonly TimeSpan BackgroundMinimumLocalUploadAge = TimeSpan.FromSeconds(2);
+        private const int MaximumDeferredLocalRetries = 3;
         private readonly IAppActivityPublisher? _activityPublisher;
         private readonly Func<TimeSpan, CancellationToken, Task> _delayAsync;
         private readonly IAppTransferProgressPublisher? _progressPublisher;
@@ -54,6 +55,7 @@ namespace Cotton.Sync.App.Runners
             ArgumentNullException.ThrowIfNull(syncPair);
             ArgumentNullException.ThrowIfNull(request);
             SyncRunRequest currentRequest = request;
+            int deferredRetryCount = 0;
             while (true)
             {
                 CoreSyncRunResult result = await RunRequestAsync(syncPair, currentRequest, cancellationToken)
@@ -68,9 +70,19 @@ namespace Cotton.Sync.App.Runners
                     return;
                 }
 
+                if (deferredRetryCount >= MaximumDeferredLocalRetries)
+                {
+                    throw new SyncActionRequiredException(
+                        "Local files remained unavailable after "
+                        + MaximumDeferredLocalRetries
+                        + " retry passes. Close applications using these files and retry sync: "
+                        + string.Join(", ", result.DeferredLocalPaths.Take(8)));
+                }
+
                 currentRequest = SyncRunRequest.ForLocalChangedPaths(
                     result.DeferredLocalPaths,
                     request.Causes | SyncRunCause.LocalChange);
+                deferredRetryCount++;
                 await _delayAsync(BackgroundMinimumLocalUploadAge, cancellationToken).ConfigureAwait(false);
             }
         }

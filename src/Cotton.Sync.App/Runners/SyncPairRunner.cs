@@ -431,7 +431,9 @@ namespace Cotton.Sync.App.Runners
                 _failedSyncRequest = _activeSyncRequest;
                 if (_failedSyncRequest?.IsFull == true && _pendingFullSyncRequest is not null)
                 {
-                    _failedSyncRequest = _failedSyncRequest.Merge(_pendingFullSyncRequest);
+                    _failedSyncRequest = MergePendingFullRequests(
+                        _failedSyncRequest,
+                        _pendingFullSyncRequest);
                     _pendingFullSyncRequest = null;
                 }
 
@@ -442,17 +444,51 @@ namespace Cotton.Sync.App.Runners
 
         private void QueuePendingRequest(SyncRunRequest request)
         {
-            if (request.IsFull)
+            if (_pendingFullSyncRequest is not null)
             {
-                _pendingFullSyncRequest = _pendingFullSyncRequest is null
-                    ? request
-                    : _pendingFullSyncRequest.Merge(request);
+                _pendingFullSyncRequest = MergePendingFullRequests(_pendingFullSyncRequest, request);
                 return;
             }
 
-            _pendingScopedSyncRequest = _pendingScopedSyncRequest is null
+            if (request.IsFull)
+            {
+                _pendingFullSyncRequest = _pendingScopedSyncRequest is null
+                    ? ToPendingFullRequest(request)
+                    : MergePendingFullRequests(request, _pendingScopedSyncRequest);
+                _pendingScopedSyncRequest = null;
+                return;
+            }
+
+            SyncRunRequest scopedRequest = _pendingScopedSyncRequest is null
                 ? request
                 : _pendingScopedSyncRequest.Merge(request);
+            if (scopedRequest.LocalChangedPaths.Count > SyncRunRequest.MaximumQueuedScopedPaths)
+            {
+                _pendingFullSyncRequest = SyncRunRequest.ForFull(
+                    scopedRequest.Causes | SyncRunCause.LocalChangeOverflow);
+                _pendingScopedSyncRequest = null;
+                return;
+            }
+
+            _pendingScopedSyncRequest = scopedRequest;
+        }
+
+        private static SyncRunRequest MergePendingFullRequests(
+            SyncRunRequest fullRequest,
+            SyncRunRequest other)
+        {
+            int? approvedRemoteDeleteCount = fullRequest.ApprovedRemoteDeleteCount
+                == other.ApprovedRemoteDeleteCount
+                    ? fullRequest.ApprovedRemoteDeleteCount
+                    : null;
+            return SyncRunRequest.ForFull(
+                fullRequest.Causes | other.Causes,
+                approvedRemoteDeleteCount);
+        }
+
+        private static SyncRunRequest ToPendingFullRequest(SyncRunRequest request)
+        {
+            return SyncRunRequest.ForFull(request.Causes, request.ApprovedRemoteDeleteCount);
         }
 
         private SyncRunRequest? TakeNextPendingRequest()
@@ -485,7 +521,9 @@ namespace Cotton.Sync.App.Runners
                 {
                     throw;
                 }
-                catch (LocalFileUnavailableException exception) when (attempt >= _retryOptions.MaxAttempts)
+                catch (LocalFileUnavailableException exception) when (
+                    attempt >= _retryOptions.MaxAttempts
+                    && ShouldWaitForLocalFileAvailability(exception))
                 {
                     await WaitForLocalFileAvailabilityAsync(exception, attempt, cancellationToken)
                         .ConfigureAwait(false);
@@ -587,6 +625,23 @@ namespace Cotton.Sync.App.Runners
             {
                 return false;
             }
+        }
+
+        private static bool ShouldWaitForLocalFileAvailability(LocalFileUnavailableException exception)
+        {
+            if (exception.RequiresExclusiveAccess)
+            {
+                return true;
+            }
+
+            return exception.InnerException is IOException innerException
+                && IsSharingViolation(innerException);
+        }
+
+        private static bool IsSharingViolation(IOException exception)
+        {
+            int errorCode = exception.HResult & 0xFFFF;
+            return errorCode is 32 or 33;
         }
 
         /// <inheritdoc />

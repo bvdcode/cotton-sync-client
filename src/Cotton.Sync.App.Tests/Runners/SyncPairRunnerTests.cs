@@ -270,6 +270,34 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task SyncNowAsync_PromotesOversizedPausedScopeToBoundedFullRequest()
+        {
+            FakeSyncPairWork work = new();
+            SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
+            string[] changedPaths = Enumerable
+                .Range(0, SyncRunRequest.MaximumQueuedScopedPaths + 1)
+                .Select(static index => $"Docs/file-{index}.txt")
+                .ToArray();
+
+            await runner.PauseAsync();
+            await runner.SyncNowAsync(SyncRunRequest.ForLocalChangedPaths(changedPaths));
+            await runner.SyncNowAsync(SyncRunRequest.ForLocalChangedPaths(["Docs/later.txt"]));
+            await runner.ResumeAsync();
+            await runner.SyncNowAsync(SyncRunRequest.ForFull(SyncRunCause.Resume));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(work.Requests, Has.Count.EqualTo(2));
+                Assert.That(work.Requests[0].Causes, Is.EqualTo(SyncRunCause.Resume));
+                Assert.That(work.Requests[1].IsFull, Is.True);
+                Assert.That(work.Requests[1].LocalChangedPaths, Is.Empty);
+                Assert.That(
+                    work.Requests[1].Causes,
+                    Is.EqualTo(SyncRunCause.LocalChange | SyncRunCause.LocalChangeOverflow));
+            });
+        }
+
+        [Test]
         public async Task PauseAsync_PreservesLocalChangeArrivingWhileActiveWorkCancels()
         {
             var work = new BlockingFirstRunSyncPairWork();
@@ -710,6 +738,33 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public void SyncNowAsync_DoesNotWaitIndefinitelyForNonTransientUnavailableFile()
+        {
+            LocalFileUnavailableException unavailable = new(
+                "missing.txt",
+                "/home/user/Cotton/missing.txt",
+                "the file no longer exists.");
+            FakeSyncPairWork work = new()
+            {
+                Failure = unavailable,
+            };
+            SyncPairRunner runner = CreateRunner(
+                CreatePair(isEnabled: true),
+                work,
+                NoDelayRetryOptions(maxAttempts: 2));
+
+            LocalFileUnavailableException? exception = Assert.ThrowsAsync<LocalFileUnavailableException>(
+                async () => await runner.SyncNowAsync());
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.SameAs(unavailable));
+                Assert.That(work.RunCount, Is.EqualTo(2));
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Error));
+            });
+        }
+
+        [Test]
         public async Task SyncNowAsync_WaitsForPersistentlyLockedLocalFileWithoutActionRequiredAndRecovers()
         {
             string root = Path.Combine(Path.GetTempPath(), "cotton-sync-runner-tests", Guid.NewGuid().ToString("N"));
@@ -720,7 +775,8 @@ namespace Cotton.Sync.App.Tests.Runners
             var unavailable = new LocalFileUnavailableException(
                 "locked.txt",
                 filePath,
-                new IOException("The file is being used by another process."));
+                new IOException("The file is being used by another process."),
+                requiresExclusiveAccess: true);
             var work = new FakeSyncPairWork
             {
                 Failures = [unavailable, unavailable],
@@ -843,7 +899,8 @@ namespace Cotton.Sync.App.Tests.Runners
             var unavailable = new LocalFileUnavailableException(
                 "locked.txt",
                 filePath,
-                new IOException("The file is being used by another process."));
+                new IOException("The file is being used by another process."),
+                requiresExclusiveAccess: true);
             var work = new FakeSyncPairWork
             {
                 Failures = [unavailable],

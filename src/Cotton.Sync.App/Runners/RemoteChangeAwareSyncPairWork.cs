@@ -13,6 +13,7 @@ namespace Cotton.Sync.App.Runners
     /// </summary>
     public class RemoteChangeAwareSyncPairWork : ISyncPairWork
     {
+        private const int MaximumAccumulatedRemoteChanges = 1_000;
         private readonly ISyncPairWork _inner;
         private readonly IRemoteChangeFeedReader _remoteChanges;
         private readonly RemoteChangeScopedSyncPlanner? _scopedSyncPlanner;
@@ -184,13 +185,31 @@ namespace Cotton.Sync.App.Runners
             RemoteChangeFeedBatch batch = await _remoteChanges
                 .ReadAsync(syncPairId, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
+            if (batch.Changes.Count > MaximumAccumulatedRemoteChanges)
+            {
+                throw new InvalidOperationException(
+                    "Remote change feed returned more changes than the maximum accumulation limit.");
+            }
+
             var changes = new List<SyncChangeDto>(batch.Changes);
 
-            while (ShouldReadNextPage(batch))
+            while (ShouldReadNextPage(batch) && changes.Count < MaximumAccumulatedRemoteChanges)
             {
+                int remainingCapacity = MaximumAccumulatedRemoteChanges - changes.Count;
+                int pageSize = Math.Min(RemoteChangeFeedDefaults.PageSize, remainingCapacity);
                 batch = await _remoteChanges
-                    .ReadFromCursorAsync(syncPairId, batch.NextCursor, cancellationToken: cancellationToken)
+                    .ReadFromCursorAsync(
+                        syncPairId,
+                        batch.NextCursor,
+                        pageSize,
+                        cancellationToken)
                     .ConfigureAwait(false);
+                if (batch.Changes.Count > remainingCapacity)
+                {
+                    throw new InvalidOperationException(
+                        "Remote change feed returned more changes than the requested page limit.");
+                }
+
                 changes.AddRange(batch.Changes);
             }
 
@@ -239,10 +258,20 @@ namespace Cotton.Sync.App.Runners
             RemoteChangeFeedReadResult remoteRead,
             CancellationToken cancellationToken)
         {
-            if (syncPair.Mode != SyncPairMode.WindowsVirtualFiles
-                || remoteRead.Batch.CursorExpired
-                || remoteRead.Batch.HasMore
+            if (remoteRead.Batch.CursorExpired
                 || remoteRead.Batch.SinceCursor == 0)
+            {
+                return new InnerRequestPlan(request, RemoteChangesCovered: true);
+            }
+
+            if (remoteRead.Batch.HasMore)
+            {
+                return new InnerRequestPlan(
+                    request.Merge(SyncRunRequest.ForFull(request.Causes)),
+                    RemoteChangesCovered: true);
+            }
+
+            if (syncPair.Mode != SyncPairMode.WindowsVirtualFiles)
             {
                 return new InnerRequestPlan(request, RemoteChangesCovered: true);
             }

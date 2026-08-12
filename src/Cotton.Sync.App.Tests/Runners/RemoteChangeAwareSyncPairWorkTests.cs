@@ -1636,6 +1636,54 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task RunOnceAsync_BoundsRemoteFeedAccumulationAndLeavesLaterPagesPending()
+        {
+            SyncPairSettings syncPair = CreateSyncPair();
+            FakeSyncPairWork inner = new();
+            RemoteChangeFeedBatch firstBatch = new(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 10,
+                nextCursor: 510,
+                hasMore: true,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes: CreateFileChanges(11, 500, syncPair.RemoteRootNodeId));
+            RemoteChangeFeedBatch secondBatch = new(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 510,
+                nextCursor: 1_010,
+                hasMore: true,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes: CreateFileChanges(511, 500, syncPair.RemoteRootNodeId));
+            RemoteChangeFeedBatch unreadBatch = new(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 1_010,
+                nextCursor: 1_011,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes: CreateFileChanges(1_011, 1, syncPair.RemoteRootNodeId));
+            FakeRemoteChangeFeedReader remoteChanges = new(firstBatch, secondBatch, unreadBatch);
+            RemoteChangeAwareSyncPairWork work = new(inner, remoteChanges);
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForLocalChangedPaths(["local-edit.txt"]));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.True);
+                Assert.That(remoteChanges.ReadLimits, Is.EqualTo(new[] { 500, 500 }));
+                Assert.That(
+                    remoteChanges.ReadFromCursorRequests,
+                    Is.EqualTo(new[] { (SyncPairId: syncPair.Id.ToString("D"), SinceCursor: 510L) }));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { secondBatch }));
+            });
+        }
+
+        [Test]
         public void RunOnceAsync_FailsWithoutAcknowledgementWhenRemoteFeedDoesNotAdvance()
         {
             var syncPair = CreateSyncPair();
@@ -1969,6 +2017,8 @@ namespace Cotton.Sync.App.Tests.Runners
 
             public List<(string SyncPairId, long SinceCursor)> ReadFromCursorRequests { get; } = [];
 
+            public List<int> ReadLimits { get; } = [];
+
             public List<RemoteChangeFeedBatch> AcknowledgedBatches { get; } = [];
 
             public List<RemoteChangeFeedBatch> FullResyncAcknowledgedBatches { get; } = [];
@@ -1981,6 +2031,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 CancellationToken cancellationToken = default)
             {
                 ReadSyncPairIds.Add(syncPairId);
+                ReadLimits.Add(limit);
                 if (ReadFailures.TryDequeue(out Exception? failure))
                 {
                     throw failure;
@@ -1996,6 +2047,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 CancellationToken cancellationToken = default)
             {
                 ReadFromCursorRequests.Add((syncPairId, sinceCursor));
+                ReadLimits.Add(limit);
                 return Task.FromResult(_batches.Dequeue());
             }
 
@@ -2010,6 +2062,25 @@ namespace Cotton.Sync.App.Tests.Runners
                 FullResyncAcknowledgedBatches.Add(batch);
                 return Task.CompletedTask;
             }
+        }
+
+        private static IReadOnlyCollection<SyncChangeDto> CreateFileChanges(
+            long firstCursor,
+            int count,
+            Guid parentNodeId)
+        {
+            return Enumerable
+                .Range(0, count)
+                .Select(index => new SyncChangeDto
+                {
+                    Id = firstCursor + index,
+                    Kind = SyncChangeKind.FileCreated,
+                    LayoutId = Guid.NewGuid(),
+                    ItemId = Guid.NewGuid(),
+                    ParentNodeId = parentNodeId,
+                    Name = $"file-{firstCursor + index}.txt",
+                })
+                .ToArray();
         }
     }
 }

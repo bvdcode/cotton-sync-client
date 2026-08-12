@@ -341,52 +341,67 @@ namespace Cotton.Sync.App.LocalChanges
         {
             try
             {
-                string changedPath;
                 while (true)
                 {
-                    int observedChangeVersion = GetChangeVersion(request);
-                    TimeSpan remainingMaxDelay = GetRemainingMaxDebounceDelay(request);
-                    if (remainingMaxDelay <= TimeSpan.Zero)
+                    string changedPath;
+                    while (true)
                     {
-                        if (!TryGetCurrentChangedPath(syncPairId, request, out changedPath))
+                        int observedChangeVersion = GetChangeVersion(request);
+                        TimeSpan remainingMaxDelay = GetRemainingMaxDebounceDelay(request);
+                        if (remainingMaxDelay <= TimeSpan.Zero)
                         {
-                            return;
+                            if (!TryGetCurrentChangedPath(syncPairId, request, out changedPath))
+                            {
+                                return;
+                            }
+
+                            break;
                         }
 
-                        break;
+                        TimeSpan delay = remainingMaxDelay < _debounceInterval
+                            ? remainingMaxDelay
+                            : _debounceInterval;
+                        await Task.Delay(delay, request.Cancellation.Token).ConfigureAwait(false);
+                        if (TryGetQuietChangedPath(syncPairId, request, observedChangeVersion, out changedPath))
+                        {
+                            break;
+                        }
                     }
 
-                    TimeSpan delay = remainingMaxDelay < _debounceInterval
-                        ? remainingMaxDelay
-                        : _debounceInterval;
-                    await Task.Delay(delay, request.Cancellation.Token).ConfigureAwait(false);
-                    if (TryGetQuietChangedPath(syncPairId, request, observedChangeVersion, out changedPath))
+                    if (!TryCreateSyncDispatch(
+                            syncPairId,
+                            request,
+                            out changedPath,
+                            out int dispatchedChangeVersion,
+                            out SyncRunRequest? syncRequest))
                     {
-                        break;
+                        return;
+                    }
+
+                    _logger.LogInformation(
+                        "Requesting local-change sync for {SyncPairId} with origin {ChangeOrigin} after change at {ChangedPath}.",
+                        syncPairId,
+                        "user-or-external",
+                        changedPath);
+                    if (syncRequest is null)
+                    {
+                        _logger.LogWarning(
+                            "Ignoring local-change sync for {SyncPairId} because no changed path belongs to its local root.",
+                            syncPairId);
+                        return;
+                    }
+
+                    await RequestSyncWithConnectionRecoveryAsync(
+                            syncPairId,
+                            syncRequest,
+                            "Local-change sync",
+                            request.Cancellation.Token)
+                        .ConfigureAwait(false);
+                    if (TryCompleteDispatch(syncPairId, request, dispatchedChangeVersion))
+                    {
+                        return;
                     }
                 }
-
-                RemoveCurrentPendingSync(syncPairId, request);
-                _logger.LogInformation(
-                    "Requesting local-change sync for {SyncPairId} with origin {ChangeOrigin} after change at {ChangedPath}.",
-                    syncPairId,
-                    "user-or-external",
-                    changedPath);
-                SyncRunRequest? syncRequest = CreateSyncRunRequest(syncPairId, request);
-                if (syncRequest is null)
-                {
-                    _logger.LogWarning(
-                        "Ignoring local-change sync for {SyncPairId} because no changed path belongs to its local root.",
-                        syncPairId);
-                    return;
-                }
-
-                await RequestSyncWithConnectionRecoveryAsync(
-                        syncPairId,
-                        syncRequest,
-                        "Local-change sync",
-                        request.Cancellation.Token)
-                    .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (request.Cancellation.IsCancellationRequested)
             {
@@ -486,15 +501,51 @@ namespace Cotton.Sync.App.LocalChanges
             }
         }
 
-        private void RemoveCurrentPendingSync(Guid syncPairId, PendingLocalSyncRequest request)
+        private bool TryCreateSyncDispatch(
+            Guid syncPairId,
+            PendingLocalSyncRequest request,
+            out string changedPath,
+            out int changeVersion,
+            out SyncRunRequest? syncRequest)
         {
             lock (_pendingGate)
             {
-                if (_pendingSyncs.TryGetValue(syncPairId, out PendingLocalSyncRequest? current)
-                    && ReferenceEquals(current, request))
+                if (!_pendingSyncs.TryGetValue(syncPairId, out PendingLocalSyncRequest? current)
+                    || !ReferenceEquals(current, request))
                 {
-                    _pendingSyncs.Remove(syncPairId);
+                    changedPath = string.Empty;
+                    changeVersion = 0;
+                    syncRequest = null;
+                    return false;
                 }
+
+                changedPath = request.ChangedPath;
+                changeVersion = request.ChangeVersion;
+                syncRequest = CreateSyncRunRequest(syncPairId, request);
+                return true;
+            }
+        }
+
+        private bool TryCompleteDispatch(
+            Guid syncPairId,
+            PendingLocalSyncRequest request,
+            int dispatchedChangeVersion)
+        {
+            lock (_pendingGate)
+            {
+                if (!_pendingSyncs.TryGetValue(syncPairId, out PendingLocalSyncRequest? current)
+                    || !ReferenceEquals(current, request))
+                {
+                    return true;
+                }
+
+                if (request.ChangeVersion != dispatchedChangeVersion)
+                {
+                    return false;
+                }
+
+                _pendingSyncs.Remove(syncPairId);
+                return true;
             }
         }
 

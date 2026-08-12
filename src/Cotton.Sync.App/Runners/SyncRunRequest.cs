@@ -8,6 +8,11 @@ namespace Cotton.Sync.App.Runners
     /// </summary>
     public class SyncRunRequest
     {
+        /// <summary>
+        /// Gets the maximum number of paths retained by a queued scoped request.
+        /// </summary>
+        public const int MaximumQueuedScopedPaths = 4_096;
+
         private SyncRunRequest(
             bool isFull,
             IReadOnlyList<string> localChangedPaths,

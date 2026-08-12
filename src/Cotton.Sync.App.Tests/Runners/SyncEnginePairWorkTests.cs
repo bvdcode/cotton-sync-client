@@ -436,6 +436,37 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public void RunOnceAsync_StopsAfterMaximumDeferredLocalRetries()
+        {
+            CoreSyncRunResult deferredResult = new();
+            deferredResult.RecordDeferredLocalPath("Docs/locked.txt");
+            FakeSyncEngine engine = new()
+            {
+                ResultToReturn = deferredResult,
+            };
+            List<TimeSpan> delays = [];
+            SyncEnginePairWork work = new(
+                engine,
+                delayAsync: (delay, _) =>
+                {
+                    delays.Add(delay);
+                    return Task.CompletedTask;
+                });
+
+            CoreSyncActionRequiredException? exception = Assert.ThrowsAsync<CoreSyncActionRequiredException>(
+                async () => await work.RunOnceAsync(
+                    CreateSyncPair(Guid.NewGuid()),
+                    SyncRunRequest.ForFull(SyncRunCause.LocalChange)));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(engine.RunOnceCallCount, Is.EqualTo(4));
+                Assert.That(delays, Has.Count.EqualTo(3));
+                Assert.That(exception?.Message, Does.Contain("Docs/locked.txt"));
+            });
+        }
+
+        [Test]
         public void RunOnceAsync_ThrowsWhenCoreRunRequiresUserAction()
         {
             var engine = new FakeSyncEngine
