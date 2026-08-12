@@ -2120,6 +2120,40 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesRecreatesPlaceholderMissingAfterResumeInspection()
+        {
+            string relativePath = "Desktop/disappeared.txt";
+            NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote"), sizeBytes: 11);
+            BlockingStreamingRemoteTreeCrawler remoteCrawler = new(
+                _remoteRootNodeId,
+                [new RemoteFileSnapshot { RelativePath = relativePath, File = remote }]);
+            FakeRemoteFileSynchronizer remoteFileSynchronizer = new();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new();
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            await InsertPlaceholderBaselineAsync(stateStore, relativePath, remote);
+            FakeLocalFileScanner scanner = new(CloudFilesPlaceholderLocal(relativePath, remote.SizeBytes))
+            {
+                FileExistsFactory = _ => false,
+            };
+            SyncEngine engine = new(
+                scanner,
+                remoteCrawler,
+                remoteFileSynchronizer,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions { InitialVirtualFilesPopulationQueueCapacity = 1 });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
+                Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[] { relativePath }));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesResumeLoadsStateWithoutScanningLocalPlaceholderTree()
         {
             NodeFileManifestDto newRemote = RemoteFile(
@@ -6404,6 +6438,7 @@ namespace Cotton.Sync.Tests
             ILocalFileScanner,
             ILocalTreeScanner,
             ILocalFileMetadataPathLookupScanner,
+            ILocalFilePresenceProbe,
             ILocalFileContentHasher
         {
             public FakeLocalFileScanner(params LocalFileSnapshot[] files)
@@ -6422,6 +6457,8 @@ namespace Cotton.Sync.Tests
             public int ContentHashCalls { get; private set; }
 
             public Func<LocalFileSnapshot, string>? ContentHashFactory { get; init; }
+
+            public Func<string, bool>? FileExistsFactory { get; init; }
 
             public bool? LastIncludeDirectoryDescendants { get; private set; }
 
@@ -6501,6 +6538,20 @@ namespace Cotton.Sync.Tests
             {
                 ContentHashCalls++;
                 return Task.FromResult(ContentHashFactory?.Invoke(localFile) ?? localFile.ContentHash);
+            }
+
+            public bool FileExists(string rootPath, string relativePath)
+            {
+                if (FileExistsFactory is not null)
+                {
+                    return FileExistsFactory(relativePath);
+                }
+
+                string key = SyncPath.ToKey(relativePath);
+                return Files.Any(file => string.Equals(
+                    SyncPath.ToKey(file.RelativePath),
+                    key,
+                    StringComparison.OrdinalIgnoreCase));
             }
         }
 

@@ -34,6 +34,7 @@ namespace Cotton.Sync
         private readonly ILocalFileMetadataTreeScanner? _localMetadataTreeScanner;
         private readonly ILocalFileMetadataTreeLookupScanner? _localMetadataTreeLookupScanner;
         private readonly ILocalFileMetadataPathLookupScanner? _localMetadataPathLookupScanner;
+        private readonly ILocalFilePresenceProbe? _localFilePresenceProbe;
         private readonly ILocalTreeScanner? _localTreeScanner;
         private readonly IRemoteDirectorySynchronizer? _remoteDirectories;
         private readonly IRemoteTreeCrawler _remoteCrawler;
@@ -69,6 +70,7 @@ namespace Cotton.Sync
             _localMetadataTreeScanner = localScanner as ILocalFileMetadataTreeScanner;
             _localMetadataTreeLookupScanner = localScanner as ILocalFileMetadataTreeLookupScanner;
             _localMetadataPathLookupScanner = localScanner as ILocalFileMetadataPathLookupScanner;
+            _localFilePresenceProbe = localScanner as ILocalFilePresenceProbe;
             _localTreeScanner = localScanner as ILocalTreeScanner;
             _remoteCrawler = remoteCrawler ?? throw new ArgumentNullException(nameof(remoteCrawler));
             _remoteLookupCrawler = remoteCrawler as IRemoteTreeLookupCrawler;
@@ -2627,7 +2629,7 @@ namespace Cotton.Sync
             }
         }
 
-        private static InitialVirtualFilesFileWorkResult? TryCreateCurrentInitialVirtualFilesFileWorkResult(
+        private InitialVirtualFilesFileWorkResult? TryCreateCurrentInitialVirtualFilesFileWorkResult(
             SyncPair syncPair,
             RemoteFileSnapshot remote,
             InitialVirtualFilesStreamingPlan streamingPlan)
@@ -2642,7 +2644,8 @@ namespace Cotton.Sync
                     key,
                     out InitialVirtualFilesPlaceholderBaseline baseline)
                 && HasRemoteFileBaseline(baseline)
-                && RemoteMatchesBaseline(remote.File, baseline))
+                && RemoteMatchesBaseline(remote.File, baseline)
+                && _localFilePresenceProbe?.FileExists(syncPair.LocalRootPath, remote.RelativePath) == true)
             {
                 return new InitialVirtualFilesFileWorkResult(
                     remote.RelativePath,

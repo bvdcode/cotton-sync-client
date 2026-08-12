@@ -1275,7 +1275,8 @@ namespace Cotton.Sync.Tests
 
         private class FailOnFullScanLocalFileScanner :
             ILocalFileScanner,
-            ILocalFileMetadataPathLookupScanner
+            ILocalFileMetadataPathLookupScanner,
+            ILocalFilePresenceProbe
         {
             private readonly Dictionary<string, LocalFileSnapshot> _filesByPath;
 
@@ -1329,11 +1330,17 @@ namespace Cotton.Sync.Tests
 
                 return Task.FromResult(snapshot);
             }
+
+            public bool FileExists(string rootPath, string relativePath)
+            {
+                return _filesByPath.ContainsKey(SyncPath.ToKey(relativePath));
+            }
         }
 
         private class ScopedPathOnlyLocalScanner :
             ILocalFileScanner,
             ILocalFileMetadataPathLookupScanner,
+            ILocalFilePresenceProbe,
             ILocalFileContentHasher
         {
             private readonly string _relativePathKey;
@@ -1372,6 +1379,11 @@ namespace Cotton.Sync.Tests
                 }
 
                 return Task.FromResult(snapshot);
+            }
+
+            public bool FileExists(string rootPath, string relativePath)
+            {
+                return string.Equals(SyncPath.ToKey(relativePath), _relativePathKey, StringComparison.OrdinalIgnoreCase);
             }
 
             public Task<string> ComputeContentHashAsync(

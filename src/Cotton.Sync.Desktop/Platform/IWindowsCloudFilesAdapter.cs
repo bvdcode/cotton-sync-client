@@ -103,6 +103,24 @@ namespace Cotton.Sync.Desktop.Platform
             throw new NotSupportedException("Cloud Files placeholder state inspection is not supported by this adapter.");
         }
 
+        byte[] GetPlaceholderIdentity(SyncPairSettings syncPair, string relativePath)
+        {
+            ArgumentNullException.ThrowIfNull(syncPair);
+            ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
+            throw new NotSupportedException("Cloud Files placeholder identity inspection is not supported by this adapter.");
+        }
+
+        void UpdatePlaceholderIdentity(
+            SyncPairSettings syncPair,
+            string relativePath,
+            byte[] placeholderIdentity)
+        {
+            ArgumentNullException.ThrowIfNull(syncPair);
+            ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
+            ArgumentNullException.ThrowIfNull(placeholderIdentity);
+            throw new NotSupportedException("Cloud Files placeholder identity updates are not supported by this adapter.");
+        }
+
         WindowsCloudFilesConnection ConnectSyncRoot(
             SyncPairSettings syncPair,
             IWindowsCloudFilesCallbackHandler callbackHandler);

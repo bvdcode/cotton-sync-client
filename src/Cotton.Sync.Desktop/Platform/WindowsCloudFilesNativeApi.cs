@@ -11,6 +11,10 @@ namespace Cotton.Sync.Desktop.Platform
     {
         private const int Succeeded = 0;
         private const int IntegrityHashBufferSize = 128 * 1024;
+        private static readonly int PlaceholderBasicInfoIdentityOffset =
+            Marshal.OffsetOf<CfPlaceholderBasicInfo>(nameof(CfPlaceholderBasicInfo.FileIdentity)).ToInt32();
+        private static readonly int PlaceholderBasicInfoIdentityLengthOffset =
+            Marshal.OffsetOf<CfPlaceholderBasicInfo>(nameof(CfPlaceholderBasicInfo.FileIdentityLength)).ToInt32();
 
         public void RegisterSyncRoot(WindowsCloudFilesNativeSyncRootRegistration registration)
         {
@@ -429,6 +433,107 @@ namespace Cotton.Sync.Desktop.Platform
             return state;
         }
 
+        public byte[] GetPlaceholderIdentity(string filePath)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+            using SafeFileHandle handle = OpenPlaceholderForRead(filePath);
+            int bufferLength = PlaceholderBasicInfoIdentityOffset
+                + WindowsCloudFilesPlaceholderIdentity.MaximumIdentityLength;
+            IntPtr buffer = Marshal.AllocHGlobal(bufferLength);
+            try
+            {
+                int result = CfGetPlaceholderInfo(
+                    handle.DangerousGetHandle(),
+                    CfPlaceholderInfoClass.Basic,
+                    buffer,
+                    (uint)bufferLength,
+                    out uint returnedLength);
+                ThrowIfFailed(result, nameof(CfGetPlaceholderInfo));
+                int identityLength = Marshal.ReadInt32(buffer, PlaceholderBasicInfoIdentityLengthOffset);
+                if (identityLength < 0
+                    || identityLength > WindowsCloudFilesPlaceholderIdentity.MaximumIdentityLength
+                    || returnedLength < PlaceholderBasicInfoIdentityOffset + identityLength)
+                {
+                    throw new InvalidOperationException("Windows Cloud Files returned an invalid placeholder identity length.");
+                }
+
+                byte[] identity = new byte[identityLength];
+                Marshal.Copy(
+                    IntPtr.Add(buffer, PlaceholderBasicInfoIdentityOffset),
+                    identity,
+                    0,
+                    identityLength);
+                return identity;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+
+        public void UpdatePlaceholderIdentity(string filePath, byte[] placeholderIdentity)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+            ArgumentNullException.ThrowIfNull(placeholderIdentity);
+            if (placeholderIdentity.Length > WindowsCloudFilesPlaceholderIdentity.MaximumIdentityLength)
+            {
+                throw new ArgumentException("Cloud Files placeholder identity exceeds the Windows 4 KB limit.", nameof(placeholderIdentity));
+            }
+
+            int openResult = CfOpenFileWithOplock(
+                WindowsNativePath.ToWin32FilePath(filePath),
+                CfOpenFileFlags.Exclusive | CfOpenFileFlags.WriteAccess,
+                out IntPtr protectedHandle);
+            ThrowIfFailed(openResult, nameof(CfOpenFileWithOplock));
+            try
+            {
+                PinnedBuffer identity = PinnedBuffer.Pin(placeholderIdentity);
+                try
+                {
+                    int result = CfUpdatePlaceholderIdentity(
+                        protectedHandle,
+                        IntPtr.Zero,
+                        identity.Pointer,
+                        identity.Length,
+                        IntPtr.Zero,
+                        0,
+                        CfUpdateFlags.VerifyInSync | CfUpdateFlags.MarkInSync,
+                        IntPtr.Zero,
+                        IntPtr.Zero);
+                    ThrowIfFailed(result, nameof(CfUpdatePlaceholder));
+                }
+                finally
+                {
+                    identity.Dispose();
+                }
+            }
+            finally
+            {
+                CfCloseHandle(protectedHandle);
+            }
+        }
+
+        private static SafeFileHandle OpenPlaceholderForRead(string filePath)
+        {
+            SafeFileHandle handle = CreateFile(
+                WindowsNativePath.ToWin32FilePath(filePath),
+                FileDesiredAccess.ReadAttributes,
+                FileShareMode.Read | FileShareMode.Write | FileShareMode.Delete,
+                IntPtr.Zero,
+                FileCreationDisposition.OpenExisting,
+                FileFlagsAndAttributes.OpenReparsePoint | FileFlagsAndAttributes.BackupSemantics,
+                IntPtr.Zero);
+            if (handle.IsInvalid)
+            {
+                handle.Dispose();
+                throw new WindowsCloudFilesNativeException(
+                    nameof(CreateFile),
+                    HResultFromWin32(Marshal.GetLastWin32Error()));
+            }
+
+            return handle;
+        }
+
         public void HydratePlaceholder(string filePath)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
@@ -713,6 +818,14 @@ namespace Cotton.Sync.Desktop.Platform
             FileInfoByHandleClass infoClass);
 
         [DllImport("CldApi.dll", ExactSpelling = true)]
+        private static extern int CfGetPlaceholderInfo(
+            IntPtr FileHandle,
+            CfPlaceholderInfoClass InfoClass,
+            IntPtr InfoBuffer,
+            uint InfoBufferLength,
+            out uint ReturnedLength);
+
+        [DllImport("CldApi.dll", ExactSpelling = true)]
         private static extern int CfExecute(
             ref CfOperationInfo OpInfo,
             ref CfOperationTransferDataParameters OpParams);
@@ -748,6 +861,18 @@ namespace Cotton.Sync.Desktop.Platform
         private static extern int CfUpdatePlaceholder(
             IntPtr FileHandle,
             ref CfFsMetadata FsMetadata,
+            IntPtr FileIdentity,
+            uint FileIdentityLength,
+            IntPtr DehydrateRangeArray,
+            uint DehydrateRangeCount,
+            CfUpdateFlags UpdateFlags,
+            IntPtr UpdateUsn,
+            IntPtr Overlapped);
+
+        [DllImport("CldApi.dll", EntryPoint = "CfUpdatePlaceholder", ExactSpelling = true)]
+        private static extern int CfUpdatePlaceholderIdentity(
+            IntPtr FileHandle,
+            IntPtr FsMetadata,
             IntPtr FileIdentity,
             uint FileIdentityLength,
             IntPtr DehydrateRangeArray,
@@ -857,6 +982,22 @@ namespace Cotton.Sync.Desktop.Platform
             public int Result;
 
             public long CreateUsn;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct CfPlaceholderBasicInfo
+        {
+            public uint PinState;
+
+            public uint InSyncState;
+
+            public long FileId;
+
+            public long SyncRootFileId;
+
+            public uint FileIdentityLength;
+
+            public byte FileIdentity;
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -1008,6 +1149,11 @@ namespace Cotton.Sync.Desktop.Platform
             None = 0x00000000,
             Exclusive = 0x00000001,
             WriteAccess = 0x00000002,
+        }
+
+        private enum CfPlaceholderInfoClass
+        {
+            Basic = 0,
         }
 
         [Flags]

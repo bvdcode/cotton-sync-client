@@ -163,6 +163,8 @@ namespace Cotton.Sync.App.Runners
         private static bool CanUseInitialVirtualFilesStreaming(SyncRunRequest request)
         {
             const SyncRunCause fullReconciliationCauses = SyncRunCause.RealtimeRemoteChange
+                | SyncRunCause.Periodic
+                | SyncRunCause.Resume
                 | SyncRunCause.LocalWatcherError
                 | SyncRunCause.LocalChangeOverflow
                 | SyncRunCause.LocalRenameRecovery

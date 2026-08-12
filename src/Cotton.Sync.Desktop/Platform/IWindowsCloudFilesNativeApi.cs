@@ -40,6 +40,16 @@ namespace Cotton.Sync.Desktop.Platform
 
         WindowsCloudFilesPlaceholderState GetPlaceholderState(string filePath);
 
+        byte[] GetPlaceholderIdentity(string filePath)
+        {
+            throw new NotSupportedException("Cloud Files placeholder identity inspection is not supported by this native API.");
+        }
+
+        void UpdatePlaceholderIdentity(string filePath, byte[] placeholderIdentity)
+        {
+            throw new NotSupportedException("Cloud Files placeholder identity updates are not supported by this native API.");
+        }
+
         void HydratePlaceholder(string filePath);
 
         WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request);

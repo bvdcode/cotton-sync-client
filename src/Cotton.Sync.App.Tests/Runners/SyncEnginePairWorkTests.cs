@@ -127,6 +127,24 @@ namespace Cotton.Sync.App.Tests.Runners
             });
         }
 
+        [TestCase(SyncRunCause.Periodic)]
+        [TestCase(SyncRunCause.Resume)]
+        public async Task RunOnceAsync_DisablesStreamingFastPathForLocalSafetyFullRequest(SyncRunCause cause)
+        {
+            FakeSyncEngine engine = new();
+            SyncEnginePairWork work = new(engine);
+            SyncPairSettings syncPair = CreateSyncPair(Guid.NewGuid());
+
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(cause));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(engine.LastOptions, Is.Not.Null);
+                Assert.That(engine.LastOptions!.Scope.IsFull, Is.True);
+                Assert.That(engine.LastOptions.AllowInitialVirtualFilesStreaming, Is.False);
+            });
+        }
+
         [Test]
         public async Task RunOnceAsync_EnablesMissingPlaceholderRecoveryForInitialPopulationRequest()
         {

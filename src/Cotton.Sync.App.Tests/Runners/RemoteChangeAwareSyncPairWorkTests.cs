@@ -38,8 +38,9 @@ namespace Cotton.Sync.App.Tests.Runners
             });
         }
 
-        [Test]
-        public async Task RunOnceAsync_WithWindowsVirtualFilesSkipsPeriodicFullRunWithoutAcknowledgingEmptyBatch()
+        [TestCase(SyncRunCause.Periodic)]
+        [TestCase(SyncRunCause.Resume)]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesRunsLocalSafetyPassWhenFeedIsEmpty(SyncRunCause cause)
         {
             var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
             var inner = new FakeSyncPairWork();
@@ -53,12 +54,14 @@ namespace Cotton.Sync.App.Tests.Runners
                 changes: Array.Empty<SyncChangeDto>()));
             var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
 
-            await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(cause));
 
             Assert.Multiple(() =>
             {
-                Assert.That(inner.RunCallCount, Is.Zero);
-                Assert.That(remoteChanges.AcknowledgedBatches, Is.Empty);
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.True);
+                Assert.That(inner.LastRequest?.Causes, Is.EqualTo(cause));
+                Assert.That(remoteChanges.AcknowledgedBatches, Has.Count.EqualTo(1));
                 Assert.That(remoteChanges.FullResyncAcknowledgedBatches, Is.Empty);
             });
         }
@@ -943,7 +946,7 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
-        public async Task RunOnceAsync_WithEmptyVfsFeedSkipsPeriodicFullSync()
+        public async Task RunOnceAsync_WithEmptyVfsFeedRunsPeriodicFullSync()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
             var inner = new FakeSyncPairWork();
@@ -965,8 +968,10 @@ namespace Cotton.Sync.App.Tests.Runners
 
             Assert.Multiple(() =>
             {
-                Assert.That(inner.RunCallCount, Is.Zero);
-                Assert.That(remoteChanges.AcknowledgedBatches, Is.Empty);
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.True);
+                Assert.That(inner.LastRequest?.Causes, Is.EqualTo(SyncRunCause.Periodic));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
             });
         }
 
@@ -1307,7 +1312,7 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
-        public async Task RunOnceAsync_WithWindowsVirtualFilesProcessesDelayedChangeAfterSkippedEmptyBatch()
+        public async Task RunOnceAsync_WithWindowsVirtualFilesProcessesDelayedChangeAfterEmptySafetyPass()
         {
             var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
             var inner = new FakeSyncPairWork();
@@ -1346,8 +1351,8 @@ namespace Cotton.Sync.App.Tests.Runners
 
             Assert.Multiple(() =>
             {
-                Assert.That(inner.RunCallCount, Is.EqualTo(1));
-                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { delayedBatch }));
+                Assert.That(inner.RunCallCount, Is.EqualTo(2));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { emptyBatch, delayedBatch }));
                 Assert.That(remoteChanges.FullResyncAcknowledgedBatches, Is.Empty);
             });
         }

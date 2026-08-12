@@ -1057,6 +1057,43 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_StalePinnedRecoveryYieldsToPrimarySync()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            FakeSyncStateStore stateStore = new();
+            stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Music/stale.mp3"));
+            FakeCloudFilesAdapter cloudFiles = new();
+            RecordingSyncPairWork inner = new();
+            WindowsCloudFilesDiagnostics diagnostics = new();
+            int diskReads = 0;
+            WindowsVirtualFilesDehydrationPairWork work = new(
+                inner,
+                stateStore,
+                cloudFiles,
+                new FakeContentHasher("stale-local-hash"),
+                diagnostics,
+                _ => diskReads++ == 0
+                    ? CreatePinnedRemoteOnlyDiskState()
+                    : CreatePinnedHydratedDiskState());
+            SyncRunRequest request = SyncRunRequest.ForFull(SyncRunCause.Periodic);
+
+            await work.RunOnceAsync(syncPair, request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Has.Count.EqualTo(1));
+                Assert.That(inner.Requests[0].IsFull, Is.True);
+                Assert.That(inner.Requests[0].Causes, Is.EqualTo(request.Causes));
+                Assert.That(
+                    diagnostics.Snapshot().Any(item =>
+                        item.Operation == "manual-always-keep-recovery"
+                        && item.Status == "skipped"
+                        && item.RelativePath == "Music/stale.mp3"),
+                    Is.True);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_PeriodicRecoveryRunsOnceForEachVirtualFilesPair()
         {
             SyncPairSettings firstPair = CreateVirtualFilesPair();

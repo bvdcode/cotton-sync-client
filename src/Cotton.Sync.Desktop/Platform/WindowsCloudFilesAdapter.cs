@@ -1455,6 +1455,34 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
+        public byte[] GetPlaceholderIdentity(SyncPairSettings syncPair, string relativePath)
+        {
+            string fullPlaceholderPath = ResolveTrackedPlaceholderPath(syncPair, relativePath);
+            return _nativeApi.GetPlaceholderIdentity(fullPlaceholderPath);
+        }
+
+        public void UpdatePlaceholderIdentity(
+            SyncPairSettings syncPair,
+            string relativePath,
+            byte[] placeholderIdentity)
+        {
+            ArgumentNullException.ThrowIfNull(placeholderIdentity);
+            string fullPlaceholderPath = ResolveTrackedPlaceholderPath(syncPair, relativePath);
+            _nativeApi.UpdatePlaceholderIdentity(fullPlaceholderPath, placeholderIdentity);
+            NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: false);
+        }
+
+        private string ResolveTrackedPlaceholderPath(SyncPairSettings syncPair, string relativePath)
+        {
+            ArgumentNullException.ThrowIfNull(syncPair);
+            ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
+            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
+            string normalizedPath = SyncPath.Normalize(relativePath);
+            PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
+            EnsureNoReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
+            return Path.Combine(placeholderPath.BaseDirectoryPath, placeholderPath.RelativeFileName);
+        }
+
         private void SetAndVerifyInSyncState(string filePath, bool allowPartialDirectory = false)
         {
             _nativeApi.SetInSyncState(filePath);

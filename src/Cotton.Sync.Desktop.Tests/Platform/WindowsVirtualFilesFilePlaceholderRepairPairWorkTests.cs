@@ -48,6 +48,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             cloudFiles.States["Music/stale.mp3"] = WindowsCloudFilesPlaceholderState.Placeholder;
             cloudFiles.States["Music/current.mp3"] =
                 WindowsCloudFilesPlaceholderState.Placeholder | WindowsCloudFilesPlaceholderState.InSync;
+            cloudFiles.Identities["Music/current.mp3"] = [9, 8, 7];
             var inner = new RecordingSyncPairWork();
             var diagnostics = new WindowsCloudFilesDiagnostics();
             var progress = new RecordingRunProgressPublisher();
@@ -70,11 +71,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     cloudFiles.InspectedPaths,
                     Is.EqualTo(new[] { "Music/current.mp3", "Music/stale.mp3" }));
                 Assert.That(cloudFiles.InSyncPaths, Is.EqualTo(new[] { "Music/stale.mp3" }));
+                Assert.That(cloudFiles.IdentityUpdatedPaths, Is.EqualTo(new[] { "Music/current.mp3" }));
                 Assert.That(cloudFiles.SyncRootInSyncCount, Is.EqualTo(1));
                 Assert.That(repairEvent.Operation, Is.EqualTo("repair-file-placeholder-in-sync"));
                 Assert.That(repairEvent.Status, Is.EqualTo("completed"));
                 Assert.That(repairEvent.Details, Does.Contain("candidates=3"));
-                Assert.That(repairEvent.Details, Does.Contain("repaired=1"));
+                Assert.That(repairEvent.Details, Does.Contain("repaired=2"));
                 Assert.That(repairEvent.Details, Does.Contain("missing=1"));
                 Assert.That(repairEvent.Details, Does.Contain("non-placeholders=0"));
                 Assert.That(progress.Progress.First().FilesTotal, Is.Null);
@@ -181,6 +183,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<string> InSyncPaths { get; } = [];
 
+            public Dictionary<string, byte[]> Identities { get; } =
+                new(StringComparer.OrdinalIgnoreCase);
+
+            public List<string> IdentityUpdatedPaths { get; } = [];
+
             public int SyncRootInSyncCount { get; private set; }
 
             public WindowsCloudFilesPlaceholderState GetPlaceholderState(
@@ -190,6 +197,24 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 string path = SyncPath.Normalize(relativePath!);
                 InspectedPaths.Add(path);
                 return States[path];
+            }
+
+            public byte[] GetPlaceholderIdentity(SyncPairSettings syncPair, string relativePath)
+            {
+                string path = SyncPath.Normalize(relativePath);
+                return Identities.TryGetValue(path, out byte[]? identity)
+                    ? identity
+                    : [1, 2, 3];
+            }
+
+            public void UpdatePlaceholderIdentity(
+                SyncPairSettings syncPair,
+                string relativePath,
+                byte[] placeholderIdentity)
+            {
+                string path = SyncPath.Normalize(relativePath);
+                IdentityUpdatedPaths.Add(path);
+                Identities[path] = placeholderIdentity;
             }
 
             public void SetInSyncState(SyncPairSettings syncPair, string relativePath)

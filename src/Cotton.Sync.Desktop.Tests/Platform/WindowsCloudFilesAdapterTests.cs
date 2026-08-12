@@ -1502,6 +1502,34 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public void PlaceholderIdentityMethods_UseValidatedPathAndNotifyExplorer()
+        {
+            FakeCloudFilesNativeApi nativeApi = new();
+            RecordingShellChangeNotifier shellChanges = new();
+            string root = Path.Combine(_tempDirectory, "root");
+            string target = Path.GetFullPath(Path.Combine(root, "Projects", "remote-only.txt"));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllText(target, string.Empty);
+            nativeApi.PlaceholderIdentities[target] = [1, 2, 3];
+            WindowsCloudFilesAdapter adapter = new(
+                CreatePolicy(),
+                nativeApi,
+                shellChangeNotifier: shellChanges);
+            SyncPairSettings syncPair = CreateSyncPair(root);
+
+            byte[] identity = adapter.GetPlaceholderIdentity(syncPair, "Projects/remote-only.txt");
+            adapter.UpdatePlaceholderIdentity(syncPair, "Projects/remote-only.txt", [4, 5, 6]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(identity, Is.EqualTo(new byte[] { 1, 2, 3 }));
+                Assert.That(nativeApi.IdentityUpdatedPaths, Is.EqualTo(new[] { target }));
+                Assert.That(nativeApi.PlaceholderIdentities[target], Is.EqualTo(new byte[] { 4, 5, 6 }));
+                Assert.That(shellChanges.ItemUpdates, Is.EqualTo(new[] { target }));
+            });
+        }
+
+        [Test]
         public void SetSyncRootInSyncState_ForwardsRootToNativeBoundary()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
@@ -1864,6 +1892,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<string> InSyncPaths { get; } = [];
 
+            public Dictionary<string, byte[]> PlaceholderIdentities { get; } =
+                new(StringComparer.OrdinalIgnoreCase);
+
+            public List<string> IdentityUpdatedPaths { get; } = [];
+
             public WindowsCloudFilesPlaceholderState InSyncStateAfterSet { get; set; } =
                 WindowsCloudFilesPlaceholderState.Placeholder | WindowsCloudFilesPlaceholderState.InSync;
 
@@ -2037,6 +2070,17 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 return InSyncPaths.Contains(filePath, StringComparer.OrdinalIgnoreCase)
                     ? InSyncStateAfterSet
                     : WindowsCloudFilesPlaceholderState.None;
+            }
+
+            public byte[] GetPlaceholderIdentity(string filePath)
+            {
+                return PlaceholderIdentities[filePath];
+            }
+
+            public void UpdatePlaceholderIdentity(string filePath, byte[] placeholderIdentity)
+            {
+                IdentityUpdatedPaths.Add(filePath);
+                PlaceholderIdentities[filePath] = placeholderIdentity;
             }
 
             public WindowsCloudFilesConnection ConnectSyncRoot(WindowsCloudFilesConnectionRequest request)

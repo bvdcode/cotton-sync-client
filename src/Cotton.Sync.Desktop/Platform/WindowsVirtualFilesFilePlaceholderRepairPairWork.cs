@@ -148,17 +148,39 @@ namespace Cotton.Sync.Desktop.Platform
                 return true;
             }
 
-            if (state.Value.HasFlag(WindowsCloudFilesPlaceholderState.InSync))
+            bool isInSync = state.Value.HasFlag(WindowsCloudFilesPlaceholderState.InSync);
+            bool repaired = false;
+            if (isInSync)
             {
-                return true;
+                byte[] nativeIdentity = _cloudFiles.GetPlaceholderIdentity(syncPair, relativePath);
+                if (!nativeIdentity.AsSpan().SequenceEqual(entry.PlaceholderIdentity))
+                {
+                    _localChangeSuppression?.SuppressProviderWrite(
+                        syncPair.Id,
+                        syncPair.LocalRootPath,
+                        relativePath);
+                    _cloudFiles.UpdatePlaceholderIdentity(
+                        syncPair,
+                        relativePath,
+                        entry.PlaceholderIdentity!);
+                    repaired = true;
+                }
+            }
+            else
+            {
+                _localChangeSuppression?.SuppressProviderWrite(
+                    syncPair.Id,
+                    syncPair.LocalRootPath,
+                    relativePath);
+                _cloudFiles.SetInSyncState(syncPair, relativePath);
+                repaired = true;
             }
 
-            _localChangeSuppression?.SuppressProviderWrite(
-                syncPair.Id,
-                syncPair.LocalRootPath,
-                relativePath);
-            _cloudFiles.SetInSyncState(syncPair, relativePath);
-            statistics.RecordRepaired();
+            if (repaired)
+            {
+                statistics.RecordRepaired();
+            }
+
             return true;
         }
 

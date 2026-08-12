@@ -20,6 +20,7 @@ namespace Cotton.Sync.Local
         ILocalFileMetadataTreeProgressScanner,
         ILocalFileMetadataTreeLookupScanner,
         ILocalFileMetadataPathLookupScanner,
+        ILocalFilePresenceProbe,
         ILocalFileContentHashProgressHasher
     {
         private static readonly StringComparer PathComparer = StringComparer.OrdinalIgnoreCase;
@@ -187,6 +188,17 @@ namespace Cotton.Sync.Local
 
             progress?.Report(new LocalTreeScanProgress(filesScanned, directoriesScanned, currentPath: null));
             return tree;
+        }
+
+        /// <inheritdoc />
+        public bool FileExists(string rootPath, string relativePath)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
+            ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
+            string fullRoot = Path.GetFullPath(rootPath);
+            string normalizedPath = SyncPath.Normalize(relativePath);
+            string fullPath = GetScopedFullPath(fullRoot, normalizedPath);
+            return File.Exists(fullPath);
         }
 
         private static async Task<(int AddedFiles, int AddedDirectories)> ScanScopedFileAsync(

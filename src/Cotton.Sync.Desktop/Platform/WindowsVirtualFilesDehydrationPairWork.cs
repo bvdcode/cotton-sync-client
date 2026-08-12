@@ -549,15 +549,23 @@ namespace Cotton.Sync.Desktop.Platform
                                .WithCancellation(cancellationToken)
                                .ConfigureAwait(false))
             {
-                WindowsVirtualFilesAvailabilityRecoveryOutcome outcome =
-                    await RecoverPersistedAvailabilityEntryAsync(
-                            syncPair,
-                            entry,
-                            hydratedEntries,
-                            directoryEntries,
-                            completedDirectoryKeys,
-                            cancellationToken)
-                        .ConfigureAwait(false);
+                WindowsVirtualFilesAvailabilityRecoveryOutcome outcome;
+                try
+                {
+                    outcome = await RecoverPersistedAvailabilityEntryAsync(
+                                syncPair,
+                                entry,
+                                hydratedEntries,
+                                directoryEntries,
+                                completedDirectoryKeys,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                }
+                catch (Exception exception) when (IsRecoverableAvailabilityFailure(exception))
+                {
+                    RecordAvailabilityRecoverySkipped(syncPair, entry.RelativePath, exception);
+                    continue;
+                }
                 switch (outcome)
                 {
                     case WindowsVirtualFilesAvailabilityRecoveryOutcome.Ignored:
@@ -701,6 +709,29 @@ namespace Cotton.Sync.Desktop.Platform
                 + " were already available; completed "
                 + completedDirectories
                 + " tracked directories.");
+        }
+
+        private void RecordAvailabilityRecoverySkipped(
+            SyncPairSettings syncPair,
+            string relativePath,
+            Exception exception)
+        {
+            _diagnostics.Record(
+                "manual-always-keep-recovery",
+                "skipped",
+                syncPair.Id.ToString("D"),
+                syncPair.LocalRootPath,
+                relativePath,
+                "Persisted availability recovery yielded to the primary sync: " + exception.Message,
+                exception.HResult);
+        }
+
+        private static bool IsRecoverableAvailabilityFailure(Exception exception)
+        {
+            return exception is InvalidOperationException
+                or IOException
+                or UnauthorizedAccessException
+                or WindowsCloudFilesNativeException;
         }
 
         private async Task<bool> TryHandleManualRootHydrationAsync(
