@@ -1092,6 +1092,18 @@ namespace Cotton.Sync.Desktop.Platform
                 context.Value;
             if (!IsManualAlwaysKeepCandidate(diskState.Attributes, state.PlaceholderHydrationState))
             {
+                if (IsUnchangedPinnedPlaceholder(syncPair, state, diskState))
+                {
+                    _diagnostics.Record(
+                        "manual-always-keep",
+                        "completed",
+                        syncPair.Id.ToString("D"),
+                        syncPair.LocalRootPath,
+                        normalizedPath,
+                        "Explorer Always keep on this device was already hydrated for the tracked placeholder.");
+                    return true;
+                }
+
                 return false;
             }
 
@@ -1218,6 +1230,11 @@ namespace Cotton.Sync.Desktop.Platform
             WindowsVirtualFileDiskState? fileState = run.InitialDiskStates[SyncPath.ToKey(entry.RelativePath)];
             if (fileState is not null && IsHydrationComplete(fileState.Attributes, entry.PlaceholderHydrationState))
             {
+                if (IsUnchangedPinnedPlaceholder(syncPair, entry, fileState))
+                {
+                    handledAvailabilityPathKeys?.Add(SyncPath.ToKey(entry.RelativePath));
+                }
+
                 run.AlreadyHydratedFiles++;
                 CompleteHydrationEntry(syncPair, run, entry.RelativePath);
                 return;
@@ -1720,6 +1737,24 @@ namespace Cotton.Sync.Desktop.Platform
                     state.LocalContentHash,
                     state.RemoteContentHash,
                     StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool IsUnchangedPinnedPlaceholder(
+            SyncPairSettings syncPair,
+            SyncStateEntry state,
+            WindowsVirtualFileDiskState diskState)
+        {
+            if (!HasRawAttribute(diskState.Attributes, FileAttributePinned)
+                || !MaterializedBaselineMatches(state, diskState))
+            {
+                return false;
+            }
+
+            WindowsCloudFilesPlaceholderState placeholderState = _cloudFiles.GetPlaceholderState(
+                syncPair,
+                state.RelativePath);
+            return placeholderState.HasFlag(WindowsCloudFilesPlaceholderState.Placeholder)
+                && placeholderState.HasFlag(WindowsCloudFilesPlaceholderState.InSync);
         }
 
         private static bool IsManualFreeUpSpaceCandidate(FileAttributes attributes)

@@ -60,7 +60,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
-        public async Task RunOnceAsync_WithAlreadyHydratedPinnedPlaceholderForwardsPotentialEdit()
+        public async Task RunOnceAsync_WithAlreadyHydratedPinnedNotInSyncPlaceholderForwardsPotentialEdit()
         {
             SyncPairSettings syncPair = CreateVirtualFilesPair();
             FakeSyncStateStore stateStore = new();
@@ -70,7 +70,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             state.LocalSizeBytes = 12;
             state.LocalLastWriteUtc = new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc);
             stateStore.UpsertEntry(state);
-            FakeCloudFilesAdapter cloudFiles = new();
+            FakeCloudFilesAdapter cloudFiles = new()
+            {
+                PlaceholderState = WindowsCloudFilesPlaceholderState.Placeholder,
+            };
             RecordingSyncPairWork inner = new();
             RecordingLocalChangeSuppression suppression = new();
             WindowsVirtualFilesDehydrationPairWork work = new(
@@ -94,6 +97,40 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(updated.LocalContentHash, Is.EqualTo("remote-hash"));
                 Assert.That(updated.LocalSizeBytes, Is.EqualTo(12));
                 Assert.That(updated.LocalLastWriteUtc, Is.EqualTo(new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc)));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithAlreadyHydratedPinnedInSyncPlaceholderSuppressesAvailabilityRepeat()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            FakeSyncStateStore stateStore = new();
+            SyncStateEntry state = CreatePlaceholderState(syncPair, "Docs/report.txt");
+            state.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
+            state.LocalContentHash = "remote-hash";
+            state.LocalSizeBytes = 12;
+            state.LocalLastWriteUtc = new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc);
+            stateStore.UpsertEntry(state);
+            FakeCloudFilesAdapter cloudFiles = new();
+            RecordingSyncPairWork inner = new();
+            WindowsCloudFilesDiagnostics diagnostics = new();
+            WindowsVirtualFilesDehydrationPairWork work = new(
+                inner,
+                stateStore,
+                cloudFiles,
+                new FakeContentHasher("remote-hash"),
+                diagnostics,
+                readDiskState: _ => CreatePinnedHydratedDiskState());
+
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Is.Empty);
+                Assert.That(cloudFiles.HydratedPaths, Is.Empty);
+                Assert.That(
+                    diagnostics.Snapshot().Select(static item => (item.Operation, item.Status)),
+                    Does.Contain(("manual-always-keep", "completed")));
             });
         }
 
@@ -519,7 +556,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             fileState.LocalSizeBytes = 12;
             fileState.LocalLastWriteUtc = new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc);
             stateStore.UpsertEntry(fileState);
-            FakeCloudFilesAdapter cloudFiles = new();
+            FakeCloudFilesAdapter cloudFiles = new()
+            {
+                PlaceholderState = WindowsCloudFilesPlaceholderState.Placeholder,
+            };
             RecordingSyncPairWork inner = new();
             string rootPath = Path.GetFullPath(syncPair.LocalRootPath)
                 .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
@@ -1380,6 +1420,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public bool ContentMatchesForDehydration { get; init; } = true;
 
+            public WindowsCloudFilesPlaceholderState PlaceholderState { get; init; } =
+                WindowsCloudFilesPlaceholderState.Placeholder | WindowsCloudFilesPlaceholderState.InSync;
+
             public RemoteFilePlaceholderResult CreateFilePlaceholder(RemoteFilePlaceholderRequest request)
             {
                 throw new NotSupportedException();
@@ -1436,6 +1479,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public void SetInSyncState(SyncPairSettings syncPair, string relativePath)
             {
                 InSyncPaths.Add(relativePath);
+            }
+
+            public WindowsCloudFilesPlaceholderState GetPlaceholderState(
+                SyncPairSettings syncPair,
+                string? relativePath = null)
+            {
+                return PlaceholderState;
             }
 
             public WindowsCloudFilesConnection ConnectSyncRoot(
