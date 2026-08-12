@@ -1297,6 +1297,51 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WithMixedWindowsVirtualFilesProgressCountsOnlyPlaceholders()
+        {
+            FakeLocalFileScanner scanner = new(
+                LocalFile("Docs/local-a.txt", "a"),
+                LocalFile("Docs/local-b.txt", "b"));
+            NodeFileManifestDto remoteOnly = RemoteFile(
+                "Docs/remote-only.txt",
+                HashText("remote"),
+                sizeBytes: 6);
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new();
+            RecordingProgress<SyncRunProgress> progress = new();
+            SyncEngine engine = CreateEngine(
+                scanner,
+                RemoteTree(remoteOnly),
+                new FakeRemoteFileSynchronizer(),
+                out _,
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions
+                {
+                    AllowInitialVirtualFilesStreaming = false,
+                    RunProgress = progress,
+                });
+
+            IReadOnlyList<SyncRunProgress> placeholderProgress = progress.Values
+                .Where(item => item.Stage == SyncRunProgressStage.CreatingPlaceholders)
+                .ToList();
+            IReadOnlyList<SyncRunProgress> regularFileProgress = progress.Values
+                .Where(item => item.Stage == SyncRunProgressStage.ReconcilingFiles)
+                .ToList();
+            Assert.Multiple(() =>
+            {
+                Assert.That(placeholderProgress.Select(item => item.FilesTotal).Distinct(), Is.EqualTo(new int?[] { 1 }));
+                Assert.That(placeholderProgress.Select(item => item.FilesCompleted).Distinct(), Is.EqualTo(new[] { 0, 1 }));
+                Assert.That(regularFileProgress.Select(item => item.FilesTotal).Distinct(), Is.EqualTo(new int?[] { 2 }));
+                Assert.That(regularFileProgress.Select(item => item.FilesCompleted).Distinct(), Is.EqualTo(new[] { 0, 1, 2 }));
+                Assert.That(
+                    placeholderWriter.Requests.Select(request => request.RelativePath),
+                    Is.EqualTo(new[] { "Docs/remote-only.txt" }));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_ReportsLocalScanFileDiscoveryProgress()
         {
             var scanner = new MetadataOnlyLocalFileScanner(

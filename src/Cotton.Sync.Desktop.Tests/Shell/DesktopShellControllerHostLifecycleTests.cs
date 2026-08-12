@@ -1109,6 +1109,52 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public async Task SetSyncPairLocalFolderAsync_RefreshesStatusValidationCache()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            Uri serverUrl = new("https://cotton.example.test/");
+            SqliteSyncPairSettingsStore syncPairStore = new(paths.AppDatabasePath);
+            await syncPairStore.InitializeAsync();
+            SyncPairSettings syncPair = CreateSyncPair(isEnabled: true);
+            syncPair.LocalRootPath = Path.Combine(_tempDirectory, "missing-root");
+            await syncPairStore.UpsertAsync(syncPair);
+            FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
+            QueueingDesktopSyncApplicationFactory factory = new(host.Host);
+            using DesktopShellController controller = CreateController(paths, factory, syncPairStore: syncPairStore);
+            List<DesktopSyncStatusSnapshot> statusEvents = [];
+            controller.StatusChanged += (_, status) => statusEvents.Add(status);
+            string availableRoot = Path.Combine(_tempDirectory, "available-root");
+            Directory.CreateDirectory(availableRoot);
+            await controller.SignInAsync(new DesktopSignInRequest(
+                serverUrl.AbsoluteUri,
+                "desktop@example.test",
+                "password",
+                null));
+
+            await controller.SetSyncPairLocalFolderAsync(syncPair.Id, availableRoot);
+            host.StatusPublisher.Publish(new SyncAppStatus(
+                isAuthenticated: true,
+                [
+                    new SyncPairStatus(
+                        syncPair.Id,
+                        syncPair.DisplayName,
+                        SyncPairRunState.Idle,
+                        null,
+                        null,
+                        DateTime.UtcNow),
+                ],
+                DateTime.UtcNow));
+
+            DesktopSyncPairStatusSnapshot pairStatus = statusEvents.Last().SyncPairs.Single();
+            Assert.Multiple(() =>
+            {
+                Assert.That(pairStatus.Status, Is.EqualTo("Idle"));
+                Assert.That(pairStatus.LastError, Is.Null);
+                Assert.That(pairStatus.CurrentOperation, Is.Null);
+            });
+        }
+
+        [Test]
         public async Task SetSyncPairRemoteFolderAsync_UsesActiveHostAppWithoutManualRestart()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);

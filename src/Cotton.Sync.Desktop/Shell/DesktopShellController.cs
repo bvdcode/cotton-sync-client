@@ -1626,6 +1626,7 @@ namespace Cotton.Sync.Desktop.Shell
             if (host is null)
             {
                 await _syncPairStore.UpsertAsync(syncPair, cancellationToken).ConfigureAwait(false);
+                UpsertKnownSyncPairSettings(syncPair);
                 return;
             }
 
@@ -1636,6 +1637,8 @@ namespace Cotton.Sync.Desktop.Shell
             {
                 throw new SyncPairValidationException(result.Validation.Errors);
             }
+
+            UpsertKnownSyncPairSettings(syncPair);
         }
 
         private async Task<IReadOnlyList<DesktopSyncPairSnapshot>> BuildSyncPairSnapshotsAsync(

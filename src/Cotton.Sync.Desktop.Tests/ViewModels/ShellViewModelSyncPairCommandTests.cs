@@ -138,6 +138,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.SyncPairs.Single().IsEditorVisible, Is.False);
                 Assert.That(viewModel.IsRemoveSyncPairConfirmationVisible, Is.False);
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Ready"));
+                Assert.That(viewModel.CurrentProgressText, Does.Not.Contain("Removing"));
             });
         }
 
@@ -4801,6 +4802,41 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsExportingDiagnostics, Is.False);
                 Assert.That(viewModel.HasLastDiagnosticsBundlePath, Is.True);
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Diagnostics exported"));
+            });
+        }
+
+        [Test]
+        public async Task ExportDiagnosticsCommand_DoesNotRestoreResolvedActionRequiredState()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            FakeDesktopShellController controller = new(
+                CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")))
+            {
+                ExportDiagnosticsStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
+                ExportDiagnosticsCompletion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously),
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            controller.ReportStatus(new DesktopSyncStatusSnapshot(
+            [
+                new DesktopSyncPairStatusSnapshot(syncPairId, "Error", "Initial sync error."),
+            ]));
+
+            viewModel.ExportDiagnosticsCommand.Execute(null);
+            await controller.ExportDiagnosticsStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            controller.ReportStatus(new DesktopSyncStatusSnapshot(
+            [
+                new DesktopSyncPairStatusSnapshot(syncPairId, "Idle", null),
+            ]));
+            string resolvedGlobalStatus = viewModel.GlobalStatus;
+            controller.ExportDiagnosticsCompletion.SetResult(controller.ExportDiagnosticsPath);
+            await WaitForAsync(() => !viewModel.ExportDiagnosticsCommand.IsRunning);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.HasActionRequired, Is.False);
+                Assert.That(viewModel.ActionRequiredMessage, Is.Empty);
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo(resolvedGlobalStatus));
             });
         }
 

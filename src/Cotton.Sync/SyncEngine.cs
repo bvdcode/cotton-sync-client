@@ -424,18 +424,12 @@ namespace Cotton.Sync
                 context.RemoteFilesByPath,
                 context.FileStateByPath);
             SyncFileReconciliationProgress progress = new(plannedTransferBytesTotal);
-            ReportRunProgress(
-                context.Options,
-                SyncRunProgressStage.ReconcilingFiles,
-                progress.FilesCompleted,
-                pathKeys.Count,
-                null,
-                context.StartedAtUtc,
-                bytesCompleted: progress.CompletedTransferBytes,
-                bytesTotal: plannedTransferBytesTotal);
+            IReadOnlyDictionary<SyncRunProgressStage, int> fileCountsByStage = CountFileRunProgressStages(
+                context,
+                pathKeys);
             foreach (string key in pathKeys)
             {
-                await ReconcileSyncFileAsync(context, deletePlan, progress, pathKeys.Count, key)
+                await ReconcileSyncFileAsync(context, deletePlan, progress, fileCountsByStage, pathKeys.Count, key)
                     .ConfigureAwait(false);
             }
 
@@ -446,6 +440,7 @@ namespace Cotton.Sync
             SyncRunContext context,
             SyncDeletePlan deletePlan,
             SyncFileReconciliationProgress progress,
+            IReadOnlyDictionary<SyncRunProgressStage, int> fileCountsByStage,
             int fileCount,
             string pathKey)
         {
@@ -455,13 +450,14 @@ namespace Cotton.Sync
             context.FileStateByPath.TryGetValue(pathKey, out SyncStateEntry? state);
             string relativePath = local?.RelativePath ?? remote?.RelativePath ?? state?.RelativePath ?? pathKey;
             SyncRunProgressStage progressStage = ResolveFileRunProgressStage(context.SyncPair, local, remote, state);
+            int stageFileCount = fileCountsByStage[progressStage];
             long plannedTransferBytes = CalculatePlannedTransferBytes(
                 context.SyncPair,
                 pathKey,
                 context.LocalFilesByPath,
                 context.RemoteFilesByPath,
                 context.FileStateByPath);
-            ReportSyncFileProgress(context, progress, progressStage, fileCount, relativePath);
+            ReportSyncFileProgress(context, progress, progressStage, stageFileCount, relativePath);
             if (!context.Result.IsLocalPathDeferred(relativePath))
             {
                 try
@@ -502,8 +498,8 @@ namespace Cotton.Sync
                 }
             }
 
-            progress.CompleteFile(plannedTransferBytes);
-            ReportSyncFileProgress(context, progress, progressStage, fileCount, relativePath);
+            progress.CompleteFile(progressStage, plannedTransferBytes);
+            ReportSyncFileProgress(context, progress, progressStage, stageFileCount, relativePath);
             await YieldAfterLargeBatchAsync(
                     context.Options,
                     progress.FilesCompleted,
@@ -519,18 +515,35 @@ namespace Cotton.Sync
             int fileCount,
             string relativePath)
         {
-            DateTime? lastReportedAtUtc = progress.LastReportedAtUtc;
+            DateTime? lastReportedAtUtc = progress.GetLastReportedAtUtc(stage);
             ReportItemRunProgress(
                 context.Options,
                 stage,
-                progress.FilesCompleted,
+                progress.GetFilesCompleted(stage),
                 fileCount,
                 relativePath,
                 context.StartedAtUtc,
                 ref lastReportedAtUtc,
                 bytesCompleted: progress.CompletedTransferBytes,
                 bytesTotal: progress.PlannedTransferBytesTotal);
-            progress.LastReportedAtUtc = lastReportedAtUtc;
+            progress.SetLastReportedAtUtc(stage, lastReportedAtUtc);
+        }
+
+        private static IReadOnlyDictionary<SyncRunProgressStage, int> CountFileRunProgressStages(
+            SyncRunContext context,
+            IReadOnlyList<string> pathKeys)
+        {
+            Dictionary<SyncRunProgressStage, int> fileCountsByStage = [];
+            foreach (string pathKey in pathKeys)
+            {
+                context.LocalFilesByPath.TryGetValue(pathKey, out LocalFileSnapshot? local);
+                context.RemoteFilesByPath.TryGetValue(pathKey, out RemoteFileSnapshot? remote);
+                context.FileStateByPath.TryGetValue(pathKey, out SyncStateEntry? state);
+                SyncRunProgressStage stage = ResolveFileRunProgressStage(context.SyncPair, local, remote, state);
+                fileCountsByStage[stage] = fileCountsByStage.GetValueOrDefault(stage) + 1;
+            }
+
+            return fileCountsByStage;
         }
 
         private async Task CompleteSyncRunAsync(

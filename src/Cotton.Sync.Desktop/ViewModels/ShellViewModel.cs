@@ -75,6 +75,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private readonly Dictionary<Guid, string> _lastStatusErrorActivityMessages = [];
         private string _accountName = "Signed out";
         private string _actionRequiredMessage = string.Empty;
+        private long _statusPresentationRevision;
         private string _currentProgressText = "Sign in to start sync.";
         private string _currentRunProgressDetails = string.Empty;
         private string _currentRunProgressTitle = string.Empty;
@@ -657,6 +658,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             {
                 if (SetProperty(ref _actionRequiredMessage, value))
                 {
+                    _statusPresentationRevision++;
                     if (IsMissingDesktopSyncChangesApiMessage(value))
                     {
                         SetDesktopSyncChangesApiUnavailable(true);
@@ -690,6 +692,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             {
                 if (SetProperty(ref _globalStatus, value))
                 {
+                    _statusPresentationRevision++;
                     OnPropertyChanged(nameof(HeaderStatusText));
                     OnPropertyChanged(nameof(StatusCardTitle));
                 }
@@ -3112,13 +3115,13 @@ namespace Cotton.Sync.Desktop.ViewModels
                 GlobalStatus = SyncPairs.Count == 0 ? "Ready to add a folder" : "Ready";
                 ActionRequiredMessage = string.Empty;
                 AddActivity("Pair", selected.LocalPath, "Sync folder removed");
-                RefreshCurrentProgressText();
                 RefreshDiagnosticsItems();
             }
             finally
             {
                 IsRemovingSyncPair = false;
                 IsBusy = false;
+                RefreshCurrentProgressText();
             }
         }
 
@@ -3844,19 +3847,20 @@ namespace Cotton.Sync.Desktop.ViewModels
             string previousActionRequiredMessage = ActionRequiredMessage;
             IsExportingDiagnostics = true;
             GlobalStatus = "Exporting diagnostics";
+            long statusPresentationRevision = _statusPresentationRevision;
             try
             {
                 await YieldToUiDispatcherAsync().ConfigureAwait(true);
                 string bundlePath = await _controller.ExportDiagnosticsAsync().ConfigureAwait(true);
                 LastDiagnosticsBundlePath = bundlePath;
-                if (preserveActionRequired)
+                if (_statusPresentationRevision == statusPresentationRevision && preserveActionRequired)
                 {
                     GlobalStatus = string.IsNullOrWhiteSpace(previousGlobalStatus)
                         ? "Action required"
                         : previousGlobalStatus;
                     ActionRequiredMessage = previousActionRequiredMessage;
                 }
-                else
+                else if (_statusPresentationRevision == statusPresentationRevision)
                 {
                     GlobalStatus = "Diagnostics exported";
                     ActionRequiredMessage = string.Empty;
