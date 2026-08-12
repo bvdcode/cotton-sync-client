@@ -22,6 +22,13 @@ namespace Cotton.Sync.Desktop.Platform
 
         void UpdatePlaceholder(WindowsCloudFilesNativePlaceholder placeholder);
 
+        Task<WindowsCloudFilesUploadedFileFinalizationResult> FinalizeUploadedFileAsync(
+            WindowsCloudFilesUploadedFileFinalizationRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("Atomic Cloud Files upload finalization is not supported by this native API.");
+        }
+
         void ConvertToPlaceholder(string filePath, byte[] fileIdentity, bool isDirectory, bool markInSync)
         {
             throw new NotSupportedException("Cloud Files placeholder conversion is not supported by this native API.");
@@ -44,5 +51,14 @@ namespace Cotton.Sync.Desktop.Platform
         void AcknowledgeDehydrate(WindowsCloudFilesAckDehydrateData dehydrate);
 
         void DehydratePlaceholder(string filePath);
+
+        Task<bool> DehydratePlaceholderIfContentMatchesAsync(
+            string filePath,
+            string expectedContentHash,
+            Action? contentValidated,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("Atomic Cloud Files dehydration is not supported by this native API.");
+        }
     }
 }

@@ -3,12 +3,14 @@
 
 using Microsoft.Win32.SafeHandles;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 
 namespace Cotton.Sync.Desktop.Platform
 {
     internal class WindowsCloudFilesNativeApi : IWindowsCloudFilesNativeApi
     {
         private const int Succeeded = 0;
+        private const int IntegrityHashBufferSize = 128 * 1024;
 
         public void RegisterSyncRoot(WindowsCloudFilesNativeSyncRootRegistration registration)
         {
@@ -128,39 +130,141 @@ namespace Cotton.Sync.Desktop.Platform
         {
             ArgumentNullException.ThrowIfNull(placeholder);
             string filePath = Path.Combine(placeholder.BaseDirectoryPath, placeholder.RelativeFileName);
-
-            PinnedBuffer fileIdentity = PinnedBuffer.Pin(placeholder.FileIdentity);
+            int openResult = CfOpenFileWithOplock(
+                WindowsNativePath.ToWin32FilePath(filePath),
+                CfOpenFileFlags.Exclusive | CfOpenFileFlags.WriteAccess,
+                out IntPtr protectedHandle);
+            ThrowIfFailed(openResult, nameof(CfOpenFileWithOplock));
             try
             {
-                FileFlagsAndAttributes flags = FileFlagsAndAttributes.OpenReparsePoint;
-                if (placeholder.IsDirectory)
+                PinnedBuffer fileIdentity = PinnedBuffer.Pin(placeholder.FileIdentity);
+                try
                 {
-                    flags |= FileFlagsAndAttributes.BackupSemantics;
+                    CfFsMetadata metadata = placeholder.IsDirectory
+                        ? CfFsMetadata.CreateDirectory(placeholder.CreatedAtUtc, placeholder.UpdatedAtUtc)
+                        : CfFsMetadata.CreateFile(
+                            placeholder.FileSizeBytes,
+                            placeholder.CreatedAtUtc,
+                            placeholder.UpdatedAtUtc);
+                    int result = CfUpdatePlaceholder(
+                        protectedHandle,
+                        ref metadata,
+                        fileIdentity.Pointer,
+                        fileIdentity.Length,
+                        IntPtr.Zero,
+                        0,
+                        CreateUpdateFlags(placeholder.IsDirectory),
+                        IntPtr.Zero,
+                        IntPtr.Zero);
+                    ThrowIfFailed(result, nameof(CfUpdatePlaceholder));
                 }
+                finally
+                {
+                    fileIdentity.Dispose();
+                }
+            }
+            finally
+            {
+                CfCloseHandle(protectedHandle);
+            }
+        }
 
-                using SafeFileHandle handle = CreateFile(
-                    WindowsNativePath.ToWin32FilePath(filePath),
-                    placeholder.IsDirectory
-                        ? FileDesiredAccess.WriteAttributes
-                        : FileDesiredAccess.WriteData,
-                    FileShareMode.Read | FileShareMode.Write | FileShareMode.Delete,
+        public async Task<WindowsCloudFilesUploadedFileFinalizationResult> FinalizeUploadedFileAsync(
+            WindowsCloudFilesUploadedFileFinalizationRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            WindowsCloudFilesNativePlaceholder placeholder = request.Placeholder;
+            string filePath = Path.Combine(placeholder.BaseDirectoryPath, placeholder.RelativeFileName);
+            await using FileStream stream = new(
+                filePath,
+                FileMode.Open,
+                FileAccess.ReadWrite,
+                FileShare.None,
+                IntegrityHashBufferSize,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+            long localSizeBytes = stream.Length;
+            DateTime localCreatedAtUtc = File.GetCreationTimeUtc(filePath);
+            DateTime localLastWriteUtc = File.GetLastWriteTimeUtc(filePath);
+            if (localSizeBytes != request.ExpectedSizeBytes
+                || localLastWriteUtc != request.ExpectedLastWriteUtc.ToUniversalTime())
+            {
+                return new WindowsCloudFilesUploadedFileFinalizationResult(
+                    IsFinalized: false,
+                    localSizeBytes,
+                    localLastWriteUtc);
+            }
+
+            byte[] hash = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
+            string contentHash = Convert.ToHexStringLower(hash);
+            if (!string.Equals(contentHash, request.ExpectedContentHash, StringComparison.OrdinalIgnoreCase))
+            {
+                return new WindowsCloudFilesUploadedFileFinalizationResult(
+                    IsFinalized: false,
+                    localSizeBytes,
+                    localLastWriteUtc);
+            }
+
+            switch (request.Mode)
+            {
+                case WindowsCloudFilesUploadedFileFinalizationMode.ConvertRegularFile:
+                    ConvertUploadedFileToPlaceholder(stream.SafeFileHandle, placeholder.FileIdentity);
+                    break;
+                case WindowsCloudFilesUploadedFileFinalizationMode.UpdateExistingPlaceholder:
+                    UpdateUploadedFilePlaceholder(
+                        stream.SafeFileHandle,
+                        placeholder.FileIdentity,
+                        localSizeBytes,
+                        localCreatedAtUtc,
+                        localLastWriteUtc);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(
+                        nameof(request.Mode),
+                        request.Mode,
+                        "Unsupported upload finalization mode.");
+            }
+
+            return new WindowsCloudFilesUploadedFileFinalizationResult(
+                IsFinalized: true,
+                localSizeBytes,
+                localLastWriteUtc);
+        }
+
+        private static void ConvertUploadedFileToPlaceholder(SafeFileHandle handle, byte[] fileIdentity)
+        {
+            PinnedBuffer identity = PinnedBuffer.Pin(fileIdentity);
+            try
+            {
+                int result = CfConvertToPlaceholder(
+                    handle.DangerousGetHandle(),
+                    identity.Pointer,
+                    identity.Length,
+                    CfConvertFlags.MarkInSync,
                     IntPtr.Zero,
-                    FileCreationDisposition.OpenExisting,
-                    flags,
                     IntPtr.Zero);
-                if (handle.IsInvalid)
-                {
-                    throw new WindowsCloudFilesNativeException(
-                        nameof(CreateFile),
-                        HResultFromWin32(Marshal.GetLastWin32Error()));
-                }
+                ThrowIfFailed(result, nameof(CfConvertToPlaceholder));
+            }
+            finally
+            {
+                identity.Dispose();
+            }
+        }
 
-                CfFsMetadata metadata = placeholder.IsDirectory
-                    ? CfFsMetadata.CreateDirectory(placeholder.CreatedAtUtc, placeholder.UpdatedAtUtc)
-                    : CfFsMetadata.CreateFile(
-                        placeholder.FileSizeBytes,
-                        placeholder.CreatedAtUtc,
-                        placeholder.UpdatedAtUtc);
+        private static void UpdateUploadedFilePlaceholder(
+            SafeFileHandle handle,
+            byte[] identity,
+            long fileSizeBytes,
+            DateTime createdAtUtc,
+            DateTime updatedAtUtc)
+        {
+            PinnedBuffer fileIdentity = PinnedBuffer.Pin(identity);
+            try
+            {
+                CfFsMetadata metadata = CfFsMetadata.CreateFile(
+                    fileSizeBytes,
+                    createdAtUtc,
+                    updatedAtUtc);
                 int result = CfUpdatePlaceholder(
                     handle.DangerousGetHandle(),
                     ref metadata,
@@ -168,7 +272,7 @@ namespace Cotton.Sync.Desktop.Platform
                     fileIdentity.Length,
                     IntPtr.Zero,
                     0,
-                    CreateUpdateFlags(placeholder.IsDirectory),
+                    CfUpdateFlags.MarkInSync | CfUpdateFlags.AllowPartial,
                     IntPtr.Zero,
                     IntPtr.Zero);
                 ThrowIfFailed(result, nameof(CfUpdatePlaceholder));
@@ -485,6 +589,39 @@ namespace Cotton.Sync.Desktop.Platform
             {
                 CfCloseHandle(protectedHandle);
             }
+        }
+
+        public async Task<bool> DehydratePlaceholderIfContentMatchesAsync(
+            string filePath,
+            string expectedContentHash,
+            Action? contentValidated,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+            ArgumentException.ThrowIfNullOrWhiteSpace(expectedContentHash);
+            await using FileStream stream = new(
+                filePath,
+                FileMode.Open,
+                FileAccess.ReadWrite,
+                FileShare.None,
+                IntegrityHashBufferSize,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+            byte[] hash = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
+            string contentHash = Convert.ToHexStringLower(hash);
+            if (!string.Equals(contentHash, expectedContentHash, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            contentValidated?.Invoke();
+            int dehydrateResult = CfDehydratePlaceholder(
+                stream.SafeFileHandle.DangerousGetHandle(),
+                0,
+                -1,
+                CfDehydrateFlags.None,
+                IntPtr.Zero);
+            ThrowIfFailed(dehydrateResult, nameof(CfDehydratePlaceholder));
+            return true;
         }
 
         private static void ThrowIfFailed(int hresult, string operation)
@@ -922,6 +1059,7 @@ namespace Cotton.Sync.Desktop.Platform
         [Flags]
         private enum CfUpdateFlags : uint
         {
+            VerifyInSync = 0x00000001,
             MarkInSync = 0x00000002,
             Dehydrate = 0x00000004,
             DisableOnDemandPopulation = 0x00000010,
@@ -962,7 +1100,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         private static CfUpdateFlags CreateUpdateFlags(bool isDirectory)
         {
-            CfUpdateFlags flags = CfUpdateFlags.MarkInSync;
+            CfUpdateFlags flags = CfUpdateFlags.VerifyInSync | CfUpdateFlags.MarkInSync;
             if (!isDirectory)
             {
                 flags |= CfUpdateFlags.Dehydrate;

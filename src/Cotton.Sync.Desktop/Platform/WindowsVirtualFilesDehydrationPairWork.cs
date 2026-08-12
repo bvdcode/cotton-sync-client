@@ -1444,27 +1444,20 @@ namespace Cotton.Sync.Desktop.Platform
                 return false;
             }
 
-            bool baselineMatches = await ValidateManualDehydrationBaselineAsync(
-                    syncPair,
-                    normalizedPath,
-                    fullPath,
-                    state,
-                    diskState,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (!baselineMatches)
+            if (!SizeMatchesBaseline(state, diskState.Length))
             {
+                RecordSkipped(syncPair, normalizedPath, "Local size differs from the tracked remote file.");
                 return false;
             }
 
-            await DehydrateTrackedFileAsync(
+            bool dehydrated = await DehydrateTrackedFileAsync(
                     syncPair,
                     normalizedPath,
                     state,
                     dehydrationStarting,
                     cancellationToken)
                 .ConfigureAwait(false);
-            return true;
+            return dehydrated;
         }
 
         private async Task<bool> CompleteAlreadyDehydratedFileAsync(
@@ -1528,40 +1521,40 @@ namespace Cotton.Sync.Desktop.Platform
             return true;
         }
 
-        private async Task<bool> ValidateManualDehydrationBaselineAsync(
-            SyncPairSettings syncPair,
-            string normalizedPath,
-            string fullPath,
-            SyncStateEntry state,
-            WindowsVirtualFileDiskState diskState,
-            CancellationToken cancellationToken)
-        {
-            if (!SizeMatchesBaseline(state, diskState.Length))
-            {
-                RecordSkipped(syncPair, normalizedPath, "Local size differs from the tracked remote file.");
-                return false;
-            }
-
-            if (!await ContentMatchesRemoteAsync(state, normalizedPath, fullPath, diskState, cancellationToken)
-                    .ConfigureAwait(false))
-            {
-                RecordSkipped(syncPair, normalizedPath, "Local content differs from the tracked remote file.");
-                return false;
-            }
-
-            return true;
-        }
-
-        private async Task DehydrateTrackedFileAsync(
+        private async Task<bool> DehydrateTrackedFileAsync(
             SyncPairSettings syncPair,
             string normalizedPath,
             SyncStateEntry state,
             Action<string>? dehydrationStarting,
             CancellationToken cancellationToken)
         {
-            dehydrationStarting?.Invoke(normalizedPath);
-            _localChangeSuppression?.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, normalizedPath);
-            _cloudFiles.DehydratePlaceholder(syncPair, normalizedPath);
+            if (string.IsNullOrWhiteSpace(state.RemoteContentHash))
+            {
+                RecordSkipped(syncPair, normalizedPath, "Tracked remote content hash is missing.");
+                return false;
+            }
+
+            bool dehydrated = await _cloudFiles
+                .DehydratePlaceholderIfContentMatchesAsync(
+                    syncPair,
+                    normalizedPath,
+                    state.RemoteContentHash,
+                    () =>
+                    {
+                        dehydrationStarting?.Invoke(normalizedPath);
+                        _localChangeSuppression?.SuppressProviderWrite(
+                            syncPair.Id,
+                            syncPair.LocalRootPath,
+                            normalizedPath);
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!dehydrated)
+            {
+                RecordSkipped(syncPair, normalizedPath, "Local content differs from the tracked remote file.");
+                return false;
+            }
+
             await MarkDehydratedAsync(state, cancellationToken).ConfigureAwait(false);
             _diagnostics.Record(
                 "manual-free-up-space",
@@ -1570,6 +1563,7 @@ namespace Cotton.Sync.Desktop.Platform
                 syncPair.LocalRootPath,
                 normalizedPath,
                 "Explorer Free up space dehydrated the tracked placeholder.");
+            return true;
         }
 
         private async Task<(

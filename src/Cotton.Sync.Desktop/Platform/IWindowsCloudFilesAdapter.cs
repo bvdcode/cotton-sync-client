@@ -58,6 +58,16 @@ namespace Cotton.Sync.Desktop.Platform
 
         void DehydratePlaceholder(SyncPairSettings syncPair, string relativePath);
 
+        Task<bool> DehydratePlaceholderIfContentMatchesAsync(
+            SyncPairSettings syncPair,
+            string relativePath,
+            string expectedContentHash,
+            Action? contentValidated,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException("Atomic Cloud Files dehydration is not supported by this adapter.");
+        }
+
         void HydratePlaceholder(SyncPairSettings syncPair, string relativePath)
         {
             ArgumentNullException.ThrowIfNull(syncPair);
@@ -74,16 +84,12 @@ namespace Cotton.Sync.Desktop.Platform
 
         void SetInSyncState(SyncPairSettings syncPair, string relativePath);
 
-        RemoteFilePlaceholderResult FinalizeUploadedFilePlaceholder(
+        Task<RemoteFilePlaceholderResult> FinalizeUploadedFilePlaceholderAsync(
             SyncPairSettings syncPair,
-            SyncStateEntry fileState)
+            SyncStateEntry fileState,
+            CancellationToken cancellationToken = default)
         {
-            ArgumentNullException.ThrowIfNull(syncPair);
-            ArgumentNullException.ThrowIfNull(fileState);
-            SetInSyncState(syncPair, fileState.RelativePath);
-            return new RemoteFilePlaceholderResult(
-                fileState.PlaceholderIdentity,
-                SyncPlaceholderHydrationState.Hydrated);
+            throw new NotSupportedException("Atomic Cloud Files upload finalization is not supported by this adapter.");
         }
 
         void SetSyncRootInSyncState(SyncPairSettings syncPair)

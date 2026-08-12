@@ -917,6 +917,61 @@ namespace Cotton.Sync.Desktop.Platform
             NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: false);
         }
 
+        public async Task<bool> DehydratePlaceholderIfContentMatchesAsync(
+            SyncPairSettings syncPair,
+            string relativePath,
+            string expectedContentHash,
+            Action? contentValidated,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(syncPair);
+            ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
+            ArgumentException.ThrowIfNullOrWhiteSpace(expectedContentHash);
+            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
+            string normalizedPath = SyncPath.Normalize(relativePath);
+            PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
+            EnsureNoReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
+            string fullPlaceholderPath = Path.Combine(
+                placeholderPath.BaseDirectoryPath,
+                placeholderPath.RelativeFileName);
+            bool contentMatched;
+            try
+            {
+                contentMatched = await _nativeApi
+                    .DehydratePlaceholderIfContentMatchesAsync(
+                        fullPlaceholderPath,
+                        expectedContentHash,
+                        contentValidated,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                RecordFailure(
+                    "dehydrate-placeholder",
+                    syncPair.Id.ToString(),
+                    registration.LocalRootPath,
+                    normalizedPath,
+                    exception);
+                throw;
+            }
+
+            if (!contentMatched)
+            {
+                return false;
+            }
+
+            _diagnostics.Record(
+                "dehydrate-placeholder",
+                "completed",
+                syncPair.Id.ToString(),
+                registration.LocalRootPath,
+                normalizedPath,
+                "Windows Cloud Files placeholder was atomically validated and dehydrated.");
+            NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: false);
+            return true;
+        }
+
         public void HydratePlaceholder(SyncPairSettings syncPair, string relativePath)
         {
             ArgumentNullException.ThrowIfNull(syncPair);
@@ -1131,9 +1186,10 @@ namespace Cotton.Sync.Desktop.Platform
                 "Windows Cloud Files placeholder was pinned for offline availability.");
         }
 
-        public RemoteFilePlaceholderResult FinalizeUploadedFilePlaceholder(
+        public async Task<RemoteFilePlaceholderResult> FinalizeUploadedFilePlaceholderAsync(
             SyncPairSettings syncPair,
-            SyncStateEntry fileState)
+            SyncStateEntry fileState,
+            CancellationToken cancellationToken = default)
         {
             ValidateUploadedFilePlaceholderArguments(syncPair, fileState);
             WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
@@ -1150,28 +1206,85 @@ namespace Cotton.Sync.Desktop.Platform
                 normalizedPath,
                 fullPlaceholderPath,
                 fileState);
+            string expectedContentHash = RequireUploadedLocalContentHash(fileState.LocalContentHash);
+            long expectedSizeBytes = RequireUploadedLocalSize(fileState.LocalSizeBytes);
+            DateTime expectedLastWriteUtc = RequireUploadedLocalLastWrite(fileState.LocalLastWriteUtc);
+            WindowsCloudFilesUploadedFileFinalizationMode mode = _isReparsePoint(fullPlaceholderPath)
+                ? WindowsCloudFilesUploadedFileFinalizationMode.UpdateExistingPlaceholder
+                : WindowsCloudFilesUploadedFileFinalizationMode.ConvertRegularFile;
+            WindowsCloudFilesNativePlaceholder nativePlaceholder = new(
+                placeholderPath.BaseDirectoryPath,
+                placeholderPath.RelativeFileName,
+                fileIdentity,
+                expectedSizeBytes,
+                fileState.SyncedAtUtc.ToUniversalTime(),
+                expectedLastWriteUtc);
+            WindowsCloudFilesUploadedFileFinalizationResult finalization;
+            const string operation = "finalize-uploaded-file-placeholder";
+            try
+            {
+                finalization = await _nativeApi
+                    .FinalizeUploadedFileAsync(
+                        new WindowsCloudFilesUploadedFileFinalizationRequest(
+                            nativePlaceholder,
+                            expectedContentHash,
+                            expectedSizeBytes,
+                            expectedLastWriteUtc,
+                            mode),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (!finalization.IsFinalized)
+                {
+                    throw new LocalFileUnavailableException(
+                        normalizedPath,
+                        fullPlaceholderPath,
+                        "the file changed after upload and before Cloud Files finalization.");
+                }
 
-            if (_isReparsePoint(fullPlaceholderPath))
-            {
-                FinalizeExistingUploadedFilePlaceholder(syncPair, normalizedPath, fullPlaceholderPath);
+                VerifyInSyncState(fullPlaceholderPath);
+                _shellChangeNotifier.NotifyItemUpdated(fullPlaceholderPath);
             }
-            else
+            catch (LocalFileUnavailableException exception)
             {
-                ConvertUploadedFileToPlaceholder(
-                    syncPair,
-                    registration.LocalRootPath,
+                RecordFailure(operation, syncPair.Id.ToString(), registration.LocalRootPath, normalizedPath, exception);
+                throw;
+            }
+            catch (WindowsCloudFilesNativeException exception) when (IsSharingViolation(exception))
+            {
+                RecordFailure(operation, syncPair.Id.ToString(), registration.LocalRootPath, normalizedPath, exception);
+                throw new LocalFileUnavailableException(
                     normalizedPath,
                     fullPlaceholderPath,
-                    fileIdentity);
+                    exception,
+                    requiresExclusiveAccess: true);
+            }
+            catch (IOException exception)
+            {
+                RecordFailure(operation, syncPair.Id.ToString(), registration.LocalRootPath, normalizedPath, exception);
+                throw new LocalFileUnavailableException(
+                    normalizedPath,
+                    fullPlaceholderPath,
+                    exception,
+                    requiresExclusiveAccess: true);
+            }
+            catch (Exception exception)
+            {
+                RecordFailure(operation, syncPair.Id.ToString(), registration.LocalRootPath, normalizedPath, exception);
+                throw;
             }
 
-            FileInfo finalizedFile = new(fullPlaceholderPath);
-            finalizedFile.Refresh();
+            _diagnostics.Record(
+                operation,
+                "completed",
+                syncPair.Id.ToString(),
+                registration.LocalRootPath,
+                normalizedPath,
+                "Uploaded local content was atomically validated and finalized as a Cloud Files placeholder.");
             return new RemoteFilePlaceholderResult(
                 fileIdentity,
                 SyncPlaceholderHydrationState.Hydrated,
-                finalizedFile.Length,
-                finalizedFile.LastWriteTimeUtc);
+                finalization.LocalSizeBytes,
+                finalization.LocalLastWriteUtc);
         }
 
         private static void ValidateUploadedFilePlaceholderArguments(
@@ -1251,75 +1364,27 @@ namespace Cotton.Sync.Desktop.Platform
             return value;
         }
 
-        private void FinalizeExistingUploadedFilePlaceholder(
-            SyncPairSettings syncPair,
-            string normalizedPath,
-            string fullPlaceholderPath)
+        private static string RequireUploadedLocalContentHash(string? value)
         {
-            try
+            if (string.IsNullOrWhiteSpace(value))
             {
-                SetInSyncState(syncPair, normalizedPath);
+                throw new InvalidOperationException(
+                    "Uploaded Cloud Files placeholder finalization requires the uploaded local content hash.");
             }
-            catch (WindowsCloudFilesNativeException exception) when (IsSharingViolation(exception))
-            {
-                throw new LocalFileUnavailableException(
-                    normalizedPath,
-                    fullPlaceholderPath,
-                    exception,
-                    requiresExclusiveAccess: true);
-            }
+
+            return value;
         }
 
-        private void ConvertUploadedFileToPlaceholder(
-            SyncPairSettings syncPair,
-            string localRootPath,
-            string normalizedPath,
-            string fullPlaceholderPath,
-            byte[] fileIdentity)
+        private static long RequireUploadedLocalSize(long? value)
         {
-            const string operation = "finalize-uploaded-file-placeholder";
-            try
-            {
-                ExecuteNativeOperationWithTransientPathRetry(
-                    () => _nativeApi.ConvertToPlaceholder(
-                        fullPlaceholderPath,
-                        fileIdentity,
-                        isDirectory: false,
-                        markInSync: true),
-                    operation,
-                    syncPair.Id.ToString(),
-                    localRootPath,
-                    normalizedPath);
-                ExecuteNativeOperationWithTransientPathRetry(
-                    () => SetAndVerifyInSyncState(fullPlaceholderPath),
-                    "set-in-sync-state",
-                    syncPair.Id.ToString(),
-                    localRootPath,
-                    normalizedPath);
-                _shellChangeNotifier.NotifyItemUpdated(fullPlaceholderPath);
-            }
-            catch (WindowsCloudFilesNativeException exception) when (IsSharingViolation(exception))
-            {
-                RecordFailure(operation, syncPair.Id.ToString(), localRootPath, normalizedPath, exception);
-                throw new LocalFileUnavailableException(
-                    normalizedPath,
-                    fullPlaceholderPath,
-                    exception,
-                    requiresExclusiveAccess: true);
-            }
-            catch (Exception exception)
-            {
-                RecordFailure(operation, syncPair.Id.ToString(), localRootPath, normalizedPath, exception);
-                throw;
-            }
+            return value ?? throw new InvalidOperationException(
+                "Uploaded Cloud Files placeholder finalization requires the uploaded local file size.");
+        }
 
-            _diagnostics.Record(
-                operation,
-                "completed",
-                syncPair.Id.ToString(),
-                localRootPath,
-                normalizedPath,
-                "Uploaded local file was converted to a Cloud Files placeholder and marked in sync.");
+        private static DateTime RequireUploadedLocalLastWrite(DateTime? value)
+        {
+            return value?.ToUniversalTime() ?? throw new InvalidOperationException(
+                "Uploaded Cloud Files placeholder finalization requires the uploaded local write timestamp.");
         }
 
         public void SetSyncRootInSyncState(SyncPairSettings syncPair)
@@ -1393,6 +1458,11 @@ namespace Cotton.Sync.Desktop.Platform
         private void SetAndVerifyInSyncState(string filePath, bool allowPartialDirectory = false)
         {
             _nativeApi.SetInSyncState(filePath);
+            VerifyInSyncState(filePath, allowPartialDirectory);
+        }
+
+        private void VerifyInSyncState(string filePath, bool allowPartialDirectory = false)
+        {
             WindowsCloudFilesPlaceholderState state = _nativeApi.GetPlaceholderState(filePath);
             if (!state.HasFlag(WindowsCloudFilesPlaceholderState.InSync))
             {

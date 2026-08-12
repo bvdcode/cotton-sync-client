@@ -103,7 +103,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
-        public async Task RunOnceAsync_WithWindowsVirtualFilesConflictActivityMarksMaterializedPathInSync()
+        public async Task RunOnceAsync_WithWindowsVirtualFilesConflictActivityDoesNotFinalizePath()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
             InMemoryAppActivityPublisher activityPublisher = new();
@@ -126,12 +126,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 .GetAsync(syncPair.Id.ToString("D"), "Docs/report.txt");
             Assert.Multiple(() =>
             {
-                Assert.That(cloudFiles.InSyncPaths, Does.Contain("Docs/report.txt"));
+                Assert.That(cloudFiles.InSyncPaths, Is.Empty);
+                Assert.That(cloudFiles.SyncRootInSyncPairs, Is.Empty);
                 Assert.That(finalizedState, Is.Not.Null);
-                Assert.That(finalizedState!.PlaceholderIdentity, Is.Not.Null.And.Not.Empty);
+                Assert.That(finalizedState!.PlaceholderIdentity, Is.Null);
                 Assert.That(
                     finalizedState.PlaceholderHydrationState,
-                    Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
+                    Is.EqualTo(SyncPlaceholderHydrationState.None));
             });
         }
 
@@ -461,16 +462,18 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 }
             }
 
-            public RemoteFilePlaceholderResult FinalizeUploadedFilePlaceholder(
+            public Task<RemoteFilePlaceholderResult> FinalizeUploadedFilePlaceholderAsync(
                 SyncPairSettings syncPair,
-                SyncStateEntry fileState)
+                SyncStateEntry fileState,
+                CancellationToken cancellationToken = default)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 SetInSyncState(syncPair, fileState.RelativePath);
-                return new RemoteFilePlaceholderResult(
+                return Task.FromResult(new RemoteFilePlaceholderResult(
                     [1, 2, 3],
                     SyncPlaceholderHydrationState.Hydrated,
                     LocalSizeBytes: 25,
-                    LocalLastWriteUtc: new DateTime(2026, 8, 3, 12, 0, 0, DateTimeKind.Utc));
+                    LocalLastWriteUtc: new DateTime(2026, 8, 3, 12, 0, 0, DateTimeKind.Utc)));
             }
 
             public void SetSyncRootInSyncState(SyncPairSettings syncPair)

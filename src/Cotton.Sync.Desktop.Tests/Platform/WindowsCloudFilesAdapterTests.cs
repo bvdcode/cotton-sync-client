@@ -22,6 +22,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         private const uint FileFlagBackupSemantics = 0x02000000;
         private const uint CfPlaceholderCreateFlagDisableOnDemandPopulation = 0x00000001;
         private const uint CfPlaceholderCreateFlagMarkInSync = 0x00000002;
+        private const uint CfUpdateFlagVerifyInSync = 0x00000001;
         private const uint CfUpdateFlagMarkInSync = 0x00000002;
         private const uint CfUpdateFlagDehydrate = 0x00000004;
         private const uint CfUpdateFlagDisableOnDemandPopulation = 0x00000010;
@@ -61,7 +62,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             Assert.That(
                 flags,
-                Is.EqualTo(CfUpdateFlagMarkInSync | CfUpdateFlagDisableOnDemandPopulation));
+                Is.EqualTo(
+                    CfUpdateFlagVerifyInSync
+                    | CfUpdateFlagMarkInSync
+                    | CfUpdateFlagDisableOnDemandPopulation));
         }
 
         [Test]
@@ -71,7 +75,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             Assert.That(
                 flags,
-                Is.EqualTo(CfUpdateFlagMarkInSync | CfUpdateFlagDehydrate | CfUpdateFlagAllowPartial));
+                Is.EqualTo(
+                    CfUpdateFlagVerifyInSync
+                    | CfUpdateFlagMarkInSync
+                    | CfUpdateFlagDehydrate
+                    | CfUpdateFlagAllowPartial));
         }
 
         [Test]
@@ -839,7 +847,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
-        public void FinalizeUploadedFilePlaceholder_ConvertsRegularUploadedFileAndMarksInSync()
+        public async Task FinalizeUploadedFilePlaceholder_ConvertsRegularUploadedFileAndMarksInSync()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
             var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
@@ -850,7 +858,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             SyncPairSettings syncPair = CreateSyncPair(root);
             SyncStateEntry state = CreateUploadedFileState(syncPair, "Projects/report.txt");
 
-            RemoteFilePlaceholderResult result = adapter.FinalizeUploadedFilePlaceholder(syncPair, state);
+            RemoteFilePlaceholderResult result = await adapter.FinalizeUploadedFilePlaceholderAsync(syncPair, state);
 
             var converted = nativeApi.ConvertedPlaceholders.Single();
             WindowsCloudFilesPlaceholderIdentity identity =
@@ -877,7 +885,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
-        public void FinalizeUploadedFilePlaceholder_WhenPathIsAlreadyPlaceholderMarksInSyncWithoutConversion()
+        public async Task FinalizeUploadedFilePlaceholder_WhenPathIsAlreadyPlaceholderUpdatesIdentityAndMarksInSync()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
             string root = Path.Combine(_tempDirectory, "root");
@@ -890,13 +898,15 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 isReparsePoint: path => string.Equals(Path.GetFullPath(path), target, StringComparison.OrdinalIgnoreCase));
             SyncPairSettings syncPair = CreateSyncPair(root);
 
-            RemoteFilePlaceholderResult result = adapter.FinalizeUploadedFilePlaceholder(
+            RemoteFilePlaceholderResult result = await adapter.FinalizeUploadedFilePlaceholderAsync(
                 syncPair,
                 CreateUploadedFileState(syncPair, "Projects/report.txt"));
 
             Assert.Multiple(() =>
             {
                 Assert.That(nativeApi.ConvertedPlaceholders, Is.Empty);
+                Assert.That(nativeApi.UpdatedPlaceholders, Has.Count.EqualTo(1));
+                Assert.That(nativeApi.UpdatedPlaceholders[0].FileIdentity, Is.EqualTo(result.PlaceholderIdentity));
                 Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { target }));
                 Assert.That(result.PlaceholderIdentity, Is.Not.Null.And.Not.Empty);
                 Assert.That(result.HydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
@@ -906,7 +916,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
-        public void FinalizeUploadedFilePlaceholder_RejectsMissingRemoteIdentityBeforeNativeCalls()
+        public async Task FinalizeUploadedFilePlaceholder_RejectsMissingRemoteIdentityBeforeNativeCalls()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
             var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
@@ -918,8 +928,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             SyncStateEntry state = CreateUploadedFileState(syncPair, "Projects/report.txt");
             state.RemoteFileManifestId = null;
 
-            InvalidOperationException? exception =
-                Assert.Throws<InvalidOperationException>(() => adapter.FinalizeUploadedFilePlaceholder(syncPair, state));
+            InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(
+                () => adapter.FinalizeUploadedFilePlaceholderAsync(syncPair, state));
 
             Assert.Multiple(() =>
             {
@@ -1223,6 +1233,32 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task DehydratePlaceholderIfContentMatchesAsync_WhenContentChangedDoesNotDehydrate()
+        {
+            FakeCloudFilesNativeApi nativeApi = new()
+            {
+                DehydrationContentMatches = false,
+            };
+            WindowsCloudFilesAdapter adapter = new(CreatePolicy(), nativeApi);
+            string root = Path.Combine(_tempDirectory, "root");
+            SyncPairSettings syncPair = CreateSyncPair(root);
+            int validationCallbacks = 0;
+
+            bool dehydrated = await adapter.DehydratePlaceholderIfContentMatchesAsync(
+                syncPair,
+                "Projects/changed.txt",
+                "expected-hash",
+                () => validationCallbacks++);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(dehydrated, Is.False);
+                Assert.That(validationCallbacks, Is.Zero);
+                Assert.That(nativeApi.DehydratedPaths, Is.Empty);
+            });
+        }
+
+        [Test]
         public void HydratePlaceholder_HydratesPinsMarksInSyncAndNotifiesShell()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
@@ -1255,6 +1291,34 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     "native-set-pin-state",
                     "native-set-in-sync-state",
                 }));
+            });
+        }
+
+        [Test]
+        public void FinalizeUploadedFilePlaceholder_WhenLocalFileChangedRejectsFinalization()
+        {
+            FakeCloudFilesNativeApi nativeApi = new()
+            {
+                FinalizationSucceeds = false,
+            };
+            WindowsCloudFilesAdapter adapter = new(CreatePolicy(), nativeApi);
+            string root = Path.Combine(_tempDirectory, "root");
+            string target = Path.GetFullPath(Path.Combine(root, "Projects", "report.txt"));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllText(target, "changed after upload");
+            SyncPairSettings syncPair = CreateSyncPair(root);
+
+            LocalFileUnavailableException? exception = Assert.ThrowsAsync<LocalFileUnavailableException>(
+                () => adapter.FinalizeUploadedFilePlaceholderAsync(
+                    syncPair,
+                    CreateUploadedFileState(syncPair, "Projects/report.txt")));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception?.Reason, Does.Contain("changed after upload"));
+                Assert.That(nativeApi.ConvertedPlaceholders, Is.Empty);
+                Assert.That(nativeApi.UpdatedPlaceholders, Is.Empty);
+                Assert.That(nativeApi.InSyncPaths, Is.Empty);
             });
         }
 
@@ -1549,7 +1613,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
-        public void FinalizeUploadedFilePlaceholder_NotifiesExplorerAfterUploadedFileStatusFinalization()
+        public async Task FinalizeUploadedFilePlaceholder_NotifiesExplorerAfterUploadedFileStatusFinalization()
         {
             var nativeApi = new FakeCloudFilesNativeApi();
             var shellChanges = new RecordingShellChangeNotifier();
@@ -1565,7 +1629,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             SyncPairSettings syncPair = CreateSyncPair(root);
             SyncStateEntry state = CreateUploadedFileState(syncPair, "Projects/report.txt");
 
-            adapter.FinalizeUploadedFilePlaceholder(syncPair, state);
+            await adapter.FinalizeUploadedFilePlaceholderAsync(syncPair, state);
 
             Assert.Multiple(() =>
             {
@@ -1599,8 +1663,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             SyncPairSettings syncPair = CreateSyncPair(root);
             SyncStateEntry state = CreateUploadedFileState(syncPair, "Projects/open-in-excel.xlsx");
 
-            LocalFileUnavailableException? exception = Assert.Throws<LocalFileUnavailableException>(
-                () => adapter.FinalizeUploadedFilePlaceholder(syncPair, state));
+            LocalFileUnavailableException? exception = Assert.ThrowsAsync<LocalFileUnavailableException>(
+                () => adapter.FinalizeUploadedFilePlaceholderAsync(syncPair, state));
 
             WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
             Assert.Multiple(() =>
@@ -1619,11 +1683,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public void FinalizeUploadedFilePlaceholder_MapsExistingPlaceholderSharingViolationToExclusiveLocalFileWait()
         {
             WindowsCloudFilesNativeException nativeFailure = new(
-                "CfSetInSyncState",
+                "CfUpdatePlaceholder",
                 HResultSharingViolation);
             FakeCloudFilesNativeApi nativeApi = new()
             {
-                SetInSyncException = nativeFailure,
+                ConvertException = nativeFailure,
             };
             WindowsCloudFilesDiagnostics diagnostics = new();
             string root = Path.Combine(_tempDirectory, "root");
@@ -1638,8 +1702,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             SyncPairSettings syncPair = CreateSyncPair(root);
             SyncStateEntry state = CreateUploadedFileState(syncPair, "Projects/open-in-excel.xlsx");
 
-            LocalFileUnavailableException? exception = Assert.Throws<LocalFileUnavailableException>(
-                () => adapter.FinalizeUploadedFilePlaceholder(syncPair, state));
+            LocalFileUnavailableException? exception = Assert.ThrowsAsync<LocalFileUnavailableException>(
+                () => adapter.FinalizeUploadedFilePlaceholderAsync(syncPair, state));
 
             WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
             Assert.Multiple(() =>
@@ -1648,7 +1712,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(exception?.FullPath, Is.EqualTo(filePath));
                 Assert.That(exception?.RequiresExclusiveAccess, Is.True);
                 Assert.That(exception?.InnerException, Is.SameAs(nativeFailure));
-                Assert.That(diagnostic.Operation, Is.EqualTo("set-in-sync-state"));
+                Assert.That(diagnostic.Operation, Is.EqualTo("finalize-uploaded-file-placeholder"));
                 Assert.That(diagnostic.Status, Is.EqualTo("failed"));
                 Assert.That(diagnostic.HResult, Is.EqualTo(HResultSharingViolation));
             });
@@ -1829,6 +1893,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public Exception? SetInSyncException { get; set; }
 
+            public bool FinalizationSucceeds { get; init; } = true;
+
+            public bool DehydrationContentMatches { get; init; } = true;
+
             public int UpdateFailuresBeforeSuccess { get; set; }
 
             public int UpdateCalls { get; private set; }
@@ -1881,6 +1949,52 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 }
 
                 UpdatedPlaceholders.Add(placeholder);
+            }
+
+            public Task<WindowsCloudFilesUploadedFileFinalizationResult> FinalizeUploadedFileAsync(
+                WindowsCloudFilesUploadedFileFinalizationRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (ConvertException is not null)
+                {
+                    throw ConvertException;
+                }
+
+                WindowsCloudFilesNativePlaceholder placeholder = request.Placeholder;
+                string filePath = Path.GetFullPath(Path.Combine(
+                    placeholder.BaseDirectoryPath,
+                    placeholder.RelativeFileName));
+                FileInfo file = new(filePath);
+                if (!FinalizationSucceeds)
+                {
+                    return Task.FromResult(new WindowsCloudFilesUploadedFileFinalizationResult(
+                        IsFinalized: false,
+                        file.Length,
+                        file.LastWriteTimeUtc));
+                }
+
+                InSyncPaths.Add(filePath);
+                switch (request.Mode)
+                {
+                    case WindowsCloudFilesUploadedFileFinalizationMode.ConvertRegularFile:
+                        ConvertedPlaceholders.Add(new ConvertedPlaceholderCall(
+                            filePath,
+                            placeholder.FileIdentity,
+                            IsDirectory: false,
+                            MarkInSync: true));
+                        break;
+                    case WindowsCloudFilesUploadedFileFinalizationMode.UpdateExistingPlaceholder:
+                        UpdatedPlaceholders.Add(placeholder);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(request));
+                }
+
+                return Task.FromResult(new WindowsCloudFilesUploadedFileFinalizationResult(
+                    IsFinalized: true,
+                    file.Length,
+                    file.LastWriteTimeUtc));
             }
 
             public void ConvertToPlaceholder(string filePath, byte[] fileIdentity, bool isDirectory, bool markInSync)
@@ -1952,6 +2066,23 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public void DehydratePlaceholder(string filePath)
             {
                 DehydratedPaths.Add(filePath);
+            }
+
+            public Task<bool> DehydratePlaceholderIfContentMatchesAsync(
+                string filePath,
+                string expectedContentHash,
+                Action? contentValidated,
+                CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!DehydrationContentMatches)
+                {
+                    return Task.FromResult(false);
+                }
+
+                contentValidated?.Invoke();
+                DehydratedPaths.Add(filePath);
+                return Task.FromResult(true);
             }
 
             public void HydratePlaceholder(string filePath)

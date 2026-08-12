@@ -801,7 +801,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             SyncPairSettings syncPair = CreateVirtualFilesPair();
             var stateStore = new FakeSyncStateStore();
             stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Docs/report.txt"));
-            var cloudFiles = new FakeCloudFilesAdapter();
+            var cloudFiles = new FakeCloudFilesAdapter
+            {
+                ContentMatchesForDehydration = false,
+            };
             var inner = new RecordingSyncPairWork();
             RecordingRunProgressPublisher progressPublisher = new();
             var work = new WindowsVirtualFilesDehydrationPairWork(
@@ -834,7 +837,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             WindowsVirtualFilesDehydrationPairWork work = new(
                 inner,
                 stateStore,
-                new FakeCloudFilesAdapter(),
+                new FakeCloudFilesAdapter
+                {
+                    ContentMatchesForDehydration = false,
+                },
                 new FakeContentHasher("edited-hash"),
                 readDiskState: _ => CreateUnpinnedHydratedDiskState());
             SyncRunRequest request = SyncRunRequest
@@ -1299,6 +1305,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<string> InSyncPaths { get; } = [];
 
+            public bool ContentMatchesForDehydration { get; init; } = true;
+
             public RemoteFilePlaceholderResult CreateFilePlaceholder(RemoteFilePlaceholderRequest request)
             {
                 throw new NotSupportedException();
@@ -1322,6 +1330,24 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public void DehydratePlaceholder(SyncPairSettings syncPair, string relativePath)
             {
                 DehydratedPaths.Add(relativePath);
+            }
+
+            public Task<bool> DehydratePlaceholderIfContentMatchesAsync(
+                SyncPairSettings syncPair,
+                string relativePath,
+                string expectedContentHash,
+                Action? contentValidated,
+                CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!ContentMatchesForDehydration)
+                {
+                    return Task.FromResult(false);
+                }
+
+                contentValidated?.Invoke();
+                DehydratedPaths.Add(relativePath);
+                return Task.FromResult(true);
             }
 
             public void HydratePlaceholder(SyncPairSettings syncPair, string relativePath)

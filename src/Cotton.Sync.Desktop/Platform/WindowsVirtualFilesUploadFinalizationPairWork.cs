@@ -179,7 +179,9 @@ namespace Cotton.Sync.Desktop.Platform
             SyncStateEntry state,
             CancellationToken cancellationToken)
         {
-            RemoteFilePlaceholderResult placeholder = _cloudFiles.FinalizeUploadedFilePlaceholder(syncPair, state);
+            RemoteFilePlaceholderResult placeholder = await _cloudFiles
+                .FinalizeUploadedFilePlaceholderAsync(syncPair, state, cancellationToken)
+                .ConfigureAwait(false);
             if (placeholder.PlaceholderIdentity is not { Length: > 0 })
             {
                 throw new InvalidOperationException(
@@ -337,7 +339,7 @@ namespace Cotton.Sync.Desktop.Platform
             {
                 ArgumentNullException.ThrowIfNull(value);
                 if (value.SyncPairId != _syncPairId
-                    || value.Type is not (SyncActivityKind.Uploaded or SyncActivityKind.Converged or SyncActivityKind.Conflict)
+                    || value.Type is not (SyncActivityKind.Uploaded or SyncActivityKind.Converged)
                     || string.IsNullOrWhiteSpace(value.ItemPath))
                 {
                     return;
