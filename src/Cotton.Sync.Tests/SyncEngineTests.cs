@@ -395,6 +395,63 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public async Task RunOnceAsync_WhenLazyHashFileIsUnavailableContinuesWithOtherFiles()
+        {
+            LocalFileSnapshot unavailable = LocalFile("Docs/unavailable.bin", "unavailable");
+            unavailable.ContentHash = string.Empty;
+            LocalFileSnapshot available = LocalFile("Docs/available.bin", "available");
+            available.ContentHash = string.Empty;
+            FakeLocalFileScanner scanner = new(unavailable, available)
+            {
+                ContentHashFactory = file =>
+                {
+                    if (file.RelativePath == unavailable.RelativePath)
+                    {
+                        throw new LocalFileUnavailableException(
+                            file.RelativePath,
+                            file.FullPath,
+                            "the file is locked.",
+                            requiresExclusiveAccess: true);
+                    }
+
+                    return "available-content-hash";
+                },
+            };
+            FakeRemoteFileSynchronizer remoteFiles = new();
+            NodeFileManifestDto unavailableRemote = RemoteFile(
+                unavailable.RelativePath,
+                "baseline-content-hash",
+                sizeBytes: unavailable.SizeBytes);
+            SyncEngine engine = CreateEngine(
+                scanner,
+                RemoteTree(unavailableRemote),
+                remoteFiles,
+                out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(
+                stateStore,
+                unavailable.RelativePath,
+                "baseline-content-hash",
+                unavailableRemote);
+
+            SyncRunResult result = await engine.RunOnceAsync(Pair());
+
+            SyncActivity unavailableActivity = result.Activities.Single(activity =>
+                activity.RelativePath == unavailable.RelativePath);
+            SyncStateEntry? unavailableEntry = await stateStore.GetAsync("pair-a", unavailable.RelativePath);
+            SyncStateEntry? availableEntry = await stateStore.GetAsync("pair-a", available.RelativePath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(unavailableActivity.Kind, Is.EqualTo(SyncActivityKind.Skipped));
+                Assert.That(unavailableActivity.Details, Does.Contain("locked"));
+                Assert.That(result.DeferredLocalPaths, Is.EqualTo(new[] { unavailable.RelativePath }));
+                Assert.That(remoteFiles.Uploads.Select(upload => upload.RelativePath), Is.EqualTo(new[] { available.RelativePath }));
+                Assert.That(unavailableEntry, Is.Not.Null);
+                Assert.That(unavailableEntry!.LocalContentHash, Is.EqualTo("baseline-content-hash"));
+                Assert.That(availableEntry, Is.Not.Null);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithScopedRapidRenameEditDeleteDeletesOldRemoteWithoutStaleTarget()
         {
             const string oldPath = "old.txt";
@@ -3526,6 +3583,48 @@ namespace Cotton.Sync.Tests
                 Assert.That(newState!.RemoteFileId, Is.EqualTo(remoteFileId));
                 Assert.That(newState.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
                 Assert.That(newState.PlaceholderIdentity, Is.EqualTo(placeholderWriter.PlaceholderIdentity));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithScopedWindowsVirtualFilesRenamesRootLevelOnlineOnlyPlaceholder()
+        {
+            const string oldPath = "rename.bin";
+            const string newPath = "renamed.bin";
+            Guid remoteFileId = Guid.NewGuid();
+            NodeFileManifestDto remote = RemoteFile(oldPath, HashText("remote-content"), remoteFileId, sizeBytes: 1024);
+            LocalFileSnapshot renamedLocalPlaceholder = CloudFilesPlaceholderLocal(newPath, remote.SizeBytes);
+            renamedLocalPlaceholder.LastWriteUtc = remote.UpdatedAt;
+            FakeLocalFileScanner scanner = new(renamedLocalPlaceholder);
+            PathOnlyRemoteTreeCrawler crawler = new(RemoteTree(remote));
+            FakeRemoteFileSynchronizer remoteFiles = new();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new();
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            SyncEngine engine = new(
+                scanner,
+                crawler,
+                remoteFiles,
+                stateStore,
+                remoteFilePlaceholderWriter: placeholderWriter);
+            await InsertPlaceholderBaselineAsync(stateStore, oldPath, remote);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions
+                {
+                    Scope = SyncRunScope.ForLocalChangedPaths([oldPath, newPath]),
+                });
+
+            SyncStateEntry? oldState = await stateStore.GetAsync("pair-a", oldPath);
+            SyncStateEntry? newState = await stateStore.GetAsync("pair-a", newPath);
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Moves, Has.Count.EqualTo(1));
+                Assert.That(remoteFiles.Moves[0].RelativePath, Is.EqualTo(newPath));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Moved }));
+                Assert.That(oldState, Is.Null);
+                Assert.That(newState, Is.Not.Null);
+                Assert.That(newState!.RemoteFileId, Is.EqualTo(remoteFileId));
             });
         }
 

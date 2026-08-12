@@ -260,6 +260,7 @@ namespace Cotton.Sync
                     context.LocalFilesByPath,
                     context.FileStateByPath,
                     context.Options,
+                    context.Result,
                     context.StartedAtUtc,
                     context.CancellationToken)
                 .ConfigureAwait(false);
@@ -461,34 +462,44 @@ namespace Cotton.Sync
                 context.RemoteFilesByPath,
                 context.FileStateByPath);
             ReportSyncFileProgress(context, progress, progressStage, fileCount, relativePath);
-            if (state is null)
+            if (!context.Result.IsLocalPathDeferred(relativePath))
             {
-                await ReconcileWithoutBaselineAsync(
-                        context.SyncPair,
-                        context.Options,
-                        context.Result,
-                        relativePath,
-                        local,
-                        remote,
-                        deletePlan.HasMissingRemoteOnlyPlaceholder,
-                        context.CancellationToken)
-                    .ConfigureAwait(false);
-            }
-            else
-            {
-                await ReconcileWithBaselineAsync(
-                        context.SyncPair,
-                        context.Options,
-                        context.Result,
-                        deletePlan.DeleteGuard,
-                        deletePlan.ScopedFileDeleteKeys,
-                        deletePlan.ScopedLocalDeletedFileKeys,
-                        state,
-                        relativePath,
-                        local,
-                        remote,
-                        context.CancellationToken)
-                    .ConfigureAwait(false);
+                try
+                {
+                    if (state is null)
+                    {
+                        await ReconcileWithoutBaselineAsync(
+                                context.SyncPair,
+                                context.Options,
+                                context.Result,
+                                relativePath,
+                                local,
+                                remote,
+                                deletePlan.HasMissingRemoteOnlyPlaceholder,
+                                context.CancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await ReconcileWithBaselineAsync(
+                                context.SyncPair,
+                                context.Options,
+                                context.Result,
+                                deletePlan.DeleteGuard,
+                                deletePlan.ScopedFileDeleteKeys,
+                                deletePlan.ScopedLocalDeletedFileKeys,
+                                state,
+                                relativePath,
+                                local,
+                                remote,
+                                context.CancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                }
+                catch (LocalFileUnavailableException exception)
+                {
+                    ReportUnavailableLocalFile(context.Result, context.Options, relativePath, exception);
+                }
             }
 
             progress.CompleteFile(plannedTransferBytes);
@@ -1250,6 +1261,7 @@ namespace Cotton.Sync
             IReadOnlyDictionary<string, LocalFileSnapshot> localByPath,
             IReadOnlyDictionary<string, SyncStateEntry> stateByPath,
             SyncRunOptions options,
+            SyncRunResult result,
             DateTime startedAtUtc,
             CancellationToken cancellationToken)
         {
@@ -1289,8 +1301,19 @@ namespace Cotton.Sync
                         ref lastReportedAtUtc);
                     if (!ShouldDeferLocalUpload(local, options, out _))
                     {
-                        await EnsureLocalContentHashForBaselineComparisonAsync(local, state.Value, options, cancellationToken)
-                            .ConfigureAwait(false);
+                        try
+                        {
+                            await EnsureLocalContentHashForBaselineComparisonAsync(
+                                    local,
+                                    state.Value,
+                                    options,
+                                    cancellationToken)
+                                .ConfigureAwait(false);
+                        }
+                        catch (LocalFileUnavailableException exception)
+                        {
+                            ReportUnavailableLocalFile(result, options, local.RelativePath, exception);
+                        }
                     }
 
                     filesCompleted++;
@@ -4451,7 +4474,13 @@ namespace Cotton.Sync
             }
 
             Dictionary<MoveCandidateKey, Queue<LocalFileSnapshot>> candidates =
-                await BuildLocalMoveCandidateBucketsAsync(localByPath, remoteByPath, stateByPath, options, cancellationToken)
+                await BuildLocalMoveCandidateBucketsAsync(
+                        localByPath,
+                        remoteByPath,
+                        stateByPath,
+                        options,
+                        result,
+                        cancellationToken)
                     .ConfigureAwait(false);
             if (candidates.Count == 0)
             {
@@ -4953,8 +4982,8 @@ namespace Cotton.Sync
                 && scopedKeys.Contains(sourceKey)
                 && scopedKeys.Contains(targetKey)
                 && PathComparer.Equals(
-                    SyncPath.ToKey(GetParentPath(sourcePath)),
-                    SyncPath.ToKey(GetParentPath(targetPath)));
+                    GetParentPath(sourcePath),
+                    GetParentPath(targetPath));
         }
 
         private static List<KeyValuePair<string, SyncStateEntry>> FindLocalMoveSources(
@@ -4986,6 +5015,7 @@ namespace Cotton.Sync
             IDictionary<string, RemoteFileSnapshot> remoteByPath,
             IDictionary<string, SyncStateEntry> stateByPath,
             SyncRunOptions options,
+            SyncRunResult result,
             CancellationToken cancellationToken)
         {
             var candidates = new Dictionary<MoveCandidateKey, Queue<LocalFileSnapshot>>();
@@ -5002,7 +5032,21 @@ namespace Cotton.Sync
                     continue;
                 }
 
-                await EnsureLocalContentHashAsync(local.Value, options, cancellationToken).ConfigureAwait(false);
+                if (result.IsLocalPathDeferred(local.Value.RelativePath))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    await EnsureLocalContentHashAsync(local.Value, options, cancellationToken).ConfigureAwait(false);
+                }
+                catch (LocalFileUnavailableException exception)
+                {
+                    ReportUnavailableLocalFile(result, options, local.Value.RelativePath, exception);
+                    continue;
+                }
+
                 if (string.IsNullOrWhiteSpace(local.Value.ContentHash))
                 {
                     continue;
@@ -5192,10 +5236,19 @@ namespace Cotton.Sync
             }
             catch (LocalFileUnavailableException exception)
             {
-                Report(result, options, SyncActivityKind.Skipped, relativePath, exception.Reason);
-                result.RecordDeferredLocalPath(relativePath);
+                ReportUnavailableLocalFile(result, options, relativePath, exception);
                 return null;
             }
+        }
+
+        private static void ReportUnavailableLocalFile(
+            SyncRunResult result,
+            SyncRunOptions options,
+            string relativePath,
+            LocalFileUnavailableException exception)
+        {
+            Report(result, options, SyncActivityKind.Skipped, relativePath, exception.Reason);
+            result.RecordDeferredLocalPath(relativePath);
         }
 
         private async Task<NodeFileManifestDto?> ResolveRemoteCreateConflictAsync(

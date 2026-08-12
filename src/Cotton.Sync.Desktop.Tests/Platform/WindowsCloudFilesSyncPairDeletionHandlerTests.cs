@@ -131,6 +131,28 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             });
         }
 
+        [TestCase(FileAttributes.Hidden)]
+        [TestCase(FileAttributes.System)]
+        public void WindowsVirtualFilesRootCleaner_SkipsSpecialAttributeLocalFile(FileAttributes specialAttribute)
+        {
+            string rootPath = Path.Combine(_tempDirectory, "special-root-" + specialAttribute);
+            Directory.CreateDirectory(rootPath);
+            string filePath = Path.Combine(rootPath, "local-only.txt");
+            File.WriteAllText(filePath, "local");
+            File.SetAttributes(filePath, File.GetAttributes(filePath) | specialAttribute);
+            WindowsVirtualFilesRootCleaner cleaner = new();
+
+            WindowsVirtualFilesRootCleanupDecision decision =
+                cleaner.EvaluateBeforeUnregister(CreatePair(SyncPairMode.WindowsVirtualFiles, rootPath));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(decision.ShouldRemoveRoot, Is.False);
+                Assert.That(decision.Reason, Does.Contain("regular local file"));
+                Assert.That(File.Exists(filePath), Is.True);
+            });
+        }
+
         [Test]
         public void WindowsVirtualFilesRootCleaner_TreatsOnlineOnlyAttributesAsSafePlaceholder()
         {

@@ -20,6 +20,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         private static readonly EnumerationOptions ChildEnumeration = new()
         {
+            AttributesToSkip = 0,
             ReturnSpecialDirectories = false,
             IgnoreInaccessible = false,
         };

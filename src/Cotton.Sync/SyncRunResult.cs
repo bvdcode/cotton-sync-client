@@ -104,5 +104,18 @@ namespace Cotton.Sync
                 _deferredLocalPaths.Add(normalized);
             }
         }
+
+        /// <summary>
+        /// Gets whether a local path was deferred during this pass.
+        /// </summary>
+        public bool IsLocalPathDeferred(string relativePath)
+        {
+            if (string.IsNullOrWhiteSpace(relativePath))
+            {
+                return false;
+            }
+
+            return _deferredLocalPathKeys.Contains(SyncPath.ToKey(relativePath));
+        }
     }
 }
