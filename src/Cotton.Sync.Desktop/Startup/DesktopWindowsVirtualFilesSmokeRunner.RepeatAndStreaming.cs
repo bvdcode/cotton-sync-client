@@ -152,6 +152,7 @@ namespace Cotton.Sync.Desktop.Startup
 
                 bool passed = DidSteadyStateFastPathPass(
                     result,
+                    largeTreePlaceholderCount,
                     scanner,
                     crawler,
                     noTransfers,
@@ -187,6 +188,7 @@ namespace Cotton.Sync.Desktop.Startup
 
         private static bool DidSteadyStateFastPathPass(
             SyncRunResult result,
+            int expectedPresenceProbeCalls,
             GuardLocalScanner scanner,
             LargeStateFirstRemoteCrawler crawler,
             NoTransferRemoteFileSynchronizer remoteFiles,
@@ -197,6 +199,7 @@ namespace Cotton.Sync.Desktop.Startup
                 && scanner.FullScanCalls == 0
                 && scanner.MetadataTreeScanCalls == 0
                 && scanner.PathLookupCalls == 1
+                && scanner.PresenceProbeCalls == expectedPresenceProbeCalls
                 && crawler.StreamingCrawlCalls == 1
                 && crawler.SnapshotCrawlCalls == 0
                 && remoteFiles.TransferCalls == 0
@@ -232,7 +235,9 @@ namespace Cotton.Sync.Desktop.Startup
                 + ", transfers="
                 + remoteFiles.TransferCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
                 + ", placeholderWrites="
-                + placeholderWriter.PlaceholderWriteCalls.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                + placeholderWriter.PlaceholderWriteCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", presenceProbes="
+                + scanner.PresenceProbeCalls.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
         private static async Task<int> RunInitialStreamingLoggingAsync(WindowsVirtualFilesSmokeContext context)

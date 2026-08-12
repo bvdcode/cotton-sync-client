@@ -437,13 +437,18 @@ namespace Cotton.Sync.Desktop.Startup
             ILocalFileMetadataTreeScanner,
             ILocalFileMetadataTreeLookupScanner,
             ILocalFileMetadataPathLookupScanner,
-            ILocalFileContentHasher
+            ILocalFileContentHasher,
+            ILocalFilePresenceProbe
         {
+            private readonly LocalFileScanner _scanner = new();
+
             public int FullScanCalls { get; private set; }
 
             public int MetadataTreeScanCalls { get; private set; }
 
             public int PathLookupCalls { get; private set; }
+
+            public int PresenceProbeCalls { get; private set; }
 
             public Task<IReadOnlyList<LocalFileSnapshot>> ScanAsync(
                 string rootPath,
@@ -486,12 +491,18 @@ namespace Cotton.Sync.Desktop.Startup
                 CancellationToken cancellationToken = default)
             {
                 PathLookupCalls++;
-                return new LocalFileScanner().ScanPathMetadataLookupsAsync(
+                return _scanner.ScanPathMetadataLookupsAsync(
                     rootPath,
                     relativePaths,
                     progress,
                     includeDirectoryDescendants,
                     cancellationToken);
+            }
+
+            public bool FileExists(string rootPath, string relativePath)
+            {
+                PresenceProbeCalls++;
+                return _scanner.FileExists(rootPath, relativePath);
             }
 
             public Task<string> ComputeContentHashAsync(

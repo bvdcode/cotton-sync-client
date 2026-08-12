@@ -91,6 +91,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(runner, Does.Contain("RunSteadyStateRepeatAsync("));
                 Assert.That(runner, Does.Contain("SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath)"));
                 Assert.That(runner, Does.Contain("GuardLocalScanner scanner = new();"));
+                Assert.That(runner, Does.Contain("ILocalFilePresenceProbe"));
                 Assert.That(runner, Does.Contain("LargeStateFirstRemoteCrawler crawler = new("));
                 Assert.That(runner, Does.Contain("NoTransferRemoteFileSynchronizer noTransfers = new();"));
                 Assert.That(runner, Does.Contain("GuardRemoteFilePlaceholderWriter placeholderWriter = new();"));
@@ -101,6 +102,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(runner, Does.Contain("fullLocalScans="));
                 Assert.That(runner, Does.Contain("metadataTreeScans="));
                 Assert.That(runner, Does.Contain("pathLookups="));
+                Assert.That(runner, Does.Contain("presenceProbes="));
                 Assert.That(runner, Does.Contain("streamingCrawls="));
                 Assert.That(runner, Does.Contain("transfers="));
                 Assert.That(runner, Does.Contain("placeholderWrites="));
