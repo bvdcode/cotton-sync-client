@@ -181,16 +181,16 @@ namespace Cotton.Sync.Desktop.Platform
             }
             else
             {
-                run.HandledRootAvailability = await TryHandleManualRootHydrationAsync(
+                bool handledRootHydration = await TryHandleManualRootHydrationAsync(
                         syncPair,
                         run.Request,
+                        run.HandledAvailabilityPathKeys,
                         cancellationToken)
                     .ConfigureAwait(false);
-            }
-
-            if (!run.HandledRootAvailability)
-            {
-                run.RequiresFullPass = run.Request.LocalChangedPaths.Count == 1;
+                if (!handledRootHydration)
+                {
+                    run.RequiresFullPass = run.Request.LocalChangedPaths.Count == 1;
+                }
             }
         }
 
@@ -706,6 +706,7 @@ namespace Cotton.Sync.Desktop.Platform
         private async Task<bool> TryHandleManualRootHydrationAsync(
             SyncPairSettings syncPair,
             SyncRunRequest request,
+            HashSet<string> handledAvailabilityPathKeys,
             CancellationToken cancellationToken)
         {
             string fullPath = Path.GetFullPath(syncPair.LocalRootPath)
@@ -736,7 +737,7 @@ namespace Cotton.Sync.Desktop.Platform
                     request,
                     subtreeEntries,
                     hydratedEntries,
-                    handledAvailabilityPathKeys: null,
+                    handledAvailabilityPathKeys,
                     cancellationToken)
                 .ConfigureAwait(false);
 
@@ -1060,19 +1061,6 @@ namespace Cotton.Sync.Desktop.Platform
                 context.Value;
             if (!IsManualAlwaysKeepCandidate(diskState.Attributes, state.PlaceholderHydrationState))
             {
-                if (HasRawAttribute(diskState.Attributes, FileAttributePinned)
-                    && IsHydrationComplete(diskState.Attributes, state.PlaceholderHydrationState))
-                {
-                    _diagnostics.Record(
-                        "manual-always-keep",
-                        "completed",
-                        syncPair.Id.ToString("D"),
-                        syncPair.LocalRootPath,
-                        normalizedPath,
-                        "Explorer Always keep on this device was already hydrated for the tracked placeholder.");
-                    return true;
-                }
-
                 return false;
             }
 
@@ -1190,7 +1178,6 @@ namespace Cotton.Sync.Desktop.Platform
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            handledAvailabilityPathKeys?.Add(SyncPath.ToKey(entry.RelativePath));
             if (!IsTrackedVirtualFile(entry))
             {
                 return;
@@ -1221,6 +1208,7 @@ namespace Cotton.Sync.Desktop.Platform
                     cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
             hydratedEntries.Add(entry);
+            handledAvailabilityPathKeys?.Add(SyncPath.ToKey(entry.RelativePath));
             run.HydratedFiles++;
             CompleteHydrationEntry(syncPair, run, entry.RelativePath);
         }

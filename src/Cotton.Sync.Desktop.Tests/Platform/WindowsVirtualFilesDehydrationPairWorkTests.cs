@@ -60,7 +60,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
-        public async Task RunOnceAsync_WithAlreadyHydratedPinnedPlaceholderSuppressesInnerSync()
+        public async Task RunOnceAsync_WithAlreadyHydratedPinnedPlaceholderForwardsPotentialEdit()
         {
             SyncPairSettings syncPair = CreateVirtualFilesPair();
             FakeSyncStateStore stateStore = new();
@@ -71,7 +71,6 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             state.LocalLastWriteUtc = new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc);
             stateStore.UpsertEntry(state);
             FakeCloudFilesAdapter cloudFiles = new();
-            WindowsCloudFilesDiagnostics diagnostics = new();
             RecordingSyncPairWork inner = new();
             RecordingLocalChangeSuppression suppression = new();
             WindowsVirtualFilesDehydrationPairWork work = new(
@@ -79,26 +78,22 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 stateStore,
                 cloudFiles,
                 new FakeContentHasher("remote-hash"),
-                diagnostics,
-                _ => CreatePinnedHydratedDiskState(),
-                suppression);
+                readDiskState: _ => CreatePinnedHydratedDiskState(),
+                localChangeSuppression: suppression);
 
             await work.RunOnceAsync(syncPair, SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]));
 
             SyncStateEntry updated = stateStore.GetRequired(syncPair.Id, "Docs/report.txt");
-            WindowsCloudFilesDiagnosticEvent diagnostic = diagnostics.Snapshot().Single();
             Assert.Multiple(() =>
             {
-                Assert.That(inner.Requests, Is.Empty);
+                Assert.That(inner.Requests, Has.Count.EqualTo(1));
+                Assert.That(inner.Requests[0].LocalChangedPaths, Is.EqualTo(new[] { "Docs/report.txt" }));
                 Assert.That(cloudFiles.HydratedPaths, Is.Empty);
                 Assert.That(suppression.SuppressedWrites, Is.Empty);
                 Assert.That(updated.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
                 Assert.That(updated.LocalContentHash, Is.EqualTo("remote-hash"));
                 Assert.That(updated.LocalSizeBytes, Is.EqualTo(12));
                 Assert.That(updated.LocalLastWriteUtc, Is.EqualTo(new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc)));
-                Assert.That(diagnostic.Operation, Is.EqualTo("manual-always-keep"));
-                Assert.That(diagnostic.Status, Is.EqualTo("completed"));
-                Assert.That(diagnostic.Details, Does.Contain("already hydrated"));
             });
         }
 
@@ -335,7 +330,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             Assert.Multiple(() =>
             {
-                Assert.That(inner.Requests, Is.Empty);
+                Assert.That(inner.Requests, Has.Count.EqualTo(1));
+                Assert.That(inner.Requests[0].LocalChangedPaths, Is.EqualTo(new[] { "Music/track.mp3" }));
                 Assert.That(cloudFiles.HydratedPaths, Is.Empty);
                 Assert.That(suppression.SuppressedWrites, Is.Empty);
                 Assert.That(suppression.ProviderWriteBurstCount, Is.EqualTo(1));
@@ -508,6 +504,46 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     Does.Contain("manual-always-keep-root"));
                 Assert.That(suppression.ProviderWriteBurstCount, Is.EqualTo(1));
                 Assert.That(stateStore.UpsertManyCallCount, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_PinnedRootHydrationForwardsAlreadyHydratedChildChange()
+        {
+            SyncPairSettings syncPair = CreateVirtualFilesPair();
+            FakeSyncStateStore stateStore = new();
+            stateStore.UpsertEntry(CreateDirectoryState(syncPair, "Music"));
+            SyncStateEntry fileState = CreatePlaceholderState(syncPair, "Music/track.mp3");
+            fileState.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
+            fileState.LocalContentHash = "remote-hash";
+            fileState.LocalSizeBytes = 12;
+            fileState.LocalLastWriteUtc = new DateTime(2026, 06, 16, 10, 06, 00, DateTimeKind.Utc);
+            stateStore.UpsertEntry(fileState);
+            FakeCloudFilesAdapter cloudFiles = new();
+            RecordingSyncPairWork inner = new();
+            string rootPath = Path.GetFullPath(syncPair.LocalRootPath)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            WindowsVirtualFilesDehydrationPairWork work = new(
+                inner,
+                stateStore,
+                cloudFiles,
+                new FakeContentHasher("remote-hash"),
+                readDiskState: path => string.Equals(
+                        Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                        rootPath,
+                        StringComparison.OrdinalIgnoreCase)
+                    ? CreatePinnedDirectoryDiskState()
+                    : CreatePinnedHydratedDiskState());
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForLocalChangedPaths([".", "Music/track.mp3"]));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.Requests, Has.Count.EqualTo(1));
+                Assert.That(inner.Requests[0].LocalChangedPaths, Is.EqualTo(new[] { "Music/track.mp3" }));
+                Assert.That(cloudFiles.HydratedPaths, Is.Empty);
             });
         }
 

@@ -875,7 +875,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
-        public void ProviderFileMaterializationSuppression_SuppressesEchoBurstUntilFileChanges()
+        public void ProviderFileMaterializationSuppression_StopsAfterEventBudgetOrFileChange()
         {
             string rootPath = Path.Combine(
                 Path.GetTempPath(),
@@ -899,7 +899,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
 
             try
             {
-                for (int index = 0; index < 12; index++)
+                for (int index = 0; index < 2; index++)
                 {
                     Assert.That(
                         suppression.ShouldSuppress(new LocalSyncRootChange(
@@ -909,7 +909,63 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                         Is.True);
                 }
 
+                Assert.That(
+                    suppression.ShouldSuppress(new LocalSyncRootChange(
+                        syncPairId,
+                        fullPath,
+                        LocalSyncRootChangeKind.Changed)),
+                    Is.False);
+
+                suppression.SuppressProviderFileMaterialization(
+                    syncPairId,
+                    rootPath,
+                    relativePath,
+                    content.Length,
+                    expectedLastWriteUtc);
                 File.AppendAllText(fullPath, "-user-edit");
+
+                Assert.That(
+                    suppression.ShouldSuppress(new LocalSyncRootChange(
+                        syncPairId,
+                        fullPath,
+                        LocalSyncRootChangeKind.Changed)),
+                    Is.False);
+            }
+            finally
+            {
+                if (Directory.Exists(rootPath))
+                {
+                    Directory.Delete(rootPath, recursive: true);
+                }
+            }
+        }
+
+        [Test]
+        public void ProviderFileMaterializationSuppression_StopsAfterExpiry()
+        {
+            string rootPath = Path.Combine(Path.GetTempPath(), "cotton-provider-file-materialization-expiry");
+            const string relativePath = "Docs/restored.txt";
+            string fullPath = Path.Combine(rootPath, "Docs", "restored.txt");
+            Guid syncPairId = Guid.NewGuid();
+            DateTime expectedLastWriteUtc = new(2026, 8, 3, 20, 0, 0, DateTimeKind.Utc);
+            byte[] content = "remote-content"u8.ToArray();
+            MutableTimeProvider timeProvider = new();
+            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            File.WriteAllBytes(fullPath, content);
+            File.SetLastWriteTimeUtc(fullPath, expectedLastWriteUtc);
+            LocalChangeSuppression suppression = new(
+                entryLifetime: TimeSpan.FromSeconds(1),
+                timeProvider: timeProvider);
+            suppression.SuppressProviderFileMaterialization(
+                syncPairId,
+                rootPath,
+                relativePath,
+                content.Length,
+                expectedLastWriteUtc);
+
+            try
+            {
+                timeProvider.Advance(TimeSpan.FromSeconds(2));
 
                 Assert.That(
                     suppression.ShouldSuppress(new LocalSyncRootChange(
@@ -1127,7 +1183,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
-        public async Task ProviderWriteBurstWatcherOverflow_DoesNotRequestFullSync()
+        public async Task ProviderWriteBurstWatcherOverflow_RequestsFullSync()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
             var watcherFactory = new FakeWatcherFactory();
@@ -1146,19 +1202,20 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 syncPair.LocalRootPath,
                 LocalSyncRootChangeKind.Error);
 
-            bool observed = await supervisor.WaitForSyncAsync(DebounceInterval * 4);
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
             await coordinator.StopAsync();
 
             Assert.Multiple(() =>
             {
-                Assert.That(observed, Is.False);
-                Assert.That(supervisor.SyncNowCallCount, Is.Zero);
-                Assert.That(coordinator.PendingRequestCount, Is.Zero);
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(1));
+                Assert.That(supervisor.LastRequest?.IsFull, Is.True);
+                Assert.That(supervisor.LastRequest?.Causes, Is.EqualTo(SyncRunCause.LocalWatcherError));
             });
         }
 
         [Test]
-        public async Task ProviderWriteBurstLateWatcherOverflow_DoesNotRequestFullSyncDuringGrace()
+        public async Task ProviderWriteBurstLateWatcherOverflow_RequestsFullSyncDuringGrace()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
             var watcherFactory = new FakeWatcherFactory();
@@ -1180,14 +1237,15 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 syncPair.LocalRootPath,
                 LocalSyncRootChangeKind.Error);
 
-            bool observed = await supervisor.WaitForSyncAsync(DebounceInterval * 4);
+            bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
             await coordinator.StopAsync();
 
             Assert.Multiple(() =>
             {
-                Assert.That(observed, Is.False);
-                Assert.That(supervisor.SyncNowCallCount, Is.Zero);
-                Assert.That(coordinator.PendingRequestCount, Is.Zero);
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.SyncNowCallCount, Is.EqualTo(1));
+                Assert.That(supervisor.LastRequest?.IsFull, Is.True);
+                Assert.That(supervisor.LastRequest?.Causes, Is.EqualTo(SyncRunCause.LocalWatcherError));
             });
         }
 
@@ -1290,17 +1348,15 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
-        public async Task ProviderWriteBurst_RegisteredPathStormDoesNotExhaustEventBudget()
+        public void ProviderWriteBurst_RegisteredPathsRespectCapacityAndEventBudget()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
-            FakeWatcherFactory watcherFactory = new();
-            FakeSyncSupervisor supervisor = new();
             LocalChangeSuppression suppression = new(
                 _ => false,
                 eventBudget: 2,
                 maxEntriesPerPair: 4);
             using IDisposable burst = suppression.SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath);
-            for (int index = 0; index < 20; index++)
+            for (int index = 0; index < 5; index++)
             {
                 suppression.SuppressProviderWrite(
                     syncPair.Id,
@@ -1308,29 +1364,21 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                     $"Cloud/generated-{index}.txt");
             }
 
-            LocalChangeSyncCoordinator coordinator = new(
-                new FakeSyncPairSettingsStore([syncPair]),
-                supervisor,
-                watcherFactory,
-                DebounceInterval,
-                changeSuppression: suppression);
-            await coordinator.StartAsync();
-
-            for (int index = 0; index < 20; index++)
-            {
-                watcherFactory.CreatedWatchers[syncPair.Id].Raise(
-                    FullPath(syncPair, $"Cloud/generated-{index}.txt"),
-                    LocalSyncRootChangeKind.Changed);
-            }
-
-            bool observed = await supervisor.WaitForSyncAsync(DebounceInterval * 4);
-            await coordinator.StopAsync();
+            LocalSyncRootChange evictedChange = new(
+                syncPair.Id,
+                FullPath(syncPair, "Cloud/generated-0.txt"),
+                LocalSyncRootChangeKind.Changed);
+            LocalSyncRootChange retainedChange = new(
+                syncPair.Id,
+                FullPath(syncPair, "Cloud/generated-4.txt"),
+                LocalSyncRootChangeKind.Changed);
 
             Assert.Multiple(() =>
             {
-                Assert.That(observed, Is.False);
-                Assert.That(supervisor.SyncNowCallCount, Is.Zero);
-                Assert.That(coordinator.PendingRequestCount, Is.Zero);
+                Assert.That(suppression.ShouldSuppress(evictedChange), Is.False);
+                Assert.That(suppression.ShouldSuppress(retainedChange), Is.True);
+                Assert.That(suppression.ShouldSuppress(retainedChange), Is.True);
+                Assert.That(suppression.ShouldSuppress(retainedChange), Is.False);
             });
         }
 
@@ -1351,8 +1399,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 FullPath(syncPair, "Cloud/hydrated.txt"),
                 LocalSyncRootChangeKind.Changed);
 
-            timeProvider.Advance(TimeSpan.FromSeconds(10));
-            bool suppressedDuringLongBurst = suppression.ShouldSuppress(change);
+            bool suppressedDuringBurst = suppression.ShouldSuppress(change);
             burst.Dispose();
             timeProvider.Advance(TimeSpan.FromMilliseconds(500));
             bool suppressedDuringGrace = suppression.ShouldSuppress(change);
@@ -1361,7 +1408,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
 
             Assert.Multiple(() =>
             {
-                Assert.That(suppressedDuringLongBurst, Is.True);
+                Assert.That(suppressedDuringBurst, Is.True);
                 Assert.That(suppressedDuringGrace, Is.True);
                 Assert.That(suppressedAfterGrace, Is.False);
             });

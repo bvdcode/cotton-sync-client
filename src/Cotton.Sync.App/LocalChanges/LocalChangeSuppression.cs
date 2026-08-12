@@ -223,7 +223,7 @@ namespace Cotton.Sync.App.LocalChanges
                 if (entries.Count > _maxEntriesPerPair)
                 {
                     PruneExpired(syncPairId, entries, now);
-                    TrimCapacity(syncPairId, entries, now);
+                    TrimCapacity(syncPairId, entries);
                 }
             }
         }
@@ -266,10 +266,7 @@ namespace Cotton.Sync.App.LocalChanges
             ArgumentNullException.ThrowIfNull(change);
             if (change.Kind == LocalSyncRootChangeKind.Error)
             {
-                lock (_gate)
-                {
-                    return ShouldSuppressProviderBurst(change, includeCloudFilesPlaceholderProbe: false);
-                }
+                return false;
             }
 
             DateTimeOffset now = _timeProvider.GetUtcNow();
@@ -331,6 +328,12 @@ namespace Cotton.Sync.App.LocalChanges
             string key = NormalizePathKey(fullPath);
             if (entries.TryGetValue(key, out SuppressionEntry? entry))
             {
+                if (entry.ExpiresAt <= now || entry.RemainingEvents <= 0)
+                {
+                    RemoveSuppressionEntry(syncPairId, key, entries);
+                    return false;
+                }
+
                 if (HasSuppressionEnded(fullPath, changeKind, entry))
                 {
                     RemoveSuppressionEntry(syncPairId, key, entries);
@@ -339,18 +342,12 @@ namespace Cotton.Sync.App.LocalChanges
 
                 if (entry.CreationOnly && !entry.ExpectedSizeBytes.HasValue)
                 {
-                    RemoveSuppressionEntry(syncPairId, key, entries);
-                    return true;
-                }
-
-                if (entry.CreationOnly && entry.ExpectedSizeBytes.HasValue)
-                {
-                    return true;
+                    return TryConsume(syncPairId, entries, fullPath, now);
                 }
             }
 
-            return ShouldSuppressRegisteredProviderBurst(syncPairId, fullPath, entries)
-                || TryConsume(entries, fullPath, now);
+            return ShouldSuppressRegisteredProviderBurst(syncPairId, fullPath, entries, now)
+                || TryConsume(syncPairId, entries, fullPath, now);
         }
 
         private bool HasSuppressionEnded(
@@ -416,7 +413,8 @@ namespace Cotton.Sync.App.LocalChanges
         private bool ShouldSuppressRegisteredProviderBurst(
             Guid syncPairId,
             string fullPath,
-            Dictionary<string, SuppressionEntry> entries)
+            Dictionary<string, SuppressionEntry> entries,
+            DateTimeOffset now)
         {
             if (!_providerWriteBurstsByPair.TryGetValue(syncPairId, out ProviderWriteBurstScope? scope)
                 || scope.ActiveCount <= 0
@@ -432,14 +430,13 @@ namespace Cotton.Sync.App.LocalChanges
                 return false;
             }
 
-            if (entry.RemainingEvents <= 0)
+            if (entry.ExpiresAt <= now || entry.RemainingEvents <= 0)
             {
-                entries.Remove(key);
-                scope.RegisteredPathKeys.Remove(key);
+                RemoveSuppressionEntry(syncPairId, key, entries);
                 return false;
             }
 
-            return true;
+            return TryConsume(syncPairId, entries, fullPath, now);
         }
 
         private void EndProviderWriteBurst(Guid syncPairId)
@@ -455,19 +452,27 @@ namespace Cotton.Sync.App.LocalChanges
                 if (scope.ActiveCount <= 0)
                 {
                     scope.ActiveCount = 0;
-                    DateTimeOffset expiresAt = _timeProvider.GetUtcNow().Add(_entryLifetime);
+                    DateTimeOffset now = _timeProvider.GetUtcNow();
+                    DateTimeOffset expiresAt = now.Add(_entryLifetime);
                     scope.ExpiresAt = expiresAt;
                     if (_entriesByPair.TryGetValue(syncPairId, out Dictionary<string, SuppressionEntry>? entries))
                     {
-                        foreach (string key in scope.RegisteredPathKeys)
+                        foreach (string key in scope.RegisteredPathKeys.ToArray())
                         {
                             if (entries.TryGetValue(key, out SuppressionEntry? entry)
+                                && entry.ExpiresAt > now
                                 && entry.RemainingEvents > 0)
                             {
                                 entry.ExpiresAt = expiresAt;
                             }
+                            else
+                            {
+                                RemoveSuppressionEntry(syncPairId, key, entries);
+                            }
                         }
                     }
+
+                    scope.RegisteredPathKeys.Clear();
                 }
             }
         }
@@ -550,6 +555,7 @@ namespace Cotton.Sync.App.LocalChanges
         }
 
         private bool TryConsume(
+            Guid syncPairId,
             Dictionary<string, SuppressionEntry> entries,
             string fullPath,
             DateTimeOffset now)
@@ -562,14 +568,14 @@ namespace Cotton.Sync.App.LocalChanges
 
             if (entry.ExpiresAt <= now || entry.RemainingEvents <= 0)
             {
-                entries.Remove(key);
+                RemoveSuppressionEntry(syncPairId, key, entries);
                 return false;
             }
 
             entry.RemainingEvents--;
             if (entry.RemainingEvents == 0)
             {
-                entries.Remove(key);
+                RemoveSuppressionEntry(syncPairId, key, entries);
             }
 
             return true;
@@ -580,27 +586,18 @@ namespace Cotton.Sync.App.LocalChanges
             Dictionary<string, SuppressionEntry> entries,
             DateTimeOffset now)
         {
-            HashSet<string>? activePathKeys = null;
-            if (_providerWriteBurstsByPair.TryGetValue(syncPairId, out ProviderWriteBurstScope? scope)
-                && scope.ActiveCount > 0)
-            {
-                activePathKeys = scope.RegisteredPathKeys;
-            }
-
             foreach (string key in entries
-                         .Where(pair => (pair.Value.ExpiresAt <= now || pair.Value.RemainingEvents <= 0)
-                             && (activePathKeys is null || !activePathKeys.Contains(pair.Key)))
+                         .Where(pair => pair.Value.ExpiresAt <= now || pair.Value.RemainingEvents <= 0)
                          .Select(static pair => pair.Key)
                          .ToArray())
             {
-                entries.Remove(key);
+                RemoveSuppressionEntry(syncPairId, key, entries);
             }
         }
 
         private void TrimCapacity(
             Guid syncPairId,
-            Dictionary<string, SuppressionEntry> entries,
-            DateTimeOffset now)
+            Dictionary<string, SuppressionEntry> entries)
         {
             int removeCount = entries.Count - _maxEntriesPerPair;
             if (removeCount <= 0)
@@ -608,22 +605,14 @@ namespace Cotton.Sync.App.LocalChanges
                 return;
             }
 
-            HashSet<string>? protectedPathKeys = null;
-            if (_providerWriteBurstsByPair.TryGetValue(syncPairId, out ProviderWriteBurstScope? scope)
-                && (scope.ActiveCount > 0 || scope.ExpiresAt > now))
-            {
-                protectedPathKeys = scope.RegisteredPathKeys;
-            }
-
             foreach (string key in entries
-                         .Where(pair => protectedPathKeys is null || !protectedPathKeys.Contains(pair.Key))
                          .OrderBy(static pair => pair.Value.ExpiresAt)
                          .ThenBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
                          .Take(removeCount)
                          .Select(static pair => pair.Key)
                          .ToArray())
             {
-                entries.Remove(key);
+                RemoveSuppressionEntry(syncPairId, key, entries);
             }
         }
 
@@ -641,11 +630,6 @@ namespace Cotton.Sync.App.LocalChanges
             {
                 _providerWriteBurstsByPair.Remove(change.SyncPairId);
                 return false;
-            }
-
-            if (change.Kind == LocalSyncRootChangeKind.Error)
-            {
-                return true;
             }
 
             if (!includeCloudFilesPlaceholderProbe
