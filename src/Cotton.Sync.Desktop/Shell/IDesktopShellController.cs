@@ -63,7 +63,7 @@ namespace Cotton.Sync.Desktop.Shell
         Task SyncAllAsync(
             CancellationToken cancellationToken = default,
             Guid? syncPairId = null,
-            int? approvedRemoteDeleteCount = null);
+            RemoteDeletePlanApproval? approvedRemoteDeletePlan = null);
 
         Task PauseAllAsync(CancellationToken cancellationToken = default);
 

@@ -262,7 +262,7 @@ namespace Cotton.Sync.Desktop.Shell
         public Task SyncAllAsync(
             CancellationToken cancellationToken = default,
             Guid? syncPairId = null,
-            int? approvedRemoteDeleteCount = null)
+            RemoteDeletePlanApproval? approvedRemoteDeletePlan = null)
         {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.CompletedTask;

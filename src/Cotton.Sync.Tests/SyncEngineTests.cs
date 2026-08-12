@@ -571,12 +571,21 @@ namespace Cotton.Sync.Tests
                     Scope = SyncRunScope.ForLocalChangedPaths([firstPath, secondPath], [firstPath, secondPath]),
                 });
 
+            const string fingerprintMarker = "Plan fingerprint ";
+            string blockedDetails = blockedResult.Activities[0].Details!;
+            int fingerprintStart = blockedDetails.IndexOf(fingerprintMarker, StringComparison.Ordinal)
+                + fingerprintMarker.Length;
+            string planFingerprint = blockedDetails.Substring(fingerprintStart, 64);
+            char differentFingerprintCharacter = planFingerprint[0] == '0' ? '1' : '0';
+
             SyncRunResult changedPlanResult = await engine.RunOnceAsync(
                 Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
                 new SyncRunOptions
                 {
                     MaximumRemoteDeletesPerRun = 1,
-                    ApprovedRemoteDeleteCount = 3,
+                    ApprovedRemoteDeletePlan = new RemoteDeletePlanApproval(
+                        2,
+                        new string(differentFingerprintCharacter, 64)),
                     Scope = SyncRunScope.ForLocalChangedPaths([firstPath, secondPath], [firstPath, secondPath]),
                 });
 
@@ -604,7 +613,7 @@ namespace Cotton.Sync.Tests
                 new SyncRunOptions
                 {
                     MaximumRemoteDeletesPerRun = 1,
-                    ApprovedRemoteDeleteCount = 2,
+                    ApprovedRemoteDeletePlan = new RemoteDeletePlanApproval(2, planFingerprint),
                     Scope = SyncRunScope.ForLocalChangedPaths([firstPath, secondPath], [firstPath, secondPath]),
                 });
 

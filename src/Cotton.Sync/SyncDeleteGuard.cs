@@ -7,17 +7,23 @@ namespace Cotton.Sync
     {
         private readonly int _maximumLocalDeletes;
         private readonly int _maximumRemoteDeletes;
-        private readonly int? _approvedRemoteDeleteCount;
+        private readonly RemoteDeletePlanApproval? _approvedRemoteDeletePlan;
         private readonly int _plannedLocalDeletes;
         private readonly int _plannedRemoteDeletes;
+        private readonly string _plannedRemoteDeleteFingerprint;
 
-        public SyncDeleteGuard(SyncRunOptions options, int plannedLocalDeletes, int plannedRemoteDeletes)
+        public SyncDeleteGuard(
+            SyncRunOptions options,
+            int plannedLocalDeletes,
+            IReadOnlyCollection<string> plannedRemoteDeleteItems)
         {
+            ArgumentNullException.ThrowIfNull(plannedRemoteDeleteItems);
             _maximumLocalDeletes = options.MaximumLocalDeletesPerRun;
             _maximumRemoteDeletes = options.MaximumRemoteDeletesPerRun;
-            _approvedRemoteDeleteCount = options.ApprovedRemoteDeleteCount;
+            _approvedRemoteDeletePlan = options.ApprovedRemoteDeletePlan;
             _plannedLocalDeletes = plannedLocalDeletes;
-            _plannedRemoteDeletes = plannedRemoteDeletes;
+            _plannedRemoteDeletes = plannedRemoteDeleteItems.Count;
+            _plannedRemoteDeleteFingerprint = RemoteDeletePlanFingerprint.Create(plannedRemoteDeleteItems);
         }
 
         public bool CanDeleteLocal(out string? details)
@@ -31,17 +37,28 @@ namespace Cotton.Sync
 
         public bool CanDeleteRemote(out string? details)
         {
-            if (_approvedRemoteDeleteCount == _plannedRemoteDeletes)
+            if (_approvedRemoteDeletePlan is not null
+                && _approvedRemoteDeletePlan.DeleteCount == _plannedRemoteDeletes
+                && string.Equals(
+                    _approvedRemoteDeletePlan.PlanFingerprint,
+                    _plannedRemoteDeleteFingerprint,
+                    StringComparison.Ordinal))
             {
                 details = null;
                 return true;
             }
 
-            return CanDelete(
+            bool canDelete = CanDelete(
                 _plannedRemoteDeletes,
                 _maximumRemoteDeletes,
                 "Remote delete blocked by mass-delete guard.",
                 out details);
+            if (!canDelete && details is not null)
+            {
+                details += " Plan fingerprint " + _plannedRemoteDeleteFingerprint + ".";
+            }
+
+            return canDelete;
         }
 
         private static bool CanDelete(

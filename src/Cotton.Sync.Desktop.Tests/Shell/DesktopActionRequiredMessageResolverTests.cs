@@ -93,6 +93,33 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public void TryGetRemoteMassDeleteApproval_RequiresExactFingerprint()
+        {
+            const string fingerprint =
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+            string approvedMessage =
+                "Remote delete blocked by mass-delete guard. 101 pending deletes exceed limit 100. "
+                + "Plan fingerprint " + fingerprint + ".";
+            const string legacyMessage =
+                "Remote delete blocked by mass-delete guard. 101 pending deletes exceed limit 100.";
+
+            bool parsed = DesktopActionRequiredMessageResolver.TryGetRemoteMassDeleteApproval(
+                approvedMessage,
+                out RemoteDeletePlanApproval approval);
+            bool parsedLegacy = DesktopActionRequiredMessageResolver.TryGetRemoteMassDeleteApproval(
+                legacyMessage,
+                out RemoteDeletePlanApproval legacyApproval);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(parsed, Is.True);
+                Assert.That(approval, Is.EqualTo(new RemoteDeletePlanApproval(101, fingerprint)));
+                Assert.That(parsedLegacy, Is.False);
+                Assert.That(legacyApproval, Is.Null);
+            });
+        }
+
+        [Test]
         public void FromStatus_ExplainsMissingDesktopSyncChangesApi()
         {
             var status = new DesktopSyncStatusSnapshot(

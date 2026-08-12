@@ -96,15 +96,16 @@ namespace Cotton.Sync.App.Tests.Runners
             FakeSyncEngine engine = new();
             SyncEnginePairWork work = new(engine);
             SyncPairSettings syncPair = CreateSyncPair(Guid.NewGuid());
+            RemoteDeletePlanApproval approval = new(101, new string('a', 64));
 
             await work.RunOnceAsync(
                 syncPair,
-                SyncRunRequest.ForFull(SyncRunCause.Manual, approvedRemoteDeleteCount: 101));
+                SyncRunRequest.ForFull(SyncRunCause.Manual, approval));
 
             Assert.Multiple(() =>
             {
                 Assert.That(engine.LastOptions, Is.Not.Null);
-                Assert.That(engine.LastOptions!.ApprovedRemoteDeleteCount, Is.EqualTo(101));
+                Assert.That(engine.LastOptions!.ApprovedRemoteDeletePlan, Is.EqualTo(approval));
             });
         }
 

@@ -596,9 +596,9 @@ namespace Cotton.Sync.Desktop.Shell
         public Task SyncAllAsync(
             CancellationToken cancellationToken = default,
             Guid? syncPairId = null,
-            int? approvedRemoteDeleteCount = null)
+            RemoteDeletePlanApproval? approvedRemoteDeletePlan = null)
         {
-            if (!syncPairId.HasValue && approvedRemoteDeleteCount.HasValue)
+            if (!syncPairId.HasValue && approvedRemoteDeletePlan is not null)
             {
                 throw new ArgumentException(
                     "A sync pair is required when approving a remote delete plan.",
@@ -609,7 +609,7 @@ namespace Cotton.Sync.Desktop.Shell
             {
                 SyncRunRequest request = SyncRunRequest.ForFull(
                     SyncRunCause.Manual,
-                    approvedRemoteDeleteCount);
+                    approvedRemoteDeletePlan);
                 return RequireHost().App.SyncNowAsync(syncPairId.Value, request, cancellationToken);
             }
 

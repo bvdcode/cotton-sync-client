@@ -477,18 +477,19 @@ namespace Cotton.Sync.App.Runners
             SyncRunRequest fullRequest,
             SyncRunRequest other)
         {
-            int? approvedRemoteDeleteCount = fullRequest.ApprovedRemoteDeleteCount
-                == other.ApprovedRemoteDeleteCount
-                    ? fullRequest.ApprovedRemoteDeleteCount
+            RemoteDeletePlanApproval? approvedRemoteDeletePlan = Equals(
+                fullRequest.ApprovedRemoteDeletePlan,
+                other.ApprovedRemoteDeletePlan)
+                    ? fullRequest.ApprovedRemoteDeletePlan
                     : null;
             return SyncRunRequest.ForFull(
                 fullRequest.Causes | other.Causes,
-                approvedRemoteDeleteCount);
+                approvedRemoteDeletePlan);
         }
 
         private static SyncRunRequest ToPendingFullRequest(SyncRunRequest request)
         {
-            return SyncRunRequest.ForFull(request.Causes, request.ApprovedRemoteDeleteCount);
+            return SyncRunRequest.ForFull(request.Causes, request.ApprovedRemoteDeletePlan);
         }
 
         private SyncRunRequest? TakeNextPendingRequest()

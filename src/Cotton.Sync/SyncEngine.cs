@@ -2260,7 +2260,7 @@ namespace Cotton.Sync
                 return;
             }
 
-            SyncDeleteGuard deleteGuard = new(options, plannedLocalDeletes: missingBaselines.Count, plannedRemoteDeletes: 0);
+            SyncDeleteGuard deleteGuard = new(options, plannedLocalDeletes: missingBaselines.Count, []);
             foreach (InitialVirtualFilesPlaceholderBaseline baseline in missingBaselines)
             {
                 await DeleteLocalAsync(
@@ -4790,10 +4790,12 @@ namespace Cotton.Sync
                 }
             }
 
-            SyncDeleteGuard deleteGuard = new(
-                options,
-                plannedLocalDeletes: 0,
-                plannedRemoteDeletes: plan.SourceDirectoryKeys.Count);
+            string[] remoteDeletePlanItems = plan.SourceDirectoryKeys
+                .Select(key => RemoteDeletePlanFingerprint.CreateDirectoryItem(
+                    key,
+                    remoteDirectoriesByPath[key].Node.Id))
+                .ToArray();
+            SyncDeleteGuard deleteGuard = new(options, plannedLocalDeletes: 0, remoteDeletePlanItems);
             if (!deleteGuard.CanDeleteRemote(out string? details))
             {
                 Report(
@@ -6029,13 +6031,6 @@ namespace Cotton.Sync
                     "Maximum remote deletes per run cannot be negative.");
             }
 
-            if (options.ApprovedRemoteDeleteCount <= 0)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(options),
-                    "Approved remote delete count must be positive.");
-            }
-
             if (options.MaximumStoredResultActivities < 0)
             {
                 throw new ArgumentOutOfRangeException(
@@ -6524,16 +6519,16 @@ namespace Cotton.Sync
         {
             if (stateByPath.Count == 0 && directoryStateByPath.Count == 0)
             {
-                return new SyncDeleteGuard(options, plannedLocalDeletes: 0, plannedRemoteDeletes: 0);
+                return new SyncDeleteGuard(options, plannedLocalDeletes: 0, []);
             }
 
-            (int LocalDeletes, int RemoteDeletes) fileDeletes = CountPlannedFileDeletes(
+            (int LocalDeletes, IReadOnlyList<string> RemoteDeleteItems) fileDeletes = CountPlannedFileDeletes(
                 stateByPath,
                 localByPath,
                 remoteByPath,
                 scopedFileDeleteKeys,
                 scopedLocalDeletedFileKeys);
-            (int LocalDeletes, int RemoteDeletes) directoryDeletes = CountPlannedDirectoryDeletes(
+            (int LocalDeletes, IReadOnlyList<string> RemoteDeleteItems) directoryDeletes = CountPlannedDirectoryDeletes(
                 directoryStateByPath,
                 localDirectoriesByPath,
                 remoteDirectoriesByPath,
@@ -6541,14 +6536,26 @@ namespace Cotton.Sync
                 remoteDirectoryContentIndex,
                 scopedDirectoryDeleteKeys,
                 scopedDirectoryDelete);
-            int scopedRemoteDirectoryDeletes = scopedDirectoryDelete?.DirectoryKeys.Count ?? 0;
+            List<string> remoteDeletePlanItems = [.. fileDeletes.RemoteDeleteItems, .. directoryDeletes.RemoteDeleteItems];
+            if (scopedDirectoryDelete is not null)
+            {
+                foreach (string key in scopedDirectoryDelete.DirectoryKeys)
+                {
+                    remoteDirectoriesByPath.TryGetValue(key, out RemoteDirectorySnapshot? remote);
+                    directoryStateByPath.TryGetValue(key, out SyncStateEntry? state);
+                    remoteDeletePlanItems.Add(RemoteDeletePlanFingerprint.CreateDirectoryItem(
+                        key,
+                        remote?.Node.Id ?? state?.RemoteNodeId));
+                }
+            }
+
             return new SyncDeleteGuard(
                 options,
                 fileDeletes.LocalDeletes + directoryDeletes.LocalDeletes,
-                fileDeletes.RemoteDeletes + directoryDeletes.RemoteDeletes + scopedRemoteDirectoryDeletes);
+                remoteDeletePlanItems);
         }
 
-        private static (int LocalDeletes, int RemoteDeletes) CountPlannedFileDeletes(
+        private static (int LocalDeletes, IReadOnlyList<string> RemoteDeleteItems) CountPlannedFileDeletes(
             IReadOnlyDictionary<string, SyncStateEntry> stateByPath,
             IReadOnlyDictionary<string, LocalFileSnapshot> localByPath,
             IReadOnlyDictionary<string, RemoteFileSnapshot> remoteByPath,
@@ -6556,7 +6563,7 @@ namespace Cotton.Sync
             IReadOnlySet<string> scopedLocalDeletedFileKeys)
         {
             int localDeletes = 0;
-            int remoteDeletes = 0;
+            List<string> remoteDeleteItems = [];
             foreach (KeyValuePair<string, SyncStateEntry> state in stateByPath)
             {
                 localByPath.TryGetValue(state.Key, out LocalFileSnapshot? local);
@@ -6566,13 +6573,32 @@ namespace Cotton.Sync
                     local,
                     remote,
                     scopedLocalDeletedFileKeys.Contains(state.Key));
-                CountScopedDelete(direction, scopedFileDeleteKeys, state.Key, ref localDeletes, ref remoteDeletes);
+                if (!IsScopedDeleteAllowed(scopedFileDeleteKeys, state.Key))
+                {
+                    continue;
+                }
+
+                switch (direction)
+                {
+                    case SyncDeleteDirection.None:
+                        break;
+                    case SyncDeleteDirection.Local:
+                        localDeletes++;
+                        break;
+                    case SyncDeleteDirection.Remote:
+                        remoteDeleteItems.Add(RemoteDeletePlanFingerprint.CreateFileItem(
+                            state.Key,
+                            remote?.File.Id ?? state.Value.RemoteFileId));
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(direction), direction, null);
+                }
             }
 
-            return (localDeletes, remoteDeletes);
+            return (localDeletes, remoteDeleteItems);
         }
 
-        private static (int LocalDeletes, int RemoteDeletes) CountPlannedDirectoryDeletes(
+        private static (int LocalDeletes, IReadOnlyList<string> RemoteDeleteItems) CountPlannedDirectoryDeletes(
             IReadOnlyDictionary<string, SyncStateEntry> directoryStateByPath,
             IReadOnlyDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath,
             IReadOnlyDictionary<string, RemoteDirectorySnapshot> remoteDirectoriesByPath,
@@ -6582,7 +6608,7 @@ namespace Cotton.Sync
             ScopedVirtualFilesDirectoryDeletePlan? scopedDirectoryDelete)
         {
             int localDeletes = 0;
-            int remoteDeletes = 0;
+            List<string> remoteDeleteItems = [];
             foreach (KeyValuePair<string, SyncStateEntry> state in directoryStateByPath)
             {
                 if (scopedDirectoryDelete?.DirectoryKeys.Contains(state.Key, PathComparer) == true)
@@ -6597,42 +6623,29 @@ namespace Cotton.Sync
                     local,
                     remote,
                     remoteDirectoryContentIndex);
-                CountScopedDelete(
-                    direction,
-                    scopedDirectoryDeleteKeys,
-                    state.Key,
-                    ref localDeletes,
-                    ref remoteDeletes);
+                if (!IsScopedDeleteAllowed(scopedDirectoryDeleteKeys, state.Key))
+                {
+                    continue;
+                }
+
+                switch (direction)
+                {
+                    case SyncDeleteDirection.None:
+                        break;
+                    case SyncDeleteDirection.Local:
+                        localDeletes++;
+                        break;
+                    case SyncDeleteDirection.Remote:
+                        remoteDeleteItems.Add(RemoteDeletePlanFingerprint.CreateDirectoryItem(
+                            state.Key,
+                            remote?.Node.Id ?? state.Value.RemoteNodeId));
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(direction), direction, null);
+                }
             }
 
-            return (localDeletes, remoteDeletes);
-        }
-
-        private static void CountScopedDelete(
-            SyncDeleteDirection direction,
-            IReadOnlySet<string>? scopedDeleteKeys,
-            string pathKey,
-            ref int localDeletes,
-            ref int remoteDeletes)
-        {
-            if (!IsScopedDeleteAllowed(scopedDeleteKeys, pathKey))
-            {
-                return;
-            }
-
-            switch (direction)
-            {
-                case SyncDeleteDirection.None:
-                    return;
-                case SyncDeleteDirection.Local:
-                    localDeletes++;
-                    return;
-                case SyncDeleteDirection.Remote:
-                    remoteDeletes++;
-                    return;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(direction), direction, null);
-            }
+            return (localDeletes, remoteDeleteItems);
         }
 
         private static bool IsScopedDeleteAllowed(IReadOnlySet<string>? scopedDeleteKeys, string pathKey)
@@ -6927,7 +6940,7 @@ namespace Cotton.Sync
                 MinimumLocalUploadAge = options.MinimumLocalUploadAge,
                 MaximumLocalDeletesPerRun = options.MaximumLocalDeletesPerRun,
                 MaximumRemoteDeletesPerRun = options.MaximumRemoteDeletesPerRun,
-                ApprovedRemoteDeleteCount = options.ApprovedRemoteDeleteCount,
+                ApprovedRemoteDeletePlan = options.ApprovedRemoteDeletePlan,
                 MaximumStoredResultActivities = options.MaximumStoredResultActivities,
                 InitialVirtualFilesPopulationQueueCapacity = options.InitialVirtualFilesPopulationQueueCapacity,
                 InitialVirtualFilesStateBatchSize = options.InitialVirtualFilesStateBatchSize,

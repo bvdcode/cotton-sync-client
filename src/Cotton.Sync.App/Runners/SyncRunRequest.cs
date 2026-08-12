@@ -18,25 +18,18 @@ namespace Cotton.Sync.App.Runners
             IReadOnlyList<string> localChangedPaths,
             IReadOnlyList<string> localDeletedPaths,
             SyncRunCause causes,
-            int? approvedRemoteDeleteCount)
+            RemoteDeletePlanApproval? approvedRemoteDeletePlan)
         {
             if (causes == SyncRunCause.None)
             {
                 throw new ArgumentOutOfRangeException(nameof(causes), "At least one sync run cause is required.");
             }
 
-            if (approvedRemoteDeleteCount <= 0)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(approvedRemoteDeleteCount),
-                    "Approved remote delete count must be positive.");
-            }
-
             IsFull = isFull;
             LocalChangedPaths = localChangedPaths;
             LocalDeletedPaths = localDeletedPaths;
             Causes = causes;
-            ApprovedRemoteDeleteCount = approvedRemoteDeleteCount;
+            ApprovedRemoteDeletePlan = approvedRemoteDeletePlan;
         }
 
         /// <summary>
@@ -57,7 +50,7 @@ namespace Cotton.Sync.App.Runners
         /// <summary>
         /// Gets the exact remote delete plan explicitly approved for this pass.
         /// </summary>
-        public int? ApprovedRemoteDeleteCount { get; }
+        public RemoteDeletePlanApproval? ApprovedRemoteDeletePlan { get; }
 
         /// <summary>
         /// Gets local relative paths that should be reconciled.
@@ -72,14 +65,16 @@ namespace Cotton.Sync.App.Runners
         /// <summary>
         /// Creates a local-path request.
         /// </summary>
-        public static SyncRunRequest ForFull(SyncRunCause causes, int? approvedRemoteDeleteCount = null)
+        public static SyncRunRequest ForFull(
+            SyncRunCause causes,
+            RemoteDeletePlanApproval? approvedRemoteDeletePlan = null)
         {
             return new SyncRunRequest(
                 true,
                 Array.Empty<string>(),
                 Array.Empty<string>(),
                 causes,
-                approvedRemoteDeleteCount);
+                approvedRemoteDeletePlan);
         }
 
         /// <summary>
@@ -109,7 +104,7 @@ namespace Cotton.Sync.App.Runners
                 throw new ArgumentException("At least one changed path is required for a scoped sync request.", nameof(relativePaths));
             }
 
-            return new SyncRunRequest(false, paths, deletedPaths, causes, approvedRemoteDeleteCount: null);
+            return new SyncRunRequest(false, paths, deletedPaths, causes, approvedRemoteDeletePlan: null);
         }
 
         /// <summary>
@@ -124,15 +119,17 @@ namespace Cotton.Sync.App.Runners
                     LocalChangedPaths.Concat(other.LocalChangedPaths));
                 IReadOnlyList<string> mergedDeletedPaths = NormalizeLocalChangedPaths(
                     LocalDeletedPaths.Concat(other.LocalDeletedPaths));
-                int? mergedApprovedRemoteDeleteCount = ApprovedRemoteDeleteCount == other.ApprovedRemoteDeleteCount
-                    ? ApprovedRemoteDeleteCount
+                RemoteDeletePlanApproval? mergedApprovedRemoteDeletePlan = Equals(
+                    ApprovedRemoteDeletePlan,
+                    other.ApprovedRemoteDeletePlan)
+                    ? ApprovedRemoteDeletePlan
                     : null;
                 return new SyncRunRequest(
                     true,
                     mergedPaths,
                     mergedDeletedPaths,
                     Causes | other.Causes,
-                    mergedApprovedRemoteDeleteCount);
+                    mergedApprovedRemoteDeletePlan);
             }
 
             return ForLocalChangedPaths(

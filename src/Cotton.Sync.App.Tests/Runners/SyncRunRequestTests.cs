@@ -58,23 +58,31 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
-        public void ForFull_RejectsNonPositiveRemoteDeleteApproval()
+        public void RemoteDeletePlanApproval_RejectsInvalidValues()
         {
-            Assert.Throws<ArgumentOutOfRangeException>(() => SyncRunRequest.ForFull(SyncRunCause.Manual, 0));
+            Assert.Multiple(() =>
+            {
+                Assert.Throws<ArgumentOutOfRangeException>(
+                    () => new RemoteDeletePlanApproval(0, new string('a', 64)));
+                Assert.Throws<ArgumentException>(() => new RemoteDeletePlanApproval(1, "invalid"));
+            });
         }
 
         [Test]
         public void Merge_PreservesOnlyMatchingRemoteDeleteApproval()
         {
-            SyncRunRequest approved = SyncRunRequest.ForFull(SyncRunCause.Manual, 101);
+            RemoteDeletePlanApproval approval = new(101, new string('a', 64));
+            SyncRunRequest approved = SyncRunRequest.ForFull(SyncRunCause.Manual, approval);
 
-            SyncRunRequest matching = approved.Merge(SyncRunRequest.ForFull(SyncRunCause.Manual, 101));
+            SyncRunRequest matching = approved.Merge(SyncRunRequest.ForFull(
+                SyncRunCause.Manual,
+                new RemoteDeletePlanApproval(101, new string('a', 64))));
             SyncRunRequest changed = approved.Merge(SyncRunRequest.ForFull(SyncRunCause.Periodic));
 
             Assert.Multiple(() =>
             {
-                Assert.That(matching.ApprovedRemoteDeleteCount, Is.EqualTo(101));
-                Assert.That(changed.ApprovedRemoteDeleteCount, Is.Null);
+                Assert.That(matching.ApprovedRemoteDeletePlan, Is.EqualTo(approval));
+                Assert.That(changed.ApprovedRemoteDeletePlan, Is.Null);
             });
         }
     }

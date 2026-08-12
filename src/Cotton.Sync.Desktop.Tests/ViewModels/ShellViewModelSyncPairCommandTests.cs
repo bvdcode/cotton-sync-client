@@ -20,6 +20,9 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public class ShellViewModelSyncPairCommandTests
     {
+        private const string RemoteDeletePlanFingerprint =
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
         [Test]
         public void SelfTestItemRowViewModel_TracksDetailsAvailability()
         {
@@ -444,7 +447,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             Guid syncPairId = Guid.NewGuid();
             const string rawError =
-                "Remote delete blocked by mass-delete guard. 2207 pending deletes exceed limit 100.";
+                "Remote delete blocked by mass-delete guard. 2207 pending deletes exceed limit 100. "
+                + "Plan fingerprint " + RemoteDeletePlanFingerprint + ".";
             const string expectedMessage =
                 "Cotton Sync blocked a large remote delete plan (2207 pending deletes exceed limit 100). "
                 + "Check local files and Cotton Cloud, then explicitly approve the exact delete plan.";
@@ -475,7 +479,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             {
                 Assert.That(controller.SyncAllCalls, Is.EqualTo(1));
                 Assert.That(controller.LastSyncAllPairId, Is.EqualTo(syncPairId));
-                Assert.That(controller.LastApprovedRemoteDeleteCount, Is.EqualTo(2207));
+                Assert.That(controller.LastApprovedRemoteDeletePlan, Is.EqualTo(
+                    new RemoteDeletePlanApproval(2207, RemoteDeletePlanFingerprint)));
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Action required"));
                 Assert.That(viewModel.HasActionRequired, Is.True);
                 Assert.That(viewModel.CanRetryActionRequired, Is.False);
@@ -502,11 +507,13 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 new DesktopSyncPairStatusSnapshot(
                     firstSyncPairId,
                     "Error",
-                    "Remote delete blocked by mass-delete guard. 101 pending deletes exceed limit 100."),
+                    "Remote delete blocked by mass-delete guard. 101 pending deletes exceed limit 100. "
+                    + "Plan fingerprint " + RemoteDeletePlanFingerprint + "."),
                 new DesktopSyncPairStatusSnapshot(
                     secondSyncPairId,
                     "Error",
-                    "Remote delete blocked by mass-delete guard. 250 pending deletes exceed limit 100."),
+                    "Remote delete blocked by mass-delete guard. 250 pending deletes exceed limit 100. "
+                    + "Plan fingerprint " + RemoteDeletePlanFingerprint + "."),
             ]));
 
             Assert.Multiple(() =>
@@ -1619,7 +1626,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 new DesktopSyncPairStatusSnapshot(
                     syncPairId,
                     "Error",
-                    "Remote delete blocked by mass-delete guard. 2207 pending deletes exceed limit 100."),
+                    "Remote delete blocked by mass-delete guard. 2207 pending deletes exceed limit 100. "
+                    + "Plan fingerprint " + RemoteDeletePlanFingerprint + "."),
             ]));
 
             Assert.Multiple(() =>
@@ -7671,7 +7679,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             public Guid? LastSyncAllPairId { get; private set; }
 
-            public int? LastApprovedRemoteDeleteCount { get; private set; }
+            public RemoteDeletePlanApproval? LastApprovedRemoteDeletePlan { get; private set; }
 
             public int PauseAllCalls { get; private set; }
 
@@ -7998,7 +8006,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             public async Task SyncAllAsync(
                 CancellationToken cancellationToken = default,
                 Guid? syncPairId = null,
-                int? approvedRemoteDeleteCount = null)
+                RemoteDeletePlanApproval? approvedRemoteDeletePlan = null)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (SyncAllException is not null)
@@ -8008,7 +8016,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
                 SyncAllCalls++;
                 LastSyncAllPairId = syncPairId;
-                LastApprovedRemoteDeleteCount = approvedRemoteDeleteCount;
+                LastApprovedRemoteDeletePlan = approvedRemoteDeletePlan;
                 if (SyncAllCompletion is not null)
                 {
                     await SyncAllCompletion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);

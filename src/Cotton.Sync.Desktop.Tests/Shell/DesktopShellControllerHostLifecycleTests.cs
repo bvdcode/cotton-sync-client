@@ -373,9 +373,10 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             QueueingDesktopSyncApplicationFactory factory = new(host.Host);
             using DesktopShellController controller = CreateController(paths, factory);
             Guid syncPairId = Guid.NewGuid();
+            RemoteDeletePlanApproval approval = new(101, new string('a', 64));
 
             await controller.SignInWithBrowserAsync(serverUrl.AbsoluteUri);
-            await controller.SyncAllAsync(syncPairId: syncPairId, approvedRemoteDeleteCount: 101);
+            await controller.SyncAllAsync(syncPairId: syncPairId, approvedRemoteDeletePlan: approval);
 
             Assert.Multiple(() =>
             {
@@ -383,7 +384,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(host.App.LastSyncNowPairId, Is.EqualTo(syncPairId));
                 Assert.That(host.App.LastSyncNowRequest?.IsFull, Is.True);
                 Assert.That(host.App.LastSyncNowRequest?.Causes, Is.EqualTo(SyncRunCause.Manual));
-                Assert.That(host.App.LastSyncNowRequest?.ApprovedRemoteDeleteCount, Is.EqualTo(101));
+                Assert.That(host.App.LastSyncNowRequest?.ApprovedRemoteDeletePlan, Is.EqualTo(approval));
             });
         }
 
@@ -395,11 +396,12 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
             QueueingDesktopSyncApplicationFactory factory = new(host.Host);
             using DesktopShellController controller = CreateController(paths, factory);
+            RemoteDeletePlanApproval approval = new(101, new string('a', 64));
 
             await controller.SignInWithBrowserAsync(serverUrl.AbsoluteUri);
 
             Assert.ThrowsAsync<ArgumentException>(
-                async () => await controller.SyncAllAsync(approvedRemoteDeleteCount: 101));
+                async () => await controller.SyncAllAsync(approvedRemoteDeletePlan: approval));
         }
 
         [Test]

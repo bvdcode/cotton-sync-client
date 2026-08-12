@@ -44,7 +44,7 @@ namespace Cotton.Sync
         /// <summary>
         /// Gets or sets the exact remote delete plan explicitly approved for this pass.
         /// </summary>
-        public int? ApprovedRemoteDeleteCount { get; set; }
+        public RemoteDeletePlanApproval? ApprovedRemoteDeletePlan { get; set; }
 
         /// <summary>
         /// Gets or sets the maximum number of activities retained in the returned result.

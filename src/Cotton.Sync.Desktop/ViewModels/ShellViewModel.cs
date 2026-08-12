@@ -1182,12 +1182,16 @@ namespace Cotton.Sync.Desktop.ViewModels
             && !IsBusy
             && TryResolveRemoteMassDeleteApproval(out _, out _);
 
-        public string RemoteMassDeleteApprovalText => TryResolveRemoteMassDeleteApproval(out _, out int deleteCount)
-            ? "Approve " + deleteCount.ToString("N0", CultureInfo.InvariantCulture) + " deletes"
+        public string RemoteMassDeleteApprovalText => TryResolveRemoteMassDeleteApproval(
+            out _,
+            out RemoteDeletePlanApproval approval)
+            ? "Approve " + approval.DeleteCount.ToString("N0", CultureInfo.InvariantCulture) + " deletes"
             : "Approve deletes";
 
-        public string RemoteMassDeleteApprovalToolTip => TryResolveRemoteMassDeleteApproval(out _, out int deleteCount)
-            ? "Approve deletion of exactly " + deleteCount.ToString("N0", CultureInfo.InvariantCulture) + " cloud files"
+        public string RemoteMassDeleteApprovalToolTip => TryResolveRemoteMassDeleteApproval(
+            out _,
+            out RemoteDeletePlanApproval approval)
+            ? "Approve deletion of exactly " + approval.DeleteCount.ToString("N0", CultureInfo.InvariantCulture) + " cloud files"
             : "Approve the blocked cloud delete plan";
 
         public bool HasNoRemoteFolders => RemoteFolders.Count == 0;
@@ -3401,7 +3405,9 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private async Task ApproveRemoteMassDeleteAsync()
         {
-            if (!TryResolveRemoteMassDeleteApproval(out Guid syncPairId, out int deleteCount))
+            if (!TryResolveRemoteMassDeleteApproval(
+                    out Guid syncPairId,
+                    out RemoteDeletePlanApproval approval))
             {
                 return;
             }
@@ -3410,7 +3416,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             try
             {
                 await _controller
-                    .SyncAllAsync(syncPairId: syncPairId, approvedRemoteDeleteCount: deleteCount)
+                    .SyncAllAsync(syncPairId: syncPairId, approvedRemoteDeletePlan: approval)
                     .ConfigureAwait(true);
                 string actionRequiredMessage = ResolveCurrentSyncPairActionRequiredMessage();
                 if (!string.IsNullOrWhiteSpace(actionRequiredMessage))
@@ -3794,14 +3800,18 @@ namespace Cotton.Sync.Desktop.ViewModels
             return DesktopActionRequiredMessageResolver.FromStatus(new DesktopSyncStatusSnapshot(pairStatuses));
         }
 
-        private bool TryResolveRemoteMassDeleteApproval(out Guid syncPairId, out int deleteCount)
+        private bool TryResolveRemoteMassDeleteApproval(
+            out Guid syncPairId,
+            out RemoteDeletePlanApproval approval)
         {
             syncPairId = Guid.Empty;
-            deleteCount = 0;
+            approval = null!;
             bool found = false;
             foreach (SyncPairRowViewModel pair in SyncPairs)
             {
-                if (!DesktopActionRequiredMessageResolver.TryGetRemoteMassDeleteCount(pair.LastError, out int pairDeleteCount))
+                if (!DesktopActionRequiredMessageResolver.TryGetRemoteMassDeleteApproval(
+                        pair.LastError,
+                        out RemoteDeletePlanApproval pairApproval))
                 {
                     continue;
                 }
@@ -3809,13 +3819,13 @@ namespace Cotton.Sync.Desktop.ViewModels
                 if (found)
                 {
                     syncPairId = Guid.Empty;
-                    deleteCount = 0;
+                    approval = null!;
                     return false;
                 }
 
                 found = true;
                 syncPairId = pair.Id;
-                deleteCount = pairDeleteCount;
+                approval = pairApproval;
             }
 
             return found;

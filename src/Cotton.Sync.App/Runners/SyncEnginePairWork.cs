@@ -146,7 +146,7 @@ namespace Cotton.Sync.App.Runners
                 && request.IsFull
                 && allowInitialVirtualFilesStreaming
                 && (request.Causes & SyncRunCause.InitialPopulation) == SyncRunCause.None
-                && request.ApprovedRemoteDeleteCount is null;
+                && request.ApprovedRemoteDeletePlan is null;
         }
 
         private CoreSyncRunOptions CreateOptions(
@@ -162,7 +162,7 @@ namespace Cotton.Sync.App.Runners
                     ? CoreSyncRunScope.Full
                     : CoreSyncRunScope.ForLocalChangedPaths(request.LocalChangedPaths, request.LocalDeletedPaths),
                 MinimumLocalUploadAge = BackgroundMinimumLocalUploadAge,
-                ApprovedRemoteDeleteCount = request.ApprovedRemoteDeleteCount,
+                ApprovedRemoteDeletePlan = request.ApprovedRemoteDeletePlan,
                 AllowInitialVirtualFilesStreaming = allowInitialVirtualFilesStreaming,
                 RestoreMissingRemoteOnlyPlaceholders = request.IsFull
                     && (request.Causes & SyncRunCause.InitialPopulation) != SyncRunCause.None,

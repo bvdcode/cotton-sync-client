@@ -265,6 +265,39 @@ namespace Cotton.Sync.Desktop.Shell
                 && deleteCount > 0;
         }
 
+        internal static bool TryGetRemoteMassDeleteApproval(
+            string? message,
+            out RemoteDeletePlanApproval approval)
+        {
+            const string fingerprintMarker = "Plan fingerprint ";
+            approval = null!;
+            if (!TryGetRemoteMassDeleteCount(message, out int deleteCount) || message is null)
+            {
+                return false;
+            }
+
+            int markerIndex = message.IndexOf(fingerprintMarker, StringComparison.Ordinal);
+            int fingerprintStart = markerIndex + fingerprintMarker.Length;
+            const int fingerprintLength = 64;
+            int fingerprintEnd = fingerprintStart + fingerprintLength;
+            if (markerIndex < 0
+                || fingerprintEnd >= message.Length
+                || message[fingerprintEnd] != '.')
+            {
+                return false;
+            }
+
+            string fingerprint = message.Substring(fingerprintStart, fingerprintLength);
+            if (fingerprint.Any(static character => character is not (>= '0' and <= '9')
+                    and not (>= 'a' and <= 'f')))
+            {
+                return false;
+            }
+
+            approval = new RemoteDeletePlanApproval(deleteCount, fingerprint);
+            return true;
+        }
+
         private static bool TryGetRemoteMassDeleteCountSpan(
             string message,
             out int start,
