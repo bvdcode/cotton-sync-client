@@ -29,5 +29,7 @@ namespace Cotton.Sync
                 : null;
 
         public HashSet<string> StreamedRemoteFileKeys { get; } = new(pathComparer);
+
+        public Dictionary<string, string> StreamedRemotePathByKey { get; } = new(pathComparer);
     }
 }

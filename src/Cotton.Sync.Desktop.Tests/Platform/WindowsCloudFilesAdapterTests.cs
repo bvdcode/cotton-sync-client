@@ -490,6 +490,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             string root = Path.Combine(_tempDirectory, "root");
             string directoryPath = Path.GetFullPath(Path.Combine(root, "Projects"));
             Directory.CreateDirectory(directoryPath);
+            RemoteDirectoryMaterializationRequest request = CreateDirectoryRequest(root, "Projects");
+            TrackExistingDirectoryPlaceholder(nativeApi, directoryPath, request);
             var adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
@@ -500,7 +502,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     | FileAttributes.ReparsePoint
                     | (FileAttributes)0x00080000);
 
-            adapter.CreateDirectoryPlaceholder(CreateDirectoryRequest(root, "Projects"));
+            adapter.CreateDirectoryPlaceholder(request);
 
             IReadOnlyList<WindowsCloudFilesDiagnosticEvent> events = diagnostics.Snapshot();
             WindowsCloudFilesDirectoryPlaceholderIdentity identity =
@@ -579,11 +581,16 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             string target = Path.GetFullPath(Path.Combine(root, "Projects", "remote-only.txt"));
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.WriteAllText(target, string.Empty);
+            RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/remote-only.txt");
+            TrackExistingFilePlaceholder(nativeApi, target, request);
             var adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
-                isReparsePoint: path => string.Equals(Path.GetFullPath(path), target, StringComparison.OrdinalIgnoreCase));
-            RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/remote-only.txt");
+                isReparsePoint: path => string.Equals(Path.GetFullPath(path), target, StringComparison.OrdinalIgnoreCase),
+                isCloudFilesReparsePoint: path => string.Equals(
+                    Path.GetFullPath(path),
+                    target,
+                    StringComparison.OrdinalIgnoreCase));
 
             RemoteFilePlaceholderResult result = adapter.CreateFilePlaceholder(request);
 
@@ -600,13 +607,45 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
-        public void CreateFilePlaceholder_RefreshesPinnedExistingPlaceholderAndPreservesHydration()
+        public void CreateFilePlaceholder_RejectsForeignCloudFilesPlaceholderIdentity()
         {
             FakeCloudFilesNativeApi nativeApi = new();
             string root = Path.Combine(_tempDirectory, "root");
-            string target = Path.GetFullPath(Path.Combine(root, "Projects", "available-offline.txt"));
+            string target = Path.GetFullPath(Path.Combine(root, "Projects", "remote-only.txt"));
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            File.WriteAllText(target, "old remote content");
+            File.WriteAllText(target, string.Empty);
+            RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/remote-only.txt");
+            RemoteFilePlaceholderRequest foreignRequest = CreateRequest(
+                root,
+                "Projects/remote-only.txt",
+                "99999999-9999-9999-9999-999999999999");
+            TrackExistingFilePlaceholder(nativeApi, target, foreignRequest);
+            WindowsCloudFilesAdapter adapter = new(
+                CreatePolicy(),
+                nativeApi,
+                isReparsePoint: _ => true,
+                isCloudFilesReparsePoint: _ => true);
+
+            RemoteFilePlaceholderUnavailableException? exception =
+                Assert.Throws<RemoteFilePlaceholderUnavailableException>(
+                    () => adapter.CreateFilePlaceholder(request));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception?.Reason, Does.Contain("foreign or stale identity"));
+                Assert.That(nativeApi.UpdatedPlaceholders, Is.Empty);
+                Assert.That(nativeApi.Placeholders, Is.Empty);
+            });
+        }
+
+        [Test]
+        public void CreateFilePlaceholder_RejectsNonCloudFilesReparsePoint()
+        {
+            FakeCloudFilesNativeApi nativeApi = new();
+            string root = Path.Combine(_tempDirectory, "root");
+            string target = Path.GetFullPath(Path.Combine(root, "Projects", "remote-only.txt"));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllText(target, string.Empty);
             WindowsCloudFilesAdapter adapter = new(
                 CreatePolicy(),
                 nativeApi,
@@ -614,12 +653,47 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     Path.GetFullPath(path),
                     target,
                     StringComparison.OrdinalIgnoreCase),
+                isCloudFilesReparsePoint: _ => false);
+
+            RemoteFilePlaceholderUnavailableException? exception =
+                Assert.Throws<RemoteFilePlaceholderUnavailableException>(
+                    () => adapter.CreateFilePlaceholder(
+                        CreateRequest(root, "Projects/remote-only.txt")));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception?.Reason, Does.Contain("non-Cloud Files reparse point"));
+                Assert.That(nativeApi.UpdatedPlaceholders, Is.Empty);
+                Assert.That(nativeApi.Placeholders, Is.Empty);
+            });
+        }
+
+        [Test]
+        public void CreateFilePlaceholder_RefreshesPinnedExistingPlaceholderAndPreservesHydration()
+        {
+            FakeCloudFilesNativeApi nativeApi = new();
+            string root = Path.Combine(_tempDirectory, "root");
+            string target = Path.GetFullPath(Path.Combine(root, "Projects", "available-offline.txt"));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllText(target, "old remote content");
+            RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/available-offline.txt");
+            TrackExistingFilePlaceholder(nativeApi, target, request);
+            WindowsCloudFilesAdapter adapter = new(
+                CreatePolicy(),
+                nativeApi,
+                isReparsePoint: path => string.Equals(
+                    Path.GetFullPath(path),
+                    target,
+                    StringComparison.OrdinalIgnoreCase),
+                isCloudFilesReparsePoint: path => string.Equals(
+                    Path.GetFullPath(path),
+                    target,
+                    StringComparison.OrdinalIgnoreCase),
                 readFileAttributes: _ => FileAttributes.Archive
                     | FileAttributes.ReparsePoint
                     | (FileAttributes)0x00080000);
 
-            RemoteFilePlaceholderResult result = adapter.CreateFilePlaceholder(
-                CreateRequest(root, "Projects/available-offline.txt"));
+            RemoteFilePlaceholderResult result = adapter.CreateFilePlaceholder(request);
 
             Assert.Multiple(() =>
             {
@@ -661,6 +735,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     "CfHydratePlaceholder",
                     cloudFileUnsuccessful),
             };
+            RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/available-offline.txt");
+            TrackExistingFilePlaceholder(nativeApi, target, request);
             var diagnostics = new WindowsCloudFilesDiagnostics();
             var adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
@@ -670,12 +746,15 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     Path.GetFullPath(path),
                     target,
                     StringComparison.OrdinalIgnoreCase),
+                isCloudFilesReparsePoint: path => string.Equals(
+                    Path.GetFullPath(path),
+                    target,
+                    StringComparison.OrdinalIgnoreCase),
                 readFileAttributes: _ => FileAttributes.Archive
                     | FileAttributes.ReparsePoint
                     | (FileAttributes)0x00080000);
 
-            RemoteFilePlaceholderResult result = adapter.CreateFilePlaceholder(
-                CreateRequest(root, "Projects/available-offline.txt"));
+            RemoteFilePlaceholderResult result = adapter.CreateFilePlaceholder(request);
 
             Assert.Multiple(() =>
             {
@@ -717,6 +796,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             File.WriteAllText(target, "old remote content");
             DateTime hydratedLastWriteUtc = new(2026, 07, 17, 13, 12, 34, DateTimeKind.Utc);
             nativeApi.HydrateAction = path => File.SetLastWriteTimeUtc(path, hydratedLastWriteUtc);
+            RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/available-offline.txt") with
+            {
+                ExistingHydrationState = SyncPlaceholderHydrationState.Hydrated,
+            };
+            TrackExistingFilePlaceholder(nativeApi, target, request);
             WindowsCloudFilesAdapter adapter = new(
                 CreatePolicy(),
                 nativeApi,
@@ -724,11 +808,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     Path.GetFullPath(path),
                     target,
                     StringComparison.OrdinalIgnoreCase),
+                isCloudFilesReparsePoint: path => string.Equals(
+                    Path.GetFullPath(path),
+                    target,
+                    StringComparison.OrdinalIgnoreCase),
                 readFileAttributes: _ => FileAttributes.Archive | FileAttributes.ReparsePoint);
-            RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/available-offline.txt") with
-            {
-                ExistingHydrationState = SyncPlaceholderHydrationState.Hydrated,
-            };
 
             RemoteFilePlaceholderResult result = adapter.CreateFilePlaceholder(request);
 
@@ -763,10 +847,16 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             string target = Path.GetFullPath(Path.Combine(root, "Projects", "available-offline.txt"));
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.WriteAllText(target, "old remote content");
+            RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/available-offline.txt");
+            TrackExistingFilePlaceholder(nativeApi, target, request);
             WindowsCloudFilesAdapter adapter = new(
                 CreatePolicy(),
                 nativeApi,
                 isReparsePoint: path => string.Equals(
+                    Path.GetFullPath(path),
+                    target,
+                    StringComparison.OrdinalIgnoreCase),
+                isCloudFilesReparsePoint: path => string.Equals(
                     Path.GetFullPath(path),
                     target,
                     StringComparison.OrdinalIgnoreCase),
@@ -776,7 +866,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 transientRetryDelay: _ => { });
 
             Assert.Throws<WindowsCloudFilesNativeException>(() =>
-                adapter.CreateFilePlaceholder(CreateRequest(root, "Projects/available-offline.txt")));
+                adapter.CreateFilePlaceholder(request));
 
             Assert.Multiple(() =>
             {
@@ -805,13 +895,18 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             string target = Path.GetFullPath(Path.Combine(root, "Projects", "remote-only.txt"));
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.WriteAllText(target, string.Empty);
+            RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/remote-only.txt");
+            TrackExistingFilePlaceholder(nativeApi, target, request);
             var adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 diagnostics: diagnostics,
                 isReparsePoint: path => string.Equals(Path.GetFullPath(path), target, StringComparison.OrdinalIgnoreCase),
+                isCloudFilesReparsePoint: path => string.Equals(
+                    Path.GetFullPath(path),
+                    target,
+                    StringComparison.OrdinalIgnoreCase),
                 transientRetryDelay: _ => { });
-            RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/remote-only.txt");
 
             adapter.CreateFilePlaceholder(request);
 
@@ -1835,6 +1930,16 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 });
         }
 
+        private static void TrackExistingFilePlaceholder(
+            FakeCloudFilesNativeApi nativeApi,
+            string fullPath,
+            RemoteFilePlaceholderRequest request)
+        {
+            nativeApi.PlaceholderIdentities[fullPath] = WindowsCloudFilesPlaceholderIdentity
+                .Create(request, SyncPath.Normalize(request.RelativePath))
+                .ToBytes();
+        }
+
         private static SyncStateEntry CreateUploadedFileState(SyncPairSettings syncPair, string relativePath)
         {
             return new SyncStateEntry
@@ -1874,6 +1979,16 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     CreatedAt = new DateTime(2026, 06, 16, 10, 00, 00, DateTimeKind.Utc),
                     UpdatedAt = new DateTime(2026, 06, 16, 10, 05, 00, DateTimeKind.Utc),
                 });
+        }
+
+        private static void TrackExistingDirectoryPlaceholder(
+            FakeCloudFilesNativeApi nativeApi,
+            string fullPath,
+            RemoteDirectoryMaterializationRequest request)
+        {
+            nativeApi.PlaceholderIdentities[fullPath] = WindowsCloudFilesDirectoryPlaceholderIdentity
+                .Create(request, SyncPath.Normalize(request.RelativePath))
+                .ToBytes();
         }
 
         private class FakeCloudFilesNativeApi : IWindowsCloudFilesNativeApi

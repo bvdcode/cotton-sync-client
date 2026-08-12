@@ -2041,6 +2041,7 @@ namespace Cotton.Sync
             InitialVirtualFilesConsumerState state,
             RemoteDirectorySnapshot directory)
         {
+            RecordInitialVirtualFilesRemotePath(state, directory.RelativePath);
             EnqueueInitialVirtualFilesFileBatchWork(
                 state.PendingFileTasks,
                 state.PendingFileBatch,
@@ -2099,7 +2100,8 @@ namespace Cotton.Sync
             InitialVirtualFilesConsumerState state,
             RemoteFileSnapshot file)
         {
-            state.StreamedRemoteFileKeys.Add(SyncPath.ToKey(file.RelativePath));
+            string fileKey = RecordInitialVirtualFilesRemotePath(state, file.RelativePath);
+            state.StreamedRemoteFileKeys.Add(fileKey);
             InitialVirtualFilesFileWorkResult? currentPlaceholderWorkResult =
                 TryCreateCurrentInitialVirtualFilesFileWorkResult(context.SyncPair, file, context.StreamingPlan);
             if (currentPlaceholderWorkResult is not null)
@@ -2135,6 +2137,21 @@ namespace Cotton.Sync
                         waitForOne: true)
                     .ConfigureAwait(false);
             }
+        }
+
+        private static string RecordInitialVirtualFilesRemotePath(
+            InitialVirtualFilesConsumerState state,
+            string relativePath)
+        {
+            string normalizedPath = SyncPath.Normalize(relativePath);
+            string pathKey = SyncPath.ToKey(normalizedPath);
+            if (state.StreamedRemotePathByKey.TryGetValue(pathKey, out string? existingPath))
+            {
+                throw new SyncPathCollisionException(existingPath, normalizedPath);
+            }
+
+            state.StreamedRemotePathByKey.Add(pathKey, normalizedPath);
+            return pathKey;
         }
 
         private async Task FinalizeInitialVirtualFilesPopulationAsync(

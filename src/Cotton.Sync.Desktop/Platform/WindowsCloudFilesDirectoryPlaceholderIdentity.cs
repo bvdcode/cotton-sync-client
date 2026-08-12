@@ -50,5 +50,24 @@ namespace Cotton.Sync.Desktop.Platform
 
             return identity;
         }
+
+        public static WindowsCloudFilesDirectoryPlaceholderIdentity Parse(byte[] bytes)
+        {
+            ArgumentNullException.ThrowIfNull(bytes);
+            WindowsCloudFilesDirectoryPlaceholderIdentity? identity =
+                JsonSerializer.Deserialize<WindowsCloudFilesDirectoryPlaceholderIdentity>(bytes, JsonOptions);
+            if (identity is null)
+            {
+                throw new InvalidOperationException("Virtual-files directory placeholder identity is empty.");
+            }
+
+            if (identity.Schema != CurrentSchema || identity.Product != WindowsCloudFilesAdapter.ProviderId)
+            {
+                throw new InvalidOperationException(
+                    "Virtual-files directory placeholder identity belongs to an unsupported schema.");
+            }
+
+            return identity;
+        }
     }
 }

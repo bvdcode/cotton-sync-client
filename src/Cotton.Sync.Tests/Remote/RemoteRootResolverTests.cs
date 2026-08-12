@@ -49,7 +49,7 @@ namespace Cotton.Sync.Tests.Remote
         }
 
         [Test]
-        public async Task EnsureAsync_ReusesExistingDirectoryIgnoringDiacritics()
+        public async Task EnsureAsync_CreatesCanonicallyDistinctDirectory()
         {
             Guid rootId = Guid.NewGuid();
             Guid artistId = Guid.NewGuid();
@@ -65,8 +65,8 @@ namespace Cotton.Sync.Tests.Remote
 
             Assert.Multiple(() =>
             {
-                Assert.That(node.Id, Is.EqualTo(artistId));
-                Assert.That(client.CreatedNodes, Is.Empty);
+                Assert.That(node.Id, Is.Not.EqualTo(artistId));
+                Assert.That(client.CreatedNodes.Select(static item => item.Name), Is.EqualTo(new[] { "Michaël Brun" }));
             });
         }
 

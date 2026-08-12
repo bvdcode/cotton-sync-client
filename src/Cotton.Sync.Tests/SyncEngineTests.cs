@@ -1975,6 +1975,63 @@ namespace Cotton.Sync.Tests
         }
 
         [Test]
+        public void RunOnceAsync_WithWindowsVirtualFilesStreamingRejectsCaseInsensitivePathCollision()
+        {
+            RemoteFileSnapshot[] remoteFiles =
+            [
+                new() { RelativePath = "Case.txt", File = RemoteFile("Case.txt", HashText("first"), sizeBytes: 5) },
+                new() { RelativePath = "case.txt", File = RemoteFile("case.txt", HashText("second"), sizeBytes: 6) },
+            ];
+            StreamingRemoteTreeCrawler remoteCrawler = new(_remoteRootNodeId, remoteFiles);
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new();
+            SyncEngine engine = new(
+                new FakeLocalFileScanner(),
+                remoteCrawler,
+                new FakeRemoteFileSynchronizer(),
+                new SqliteSyncStateStore(_databasePath),
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncPathCollisionException? exception = Assert.ThrowsAsync<SyncPathCollisionException>(
+                () => engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles)));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception?.FirstPath, Is.EqualTo("Case.txt"));
+                Assert.That(exception?.SecondPath, Is.EqualTo("case.txt"));
+                Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_WithWindowsVirtualFilesStreamingKeepsAccentedNamesDistinct()
+        {
+            RemoteFileSnapshot[] remoteFiles =
+            [
+                new() { RelativePath = "Cafe.txt", File = RemoteFile("Cafe.txt", HashText("plain"), sizeBytes: 5) },
+                new() { RelativePath = "Café.txt", File = RemoteFile("Café.txt", HashText("accented"), sizeBytes: 8) },
+            ];
+            StreamingRemoteTreeCrawler remoteCrawler = new(_remoteRootNodeId, remoteFiles);
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new();
+            SyncEngine engine = new(
+                new FakeLocalFileScanner(),
+                remoteCrawler,
+                new FakeRemoteFileSynchronizer(),
+                new SqliteSyncStateStore(_databasePath),
+                remoteFilePlaceholderWriter: placeholderWriter);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(
+                    placeholderWriter.Requests.Select(static request => request.RelativePath),
+                    Is.EquivalentTo(new[] { "Cafe.txt", "Café.txt" }));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesStartsPlaceholderCreationBeforeRemoteStreamingCompletes()
         {
             List<RemoteFileSnapshot> remoteFiles =

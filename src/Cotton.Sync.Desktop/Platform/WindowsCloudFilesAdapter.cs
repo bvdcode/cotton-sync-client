@@ -517,6 +517,11 @@ namespace Cotton.Sync.Desktop.Platform
                 placeholderPath.BaseDirectoryPath,
                 placeholderPath.RelativeFileName);
             bool updateExistingPlaceholder = File.Exists(fullPlaceholderPath) && _isReparsePoint(fullPlaceholderPath);
+            if (updateExistingPlaceholder)
+            {
+                ValidateExistingFilePlaceholderIdentity(request, syncPairId, normalizedPath, fullPlaceholderPath);
+            }
+
             var nativePlaceholder = new WindowsCloudFilesNativePlaceholder(
                 placeholderPath.BaseDirectoryPath,
                 placeholderPath.RelativeFileName,
@@ -535,6 +540,35 @@ namespace Cotton.Sync.Desktop.Platform
                 updateExistingPlaceholder,
                 fileIdentity,
                 request.ExistingHydrationState);
+        }
+
+        private void ValidateExistingFilePlaceholderIdentity(
+            RemoteFilePlaceholderRequest request,
+            Guid syncPairId,
+            string normalizedPath,
+            string fullPlaceholderPath)
+        {
+            if (!_isCloudFilesReparsePoint(fullPlaceholderPath))
+            {
+                throw new RemoteFilePlaceholderUnavailableException(
+                    normalizedPath,
+                    "An existing non-Cloud Files reparse point blocks this cloud item.");
+            }
+
+            WindowsCloudFilesPlaceholderIdentity identity = WindowsCloudFilesPlaceholderIdentity.Parse(
+                _nativeApi.GetPlaceholderIdentity(fullPlaceholderPath));
+            if (identity.SyncPairId != syncPairId
+                || identity.RemoteRootNodeId != request.RemoteRootNodeId
+                || identity.NodeFileId != request.RemoteFile.Id
+                || !string.Equals(
+                    SyncPath.ToKey(identity.RelativePath),
+                    SyncPath.ToKey(normalizedPath),
+                    StringComparison.Ordinal))
+            {
+                throw new RemoteFilePlaceholderUnavailableException(
+                    normalizedPath,
+                    "An existing Cloud Files placeholder has a foreign or stale identity.");
+            }
         }
 
         public void UnregisterSyncRoot(SyncPairSettings syncPair)
@@ -624,6 +658,12 @@ namespace Cotton.Sync.Desktop.Platform
                     throw new InvalidOperationException("Virtual-files directory placeholder path cannot replace a non-Cloud Files reparse point.");
                 }
 
+                ValidateExistingDirectoryPlaceholderIdentity(
+                    request,
+                    syncPairId,
+                    normalizedPath,
+                    fullPlaceholderPath);
+
                 try
                 {
                     RepairExistingDirectoryPlaceholder(
@@ -670,6 +710,28 @@ namespace Cotton.Sync.Desktop.Platform
                 fullPlaceholderPath,
                 directoryIdentity,
                 directoryPlaceholder);
+        }
+
+        private void ValidateExistingDirectoryPlaceholderIdentity(
+            RemoteDirectoryMaterializationRequest request,
+            Guid syncPairId,
+            string normalizedPath,
+            string fullPlaceholderPath)
+        {
+            WindowsCloudFilesDirectoryPlaceholderIdentity identity =
+                WindowsCloudFilesDirectoryPlaceholderIdentity.Parse(
+                    _nativeApi.GetPlaceholderIdentity(fullPlaceholderPath));
+            if (identity.SyncPairId != syncPairId
+                || identity.RemoteRootNodeId != request.RemoteRootNodeId
+                || identity.NodeId != request.RemoteDirectory.Id
+                || !string.Equals(
+                    SyncPath.ToKey(identity.RelativePath),
+                    SyncPath.ToKey(normalizedPath),
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "Existing Cloud Files directory placeholder has a foreign or stale identity.");
+            }
         }
 
         private void CreateRemoteDirectoryPlaceholder(
