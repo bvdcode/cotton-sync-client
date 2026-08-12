@@ -186,7 +186,7 @@ namespace Cotton.Sync.Desktop.Platform
                 FileAccess.ReadWrite,
                 FileShare.None,
                 IntegrityHashBufferSize,
-                FileOptions.Asynchronous | FileOptions.SequentialScan);
+                FileOptions.SequentialScan);
             long localSizeBytes = stream.Length;
             DateTime localCreatedAtUtc = File.GetCreationTimeUtc(filePath);
             DateTime localLastWriteUtc = File.GetLastWriteTimeUtc(filePath);
@@ -710,7 +710,7 @@ namespace Cotton.Sync.Desktop.Platform
                 FileAccess.ReadWrite,
                 FileShare.None,
                 IntegrityHashBufferSize,
-                FileOptions.Asynchronous | FileOptions.SequentialScan);
+                FileOptions.SequentialScan);
             byte[] hash = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
             string contentHash = Convert.ToHexStringLower(hash);
             if (!string.Equals(contentHash, expectedContentHash, StringComparison.OrdinalIgnoreCase))
