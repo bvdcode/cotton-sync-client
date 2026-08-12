@@ -54,6 +54,7 @@ namespace Cotton.Sync.App.Auth
 
             AppCodeAuthorizationSession session = await StartSessionWithRetryAsync(request, cancellationToken)
                 .ConfigureAwait(false);
+            ValidateApprovalUri(session.ApprovalUri);
             await _platformCommands.OpenWebAsync(session.ApprovalUri, cancellationToken).ConfigureAwait(false);
 
             while (true)
@@ -158,6 +159,18 @@ namespace Cotton.Sync.App.Auth
         private static TimeSpan GetRetryDelay(TimeSpan delay)
         {
             return delay <= TimeSpan.Zero ? DefaultPollDelay : delay;
+        }
+
+        private static void ValidateApprovalUri(Uri approvalUri)
+        {
+            ArgumentNullException.ThrowIfNull(approvalUri);
+            if (!approvalUri.IsAbsoluteUri
+                || (approvalUri.Scheme != Uri.UriSchemeHttp
+                    && approvalUri.Scheme != Uri.UriSchemeHttps))
+            {
+                throw new InvalidOperationException(
+                    "Browser sign-in approval URL must use HTTP or HTTPS.");
+            }
         }
 
         private static bool IsRetriableAuthException(Exception exception, CancellationToken cancellationToken)

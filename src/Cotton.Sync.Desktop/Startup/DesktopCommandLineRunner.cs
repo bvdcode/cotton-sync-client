@@ -772,6 +772,12 @@ namespace Cotton.Sync.Desktop.Startup
                 return DesktopShellShareLinkResult.Unavailable("server-url-missing");
             }
 
+            if (startupOptions.ServerUrl is not null
+                && !await CanUseStoredSessionForServerAsync(paths, serverUrl, cancellationToken).ConfigureAwait(false))
+            {
+                return DesktopShellShareLinkResult.Failed("server-url-session-mismatch");
+            }
+
             using HttpClient httpClient = DesktopHttpClientFactory.Create(TimeSpan.FromSeconds(30));
             var tokenStore = new FileCottonTokenStore(paths.TokenStorePath);
             var sdkOptions = new CottonSdkOptions
@@ -814,6 +820,7 @@ namespace Cotton.Sync.Desktop.Startup
                 "target-outside-sync-root" => "Select an item inside a synced folder.",
                 "target-sync-pair-disabled" => "Enable this synced folder and try again.",
                 "server-url-missing"
+                    or "server-url-session-mismatch"
                     or "token-missing"
                     or "refresh-failed"
                     or "auth-token-missing"
@@ -846,6 +853,18 @@ namespace Cotton.Sync.Desktop.Startup
             await preferencesStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
             AppPreferences preferences = await preferencesStore.GetAsync(cancellationToken).ConfigureAwait(false);
             return preferences.RememberedServerUrl;
+        }
+
+        private static async Task<bool> CanUseStoredSessionForServerAsync(
+            DesktopAppPaths paths,
+            Uri serverUrl,
+            CancellationToken cancellationToken)
+        {
+            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            await preferencesStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            AppPreferences preferences = await preferencesStore.GetAsync(cancellationToken).ConfigureAwait(false);
+            return preferences.RememberedServerUrl is not null
+                && preferences.RememberedServerUrl.Equals(serverUrl);
         }
 
         public static async Task<int> RunLiveSyncSmokeAsync(

@@ -2276,7 +2276,7 @@ namespace Cotton.Sync.Desktop.Shell
 
         private static bool IsAuthSessionRejected(Cotton.Sdk.CottonApiException exception)
         {
-            return exception.StatusCode == HttpStatusCode.Unauthorized;
+            return exception.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden;
         }
 
         private void StartSessionSyncInBackground(DesktopSyncApplicationHost host, string source)

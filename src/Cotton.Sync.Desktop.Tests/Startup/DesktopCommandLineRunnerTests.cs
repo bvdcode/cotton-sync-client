@@ -4,6 +4,7 @@
 using Cotton.Sync.Desktop.Composition;
 using Cotton.Sync.Desktop.Auth;
 using Cotton.Sync.App.ShellIntegration;
+using Cotton.Sync.App.Preferences;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Startup;
@@ -435,6 +436,62 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(report, Does.Contain("Result: failed"));
                 Assert.That(report, Does.Not.Contain(localRoot));
                 Assert.That(report, Does.Not.Contain("report.pdf"));
+            });
+        }
+
+        [Test]
+        public async Task RunShellShareLinkCopyAsync_RejectsExplicitServerDifferentFromStoredSession()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(Path.Combine(_tempDirectory, "state"));
+            string localRoot = Path.Combine(_tempDirectory, "cloud");
+            string selectedPath = Path.Combine(localRoot, "Docs", "report.pdf");
+            SqliteAppPreferencesStore preferencesStore = new(paths.AppDatabasePath);
+            await preferencesStore.InitializeAsync();
+            await preferencesStore.SaveAsync(new AppPreferences
+            {
+                RememberedServerUrl = new Uri("https://account.example.test/"),
+            });
+            SqliteSyncPairSettingsStore pairStore = new(paths.AppDatabasePath);
+            await pairStore.InitializeAsync();
+            SyncPairSettings syncPair = CreateSyncPair("Cloud", SyncPairMode.WindowsVirtualFiles, localRoot);
+            await pairStore.UpsertAsync(syncPair);
+            SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath);
+            await stateStore.InitializeAsync();
+            await stateStore.UpsertAsync(new SyncStateEntry
+            {
+                SyncPairId = syncPair.Id.ToString("D"),
+                RelativePath = "Docs/report.pdf",
+                Kind = SyncEntryKind.File,
+                RemoteNodeId = Guid.NewGuid(),
+                RemoteFileId = Guid.NewGuid(),
+                SyncedAtUtc = DateTime.UtcNow,
+            });
+            DesktopStartupOptions options = DesktopStartupOptions.Parse(
+            [
+                "--data-dir",
+                paths.DataDirectory,
+                "--server-url",
+                "https://unrelated.example.test/",
+                "--copy-shell-share-link",
+                selectedPath,
+            ]);
+            using StringWriter output = new();
+            FakeDesktopClipboardService clipboard = new();
+            FakeDesktopNotificationService notifications = new();
+
+            int exitCode = await DesktopCommandLineRunner.RunShellShareLinkCopyAsync(
+                paths,
+                options,
+                output,
+                clipboardService: clipboard,
+                notificationService: notifications);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(1));
+                Assert.That(clipboard.CopiedText, Is.Null);
+                Assert.That(notifications.Messages.Single().Message, Is.EqualTo("Sign in to Cotton Sync and try again."));
+                Assert.That(output.ToString(), Does.Contain("FailureReason: server-url-session-mismatch"));
             });
         }
 

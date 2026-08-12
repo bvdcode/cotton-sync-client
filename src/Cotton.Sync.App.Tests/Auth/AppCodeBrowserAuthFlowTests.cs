@@ -59,6 +59,35 @@ namespace Cotton.Sync.App.Tests.Auth
         }
 
         [Test]
+        public void SignInAsync_RejectsNonHttpApprovalUrlBeforeOpeningBrowser()
+        {
+            FakeCottonAuthClient authClient = new();
+            authClient.Session = new AppCodeAuthorizationSession
+            {
+                ApprovalId = Guid.Parse("0190a000-0000-7000-8000-000000000011"),
+                ApprovalUri = new Uri("file:///C:/Temp/approval.html"),
+                PollToken = "poll-token",
+                ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+                PollInterval = TimeSpan.FromSeconds(2),
+            };
+            FakePlatformCommandService platformCommands = new();
+            AppCodeBrowserAuthFlow flow = new(authClient, platformCommands);
+
+            InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(
+                async () => await flow.SignInAsync(new AppCodeBrowserSignInRequest
+                {
+                    ApplicationName = "Cotton Sync Desktop",
+                }));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception?.Message, Does.Contain("HTTP or HTTPS"));
+                Assert.That(platformCommands.OpenWebCallCount, Is.Zero);
+                Assert.That(authClient.PollCallCount, Is.Zero);
+            });
+        }
+
+        [Test]
         public async Task SignInAsync_WaitsForPendingPollAndContinues()
         {
             var delays = new List<TimeSpan>();
@@ -405,7 +434,7 @@ namespace Cotton.Sync.App.Tests.Auth
 
         private class FakeCottonAuthClient : ICottonAuthClient
         {
-            public AppCodeAuthorizationSession Session { get; } = new()
+            public AppCodeAuthorizationSession Session { get; set; } = new()
             {
                 ApprovalId = Guid.Parse("0190a000-0000-7000-8000-000000000011"),
                 ApprovalUri = new Uri("https://cotton.test/oauth/app-code/0190a000-0000-7000-8000-000000000011"),

@@ -32,5 +32,22 @@ namespace Cotton.Sync.App.Tests.Platform
                 Assert.That(exception!.ParamName, Is.EqualTo("url"));
             });
         }
+
+        [TestCase("file:///C:/Temp/page.html")]
+        [TestCase("custom://approval/session")]
+        public void OpenWebAsync_RejectsNonHttpUrl(string value)
+        {
+            ProcessPlatformCommandService service = new();
+
+            ArgumentException? exception = Assert.ThrowsAsync<ArgumentException>(
+                async () => await service.OpenWebAsync(new Uri(value)));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(exception!.ParamName, Is.EqualTo("url"));
+                Assert.That(exception.Message, Does.Contain("HTTP or HTTPS"));
+            });
+        }
     }
 }

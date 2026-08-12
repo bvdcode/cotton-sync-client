@@ -42,6 +42,11 @@ namespace Cotton.Sync.App.Platform
                 throw new ArgumentException("URL must be absolute.", nameof(url));
             }
 
+            if (url.Scheme != Uri.UriSchemeHttp && url.Scheme != Uri.UriSchemeHttps)
+            {
+                throw new ArgumentException("URL must use HTTP or HTTPS.", nameof(url));
+            }
+
             StartShellCommand(url.AbsoluteUri);
             return Task.CompletedTask;
         }

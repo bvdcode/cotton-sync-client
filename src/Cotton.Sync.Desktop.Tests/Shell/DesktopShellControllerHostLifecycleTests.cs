@@ -1213,6 +1213,36 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public async Task LoadAsync_ClearsStoredSessionWhenRestoreIsForbidden()
+        {
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            Uri serverUrl = new("https://cotton.example.test/");
+            SqliteAppPreferencesStore preferencesStore = new(paths.AppDatabasePath);
+            await preferencesStore.InitializeAsync();
+            await preferencesStore.SaveAsync(new AppPreferences
+            {
+                RememberedServerUrl = serverUrl,
+            });
+            FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
+            host.App.RestoreSessionException = new CottonApiException(
+                HttpStatusCode.Forbidden,
+                null,
+                "Forbidden");
+            QueueingDesktopSyncApplicationFactory factory = new(host.Host);
+            using DesktopShellController controller = CreateController(paths, factory);
+
+            DesktopShellSnapshot snapshot = await controller.LoadAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(snapshot.IsSignedIn, Is.False);
+                Assert.That(snapshot.HasStoredSession, Is.False);
+                Assert.That(host.TokenStore.ClearAsyncCalls, Is.EqualTo(1));
+                Assert.That(host.AsyncResource.DisposeAsyncCalls, Is.EqualTo(1));
+            });
+        }
+
+        [Test]
         public async Task StatusChanged_MapsWaitingRuntimeStateWithoutActionRequired()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
