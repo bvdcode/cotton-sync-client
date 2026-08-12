@@ -960,7 +960,7 @@ namespace Cotton.Sync.Tests
                 new SyncRunOptions
                 {
                     MaximumRemoteDeletesPerRun = 100,
-                    Scope = SyncRunScope.ForLocalChangedPaths([directoryPath, ..newPaths]),
+                    Scope = SyncRunScope.ForLocalChangedPaths([directoryPath, .. newPaths]),
                 });
 
             IReadOnlyList<SyncStateEntry> finalEntries = await stateStore.LoadPairAsync("pair-a");

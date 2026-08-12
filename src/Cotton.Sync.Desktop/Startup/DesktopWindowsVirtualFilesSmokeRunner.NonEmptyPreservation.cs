@@ -360,5 +360,5 @@ namespace Cotton.Sync.Desktop.Startup
                 SyncedAtUtc = DateTime.UtcNow,
             };
         }
-}
+    }
 }

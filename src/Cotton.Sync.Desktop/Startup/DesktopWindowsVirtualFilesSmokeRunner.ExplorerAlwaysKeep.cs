@@ -375,5 +375,5 @@ namespace Cotton.Sync.Desktop.Startup
                 && downloadCount == downloadsBeforeRepeat
                 && IsExpectedHydratedState(state, expectedHash, expectedSize);
         }
-}
+    }
 }

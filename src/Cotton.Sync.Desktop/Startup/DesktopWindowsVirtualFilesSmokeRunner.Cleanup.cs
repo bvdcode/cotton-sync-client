@@ -496,5 +496,5 @@ namespace Cotton.Sync.Desktop.Startup
 
             return await WriteSmokeResultAsync(output, diagnostics, failures).ConfigureAwait(false);
         }
-}
+    }
 }

@@ -38,7 +38,8 @@ using Microsoft.Extensions.Logging;
 namespace Cotton.Sync.Desktop.Startup
 {
     internal static partial class DesktopWindowsVirtualFilesSmokeRunner
-    {        private const string DefaultSmokeRoot = @"S:\CottonSyncVfsQa\root";
+    {
+        private const string DefaultSmokeRoot = @"S:\CottonSyncVfsQa\root";
         private const string DefaultSmokeParentRoot = @"S:\CottonSyncVfsQa";
         private const string RelativePlaceholderPath = "remote-only-smoke.txt";
         private const string LargeTreeDirectoryName = "large-tree";
@@ -356,5 +357,5 @@ namespace Cotton.Sync.Desktop.Startup
             await output.WriteLineAsync(FormatCheck(false, message)).ConfigureAwait(false);
             await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
         }
-}
+    }
 }

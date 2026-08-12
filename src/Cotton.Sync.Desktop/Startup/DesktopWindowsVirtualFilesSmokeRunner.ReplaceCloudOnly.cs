@@ -265,5 +265,5 @@ namespace Cotton.Sync.Desktop.Startup
                 && string.Equals(syncedState.RemoteContentHash, replacementHash, StringComparison.OrdinalIgnoreCase)
                 && syncedState.RemoteFileManifestId == upload.Returned.FileManifestId;
         }
-}
+    }
 }

@@ -38,7 +38,8 @@ using Microsoft.Extensions.Logging;
 namespace Cotton.Sync.Desktop.Startup
 {
     internal static partial class DesktopWindowsVirtualFilesSmokeRunner
-    {        private static int GetLargeTreePlaceholderCount(DesktopStartupOptions startupOptions)
+    {
+        private static int GetLargeTreePlaceholderCount(DesktopStartupOptions startupOptions)
         {
             return startupOptions.WindowsVirtualFilesSmokePlaceholderCount ?? DefaultLargeTreePlaceholderCount;
         }
@@ -248,5 +249,5 @@ namespace Cotton.Sync.Desktop.Startup
                 }
             }
         }
-}
+    }
 }

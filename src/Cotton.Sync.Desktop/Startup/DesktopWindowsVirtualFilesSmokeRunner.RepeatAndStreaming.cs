@@ -548,5 +548,5 @@ namespace Cotton.Sync.Desktop.Startup
 
             return hasMetrics ? 0 : 1;
         }
-}
+    }
 }

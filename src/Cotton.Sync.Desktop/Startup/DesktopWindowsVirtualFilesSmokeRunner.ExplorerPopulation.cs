@@ -534,5 +534,5 @@ namespace Cotton.Sync.Desktop.Startup
                 .ConfigureAwait(false);
             await Task.Delay(holdDuration, context.CancellationToken).ConfigureAwait(false);
         }
-}
+    }
 }

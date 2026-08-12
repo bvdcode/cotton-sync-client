@@ -686,5 +686,5 @@ namespace Cotton.Sync.Desktop.Startup
                     diagnostics: diagnostics,
                     syncStateStore: stateStore));
         }
-}
+    }
 }

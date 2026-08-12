@@ -557,5 +557,5 @@ namespace Cotton.Sync.Desktop.Startup
                 return Task.CompletedTask;
             }
         }
-}
+    }
 }

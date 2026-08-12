@@ -436,5 +436,5 @@ namespace Cotton.Sync.Desktop.Startup
             string expectedResult = scenario.ExpectCopied ? "Result: passed" : "Result: failed";
             return report.Contains(expectedResult, StringComparison.Ordinal);
         }
-}
+    }
 }

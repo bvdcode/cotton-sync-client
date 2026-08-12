@@ -379,5 +379,5 @@ namespace Cotton.Sync.Desktop.Startup
                     || IsActiveExplorerShellStatus(column.Value);
             }
         }
-}
+    }
 }

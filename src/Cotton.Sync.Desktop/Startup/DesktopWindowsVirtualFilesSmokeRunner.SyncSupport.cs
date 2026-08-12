@@ -812,5 +812,5 @@ namespace Cotton.Sync.Desktop.Startup
                 throw new InvalidOperationException(_message);
             }
         }
-}
+    }
 }

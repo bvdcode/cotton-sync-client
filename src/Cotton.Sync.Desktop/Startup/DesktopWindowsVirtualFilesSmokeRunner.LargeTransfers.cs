@@ -446,5 +446,5 @@ namespace Cotton.Sync.Desktop.Startup
             await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
             return failures == 0 ? 0 : 1;
         }
-}
+    }
 }

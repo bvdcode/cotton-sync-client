@@ -308,5 +308,5 @@ namespace Cotton.Sync.Desktop.Startup
                 .ConfigureAwait(false);
             return new ExplorerVerbSmokeResult(invoked, failures);
         }
-}
+    }
 }

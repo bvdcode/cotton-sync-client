@@ -511,5 +511,5 @@ namespace Cotton.Sync.Desktop.Startup
                 .ConfigureAwait(false);
             return 1;
         }
-}
+    }
 }

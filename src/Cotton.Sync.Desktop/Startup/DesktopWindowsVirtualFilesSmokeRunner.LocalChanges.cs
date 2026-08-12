@@ -549,5 +549,5 @@ namespace Cotton.Sync.Desktop.Startup
                 && !File.Exists(sourceFilePath)
                 && File.Exists(targetFilePath);
         }
-}
+    }
 }

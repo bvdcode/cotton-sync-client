@@ -244,5 +244,5 @@ namespace Cotton.Sync.Desktop.Startup
         private record SubstResult(int ExitCode, string Output, string Error);
 
         private record FileContentHash(long Length, string Sha256);
-}
+    }
 }
