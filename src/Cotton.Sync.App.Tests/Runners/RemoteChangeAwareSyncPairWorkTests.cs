@@ -972,6 +972,48 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task RunOnceAsync_AfterOneDayOfEmptyPeriodicChecksRunsLocalChangeWithoutFullScanDebt()
+        {
+            const int periodicCheckCount = 144;
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new();
+            FakeSyncStateStore stateStore = new();
+            RemoteChangeFeedBatch[] batches = Enumerable
+                .Range(0, periodicCheckCount + 1)
+                .Select(_ => new RemoteChangeFeedBatch(
+                    syncPair.Id.ToString("D"),
+                    sinceCursor: 9_828,
+                    nextCursor: 9_828,
+                    hasMore: false,
+                    cursorExpired: false,
+                    earliestAvailableCursor: 5,
+                    changes: Array.Empty<SyncChangeDto>()))
+                .ToArray();
+            FakeRemoteChangeFeedReader remoteChanges = new(batches);
+            RemoteChangeAwareSyncPairWork work = new(inner, remoteChanges, stateStore);
+
+            for (int check = 0; check < periodicCheckCount; check++)
+            {
+                await work.RunOnceAsync(
+                    syncPair,
+                    SyncRunRequest.ForFull(SyncRunCause.Periodic));
+            }
+
+            SyncRunRequest localChange = SyncRunRequest.ForLocalChangedPaths(["Pictures/album/photo.jpg"]);
+            await work.RunOnceAsync(syncPair, localChange);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteChanges.ReadSyncPairIds, Has.Count.EqualTo(periodicCheckCount + 1));
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest?.IsFull, Is.False);
+                Assert.That(inner.LastRequest?.LocalChangedPaths, Is.EqualTo(localChange.LocalChangedPaths));
+                Assert.That(stateStore.LoadPairEntriesCallCount, Is.Zero);
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.Empty);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithIncompleteVfsReconcileForcesFullRunOnEmptyFeed()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
