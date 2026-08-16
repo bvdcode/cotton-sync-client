@@ -12,5 +12,8 @@ namespace Cotton.Sync.Desktop.Shell
         Paused = 4,
         Offline = 5,
         Error = 6,
+        Uploading = 7,
+        Downloading = 8,
+        FreeingSpace = 9,
     }
 }

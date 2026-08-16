@@ -48,6 +48,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(trayController, Does.Contain("nameof(ShellViewModel.TrayOpenFolderLabel)"));
                 Assert.That(trayController, Does.Contain("nameof(ShellViewModel.CanShowPauseResumeTrayAction)"));
                 Assert.That(trayController, Does.Contain("nameof(ShellViewModel.HasCurrentWorkProgress)"));
+                Assert.That(trayController, Does.Contain("nameof(ShellViewModel.CurrentTrayActivityKind)"));
                 Assert.That(
                     trayController,
                     Does.Contain("_pauseResumeMenuItem.IsEnabled = _viewModel.PauseResumeCommand.CanExecute(null)"));

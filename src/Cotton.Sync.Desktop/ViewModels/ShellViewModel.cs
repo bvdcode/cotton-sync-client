@@ -842,6 +842,46 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public bool HasCurrentWorkProgress => HasCurrentTransfer || HasCurrentRunProgress;
 
+        public DesktopTrayActivityKind CurrentTrayActivityKind
+        {
+            get
+            {
+                if (!HasCurrentWorkProgress)
+                {
+                    return DesktopTrayActivityKind.None;
+                }
+
+                if (_runProgressByPair.Values.Any(static progress =>
+                        progress.Stage == SyncRunProgressStage.HydratingCloudFiles))
+                {
+                    return DesktopTrayActivityKind.MakingAvailable;
+                }
+
+                if (_runProgressByPair.Values.Any(static progress =>
+                        progress.Stage == SyncRunProgressStage.DehydratingCloudFiles))
+                {
+                    return DesktopTrayActivityKind.FreeingSpace;
+                }
+
+                if (HasCurrentTransfer)
+                {
+                    return _transferDirection switch
+                    {
+                        SyncTransferDirection.Upload => DesktopTrayActivityKind.Uploading,
+                        SyncTransferDirection.Download => DesktopTrayActivityKind.Downloading,
+                        SyncTransferDirection.Hash => DesktopTrayActivityKind.Syncing,
+                        SyncTransferDirection.Unknown => DesktopTrayActivityKind.Syncing,
+                        _ => throw new ArgumentOutOfRangeException(
+                            nameof(_transferDirection),
+                            _transferDirection,
+                            "Unknown transfer direction cannot be shown in the tray."),
+                    };
+                }
+
+                return DesktopTrayActivityKind.Syncing;
+            }
+        }
+
         public string CurrentWorkProgressTitle
         {
             get => IsRunProgressPrimary
@@ -5878,6 +5918,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private void RaiseCurrentWorkProgressProperties()
         {
             OnPropertyChanged(nameof(HasCurrentWorkProgress));
+            OnPropertyChanged(nameof(CurrentTrayActivityKind));
             OnPropertyChanged(nameof(HeaderStatusText));
             OnPropertyChanged(nameof(IsStatusCardVisible));
             OnPropertyChanged(nameof(HasDashboardNotifications));

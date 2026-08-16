@@ -15,6 +15,9 @@ namespace Cotton.Sync.Desktop.Shell
                 DesktopTrayStatusKind.Offline => Create("tray-offline.png"),
                 DesktopTrayStatusKind.Error => Create("tray-error.png"),
                 DesktopTrayStatusKind.SignedOut => Create("tray-signed-out.png"),
+                DesktopTrayStatusKind.Uploading => Create("tray-uploading.png"),
+                DesktopTrayStatusKind.Downloading => Create("tray-downloading.png"),
+                DesktopTrayStatusKind.FreeingSpace => Create("tray-freeing-space.png"),
                 _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown tray status cannot be resolved."),
             };
         }

@@ -3111,6 +3111,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     Is.EqualTo("Making files available · 100 of 1000 files · Local change · 1 changed path"));
                 Assert.That(viewModel.CurrentWorkProgressDetails, Does.Not.Contain("Track 101.flac"));
                 Assert.That(viewModel.CurrentWorkProgressSecondaryDetails, Is.Empty);
+                Assert.That(viewModel.CurrentTrayActivityKind, Is.EqualTo(DesktopTrayActivityKind.MakingAvailable));
                 Assert.That(viewModel.CurrentWorkProgressValue, Is.EqualTo(10.05).Within(0.01));
                 Assert.That(viewModel.CurrentTransferProgressValue, Is.EqualTo(50).Within(0.01));
                 Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.False);
@@ -3245,6 +3246,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     viewModel.CurrentWorkProgressDetails,
                     Is.EqualTo("Freeing up space · 100 of 1000 files · Local change · 1 changed path"));
                 Assert.That(viewModel.CurrentWorkProgressValue, Is.EqualTo(10).Within(0.01));
+                Assert.That(viewModel.CurrentTrayActivityKind, Is.EqualTo(DesktopTrayActivityKind.FreeingSpace));
                 Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.False);
                 Assert.That(viewModel.SyncPairs.Single().CurrentOperation, Is.EqualTo("Freeing up space 100 of 1000"));
             });
@@ -3350,6 +3352,12 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             SyncTransferDirection direction,
             string action)
         {
+            DesktopTrayActivityKind expectedTrayActivityKind = direction switch
+            {
+                SyncTransferDirection.Download => DesktopTrayActivityKind.Downloading,
+                SyncTransferDirection.Upload => DesktopTrayActivityKind.Uploading,
+                _ => throw new ArgumentOutOfRangeException(nameof(direction), direction, "Unexpected test direction."),
+            };
             Guid syncPairId = Guid.NewGuid();
             var controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(CreatePair(syncPairId, "Music", "Syncing")));
@@ -3384,6 +3392,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("75 B / 200 B · 30 B/s · 8s left"));
                 Assert.That(viewModel.CurrentWorkProgressValue, Is.EqualTo(37.5).Within(0.01));
                 Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.False);
+                Assert.That(viewModel.CurrentTrayActivityKind, Is.EqualTo(expectedTrayActivityKind));
                 SyncPairRowViewModel row = viewModel.SyncPairs.Single();
                 Assert.That(row.CurrentOperation, Is.EqualTo($"{action} 2 files"));
                 Assert.That(row.CurrentProgressValue, Is.EqualTo(37.5).Within(0.01));

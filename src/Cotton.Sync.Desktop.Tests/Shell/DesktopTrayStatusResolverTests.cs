@@ -119,12 +119,18 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 hasActiveSyncProgress: true,
                 activeProgressTitle: "Syncing 2 folders",
                 activeProgressDetails: "10 of 40 files across 2 folders",
-                activeProgressHeaderDetails: "6.0 MB / 24 MB · 3.0 MB/s · 6s left");
+                activeProgressHeaderDetails: "6.0 MB / 24 MB · 3.0 MB/s · 6s left",
+                activeActivityKind: DesktopTrayActivityKind.Uploading);
 
             Assert.Multiple(() =>
             {
-                Assert.That(status.Kind, Is.EqualTo(DesktopTrayStatusKind.Syncing));
-                Assert.That(status.ToolTipText, Is.EqualTo("Cotton Sync - Syncing 2 folders - 6.0 MB / 24 MB · 3.0 MB/s · 6s left"));
+                Assert.That(status.Kind, Is.EqualTo(DesktopTrayStatusKind.Uploading));
+                Assert.That(
+                    status.ToolTipText,
+                    Is.EqualTo(
+                        "Cotton Sync - Syncing 2 folders - 10 of 40 files across 2 folders - "
+                        + "6.0 MB / 24 MB · 3.0 MB/s · 6s left"));
+                Assert.That(status.IconUri.ToString(), Does.EndWith("/Assets/tray-uploading.png"));
             });
         }
 
@@ -140,6 +146,55 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 activeProgressDetails: "123 files found · report.txt");
 
             Assert.That(status.ToolTipText, Is.EqualTo("Cotton Sync - Documents: Scanning local files - 123 files found · report.txt"));
+        }
+
+        [Test]
+        public void FromShellState_UsesActionSpecificActiveIcon()
+        {
+            (DesktopTrayActivityKind ActivityKind, DesktopTrayStatusKind StatusKind, string AssetName)[] cases =
+            [
+                (DesktopTrayActivityKind.Downloading, DesktopTrayStatusKind.Downloading, "tray-downloading.png"),
+                (DesktopTrayActivityKind.MakingAvailable, DesktopTrayStatusKind.Downloading, "tray-downloading.png"),
+                (DesktopTrayActivityKind.FreeingSpace, DesktopTrayStatusKind.FreeingSpace, "tray-freeing-space.png"),
+            ];
+            foreach ((DesktopTrayActivityKind activityKind, DesktopTrayStatusKind statusKind, string assetName) in cases)
+            {
+                DesktopTrayStatus status = DesktopTrayStatusResolver.FromShellState(
+                    isSignedIn: true,
+                    statusText: "Syncing",
+                    hasStatusAttention: false,
+                    hasActiveSyncProgress: true,
+                    activeProgressTitle: "Music",
+                    activeProgressDetails: "Making files available · 10 of 40 files",
+                    activeActivityKind: activityKind);
+
+                Assert.Multiple(() =>
+                {
+                    Assert.That(status.Kind, Is.EqualTo(statusKind));
+                    Assert.That(status.IconUri.ToString(), Does.EndWith("/Assets/" + assetName));
+                });
+            }
+        }
+
+        [Test]
+        public void FromShellState_PrioritizesActionAndBoundsLongTooltip()
+        {
+            DesktopTrayStatus status = DesktopTrayStatusResolver.FromShellState(
+                isSignedIn: true,
+                statusText: "Syncing",
+                hasStatusAttention: false,
+                hasActiveSyncProgress: true,
+                activeProgressTitle: "A very long sync folder title that still needs to be recognizable",
+                activeProgressDetails: "Making files available · 100 of 1000 files · Local change · 1 changed path",
+                activeProgressHeaderDetails: "6.0 GB / 24 GB · 30 MB/s · 6m left",
+                activeActivityKind: DesktopTrayActivityKind.MakingAvailable);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(status.ToolTipText.Length, Is.EqualTo(127));
+                Assert.That(status.ToolTipText, Does.Contain("Making files available"));
+                Assert.That(status.ToolTipText, Does.EndWith("..."));
+            });
         }
 
         [Test]
@@ -175,6 +230,9 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 (DesktopTrayStatusKind.Paused, "tray-paused.png"),
                 (DesktopTrayStatusKind.Offline, "tray-offline.png"),
                 (DesktopTrayStatusKind.Error, "tray-error.png"),
+                (DesktopTrayStatusKind.Uploading, "tray-uploading.png"),
+                (DesktopTrayStatusKind.Downloading, "tray-downloading.png"),
+                (DesktopTrayStatusKind.FreeingSpace, "tray-freeing-space.png"),
             ];
 
             foreach ((DesktopTrayStatusKind kind, string assetName) in cases)

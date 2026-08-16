@@ -143,7 +143,8 @@ namespace Cotton.Sync.Desktop.Shell
                 or nameof(ShellViewModel.HasCurrentWorkProgress)
                 or nameof(ShellViewModel.CurrentWorkProgressTitle)
                 or nameof(ShellViewModel.CurrentWorkProgressDetails)
-                or nameof(ShellViewModel.CurrentWorkProgressHeaderDetails))
+                or nameof(ShellViewModel.CurrentWorkProgressHeaderDetails)
+                or nameof(ShellViewModel.CurrentTrayActivityKind))
             {
                 UpdateTrayStatus();
             }
@@ -181,7 +182,8 @@ namespace Cotton.Sync.Desktop.Shell
                 _viewModel.HasCurrentWorkProgress,
                 _viewModel.CurrentWorkProgressTitle,
                 _viewModel.CurrentWorkProgressDetails,
-                _viewModel.CurrentWorkProgressHeaderDetails);
+                _viewModel.CurrentWorkProgressHeaderDetails,
+                _viewModel.CurrentTrayActivityKind);
             _trayIcon.ToolTipText = status.ToolTipText;
             if (_currentIconUri != status.IconUri)
             {
