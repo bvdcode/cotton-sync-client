@@ -972,6 +972,42 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task RunOnceAsync_WithCompletedVfsReconcileRunsSafetyFullSyncOnEmptyFeed()
+        {
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new();
+            FakeSyncStateStore stateStore = new();
+            stateStore.Cursor = new SyncChangeCursor
+            {
+                SyncPairId = syncPair.Id.ToString("D"),
+                LastCursor = 9_828,
+                HasCompletedFullReconcile = true,
+                UpdatedAtUtc = DateTime.UtcNow,
+            };
+            RemoteChangeFeedBatch batch = new(
+                syncPair.Id.ToString("D"),
+                sinceCursor: 9_828,
+                nextCursor: 9_828,
+                hasMore: false,
+                cursorExpired: false,
+                earliestAvailableCursor: 5,
+                changes: Array.Empty<SyncChangeDto>());
+            FakeRemoteChangeFeedReader remoteChanges = new(batch);
+            RemoteChangeAwareSyncPairWork work = new(inner, remoteChanges, stateStore);
+            SyncRunRequest request = SyncRunRequest.ForFull(
+                SyncRunCause.Periodic | SyncRunCause.InternalMaintenance);
+
+            await work.RunOnceAsync(syncPair, request);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(inner.RunCallCount, Is.EqualTo(1));
+                Assert.That(inner.LastRequest, Is.SameAs(request));
+                Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_AfterOneDayOfEmptyPeriodicChecksRunsLocalChangeWithoutFullScanDebt()
         {
             const int periodicCheckCount = 144;

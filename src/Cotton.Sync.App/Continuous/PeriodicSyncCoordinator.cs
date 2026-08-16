@@ -23,14 +23,22 @@ namespace Cotton.Sync.App.Continuous
         /// </summary>
         public static readonly TimeSpan DefaultConnectionRetryInterval = TimeSpan.FromSeconds(15);
 
+        /// <summary>
+        /// Default interval between full safety reconciliations.
+        /// </summary>
+        public static readonly TimeSpan DefaultSafetyReconcileInterval = TimeSpan.FromDays(1);
+
         private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
         private readonly TimeSpan _connectionRetryInterval;
         private readonly Func<TimeSpan, CancellationToken, Task> _delayAsync;
         private readonly TimeSpan _interval;
         private readonly ILogger<PeriodicSyncCoordinator> _logger;
         private readonly bool _runImmediately;
+        private readonly TimeSpan _safetyReconcileInterval;
         private readonly ISyncSupervisor _supervisor;
+        private readonly TimeProvider _timeProvider;
         private CancellationTokenSource? _lifetime;
+        private DateTimeOffset _nextSafetyReconcileAt;
         private Task? _runner;
 
         /// <summary>
@@ -42,7 +50,9 @@ namespace Cotton.Sync.App.Continuous
             bool runImmediately = true,
             ILogger<PeriodicSyncCoordinator>? logger = null,
             TimeSpan? connectionRetryInterval = null,
-            Func<TimeSpan, CancellationToken, Task>? delayAsync = null)
+            Func<TimeSpan, CancellationToken, Task>? delayAsync = null,
+            TimeSpan? safetyReconcileInterval = null,
+            TimeProvider? timeProvider = null)
         {
             _supervisor = supervisor ?? throw new ArgumentNullException(nameof(supervisor));
             _interval = interval ?? DefaultInterval;
@@ -59,9 +69,18 @@ namespace Cotton.Sync.App.Continuous
                     "Connection retry interval must be positive.");
             }
 
+            _safetyReconcileInterval = safetyReconcileInterval ?? DefaultSafetyReconcileInterval;
+            if (_safetyReconcileInterval <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(safetyReconcileInterval),
+                    "Safety reconcile interval must be positive.");
+            }
+
             _runImmediately = runImmediately;
             _logger = logger ?? NullLogger<PeriodicSyncCoordinator>.Instance;
             _delayAsync = delayAsync ?? Task.Delay;
+            _timeProvider = timeProvider ?? TimeProvider.System;
         }
 
         /// <inheritdoc />
@@ -71,6 +90,7 @@ namespace Cotton.Sync.App.Continuous
             try
             {
                 await StopCoreAsync(cancellationToken).ConfigureAwait(false);
+                _nextSafetyReconcileAt = _timeProvider.GetUtcNow().Add(_safetyReconcileInterval);
                 _lifetime = new CancellationTokenSource();
                 _runner = RunLoopAsync(_lifetime.Token);
             }
@@ -150,12 +170,29 @@ namespace Cotton.Sync.App.Continuous
 
         private async Task<bool> RunSyncAsync(CancellationToken cancellationToken)
         {
+            bool safetyReconcileDue = _timeProvider.GetUtcNow() >= _nextSafetyReconcileAt;
+            SyncRunCause causes = SyncRunCause.Periodic;
+            if (safetyReconcileDue)
+            {
+                causes |= SyncRunCause.InternalMaintenance;
+            }
+
             try
             {
-                _logger.LogDebug("Requesting periodic change-feed check.");
+                if (safetyReconcileDue)
+                {
+                    _logger.LogDebug(
+                        "Requesting periodic change-feed check with full safety reconciliation.");
+                }
+                else
+                {
+                    _logger.LogDebug("Requesting periodic change-feed check.");
+                }
+
                 await _supervisor
-                    .SyncAllAsync(SyncRunRequest.ForFull(SyncRunCause.Periodic), cancellationToken)
+                    .SyncAllAsync(SyncRunRequest.ForFull(causes), cancellationToken)
                     .ConfigureAwait(false);
+                ScheduleNextSafetyReconcile(safetyReconcileDue);
                 return false;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -175,9 +212,18 @@ namespace Cotton.Sync.App.Continuous
                 else
                 {
                     _logger.LogError(exception, "Periodic change-feed check failed.");
+                    ScheduleNextSafetyReconcile(safetyReconcileDue);
                 }
 
                 return transientFailure;
+            }
+        }
+
+        private void ScheduleNextSafetyReconcile(bool safetyReconcileAttempted)
+        {
+            if (safetyReconcileAttempted)
+            {
+                _nextSafetyReconcileAt = _timeProvider.GetUtcNow().Add(_safetyReconcileInterval);
             }
         }
     }

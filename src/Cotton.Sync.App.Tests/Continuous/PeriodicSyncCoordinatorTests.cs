@@ -91,6 +91,75 @@ namespace Cotton.Sync.App.Tests.Continuous
             });
         }
 
+        [Test]
+        public async Task SafetyReconcileInterval_AddsInternalMaintenanceToPeriodicRequest()
+        {
+            MutableTimeProvider timeProvider = new();
+            FakeSyncSupervisor supervisor = new();
+            PeriodicSyncCoordinator coordinator = new(
+                supervisor,
+                interval: TimeSpan.FromMinutes(10),
+                runImmediately: false,
+                delayAsync: CreateAdvancingDelay(timeProvider),
+                safetyReconcileInterval: TimeSpan.FromMinutes(20),
+                timeProvider: timeProvider);
+
+            await coordinator.StartAsync();
+            bool observed = await supervisor.WaitForSyncCountAsync(2, TimeSpan.FromSeconds(2));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.SyncAllRequests, Has.Count.GreaterThanOrEqualTo(2));
+                Assert.That(supervisor.SyncAllRequests[0].Causes, Is.EqualTo(SyncRunCause.Periodic));
+                Assert.That(
+                    supervisor.SyncAllRequests[1].Causes,
+                    Is.EqualTo(SyncRunCause.Periodic | SyncRunCause.InternalMaintenance));
+            });
+        }
+
+        [Test]
+        public async Task FailedSafetyReconcile_DoesNotRetryFullWorkOnNextPeriodicTick()
+        {
+            MutableTimeProvider timeProvider = new();
+            FakeSyncSupervisor supervisor = new()
+            {
+                FailureCallNumber = 2,
+            };
+            PeriodicSyncCoordinator coordinator = new(
+                supervisor,
+                interval: TimeSpan.FromMinutes(10),
+                runImmediately: false,
+                delayAsync: CreateAdvancingDelay(timeProvider),
+                safetyReconcileInterval: TimeSpan.FromMinutes(20),
+                timeProvider: timeProvider);
+
+            await coordinator.StartAsync();
+            bool observed = await supervisor.WaitForSyncCountAsync(3, TimeSpan.FromSeconds(2));
+            await coordinator.StopAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(observed, Is.True);
+                Assert.That(supervisor.SyncAllRequests, Has.Count.GreaterThanOrEqualTo(3));
+                Assert.That(
+                    supervisor.SyncAllRequests[1].Causes,
+                    Is.EqualTo(SyncRunCause.Periodic | SyncRunCause.InternalMaintenance));
+                Assert.That(supervisor.SyncAllRequests[2].Causes, Is.EqualTo(SyncRunCause.Periodic));
+            });
+        }
+
+        private static Func<TimeSpan, CancellationToken, Task> CreateAdvancingDelay(
+            MutableTimeProvider timeProvider)
+        {
+            return async (delay, cancellationToken) =>
+            {
+                timeProvider.Advance(delay);
+                await Task.Delay(TimeSpan.FromMilliseconds(1), cancellationToken).ConfigureAwait(false);
+            };
+        }
+
         private class FakeSyncSupervisor : ISyncSupervisor
         {
             private readonly TaskCompletionSource _syncRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -103,6 +172,10 @@ namespace Cotton.Sync.App.Tests.Continuous
             public SyncRunRequest? LastSyncAllRequest { get; private set; }
 
             public Queue<Exception> SyncAllFailures { get; } = [];
+
+            public int? FailureCallNumber { get; init; }
+
+            public List<SyncRunRequest> SyncAllRequests { get; } = [];
 
             public Task PauseAllAsync(CancellationToken cancellationToken = default)
             {
@@ -154,6 +227,11 @@ namespace Cotton.Sync.App.Tests.Continuous
                     throw failure;
                 }
 
+                if (FailureCallNumber == SyncAllCallCount)
+                {
+                    throw new InvalidOperationException("Non-transient periodic sync failure.");
+                }
+
                 return Task.CompletedTask;
             }
 
@@ -167,6 +245,7 @@ namespace Cotton.Sync.App.Tests.Continuous
                 CancellationToken cancellationToken = default)
             {
                 LastSyncAllRequest = request;
+                SyncAllRequests.Add(request);
                 return SyncAllAsync(cancellationToken);
             }
 
@@ -188,6 +267,32 @@ namespace Cotton.Sync.App.Tests.Continuous
             {
                 Task completed = await Task.WhenAny(_secondSyncRequested.Task, Task.Delay(timeout)).ConfigureAwait(false);
                 return completed == _secondSyncRequested.Task;
+            }
+
+            public async Task<bool> WaitForSyncCountAsync(int expectedCount, TimeSpan timeout)
+            {
+                DateTime deadline = DateTime.UtcNow.Add(timeout);
+                while (SyncAllCallCount < expectedCount && DateTime.UtcNow < deadline)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(5)).ConfigureAwait(false);
+                }
+
+                return SyncAllCallCount >= expectedCount;
+            }
+        }
+
+        private class MutableTimeProvider : TimeProvider
+        {
+            private DateTimeOffset _utcNow = new(2026, 8, 16, 0, 0, 0, TimeSpan.Zero);
+
+            public override DateTimeOffset GetUtcNow()
+            {
+                return _utcNow;
+            }
+
+            public void Advance(TimeSpan duration)
+            {
+                _utcNow = _utcNow.Add(duration);
             }
         }
     }
