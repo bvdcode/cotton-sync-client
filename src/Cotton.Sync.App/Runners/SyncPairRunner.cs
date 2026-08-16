@@ -33,6 +33,7 @@ namespace Cotton.Sync.App.Runners
         private SyncRunRequest? _failedSyncRequest;
         private SyncRunRequest? _pendingFullSyncRequest;
         private SyncRunRequest? _pendingScopedSyncRequest;
+        private string? _retainedActionRequiredError;
         private bool _syncRequestsBlocked;
         private DateTime? _lastSuccessfulSyncAtUtc;
         private SyncPairStatus _status;
@@ -190,7 +191,7 @@ namespace Cotton.Sync.App.Runners
                         request.LocalChangedPaths.Count);
                     SetState(SyncPairRunState.Syncing);
                     await RunWorkWithRetryAsync(request, syncCancellation.Token).ConfigureAwait(false);
-                    SetState(SyncPairRunState.Idle, lastSuccessfulSyncAtUtc: DateTime.UtcNow);
+                    SetSuccessfulSyncState(request);
                     _logger.LogInformation(
                         "Completed {SyncScope} sync for {SyncPairId}; causes={SyncCauses}; requested paths={RequestedPathCount}.",
                         syncScope,
@@ -304,13 +305,13 @@ namespace Cotton.Sync.App.Runners
 
         private void HandlePausedCancellation()
         {
-            SetState(SyncPairRunState.Idle);
+            SetIdleOrActionRequiredState();
             _logger.LogDebug("Sync pair runner was paused for {SyncPairId}.", _syncPair.Id);
         }
 
         private void HandlePausedSideEffect(Exception exception)
         {
-            SetState(SyncPairRunState.Idle);
+            SetIdleOrActionRequiredState();
             _logger.LogDebug(
                 exception,
                 "Sync pair runner was paused while in-flight work was canceling for {SyncPairId}.",
@@ -319,7 +320,7 @@ namespace Cotton.Sync.App.Runners
 
         private void HandleSupersededSync(Exception exception)
         {
-            SetState(SyncPairRunState.Idle);
+            SetIdleOrActionRequiredState();
             _logger.LogDebug(
                 exception,
                 "Background sync was superseded by scoped work for {SyncPairId}.",
@@ -328,7 +329,7 @@ namespace Cotton.Sync.App.Runners
 
         private void HandleCanceledSync(Exception exception)
         {
-            SetState(SyncPairRunState.Idle);
+            SetIdleOrActionRequiredState();
             _logger.LogDebug(
                 exception,
                 "Sync pair runner was canceled for {SyncPairId}.",
@@ -352,7 +353,15 @@ namespace Cotton.Sync.App.Runners
                 failureState = SyncPairRunState.Offline;
             }
 
-            SetState(failureState, CreateFailureMessage(exception));
+            string failureMessage = CreateFailureMessage(exception);
+            if (failureState == SyncPairRunState.Error)
+            {
+                SetActionRequiredState(failureMessage);
+            }
+            else
+            {
+                SetState(failureState, failureMessage);
+            }
             _logger.LogError(
                 exception,
                 "Sync pair runner failed for {SyncPairId}.",
@@ -848,9 +857,48 @@ namespace Cotton.Sync.App.Runners
             }
 
             string? localRootError = GetLocalRootError(_syncPair.LocalRootPath);
-            SetState(
-                localRootError is null ? SyncPairRunState.Idle : SyncPairRunState.Error,
-                localRootError);
+            if (localRootError is not null)
+            {
+                SetActionRequiredState(localRootError);
+                return;
+            }
+
+            SetIdleOrActionRequiredState();
+        }
+
+        private void SetSuccessfulSyncState(SyncRunRequest request)
+        {
+            lock (_statusGate)
+            {
+                _lastSuccessfulSyncAtUtc = DateTime.UtcNow;
+                if (request.IsFull && (request.Causes & SyncRunCause.Manual) != SyncRunCause.None)
+                {
+                    _retainedActionRequiredError = null;
+                }
+
+                _status = _retainedActionRequiredError is null
+                    ? CreateStatus(SyncPairRunState.Idle)
+                    : CreateStatus(SyncPairRunState.Error, _retainedActionRequiredError);
+            }
+        }
+
+        private void SetIdleOrActionRequiredState()
+        {
+            lock (_statusGate)
+            {
+                _status = _retainedActionRequiredError is null
+                    ? CreateStatus(SyncPairRunState.Idle)
+                    : CreateStatus(SyncPairRunState.Error, _retainedActionRequiredError);
+            }
+        }
+
+        private void SetActionRequiredState(string message)
+        {
+            lock (_statusGate)
+            {
+                _retainedActionRequiredError = message;
+                _status = CreateStatus(SyncPairRunState.Error, message);
+            }
         }
 
         private static string? GetLocalRootError(string localRootPath)

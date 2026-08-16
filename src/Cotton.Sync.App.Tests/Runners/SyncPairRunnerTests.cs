@@ -1413,7 +1413,7 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
-        public async Task SyncNowAsync_DoesNotReplayActionRequiredFullRequestBeforeScopedRequest()
+        public async Task SyncNowAsync_PreservesActionRequiredStateUntilManualFullRetrySucceeds()
         {
             FakeSyncPairWork work = new()
             {
@@ -1431,11 +1431,29 @@ namespace Cotton.Sync.App.Tests.Runners
                 async () => await runner.SyncNowAsync(backgroundRequest));
             await runner.SyncNowAsync(scopedRequest);
 
+            SyncPairStatus statusAfterScopedSync = runner.Status;
+            await runner.SyncNowAsync(SyncRunRequest.ForFull(SyncRunCause.Periodic));
+            SyncPairStatus statusAfterPeriodicSync = runner.Status;
+            await runner.PauseAsync();
+            await runner.ResumeAsync();
+            SyncPairStatus statusAfterResume = runner.Status;
+            await runner.SyncNowAsync(SyncRunRequest.ForFull(SyncRunCause.Manual));
+
             Assert.Multiple(() =>
             {
-                Assert.That(work.Requests, Has.Count.EqualTo(2));
+                Assert.That(work.Requests, Has.Count.EqualTo(4));
                 Assert.That(work.Requests[0], Is.SameAs(backgroundRequest));
                 Assert.That(work.Requests[1], Is.SameAs(scopedRequest));
+                Assert.That(work.Requests[2].Causes, Is.EqualTo(SyncRunCause.Periodic));
+                Assert.That(work.Requests[3].Causes, Is.EqualTo(SyncRunCause.Manual));
+                Assert.That(statusAfterScopedSync.State, Is.EqualTo(SyncPairRunState.Error));
+                Assert.That(statusAfterScopedSync.LastError, Does.StartWith("Local delete blocked"));
+                Assert.That(statusAfterPeriodicSync.State, Is.EqualTo(SyncPairRunState.Error));
+                Assert.That(statusAfterPeriodicSync.LastError, Is.EqualTo(statusAfterScopedSync.LastError));
+                Assert.That(statusAfterResume.State, Is.EqualTo(SyncPairRunState.Error));
+                Assert.That(statusAfterResume.LastError, Is.EqualTo(statusAfterScopedSync.LastError));
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Idle));
+                Assert.That(runner.Status.LastError, Is.Null);
             });
         }
 
