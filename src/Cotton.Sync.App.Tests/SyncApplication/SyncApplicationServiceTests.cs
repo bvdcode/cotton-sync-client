@@ -625,10 +625,11 @@ namespace Cotton.Sync.App.Tests.SyncApplication
             SyncApplicationService service = CreateService(store);
             SyncPairSettings existing = CreatePair("/home/user/Cotton");
             await service.SaveSyncPairAsync(existing);
-            existing.DisplayName = "Cotton Documents";
-            existing.LocalRootPath = "/home/user/Cotton/";
+            SyncPairSettings updated = CopySyncPair(existing);
+            updated.DisplayName = "Cotton Documents";
+            updated.LocalRootPath = "/home/user/Cotton/";
 
-            SyncPairSaveResult result = await service.SaveSyncPairAsync(existing);
+            SyncPairSaveResult result = await service.SaveSyncPairAsync(updated);
 
             SyncPairSettings? saved = await store.GetAsync(existing.Id);
             Assert.Multiple(() =>
@@ -749,7 +750,7 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         }
 
         [Test]
-        public async Task SaveSyncPairAsync_DeletesPersistedSyncStateWhenSyncRootChanges()
+        public async Task SaveSyncPairAsync_RejectsLocalRootChangeWithoutDeletingSyncState()
         {
             var store = new InMemorySyncPairSettingsStore();
             var syncStateStore = new FakeSyncStateStore();
@@ -765,16 +766,20 @@ namespace Cotton.Sync.App.Tests.SyncApplication
             SyncPairSettings? saved = await store.GetAsync(syncPair.Id);
             Assert.Multiple(() =>
             {
-                Assert.That(result.IsSaved, Is.True);
+                Assert.That(result.IsSaved, Is.False);
+                Assert.That(result.Validation.Errors.Select(error => error.Issue), Is.EqualTo(new[]
+                {
+                    SyncPairValidationIssue.SyncScopeChangeNotSupported,
+                }));
                 Assert.That(saved, Is.Not.Null);
-                Assert.That(saved!.LocalRootPath, Is.EqualTo("/home/user/Cotton Documents"));
-                Assert.That(syncStateStore.InitializeCallCount, Is.EqualTo(1));
-                Assert.That(syncStateStore.DeletedSyncPairIds, Is.EqualTo(new[] { syncPair.Id.ToString() }));
+                Assert.That(saved!.LocalRootPath, Is.EqualTo("/home/user/Cotton"));
+                Assert.That(syncStateStore.InitializeCallCount, Is.Zero);
+                Assert.That(syncStateStore.DeletedSyncPairIds, Is.Empty);
             });
         }
 
         [Test]
-        public async Task SaveSyncPairAsync_DeletesPersistedSyncStateWhenRemoteRootChanges()
+        public async Task SaveSyncPairAsync_RejectsRemoteRootChangeWithoutDeletingSyncState()
         {
             var store = new InMemorySyncPairSettingsStore();
             var syncStateStore = new FakeSyncStateStore();
@@ -791,11 +796,49 @@ namespace Cotton.Sync.App.Tests.SyncApplication
             SyncPairSettings? saved = await store.GetAsync(syncPair.Id);
             Assert.Multiple(() =>
             {
-                Assert.That(result.IsSaved, Is.True);
+                Assert.That(result.IsSaved, Is.False);
+                Assert.That(result.Validation.Errors.Select(error => error.Issue), Is.EqualTo(new[]
+                {
+                    SyncPairValidationIssue.SyncScopeChangeNotSupported,
+                }));
                 Assert.That(saved, Is.Not.Null);
-                Assert.That(saved!.RemoteDisplayPath, Is.EqualTo("/Documents Archive"));
-                Assert.That(syncStateStore.InitializeCallCount, Is.EqualTo(1));
-                Assert.That(syncStateStore.DeletedSyncPairIds, Is.EqualTo(new[] { syncPair.Id.ToString() }));
+                Assert.That(saved!.RemoteRootNodeId, Is.EqualTo(syncPair.RemoteRootNodeId));
+                Assert.That(saved.RemoteDisplayPath, Is.EqualTo("/Documents"));
+                Assert.That(syncStateStore.InitializeCallCount, Is.Zero);
+                Assert.That(syncStateStore.DeletedSyncPairIds, Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task SaveSyncPairAsync_RejectsSyncModeChangeWithoutDeletingSyncState()
+        {
+            var store = new InMemorySyncPairSettingsStore();
+            var syncStateStore = new FakeSyncStateStore();
+            SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
+            await store.UpsertAsync(syncPair);
+            SyncPairSettingsValidator validator = new(new SyncPairModeCapabilitySnapshot(true, "Available."));
+            SyncApplicationService service = CreateService(
+                store,
+                syncStateStore: syncStateStore,
+                validator: validator);
+            SyncPairSettings changed = CopySyncPair(syncPair);
+            changed.Mode = SyncPairMode.WindowsVirtualFiles;
+            changed.UpdatedAtUtc = DateTime.UtcNow;
+
+            SyncPairSaveResult result = await service.SaveSyncPairAsync(changed);
+
+            SyncPairSettings? saved = await store.GetAsync(syncPair.Id);
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.IsSaved, Is.False);
+                Assert.That(result.Validation.Errors.Select(error => error.Issue), Is.EqualTo(new[]
+                {
+                    SyncPairValidationIssue.SyncScopeChangeNotSupported,
+                }));
+                Assert.That(saved, Is.Not.Null);
+                Assert.That(saved!.Mode, Is.EqualTo(SyncPairMode.FullMirror));
+                Assert.That(syncStateStore.InitializeCallCount, Is.Zero);
+                Assert.That(syncStateStore.DeletedSyncPairIds, Is.Empty);
             });
         }
 
@@ -1188,7 +1231,8 @@ namespace Cotton.Sync.App.Tests.SyncApplication
             IPeriodicSyncCoordinator? periodicSync = null,
             IEnumerable<ISyncCoreLifecycleComponent>? syncCoreLifecycleComponents = null,
             ISyncStateStore? syncStateStore = null,
-            ISyncPairDeletionHandler? syncPairDeletionHandler = null)
+            ISyncPairDeletionHandler? syncPairDeletionHandler = null,
+            SyncPairSettingsValidator? validator = null)
         {
             return new SyncApplicationService(
                 store,
@@ -1203,6 +1247,7 @@ namespace Cotton.Sync.App.Tests.SyncApplication
                 periodicSync,
                 syncCoreLifecycleComponents,
                 syncStateStore,
+                validator,
                 syncPairDeletionHandler: syncPairDeletionHandler);
         }
 

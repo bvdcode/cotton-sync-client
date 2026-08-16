@@ -218,35 +218,6 @@ namespace Cotton.Sync.Desktop.Shell
             return Task.CompletedTask;
         }
 
-        public Task SetSyncPairLocalFolderAsync(
-            Guid syncPairId,
-            string localFolderPath,
-            CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return Task.CompletedTask;
-        }
-
-        public Task<SyncPairSettings> SetSyncPairRemoteFolderAsync(
-            Guid syncPairId,
-            string remoteFolderPath,
-            CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return Task.FromResult(new SyncPairSettings
-            {
-                Id = syncPairId,
-                DisplayName = "Documents",
-                LocalRootPath = "/home/qa/Cotton/Documents",
-                RemoteRootNodeId = Guid.NewGuid(),
-                RemoteDisplayPath = remoteFolderPath,
-                IsEnabled = true,
-                Mode = SyncPairMode.FullMirror,
-                CreatedAtUtc = DateTime.UtcNow,
-                UpdatedAtUtc = DateTime.UtcNow,
-            });
-        }
-
         public Task RenameSyncPairAsync(Guid syncPairId, string displayName, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();

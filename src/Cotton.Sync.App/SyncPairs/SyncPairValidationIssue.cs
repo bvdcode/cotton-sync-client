@@ -44,6 +44,11 @@ namespace Cotton.Sync.App.SyncPairs
         OverlappingLocalRoots,
 
         /// <summary>
+        /// An existing sync pair's local root, remote root, or mode was changed.
+        /// </summary>
+        SyncScopeChangeNotSupported,
+
+        /// <summary>
         /// The local root does not exist and cannot be created or accessed.
         /// </summary>
         LocalRootUnavailable,

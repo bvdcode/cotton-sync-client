@@ -178,8 +178,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(foldersSection, Does.Not.Contain("SelectedSyncPairEditableDisplayName"));
                 Assert.That(foldersSection, Does.Contain("SaveSelectedSyncPairNameCommand"));
                 Assert.That(foldersSection, Does.Contain("ToggleSelectedSyncPairEnabledCommand"));
-                Assert.That(foldersSection, Does.Contain("ChangeSelectedSyncPairLocalFolderCommand"));
-                Assert.That(foldersSection, Does.Contain("ChangeSelectedSyncPairRemoteFolderCommand"));
+                Assert.That(foldersSection, Does.Not.Contain("ChangeSelectedSyncPairLocalFolderCommand"));
+                Assert.That(foldersSection, Does.Not.Contain("ChangeSelectedSyncPairRemoteFolderCommand"));
                 Assert.That(foldersSection, Does.Contain("RemoveSelectedSyncPairCommand"));
                 Assert.That(foldersSection, Does.Not.Contain("CancelSelectedSyncPairEditorCommand"));
                 Assert.That(foldersSection, Does.Contain("IsRemoveSyncPairConfirmationVisible"));
@@ -189,8 +189,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(foldersSection, Does.Contain("ConfirmRemoveSelectedSyncPairCommand"));
                 Assert.That(foldersSection, Does.Contain("ToolTip.Tip=\"Rename or manage sync folder\""));
                 Assert.That(foldersSection, Does.Contain("ToolTip.Tip=\"Open local folder\""));
-                Assert.That(foldersSection, Does.Contain("ToolTip.Tip=\"Change local folder\""));
-                Assert.That(foldersSection, Does.Contain("ToolTip.Tip=\"Change cloud folder\""));
+                Assert.That(foldersSection, Does.Not.Contain("ToolTip.Tip=\"Change local folder\""));
+                Assert.That(foldersSection, Does.Not.Contain("ToolTip.Tip=\"Change cloud folder\""));
                 Assert.That(CountOccurrences(foldersSection, "Classes=\"inlineChange\""), Is.Zero);
                 Assert.That(CountOccurrences(foldersSection, "ToolTip.Tip=\"Open local folder\""), Is.EqualTo(1));
                 Assert.That(foldersSection, Does.Not.Contain("ToolTip.Tip=\"Open selected local folder\""));
@@ -198,8 +198,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(foldersSection, Does.Not.Contain("SelectedSyncPair.ModeLabel"));
                 Assert.That(foldersSection, Does.Contain("materialIcons:MaterialIcon"));
                 Assert.That(foldersSection, Does.Contain("Kind=\"ContentSaveOutline\""));
-                Assert.That(foldersSection, Does.Contain("Kind=\"FolderSearchOutline\""));
-                Assert.That(foldersSection, Does.Contain("Kind=\"CloudSearchOutline\""));
+                Assert.That(foldersSection, Does.Not.Contain("Kind=\"FolderSearchOutline\""));
+                Assert.That(foldersSection, Does.Not.Contain("Kind=\"CloudSearchOutline\""));
                 Assert.That(foldersSection, Does.Contain("Kind=\"FolderOffOutline\""));
                 Assert.That(foldersSection, Does.Contain("Kind=\"FolderCheckOutline\""));
                 Assert.That(foldersSection, Does.Not.Contain("Kind=\"PauseCircleOutline\""));
@@ -207,8 +207,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(foldersSection, Does.Contain("Kind=\"TrashCanOutline\""));
                 Assert.That(foldersSection, Does.Contain("Text=\"Folder name\""));
                 Assert.That(foldersSection, Does.Contain("Text=\"Save\""));
-                Assert.That(foldersSection, Does.Contain("Text=\"Local\""));
-                Assert.That(foldersSection, Does.Contain("Text=\"Cloud\""));
+                Assert.That(foldersSection, Does.Not.Contain("Text=\"Local\""));
+                Assert.That(foldersSection, Does.Not.Contain("Text=\"Cloud\""));
                 Assert.That(foldersSection, Does.Contain("Text=\"{Binding ToggleEnabledShortLabel}\""));
                 Assert.That(foldersSection, Does.Contain("Text=\"Remove\""));
                 Assert.That(foldersSection, Does.Contain("Classes=\"compact danger\""));

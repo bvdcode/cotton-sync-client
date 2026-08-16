@@ -467,68 +467,6 @@ namespace Cotton.Sync.Desktop.Shell
             await SaveSyncPairSettingsAsync(syncPair, cancellationToken).ConfigureAwait(false);
         }
 
-        public async Task SetSyncPairLocalFolderAsync(
-            Guid syncPairId,
-            string localFolderPath,
-            CancellationToken cancellationToken = default)
-        {
-            if (syncPairId == Guid.Empty)
-            {
-                throw new ArgumentException("Sync pair id is required.", nameof(syncPairId));
-            }
-
-            string normalizedLocalPath = NormalizeRequired(localFolderPath, nameof(localFolderPath));
-            await _syncPairStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
-            SyncPairSettings? syncPair = await _syncPairStore.GetAsync(syncPairId, cancellationToken).ConfigureAwait(false);
-            if (syncPair is null)
-            {
-                throw new InvalidOperationException("Sync pair was not found.");
-            }
-
-            if (string.Equals(syncPair.LocalRootPath, normalizedLocalPath, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            syncPair.LocalRootPath = normalizedLocalPath;
-            syncPair.UpdatedAtUtc = DateTime.UtcNow;
-            await SaveSyncPairSettingsAsync(syncPair, cancellationToken).ConfigureAwait(false);
-        }
-
-        public async Task<SyncPairSettings> SetSyncPairRemoteFolderAsync(
-            Guid syncPairId,
-            string remoteFolderPath,
-            CancellationToken cancellationToken = default)
-        {
-            if (syncPairId == Guid.Empty)
-            {
-                throw new ArgumentException("Sync pair id is required.", nameof(syncPairId));
-            }
-
-            DesktopSyncApplicationHost host = RequireHost();
-            string normalizedRemotePath = NormalizeRemotePath(remoteFolderPath);
-            await _syncPairStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
-            SyncPairSettings? syncPair = await _syncPairStore.GetAsync(syncPairId, cancellationToken).ConfigureAwait(false);
-            if (syncPair is null)
-            {
-                throw new InvalidOperationException("Sync pair was not found.");
-            }
-
-            if (string.Equals(syncPair.RemoteDisplayPath, normalizedRemotePath, StringComparison.Ordinal))
-            {
-                return syncPair;
-            }
-
-            NodeDto remoteRoot = await host.RemoteRootResolver
-                .EnsureAsync(normalizedRemotePath, cancellationToken)
-                .ConfigureAwait(false);
-            syncPair.RemoteRootNodeId = remoteRoot.Id;
-            syncPair.RemoteDisplayPath = normalizedRemotePath;
-            syncPair.UpdatedAtUtc = DateTime.UtcNow;
-            await SaveSyncPairSettingsAsync(syncPair, cancellationToken).ConfigureAwait(false);
-            return syncPair;
-        }
-
         public async Task RemoveSyncPairAsync(Guid syncPairId, CancellationToken cancellationToken = default)
         {
             if (syncPairId == Guid.Empty)

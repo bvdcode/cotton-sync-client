@@ -134,7 +134,6 @@ namespace Cotton.Sync.Desktop.ViewModels
         private bool _isAddSyncPairWizardVisible;
         private bool _isCreateRemoteFolderVisible;
         private bool _isDesktopSyncChangesApiUnavailable;
-        private bool _isEditingSelectedSyncPairRemoteFolder;
         private bool _isLocalFolderSelectionError;
         private bool _isRemoteFolderLoading;
         private bool _isSelectedSyncPairEditorVisible;
@@ -290,14 +289,6 @@ namespace Cotton.Sync.Desktop.ViewModels
                 OpenConflictAsync,
                 CanOpenConflict,
                 HandleCommandError);
-            ChangeSelectedSyncPairLocalFolderCommand = new AsyncRelayCommand(
-                ChangeSelectedSyncPairLocalFolderAsync,
-                CanEditSelectedSyncPair,
-                HandleCommandError);
-            ChangeSelectedSyncPairRemoteFolderCommand = new AsyncRelayCommand(
-                ShowSelectedSyncPairRemoteFolderAsync,
-                CanChangeSelectedRemoteFolder,
-                HandleCommandError);
             ToggleSelectedSyncPairEnabledCommand = new AsyncRelayCommand(
                 ToggleSelectedSyncPairEnabledAsync,
                 CanEditSelectedSyncPair,
@@ -397,8 +388,6 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private bool CanEditSelectedSyncPair() => IsSignedIn && SelectedSyncPair is not null && !IsBusy;
 
-        private bool CanChangeSelectedRemoteFolder() => CanEditSelectedSyncPair() && CanUseAddSyncPairFlow;
-
         private bool CanRequestRemoveSelectedSyncPair() =>
             CanEditSelectedSyncPair() && !IsRemoveSyncPairConfirmationVisible;
 
@@ -447,10 +436,6 @@ namespace Cotton.Sync.Desktop.ViewModels
         public AsyncRelayCommand CancelSelectedSyncPairEditorCommand { get; }
 
         public AsyncRelayCommand ChangeServerCommand { get; }
-
-        public AsyncRelayCommand ChangeSelectedSyncPairLocalFolderCommand { get; }
-
-        public AsyncRelayCommand ChangeSelectedSyncPairRemoteFolderCommand { get; }
 
         public AsyncRelayCommand CloseSettingsCommand { get; }
 
@@ -1034,8 +1019,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
         }
 
-        public bool IsAddSyncPairSetupProgressVisible =>
-            IsAddingSyncPair && IsAddSyncPairWizardVisible && !IsEditingSelectedSyncPairRemoteFolder;
+        public bool IsAddSyncPairSetupProgressVisible => IsAddingSyncPair && IsAddSyncPairWizardVisible;
 
         public string AddSyncPairSetupProgressMessage => SelectedSyncMode == SyncPairMode.WindowsVirtualFiles
             ? "Registering virtual files and starting sync"
@@ -1448,27 +1432,11 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public bool HasLocalFolderSelection => !string.IsNullOrWhiteSpace(LocalFolderPath);
 
-        public bool IsAddSyncPairLocalStepVisible =>
-            IsAddSyncPairWizardVisible && !IsEditingSelectedSyncPairRemoteFolder && !HasLocalFolderSelection;
+        public bool IsAddSyncPairLocalStepVisible => IsAddSyncPairWizardVisible && !HasLocalFolderSelection;
 
-        public bool IsAddSyncPairCloudStepVisible =>
-            IsAddSyncPairWizardVisible && (HasLocalFolderSelection || IsEditingSelectedSyncPairRemoteFolder);
+        public bool IsAddSyncPairCloudStepVisible => IsAddSyncPairWizardVisible && HasLocalFolderSelection;
 
-        public bool IsAddSyncPairLocalSummaryVisible =>
-            IsAddSyncPairCloudStepVisible && !IsEditingSelectedSyncPairRemoteFolder;
-
-        public bool IsEditingSelectedSyncPairRemoteFolder
-        {
-            get => _isEditingSelectedSyncPairRemoteFolder;
-            private set
-            {
-                if (SetProperty(ref _isEditingSelectedSyncPairRemoteFolder, value))
-                {
-                    RaiseWizardStateProperties();
-                    RaiseAddSyncPairFlowCommandStates();
-                }
-            }
-        }
+        public bool IsAddSyncPairLocalSummaryVisible => IsAddSyncPairCloudStepVisible;
 
         public bool IsCreateRemoteFolderVisible
         {
@@ -1503,30 +1471,22 @@ namespace Cotton.Sync.Desktop.ViewModels
             set => SetProperty(ref _selectedSettingsTabIndex, value);
         }
 
-        public string AddSyncPairWizardTitle => IsEditingSelectedSyncPairRemoteFolder
-            ? "Change cloud folder"
-            : HasLocalFolderSelection ? "Choose cloud folder" : "Choose local folder";
+        public string AddSyncPairWizardTitle => HasLocalFolderSelection ? "Choose cloud folder" : "Choose local folder";
 
-        public string AddSyncPairWizardSubtitle => IsEditingSelectedSyncPairRemoteFolder
-            ? $"Pick the Cotton Cloud folder for {SelectedSyncPair?.DisplayName ?? "this sync folder"}."
-            : HasLocalFolderSelection
-                ? "Pick where this computer folder should sync in Cotton Cloud."
-                : "Start with the folder on this computer.";
+        public string AddSyncPairWizardSubtitle => HasLocalFolderSelection
+            ? "Pick where this computer folder should sync in Cotton Cloud."
+            : "Start with the folder on this computer.";
 
         public string RemoteFolderWizardPrimaryActionText => IsAddingSyncPair
             ? AddSyncPairSetupProgressMessage
             : IsRemoteFolderLoading
                 ? RemoteFolderLoadingMessage
-            : IsEditingSelectedSyncPairRemoteFolder
-                ? "Update cloud folder"
                 : "Use this folder";
 
         public string RemoteFolderWizardPrimaryActionToolTip => IsAddingSyncPair
             ? "Setting up this sync folder"
             : IsRemoteFolderLoading
                 ? "Loading cloud folders"
-            : IsEditingSelectedSyncPairRemoteFolder
-                ? "Change the cloud folder for this sync folder"
                 : "Start syncing with the current cloud folder";
 
         public bool IsFutureSyncModesVisible => _featureFlags.ShowFutureSyncModes && IsWindowsVirtualFilesSupported;
@@ -1861,8 +1821,6 @@ namespace Cotton.Sync.Desktop.ViewModels
                     }
 
                     OpenFolderCommand.RaiseCanExecuteChanged();
-                    ChangeSelectedSyncPairLocalFolderCommand.RaiseCanExecuteChanged();
-                    ChangeSelectedSyncPairRemoteFolderCommand.RaiseCanExecuteChanged();
                     ToggleSelectedSyncPairEnabledCommand.RaiseCanExecuteChanged();
                     SaveSelectedSyncPairNameCommand.RaiseCanExecuteChanged();
                     RemoveSelectedSyncPairCommand.RaiseCanExecuteChanged();
@@ -2710,7 +2668,6 @@ namespace Cotton.Sync.Desktop.ViewModels
                 RemoteFolderPath = string.Empty;
                 SelectedSyncMode = SyncPairMode.FullMirror;
                 IsAddSyncPairWizardVisible = false;
-                IsEditingSelectedSyncPairRemoteFolder = false;
                 ActionRequiredMessage = string.Empty;
                 RemoteFolders.Clear();
                 IsSelectedSyncPairEditorVisible = false;
@@ -2765,7 +2722,6 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             LocalFolderPath = string.Empty;
             SelectedSyncMode = SyncPairMode.FullMirror;
-            IsEditingSelectedSyncPairRemoteFolder = false;
             NewRemoteFolderName = string.Empty;
             IsCreateRemoteFolderVisible = false;
             ResetRemoteFolderSelection();
@@ -2903,105 +2859,9 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
         }
 
-        private async Task ChangeSelectedSyncPairLocalFolderAsync()
-        {
-            SyncPairRowViewModel? selected = SelectedSyncPair;
-            if (selected is null)
-            {
-                return;
-            }
-
-            string? selectedPath = await _folderPicker.PickFolderAsync().ConfigureAwait(true);
-            if (string.IsNullOrWhiteSpace(selectedPath))
-            {
-                return;
-            }
-
-            string normalizedSelectedPath = selectedPath.Trim();
-            string? overlapMessage = GetLocalFolderOverlapMessage(normalizedSelectedPath, selected.Id);
-            if (overlapMessage is not null)
-            {
-                GlobalStatus = "Action required";
-                ActionRequiredMessage = overlapMessage;
-                AddActivity("Warning", normalizedSelectedPath, ActionRequiredMessage);
-                RefreshCurrentProgressText();
-                return;
-            }
-
-            IsBusy = true;
-            try
-            {
-                await _controller.SetSyncPairLocalFolderAsync(selected.Id, normalizedSelectedPath).ConfigureAwait(true);
-                selected.LocalPath = normalizedSelectedPath;
-                GlobalStatus = "Folder updated";
-                ActionRequiredMessage = string.Empty;
-                AddActivity("Pair", normalizedSelectedPath, "Local folder changed");
-                RefreshCurrentProgressText();
-                RefreshDiagnosticsItems();
-            }
-            finally
-            {
-                IsBusy = false;
-            }
-        }
-
-        private async Task ShowSelectedSyncPairRemoteFolderAsync()
-        {
-            SyncPairRowViewModel? selected = SelectedSyncPair;
-            if (selected is null)
-            {
-                return;
-            }
-
-            ClearRemoveSyncPairConfirmation();
-            LocalFolderPath = selected.LocalPath;
-            RemoteFolderPath = string.Empty;
-            IsEditingSelectedSyncPairRemoteFolder = true;
-            IsAddSyncPairWizardVisible = true;
-            NewRemoteFolderName = string.Empty;
-            IsCreateRemoteFolderVisible = false;
-
-            string remotePath = string.IsNullOrWhiteSpace(selected.RemotePath) ? "/" : selected.RemotePath;
-            await LoadRemoteFoldersAsync(remotePath).ConfigureAwait(true);
-        }
-
         private Task UseRemoteFolderAsync()
         {
-            return IsEditingSelectedSyncPairRemoteFolder
-                ? ChangeSelectedSyncPairRemoteFolderAsync()
-                : AddSyncPairAsync();
-        }
-
-        private async Task ChangeSelectedSyncPairRemoteFolderAsync()
-        {
-            SyncPairRowViewModel? selected = SelectedSyncPair;
-            if (selected is null)
-            {
-                return;
-            }
-
-            IsBusy = true;
-            try
-            {
-                SyncPairSettings syncPair = await _controller
-                    .SetSyncPairRemoteFolderAsync(selected.Id, RemoteFolderPath)
-                    .ConfigureAwait(true);
-                selected.RemoteRootNodeId = syncPair.RemoteRootNodeId;
-                selected.RemotePath = syncPair.RemoteDisplayPath;
-                LocalFolderPath = string.Empty;
-                IsEditingSelectedSyncPairRemoteFolder = false;
-                IsAddSyncPairWizardVisible = false;
-                ActionRequiredMessage = string.Empty;
-                ResetRemoteFolderSelection();
-                GlobalStatus = "Cloud folder updated";
-                AddActivity("Pair", selected.LocalPath, "Cloud folder changed to " + selected.RemotePath);
-                RefreshCurrentProgressText();
-                RefreshDiagnosticsItems();
-            }
-            finally
-            {
-                IsBusy = false;
-            }
+            return AddSyncPairAsync();
         }
 
         private async Task SaveSelectedSyncPairNameAsync()
@@ -3944,7 +3804,6 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private async Task ShowAddSyncPairAsync()
         {
-            IsEditingSelectedSyncPairRemoteFolder = false;
             SelectedSyncMode = SyncPairMode.FullMirror;
             IsAddSyncPairWizardVisible = true;
             NewRemoteFolderName = string.Empty;
@@ -4006,32 +3865,18 @@ namespace Cotton.Sync.Desktop.ViewModels
                 && !IsAddingSyncPair
                 && CanUseAddSyncPairFlow
                 && IsSignedIn
-                && !IsEditingSelectedSyncPairRemoteFolder
                 && !string.IsNullOrWhiteSpace(LocalFolderPath)
                 && !string.IsNullOrWhiteSpace(RemoteFolderPath);
         }
 
         private bool CanBrowseLocalFolder()
         {
-            return !IsBusy && !IsAddingSyncPair && CanUseAddSyncPairFlow && !IsEditingSelectedSyncPairRemoteFolder;
+            return !IsBusy && !IsAddingSyncPair && CanUseAddSyncPairFlow;
         }
 
         private bool CanUseRemoteFolder()
         {
-            return IsEditingSelectedSyncPairRemoteFolder
-                ? CanChangeSelectedSyncPairRemoteFolder()
-                : CanAddSyncPair();
-        }
-
-        private bool CanChangeSelectedSyncPairRemoteFolder()
-        {
-            return !IsBusy
-                && !IsAddingSyncPair
-                && CanUseAddSyncPairFlow
-                && IsSignedIn
-                && SelectedSyncPair is not null
-                && IsAddSyncPairCloudStepVisible
-                && !string.IsNullOrWhiteSpace(RemoteFolderPath);
+            return CanAddSyncPair();
         }
 
         private bool CanOpenRemoteFolder()
@@ -4390,8 +4235,6 @@ namespace Cotton.Sync.Desktop.ViewModels
             RaiseSyncStateProperties();
             OpenFolderCommand.RaiseCanExecuteChanged();
             RaiseTrayOpenFolderState();
-            ChangeSelectedSyncPairLocalFolderCommand.RaiseCanExecuteChanged();
-            ChangeSelectedSyncPairRemoteFolderCommand.RaiseCanExecuteChanged();
             ToggleSelectedSyncPairEnabledCommand.RaiseCanExecuteChanged();
             SaveSelectedSyncPairNameCommand.RaiseCanExecuteChanged();
             RemoveSelectedSyncPairCommand.RaiseCanExecuteChanged();
@@ -5656,8 +5499,6 @@ namespace Cotton.Sync.Desktop.ViewModels
             OpenTrayFolderCommand.RaiseCanExecuteChanged();
             OpenConflictCommand.RaiseCanExecuteChanged();
             ToggleActivityCommand.RaiseCanExecuteChanged();
-            ChangeSelectedSyncPairLocalFolderCommand.RaiseCanExecuteChanged();
-            ChangeSelectedSyncPairRemoteFolderCommand.RaiseCanExecuteChanged();
             ToggleSelectedSyncPairEnabledCommand.RaiseCanExecuteChanged();
             SaveSelectedSyncPairNameCommand.RaiseCanExecuteChanged();
             RemoveSelectedSyncPairCommand.RaiseCanExecuteChanged();
@@ -5741,7 +5582,6 @@ namespace Cotton.Sync.Desktop.ViewModels
             OpenRemoteFolderCommand.RaiseCanExecuteChanged();
             RemoteFolderUpCommand.RaiseCanExecuteChanged();
             UseRemoteFolderCommand.RaiseCanExecuteChanged();
-            ChangeSelectedSyncPairRemoteFolderCommand.RaiseCanExecuteChanged();
             ShowAddSyncPairCommand.RaiseCanExecuteChanged();
             ShowCreateRemoteFolderCommand.RaiseCanExecuteChanged();
         }

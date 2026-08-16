@@ -171,6 +171,12 @@ namespace Cotton.Sync.App.SyncApplication
                 return SyncPairSaveResult.Rejected(validation);
             }
 
+            SyncPairValidationError? scopeChangeError = ValidateSyncScopeChange(existingSyncPair, syncPair);
+            if (scopeChangeError is not null)
+            {
+                return SyncPairSaveResult.Rejected(new SyncPairValidationResult([scopeChangeError]));
+            }
+
             if (RequiresPrerequisiteValidation(existingSyncPair, syncPair))
             {
                 IReadOnlyList<SyncPairValidationError> prerequisiteErrors = await _prerequisites
@@ -182,29 +188,32 @@ namespace Cotton.Sync.App.SyncApplication
                 }
             }
 
-            if (RequiresSyncStateReset(existingSyncPair, syncPair) && _syncStateStore is not null)
-            {
-                await _syncStateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
-                await _syncStateStore.DeletePairAsync(syncPair.Id.ToString(), cancellationToken).ConfigureAwait(false);
-            }
-
             await _syncPairs.UpsertAsync(syncPair, cancellationToken).ConfigureAwait(false);
             await RefreshSyncCoreAfterSyncPairSaveAsync(cancellationToken).ConfigureAwait(false);
             return SyncPairSaveResult.Saved(validation);
         }
 
-        private static bool RequiresSyncStateReset(
+        private static SyncPairValidationError? ValidateSyncScopeChange(
             SyncPairSettings? existingSyncPair,
             SyncPairSettings syncPair)
         {
             if (existingSyncPair is null)
             {
-                return false;
+                return null;
             }
 
-            return !string.Equals(existingSyncPair.LocalRootPath, syncPair.LocalRootPath, StringComparison.Ordinal)
+            bool scopeChanged = !SyncPairSettingsValidator.AreSameLocalRoot(
+                    existingSyncPair.LocalRootPath,
+                    syncPair.LocalRootPath)
                 || existingSyncPair.RemoteRootNodeId != syncPair.RemoteRootNodeId
                 || syncPair.Mode != existingSyncPair.Mode;
+            return scopeChanged
+                ? new SyncPairValidationError(
+                    SyncPairValidationIssue.SyncScopeChangeNotSupported,
+                    syncPair.Id,
+                    null,
+                    "To change the local folder, cloud folder, or sync mode, remove this sync folder and add a new one.")
+                : null;
         }
 
         private static bool RequiresPrerequisiteValidation(
@@ -216,14 +225,7 @@ namespace Cotton.Sync.App.SyncApplication
                 return false;
             }
 
-            if (existingSyncPair is null || !existingSyncPair.IsEnabled)
-            {
-                return true;
-            }
-
-            return !string.Equals(existingSyncPair.LocalRootPath, syncPair.LocalRootPath, StringComparison.Ordinal)
-                || existingSyncPair.RemoteRootNodeId != syncPair.RemoteRootNodeId
-                || syncPair.Mode != existingSyncPair.Mode;
+            return existingSyncPair is null || !existingSyncPair.IsEnabled;
         }
 
         /// <inheritdoc />

@@ -121,6 +121,14 @@ namespace Cotton.Sync.App.SyncPairs
             return new NormalizedPath(normalized, windowsStyle);
         }
 
+        internal static bool AreSameLocalRoot(string left, string right)
+        {
+            NormalizedPath normalizedLeft = NormalizeLocalRoot(left);
+            NormalizedPath normalizedRight = NormalizeLocalRoot(right);
+            return normalizedLeft.IsSameStyle(normalizedRight)
+                && normalizedLeft.IsSamePath(normalizedRight);
+        }
+
         private static string CollapseSeparators(string path, char separator, bool windowsStyle)
         {
             if (windowsStyle && path.StartsWith(@"\\", StringComparison.Ordinal))

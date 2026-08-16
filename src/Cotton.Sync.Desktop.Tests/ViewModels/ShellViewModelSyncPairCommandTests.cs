@@ -347,63 +347,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
-        public async Task ChangeSelectedSyncPairLocalFolderCommand_PersistsSelectedFolder()
-        {
-            Guid syncPairId = Guid.NewGuid();
-            var localFolderPicker = new FakeLocalFolderPicker("  /home/vadim/New Documents  ");
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(
-                syncPairId,
-                "Documents",
-                "Idle",
-                localPath: "/home/vadim/Documents")));
-            using ShellViewModel viewModel = CreateViewModel(controller, localFolderPicker: localFolderPicker);
-            await viewModel.InitializeAsync();
-
-            await ExecuteAsync(viewModel.ChangeSelectedSyncPairLocalFolderCommand);
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(localFolderPicker.PickFolderCalls, Is.EqualTo(1));
-                Assert.That(controller.LocalFolderSyncPairId, Is.EqualTo(syncPairId));
-                Assert.That(controller.LocalFolderPath, Is.EqualTo("/home/vadim/New Documents"));
-                Assert.That(viewModel.SelectedSyncPair!.LocalPath, Is.EqualTo("/home/vadim/New Documents"));
-                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Folder updated"));
-                Assert.That(viewModel.HasActionRequired, Is.False);
-                Assert.That(viewModel.Activities.First().Kind, Is.EqualTo("Pair"));
-                Assert.That(viewModel.Activities.First().Path, Is.EqualTo("/home/vadim/New Documents"));
-                Assert.That(viewModel.Activities.First().Details, Is.EqualTo("Local folder changed"));
-            });
-        }
-
-        [Test]
-        public async Task ChangeSelectedSyncPairLocalFolderCommand_RejectsOverlappingFolder()
-        {
-            Guid firstSyncPairId = Guid.NewGuid();
-            Guid secondSyncPairId = Guid.NewGuid();
-            var localFolderPicker = new FakeLocalFolderPicker("/home/vadim/Pictures/Raw");
-            var controller = new FakeDesktopShellController(
-                CreateSignedInSnapshot(
-                    CreatePair(firstSyncPairId, "Documents", "Idle", localPath: "/home/vadim/Documents"),
-                    CreatePair(secondSyncPairId, "Pictures", "Idle", localPath: "/home/vadim/Pictures")));
-            using ShellViewModel viewModel = CreateViewModel(controller, localFolderPicker: localFolderPicker);
-            await viewModel.InitializeAsync();
-
-            await ExecuteAsync(viewModel.ChangeSelectedSyncPairLocalFolderCommand);
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(localFolderPicker.PickFolderCalls, Is.EqualTo(1));
-                Assert.That(controller.LocalFolderSyncPairId, Is.Null);
-                Assert.That(controller.LocalFolderPath, Is.Null);
-                Assert.That(viewModel.SelectedSyncPair!.LocalPath, Is.EqualTo("/home/vadim/Documents"));
-                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Action required"));
-                Assert.That(viewModel.HasActionRequired, Is.True);
-                Assert.That(viewModel.ActionRequiredMessage, Is.EqualTo("Sync folders cannot be inside each other."));
-                Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Fix the issue below to continue syncing."));
-            });
-        }
-
-        [Test]
         public async Task SyncNowCommand_RetriesActionRequiredSyncAndClearsMessage()
         {
             Guid syncPairId = Guid.NewGuid();
@@ -5714,89 +5657,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         }
 
         [Test]
-        public async Task ChangeSelectedSyncPairRemoteFolderCommand_OpensCloudPickerForSelectedPair()
-        {
-            Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(
-                syncPairId,
-                "Documents",
-                "Idle",
-                localPath: "/home/user/Cotton",
-                remotePath: "/Documents")));
-            controller.RemoteFoldersByPath["/Documents"] = new DesktopRemoteFolderListSnapshot(
-                "/Documents",
-                [
-                    new DesktopRemoteFolderSnapshot(Guid.NewGuid(), "Archive", "/Documents/Archive"),
-                ]);
-            using ShellViewModel viewModel = CreateViewModel(controller);
-            await viewModel.InitializeAsync();
-
-            await ExecuteAsync(viewModel.ChangeSelectedSyncPairRemoteFolderCommand);
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(viewModel.IsAddSyncPairWizardVisible, Is.True);
-                Assert.That(viewModel.IsEditingSelectedSyncPairRemoteFolder, Is.True);
-                Assert.That(viewModel.IsAddSyncPairLocalStepVisible, Is.False);
-                Assert.That(viewModel.IsAddSyncPairCloudStepVisible, Is.True);
-                Assert.That(viewModel.IsAddSyncPairLocalSummaryVisible, Is.False);
-                Assert.That(viewModel.AddSyncPairWizardTitle, Is.EqualTo("Change cloud folder"));
-                Assert.That(viewModel.AddSyncPairWizardSubtitle, Is.EqualTo("Pick the Cotton Cloud folder for Documents."));
-                Assert.That(viewModel.RemoteFolderWizardPrimaryActionText, Is.EqualTo("Update cloud folder"));
-                Assert.That(viewModel.LocalFolderPath, Is.EqualTo("/home/user/Cotton"));
-                Assert.That(viewModel.RemoteBrowserPath, Is.EqualTo("/Documents"));
-                Assert.That(viewModel.RemoteFolderPath, Is.EqualTo("/Documents"));
-                Assert.That(viewModel.RemoteFolders.Single().Name, Is.EqualTo("Archive"));
-                Assert.That(controller.ListRemoteFolderPaths, Is.EqualTo(new[] { "/Documents" }));
-                Assert.That(viewModel.AddSyncPairCommand.CanExecute(null), Is.False);
-                Assert.That(viewModel.BrowseLocalFolderCommand.CanExecute(null), Is.False);
-                Assert.That(viewModel.UseRemoteFolderCommand.CanExecute(null), Is.True);
-            });
-        }
-
-        [Test]
-        public async Task UseRemoteFolderCommand_UpdatesSelectedPairRemoteFolderInEditMode()
-        {
-            Guid syncPairId = Guid.NewGuid();
-            Guid remoteRootNodeId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(
-                syncPairId,
-                "Documents",
-                "Idle",
-                localPath: "/home/user/Cotton",
-                remotePath: "/Documents")))
-            {
-                RemoteFolderRootNodeId = remoteRootNodeId,
-            };
-            controller.RemoteFoldersByPath["/Documents"] = new DesktopRemoteFolderListSnapshot(
-                "/Documents",
-                [
-                    new DesktopRemoteFolderSnapshot(remoteRootNodeId, "Archive", "/Documents/Archive"),
-                ]);
-            controller.RemoteFoldersByPath["/Documents/Archive"] = new DesktopRemoteFolderListSnapshot("/Documents/Archive", []);
-            using ShellViewModel viewModel = CreateViewModel(controller);
-            await viewModel.InitializeAsync();
-            await ExecuteAsync(viewModel.ChangeSelectedSyncPairRemoteFolderCommand);
-            viewModel.SelectedRemoteFolder = viewModel.RemoteFolders.Single();
-            await ExecuteAsync(viewModel.OpenRemoteFolderCommand);
-
-            await ExecuteAsync(viewModel.UseRemoteFolderCommand);
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(controller.RemoteFolderSyncPairId, Is.EqualTo(syncPairId));
-                Assert.That(controller.RemoteFolderPath, Is.EqualTo("/Documents/Archive"));
-                Assert.That(viewModel.SelectedSyncPair!.RemoteRootNodeId, Is.EqualTo(remoteRootNodeId));
-                Assert.That(viewModel.SelectedSyncPair.RemotePath, Is.EqualTo("/Documents/Archive"));
-                Assert.That(viewModel.IsAddSyncPairWizardVisible, Is.False);
-                Assert.That(viewModel.IsEditingSelectedSyncPairRemoteFolder, Is.False);
-                Assert.That(viewModel.LocalFolderPath, Is.Empty);
-                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Cloud folder updated"));
-                Assert.That(viewModel.Activities.First().Details, Is.EqualTo("Cloud folder changed to /Documents/Archive"));
-            });
-        }
-
-        [Test]
         public async Task ServerProbe_NormalizesVerifiedBareHostAndEnablesSignIn()
         {
             var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
@@ -7628,16 +7488,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             public string? RenamedSyncPairDisplayName { get; private set; }
 
-            public Guid? LocalFolderSyncPairId { get; private set; }
-
-            public string? LocalFolderPath { get; private set; }
-
-            public Guid? RemoteFolderSyncPairId { get; private set; }
-
-            public string? RemoteFolderPath { get; private set; }
-
-            public Guid RemoteFolderRootNodeId { get; set; } = Guid.NewGuid();
-
             public DesktopSyncPairRequest? AddedSyncPairRequest { get; private set; }
 
             public int SignOutCalls { get; private set; }
@@ -7811,40 +7661,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 EnabledSyncPairId = syncPairId;
                 EnabledSyncPairValue = enabled;
                 return Task.CompletedTask;
-            }
-
-            public Task SetSyncPairLocalFolderAsync(
-                Guid syncPairId,
-                string localFolderPath,
-                CancellationToken cancellationToken = default)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                LocalFolderSyncPairId = syncPairId;
-                LocalFolderPath = localFolderPath;
-                return Task.CompletedTask;
-            }
-
-            public Task<SyncPairSettings> SetSyncPairRemoteFolderAsync(
-                Guid syncPairId,
-                string remoteFolderPath,
-                CancellationToken cancellationToken = default)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                RemoteFolderSyncPairId = syncPairId;
-                RemoteFolderPath = remoteFolderPath;
-                DesktopSyncPairSnapshot? existing = _snapshot.SyncPairs.FirstOrDefault(pair => pair.Id == syncPairId);
-                return Task.FromResult(new SyncPairSettings
-                {
-                    Id = syncPairId,
-                    DisplayName = existing?.DisplayName ?? "Documents",
-                    LocalRootPath = existing?.LocalPath ?? "/home/vadim/Documents",
-                    RemoteRootNodeId = RemoteFolderRootNodeId,
-                    RemoteDisplayPath = remoteFolderPath,
-                    IsEnabled = true,
-                    Mode = SyncPairMode.FullMirror,
-                    CreatedAtUtc = DateTime.UtcNow,
-                    UpdatedAtUtc = DateTime.UtcNow,
-                });
             }
 
             public async Task RemoveSyncPairAsync(Guid syncPairId, CancellationToken cancellationToken = default)

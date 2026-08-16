@@ -907,38 +907,6 @@
                                     </StackPanel>
                                   </Button>
                                   <Button Classes="compact"
-                                          ToolTip.Tip="Change local folder"
-                                          AutomationProperties.Name="Change local folder"
-                                          Command="{Binding $parent[Window].DataContext.ChangeSelectedSyncPairLocalFolderCommand}">
-                                    <StackPanel Orientation="Horizontal"
-                                                Spacing="5">
-                                      <materialIcons:MaterialIcon Kind="FolderSearchOutline"
-                                                                  Width="14"
-                                                                  Height="14"
-                                                                  Foreground="{DynamicResource CottonTextPrimaryBrush}"
-                                                                  VerticalAlignment="Center" />
-                                      <TextBlock Text="Local"
-                                                 FontSize="12"
-                                                 VerticalAlignment="Center" />
-                                    </StackPanel>
-                                  </Button>
-                                  <Button Classes="compact"
-                                          ToolTip.Tip="Change cloud folder"
-                                          AutomationProperties.Name="Change cloud folder"
-                                          Command="{Binding $parent[Window].DataContext.ChangeSelectedSyncPairRemoteFolderCommand}">
-                                    <StackPanel Orientation="Horizontal"
-                                                Spacing="5">
-                                      <materialIcons:MaterialIcon Kind="CloudSearchOutline"
-                                                                  Width="14"
-                                                                  Height="14"
-                                                                  Foreground="{DynamicResource CottonTextPrimaryBrush}"
-                                                                  VerticalAlignment="Center" />
-                                      <TextBlock Text="Cloud"
-                                                 FontSize="12"
-                                                 VerticalAlignment="Center" />
-                                    </StackPanel>
-                                  </Button>
-                                  <Button Classes="compact"
                                           ToolTip.Tip="{Binding ToggleEnabledLabel}"
                                           AutomationProperties.Name="{Binding ToggleEnabledLabel}"
                                           Command="{Binding $parent[Window].DataContext.ToggleSelectedSyncPairEnabledCommand}">
