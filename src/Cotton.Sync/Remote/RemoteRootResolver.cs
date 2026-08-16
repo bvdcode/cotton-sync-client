@@ -1,7 +1,9 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using System.Net;
 using Cotton.Nodes;
+using Cotton.Sdk;
 using Cotton.Sdk.Nodes;
 
 namespace Cotton.Sync.Remote
@@ -38,10 +40,33 @@ namespace Cotton.Sync.Remote
             foreach (string segment in segments)
             {
                 NodeDto? existing = await FindChildDirectoryAsync(current.Id, segment, cancellationToken).ConfigureAwait(false);
-                current = existing ?? await _nodes.CreateAsync(current.Id, segment, cancellationToken).ConfigureAwait(false);
+                current = existing
+                    ?? await CreateOrReuseDirectoryAsync(current.Id, segment, cancellationToken).ConfigureAwait(false);
             }
 
             return current;
+        }
+
+        private async Task<NodeDto> CreateOrReuseDirectoryAsync(
+            Guid parentNodeId,
+            string name,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                return await _nodes.CreateAsync(parentNodeId, name, cancellationToken).ConfigureAwait(false);
+            }
+            catch (CottonApiException exception) when (exception.StatusCode == HttpStatusCode.Conflict)
+            {
+                NodeDto? existing = await FindChildDirectoryAsync(parentNodeId, name, cancellationToken)
+                    .ConfigureAwait(false);
+                if (existing is null)
+                {
+                    throw;
+                }
+
+                return existing;
+            }
         }
 
         private async Task<NodeDto?> FindChildDirectoryAsync(Guid parentNodeId, string name, CancellationToken cancellationToken)

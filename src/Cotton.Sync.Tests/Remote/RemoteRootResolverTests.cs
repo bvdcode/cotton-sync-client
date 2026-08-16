@@ -1,8 +1,10 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using System.Net;
 using Cotton.Files;
 using Cotton.Nodes;
+using Cotton.Sdk;
 using Cotton.Sdk.Nodes;
 using Cotton.Sync.Remote;
 
@@ -98,6 +100,30 @@ namespace Cotton.Sync.Tests.Remote
             });
         }
 
+        [Test]
+        public async Task EnsureAsync_ReusesDirectoryCreatedByConcurrentClient()
+        {
+            Guid rootId = Guid.NewGuid();
+            Guid concurrentId = Guid.NewGuid();
+            FakeNodeClient client = new()
+            {
+                Root = Node(rootId, null, "root"),
+                ConcurrentCreateConflict = Node(concurrentId, rootId, "large"),
+            };
+            RemoteRootResolver resolver = new(client);
+
+            NodeDto created = await resolver.EnsureAsync("large/batch-00");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    client.CreateRequests,
+                    Is.EqualTo(new[] { (rootId, "large"), (concurrentId, "batch-00") }));
+                Assert.That(client.CreatedNodes.Select(static node => node.Name), Is.EqualTo(new[] { "batch-00" }));
+                Assert.That(created.ParentId, Is.EqualTo(concurrentId));
+            });
+        }
+
         private static NodeDto Node(Guid id, Guid? parentId, string name)
         {
             return new NodeDto
@@ -130,6 +156,10 @@ namespace Cotton.Sync.Tests.Remote
 
             public List<NodeDto> CreatedNodes { get; } = [];
 
+            public List<(Guid ParentId, string Name)> CreateRequests { get; } = [];
+
+            public NodeDto? ConcurrentCreateConflict { get; set; }
+
             public List<(Guid NodeId, int Page)> GetChildrenCalls { get; } = [];
 
             public Task<NodeDto> ResolveAsync(string? path = null, CancellationToken cancellationToken = default)
@@ -157,6 +187,24 @@ namespace Cotton.Sync.Tests.Remote
 
             public Task<NodeDto> CreateAsync(Guid parentId, string name, CancellationToken cancellationToken = default)
             {
+                CreateRequests.Add((parentId, name));
+                if (ConcurrentCreateConflict is not null
+                    && ConcurrentCreateConflict.ParentId == parentId
+                    && string.Equals(ConcurrentCreateConflict.Name, name, StringComparison.Ordinal))
+                {
+                    NodeDto concurrentNode = ConcurrentCreateConflict;
+                    ConcurrentCreateConflict = null;
+                    Children[(parentId, 1)] = new NodeContentDto
+                    {
+                        TotalCount = 1,
+                        Nodes = [concurrentNode],
+                    };
+                    throw new CottonApiException(
+                        HttpStatusCode.Conflict,
+                        "{\"code\":\"conflict\"}",
+                        "A folder with the same name already exists.");
+                }
+
                 NodeDto node = Node(Guid.NewGuid(), parentId, name);
                 CreatedNodes.Add(node);
                 return Task.FromResult(node);
