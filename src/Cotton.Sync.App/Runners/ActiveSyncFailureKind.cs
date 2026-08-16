@@ -10,5 +10,6 @@ namespace Cotton.Sync.App.Runners
         PausedSideEffect = 2,
         Stopped = 3,
         Failed = 4,
+        Superseded = 5,
     }
 }

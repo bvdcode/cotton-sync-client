@@ -3,6 +3,7 @@
 
 using System.Net;
 using Cotton.Sdk;
+using Cotton.Sync;
 using Cotton.Sync.App.Status;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Local;
@@ -153,9 +154,9 @@ namespace Cotton.Sync.App.Runners
                 }
                 while (runAgain);
             }
-            catch
+            catch (Exception exception)
             {
-                FinishSyncLoopAfterFailure();
+                FinishSyncLoopAfterFailure(exception);
                 throw;
             }
         }
@@ -212,6 +213,9 @@ namespace Cotton.Sync.App.Runners
                         case ActiveSyncFailureKind.PausedSideEffect:
                             HandlePausedSideEffect(exception);
                             return;
+                        case ActiveSyncFailureKind.Superseded:
+                            HandleSupersededSync(exception);
+                            return;
                         case ActiveSyncFailureKind.Canceled:
                             HandleCanceledSync(exception);
                             throw;
@@ -256,6 +260,12 @@ namespace Cotton.Sync.App.Runners
                     return ActiveSyncFailureKind.PausedCancellation;
                 }
 
+                if (!callerCancellation.IsCancellationRequested
+                    && IsActiveSyncCancellation(activeSyncCancellation, ActiveSyncCancellationReason.Superseded))
+                {
+                    return ActiveSyncFailureKind.Superseded;
+                }
+
                 if (syncCancellation.IsCancellationRequested)
                 {
                     return ActiveSyncFailureKind.Canceled;
@@ -269,6 +279,15 @@ namespace Cotton.Sync.App.Runners
                     ActiveSyncCancellationReason.Pause))
             {
                 return ActiveSyncFailureKind.PausedSideEffect;
+            }
+
+            if (!callerCancellation.IsCancellationRequested
+                && IsActiveSyncCancellationSideEffect(
+                    exception,
+                    activeSyncCancellation,
+                    ActiveSyncCancellationReason.Superseded))
+            {
+                return ActiveSyncFailureKind.Superseded;
             }
 
             if (!callerCancellation.IsCancellationRequested
@@ -295,6 +314,15 @@ namespace Cotton.Sync.App.Runners
             _logger.LogDebug(
                 exception,
                 "Sync pair runner was paused while in-flight work was canceling for {SyncPairId}.",
+                _syncPair.Id);
+        }
+
+        private void HandleSupersededSync(Exception exception)
+        {
+            SetState(SyncPairRunState.Idle);
+            _logger.LogDebug(
+                exception,
+                "Background sync was superseded by scoped work for {SyncPairId}.",
                 _syncPair.Id);
         }
 
@@ -366,6 +394,7 @@ namespace Cotton.Sync.App.Runners
                 if (_isSyncInProgress)
                 {
                     QueuePendingRequest(request);
+                    PreemptBackgroundFullSyncIfRequired();
                     return false;
                 }
 
@@ -424,11 +453,13 @@ namespace Cotton.Sync.App.Runners
             }
         }
 
-        private void FinishSyncLoopAfterFailure()
+        private void FinishSyncLoopAfterFailure(Exception exception)
         {
             lock (_syncRequestGate)
             {
-                _failedSyncRequest = _activeSyncRequest;
+                _failedSyncRequest = SyncFailureClassifier.IsTransientConnectionFailure(exception)
+                    ? _activeSyncRequest
+                    : null;
                 if (_failedSyncRequest?.IsFull == true && _pendingFullSyncRequest is not null)
                 {
                     _failedSyncRequest = MergePendingFullRequests(
@@ -675,14 +706,34 @@ namespace Cotton.Sync.App.Runners
         {
             lock (_syncRequestGate)
             {
-                if (_activeSyncCancellation is null)
-                {
-                    return;
-                }
-
-                _activeSyncCancellationReason = reason;
-                _activeSyncCancellation.Cancel();
+                CancelActiveSyncCore(reason);
             }
+        }
+
+        private void PreemptBackgroundFullSyncIfRequired()
+        {
+            const SyncRunCause backgroundCauses = SyncRunCause.Periodic
+                | SyncRunCause.RealtimeRemoteChange
+                | SyncRunCause.Resume;
+            if (_pendingScopedSyncRequest is null
+                || _activeSyncRequest is not { IsFull: true } activeRequest
+                || (activeRequest.Causes & ~backgroundCauses) != SyncRunCause.None)
+            {
+                return;
+            }
+
+            CancelActiveSyncCore(ActiveSyncCancellationReason.Superseded);
+        }
+
+        private void CancelActiveSyncCore(ActiveSyncCancellationReason reason)
+        {
+            if (_activeSyncCancellation is null)
+            {
+                return;
+            }
+
+            _activeSyncCancellationReason = reason;
+            _activeSyncCancellation.Cancel();
         }
 
         private void ClearActiveSyncCancellation(CancellationTokenSource activeSyncCancellation)
@@ -744,6 +795,7 @@ namespace Cotton.Sync.App.Runners
             lock (_syncRequestGate)
             {
                 _activeSyncCancellation = activeSyncCancellation;
+                PreemptBackgroundFullSyncIfRequired();
             }
         }
 

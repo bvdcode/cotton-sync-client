@@ -9,12 +9,12 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Cotton.Sync.App.Continuous
 {
     /// <summary>
-    /// Requests periodic full reconciliation as a safety fallback.
+    /// Requests periodic remote change-feed checks as a safety fallback.
     /// </summary>
     public class PeriodicSyncCoordinator : IPeriodicSyncCoordinator
     {
         /// <summary>
-        /// Default periodic safety sync interval.
+        /// Default periodic change-feed check interval.
         /// </summary>
         public static readonly TimeSpan DefaultInterval = TimeSpan.FromMinutes(10);
 
@@ -152,7 +152,7 @@ namespace Cotton.Sync.App.Continuous
         {
             try
             {
-                _logger.LogDebug("Requesting periodic safety sync.");
+                _logger.LogDebug("Requesting periodic change-feed check.");
                 await _supervisor
                     .SyncAllAsync(SyncRunRequest.ForFull(SyncRunCause.Periodic), cancellationToken)
                     .ConfigureAwait(false);
@@ -169,12 +169,12 @@ namespace Cotton.Sync.App.Continuous
                 {
                     _logger.LogWarning(
                         exception,
-                        "Periodic safety sync could not reach Cotton Cloud; retrying after {RetryInterval}.",
+                        "Periodic change-feed check could not reach Cotton Cloud; retrying after {RetryInterval}.",
                         _connectionRetryInterval);
                 }
                 else
                 {
-                    _logger.LogError(exception, "Periodic safety sync failed.");
+                    _logger.LogError(exception, "Periodic change-feed check failed.");
                 }
 
                 return transientFailure;

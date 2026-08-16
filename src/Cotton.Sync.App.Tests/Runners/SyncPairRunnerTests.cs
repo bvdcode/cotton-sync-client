@@ -5,6 +5,7 @@ using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.Status;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sdk;
+using Cotton.Sync;
 using Cotton.Sync.Local;
 using Cotton.Sync.Remote;
 using Microsoft.Extensions.Logging;
@@ -1389,6 +1390,56 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task SyncNowAsync_ScopedRequestSupersedesBackgroundFullPass()
+        {
+            PreemptibleSyncPairWork work = new();
+            SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
+            SyncRunRequest backgroundRequest = SyncRunRequest.ForFull(SyncRunCause.Periodic);
+            SyncRunRequest scopedRequest = SyncRunRequest.ForLocalChangedPaths(["Pictures/album"]);
+
+            Task backgroundSync = runner.SyncNowAsync(backgroundRequest);
+            await work.WaitForFirstRunAsync(TimeSpan.FromSeconds(2));
+            await runner.SyncNowAsync(scopedRequest);
+            await backgroundSync.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(work.Requests, Has.Count.EqualTo(2));
+                Assert.That(work.Requests[0], Is.SameAs(backgroundRequest));
+                Assert.That(work.Requests[1], Is.SameAs(scopedRequest));
+                Assert.That(work.FirstRunCancellationObserved, Is.True);
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Idle));
+            });
+        }
+
+        [Test]
+        public async Task SyncNowAsync_DoesNotReplayActionRequiredFullRequestBeforeScopedRequest()
+        {
+            FakeSyncPairWork work = new()
+            {
+                Failures = [new SyncActionRequiredException(
+                    "Local delete blocked by mass-delete guard. 1040 pending deletes exceed limit 100.")],
+            };
+            SyncPairRunner runner = CreateRunner(
+                CreatePair(isEnabled: true),
+                work,
+                NoDelayRetryOptions(maxAttempts: 1));
+            SyncRunRequest backgroundRequest = SyncRunRequest.ForFull(SyncRunCause.Periodic);
+            SyncRunRequest scopedRequest = SyncRunRequest.ForLocalChangedPaths(["Pictures/album"]);
+
+            Assert.ThrowsAsync<SyncActionRequiredException>(
+                async () => await runner.SyncNowAsync(backgroundRequest));
+            await runner.SyncNowAsync(scopedRequest);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(work.Requests, Has.Count.EqualTo(2));
+                Assert.That(work.Requests[0], Is.SameAs(backgroundRequest));
+                Assert.That(work.Requests[1], Is.SameAs(scopedRequest));
+            });
+        }
+
+        [Test]
         public async Task SyncNowAsync_MergesQueuedScopedRequestsIntoLaterFullCheck()
         {
             var work = new BlockingFirstFailureSyncPairWork();
@@ -1879,6 +1930,53 @@ namespace Cotton.Sync.App.Tests.Runners
             public void ReleaseFirstRun()
             {
                 _releaseFirstRun.TrySetResult();
+            }
+
+            public Task WaitForFirstRunAsync(TimeSpan timeout)
+            {
+                return _firstRunStarted.Task.WaitAsync(timeout);
+            }
+
+            private static TaskCompletionSource CreateCompletionSource()
+            {
+                return new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+        }
+
+        private class PreemptibleSyncPairWork : ISyncPairWork
+        {
+            private readonly TaskCompletionSource _firstRunStarted = CreateCompletionSource();
+
+            public bool FirstRunCancellationObserved { get; private set; }
+
+            public List<SyncRunRequest> Requests { get; } = [];
+
+            public Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
+            {
+                return RunOnceAsync(syncPair, SyncRunRequest.Full, cancellationToken);
+            }
+
+            public async Task RunOnceAsync(
+                SyncPairSettings syncPair,
+                SyncRunRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                Requests.Add(request);
+                if (Requests.Count != 1)
+                {
+                    return;
+                }
+
+                _firstRunStarted.TrySetResult();
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    FirstRunCancellationObserved = true;
+                    throw;
+                }
             }
 
             public Task WaitForFirstRunAsync(TimeSpan timeout)

@@ -8,5 +8,6 @@ namespace Cotton.Sync.App.Runners
         None = 0,
         Pause = 1,
         Stop = 2,
+        Superseded = 3,
     }
 }
