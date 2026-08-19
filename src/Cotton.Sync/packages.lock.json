@@ -22,6 +22,12 @@
           "Microsoft.Extensions.Logging.Abstractions": "10.0.8"
         }
       },
+      "EasyExtensions.Analyzers": {
+        "type": "Direct",
+        "requested": "[3.0.73, )",
+        "resolved": "3.0.73",
+        "contentHash": "pv/obupqhzCei2lZ2ToavcRtlTu49vr7n8Ny55KeT2LaKfOMpmL3WbhXhWcZwahruy8Vq1Zd5wnhFSNWnpv9Ww=="
+      },
       "Microsoft.EntityFrameworkCore.Design": {
         "type": "Direct",
         "requested": "[10.0.8, )",
