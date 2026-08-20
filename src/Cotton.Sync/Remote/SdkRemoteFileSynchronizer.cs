@@ -1,8 +1,6 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
-using System.Buffers;
-using System.Collections.Concurrent;
 using System.Net;
 using System.Security.Cryptography;
 using Cotton.Files;
@@ -20,10 +18,10 @@ namespace Cotton.Sync.Remote
     public class SdkRemoteFileSynchronizer : IRemoteFileTransferProgressSynchronizer, IRemoteFileRangeSynchronizer
     {
         private const string DefaultContentType = "application/octet-stream";
-        private const int MaximumInitialChunkCollectionCapacity = 65_536;
         private readonly ICottonCloudClient _client;
+        private readonly RemoteChunkUploader _chunkUploader;
         private readonly SdkRemoteFileSynchronizerOptions _options;
-        private readonly ConcurrentDictionary<string, Guid> _directoryCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly RemoteDirectoryPathResolver _directoryResolver;
         private int? _resolvedChunkSizeBytes;
 
         /// <summary>
@@ -40,6 +38,8 @@ namespace Cotton.Sync.Remote
             }
 
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(_options.MaxConcurrentChunkUploads);
+            _directoryResolver = new RemoteDirectoryPathResolver(_client.Nodes, _options.DirectoryPageSize);
+            _chunkUploader = new RemoteChunkUploader(_client.Chunks, _options.MaxConcurrentChunkUploads);
         }
 
         /// <inheritdoc />
@@ -70,17 +70,21 @@ namespace Cotton.Sync.Remote
         {
             ArgumentNullException.ThrowIfNull(localFile);
             string normalizedPath = SyncPath.Normalize(relativePath);
-            Guid parentNodeId = await EnsureParentNodeAsync(rootNodeId, normalizedPath, cancellationToken).ConfigureAwait(false);
+            Guid parentNodeId = await _directoryResolver
+                .EnsureParentAsync(rootNodeId, normalizedPath, cancellationToken)
+                .ConfigureAwait(false);
             ReportTransfer(
                 transferProgress,
                 SyncTransferDirection.Upload,
                 normalizedPath,
                 transferredBytes: 0,
                 totalBytes: localFile.SizeBytes);
-            UploadedChunks uploadedChunks = await UploadChunksAsync(
+            int chunkSize = await GetChunkSizeAsync(cancellationToken).ConfigureAwait(false);
+            UploadedChunks uploadedChunks = await _chunkUploader.UploadAsync(
                 normalizedPath,
                 localFile.FullPath,
                 localFile.SizeBytes,
+                chunkSize,
                 transferProgress,
                 cancellationToken).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(localFile.ContentHash)
@@ -135,7 +139,9 @@ namespace Cotton.Sync.Remote
         {
             ArgumentNullException.ThrowIfNull(existingRemoteFile);
             string normalizedPath = SyncPath.Normalize(relativePath);
-            Guid parentNodeId = await EnsureParentNodeAsync(rootNodeId, normalizedPath, cancellationToken).ConfigureAwait(false);
+            Guid parentNodeId = await _directoryResolver
+                .EnsureParentAsync(rootNodeId, normalizedPath, cancellationToken)
+                .ConfigureAwait(false);
             string targetName = Path.GetFileName(normalizedPath);
             NodeFileManifestDto current = existingRemoteFile;
             if (current.NodeId != parentNodeId)
@@ -241,168 +247,6 @@ namespace Cotton.Sync.Remote
             return _client.Files.DeleteAsync(nodeFileId, skipTrash, expectedETag, cancellationToken);
         }
 
-        private async Task<UploadedChunks> UploadChunksAsync(
-            string relativePath,
-            string filePath,
-            long totalBytes,
-            IProgress<SyncTransferProgress>? transferProgress,
-            CancellationToken cancellationToken)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
-            int chunkSize = await GetChunkSizeAsync(cancellationToken).ConfigureAwait(false);
-            byte[] buffer = ArrayPool<byte>.Shared.Rent(chunkSize);
-            int chunkCollectionCapacity = EstimateChunkCollectionCapacity(totalBytes, chunkSize);
-            var chunkHashes = new List<string>(chunkCollectionCapacity);
-            var knownChunkHashes = new HashSet<string>(chunkCollectionCapacity, StringComparer.OrdinalIgnoreCase);
-            var pendingUploads = new List<Task<int>>(_options.MaxConcurrentChunkUploads);
-            long transferredBytes = 0;
-            using IncrementalHash contentHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            try
-            {
-                await using FileStream stream = new(
-                    filePath,
-                    FileMode.Open,
-                    FileAccess.Read,
-                    FileShare.ReadWrite | FileShare.Delete,
-                    bufferSize: Math.Min(chunkSize, 1024 * 128),
-                    FileOptions.Asynchronous | FileOptions.SequentialScan);
-                while (true)
-                {
-                    int read = await ReadChunkAsync(stream, buffer, chunkSize, cancellationToken).ConfigureAwait(false);
-                    if (read == 0)
-                    {
-                        break;
-                    }
-
-                    string hash = Convert.ToHexStringLower(SHA256.HashData(buffer.AsSpan(0, read)));
-                    contentHash.AppendData(buffer, 0, read);
-                    chunkHashes.Add(hash);
-                    pendingUploads.Add(CreateChunkUploadTask(hash, buffer, read, knownChunkHashes, cancellationToken));
-                    if (pendingUploads.Count >= _options.MaxConcurrentChunkUploads)
-                    {
-                        transferredBytes = await FlushPendingChunkUploadsAsync(
-                            pendingUploads,
-                            transferredBytes,
-                            relativePath,
-                            totalBytes,
-                            transferProgress).ConfigureAwait(false);
-                    }
-                }
-
-                transferredBytes = await FlushPendingChunkUploadsAsync(
-                    pendingUploads,
-                    transferredBytes,
-                    relativePath,
-                    totalBytes,
-                    transferProgress).ConfigureAwait(false);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(buffer);
-            }
-
-            if (chunkHashes.Count == 0)
-            {
-                string emptyHash = Convert.ToHexStringLower(SHA256.HashData(ReadOnlySpan<byte>.Empty));
-                await UploadChunkIfMissingAsync(emptyHash, ReadOnlyMemory<byte>.Empty, cancellationToken).ConfigureAwait(false);
-                ReportTransfer(
-                    transferProgress,
-                    SyncTransferDirection.Upload,
-                    relativePath,
-                    transferredBytes: 0,
-                    totalBytes);
-                chunkHashes.Add(emptyHash);
-            }
-
-            string fullContentHash = Convert.ToHexStringLower(contentHash.GetHashAndReset());
-            return new UploadedChunks(chunkHashes, fullContentHash);
-        }
-
-        private Task<int> CreateChunkUploadTask(
-            string hash,
-            byte[] sourceBuffer,
-            int count,
-            HashSet<string> knownChunkHashes,
-            CancellationToken cancellationToken)
-        {
-            if (!knownChunkHashes.Add(hash))
-            {
-                return Task.FromResult(count);
-            }
-
-            byte[] chunkBuffer = ArrayPool<byte>.Shared.Rent(count);
-            sourceBuffer.AsSpan(0, count).CopyTo(chunkBuffer);
-            return UploadChunkIfMissingAsync(hash, chunkBuffer, count, cancellationToken);
-        }
-
-        private static async Task<long> FlushPendingChunkUploadsAsync(
-            List<Task<int>> pendingUploads,
-            long transferredBytes,
-            string relativePath,
-            long totalBytes,
-            IProgress<SyncTransferProgress>? transferProgress)
-        {
-            if (pendingUploads.Count == 0)
-            {
-                return transferredBytes;
-            }
-
-            while (pendingUploads.Count > 0)
-            {
-                Task<int> completedTask = await Task.WhenAny(pendingUploads).ConfigureAwait(false);
-                pendingUploads.Remove(completedTask);
-                int bytes;
-                try
-                {
-                    bytes = await completedTask.ConfigureAwait(false);
-                }
-                catch
-                {
-                    ObservePendingUploadFailures(pendingUploads);
-                    throw;
-                }
-
-                transferredBytes += bytes;
-                ReportTransfer(
-                    transferProgress,
-                    SyncTransferDirection.Upload,
-                    relativePath,
-                    transferredBytes,
-                    totalBytes);
-            }
-
-            return transferredBytes;
-        }
-
-        private static void ObservePendingUploadFailures(List<Task<int>> pendingUploads)
-        {
-            if (pendingUploads.Count == 0)
-            {
-                return;
-            }
-
-            Task pendingBatch = Task.WhenAll(pendingUploads);
-            pendingUploads.Clear();
-            _ = pendingBatch.ContinueWith(
-                static task => _ = task.Exception,
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
-                TaskScheduler.Default);
-        }
-
-        private static int EstimateChunkCollectionCapacity(long totalBytes, int chunkSize)
-        {
-            if (totalBytes <= 0)
-            {
-                return 0;
-            }
-
-            long estimatedChunkCount = ((totalBytes - 1) / chunkSize) + 1;
-            return estimatedChunkCount > MaximumInitialChunkCollectionCapacity
-                ? MaximumInitialChunkCollectionCapacity
-                : (int)estimatedChunkCount;
-        }
-
         private static void ReportTransfer(
             IProgress<SyncTransferProgress>? progress,
             SyncTransferDirection direction,
@@ -417,43 +261,6 @@ namespace Cotton.Sync.Remote
                 transferredBytes,
                 totalBytes,
                 isCompleted));
-        }
-
-        private async Task UploadChunkIfMissingAsync(
-            string hash,
-            ReadOnlyMemory<byte> content,
-            CancellationToken cancellationToken)
-        {
-            if (await _client.Chunks.ExistsAsync(hash, cancellationToken).ConfigureAwait(false))
-            {
-                return;
-            }
-
-            await using MemoryStream chunkStream = new MemoryStream(content.ToArray(), writable: false);
-            await _client.Chunks.UploadRawAsync(hash, chunkStream, DefaultContentType, cancellationToken).ConfigureAwait(false);
-        }
-
-        private async Task<int> UploadChunkIfMissingAsync(
-            string hash,
-            byte[] buffer,
-            int count,
-            CancellationToken cancellationToken)
-        {
-            try
-            {
-                if (await _client.Chunks.ExistsAsync(hash, cancellationToken).ConfigureAwait(false))
-                {
-                    return count;
-                }
-
-                await using MemoryStream chunkStream = new MemoryStream(buffer, 0, count, writable: false);
-                await _client.Chunks.UploadRawAsync(hash, chunkStream, DefaultContentType, cancellationToken).ConfigureAwait(false);
-                return count;
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(buffer);
-            }
         }
 
         private async Task<int> GetChunkSizeAsync(CancellationToken cancellationToken)
@@ -477,131 +284,6 @@ namespace Cotton.Sync.Remote
 
             _resolvedChunkSizeBytes = settings.MaxChunkSizeBytes;
             return _resolvedChunkSizeBytes.Value;
-        }
-
-        private async Task<Guid> EnsureParentNodeAsync(Guid rootNodeId, string relativePath, CancellationToken cancellationToken)
-        {
-            string[] segments = relativePath.Split('/');
-            if (segments.Length == 1)
-            {
-                return rootNodeId;
-            }
-
-            Guid currentNodeId = rootNodeId;
-            string currentPath = string.Empty;
-            for (int index = 0; index < segments.Length - 1; index++)
-            {
-                string segment = segments[index];
-                currentPath = string.IsNullOrEmpty(currentPath) ? segment : currentPath + "/" + segment;
-                string cacheKey = rootNodeId.ToString("D") + ":" + SyncPath.ToKey(currentPath);
-                Guid? cachedNodeId = await TryGetCurrentCachedDirectoryAsync(
-                        cacheKey,
-                        currentNodeId,
-                        segment,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                if (cachedNodeId.HasValue)
-                {
-                    currentNodeId = cachedNodeId.Value;
-                    continue;
-                }
-
-                NodeDto? existing = await FindChildDirectoryAsync(currentNodeId, segment, cancellationToken).ConfigureAwait(false);
-                NodeDto node = existing
-                    ?? await CreateOrReuseDirectoryAsync(currentNodeId, segment, cancellationToken).ConfigureAwait(false);
-                currentNodeId = node.Id;
-                _directoryCache[cacheKey] = currentNodeId;
-            }
-
-            return currentNodeId;
-        }
-
-        private async Task<NodeDto> CreateOrReuseDirectoryAsync(
-            Guid parentNodeId,
-            string name,
-            CancellationToken cancellationToken)
-        {
-            try
-            {
-                return await _client.Nodes.CreateAsync(parentNodeId, name, cancellationToken).ConfigureAwait(false);
-            }
-            catch (CottonApiException exception) when (exception.StatusCode == HttpStatusCode.Conflict)
-            {
-                NodeDto? existing = await FindChildDirectoryAsync(parentNodeId, name, cancellationToken).ConfigureAwait(false);
-                if (existing is null)
-                {
-                    throw;
-                }
-
-                return existing;
-            }
-        }
-
-        private async Task<Guid?> TryGetCurrentCachedDirectoryAsync(
-            string cacheKey,
-            Guid expectedParentNodeId,
-            string expectedName,
-            CancellationToken cancellationToken)
-        {
-            if (!_directoryCache.TryGetValue(cacheKey, out Guid cachedNodeId))
-            {
-                return null;
-            }
-
-            NodeDto cachedNode;
-            try
-            {
-                cachedNode = await _client.Nodes.GetAsync(cachedNodeId, cancellationToken).ConfigureAwait(false);
-            }
-            catch (CottonApiException exception) when (exception.StatusCode == HttpStatusCode.NotFound)
-            {
-                _directoryCache.TryRemove(cacheKey, out _);
-                return null;
-            }
-
-            if (cachedNode.ParentId != expectedParentNodeId
-                || !string.Equals(
-                    RemoteNameKey.Create(cachedNode.Name),
-                    RemoteNameKey.Create(expectedName),
-                    StringComparison.Ordinal))
-            {
-                _directoryCache.TryRemove(cacheKey, out _);
-                return null;
-            }
-
-            return cachedNode.Id;
-        }
-
-        private async Task<NodeDto?> FindChildDirectoryAsync(Guid parentNodeId, string name, CancellationToken cancellationToken)
-        {
-            string nameKey = RemoteNameKey.Create(name);
-            int page = 1;
-            int loaded = 0;
-            while (true)
-            {
-                CottonPagedResult<NodeContentDto> pageResult = await _client.Nodes.GetChildrenAsync(
-                    parentNodeId,
-                    page,
-                    _options.DirectoryPageSize,
-                    depth: 0,
-                    cancellationToken).ConfigureAwait(false);
-                NodeContentDto content = pageResult.Payload;
-                NodeDto? match = content.Nodes.FirstOrDefault(node =>
-                    string.Equals(RemoteNameKey.Create(node.Name), nameKey, StringComparison.Ordinal));
-                if (match is not null)
-                {
-                    return match;
-                }
-
-                int count = content.Nodes.Count + content.Files.Count;
-                loaded += count;
-                if (count == 0 || loaded >= pageResult.TotalCount)
-                {
-                    return null;
-                }
-
-                page++;
-            }
         }
 
         private string ResolveContentType(string relativePath)
@@ -630,21 +312,5 @@ namespace Cotton.Sync.Remote
             };
         }
 
-        private static async Task<int> ReadChunkAsync(FileStream stream, byte[] buffer, int chunkSize, CancellationToken cancellationToken)
-        {
-            int total = 0;
-            while (total < chunkSize)
-            {
-                int read = await stream.ReadAsync(buffer.AsMemory(total, chunkSize - total), cancellationToken).ConfigureAwait(false);
-                if (read == 0)
-                {
-                    break;
-                }
-
-                total += read;
-            }
-
-            return total;
-        }
     }
 }
