@@ -22,15 +22,14 @@ namespace Cotton.Sync.App.LocalChanges
         private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
         private readonly object _pendingGate = new();
         private readonly TimeSpan _debounceInterval;
+        private readonly LocalChangeDebounceExecutor _debounceExecutor;
         private readonly TimeSpan _maxDebounceDelay;
         private readonly TimeProvider _timeProvider;
         private readonly ILogger<LocalChangeSyncCoordinator> _logger;
         private readonly ILocalChangeSuppression? _changeSuppression;
-        private readonly TimeSpan _connectionRetryInterval;
-        private readonly Func<TimeSpan, CancellationToken, Task> _delayAsync;
-        private readonly ILocalOfflineChangeDetector? _offlineChangeDetector;
+        private readonly OfflineLocalChangeReconciler? _offlineReconciler;
+        private readonly SyncRequestConnectionRetry _syncRequest;
         private readonly ISyncPairSettingsStore _syncPairs;
-        private readonly ISyncSupervisor _supervisor;
         private readonly ILocalSyncRootWatcherFactory _watcherFactory;
         private readonly Dictionary<Guid, PendingLocalSyncRequest> _pendingSyncs = [];
         private readonly HashSet<PendingLocalSyncRequest> _pendingRequests = [];
@@ -80,10 +79,9 @@ namespace Cotton.Sync.App.LocalChanges
             Func<TimeSpan, CancellationToken, Task>? delayAsync = null)
         {
             _syncPairs = syncPairs ?? throw new ArgumentNullException(nameof(syncPairs));
-            _supervisor = supervisor ?? throw new ArgumentNullException(nameof(supervisor));
+            ArgumentNullException.ThrowIfNull(supervisor);
             _watcherFactory = watcherFactory ?? throw new ArgumentNullException(nameof(watcherFactory));
             _changeSuppression = changeSuppression;
-            _offlineChangeDetector = offlineChangeDetector;
             _debounceInterval = debounceInterval ?? DefaultDebounceInterval;
             if (_debounceInterval < TimeSpan.Zero)
             {
@@ -96,8 +94,8 @@ namespace Cotton.Sync.App.LocalChanges
                 throw new ArgumentOutOfRangeException(nameof(maxDebounceDelay), "Maximum debounce delay cannot be negative.");
             }
 
-            _connectionRetryInterval = connectionRetryInterval ?? DefaultConnectionRetryInterval;
-            if (_connectionRetryInterval <= TimeSpan.Zero)
+            TimeSpan retryInterval = connectionRetryInterval ?? DefaultConnectionRetryInterval;
+            if (retryInterval <= TimeSpan.Zero)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(connectionRetryInterval),
@@ -105,8 +103,16 @@ namespace Cotton.Sync.App.LocalChanges
             }
 
             _timeProvider = timeProvider ?? TimeProvider.System;
-            _delayAsync = delayAsync ?? Task.Delay;
             _logger = logger ?? NullLogger<LocalChangeSyncCoordinator>.Instance;
+            _syncRequest = new SyncRequestConnectionRetry(
+                supervisor,
+                retryInterval,
+                delayAsync ?? Task.Delay,
+                _logger);
+            _offlineReconciler = offlineChangeDetector is null
+                ? null
+                : new OfflineLocalChangeReconciler(offlineChangeDetector, _syncRequest, _logger);
+            _debounceExecutor = new LocalChangeDebounceExecutor(this, _debounceInterval, _syncRequest, _logger);
         }
 
         /// <inheritdoc />
@@ -134,7 +140,7 @@ namespace Cotton.Sync.App.LocalChanges
                         await watcher.StartAsync(cancellationToken).ConfigureAwait(false);
                     }
 
-                    if (_offlineChangeDetector is not null)
+                    if (_offlineReconciler is not null)
                     {
                         foreach (SyncPairSettings syncPair in enabledSyncPairs)
                         {
@@ -211,38 +217,11 @@ namespace Cotton.Sync.App.LocalChanges
             SyncPairSettings syncPair,
             CancellationToken cancellationToken)
         {
-            if (_offlineChangeDetector is null || syncPair.Mode != SyncPairMode.WindowsVirtualFiles)
+            if (_offlineReconciler is null || syncPair.Mode != SyncPairMode.WindowsVirtualFiles)
             {
                 return;
             }
 
-            SyncRunRequest? request;
-            try
-            {
-                request = await _offlineChangeDetector
-                    .DetectAsync(syncPair, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                _logger.LogError(
-                    exception,
-                    "Failed to inspect local changes made while sync was stopped for {SyncPairId}; requesting a full recovery pass.",
-                    syncPair.Id);
-                request = SyncRunRequest.ForFull(SyncRunCause.LocalWatcherError);
-            }
-
-            if (request is null)
-            {
-                return;
-            }
-
-            _logger.LogInformation(
-                "Requesting startup local-change reconciliation for {SyncPairId}; full={IsFull}; requested paths={RequestedPathCount}; paths={ChangedPathPreview}.",
-                syncPair.Id,
-                request.IsFull,
-                request.LocalChangedPaths.Count,
-                string.Join(", ", request.LocalChangedPaths.Take(8)));
             CancellationToken lifetimeToken;
             lock (_pendingGate)
             {
@@ -254,36 +233,10 @@ namespace Cotton.Sync.App.LocalChanges
                 lifetimeToken = _lifetime.Token;
             }
 
-            Task reconciliation = RunOfflineReconciliationAsync(syncPair.Id, request, lifetimeToken);
+            Task reconciliation = _offlineReconciler.ReconcileAsync(syncPair, lifetimeToken);
             lock (_pendingGate)
             {
                 _offlineReconciliationTasks.Add(reconciliation);
-            }
-        }
-
-        private async Task RunOfflineReconciliationAsync(
-            Guid syncPairId,
-            SyncRunRequest request,
-            CancellationToken cancellationToken)
-        {
-            try
-            {
-                await RequestSyncWithConnectionRecoveryAsync(
-                        syncPairId,
-                        request,
-                        "Startup local-change reconciliation",
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-            }
-            catch (Exception exception)
-            {
-                _logger.LogError(
-                    exception,
-                    "Startup local-change reconciliation failed for {SyncPairId}.",
-                    syncPairId);
             }
         }
 
@@ -333,124 +286,11 @@ namespace Cotton.Sync.App.LocalChanges
 
                 _pendingSyncs.Add(change.SyncPairId, next);
                 _pendingRequests.Add(next);
-                next.Runner = RunDebouncedSyncAsync(change.SyncPairId, next);
+                next.Runner = _debounceExecutor.RunAsync(change.SyncPairId, next);
             }
         }
 
-        private async Task RunDebouncedSyncAsync(Guid syncPairId, PendingLocalSyncRequest request)
-        {
-            try
-            {
-                while (true)
-                {
-                    string changedPath;
-                    while (true)
-                    {
-                        int observedChangeVersion = GetChangeVersion(request);
-                        TimeSpan remainingMaxDelay = GetRemainingMaxDebounceDelay(request);
-                        if (remainingMaxDelay <= TimeSpan.Zero)
-                        {
-                            if (!TryGetCurrentChangedPath(syncPairId, request, out changedPath))
-                            {
-                                return;
-                            }
-
-                            break;
-                        }
-
-                        TimeSpan delay = remainingMaxDelay < _debounceInterval
-                            ? remainingMaxDelay
-                            : _debounceInterval;
-                        await Task.Delay(delay, request.Cancellation.Token).ConfigureAwait(false);
-                        if (TryGetQuietChangedPath(syncPairId, request, observedChangeVersion, out changedPath))
-                        {
-                            break;
-                        }
-                    }
-
-                    if (!TryCreateSyncDispatch(
-                            syncPairId,
-                            request,
-                            out changedPath,
-                            out int dispatchedChangeVersion,
-                            out SyncRunRequest? syncRequest))
-                    {
-                        return;
-                    }
-
-                    _logger.LogInformation(
-                        "Requesting local-change sync for {SyncPairId} with origin {ChangeOrigin} after change at {ChangedPath}.",
-                        syncPairId,
-                        "user-or-external",
-                        changedPath);
-                    if (syncRequest is null)
-                    {
-                        _logger.LogWarning(
-                            "Ignoring local-change sync for {SyncPairId} because no changed path belongs to its local root.",
-                            syncPairId);
-                        return;
-                    }
-
-                    await RequestSyncWithConnectionRecoveryAsync(
-                            syncPairId,
-                            syncRequest,
-                            "Local-change sync",
-                            request.Cancellation.Token)
-                        .ConfigureAwait(false);
-                    if (TryCompleteDispatch(syncPairId, request, dispatchedChangeVersion))
-                    {
-                        return;
-                    }
-                }
-            }
-            catch (OperationCanceledException) when (request.Cancellation.IsCancellationRequested)
-            {
-            }
-            catch (Exception exception)
-            {
-                _logger.LogError(
-                    exception,
-                    "Failed to request local-change sync for {SyncPairId}.",
-                    syncPairId);
-            }
-            finally
-            {
-                CompletePendingSync(syncPairId, request);
-                request.Cancellation.Dispose();
-            }
-        }
-
-        private async Task RequestSyncWithConnectionRecoveryAsync(
-            Guid syncPairId,
-            SyncRunRequest request,
-            string operation,
-            CancellationToken cancellationToken)
-        {
-            while (true)
-            {
-                try
-                {
-                    await _supervisor.SyncNowAsync(syncPairId, request, cancellationToken).ConfigureAwait(false);
-                    return;
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception exception) when (SyncFailureClassifier.IsTransientConnectionFailure(exception))
-                {
-                    _logger.LogWarning(
-                        exception,
-                        "{Operation} for {SyncPairId} could not reach Cotton Cloud; retrying after {RetryInterval}.",
-                        operation,
-                        syncPairId,
-                        _connectionRetryInterval);
-                    await _delayAsync(_connectionRetryInterval, cancellationToken).ConfigureAwait(false);
-                }
-            }
-        }
-
-        private int GetChangeVersion(PendingLocalSyncRequest request)
+        internal int GetChangeVersion(PendingLocalSyncRequest request)
         {
             lock (_pendingGate)
             {
@@ -458,7 +298,7 @@ namespace Cotton.Sync.App.LocalChanges
             }
         }
 
-        private TimeSpan GetRemainingMaxDebounceDelay(PendingLocalSyncRequest request)
+        internal TimeSpan GetRemainingMaxDebounceDelay(PendingLocalSyncRequest request)
         {
             DateTimeOffset now = _timeProvider.GetUtcNow();
             lock (_pendingGate)
@@ -473,7 +313,7 @@ namespace Cotton.Sync.App.LocalChanges
             return _maxDebounceDelay - elapsed;
         }
 
-        private bool TryGetCurrentChangedPath(
+        internal bool TryGetCurrentChangedPath(
             Guid syncPairId,
             PendingLocalSyncRequest request,
             out string changedPath)
@@ -486,7 +326,7 @@ namespace Cotton.Sync.App.LocalChanges
             }
         }
 
-        private bool TryGetQuietChangedPath(
+        internal bool TryGetQuietChangedPath(
             Guid syncPairId,
             PendingLocalSyncRequest request,
             int observedChangeVersion,
@@ -501,7 +341,7 @@ namespace Cotton.Sync.App.LocalChanges
             }
         }
 
-        private bool TryCreateSyncDispatch(
+        internal bool TryCreateSyncDispatch(
             Guid syncPairId,
             PendingLocalSyncRequest request,
             out string changedPath,
@@ -521,12 +361,14 @@ namespace Cotton.Sync.App.LocalChanges
 
                 changedPath = request.ChangedPath;
                 changeVersion = request.ChangeVersion;
-                syncRequest = CreateSyncRunRequest(syncPairId, request);
+                _localRootPaths.TryGetValue(syncPairId, out string? localRootPath);
+                _syncPairModes.TryGetValue(syncPairId, out SyncPairMode mode);
+                syncRequest = LocalChangeRequestFactory.Create(localRootPath, mode, request);
                 return true;
             }
         }
 
-        private bool TryCompleteDispatch(
+        internal bool TryCompleteDispatch(
             Guid syncPairId,
             PendingLocalSyncRequest request,
             int dispatchedChangeVersion)
@@ -549,7 +391,7 @@ namespace Cotton.Sync.App.LocalChanges
             }
         }
 
-        private void CompletePendingSync(Guid syncPairId, PendingLocalSyncRequest request)
+        internal void CompletePendingSync(Guid syncPairId, PendingLocalSyncRequest request)
         {
             lock (_pendingGate)
             {
@@ -591,176 +433,11 @@ namespace Cotton.Sync.App.LocalChanges
             await Task.WhenAll(tasks).WaitAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        private SyncRunRequest? CreateSyncRunRequest(Guid syncPairId, PendingLocalSyncRequest request)
-        {
-            if (request.RequiresFullSync)
-            {
-                return SyncRunRequest.ForFull(request.Causes);
-            }
-
-            if (!_localRootPaths.TryGetValue(syncPairId, out string? localRootPath))
-            {
-                return null;
-            }
-
-            List<string> relativePaths = [];
-            bool allowRootRelativePath = IsWindowsVirtualFilesPair(syncPairId);
-            foreach (string changedPath in request.ChangedPaths)
-            {
-                if (TryGetSyncRelativePath(localRootPath, changedPath, allowRootRelativePath, out string relativePath))
-                {
-                    relativePaths.Add(relativePath);
-                }
-            }
-
-            List<string> deletedRelativePaths = [];
-            foreach (string deletedPath in request.DeletedPaths)
-            {
-                if (TryGetSyncRelativePath(localRootPath, deletedPath, allowRootRelativePath, out string relativePath))
-                {
-                    deletedRelativePaths.Add(relativePath);
-                }
-            }
-
-            return relativePaths.Count == 0
-                ? null
-                : SyncRunRequest.ForLocalChangedPaths(relativePaths, deletedRelativePaths, request.Causes);
-        }
-
         private bool RecordChange(Guid syncPairId, PendingLocalSyncRequest pendingSync, LocalSyncRootChange change)
         {
-            SyncRunCause fullSyncCause = GetFullSyncCause(change);
-            int maxScopedChangedPaths = GetMaxScopedChangedPaths(syncPairId);
-            bool preserveScopeOnOverflow = IsWindowsVirtualFilesPair(syncPairId);
-            if (fullSyncCause != SyncRunCause.None)
-            {
-                pendingSync.RecordChange(
-                    change.FullPath,
-                    fullSyncCause,
-                    maxScopedChangedPaths,
-                    preserveScopeOnOverflow);
-                return true;
-            }
-
-            if (!_localRootPaths.TryGetValue(syncPairId, out string? localRootPath))
-            {
-                return false;
-            }
-
-            bool allowRootRelativePath = IsWindowsVirtualFilesPair(syncPairId);
-            bool recorded = false;
-            if (TryGetSyncRelativePath(
-                    localRootPath,
-                    change.FullPath,
-                    allowRootRelativePath,
-                    out _))
-            {
-                pendingSync.RecordChange(
-                    change.FullPath,
-                    SyncRunCause.None,
-                    maxScopedChangedPaths,
-                    preserveScopeOnOverflow,
-                    change.Kind == LocalSyncRootChangeKind.Deleted);
-                recorded = true;
-            }
-
-            if (!string.IsNullOrWhiteSpace(change.OldFullPath)
-                && TryGetSyncRelativePath(
-                    localRootPath,
-                    change.OldFullPath,
-                    allowRootRelativePath,
-                    out _))
-            {
-                pendingSync.RecordChange(
-                    change.OldFullPath,
-                    SyncRunCause.None,
-                    maxScopedChangedPaths,
-                    preserveScopeOnOverflow);
-                recorded = true;
-            }
-
-            return recorded;
-        }
-
-        private int GetMaxScopedChangedPaths(Guid syncPairId)
-        {
-            return IsWindowsVirtualFilesPair(syncPairId)
-                ? PendingLocalSyncRequest.MaxWindowsVirtualFilesScopedChangedPaths
-                : PendingLocalSyncRequest.MaxScopedChangedPaths;
-        }
-
-        private bool IsWindowsVirtualFilesPair(Guid syncPairId)
-        {
-            return _syncPairModes.TryGetValue(syncPairId, out SyncPairMode mode)
-                && mode == SyncPairMode.WindowsVirtualFiles;
-        }
-
-        private static SyncRunCause GetFullSyncCause(LocalSyncRootChange change)
-        {
-            if (change.Kind == LocalSyncRootChangeKind.Error)
-            {
-                return SyncRunCause.LocalWatcherError;
-            }
-
-            return change.Kind == LocalSyncRootChangeKind.Renamed && string.IsNullOrWhiteSpace(change.OldFullPath)
-                ? SyncRunCause.LocalRenameRecovery
-                : SyncRunCause.None;
-        }
-
-        private static bool TryGetRelativePath(string localRootPath, string fullPath, out string relativePath)
-        {
-            return TryGetRelativePath(localRootPath, fullPath, allowRootRelativePath: false, out relativePath);
-        }
-
-        private static bool TryGetSyncRelativePath(
-            string localRootPath,
-            string fullPath,
-            bool allowRootRelativePath,
-            out string relativePath)
-        {
-            return TryGetRelativePath(localRootPath, fullPath, allowRootRelativePath, out relativePath)
-                && (string.Equals(relativePath, ".", StringComparison.Ordinal)
-                    || !SyncPathIgnoreRules.ShouldIgnore(relativePath));
-        }
-
-        private static bool TryGetRelativePath(
-            string localRootPath,
-            string fullPath,
-            bool allowRootRelativePath,
-            out string relativePath)
-        {
-            try
-            {
-                string fullRoot = Path.GetFullPath(localRootPath)
-                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                string fullChangedPath = Path.GetFullPath(fullPath)
-                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                if (fullChangedPath.Equals(fullRoot, StringComparison.OrdinalIgnoreCase))
-                {
-                    relativePath = allowRootRelativePath ? "." : string.Empty;
-                    return allowRootRelativePath;
-                }
-
-                string rootWithSeparator = fullRoot + Path.DirectorySeparatorChar;
-                if (!fullChangedPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
-                {
-                    relativePath = string.Empty;
-                    return false;
-                }
-
-                relativePath = Path.GetRelativePath(fullRoot, fullChangedPath).Replace('\\', '/');
-                return !string.IsNullOrWhiteSpace(relativePath) && relativePath != ".";
-            }
-            catch (ArgumentException)
-            {
-                relativePath = string.Empty;
-                return false;
-            }
-            catch (NotSupportedException)
-            {
-                relativePath = string.Empty;
-                return false;
-            }
+            _localRootPaths.TryGetValue(syncPairId, out string? localRootPath);
+            _syncPairModes.TryGetValue(syncPairId, out SyncPairMode mode);
+            return LocalChangeRequestFactory.Record(localRootPath, mode, pendingSync, change);
         }
     }
 }
