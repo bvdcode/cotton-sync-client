@@ -63,7 +63,7 @@ namespace Cotton.Sync.WindowsShell
             string fullRootPath = Path.GetFullPath(rootPath);
             Directory.CreateDirectory(fullRootPath);
             StorageFolder rootFolder = await StorageFolder.GetFolderFromPathAsync(fullRootPath).AsTask().ConfigureAwait(false);
-            var syncRootInfo = new StorageProviderSyncRootInfo
+            StorageProviderSyncRootInfo syncRootInfo = new StorageProviderSyncRootInfo
             {
                 Id = CreateSyncRootId(account),
                 Path = rootFolder,
