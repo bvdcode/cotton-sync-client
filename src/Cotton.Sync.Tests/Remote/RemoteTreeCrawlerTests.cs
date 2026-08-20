@@ -3,6 +3,7 @@
 
 using Cotton.Files;
 using Cotton.Nodes;
+using Cotton.Sdk;
 using Cotton.Sdk.Nodes;
 using Cotton.Sync.Remote;
 
@@ -18,18 +19,18 @@ namespace Cotton.Sync.Tests.Remote
             var client = new FakeNodeClient();
             client.Nodes[rootId] = Node(rootId, null, "root");
             client.Nodes[docsId] = Node(docsId, rootId, "Docs");
-            client.Children[(rootId, 1)] = new NodeContentDto
+            client.Children[(rootId, 1)] = new FakeNodePage
             {
                 TotalCount = 3,
                 Nodes = [client.Nodes[docsId]],
                 Files = [File(rootId, "root.txt")],
             };
-            client.Children[(rootId, 2)] = new NodeContentDto
+            client.Children[(rootId, 2)] = new FakeNodePage
             {
                 TotalCount = 3,
                 Files = [File(rootId, "later.txt")],
             };
-            client.Children[(docsId, 1)] = new NodeContentDto
+            client.Children[(docsId, 1)] = new FakeNodePage
             {
                 TotalCount = 1,
                 Files = [File(docsId, "report.txt")],
@@ -59,22 +60,22 @@ namespace Cotton.Sync.Tests.Remote
             client.Nodes[rootId] = Node(rootId, null, "root");
             client.Nodes[docsId] = Node(docsId, rootId, "Docs");
             client.Nodes[videosId] = Node(videosId, rootId, "Videos");
-            client.Children[(rootId, 1)] = new NodeContentDto
+            client.Children[(rootId, 1)] = new FakeNodePage
             {
                 TotalCount = 2,
                 Nodes = [client.Nodes[docsId]],
             };
-            client.Children[(rootId, 2)] = new NodeContentDto
+            client.Children[(rootId, 2)] = new FakeNodePage
             {
                 TotalCount = 2,
                 Nodes = [client.Nodes[videosId]],
             };
-            client.Children[(docsId, 1)] = new NodeContentDto
+            client.Children[(docsId, 1)] = new FakeNodePage
             {
                 TotalCount = 1,
                 Files = [File(docsId, "report.txt")],
             };
-            client.Children[(videosId, 1)] = new NodeContentDto
+            client.Children[(videosId, 1)] = new FakeNodePage
             {
                 TotalCount = 1,
                 Files = [File(videosId, "clip.mp4")],
@@ -99,13 +100,13 @@ namespace Cotton.Sync.Tests.Remote
             var client = new FakeNodeClient();
             client.Nodes[rootId] = Node(rootId, null, "root");
             client.Nodes[docsId] = Node(docsId, rootId, "Docs");
-            client.Children[(rootId, 1)] = new NodeContentDto
+            client.Children[(rootId, 1)] = new FakeNodePage
             {
                 TotalCount = 2,
                 Nodes = [client.Nodes[docsId]],
                 Files = [File(rootId, "root.txt")],
             };
-            client.Children[(docsId, 1)] = new NodeContentDto
+            client.Children[(docsId, 1)] = new FakeNodePage
             {
                 TotalCount = 1,
                 Files = [File(docsId, "report.txt")],
@@ -136,7 +137,7 @@ namespace Cotton.Sync.Tests.Remote
             Guid rootId = Guid.NewGuid();
             var client = new FakeNodeClient();
             client.Nodes[rootId] = Node(rootId, null, "root");
-            client.Children[(rootId, 1)] = new NodeContentDto { TotalCount = 0 };
+            client.Children[(rootId, 1)] = new FakeNodePage { TotalCount = 0 };
             var crawler = new RemoteTreeCrawler(client);
 
             RemoteTreeSnapshot snapshot = await crawler.CrawlAsync(rootId);
@@ -158,18 +159,18 @@ namespace Cotton.Sync.Tests.Remote
             client.Nodes[rootId] = Node(rootId, null, "root");
             client.Nodes[metadataId] = Node(metadataId, rootId, ".cotton-sync");
             client.Nodes[docsId] = Node(docsId, rootId, "Docs");
-            client.Children[(rootId, 1)] = new NodeContentDto
+            client.Children[(rootId, 1)] = new FakeNodePage
             {
                 TotalCount = 4,
                 Nodes = [client.Nodes[metadataId], client.Nodes[docsId]],
                 Files = [File(rootId, "scratch.tmp"), File(rootId, "keep.txt")],
             };
-            client.Children[(metadataId, 1)] = new NodeContentDto
+            client.Children[(metadataId, 1)] = new FakeNodePage
             {
                 TotalCount = 1,
                 Files = [File(metadataId, "state.sqlite")],
             };
-            client.Children[(docsId, 1)] = new NodeContentDto
+            client.Children[(docsId, 1)] = new FakeNodePage
             {
                 TotalCount = 1,
                 Files = [File(docsId, "report.txt")],
@@ -194,13 +195,13 @@ namespace Cotton.Sync.Tests.Remote
             var client = new FakeNodeClient();
             client.Nodes[rootId] = Node(rootId, null, "root");
             client.Nodes[docsId] = Node(docsId, rootId, "Docs");
-            client.Children[(rootId, 1)] = new NodeContentDto
+            client.Children[(rootId, 1)] = new FakeNodePage
             {
                 TotalCount = 2,
                 Nodes = [client.Nodes[docsId]],
                 Files = [File(rootId, "root.txt")],
             };
-            client.Children[(docsId, 1)] = new NodeContentDto
+            client.Children[(docsId, 1)] = new FakeNodePage
             {
                 TotalCount = 2,
                 Files = [File(docsId, "a.txt"), File(docsId, "b.txt")],
@@ -234,7 +235,7 @@ namespace Cotton.Sync.Tests.Remote
             client.Nodes[rootId] = Node(rootId, null, "root");
             client.Nodes[docsId] = Node(docsId, rootId, "Docs");
             client.Nodes[videosId] = Node(videosId, rootId, "Videos");
-            client.Children[(rootId, 1)] = new NodeContentDto
+            client.Children[(rootId, 1)] = new FakeNodePage
             {
                 TotalCount = 2,
                 Nodes = [client.Nodes[docsId], client.Nodes[videosId]],
@@ -269,22 +270,22 @@ namespace Cotton.Sync.Tests.Remote
             client.Nodes[docsId] = Node(docsId, rootId, "Docs");
             client.Nodes[photosId] = Node(photosId, rootId, "Photos");
             client.Nodes[videosId] = Node(videosId, rootId, "Videos");
-            client.Children[(rootId, 1)] = new NodeContentDto
+            client.Children[(rootId, 1)] = new FakeNodePage
             {
                 TotalCount = 3,
                 Nodes = [client.Nodes[docsId], client.Nodes[photosId], client.Nodes[videosId]],
             };
-            client.Children[(docsId, 1)] = new NodeContentDto
+            client.Children[(docsId, 1)] = new FakeNodePage
             {
                 TotalCount = 1,
                 Files = [File(docsId, "report.txt")],
             };
-            client.Children[(photosId, 1)] = new NodeContentDto
+            client.Children[(photosId, 1)] = new FakeNodePage
             {
                 TotalCount = 1,
                 Files = [File(photosId, "photo.jpg")],
             };
-            client.Children[(videosId, 1)] = new NodeContentDto
+            client.Children[(videosId, 1)] = new FakeNodePage
             {
                 TotalCount = 1,
                 Files = [File(videosId, "clip.mp4")],
@@ -337,6 +338,11 @@ namespace Cotton.Sync.Tests.Remote
             };
         }
 
+        private class FakeNodePage : NodeContentDto
+        {
+            public int TotalCount { get; init; }
+        }
+
         private class FakeNodeClient : ICottonNodeClient
         {
             private readonly object _sync = new();
@@ -344,7 +350,7 @@ namespace Cotton.Sync.Tests.Remote
 
             public Dictionary<Guid, NodeDto> Nodes { get; } = [];
 
-            public Dictionary<(Guid NodeId, int Page), NodeContentDto> Children { get; } = [];
+            public Dictionary<(Guid NodeId, int Page), FakeNodePage> Children { get; } = [];
 
             public List<(Guid NodeId, int Page)> GetChildrenCalls { get; } = [];
 
@@ -362,7 +368,7 @@ namespace Cotton.Sync.Tests.Remote
                 return Task.FromResult(Nodes[nodeId]);
             }
 
-            public async Task<NodeContentDto> GetChildrenAsync(
+            public async Task<CottonPagedResult<NodeContentDto>> GetChildrenAsync(
                 Guid nodeId,
                 int page = 1,
                 int pageSize = 100,
@@ -381,9 +387,10 @@ namespace Cotton.Sync.Tests.Remote
                     {
                         MaxConcurrentGetChildrenCalls = Math.Max(MaxConcurrentGetChildrenCalls, active);
                         GetChildrenCalls.Add((nodeId, page));
-                        return Children.TryGetValue((nodeId, page), out NodeContentDto? content)
-                            ? content
-                            : new NodeContentDto { TotalCount = 0 };
+                        FakeNodePage content = Children.TryGetValue((nodeId, page), out FakeNodePage? configured)
+                            ? configured
+                            : new FakeNodePage { TotalCount = 0 };
+                        return new CottonPagedResult<NodeContentDto>(content, content.TotalCount);
                     }
                 }
                 finally

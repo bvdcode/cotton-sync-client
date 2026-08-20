@@ -579,12 +579,13 @@ namespace Cotton.Sync.Remote
             int loaded = 0;
             while (true)
             {
-                NodeContentDto content = await _client.Nodes.GetChildrenAsync(
+                CottonPagedResult<NodeContentDto> pageResult = await _client.Nodes.GetChildrenAsync(
                     parentNodeId,
                     page,
                     _options.DirectoryPageSize,
                     depth: 0,
                     cancellationToken).ConfigureAwait(false);
+                NodeContentDto content = pageResult.Payload;
                 NodeDto? match = content.Nodes.FirstOrDefault(node =>
                     string.Equals(RemoteNameKey.Create(node.Name), nameKey, StringComparison.Ordinal));
                 if (match is not null)
@@ -594,7 +595,7 @@ namespace Cotton.Sync.Remote
 
                 int count = content.Nodes.Count + content.Files.Count;
                 loaded += count;
-                if (count == 0 || loaded >= content.TotalCount)
+                if (count == 0 || loaded >= pageResult.TotalCount)
                 {
                     return null;
                 }

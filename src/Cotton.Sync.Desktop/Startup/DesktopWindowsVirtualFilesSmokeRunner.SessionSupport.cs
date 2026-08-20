@@ -4,6 +4,7 @@
 using Cotton.Files;
 using Cotton.Auth;
 using Cotton.Nodes;
+using Cotton.Sdk;
 using Cotton.Sdk.Auth;
 using Cotton.Sdk.Nodes;
 using Cotton.Sdk.Sync;
@@ -152,7 +153,7 @@ namespace Cotton.Sync.Desktop.Startup
                 throw new NotSupportedException();
             }
 
-            public Task<NodeContentDto> GetChildrenAsync(
+            public Task<CottonPagedResult<NodeContentDto>> GetChildrenAsync(
                 Guid nodeId,
                 int page = 1,
                 int pageSize = 100,

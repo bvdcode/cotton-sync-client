@@ -13,6 +13,7 @@ using Cotton.Sdk.Auth;
 using Cotton.Sdk.Chunks;
 using Cotton.Sdk.Files;
 using Cotton.Sdk.Nodes;
+using Cotton.Sdk.Notifications;
 using Cotton.Sdk.Realtime;
 using Cotton.Sdk.Settings;
 using Cotton.Sdk.Sync;
@@ -612,6 +613,8 @@ namespace Cotton.Sync.Tests.Remote
 
             public ICottonNodeClient Nodes => NodesClient;
 
+            public ICottonNotificationClient Notifications => throw new NotSupportedException();
+
             public ICottonSyncClient Sync => throw new NotSupportedException();
 
             public ICottonRealtimeClient Realtime => throw new NotSupportedException();
@@ -1008,7 +1011,7 @@ namespace Cotton.Sync.Tests.Remote
                 return Task.FromResult(node);
             }
 
-            public Task<NodeContentDto> GetChildrenAsync(
+            public Task<CottonPagedResult<NodeContentDto>> GetChildrenAsync(
                 Guid nodeId,
                 int page = 1,
                 int pageSize = 100,
@@ -1017,11 +1020,9 @@ namespace Cotton.Sync.Tests.Remote
             {
                 List<NodeDto> allChildren = Children.TryGetValue(nodeId, out List<NodeDto>? children) ? children : [];
                 List<NodeDto> nodes = allChildren.Skip((page - 1) * pageSize).Take(pageSize).ToList();
-                return Task.FromResult(new NodeContentDto
-                {
-                    TotalCount = allChildren.Count,
-                    Nodes = nodes,
-                });
+                return Task.FromResult(new CottonPagedResult<NodeContentDto>(
+                    new NodeContentDto { Nodes = nodes },
+                    allChildren.Count));
             }
 
             public Task<NodeDto> CreateAsync(Guid parentId, string name, CancellationToken cancellationToken = default)

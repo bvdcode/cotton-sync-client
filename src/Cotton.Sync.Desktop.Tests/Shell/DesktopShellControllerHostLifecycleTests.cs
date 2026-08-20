@@ -1904,7 +1904,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 throw new NotSupportedException();
             }
 
-            public Task<NodeContentDto> GetChildrenAsync(
+            public Task<CottonPagedResult<NodeContentDto>> GetChildrenAsync(
                 Guid nodeId,
                 int page = 1,
                 int pageSize = 100,

@@ -3,6 +3,7 @@
 
 using Cotton.Files;
 using Cotton.Nodes;
+using Cotton.Sdk;
 using Cotton.Sdk.Nodes;
 using Cotton.Sync;
 using Cotton.Sync.State;
@@ -226,7 +227,7 @@ namespace Cotton.Sync.Remote
                     lastPageReadLatency);
                 if (frame.Loaded == 0)
                 {
-                    entriesExpected += children.TotalCount;
+                    entriesExpected += pageRead.TotalCount;
                     progress?.Report(new RemoteTreeScanProgress(
                         filesScanned,
                         directoriesScanned,
@@ -288,7 +289,7 @@ namespace Cotton.Sync.Remote
 
                 int count = children.Nodes.Count + children.Files.Count;
                 int loaded = frame.Loaded + count;
-                if (count != 0 && loaded < children.TotalCount)
+                if (count != 0 && loaded < pageRead.TotalCount)
                 {
                     pending.Push(frame with { Page = frame.Page + 1, Loaded = loaded });
                 }
@@ -449,7 +450,7 @@ namespace Cotton.Sync.Remote
                         TimeSpan.FromTicks(pageReadLatencyMaxTicks),
                         TimeSpan.FromTicks(lastPageReadLatencyTicks));
                     int entriesExpected = frame.Loaded == 0
-                        ? addEntriesExpected(children.TotalCount)
+                        ? addEntriesExpected(pageRead.TotalCount)
                         : getEntriesExpected();
                     if (frame.Loaded == 0)
                     {
@@ -523,7 +524,7 @@ namespace Cotton.Sync.Remote
 
                     int count = children.Nodes.Count + children.Files.Count;
                     int loaded = frame.Loaded + count;
-                    if (count != 0 && loaded < children.TotalCount)
+                    if (count != 0 && loaded < pageRead.TotalCount)
                     {
                         await enqueueFrameAsync(frame with { Page = frame.Page + 1, Loaded = loaded }).ConfigureAwait(false);
                     }
@@ -613,12 +614,13 @@ namespace Cotton.Sync.Remote
             int loaded = 0;
             while (true)
             {
-                NodeContentDto children = await _nodes.GetChildrenAsync(
+                CottonPagedResult<NodeContentDto> pageResult = await _nodes.GetChildrenAsync(
                     parentNodeId,
                     page,
                     _pageSize,
                     depth: 0,
                     cancellationToken).ConfigureAwait(false);
+                NodeContentDto children = pageResult.Payload;
                 if (children.Nodes.Any(node => string.Equals(node.Name, name, StringComparison.OrdinalIgnoreCase))
                     || children.Files.Any(file => string.Equals(file.Name, name, StringComparison.OrdinalIgnoreCase)))
                 {
@@ -627,7 +629,7 @@ namespace Cotton.Sync.Remote
 
                 int count = children.Nodes.Count + children.Files.Count;
                 loaded += count;
-                if (count == 0 || loaded >= children.TotalCount)
+                if (count == 0 || loaded >= pageResult.TotalCount)
                 {
                     return children;
                 }
@@ -705,14 +707,14 @@ namespace Cotton.Sync.Remote
             CancellationToken cancellationToken)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
-            NodeContentDto children = await _nodes.GetChildrenAsync(
+            CottonPagedResult<NodeContentDto> pageResult = await _nodes.GetChildrenAsync(
                 frame.Node.Id,
                 frame.Page,
                 _pageSize,
                 depth: 0,
                 cancellationToken).ConfigureAwait(false);
             stopwatch.Stop();
-            return new RemoteTreePageReadResult(children, stopwatch.Elapsed);
+            return new RemoteTreePageReadResult(pageResult.Payload, pageResult.TotalCount, stopwatch.Elapsed);
         }
 
         private static TimeSpan Max(TimeSpan left, TimeSpan right)
@@ -757,6 +759,7 @@ namespace Cotton.Sync.Remote
 
         private readonly record struct RemoteTreePageReadResult(
             NodeContentDto Children,
+            int TotalCount,
             TimeSpan Elapsed);
 
         private record RemotePathResolution(RemoteDirectorySnapshot? Directory, RemoteFileSnapshot? File)

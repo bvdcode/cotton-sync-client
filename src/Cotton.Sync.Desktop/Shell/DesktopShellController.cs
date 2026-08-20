@@ -7,6 +7,7 @@ using System.Net.Http.Json;
 using Cotton;
 using Cotton.Nodes;
 using Cotton.Models;
+using Cotton.Sdk;
 using Cotton.Sync.App.Auth;
 using Cotton.Sync.App.Activities;
 using Cotton.Sync.App.Platform;
@@ -339,12 +340,13 @@ namespace Cotton.Sync.Desktop.Shell
             NodeDto current = await host.Nodes.ResolveAsync(
                 normalizedPath == "/" ? null : normalizedPath,
                 cancellationToken).ConfigureAwait(false);
-            NodeContentDto children = await host.Nodes.GetChildrenAsync(
+            CottonPagedResult<NodeContentDto> pageResult = await host.Nodes.GetChildrenAsync(
                 current.Id,
                 page: 1,
                 pageSize: 200,
                 depth: 0,
                 cancellationToken).ConfigureAwait(false);
+            NodeContentDto children = pageResult.Payload;
             List<DesktopRemoteFolderSnapshot> folders = children.Nodes
                 .OrderBy(static node => node.Name, StringComparer.CurrentCultureIgnoreCase)
                 .Select(node => new DesktopRemoteFolderSnapshot(

@@ -3,6 +3,7 @@
 
 using Cotton.Files;
 using Cotton.Nodes;
+using Cotton.Sdk;
 using Cotton.Sdk.Nodes;
 using Cotton.Sync.Remote;
 
@@ -122,7 +123,7 @@ namespace Cotton.Sync.Tests.Remote
                 throw new NotSupportedException();
             }
 
-            public Task<NodeContentDto> GetChildrenAsync(
+            public Task<CottonPagedResult<NodeContentDto>> GetChildrenAsync(
                 Guid nodeId,
                 int page = 1,
                 int pageSize = 100,
@@ -133,11 +134,9 @@ namespace Cotton.Sync.Tests.Remote
                 GetChildrenCalls.Add((nodeId, page, pageSize, depth));
                 Children.TryGetValue(nodeId, out List<NodeDto>? children);
                 children ??= [];
-                return Task.FromResult(new NodeContentDto
-                {
-                    Nodes = children,
-                    TotalCount = children.Count,
-                });
+                return Task.FromResult(new CottonPagedResult<NodeContentDto>(
+                    new NodeContentDto { Nodes = children },
+                    children.Count));
             }
 
             public Task<NodeDto> CreateAsync(Guid parentId, string name, CancellationToken cancellationToken = default)

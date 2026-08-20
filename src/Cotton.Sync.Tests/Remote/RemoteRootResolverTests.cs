@@ -34,7 +34,7 @@ namespace Cotton.Sync.Tests.Remote
             Guid rootId = Guid.NewGuid();
             Guid docsId = Guid.NewGuid();
             var client = new FakeNodeClient { Root = Node(rootId, null, "root") };
-            client.Children[(rootId, 1)] = new NodeContentDto
+            client.Children[(rootId, 1)] = new FakeNodePage
             {
                 TotalCount = 1,
                 Nodes = [Node(docsId, rootId, "Docs")],
@@ -56,7 +56,7 @@ namespace Cotton.Sync.Tests.Remote
             Guid rootId = Guid.NewGuid();
             Guid artistId = Guid.NewGuid();
             FakeNodeClient client = new() { Root = Node(rootId, null, "root") };
-            client.Children[(rootId, 1)] = new NodeContentDto
+            client.Children[(rootId, 1)] = new FakeNodePage
             {
                 TotalCount = 1,
                 Nodes = [Node(artistId, rootId, "Michael Brun")],
@@ -78,12 +78,12 @@ namespace Cotton.Sync.Tests.Remote
             Guid rootId = Guid.NewGuid();
             Guid existingId = Guid.NewGuid();
             var client = new FakeNodeClient { Root = Node(rootId, null, "root") };
-            client.Children[(rootId, 1)] = new NodeContentDto
+            client.Children[(rootId, 1)] = new FakeNodePage
             {
                 TotalCount = 2,
                 Nodes = [Node(existingId, rootId, "Archive")],
             };
-            client.Children[(rootId, 2)] = new NodeContentDto
+            client.Children[(rootId, 2)] = new FakeNodePage
             {
                 TotalCount = 2,
                 Files = [File(rootId, "skip.txt")],
@@ -148,11 +148,16 @@ namespace Cotton.Sync.Tests.Remote
             };
         }
 
+        private class FakeNodePage : NodeContentDto
+        {
+            public int TotalCount { get; init; }
+        }
+
         private class FakeNodeClient : ICottonNodeClient
         {
             public NodeDto Root { get; set; } = new();
 
-            public Dictionary<(Guid NodeId, int Page), NodeContentDto> Children { get; } = [];
+            public Dictionary<(Guid NodeId, int Page), FakeNodePage> Children { get; } = [];
 
             public List<NodeDto> CreatedNodes { get; } = [];
 
@@ -172,7 +177,7 @@ namespace Cotton.Sync.Tests.Remote
                 throw new NotSupportedException();
             }
 
-            public Task<NodeContentDto> GetChildrenAsync(
+            public Task<CottonPagedResult<NodeContentDto>> GetChildrenAsync(
                 Guid nodeId,
                 int page = 1,
                 int pageSize = 100,
@@ -180,9 +185,10 @@ namespace Cotton.Sync.Tests.Remote
                 CancellationToken cancellationToken = default)
             {
                 GetChildrenCalls.Add((nodeId, page));
-                return Task.FromResult(Children.TryGetValue((nodeId, page), out NodeContentDto? content)
-                    ? content
-                    : new NodeContentDto { TotalCount = 0 });
+                FakeNodePage content = Children.TryGetValue((nodeId, page), out FakeNodePage? configured)
+                    ? configured
+                    : new FakeNodePage { TotalCount = 0 };
+                return Task.FromResult(new CottonPagedResult<NodeContentDto>(content, content.TotalCount));
             }
 
             public Task<NodeDto> CreateAsync(Guid parentId, string name, CancellationToken cancellationToken = default)
@@ -194,7 +200,7 @@ namespace Cotton.Sync.Tests.Remote
                 {
                     NodeDto concurrentNode = ConcurrentCreateConflict;
                     ConcurrentCreateConflict = null;
-                    Children[(parentId, 1)] = new NodeContentDto
+                    Children[(parentId, 1)] = new FakeNodePage
                     {
                         TotalCount = 1,
                         Nodes = [concurrentNode],

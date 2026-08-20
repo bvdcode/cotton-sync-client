@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Nodes;
+using Cotton.Sdk;
 using Cotton.Sdk.Nodes;
 
 namespace Cotton.Sync.Remote
@@ -37,12 +38,13 @@ namespace Cotton.Sync.Remote
             int loaded = 0;
             while (true)
             {
-                NodeContentDto content = await _nodes.GetChildrenAsync(
+                CottonPagedResult<NodeContentDto> pageResult = await _nodes.GetChildrenAsync(
                     parentNodeId,
                     page,
                     _directoryPageSize,
                     depth: 0,
                     cancellationToken).ConfigureAwait(false);
+                NodeContentDto content = pageResult.Payload;
                 NodeDto? match = content.Nodes.FirstOrDefault(node =>
                     string.Equals(RemoteNameKey.Create(node.Name), nameKey, StringComparison.Ordinal));
                 if (match is not null)
@@ -52,7 +54,7 @@ namespace Cotton.Sync.Remote
 
                 int count = content.Nodes.Count + content.Files.Count;
                 loaded += count;
-                if (count == 0 || loaded >= content.TotalCount)
+                if (count == 0 || loaded >= pageResult.TotalCount)
                 {
                     return null;
                 }
