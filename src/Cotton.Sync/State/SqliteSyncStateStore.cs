@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Cotton.Sync.State
 {
@@ -452,7 +453,7 @@ namespace Cotton.Sync.State
             try
             {
                 await using SyncStateDbContext context = CreateContext();
-                await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+                await using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
                 context.ChangeTracker.AutoDetectChangesEnabled = false;
                 foreach (IGrouping<string, (SyncStateEntry Entry, string Key)> group in normalizedEntries.GroupBy(item => item.Entry.SyncPairId))
                 {
@@ -561,7 +562,7 @@ namespace Cotton.Sync.State
             {
                 await using (SyncStateDbContext context = CreateContext())
                 {
-                    await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+                    await using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
                     await context.SyncEntries
                         .Where(entry => entry.SyncPairId == syncPairId)
                         .ExecuteDeleteAsync(cancellationToken)
@@ -595,7 +596,7 @@ namespace Cotton.Sync.State
             try
             {
                 await using SyncStateDbContext context = CreateContext();
-                await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+                await using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
                 await context.SyncEntries
                     .Where(entry => entry.SyncPairId == syncPairId)
                     .ExecuteDeleteAsync(cancellationToken)
@@ -606,7 +607,7 @@ namespace Cotton.Sync.State
                     entry.SyncPairId = syncPairId;
                     entry.RelativePath = SyncPath.Normalize(entry.RelativePath);
                     string key = SyncPath.ToKey(entry.RelativePath);
-                    var entity = new SyncStateEntity
+                    SyncStateEntity entity = new SyncStateEntity
                     {
                         SyncPairId = syncPairId,
                         RelativePathKey = key,
@@ -757,7 +758,7 @@ namespace Cotton.Sync.State
 
         private SyncStateDbContext CreateContext()
         {
-            var connectionString = new DbConnectionStringBuilder
+            string connectionString = new DbConnectionStringBuilder
             {
                 ["Data Source"] = _databasePath,
                 ["Pooling"] = false,

@@ -14,7 +14,7 @@ namespace Cotton.Sync.State
         /// <inheritdoc />
         public SyncStateDbContext CreateDbContext(string[] args)
         {
-            var options = new DbContextOptionsBuilder<SyncStateDbContext>()
+            DbContextOptions<SyncStateDbContext> options = new DbContextOptionsBuilder<SyncStateDbContext>()
                 .UseSqlite("Data Source=cotton-sync-design-time.sqlite")
                 .Options;
             return new SyncStateDbContext(options);

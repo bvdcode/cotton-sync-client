@@ -92,7 +92,7 @@ namespace Cotton.Sync.Remote
                     "the file changed during upload.");
             }
 
-            var request = new CreateFileFromChunksRequestDto
+            CreateFileFromChunksRequestDto request = new CreateFileFromChunksRequestDto
             {
                 NodeId = parentNodeId,
                 ChunkHashes = uploadedChunks.ChunkHashes,
@@ -429,7 +429,7 @@ namespace Cotton.Sync.Remote
                 return;
             }
 
-            await using var chunkStream = new MemoryStream(content.ToArray(), writable: false);
+            await using MemoryStream chunkStream = new MemoryStream(content.ToArray(), writable: false);
             await _client.Chunks.UploadRawAsync(hash, chunkStream, DefaultContentType, cancellationToken).ConfigureAwait(false);
         }
 
@@ -446,7 +446,7 @@ namespace Cotton.Sync.Remote
                     return count;
                 }
 
-                await using var chunkStream = new MemoryStream(buffer, 0, count, writable: false);
+                await using MemoryStream chunkStream = new MemoryStream(buffer, 0, count, writable: false);
                 await _client.Chunks.UploadRawAsync(hash, chunkStream, DefaultContentType, cancellationToken).ConfigureAwait(false);
                 return count;
             }

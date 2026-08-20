@@ -31,7 +31,7 @@ namespace Cotton.Sync.State
         public static void HideIfExists(string rootPath)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
-            var metadataDirectory = new DirectoryInfo(GetPath(rootPath));
+            DirectoryInfo metadataDirectory = new DirectoryInfo(GetPath(rootPath));
             if (metadataDirectory.Exists)
             {
                 HideOnWindows(metadataDirectory);

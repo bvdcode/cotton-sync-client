@@ -1693,7 +1693,7 @@ namespace Cotton.Sync
             CancellationToken cancellationToken)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
-            var inspection = new InitialVirtualFilesStateFirstInspection();
+            InitialVirtualFilesStateFirstInspection inspection = new InitialVirtualFilesStateFirstInspection();
             await foreach (SyncStateEntry entry in _stateStore
                                .LoadPairEntriesAsync(syncPair.SyncPairId, cancellationToken)
                                .WithCancellation(cancellationToken)
@@ -2372,7 +2372,7 @@ namespace Cotton.Sync
                             .ConfigureAwait(false);
                     }
 
-                    var results = new InitialVirtualFilesFileWorkResult[remoteFiles.Count];
+                    InitialVirtualFilesFileWorkResult[] results = new InitialVirtualFilesFileWorkResult[remoteFiles.Count];
                     for (int index = 0; index < remoteFiles.Count; index++)
                     {
                         results[index] = await CreateInitialVirtualFilesFileResultAsync(
@@ -2394,7 +2394,7 @@ namespace Cotton.Sync
             IReadOnlyList<RemoteFileSnapshot> remoteFiles,
             CancellationToken cancellationToken)
         {
-            var requests = new RemoteFilePlaceholderRequest[remoteFiles.Count];
+            RemoteFilePlaceholderRequest[] requests = new RemoteFilePlaceholderRequest[remoteFiles.Count];
             for (int index = 0; index < remoteFiles.Count; index++)
             {
                 RemoteFileSnapshot remote = remoteFiles[index];
@@ -2410,7 +2410,7 @@ namespace Cotton.Sync
                     throw new InvalidOperationException("Batch placeholder writer returned a different number of results.");
                 }
 
-                var results = new InitialVirtualFilesFileWorkResult[remoteFiles.Count];
+                InitialVirtualFilesFileWorkResult[] results = new InitialVirtualFilesFileWorkResult[remoteFiles.Count];
                 for (int index = 0; index < remoteFiles.Count; index++)
                 {
                     RemoteFileSnapshot remote = remoteFiles[index];
@@ -2436,7 +2436,7 @@ namespace Cotton.Sync
             }
             catch (RemoteFilePlaceholderUnavailableException exception)
             {
-                var results = new InitialVirtualFilesFileWorkResult[remoteFiles.Count];
+                InitialVirtualFilesFileWorkResult[] results = new InitialVirtualFilesFileWorkResult[remoteFiles.Count];
                 for (int index = 0; index < remoteFiles.Count; index++)
                 {
                     results[index] = new InitialVirtualFilesFileWorkResult(
@@ -3533,7 +3533,7 @@ namespace Cotton.Sync
                     GetFileName(relativePath),
                     context.CancellationToken)
                 .ConfigureAwait(false);
-            var createdSnapshot = new RemoteDirectorySnapshot
+            RemoteDirectorySnapshot createdSnapshot = new RemoteDirectorySnapshot
             {
                 RelativePath = relativePath,
                 Node = creation.Node,
@@ -4072,7 +4072,7 @@ namespace Cotton.Sync
             RemoteFileSnapshot? remote,
             CancellationToken cancellationToken)
         {
-            var context = new SyncFileReconciliationContext(
+            SyncFileReconciliationContext context = new SyncFileReconciliationContext(
                 syncPair,
                 options,
                 result,
@@ -4527,7 +4527,7 @@ namespace Cotton.Sync
                     continue;
                 }
 
-                var candidateKey = new MoveCandidateKey(source.Value.LocalContentHash, source.Value.LocalSizeBytes.Value);
+                MoveCandidateKey candidateKey = new MoveCandidateKey(source.Value.LocalContentHash, source.Value.LocalSizeBytes.Value);
                 if (!candidates.TryGetValue(candidateKey, out Queue<LocalFileSnapshot>? bucket)
                     || !TryDequeueCurrentCandidate(bucket, remoteByPath, stateByPath, out LocalFileSnapshot? local))
                 {
@@ -4562,7 +4562,7 @@ namespace Cotton.Sync
                 return;
             }
 
-            var context = new OnlineOnlyPlaceholderMoveContext(
+            OnlineOnlyPlaceholderMoveContext context = new OnlineOnlyPlaceholderMoveContext(
                 syncPair,
                 options,
                 result,
@@ -5084,7 +5084,7 @@ namespace Cotton.Sync
                     continue;
                 }
 
-                var candidateKey = new MoveCandidateKey(local.Value.ContentHash, local.Value.SizeBytes);
+                MoveCandidateKey candidateKey = new MoveCandidateKey(local.Value.ContentHash, local.Value.SizeBytes);
                 if (!candidates.TryGetValue(candidateKey, out Queue<LocalFileSnapshot>? bucket))
                 {
                     bucket = new Queue<LocalFileSnapshot>();
@@ -5799,7 +5799,7 @@ namespace Cotton.Sync
             Stream destination,
             CancellationToken cancellationToken)
         {
-            await using var verifiedDestination = new VerifyingDownloadStream(destination);
+            await using VerifyingDownloadStream verifiedDestination = new VerifyingDownloadStream(destination);
             await DownloadFileWithProgressAsync(remoteFile, relativePath, options, verifiedDestination, cancellationToken)
                 .ConfigureAwait(false);
             verifiedDestination.Verify(remoteFile.ContentHash, remoteFile.SizeBytes, relativePath);
@@ -6110,7 +6110,7 @@ namespace Cotton.Sync
                     return null;
                 }
 
-                var drive = new DriveInfo(driveRoot);
+                DriveInfo drive = new DriveInfo(driveRoot);
                 return drive.IsReady ? drive.AvailableFreeSpace : null;
             }
             catch (Exception exception) when (exception is ArgumentException
@@ -7266,7 +7266,7 @@ namespace Cotton.Sync
             bool requiresUserAction = false,
             bool publishActivityProgress = true)
         {
-            var activity = new SyncActivity
+            SyncActivity activity = new SyncActivity
             {
                 Kind = kind,
                 RelativePath = SyncPath.Normalize(relativePath),
@@ -7408,7 +7408,7 @@ namespace Cotton.Sync
             InitialVirtualFilesPopulationMetrics metrics,
             CancellationToken cancellationToken)
         {
-            using var timer = new PeriodicTimer(InitialVirtualFilesHeartbeatLogInterval);
+            using PeriodicTimer timer = new PeriodicTimer(InitialVirtualFilesHeartbeatLogInterval);
             while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
             {
                 int createdPlaceholders = metrics.CreatedPlaceholders;

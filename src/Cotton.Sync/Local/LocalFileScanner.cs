@@ -62,7 +62,7 @@ namespace Cotton.Sync.Local
             string rootPath,
             CancellationToken cancellationToken = default)
         {
-            var tree = new LocalTreeSnapshot();
+            LocalTreeSnapshot tree = new LocalTreeSnapshot();
             await ScanTreeCoreAsync(
                     rootPath,
                     computeHashes: true,
@@ -89,7 +89,7 @@ namespace Cotton.Sync.Local
             IProgress<LocalTreeScanProgress>? progress,
             CancellationToken cancellationToken = default)
         {
-            var tree = new LocalTreeSnapshot();
+            LocalTreeSnapshot tree = new LocalTreeSnapshot();
             await ScanTreeCoreAsync(
                     rootPath,
                     computeHashes: false,
@@ -108,7 +108,7 @@ namespace Cotton.Sync.Local
             IProgress<LocalTreeScanProgress>? progress,
             CancellationToken cancellationToken = default)
         {
-            var tree = new LocalTreeLookupSnapshot();
+            LocalTreeLookupSnapshot tree = new LocalTreeLookupSnapshot();
             await ScanTreeCoreAsync(
                     rootPath,
                     computeHashes: false,
@@ -136,8 +136,8 @@ namespace Cotton.Sync.Local
                 throw new DirectoryNotFoundException($"Local sync root was not found: {fullRoot}");
             }
 
-            var tree = new LocalTreeLookupSnapshot();
-            var targetKeys = new HashSet<string>(
+            LocalTreeLookupSnapshot tree = new LocalTreeLookupSnapshot();
+            HashSet<string> targetKeys = new HashSet<string>(
                 relativePaths.Select(path => SyncPath.ToKey(SyncPath.Normalize(path))),
                 StringComparer.OrdinalIgnoreCase);
             int filesScanned = 0;

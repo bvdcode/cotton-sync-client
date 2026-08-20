@@ -52,7 +52,7 @@ namespace Cotton.Sync.Remote
             IProgress<RemoteTreeScanProgress>? progress,
             CancellationToken cancellationToken = default)
         {
-            var snapshot = new RemoteTreeSnapshot();
+            RemoteTreeSnapshot snapshot = new RemoteTreeSnapshot();
             snapshot.RootNode = await CrawlCoreAsync(
                     rootNodeId,
                     progress,
@@ -71,7 +71,7 @@ namespace Cotton.Sync.Remote
             IProgress<RemoteTreeScanProgress>? progress,
             CancellationToken cancellationToken = default)
         {
-            var snapshot = new RemoteTreeLookupSnapshot();
+            RemoteTreeLookupSnapshot snapshot = new RemoteTreeLookupSnapshot();
             snapshot.RootNode = await CrawlCoreAsync(
                     rootNodeId,
                     progress,
@@ -101,7 +101,7 @@ namespace Cotton.Sync.Remote
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(relativePaths);
-            var snapshot = new RemoteTreeLookupSnapshot
+            RemoteTreeLookupSnapshot snapshot = new RemoteTreeLookupSnapshot
             {
                 RootNode = await _nodes.GetAsync(rootNodeId, cancellationToken).ConfigureAwait(false),
             };
@@ -320,7 +320,7 @@ namespace Cotton.Sync.Remote
             string rootRelativePath = "")
         {
             NodeDto root = await _nodes.GetAsync(rootNodeId, cancellationToken).ConfigureAwait(false);
-            var pending = Channel.CreateUnbounded<RemoteCrawlFrame>(
+            Channel<RemoteCrawlFrame> pending = Channel.CreateUnbounded<RemoteCrawlFrame>(
                 new UnboundedChannelOptions
                 {
                     SingleReader = false,
@@ -474,7 +474,7 @@ namespace Cotton.Sync.Remote
                             continue;
                         }
 
-                        var directory = new RemoteDirectorySnapshot
+                        RemoteDirectorySnapshot directory = new RemoteDirectorySnapshot
                         {
                             RelativePath = relativePath,
                             Node = childNode,
@@ -566,7 +566,7 @@ namespace Cotton.Sync.Remote
                     string childPath = string.IsNullOrEmpty(currentPath) ? segment : currentPath + "/" + segment;
                     if (childDirectory is not null)
                     {
-                        var directory = new RemoteDirectorySnapshot
+                        RemoteDirectorySnapshot directory = new RemoteDirectorySnapshot
                         {
                             RelativePath = childPath,
                             Node = childDirectory,
