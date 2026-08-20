@@ -24,13 +24,11 @@ namespace Cotton.Sync.App.SyncApplication
         private readonly SemaphoreSlim _syncCoreGate = new(1, 1);
         private readonly IAppCodeBrowserAuthFlow _appCodeBrowserAuthFlow;
         private readonly IAuthFlow _authFlow;
-        private readonly ILocalChangeSyncCoordinator _localChanges;
-        private readonly IPeriodicSyncCoordinator _periodicSync;
         private readonly IPlatformCommandService _platformCommands;
         private readonly IAppPreferencesStore _preferences;
         private readonly ISyncPairPrerequisiteValidator _prerequisites;
-        private readonly IRemoteChangeSyncCoordinator _remoteChanges;
-        private readonly IReadOnlyList<ISyncCoreLifecycleComponent> _syncCoreLifecycleComponents;
+        private readonly SyncCoreComponentHost _syncCoreComponents;
+        private readonly SyncPauseController _syncPause;
         private readonly ISyncStateStore? _syncStateStore;
         private readonly ISyncPairDeletionHandler _syncPairDeletionHandler;
         private readonly ISyncSupervisor _supervisor;
@@ -38,7 +36,6 @@ namespace Cotton.Sync.App.SyncApplication
         private readonly SyncPairSettingsValidator _validator;
         private readonly ILogger<SyncApplicationService> _logger;
         private bool _isSyncCoreStarted;
-        private bool _isSyncGloballyPaused;
         private bool _startSyncCoreWhenSyncPairsExist;
 
         /// <summary>
@@ -76,45 +73,42 @@ namespace Cotton.Sync.App.SyncApplication
             _appCodeBrowserAuthFlow = appCodeBrowserAuthFlow;
             _supervisor = supervisor;
             _platformCommands = platformCommands;
-            _localChanges = localChanges ?? NullLocalChangeSyncCoordinator.Instance;
-            _remoteChanges = remoteChanges ?? NullRemoteChangeSyncCoordinator.Instance;
-            _periodicSync = periodicSync ?? NullPeriodicSyncCoordinator.Instance;
-            _syncCoreLifecycleComponents = (syncCoreLifecycleComponents ?? []).ToList();
             _syncStateStore = syncStateStore;
             _validator = validator ?? new SyncPairSettingsValidator();
             _syncPairDeletionHandler = syncPairDeletionHandler ?? NullSyncPairDeletionHandler.Instance;
             _logger = logger ?? NullLogger<SyncApplicationService>.Instance;
+            _syncCoreComponents = new SyncCoreComponentHost(
+                supervisor,
+                localChanges ?? NullLocalChangeSyncCoordinator.Instance,
+                remoteChanges ?? NullRemoteChangeSyncCoordinator.Instance,
+                periodicSync ?? NullPeriodicSyncCoordinator.Instance,
+                (syncCoreLifecycleComponents ?? []).ToList(),
+                _logger);
+            _syncPause = new SyncPauseController(preferences, supervisor);
         }
 
         /// <inheritdoc />
         public Task<AuthSession> SignInAsync(
             PasswordSignInRequest request,
-            CancellationToken cancellationToken = default)
-        {
-            return _authFlow.SignInAsync(request, cancellationToken);
-        }
+            CancellationToken cancellationToken = default) =>
+            _authFlow.SignInAsync(request, cancellationToken);
 
         /// <inheritdoc />
         public Task<AuthSession> SignInWithBrowserAsync(
             AppCodeBrowserSignInRequest request,
-            CancellationToken cancellationToken = default)
-        {
-            return _appCodeBrowserAuthFlow.SignInAsync(request, cancellationToken);
-        }
+            CancellationToken cancellationToken = default) =>
+            _appCodeBrowserAuthFlow.SignInAsync(request, cancellationToken);
 
         /// <inheritdoc />
-        public async Task<AuthSession> RestoreSessionAsync(CancellationToken cancellationToken = default)
-        {
-            return await _authFlow.RestoreSessionAsync(cancellationToken).ConfigureAwait(false);
-        }
+        public Task<AuthSession> RestoreSessionAsync(CancellationToken cancellationToken = default) =>
+            _authFlow.RestoreSessionAsync(cancellationToken);
 
         /// <inheritdoc />
         public async Task SignOutAsync(CancellationToken cancellationToken = default)
         {
             await StopSyncCoreAsync(cancellationToken).ConfigureAwait(false);
             await _authFlow.SignOutAsync(cancellationToken).ConfigureAwait(false);
-            _isSyncGloballyPaused = false;
-            await SaveSyncPausedPreferenceAsync(isPaused: false, cancellationToken).ConfigureAwait(false);
+            await _syncPause.ResetAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <inheritdoc />
@@ -171,13 +165,15 @@ namespace Cotton.Sync.App.SyncApplication
                 return SyncPairSaveResult.Rejected(validation);
             }
 
-            SyncPairValidationError? scopeChangeError = ValidateSyncScopeChange(existingSyncPair, syncPair);
+            SyncPairValidationError? scopeChangeError = SyncPairSavePolicy.ValidateScopeChange(
+                existingSyncPair,
+                syncPair);
             if (scopeChangeError is not null)
             {
                 return SyncPairSaveResult.Rejected(new SyncPairValidationResult([scopeChangeError]));
             }
 
-            if (RequiresPrerequisiteValidation(existingSyncPair, syncPair))
+            if (SyncPairSavePolicy.RequiresPrerequisiteValidation(existingSyncPair, syncPair))
             {
                 IReadOnlyList<SyncPairValidationError> prerequisiteErrors = await _prerequisites
                     .ValidateAsync(syncPair, cancellationToken)
@@ -191,41 +187,6 @@ namespace Cotton.Sync.App.SyncApplication
             await _syncPairs.UpsertAsync(syncPair, cancellationToken).ConfigureAwait(false);
             await RefreshSyncCoreAfterSyncPairSaveAsync(cancellationToken).ConfigureAwait(false);
             return SyncPairSaveResult.Saved(validation);
-        }
-
-        private static SyncPairValidationError? ValidateSyncScopeChange(
-            SyncPairSettings? existingSyncPair,
-            SyncPairSettings syncPair)
-        {
-            if (existingSyncPair is null)
-            {
-                return null;
-            }
-
-            bool scopeChanged = !SyncPairSettingsValidator.AreSameLocalRoot(
-                    existingSyncPair.LocalRootPath,
-                    syncPair.LocalRootPath)
-                || existingSyncPair.RemoteRootNodeId != syncPair.RemoteRootNodeId
-                || syncPair.Mode != existingSyncPair.Mode;
-            return scopeChanged
-                ? new SyncPairValidationError(
-                    SyncPairValidationIssue.SyncScopeChangeNotSupported,
-                    syncPair.Id,
-                    null,
-                    "To change the local folder, cloud folder, or sync mode, remove this sync folder and add a new one.")
-                : null;
-        }
-
-        private static bool RequiresPrerequisiteValidation(
-            SyncPairSettings? existingSyncPair,
-            SyncPairSettings syncPair)
-        {
-            if (!syncPair.IsEnabled)
-            {
-                return false;
-            }
-
-            return existingSyncPair is null || !existingSyncPair.IsEnabled;
         }
 
         /// <inheritdoc />
@@ -376,11 +337,9 @@ namespace Cotton.Sync.App.SyncApplication
         }
 
         /// <inheritdoc />
-        public async Task PauseAllAsync(CancellationToken cancellationToken = default)
+        public Task PauseAllAsync(CancellationToken cancellationToken = default)
         {
-            await _supervisor.PauseAllAsync(cancellationToken).ConfigureAwait(false);
-            _isSyncGloballyPaused = true;
-            await SaveSyncPausedPreferenceAsync(isPaused: true, cancellationToken).ConfigureAwait(false);
+            return _syncPause.PauseAllAsync(cancellationToken);
         }
 
         /// <inheritdoc />
@@ -390,11 +349,9 @@ namespace Cotton.Sync.App.SyncApplication
         }
 
         /// <inheritdoc />
-        public async Task ResumeAllAsync(CancellationToken cancellationToken = default)
+        public Task ResumeAllAsync(CancellationToken cancellationToken = default)
         {
-            await _supervisor.ResumeAllAsync(cancellationToken).ConfigureAwait(false);
-            _isSyncGloballyPaused = false;
-            await SaveSyncPausedPreferenceAsync(isPaused: false, cancellationToken).ConfigureAwait(false);
+            return _syncPause.ResumeAllAsync(cancellationToken);
         }
 
         /// <inheritdoc />
@@ -483,45 +440,16 @@ namespace Cotton.Sync.App.SyncApplication
                 await StopSyncCoreUnlockedAsync(cancellationToken, force: false).ConfigureAwait(false);
             }
 
-            var startedComponents = new List<StartedSyncComponent>();
-
             try
             {
-                _isSyncGloballyPaused = await LoadSyncPausedPreferenceAsync(cancellationToken).ConfigureAwait(false);
-                foreach (ISyncCoreLifecycleComponent component in _syncCoreLifecycleComponents)
-                {
-                    await component.StartAsync(cancellationToken).ConfigureAwait(false);
-                    startedComponents.Add(new StartedSyncComponent(
-                        component.GetType().Name,
-                        token => component.StopAsync(token)));
-                }
-
-                await _supervisor.StartAsync(_isSyncGloballyPaused, cancellationToken).ConfigureAwait(false);
-                startedComponents.Add(new StartedSyncComponent(
-                    "sync supervisor",
-                    token => _supervisor.StopAsync(token)));
-
-                await _localChanges.StartAsync(cancellationToken).ConfigureAwait(false);
-                startedComponents.Add(new StartedSyncComponent(
-                    "local change coordinator",
-                    token => _localChanges.StopAsync(token)));
-
-                await _remoteChanges.StartAsync(cancellationToken).ConfigureAwait(false);
-                startedComponents.Add(new StartedSyncComponent(
-                    "remote change coordinator",
-                    token => _remoteChanges.StopAsync(token)));
-
-                await _periodicSync.StartAsync(cancellationToken).ConfigureAwait(false);
-                startedComponents.Add(new StartedSyncComponent(
-                    "periodic sync coordinator",
-                    token => _periodicSync.StopAsync(token)));
+                bool isSyncGloballyPaused = await _syncPause.LoadAsync(cancellationToken).ConfigureAwait(false);
+                await _syncCoreComponents.StartAsync(isSyncGloballyPaused, cancellationToken).ConfigureAwait(false);
                 _isSyncCoreStarted = true;
                 _startSyncCoreWhenSyncPairsExist = false;
             }
             catch (Exception exception)
             {
                 _logger.LogError(exception, "Failed to start sync background components.");
-                await RollBackStartedComponentsAsync(startedComponents).ConfigureAwait(false);
                 _isSyncCoreStarted = false;
                 if (!cancellationToken.IsCancellationRequested)
                 {
@@ -532,21 +460,6 @@ namespace Cotton.Sync.App.SyncApplication
             }
         }
 
-        private async Task<bool> LoadSyncPausedPreferenceAsync(CancellationToken cancellationToken)
-        {
-            await _preferences.InitializeAsync(cancellationToken).ConfigureAwait(false);
-            AppPreferences preferences = await _preferences.GetAsync(cancellationToken).ConfigureAwait(false);
-            return preferences.IsSyncPaused;
-        }
-
-        private async Task SaveSyncPausedPreferenceAsync(bool isPaused, CancellationToken cancellationToken)
-        {
-            await _preferences.InitializeAsync(cancellationToken).ConfigureAwait(false);
-            AppPreferences preferences = await _preferences.GetAsync(cancellationToken).ConfigureAwait(false);
-            preferences.IsSyncPaused = isPaused;
-            await _preferences.SaveAsync(preferences, cancellationToken).ConfigureAwait(false);
-        }
-
         private async Task StopSyncCoreUnlockedAsync(CancellationToken cancellationToken, bool force)
         {
             if (!_isSyncCoreStarted && !force)
@@ -554,14 +467,7 @@ namespace Cotton.Sync.App.SyncApplication
                 return;
             }
 
-            await _remoteChanges.StopAsync(cancellationToken).ConfigureAwait(false);
-            await _periodicSync.StopAsync(cancellationToken).ConfigureAwait(false);
-            await _localChanges.StopAsync(cancellationToken).ConfigureAwait(false);
-            await _supervisor.StopAsync(cancellationToken).ConfigureAwait(false);
-            foreach (ISyncCoreLifecycleComponent component in _syncCoreLifecycleComponents.Reverse())
-            {
-                await component.StopAsync(cancellationToken).ConfigureAwait(false);
-            }
+            await _syncCoreComponents.StopAsync(cancellationToken).ConfigureAwait(false);
 
             _isSyncCoreStarted = false;
         }
@@ -573,24 +479,5 @@ namespace Cotton.Sync.App.SyncApplication
             return syncPairs.Count > 0;
         }
 
-        private async Task RollBackStartedComponentsAsync(IReadOnlyList<StartedSyncComponent> startedComponents)
-        {
-            for (int index = startedComponents.Count - 1; index >= 0; index--)
-            {
-                StartedSyncComponent component = startedComponents[index];
-
-                try
-                {
-                    await component.StopAsync(CancellationToken.None).ConfigureAwait(false);
-                }
-                catch (Exception exception)
-                {
-                    _logger.LogError(
-                        exception,
-                        "Failed to stop {ComponentName} during sync startup rollback.",
-                        component.Name);
-                }
-            }
-        }
     }
 }

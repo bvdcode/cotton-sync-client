@@ -9,6 +9,11 @@ namespace Cotton.Sync.App.SyncApplication
     public interface ISyncCoreLifecycleComponent
     {
         /// <summary>
+        /// Gets the component name used in lifecycle diagnostics.
+        /// </summary>
+        string Name { get; }
+
+        /// <summary>
         /// Starts the background component.
         /// </summary>
         Task StartAsync(CancellationToken cancellationToken = default);

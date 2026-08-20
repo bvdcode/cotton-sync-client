@@ -10,6 +10,8 @@ namespace Cotton.Sync.Desktop.Platform
 {
     internal class WindowsCloudFilesSyncRootConnectionCoordinator : ISyncCoreLifecycleComponent
     {
+        public string Name => "Windows Cloud Files connection coordinator";
+
         private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
         private readonly IWindowsCloudFilesAdapter _cloudFiles;
         private readonly IWindowsCloudFilesCallbackHandler _callbackHandler;

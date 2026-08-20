@@ -1745,6 +1745,8 @@ namespace Cotton.Sync.App.Tests.SyncApplication
 
             public Exception? StartException { get; set; }
 
+            public string Name => _name;
+
             public int StartCallCount { get; private set; }
 
             public int StopCallCount { get; private set; }
