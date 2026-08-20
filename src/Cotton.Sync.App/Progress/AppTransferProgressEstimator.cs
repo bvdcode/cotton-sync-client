@@ -55,7 +55,7 @@ namespace Cotton.Sync.App.Progress
                 Reset(direction, normalizedPath);
             }
 
-            var currentSample = new TransferSample(transferredBytes, normalizedOccurredAtUtc);
+            TransferSample currentSample = new TransferSample(transferredBytes, normalizedOccurredAtUtc);
             _samples.Enqueue(currentSample);
             PruneNonProgressSamples();
             PruneSamples(currentSample.OccurredAtUtc);

@@ -322,7 +322,7 @@ namespace Cotton.Sync.App.LocalChanges
                     return;
                 }
 
-                var next = new PendingLocalSyncRequest(
+                PendingLocalSyncRequest next = new PendingLocalSyncRequest(
                     CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token),
                     _timeProvider.GetUtcNow());
                 if (!RecordChange(change.SyncPairId, next, change))

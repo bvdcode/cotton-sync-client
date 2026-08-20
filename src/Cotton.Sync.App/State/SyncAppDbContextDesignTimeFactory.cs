@@ -10,7 +10,7 @@ namespace Cotton.Sync.App.State
     {
         public SyncAppDbContext CreateDbContext(string[] args)
         {
-            var options = new DbContextOptionsBuilder<SyncAppDbContext>()
+            DbContextOptions<SyncAppDbContext> options = new DbContextOptionsBuilder<SyncAppDbContext>()
                 .UseSqlite("Data Source=cotton-sync-app-design-time.sqlite")
                 .Options;
             return new SyncAppDbContext(options);

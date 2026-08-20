@@ -164,7 +164,7 @@ namespace Cotton.Sync.App.RemoteChanges
                     return;
                 }
 
-                var next = new PendingRemoteSyncRequest(
+                PendingRemoteSyncRequest next = new PendingRemoteSyncRequest(
                     CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token),
                     change.MethodName,
                     _timeProvider.GetUtcNow());

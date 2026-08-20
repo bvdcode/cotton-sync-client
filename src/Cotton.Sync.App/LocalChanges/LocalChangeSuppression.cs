@@ -536,7 +536,7 @@ namespace Cotton.Sync.App.LocalChanges
         {
             try
             {
-                var info = new FileInfo(fullPath);
+                FileInfo info = new FileInfo(fullPath);
                 if (!info.Exists || info.Length != entry.ExpectedSizeBytes)
                 {
                     return false;
