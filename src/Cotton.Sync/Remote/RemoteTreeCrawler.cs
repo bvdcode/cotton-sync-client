@@ -3,11 +3,9 @@
 
 using Cotton.Files;
 using Cotton.Nodes;
-using Cotton.Sdk;
 using Cotton.Sdk.Nodes;
 using Cotton.Sync;
 using Cotton.Sync.State;
-using System.Diagnostics;
 using System.Threading.Channels;
 
 namespace Cotton.Sync.Remote
@@ -19,9 +17,10 @@ namespace Cotton.Sync.Remote
     {
         private const int DefaultPageSize = 500;
         private const int DefaultStreamingConcurrency = 8;
-        private const int ProgressReportItemInterval = 100;
+        private readonly RemoteTreeDepthFirstCrawler _depthFirst;
         private readonly ICottonNodeClient _nodes;
-        private readonly int _pageSize;
+        private readonly RemoteTreePageReader _pages;
+        private readonly RemoteTreePathLookupCrawler _pathLookup;
         private readonly int _streamingConcurrency;
 
         /// <summary>
@@ -36,8 +35,10 @@ namespace Cotton.Sync.Remote
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(pageSize);
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(streamingConcurrency);
             _nodes = nodes;
-            _pageSize = pageSize;
             _streamingConcurrency = streamingConcurrency;
+            _pages = new RemoteTreePageReader(nodes, pageSize);
+            _depthFirst = new RemoteTreeDepthFirstCrawler(nodes, _pages);
+            _pathLookup = new RemoteTreePathLookupCrawler(nodes, _pages, _depthFirst);
         }
 
         /// <inheritdoc />
@@ -53,7 +54,7 @@ namespace Cotton.Sync.Remote
             CancellationToken cancellationToken = default)
         {
             RemoteTreeSnapshot snapshot = new RemoteTreeSnapshot();
-            snapshot.RootNode = await CrawlCoreAsync(
+            snapshot.RootNode = await _depthFirst.CrawlAsync(
                     rootNodeId,
                     progress,
                     snapshot.Directories.Add,
@@ -72,7 +73,7 @@ namespace Cotton.Sync.Remote
             CancellationToken cancellationToken = default)
         {
             RemoteTreeLookupSnapshot snapshot = new RemoteTreeLookupSnapshot();
-            snapshot.RootNode = await CrawlCoreAsync(
+            snapshot.RootNode = await _depthFirst.CrawlAsync(
                     rootNodeId,
                     progress,
                     directory => SyncPathLookup.Add(snapshot.DirectoriesByPath, directory, static item => item.RelativePath),
@@ -100,216 +101,8 @@ namespace Cotton.Sync.Remote
             IProgress<RemoteTreeScanProgress>? progress,
             CancellationToken cancellationToken = default)
         {
-            ArgumentNullException.ThrowIfNull(relativePaths);
-            RemoteTreeLookupSnapshot snapshot = new RemoteTreeLookupSnapshot
-            {
-                RootNode = await _nodes.GetAsync(rootNodeId, cancellationToken).ConfigureAwait(false),
-            };
-            int directoriesScanned = 0;
-            int filesScanned = 0;
-            progress?.Report(new RemoteTreeScanProgress(filesScanned, directoriesScanned, currentPath: null));
-            foreach (string relativePath in relativePaths)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                string normalizedPath = SyncPath.Normalize(relativePath);
-                if (string.IsNullOrWhiteSpace(normalizedPath) || SyncPathIgnoreRules.ShouldIgnore(normalizedPath))
-                {
-                    continue;
-                }
-
-                RemotePathResolution resolution = await ResolvePathAsync(
-                        snapshot.RootNode,
-                        normalizedPath,
-                        directory =>
-                        {
-                            if (TryAddDirectory(snapshot, directory))
-                            {
-                                directoriesScanned++;
-                                ReportDirectoryScanProgress(
-                                    progress,
-                                    filesScanned,
-                                    directoriesScanned,
-                                    RemoteTreePageReadMetrics.Empty,
-                                    directory.RelativePath);
-                            }
-                        },
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                if (resolution.File is not null)
-                {
-                    if (TryAddFile(snapshot, resolution.File))
-                    {
-                        filesScanned++;
-                        ReportScanProgress(
-                            progress,
-                            filesScanned,
-                            directoriesScanned,
-                            RemoteTreePageReadMetrics.Empty,
-                            resolution.File.RelativePath);
-                    }
-
-                    continue;
-                }
-
-                if (resolution.Directory is not null)
-                {
-                    await CrawlCoreAsync(
-                            resolution.Directory.Node.Id,
-                            progress,
-                            directory =>
-                            {
-                                if (TryAddDirectory(snapshot, directory))
-                                {
-                                    directoriesScanned++;
-                                }
-                            },
-                            file =>
-                            {
-                                if (TryAddFile(snapshot, file))
-                                {
-                                    filesScanned++;
-                                }
-                            },
-                            cancellationToken,
-                            resolution.Directory.RelativePath)
-                        .ConfigureAwait(false);
-                }
-            }
-
-            progress?.Report(new RemoteTreeScanProgress(filesScanned, directoriesScanned, currentPath: null));
-            return snapshot;
-        }
-
-        private async Task<NodeDto> CrawlCoreAsync(
-            Guid rootNodeId,
-            IProgress<RemoteTreeScanProgress>? progress,
-            Action<RemoteDirectorySnapshot> addDirectory,
-            Action<RemoteFileSnapshot> addFile,
-            CancellationToken cancellationToken,
-            string rootRelativePath = "")
-        {
-            ArgumentNullException.ThrowIfNull(addDirectory);
-            ArgumentNullException.ThrowIfNull(addFile);
-            NodeDto root = await _nodes.GetAsync(rootNodeId, cancellationToken).ConfigureAwait(false);
-            var pending = new Stack<RemoteCrawlFrame>();
-            pending.Push(new RemoteCrawlFrame(root, rootRelativePath, Page: 1, Loaded: 0));
-            int directoriesScanned = 0;
-            int filesScanned = 0;
-            int pagesScanned = 0;
-            int entriesExpected = 0;
-            TimeSpan pageReadLatencyTotal = TimeSpan.Zero;
-            TimeSpan pageReadLatencyMax = TimeSpan.Zero;
-            TimeSpan lastPageReadLatency = TimeSpan.Zero;
-            progress?.Report(new RemoteTreeScanProgress(
-                filesScanned,
-                directoriesScanned,
-                currentPath: null,
-                pagesScanned: pagesScanned,
-                pageReadLatencyTotal: pageReadLatencyTotal,
-                pageReadLatencyMax: pageReadLatencyMax,
-                lastPageReadLatency: lastPageReadLatency,
-                entriesExpected: entriesExpected));
-
-            while (pending.Count > 0)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                RemoteCrawlFrame frame = pending.Pop();
-                RemoteTreePageReadResult pageRead = await ReadChildrenPageAsync(frame, cancellationToken).ConfigureAwait(false);
-                NodeContentDto children = pageRead.Children;
-                pagesScanned++;
-                lastPageReadLatency = pageRead.Elapsed;
-                pageReadLatencyTotal += pageRead.Elapsed;
-                pageReadLatencyMax = Max(pageReadLatencyMax, pageRead.Elapsed);
-                RemoteTreePageReadMetrics pageMetrics = new(
-                    pagesScanned,
-                    pageReadLatencyTotal,
-                    pageReadLatencyMax,
-                    lastPageReadLatency);
-                if (frame.Loaded == 0)
-                {
-                    entriesExpected += pageRead.TotalCount;
-                    progress?.Report(new RemoteTreeScanProgress(
-                        filesScanned,
-                        directoriesScanned,
-                        currentPath: null,
-                        pageMetrics.PagesScanned,
-                        pageMetrics.PageReadLatencyTotal,
-                        pageMetrics.PageReadLatencyMax,
-                        pageMetrics.LastPageReadLatency,
-                        entriesExpected: entriesExpected));
-                }
-
-                var childDirectories = new List<RemoteCrawlFrame>(children.Nodes.Count);
-                foreach (NodeDto childNode in children.Nodes)
-                {
-                    string relativePath = Combine(frame.ParentPath, childNode.Name);
-                    if (SyncPathIgnoreRules.ShouldIgnore(relativePath))
-                    {
-                        continue;
-                    }
-
-                    addDirectory(new RemoteDirectorySnapshot
-                    {
-                        RelativePath = relativePath,
-                        Node = childNode,
-                    });
-                    directoriesScanned++;
-                    ReportDirectoryScanProgress(
-                        progress,
-                        filesScanned,
-                        directoriesScanned,
-                        pageMetrics,
-                        relativePath,
-                        entriesExpected);
-                    childDirectories.Add(new RemoteCrawlFrame(childNode, relativePath, Page: 1, Loaded: 0));
-                }
-
-                foreach (NodeFileManifestDto file in children.Files)
-                {
-                    string relativePath = Combine(frame.ParentPath, file.Name);
-                    if (SyncPathIgnoreRules.ShouldIgnore(relativePath))
-                    {
-                        continue;
-                    }
-
-                    addFile(new RemoteFileSnapshot
-                    {
-                        RelativePath = relativePath,
-                        File = file,
-                    });
-                    filesScanned++;
-                    ReportScanProgress(
-                        progress,
-                        filesScanned,
-                        directoriesScanned,
-                        pageMetrics,
-                        relativePath,
-                        entriesExpected);
-                }
-
-                int count = children.Nodes.Count + children.Files.Count;
-                int loaded = frame.Loaded + count;
-                if (count != 0 && loaded < pageRead.TotalCount)
-                {
-                    pending.Push(frame with { Page = frame.Page + 1, Loaded = loaded });
-                }
-
-                for (int index = childDirectories.Count - 1; index >= 0; index--)
-                {
-                    pending.Push(childDirectories[index]);
-                }
-            }
-
-            progress?.Report(new RemoteTreeScanProgress(
-                filesScanned,
-                directoriesScanned,
-                currentPath: null,
-                pagesScanned: pagesScanned,
-                pageReadLatencyTotal: pageReadLatencyTotal,
-                pageReadLatencyMax: pageReadLatencyMax,
-                lastPageReadLatency: lastPageReadLatency,
-                entriesExpected: filesScanned + directoriesScanned));
-            return root;
+            return await _pathLookup.CrawlAsync(rootNodeId, relativePaths, progress, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         private async Task<NodeDto> CrawlStreamingCoreAsync(
@@ -438,7 +231,7 @@ namespace Cotton.Sync.Remote
                 try
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    RemoteTreePageReadResult pageRead = await ReadChildrenPageAsync(frame, cancellationToken).ConfigureAwait(false);
+                    RemoteTreePageReadResult pageRead = await _pages.ReadAsync(frame, cancellationToken).ConfigureAwait(false);
                     NodeContentDto children = pageRead.Children;
                     int pagesScanned = addPagesScanned(1);
                     long lastPageReadLatencyTicks = setLastPageReadLatencyTicks(pageRead.Elapsed.Ticks);
@@ -465,10 +258,10 @@ namespace Cotton.Sync.Remote
                             entriesExpected: entriesExpected));
                     }
 
-                    var childDirectories = new List<RemoteCrawlFrame>(children.Nodes.Count);
+                    List<RemoteCrawlFrame> childDirectories = new List<RemoteCrawlFrame>(children.Nodes.Count);
                     foreach (NodeDto childNode in children.Nodes)
                     {
-                        string relativePath = Combine(frame.ParentPath, childNode.Name);
+                        string relativePath = RemoteTreePath.Combine(frame.ParentPath, childNode.Name);
                         if (SyncPathIgnoreRules.ShouldIgnore(relativePath))
                         {
                             continue;
@@ -481,7 +274,7 @@ namespace Cotton.Sync.Remote
                         };
                         await sink.AddDirectoryAsync(directory, cancellationToken).ConfigureAwait(false);
                         int directoriesScanned = addDirectoriesScanned(1);
-                        ReportDirectoryScanProgress(
+                        RemoteTreeProgressReporter.ReportDirectory(
                             progress,
                             getFilesScanned(),
                             directoriesScanned,
@@ -493,7 +286,7 @@ namespace Cotton.Sync.Remote
 
                     foreach (NodeFileManifestDto file in children.Files)
                     {
-                        string relativePath = Combine(frame.ParentPath, file.Name);
+                        string relativePath = RemoteTreePath.Combine(frame.ParentPath, file.Name);
                         if (SyncPathIgnoreRules.ShouldIgnore(relativePath))
                         {
                             continue;
@@ -509,7 +302,7 @@ namespace Cotton.Sync.Remote
                                 cancellationToken)
                             .ConfigureAwait(false);
                         int filesScanned = addFilesScanned(1);
-                        ReportScanProgress(
+                        RemoteTreeProgressReporter.ReportFile(
                             progress,
                             filesScanned,
                             getDirectoriesScanned(),
@@ -546,182 +339,6 @@ namespace Cotton.Sync.Remote
             }
         }
 
-        private async Task<RemotePathResolution> ResolvePathAsync(
-            NodeDto root,
-            string relativePath,
-            Action<RemoteDirectorySnapshot> addDirectory,
-            CancellationToken cancellationToken)
-        {
-            string[] segments = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            NodeDto currentNode = root;
-            string currentPath = string.Empty;
-            for (int index = 0; index < segments.Length; index++)
-            {
-                string segment = segments[index];
-                NodeContentDto children = await FindChildPageContainingAsync(currentNode.Id, segment, cancellationToken).ConfigureAwait(false);
-                NodeDto? childDirectory = children.Nodes.FirstOrDefault(node => string.Equals(node.Name, segment, StringComparison.OrdinalIgnoreCase));
-                bool isLast = index == segments.Length - 1;
-                if (isLast)
-                {
-                    string childPath = string.IsNullOrEmpty(currentPath) ? segment : currentPath + "/" + segment;
-                    if (childDirectory is not null)
-                    {
-                        RemoteDirectorySnapshot directory = new RemoteDirectorySnapshot
-                        {
-                            RelativePath = childPath,
-                            Node = childDirectory,
-                        };
-                        addDirectory(directory);
-                        return RemotePathResolution.ForDirectory(directory);
-                    }
-
-                    NodeFileManifestDto? file = children.Files.FirstOrDefault(item => string.Equals(item.Name, segment, StringComparison.OrdinalIgnoreCase));
-                    if (file is not null)
-                    {
-                        return RemotePathResolution.ForFile(new RemoteFileSnapshot
-                        {
-                            RelativePath = childPath,
-                            File = file,
-                        });
-                    }
-
-                    return RemotePathResolution.NotFound;
-                }
-
-                if (childDirectory is null)
-                {
-                    return RemotePathResolution.NotFound;
-                }
-
-                currentPath = string.IsNullOrEmpty(currentPath) ? segment : currentPath + "/" + segment;
-                addDirectory(new RemoteDirectorySnapshot
-                {
-                    RelativePath = currentPath,
-                    Node = childDirectory,
-                });
-                currentNode = childDirectory;
-            }
-
-            return RemotePathResolution.NotFound;
-        }
-
-        private async Task<NodeContentDto> FindChildPageContainingAsync(
-            Guid parentNodeId,
-            string name,
-            CancellationToken cancellationToken)
-        {
-            int page = 1;
-            int loaded = 0;
-            while (true)
-            {
-                CottonPagedResult<NodeContentDto> pageResult = await _nodes.GetChildrenAsync(
-                    parentNodeId,
-                    page,
-                    _pageSize,
-                    depth: 0,
-                    cancellationToken).ConfigureAwait(false);
-                NodeContentDto children = pageResult.Payload;
-                if (children.Nodes.Any(node => string.Equals(node.Name, name, StringComparison.OrdinalIgnoreCase))
-                    || children.Files.Any(file => string.Equals(file.Name, name, StringComparison.OrdinalIgnoreCase)))
-                {
-                    return children;
-                }
-
-                int count = children.Nodes.Count + children.Files.Count;
-                loaded += count;
-                if (count == 0 || loaded >= pageResult.TotalCount)
-                {
-                    return children;
-                }
-
-                page++;
-            }
-        }
-
-        private static bool TryAddDirectory(RemoteTreeLookupSnapshot snapshot, RemoteDirectorySnapshot directory)
-        {
-            return snapshot.DirectoriesByPath.TryAdd(SyncPath.ToKey(directory.RelativePath), directory);
-        }
-
-        private static bool TryAddFile(RemoteTreeLookupSnapshot snapshot, RemoteFileSnapshot file)
-        {
-            return snapshot.FilesByPath.TryAdd(SyncPath.ToKey(file.RelativePath), file);
-        }
-
-        private static void ReportScanProgress(
-            IProgress<RemoteTreeScanProgress>? progress,
-            int filesScanned,
-            int directoriesScanned,
-            RemoteTreePageReadMetrics pageMetrics,
-            string currentPath,
-            int? entriesExpected = null)
-        {
-            if (progress is null)
-            {
-                return;
-            }
-
-            if (filesScanned == 1 || filesScanned % ProgressReportItemInterval == 0)
-            {
-                progress.Report(new RemoteTreeScanProgress(
-                    filesScanned,
-                    directoriesScanned,
-                    currentPath,
-                    pageMetrics.PagesScanned,
-                    pageMetrics.PageReadLatencyTotal,
-                    pageMetrics.PageReadLatencyMax,
-                    pageMetrics.LastPageReadLatency,
-                    entriesExpected: entriesExpected));
-            }
-        }
-
-        private static void ReportDirectoryScanProgress(
-            IProgress<RemoteTreeScanProgress>? progress,
-            int filesScanned,
-            int directoriesScanned,
-            RemoteTreePageReadMetrics pageMetrics,
-            string currentPath,
-            int? entriesExpected = null)
-        {
-            if (progress is null)
-            {
-                return;
-            }
-
-            if (directoriesScanned == 1 || directoriesScanned % ProgressReportItemInterval == 0)
-            {
-                progress.Report(new RemoteTreeScanProgress(
-                    filesScanned,
-                    directoriesScanned,
-                    currentPath,
-                    pageMetrics.PagesScanned,
-                    pageMetrics.PageReadLatencyTotal,
-                    pageMetrics.PageReadLatencyMax,
-                    pageMetrics.LastPageReadLatency,
-                    entriesExpected: entriesExpected));
-            }
-        }
-
-        private async Task<RemoteTreePageReadResult> ReadChildrenPageAsync(
-            RemoteCrawlFrame frame,
-            CancellationToken cancellationToken)
-        {
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            CottonPagedResult<NodeContentDto> pageResult = await _nodes.GetChildrenAsync(
-                frame.Node.Id,
-                frame.Page,
-                _pageSize,
-                depth: 0,
-                cancellationToken).ConfigureAwait(false);
-            stopwatch.Stop();
-            return new RemoteTreePageReadResult(pageResult.Payload, pageResult.TotalCount, stopwatch.Elapsed);
-        }
-
-        private static TimeSpan Max(TimeSpan left, TimeSpan right)
-        {
-            return left >= right ? left : right;
-        }
-
         private static long UpdateMax(ref long target, long value)
         {
             long current;
@@ -738,43 +355,5 @@ namespace Cotton.Sync.Remote
             return value;
         }
 
-        private static string Combine(string parentPath, string name)
-        {
-            string combined = string.IsNullOrWhiteSpace(parentPath)
-                ? name
-                : parentPath + "/" + name;
-            return SyncPath.Normalize(combined);
-        }
-
-        private readonly record struct RemoteCrawlFrame(NodeDto Node, string ParentPath, int Page, int Loaded);
-
-        private readonly record struct RemoteTreePageReadMetrics(
-            int PagesScanned,
-            TimeSpan PageReadLatencyTotal,
-            TimeSpan PageReadLatencyMax,
-            TimeSpan LastPageReadLatency)
-        {
-            public static RemoteTreePageReadMetrics Empty { get; } = new(0, TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero);
-        }
-
-        private readonly record struct RemoteTreePageReadResult(
-            NodeContentDto Children,
-            int TotalCount,
-            TimeSpan Elapsed);
-
-        private record RemotePathResolution(RemoteDirectorySnapshot? Directory, RemoteFileSnapshot? File)
-        {
-            public static RemotePathResolution NotFound { get; } = new(null, null);
-
-            public static RemotePathResolution ForDirectory(RemoteDirectorySnapshot directory)
-            {
-                return new RemotePathResolution(directory, null);
-            }
-
-            public static RemotePathResolution ForFile(RemoteFileSnapshot file)
-            {
-                return new RemotePathResolution(null, file);
-            }
-        }
     }
 }
