@@ -23,18 +23,6 @@ namespace Cotton.Sync.Desktop
     /// </summary>
     public partial class MainWindow : Window
     {
-        private const double DashboardHeight = 540;
-        private const double DashboardMinHeight = 520;
-        private const double DashboardMinWidth = 388;
-        private const double DashboardWidth = 400;
-        private const double SetupServerHeight = 288;
-        private const double SetupServerMinHeight = 280;
-        private const double SetupSignInHeight = 452;
-        private const double SetupSignInMinHeight = 440;
-        private const double SetupMinWidth = 316;
-        private const double SetupWidth = 336;
-        private const double WindowFrameHeightAllowance = 48;
-
         private readonly ILogger _logger;
         private readonly DesktopWindowLifecyclePolicy _lifecyclePolicy;
         private readonly double? _visualSmokeScale;
@@ -43,7 +31,7 @@ namespace Cotton.Sync.Desktop
         private bool _hasOpened;
         private bool _hasInitializedShell;
         private bool _hasStartedShutdown;
-        private WindowProfile? _windowProfile;
+        private DesktopWindowProfile? _windowProfile;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="MainWindow" /> class.
@@ -369,41 +357,22 @@ namespace Cotton.Sync.Desktop
 
         private void ApplyWindowMode(ShellViewModel viewModel)
         {
-            WindowProfile profile = ResolveWindowProfile(viewModel);
+            DesktopWindowProfile profile = DesktopWindowSizingPolicy.ResolveProfile(viewModel);
             if (_windowProfile == profile)
             {
                 return;
             }
 
             _windowProfile = profile;
-            MinWidth = profile == WindowProfile.Dashboard ? DashboardMinWidth : SetupMinWidth;
-            MinHeight = profile switch
-            {
-                WindowProfile.Dashboard => DashboardMinHeight,
-                WindowProfile.SetupSignIn => SetupSignInMinHeight,
-                _ => SetupServerMinHeight,
-            };
-            Width = profile == WindowProfile.Dashboard ? DashboardWidth : SetupWidth;
-            Height = profile switch
-            {
-                WindowProfile.Dashboard => DashboardHeight,
-                WindowProfile.SetupSignIn => SetupSignInHeight,
-                _ => SetupServerHeight,
-            };
+            DesktopWindowProfileSettings settings = DesktopWindowSizingPolicy.GetSettings(profile);
+            MinWidth = settings.MinWidth;
+            MinHeight = settings.MinHeight;
+            Width = settings.Width;
+            Height = settings.Height;
             if (_hasOpened)
             {
                 FitAndCenterOnCurrentScreen();
             }
-        }
-
-        private static WindowProfile ResolveWindowProfile(ShellViewModel viewModel)
-        {
-            if (viewModel.IsDashboardVisible)
-            {
-                return WindowProfile.Dashboard;
-            }
-
-            return viewModel.IsSignInStepVisible ? WindowProfile.SetupSignIn : WindowProfile.SetupServer;
         }
 
         internal static (double Height, double MinHeight) CalculateFittedWindowHeight(
@@ -412,24 +381,11 @@ namespace Cotton.Sync.Desktop
             int workingAreaPixelHeight,
             double renderScaling)
         {
-            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(desiredHeight);
-
-            if (minimumHeight <= 0 || minimumHeight > desiredHeight)
-            {
-                throw new ArgumentOutOfRangeException(nameof(minimumHeight));
-            }
-
-            if (workingAreaPixelHeight <= 0 || renderScaling <= 0)
-            {
-                return (desiredHeight, minimumHeight);
-            }
-
-            double availableHeight = Math.Max(
-                1,
-                (workingAreaPixelHeight / renderScaling) - WindowFrameHeightAllowance);
-            return (
-                Math.Min(desiredHeight, availableHeight),
-                Math.Min(minimumHeight, availableHeight));
+            return DesktopWindowSizingPolicy.CalculateFittedHeight(
+                desiredHeight,
+                minimumHeight,
+                workingAreaPixelHeight,
+                renderScaling);
         }
 
         private void FitAndCenterOnCurrentScreen()
@@ -441,22 +397,11 @@ namespace Cotton.Sync.Desktop
             }
 
             double scale = _visualSmokeScale ?? (RenderScaling > 0 ? RenderScaling : screen.Scaling);
-            WindowProfile profile = _windowProfile ?? ResolveWindowProfile(_viewModel);
-            double desiredHeight = profile switch
-            {
-                WindowProfile.Dashboard => DashboardHeight,
-                WindowProfile.SetupSignIn => SetupSignInHeight,
-                _ => SetupServerHeight,
-            };
-            double desiredMinHeight = profile switch
-            {
-                WindowProfile.Dashboard => DashboardMinHeight,
-                WindowProfile.SetupSignIn => SetupSignInMinHeight,
-                _ => SetupServerMinHeight,
-            };
+            DesktopWindowProfile profile = _windowProfile ?? DesktopWindowSizingPolicy.ResolveProfile(_viewModel);
+            DesktopWindowProfileSettings settings = DesktopWindowSizingPolicy.GetSettings(profile);
             (double fittedHeight, double fittedMinHeight) = CalculateFittedWindowHeight(
-                desiredHeight,
-                desiredMinHeight,
+                settings.Height,
+                settings.MinHeight,
                 screen.WorkingArea.Height,
                 scale);
             MinHeight = fittedMinHeight;
@@ -468,13 +413,6 @@ namespace Cotton.Sync.Desktop
             Position = new PixelPoint(
                 workingArea.X + (Math.Max(0, workingArea.Width - pixelWidth) / 2),
                 workingArea.Y + (Math.Max(0, workingArea.Height - pixelHeight) / 2));
-        }
-
-        private enum WindowProfile
-        {
-            SetupServer,
-            SetupSignIn,
-            Dashboard,
         }
     }
 }
