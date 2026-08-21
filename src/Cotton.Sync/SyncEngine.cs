@@ -74,6 +74,9 @@ namespace Cotton.Sync
         private readonly InitialVirtualFilesFileBatchProcessor _initialVirtualFilesFileBatchProcessor;
         private readonly InitialVirtualFilesPopulationPipeline _initialVirtualFilesPopulationPipeline;
         private readonly InitialVirtualFilesPopulationCoordinator _initialVirtualFilesPopulationCoordinator;
+        private readonly SyncFilePhaseRunner _filePhaseRunner;
+        private readonly SyncStateFileHashLoader _stateFileHashLoader;
+        private readonly SyncRunCoordinator _runCoordinator;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SyncEngine" /> class.
@@ -230,6 +233,20 @@ namespace Cotton.Sync
                 _initialVirtualFilesPopulationPipeline,
                 _initialVirtualFilesHeartbeatLogger,
                 _logger);
+            _filePhaseRunner = new SyncFilePhaseRunner(_fileReconciler);
+            _stateFileHashLoader = new SyncStateFileHashLoader(_contentHashResolver);
+            _runCoordinator = new SyncRunCoordinator(
+                _treeScanner,
+                _stateSnapshotLoader,
+                _scopedDirectoryRenamePlanner,
+                _remoteDirectoryMoveCoordinator,
+                _directoryReconciler,
+                _stateFileHashLoader,
+                _onlineOnlyPlaceholderMoveCoordinator,
+                _localFileMoveCoordinator,
+                _scopedDirectoryDeleteExecutor,
+                _directoryDeleteReconciler,
+                _logger);
         }
 
         /// <inheritdoc />
@@ -272,17 +289,20 @@ namespace Cotton.Sync
                 SyncRunProgressReporter.ReportRunProgress(runOptions, SyncRunProgressStage.ScanningLocal, 0, null, null, startedAtUtc);
             }
 
-            SyncRunContext context = await PrepareSyncRunContextAsync(
+            SyncRunContext context = await _runCoordinator.PrepareAsync(
                     syncPair,
                     runOptions,
                     startedAtUtc,
                     cancellationToken)
                 .ConfigureAwait(false);
-            IReadOnlyList<string> directoryPathKeys = await ReconcileSyncDirectoriesAsync(context).ConfigureAwait(false);
-            SyncDeletePlan deletePlan = await BuildSyncDeletePlanAsync(context).ConfigureAwait(false);
-            await ReconcilePlannedDirectoryDeletesAsync(context, deletePlan, directoryPathKeys).ConfigureAwait(false);
-            SyncFilePhaseResult filePhase = await ReconcileSyncFilesAsync(context, deletePlan).ConfigureAwait(false);
-            await CompleteSyncRunAsync(context, deletePlan, directoryPathKeys, filePhase).ConfigureAwait(false);
+            IReadOnlyList<string> directoryPathKeys = await _runCoordinator.ReconcileDirectoriesAsync(context)
+                .ConfigureAwait(false);
+            SyncDeletePlan deletePlan = await _runCoordinator.BuildDeletePlanAsync(context).ConfigureAwait(false);
+            await _runCoordinator.ReconcilePlannedDirectoryDeletesAsync(context, deletePlan, directoryPathKeys)
+                .ConfigureAwait(false);
+            SyncFilePhaseResult filePhase = await _filePhaseRunner.RunAsync(context, deletePlan).ConfigureAwait(false);
+            await _runCoordinator.CompleteAsync(context, deletePlan, directoryPathKeys, filePhase)
+                .ConfigureAwait(false);
             return context.Result;
         }
 
@@ -303,536 +323,6 @@ namespace Cotton.Sync
                 result.TotalActivityCount);
         }
 
-        private async Task<SyncRunContext> PrepareSyncRunContextAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            DateTime startedAtUtc,
-            CancellationToken cancellationToken)
-        {
-            SyncTreeLookups treeLookups = await _treeScanner.ScanAsync(
-                    syncPair,
-                    options,
-                    startedAtUtc,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            (Dictionary<string, SyncStateEntry> directoryStateByPath, Dictionary<string, SyncStateEntry> fileStateByPath) =
-                await _stateSnapshotLoader.LoadAsync(
-                        syncPair.SyncPairId,
-                        options,
-                        treeLookups,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            ScopedVirtualFilesDirectoryRenamePlan? scopedDirectoryRename =
-                await _scopedDirectoryRenamePlanner.ExpandAsync(
-                        syncPair,
-                        options,
-                        treeLookups,
-                        directoryStateByPath,
-                        fileStateByPath,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            ValidateSyncTreePathKinds(treeLookups);
-            return new SyncRunContext(
-                syncPair,
-                options,
-                new SyncRunResult(),
-                treeLookups,
-                directoryStateByPath,
-                fileStateByPath,
-                scopedDirectoryRename,
-                startedAtUtc,
-                cancellationToken);
-        }
-
-        private static void ValidateSyncTreePathKinds(SyncTreeLookups treeLookups)
-        {
-            ThrowIfPathKindCollisions(
-                treeLookups.LocalDirectoriesByPath,
-                treeLookups.LocalFilesByPath,
-                directory => directory.RelativePath,
-                file => file.RelativePath);
-            ThrowIfPathKindCollisions(
-                treeLookups.RemoteDirectoriesByPath,
-                treeLookups.RemoteFilesByPath,
-                directory => directory.RelativePath,
-                file => file.RelativePath);
-        }
-
-        private async Task<IReadOnlyList<string>> ReconcileSyncDirectoriesAsync(SyncRunContext context)
-        {
-            await _remoteDirectoryMoveCoordinator.CoalesceAsync(
-                    context.SyncPair,
-                    context.Options,
-                    context.Result,
-                    context.LocalDirectoriesByPath,
-                    context.RemoteDirectoriesByPath,
-                    context.LocalFilesByPath,
-                    context.RemoteFilesByPath,
-                    context.DirectoryStateByPath,
-                    context.FileStateByPath,
-                    context.CancellationToken)
-                .ConfigureAwait(false);
-            IReadOnlyList<string> directoryPathKeys = BuildDirectoryPathKeys(
-                context.LocalDirectoriesByPath.Keys,
-                context.RemoteDirectoriesByPath.Keys,
-                context.DirectoryStateByPath.Keys);
-            SyncRunProgressReporter.ReportRunProgress(
-                context.Options,
-                SyncRunProgressStage.ReconcilingDirectories,
-                0,
-                directoryPathKeys.Count,
-                null,
-                context.StartedAtUtc);
-            DirectoryReconciliationContext directoryReconciliation = new(
-                context.SyncPair,
-                context.Options,
-                context.Result,
-                directoryPathKeys,
-                context.LocalDirectoriesByPath,
-                context.RemoteDirectoriesByPath,
-                context.DirectoryStateByPath,
-                context.TreeLookups.RemoteRootNode,
-                context.StartedAtUtc,
-                context.CancellationToken);
-            await _directoryReconciler.ReconcileWithoutBaselineAsync(directoryReconciliation).ConfigureAwait(false);
-            return directoryPathKeys;
-        }
-
-        private async Task<SyncDeletePlan> BuildSyncDeletePlanAsync(SyncRunContext context)
-        {
-            await EnsureLocalContentHashesForStateFilesAsync(
-                    context.LocalFilesByPath,
-                    context.FileStateByPath,
-                    context.Options,
-                    context.Result,
-                    context.StartedAtUtc,
-                    context.CancellationToken)
-                .ConfigureAwait(false);
-            await _onlineOnlyPlaceholderMoveCoordinator.CoalesceAsync(
-                    context.SyncPair,
-                    context.Options,
-                    context.Result,
-                    context.LocalFilesByPath,
-                    context.RemoteFilesByPath,
-                    context.FileStateByPath,
-                    context.CancellationToken)
-                .ConfigureAwait(false);
-            await _localFileMoveCoordinator.CoalesceAsync(
-                    context.SyncPair,
-                    context.Options,
-                    context.Result,
-                    context.LocalFilesByPath,
-                    context.RemoteFilesByPath,
-                    context.FileStateByPath,
-                    context.CancellationToken)
-                .ConfigureAwait(false);
-            if (context.ScopedDirectoryRename is not null)
-            {
-                await _scopedDirectoryDeleteExecutor.DeleteConfirmedScopedVirtualFilesDirectoryRenameSourceAsync(
-                        context.SyncPair,
-                        context.Options,
-                        context.Result,
-                        context.ScopedDirectoryRename,
-                        context.RemoteDirectoriesByPath,
-                        context.RemoteFilesByPath,
-                        context.DirectoryStateByPath,
-                        context.FileStateByPath,
-                        context.CancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            bool hasLocalDirectoryDeleteCandidates = HasLocalDirectoryDeleteCandidates(
-                context.LocalDirectoriesByPath,
-                context.RemoteDirectoriesByPath,
-                context.DirectoryStateByPath);
-            bool hasRemoteDirectoryDeleteCandidates = HasRemoteDirectoryDeleteCandidates(
-                context.LocalDirectoriesByPath,
-                context.RemoteDirectoriesByPath,
-                context.DirectoryStateByPath);
-            bool hasStaleDirectoryState = HasStaleDirectoryState(
-                context.LocalDirectoriesByPath,
-                context.RemoteDirectoriesByPath,
-                context.DirectoryStateByPath);
-            DirectoryContentIndex localDirectoryContentIndex = hasLocalDirectoryDeleteCandidates
-                ? DirectoryContentIndex.Create(context.LocalDirectoriesByPath.Keys, context.LocalFilesByPath.Keys)
-                : DirectoryContentIndex.Empty;
-            DirectoryContentIndex remoteDirectoryContentIndex = hasRemoteDirectoryDeleteCandidates
-                ? DirectoryContentIndex.Create(context.RemoteDirectoriesByPath.Keys, context.RemoteFilesByPath.Keys)
-                : DirectoryContentIndex.Empty;
-            ScopedVirtualFilesDirectoryDeletePlan? scopedDirectoryDelete =
-                ScopedVirtualFilesDirectoryDeletePlanner.Build(
-                    context.SyncPair,
-                    context.Options,
-                    new ScopedVirtualFilesDirectoryDeleteContext(
-                        context.LocalDirectoriesByPath,
-                        context.RemoteDirectoriesByPath,
-                        context.LocalFilesByPath,
-                        context.RemoteFilesByPath,
-                        context.DirectoryStateByPath,
-                        context.FileStateByPath));
-            IReadOnlySet<string>? scopedFileDeleteKeys = context.Options.Scope.IsFull
-                ? null
-                : BuildExactScopedPathKeys(context.Options.Scope.LocalChangedPaths);
-            IReadOnlySet<string>? scopedDirectoryDeleteKeys = context.Options.Scope.IsFull
-                ? null
-                : BuildExactScopedPathKeys(context.Options.Scope.LocalChangedPaths);
-            IReadOnlySet<string> scopedLocalDeletedFileKeys =
-                BuildExactScopedPathKeys(context.Options.Scope.LocalDeletedPaths);
-            if (scopedDirectoryDelete is not null)
-            {
-                scopedFileDeleteKeys = AddScopedPathKeys(scopedFileDeleteKeys!, scopedDirectoryDelete.FileKeys);
-                scopedLocalDeletedFileKeys = AddScopedPathKeys(
-                    scopedLocalDeletedFileKeys,
-                    scopedDirectoryDelete.FileKeys);
-            }
-            SyncDeleteGuard deleteGuard = BuildDeleteGuard(
-                context.Options,
-                context.LocalFilesByPath,
-                context.RemoteFilesByPath,
-                context.FileStateByPath,
-                context.LocalDirectoriesByPath,
-                context.RemoteDirectoriesByPath,
-                context.DirectoryStateByPath,
-                localDirectoryContentIndex,
-                remoteDirectoryContentIndex,
-                scopedFileDeleteKeys,
-                scopedDirectoryDeleteKeys,
-                scopedLocalDeletedFileKeys,
-                scopedDirectoryDelete);
-            bool hasMissingRemoteOnlyPlaceholder = HasMissingRemoteOnlyPlaceholder(
-                context.SyncPair,
-                context.LocalFilesByPath,
-                context.RemoteFilesByPath,
-                context.FileStateByPath);
-            return new SyncDeletePlan(
-                deleteGuard,
-                localDirectoryContentIndex,
-                remoteDirectoryContentIndex,
-                scopedFileDeleteKeys,
-                scopedDirectoryDeleteKeys,
-                scopedLocalDeletedFileKeys,
-                scopedDirectoryDelete,
-                hasLocalDirectoryDeleteCandidates,
-                hasLocalDirectoryDeleteCandidates || hasRemoteDirectoryDeleteCandidates || hasStaleDirectoryState,
-                hasMissingRemoteOnlyPlaceholder);
-        }
-
-        private async Task ReconcilePlannedDirectoryDeletesAsync(
-            SyncRunContext context,
-            SyncDeletePlan deletePlan,
-            IReadOnlyList<string> directoryPathKeys)
-        {
-            if (!deletePlan.RequiresDirectoryReconciliation)
-            {
-                return;
-            }
-
-            DirectoryDeleteContext directoryDeletes = new(
-                    context.SyncPair,
-                    context.Options,
-                    context.Result,
-                    deletePlan.DeleteGuard,
-                    directoryPathKeys,
-                    context.LocalDirectoriesByPath,
-                    context.RemoteDirectoriesByPath,
-                    context.DirectoryStateByPath,
-                    context.LocalFilesByPath,
-                    context.RemoteFilesByPath,
-                    context.FileStateByPath,
-                    deletePlan.LocalDirectoryContentIndex,
-                    deletePlan.RemoteDirectoryContentIndex,
-                    deletePlan.ScopedDirectoryDeleteKeys,
-                    deletePlan.ScopedDirectoryDelete?.DirectoryKeys,
-                    context.CancellationToken);
-            await _directoryDeleteReconciler.ReconcileAsync(directoryDeletes).ConfigureAwait(false);
-        }
-
-        private async Task<SyncFilePhaseResult> ReconcileSyncFilesAsync(
-            SyncRunContext context,
-            SyncDeletePlan deletePlan)
-        {
-            IReadOnlyList<string> pathKeys = BuildPathKeys(
-                context.LocalFilesByPath.Keys,
-                context.RemoteFilesByPath.Keys,
-                context.FileStateByPath.Keys);
-            EnsureEnoughLocalFreeSpaceForPlannedDownloads(
-                context.SyncPair,
-                pathKeys,
-                context.LocalFilesByPath,
-                context.RemoteFilesByPath,
-                context.FileStateByPath);
-            long plannedTransferBytesTotal = CalculatePlannedTransferBytesTotal(
-                context.SyncPair,
-                pathKeys,
-                context.LocalFilesByPath,
-                context.RemoteFilesByPath,
-                context.FileStateByPath);
-            SyncFileReconciliationProgress progress = new(plannedTransferBytesTotal);
-            IReadOnlyDictionary<SyncRunProgressStage, int> fileCountsByStage = CountFileRunProgressStages(
-                context,
-                pathKeys);
-            foreach (string key in pathKeys)
-            {
-                await ReconcileSyncFileAsync(context, deletePlan, progress, fileCountsByStage, pathKeys.Count, key)
-                    .ConfigureAwait(false);
-            }
-
-            return new SyncFilePhaseResult(pathKeys, progress.FilesCompleted, plannedTransferBytesTotal);
-        }
-
-        private async Task ReconcileSyncFileAsync(
-            SyncRunContext context,
-            SyncDeletePlan deletePlan,
-            SyncFileReconciliationProgress progress,
-            IReadOnlyDictionary<SyncRunProgressStage, int> fileCountsByStage,
-            int fileCount,
-            string pathKey)
-        {
-            context.CancellationToken.ThrowIfCancellationRequested();
-            context.LocalFilesByPath.TryGetValue(pathKey, out LocalFileSnapshot? local);
-            context.RemoteFilesByPath.TryGetValue(pathKey, out RemoteFileSnapshot? remote);
-            context.FileStateByPath.TryGetValue(pathKey, out SyncStateEntry? state);
-            string relativePath = local?.RelativePath ?? remote?.RelativePath ?? state?.RelativePath ?? pathKey;
-            SyncRunProgressStage progressStage = ResolveFileRunProgressStage(context.SyncPair, local, remote, state);
-            int stageFileCount = fileCountsByStage[progressStage];
-            long plannedTransferBytes = CalculatePlannedTransferBytes(
-                context.SyncPair,
-                pathKey,
-                context.LocalFilesByPath,
-                context.RemoteFilesByPath,
-                context.FileStateByPath);
-            ReportSyncFileProgress(context, progress, progressStage, stageFileCount, relativePath);
-            if (!context.Result.IsLocalPathDeferred(relativePath))
-            {
-                try
-                {
-                    if (state is null)
-                    {
-                        await _fileReconciler.ReconcileWithoutBaselineAsync(
-                                context.SyncPair,
-                                context.Options,
-                                context.Result,
-                                relativePath,
-                                local,
-                                remote,
-                                deletePlan.HasMissingRemoteOnlyPlaceholder,
-                                context.CancellationToken)
-                            .ConfigureAwait(false);
-                    }
-                    else
-                    {
-                        await _fileReconciler.ReconcileWithBaselineAsync(
-                                context.SyncPair,
-                                context.Options,
-                                context.Result,
-                                deletePlan.DeleteGuard,
-                                deletePlan.ScopedFileDeleteKeys,
-                                deletePlan.ScopedLocalDeletedFileKeys,
-                                state,
-                                relativePath,
-                                local,
-                                remote,
-                                context.CancellationToken)
-                            .ConfigureAwait(false);
-                    }
-                }
-                catch (LocalFileUnavailableException exception)
-                {
-                    ReportUnavailable(context.Result, context.Options, relativePath, exception);
-                }
-            }
-
-            progress.CompleteFile(progressStage, plannedTransferBytes);
-            ReportSyncFileProgress(context, progress, progressStage, stageFileCount, relativePath);
-            await YieldAfterLargeBatchAsync(
-                    context.Options,
-                    progress.FilesCompleted,
-                    fileCount,
-                    context.CancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        private static void ReportSyncFileProgress(
-            SyncRunContext context,
-            SyncFileReconciliationProgress progress,
-            SyncRunProgressStage stage,
-            int fileCount,
-            string relativePath)
-        {
-            DateTime? lastReportedAtUtc = progress.GetLastReportedAtUtc(stage);
-            ReportItemRunProgress(
-                context.Options,
-                stage,
-                progress.GetFilesCompleted(stage),
-                fileCount,
-                relativePath,
-                context.StartedAtUtc,
-                ref lastReportedAtUtc,
-                bytesCompleted: progress.CompletedTransferBytes,
-                bytesTotal: progress.PlannedTransferBytesTotal);
-            progress.SetLastReportedAtUtc(stage, lastReportedAtUtc);
-        }
-
-        private static IReadOnlyDictionary<SyncRunProgressStage, int> CountFileRunProgressStages(
-            SyncRunContext context,
-            IReadOnlyList<string> pathKeys)
-        {
-            Dictionary<SyncRunProgressStage, int> fileCountsByStage = [];
-            foreach (string pathKey in pathKeys)
-            {
-                context.LocalFilesByPath.TryGetValue(pathKey, out LocalFileSnapshot? local);
-                context.RemoteFilesByPath.TryGetValue(pathKey, out RemoteFileSnapshot? remote);
-                context.FileStateByPath.TryGetValue(pathKey, out SyncStateEntry? state);
-                SyncRunProgressStage stage = ResolveFileRunProgressStage(context.SyncPair, local, remote, state);
-                fileCountsByStage[stage] = fileCountsByStage.GetValueOrDefault(stage) + 1;
-            }
-
-            return fileCountsByStage;
-        }
-
-        private async Task CompleteSyncRunAsync(
-            SyncRunContext context,
-            SyncDeletePlan deletePlan,
-            IReadOnlyList<string> directoryPathKeys,
-            SyncFilePhaseResult filePhase)
-        {
-            if (deletePlan.HasLocalDirectoryDeleteCandidates)
-            {
-                await _directoryDeleteReconciler.ReconcileEmptyLocalDirectoriesAsync(
-                        context.SyncPair,
-                        context.Options,
-                        context.Result,
-                        deletePlan.DeleteGuard,
-                        directoryPathKeys,
-                        context.LocalDirectoriesByPath,
-                        context.RemoteDirectoriesByPath,
-                        context.DirectoryStateByPath,
-                        context.CancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (deletePlan.ScopedDirectoryDelete is not null)
-            {
-                await _scopedDirectoryDeleteExecutor.DeleteConfirmedScopedVirtualFilesDirectorySubtreesAsync(
-                        context.SyncPair,
-                        context.Options,
-                        context.Result,
-                        deletePlan.DeleteGuard,
-                        deletePlan.ScopedDirectoryDelete,
-                        context.RemoteDirectoriesByPath,
-                        context.DirectoryStateByPath,
-                        context.CancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            SyncRunProgressReporter.ReportRunProgress(
-                context.Options,
-                SyncRunProgressStage.Completed,
-                filePhase.FilesCompleted,
-                filePhase.PathKeys.Count,
-                null,
-                context.StartedAtUtc,
-                isCompleted: true,
-                bytesCompleted: filePhase.PlannedTransferBytesTotal,
-                bytesTotal: filePhase.PlannedTransferBytesTotal);
-            _logger.LogInformation(
-                "Completed sync pass for pair {SyncPairId} with {ActivityCount} activities.",
-                context.SyncPair.SyncPairId,
-                context.Result.TotalActivityCount);
-        }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        private async Task EnsureLocalContentHashesForStateFilesAsync(
-            IReadOnlyDictionary<string, LocalFileSnapshot> localByPath,
-            IReadOnlyDictionary<string, SyncStateEntry> stateByPath,
-            SyncRunOptions options,
-            SyncRunResult result,
-            DateTime startedAtUtc,
-            CancellationToken cancellationToken)
-        {
-            if (stateByPath.Count == 0)
-            {
-                return;
-            }
-
-            int filesTotal = stateByPath.Count(state => localByPath.ContainsKey(state.Key));
-            if (filesTotal == 0)
-            {
-                return;
-            }
-
-            int filesCompleted = 0;
-            DateTime? lastReportedAtUtc = null;
-            ReportItemRunProgress(
-                options,
-                SyncRunProgressStage.ScanningLocal,
-                filesCompleted,
-                filesTotal,
-                currentPath: null,
-                startedAtUtc,
-                ref lastReportedAtUtc);
-
-            foreach (KeyValuePair<string, SyncStateEntry> state in stateByPath)
-            {
-                if (localByPath.TryGetValue(state.Key, out LocalFileSnapshot? local))
-                {
-                    ReportItemRunProgress(
-                        options,
-                        SyncRunProgressStage.ScanningLocal,
-                        filesCompleted,
-                        filesTotal,
-                        local.RelativePath,
-                        startedAtUtc,
-                        ref lastReportedAtUtc);
-                    if (!ShouldDefer(local, options, out _))
-                    {
-                        try
-                        {
-                            await EnsureLocalContentHashForBaselineComparisonAsync(
-                                    local,
-                                    state.Value,
-                                    options,
-                                    cancellationToken)
-                                .ConfigureAwait(false);
-                        }
-                        catch (LocalFileUnavailableException exception)
-                        {
-                            ReportUnavailable(result, options, local.RelativePath, exception);
-                        }
-                    }
-
-                    filesCompleted++;
-                    ReportItemRunProgress(
-                        options,
-                        SyncRunProgressStage.ScanningLocal,
-                        filesCompleted,
-                        filesTotal,
-                        local.RelativePath,
-                        startedAtUtc,
-                        ref lastReportedAtUtc);
-                }
-            }
-        }
 
 
 
@@ -957,28 +447,8 @@ namespace Cotton.Sync
 
 
 
-        private static SyncRunProgressStage ResolveFileRunProgressStage(
-            SyncPair syncPair,
-            LocalFileSnapshot? local,
-            RemoteFileSnapshot? remote,
-            SyncStateEntry? state)
-        {
-            if (syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles
-                || local is not null
-                || remote is null)
-            {
-                return SyncRunProgressStage.ReconcilingFiles;
-            }
 
-            if (state is null
-                || (IsOnlineOnlyPlaceholderBaseline(syncPair, state)
-                    && !RemoteMatchesBaseline(remote.File, state)))
-            {
-                return SyncRunProgressStage.CreatingPlaceholders;
-            }
 
-            return SyncRunProgressStage.ReconcilingFiles;
-        }
 
 
 
@@ -1078,24 +548,36 @@ namespace Cotton.Sync
 
 
 
-        private async Task EnsureLocalContentHashAsync(
-            LocalFileSnapshot local,
-            SyncRunOptions options,
-            CancellationToken cancellationToken)
-        {
-            await _contentHashResolver.EnsureAsync(local, options, cancellationToken).ConfigureAwait(false);
-        }
 
-        private async Task EnsureLocalContentHashForBaselineComparisonAsync(
-            LocalFileSnapshot local,
-            SyncStateEntry state,
-            SyncRunOptions options,
-            CancellationToken cancellationToken)
-        {
-            await _contentHashResolver
-                .EnsureForBaselineComparisonAsync(local, state, options, cancellationToken)
-                .ConfigureAwait(false);
-        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
