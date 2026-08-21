@@ -51,6 +51,7 @@ namespace Cotton.Sync
         private readonly IRemoteDirectoryMaterializationObserver? _remoteDirectoryMaterializationObserver;
         private readonly IRemoteDirectoryTreePopulationObserver? _remoteDirectoryTreePopulationObserver;
         private readonly ILogger<SyncEngine> _logger;
+        private readonly SyncDirectoryReconciler _directoryReconciler;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SyncEngine" /> class.
@@ -91,6 +92,12 @@ namespace Cotton.Sync
             _remoteDirectoryTreePopulationObserver =
                 remoteFilePlaceholderWriter as IRemoteDirectoryTreePopulationObserver;
             _logger = logger ?? NullLogger<SyncEngine>.Instance;
+            _directoryReconciler = new SyncDirectoryReconciler(
+                _remoteDirectories,
+                _stateStore,
+                _localWriter,
+                _remoteDirectoryMaterializationObserver,
+                _logger);
         }
 
         /// <inheritdoc />
@@ -251,7 +258,7 @@ namespace Cotton.Sync
                 context.TreeLookups.RemoteRootNode,
                 context.StartedAtUtc,
                 context.CancellationToken);
-            await ReconcileDirectoriesWithoutBaselineAsync(directoryReconciliation).ConfigureAwait(false);
+            await _directoryReconciler.ReconcileWithoutBaselineAsync(directoryReconciliation).ConfigureAwait(false);
             return directoryPathKeys;
         }
 
@@ -2068,7 +2075,7 @@ namespace Cotton.Sync
                     context,
                     waitForOne: false)
                 .ConfigureAwait(false);
-            await CreateRemoteBackedLocalDirectoryAsync(
+            await _directoryReconciler.CreateRemoteBackedLocalDirectoryAsync(
                     context.SyncPair,
                     directory.RelativePath,
                     directory.Node,
@@ -2102,7 +2109,8 @@ namespace Cotton.Sync
                 return;
             }
 
-            RemoteDirectoryMaterializationRequest request = CreateRemoteDirectoryMaterializationRequest(
+            RemoteDirectoryMaterializationRequest request =
+                SyncDirectoryReconciler.CreateRemoteDirectoryMaterializationRequest(
                 syncPair,
                 directory.RelativePath,
                 directory.Node);
@@ -2987,7 +2995,10 @@ namespace Cotton.Sync
                         entry.Value.RelativePath,
                         candidate.SourcePath,
                         candidate.TargetPath);
-                    return CreateRemoteDirectoryMaterializationRequest(syncPair, targetPath, remote.Node);
+                    return SyncDirectoryReconciler.CreateRemoteDirectoryMaterializationRequest(
+                        syncPair,
+                        targetPath,
+                        remote.Node);
                 })
                 .ToList();
             await _remoteDirectoryTreePopulationObserver
@@ -3421,247 +3432,14 @@ namespace Cotton.Sync
 
 
 
-        private async Task ReconcileDirectoriesWithoutBaselineAsync(DirectoryReconciliationContext context)
-        {
-            int foldersCompleted = 0;
-            DateTime? lastDirectoryRunProgressReportedAtUtc = null;
-            foreach (string key in context.PathKeys)
-            {
-                context.CancellationToken.ThrowIfCancellationRequested();
-                context.LocalByPath.TryGetValue(key, out LocalDirectorySnapshot? local);
-                context.RemoteByPath.TryGetValue(key, out RemoteDirectorySnapshot? remote);
-                context.StateByPath.TryGetValue(key, out SyncStateEntry? state);
-                string relativePath = ResolveDirectoryRelativePath(key, local, remote, state);
-                ReportDirectoryProgress(
-                    context,
-                    foldersCompleted,
-                    relativePath,
-                    ref lastDirectoryRunProgressReportedAtUtc);
-                if (state is null)
-                {
-                    await ReconcileDirectoryWithoutBaselineAsync(context, relativePath, local, remote)
-                        .ConfigureAwait(false);
-                }
 
-                foldersCompleted++;
-                ReportDirectoryProgress(
-                    context,
-                    foldersCompleted,
-                    relativePath,
-                    ref lastDirectoryRunProgressReportedAtUtc);
-            }
-        }
 
-        private async Task ReconcileDirectoryWithoutBaselineAsync(
-            DirectoryReconciliationContext context,
-            string relativePath,
-            LocalDirectorySnapshot? local,
-            RemoteDirectorySnapshot? remote)
-        {
-            if (local is null)
-            {
-                if (remote is null)
-                {
-                    return;
-                }
 
-                await CreateRemoteBackedLocalDirectoryAsync(
-                        context.SyncPair,
-                        relativePath,
-                        remote.Node,
-                        context.CancellationToken)
-                    .ConfigureAwait(false);
-                await _stateStore.UpsertAsync(
-                        BuildDirectoryBaseline(context.SyncPair, relativePath, remote.Node),
-                        context.CancellationToken)
-                    .ConfigureAwait(false);
-                Report(context.Result, context.Options, SyncActivityKind.Downloaded, relativePath, "Created local folder.");
-                return;
-            }
 
-            if (remote is null)
-            {
-                if (_remoteDirectories is not null)
-                {
-                    await CreateRemoteDirectoryWithoutBaselineAsync(context, relativePath).ConfigureAwait(false);
-                }
 
-                return;
-            }
 
-            await _stateStore.UpsertAsync(
-                    BuildDirectoryBaseline(context.SyncPair, relativePath, remote.Node),
-                    context.CancellationToken)
-                .ConfigureAwait(false);
-        }
 
-        private async Task CreateRemoteDirectoryWithoutBaselineAsync(
-            DirectoryReconciliationContext context,
-            string relativePath)
-        {
-            string parentPath = GetParentPath(relativePath);
-            string parentKey = string.IsNullOrEmpty(parentPath) ? string.Empty : SyncPath.ToKey(parentPath);
-            if (!TryGetRemoteDirectoryNodeId(
-                    context.RemoteByPath,
-                    parentKey,
-                    context.RemoteRootNode.Id,
-                    out Guid parentNodeId))
-            {
-                return;
-            }
 
-            RemoteDirectoryCreationResult creation = await CreateOrReuseRemoteDirectoryAsync(
-                    _remoteDirectories!,
-                    parentNodeId,
-                    GetFileName(relativePath),
-                    context.CancellationToken)
-                .ConfigureAwait(false);
-            RemoteDirectorySnapshot createdSnapshot = new RemoteDirectorySnapshot
-            {
-                RelativePath = relativePath,
-                Node = creation.Node,
-            };
-            context.RemoteByPath[SyncPath.ToKey(relativePath)] = createdSnapshot;
-            await _stateStore.UpsertAsync(
-                    BuildDirectoryBaseline(context.SyncPair, relativePath, creation.Node),
-                    context.CancellationToken)
-                .ConfigureAwait(false);
-            string details = creation.ReusedExisting
-                ? "Reused existing remote folder after create conflict."
-                : "Created remote folder.";
-            Report(context.Result, context.Options, SyncActivityKind.Uploaded, relativePath, details);
-        }
-
-        private static string ResolveDirectoryRelativePath(
-            string key,
-            LocalDirectorySnapshot? local,
-            RemoteDirectorySnapshot? remote,
-            SyncStateEntry? state)
-        {
-            if (local is not null)
-            {
-                return local.RelativePath;
-            }
-
-            if (remote is not null)
-            {
-                return remote.RelativePath;
-            }
-
-            return state is not null ? state.RelativePath : key;
-        }
-
-        private static void ReportDirectoryProgress(
-            DirectoryReconciliationContext context,
-            int foldersCompleted,
-            string relativePath,
-            ref DateTime? lastReportedAtUtc)
-        {
-            ReportItemRunProgress(
-                context.Options,
-                SyncRunProgressStage.ReconcilingDirectories,
-                foldersCompleted,
-                context.PathKeys.Count,
-                relativePath,
-                context.StartedAtUtc,
-                ref lastReportedAtUtc);
-        }
-
-        private async Task<RemoteDirectoryCreationResult> CreateOrReuseRemoteDirectoryAsync(
-            IRemoteDirectorySynchronizer remoteDirectories,
-            Guid parentNodeId,
-            string name,
-            CancellationToken cancellationToken)
-        {
-            try
-            {
-                NodeDto created = await remoteDirectories
-                    .CreateDirectoryAsync(parentNodeId, name, cancellationToken)
-                    .ConfigureAwait(false);
-                return new RemoteDirectoryCreationResult(created, ReusedExisting: false);
-            }
-            catch (CottonApiException exception) when (exception.StatusCode == HttpStatusCode.Conflict)
-            {
-                NodeDto? existing = await remoteDirectories
-                    .FindChildDirectoryAsync(parentNodeId, name, cancellationToken)
-                    .ConfigureAwait(false);
-                if (existing is null)
-                {
-                    throw;
-                }
-
-                _logger.LogInformation(
-                    "Remote folder create for {DirectoryName} under {ParentNodeId} hit conflict; reusing existing node {NodeId}.",
-                    name,
-                    parentNodeId,
-                    existing.Id);
-                return new RemoteDirectoryCreationResult(existing, ReusedExisting: true);
-            }
-        }
-
-        private async Task CreateRemoteBackedLocalDirectoryAsync(
-            SyncPair syncPair,
-            string relativePath,
-            NodeDto remoteDirectory,
-            CancellationToken cancellationToken)
-        {
-            RemoteDirectoryMaterializationRequest? materializationRequest = null;
-            if (syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
-                && _remoteDirectoryMaterializationObserver is not null)
-            {
-                materializationRequest = CreateRemoteDirectoryMaterializationRequest(
-                    syncPair,
-                    relativePath,
-                    remoteDirectory);
-                await _remoteDirectoryMaterializationObserver
-                    .BeforeCreateDirectoryAsync(materializationRequest, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            await _localWriter.CreateDirectoryAsync(syncPair.LocalRootPath, relativePath, cancellationToken)
-                .ConfigureAwait(false);
-            if (materializationRequest is not null)
-            {
-                await _remoteDirectoryMaterializationObserver!
-                    .AfterCreateDirectoryAsync(materializationRequest, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-        }
-
-        private static RemoteDirectoryMaterializationRequest CreateRemoteDirectoryMaterializationRequest(
-            SyncPair syncPair,
-            string relativePath,
-            NodeDto remoteDirectory)
-        {
-            return new RemoteDirectoryMaterializationRequest(
-                syncPair.SyncPairId,
-                syncPair.LocalRootPath,
-                syncPair.RemoteRootNodeId,
-                SyncPath.Normalize(relativePath),
-                remoteDirectory);
-        }
-
-        private static bool TryGetRemoteDirectoryNodeId(
-            IDictionary<string, RemoteDirectorySnapshot> remoteByPath,
-            string key,
-            Guid remoteRootNodeId,
-            out Guid nodeId)
-        {
-            if (string.IsNullOrEmpty(key))
-            {
-                nodeId = remoteRootNodeId;
-                return true;
-            }
-
-            if (remoteByPath.TryGetValue(key, out RemoteDirectorySnapshot? remote))
-            {
-                nodeId = remote.Node.Id;
-                return true;
-            }
-
-            nodeId = Guid.Empty;
-            return false;
-        }
 
         private async Task ReconcileDirectoryDeletesAsync(DirectoryDeleteContext context)
         {
@@ -3675,7 +3453,7 @@ namespace Cotton.Sync
 
                 context.LocalByPath.TryGetValue(key, out LocalDirectorySnapshot? local);
                 context.RemoteByPath.TryGetValue(key, out RemoteDirectorySnapshot? remote);
-                string relativePath = ResolveDirectoryRelativePath(key, local, remote, state);
+                string relativePath = SyncDirectoryReconciler.ResolveRelativePath(key, local, remote, state);
                 await ReconcileDirectoryDeleteAsync(context, key, relativePath, local, remote).ConfigureAwait(false);
             }
         }
@@ -5978,18 +5756,14 @@ namespace Cotton.Sync
             bool requiresUserAction = false,
             bool publishActivityProgress = true)
         {
-            SyncActivity activity = new SyncActivity
-            {
-                Kind = kind,
-                RelativePath = SyncPath.Normalize(relativePath),
-                Details = details,
-                RequiresUserAction = requiresUserAction,
-            };
-            result.RecordActivity(activity, options.MaximumStoredResultActivities);
-            if (publishActivityProgress)
-            {
-                options.ActivityProgress?.Report(activity);
-            }
+            SyncActivityReporter.Record(
+                result,
+                options,
+                kind,
+                relativePath,
+                details,
+                requiresUserAction,
+                publishActivityProgress);
         }
 
         private static void ReportTransfer(
@@ -6000,12 +5774,13 @@ namespace Cotton.Sync
             long? totalBytes,
             bool isCompleted = false)
         {
-            options.TransferProgress?.Report(new SyncTransferProgress(
+            SyncActivityReporter.RecordTransfer(
+                options,
                 direction,
                 relativePath,
                 transferredBytes,
                 totalBytes,
-                isCompleted));
+                isCompleted);
         }
 
         private async Task EnsureLocalContentHashAsync(
@@ -6070,8 +5845,6 @@ namespace Cotton.Sync
 
 
         private readonly record struct MoveCandidateKey(string ContentHash, long SizeBytes);
-
-        private readonly record struct RemoteDirectoryCreationResult(NodeDto Node, bool ReusedExisting);
 
 
 
