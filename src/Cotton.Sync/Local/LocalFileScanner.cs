@@ -19,16 +19,6 @@ namespace Cotton.Sync.Local
         ILocalFilePresenceProbe,
         ILocalFileContentHashProgressHasher
     {
-        private static readonly StringComparer PathComparer = StringComparer.OrdinalIgnoreCase;
-        private const int ProgressReportItemInterval = 100;
-        private static readonly EnumerationOptions ChildEnumerationOptions = new()
-        {
-            AttributesToSkip = 0,
-            IgnoreInaccessible = false,
-            RecurseSubdirectories = false,
-            ReturnSpecialDirectories = false,
-        };
-
         /// <inheritdoc />
         public async Task<IReadOnlyList<LocalFileSnapshot>> ScanAsync(
             string rootPath,
@@ -44,7 +34,7 @@ namespace Cotton.Sync.Local
             CancellationToken cancellationToken = default)
         {
             LocalTreeSnapshot tree = new LocalTreeSnapshot();
-            await ScanTreeCoreAsync(
+            await LocalTreeTraversal.ScanAsync(
                     rootPath,
                     computeHashes: true,
                     progress: null,
@@ -52,7 +42,7 @@ namespace Cotton.Sync.Local
                     tree.Files.Add,
                     cancellationToken)
                 .ConfigureAwait(false);
-            SortTree(tree);
+            LocalTreeTraversal.Sort(tree);
             return tree;
         }
 
@@ -71,7 +61,7 @@ namespace Cotton.Sync.Local
             CancellationToken cancellationToken = default)
         {
             LocalTreeSnapshot tree = new LocalTreeSnapshot();
-            await ScanTreeCoreAsync(
+            await LocalTreeTraversal.ScanAsync(
                     rootPath,
                     computeHashes: false,
                     progress,
@@ -79,7 +69,7 @@ namespace Cotton.Sync.Local
                     tree.Files.Add,
                     cancellationToken)
                 .ConfigureAwait(false);
-            SortTree(tree);
+            LocalTreeTraversal.Sort(tree);
             return tree;
         }
 
@@ -90,7 +80,7 @@ namespace Cotton.Sync.Local
             CancellationToken cancellationToken = default)
         {
             LocalTreeLookupSnapshot tree = new LocalTreeLookupSnapshot();
-            await ScanTreeCoreAsync(
+            await LocalTreeTraversal.ScanAsync(
                     rootPath,
                     computeHashes: false,
                     progress,
@@ -204,7 +194,7 @@ namespace Cotton.Sync.Local
 
             bool isOnlineOnly = isCloudFilesPlaceholder
                 && LocalFilePlatformProbe.IsCloudFilesOnlineOnlyAttributes(attributes);
-            LocalFileSnapshot snapshot = await CreateSnapshotAsync(
+            LocalFileSnapshot snapshot = await LocalFileSnapshotFactory.CreateAsync(
                     file,
                     normalizedPath,
                     computeHash: false,
@@ -213,7 +203,7 @@ namespace Cotton.Sync.Local
                     cancellationToken)
                 .ConfigureAwait(false);
             AddFile(tree, snapshot);
-            ReportScanProgress(progress, filesScanned + 1, directoriesScanned, normalizedPath);
+            LocalTreeTraversal.ReportFileProgress(progress, filesScanned + 1, directoriesScanned, normalizedPath);
             return (1, 0);
         }
 
@@ -245,7 +235,11 @@ namespace Cotton.Sync.Local
                 RelativePath = normalizedPath,
                 FullPath = directory.FullName,
             });
-            ReportDirectoryScanProgress(progress, filesScanned, directoriesScanned + 1, normalizedPath);
+            LocalTreeTraversal.ReportDirectoryProgress(
+                progress,
+                filesScanned,
+                directoriesScanned + 1,
+                normalizedPath);
             if (isCloudFilesPlaceholder
                 || !includeDirectoryDescendants
                 || !targetKeys.Contains(SyncPath.ToKey(normalizedPath)))
@@ -255,7 +249,7 @@ namespace Cotton.Sync.Local
 
             int descendantFiles = 0;
             int descendantDirectories = 0;
-            await ScanTreeCoreAsync(
+            await LocalTreeTraversal.ScanAsync(
                     fullRoot,
                     directory.FullName,
                     computeHashes: false,
@@ -320,359 +314,6 @@ namespace Cotton.Sync.Local
                 .ConfigureAwait(false);
         }
 
-        private static async Task ScanTreeCoreAsync(
-            string rootPath,
-            bool computeHashes,
-            IProgress<LocalTreeScanProgress>? progress,
-            Action<LocalDirectorySnapshot> addDirectory,
-            Action<LocalFileSnapshot> addFile,
-            CancellationToken cancellationToken)
-        {
-            await ScanTreeCoreAsync(
-                    rootPath,
-                    Path.GetFullPath(rootPath),
-                    computeHashes,
-                    progress,
-                    addDirectory,
-                    addFile,
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        private static async Task ScanTreeCoreAsync(
-            string rootPath,
-            string scanRootPath,
-            bool computeHashes,
-            IProgress<LocalTreeScanProgress>? progress,
-            Action<LocalDirectorySnapshot> addDirectory,
-            Action<LocalFileSnapshot> addFile,
-            CancellationToken cancellationToken)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
-            ArgumentException.ThrowIfNullOrWhiteSpace(scanRootPath);
-            ArgumentNullException.ThrowIfNull(addDirectory);
-            ArgumentNullException.ThrowIfNull(addFile);
-            string fullRoot = Path.GetFullPath(rootPath);
-            if (!Directory.Exists(fullRoot))
-            {
-                throw new DirectoryNotFoundException($"Local sync root was not found: {fullRoot}");
-            }
-
-            string fullScanRoot = Path.GetFullPath(scanRootPath);
-            EnsurePathUnderRoot(fullRoot, fullScanRoot);
-            int directoriesScanned = 0;
-            int filesScanned = 0;
-            progress?.Report(new LocalTreeScanProgress(filesScanned, directoriesScanned, currentPath: null));
-            var pendingDirectories = new Stack<LocalDirectoryScanFrame>();
-            pendingDirectories.Push(CreateDirectoryScanFrame(fullRoot, fullScanRoot));
-            try
-            {
-                while (pendingDirectories.Count > 0)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    LocalDirectoryScanFrame currentDirectory = pendingDirectories.Peek();
-                    if (TryReadNextChildFile(currentDirectory, fullRoot, out FileInfo? file, out string relativePath))
-                    {
-                        FileAttributes attributes = ReadFileAttributes(file, relativePath);
-                        bool isCloudFilesPlaceholder = LocalFilePlatformProbe.IsCloudFilesPlaceholder(file, attributes);
-                        bool isCloudFilesOnlineOnlyPlaceholder =
-                            isCloudFilesPlaceholder
-                            && LocalFilePlatformProbe.IsCloudFilesOnlineOnlyAttributes(attributes);
-                        LocalFileSnapshot fileSnapshot = await CreateSnapshotAsync(
-                                file,
-                                relativePath,
-                                computeHashes,
-                                isCloudFilesPlaceholder,
-                                isCloudFilesOnlineOnlyPlaceholder,
-                                cancellationToken)
-                            .ConfigureAwait(false);
-                        addFile(fileSnapshot);
-                        filesScanned++;
-                        ReportScanProgress(progress, filesScanned, directoriesScanned, relativePath);
-                        continue;
-                    }
-
-                    if (TryReadNextChildDirectory(currentDirectory, fullRoot, out LocalDirectorySnapshot? directory))
-                    {
-                        addDirectory(directory);
-                        directoriesScanned++;
-                        ReportDirectoryScanProgress(progress, filesScanned, directoriesScanned, directory.RelativePath);
-                        pendingDirectories.Push(CreateDirectoryScanFrame(fullRoot, directory.FullPath));
-                        continue;
-                    }
-
-                    pendingDirectories.Pop().Dispose();
-                }
-            }
-            finally
-            {
-                while (pendingDirectories.Count > 0)
-                {
-                    pendingDirectories.Pop().Dispose();
-                }
-            }
-
-            progress?.Report(new LocalTreeScanProgress(filesScanned, directoriesScanned, currentPath: null));
-        }
-
-        private static bool TryReadNextChildDirectory(
-            LocalDirectoryScanFrame currentDirectory,
-            string fullRoot,
-            out LocalDirectorySnapshot directory)
-        {
-            while (TryReadNextDirectoryPath(currentDirectory, fullRoot, out string? directoryPath))
-            {
-                string path = directoryPath ?? throw new InvalidOperationException("Directory enumeration returned a null path.");
-                string relativePath = ToRelativePath(fullRoot, path);
-                if (LocalFileIgnoreRules.ShouldIgnore(relativePath))
-                {
-                    continue;
-                }
-
-                DirectoryInfo directoryInfo = new(path);
-                FileAttributes attributes = ReadDirectoryAttributes(fullRoot, directoryInfo, relativePath);
-                bool isCloudFilesPlaceholder = LocalFilePlatformProbe.IsCloudFilesPlaceholder(directoryInfo, attributes);
-                if (!ShouldIncludeScopedDirectory(attributes, isCloudFilesPlaceholder))
-                {
-                    continue;
-                }
-
-                directory = new LocalDirectorySnapshot
-                {
-                    RelativePath = relativePath,
-                    FullPath = directoryInfo.FullName,
-                };
-                return true;
-            }
-
-            directory = null!;
-            return false;
-        }
-
-        private static bool TryReadNextChildFile(
-            LocalDirectoryScanFrame currentDirectory,
-            string fullRoot,
-            out FileInfo file,
-            out string relativePath)
-        {
-            while (TryReadNextFilePath(currentDirectory, fullRoot, out string? filePath))
-            {
-                string path = filePath ?? throw new InvalidOperationException("File enumeration returned a null path.");
-                relativePath = ToRelativePath(fullRoot, path);
-                if (LocalFileIgnoreRules.ShouldIgnore(relativePath))
-                {
-                    continue;
-                }
-
-                file = new FileInfo(path);
-                FileAttributes attributes = ReadFileAttributes(file, relativePath);
-                bool isCloudFilesPlaceholder = LocalFilePlatformProbe.IsCloudFilesPlaceholder(file, attributes);
-                if ((attributes & FileAttributes.ReparsePoint) != 0
-                    && !isCloudFilesPlaceholder)
-                {
-                    continue;
-                }
-
-                return true;
-            }
-
-            file = null!;
-            relativePath = string.Empty;
-            return false;
-        }
-
-        private static LocalDirectoryScanFrame CreateDirectoryScanFrame(string fullRoot, string directoryPath)
-        {
-            try
-            {
-                return new LocalDirectoryScanFrame(directoryPath, ChildEnumerationOptions);
-            }
-            catch (UnauthorizedAccessException exception)
-            {
-                throw CreateDirectoryAccessException(fullRoot, directoryPath, exception);
-            }
-            catch (IOException exception)
-            {
-                throw CreateLocalPathUnavailableException(fullRoot, directoryPath, exception);
-            }
-        }
-
-        private static bool TryReadNextDirectoryPath(
-            LocalDirectoryScanFrame currentDirectory,
-            string fullRoot,
-            out string? directoryPath)
-        {
-            try
-            {
-                return currentDirectory.TryReadNextDirectoryPath(out directoryPath);
-            }
-            catch (UnauthorizedAccessException exception)
-            {
-                throw CreateDirectoryAccessException(fullRoot, currentDirectory.DirectoryPath, exception);
-            }
-            catch (IOException exception)
-            {
-                throw CreateLocalPathUnavailableException(fullRoot, currentDirectory.DirectoryPath, exception);
-            }
-        }
-
-        private static bool TryReadNextFilePath(
-            LocalDirectoryScanFrame currentDirectory,
-            string fullRoot,
-            out string? filePath)
-        {
-            try
-            {
-                return currentDirectory.TryReadNextFilePath(out filePath);
-            }
-            catch (UnauthorizedAccessException exception)
-            {
-                throw CreateDirectoryAccessException(fullRoot, currentDirectory.DirectoryPath, exception);
-            }
-            catch (IOException exception)
-            {
-                throw CreateLocalPathUnavailableException(fullRoot, currentDirectory.DirectoryPath, exception);
-            }
-        }
-
-        private static FileAttributes ReadDirectoryAttributes(
-            string fullRoot,
-            DirectoryInfo directory,
-            string relativePath)
-        {
-            try
-            {
-                return directory.Attributes;
-            }
-            catch (UnauthorizedAccessException exception)
-            {
-                throw CreateDirectoryAccessException(fullRoot, directory.FullName, exception);
-            }
-            catch (IOException exception)
-            {
-                throw new LocalFileUnavailableException(relativePath, directory.FullName, exception);
-            }
-        }
-
-        private static FileAttributes ReadFileAttributes(FileInfo file, string relativePath)
-        {
-            try
-            {
-                return file.Attributes;
-            }
-            catch (UnauthorizedAccessException exception)
-            {
-                throw new LocalFilePermissionDeniedException(relativePath, file.FullName, exception);
-            }
-            catch (IOException exception)
-            {
-                throw new LocalFileUnavailableException(relativePath, file.FullName, exception);
-            }
-        }
-
-        private static Exception CreateDirectoryAccessException(
-            string fullRoot,
-            string directoryPath,
-            UnauthorizedAccessException exception)
-        {
-            string relativePath = ToRelativePathForException(fullRoot, directoryPath);
-            if (!PathsEqual(fullRoot, directoryPath))
-            {
-                return new LocalFileUnavailableException(relativePath, directoryPath, exception);
-            }
-
-            if (!DirectoryStillExists(directoryPath))
-            {
-                return new LocalFileUnavailableException(relativePath, directoryPath, exception);
-            }
-
-            return new LocalFilePermissionDeniedException(relativePath, directoryPath, exception);
-        }
-
-        private static LocalFileUnavailableException CreateLocalPathUnavailableException(
-            string fullRoot,
-            string fullPath,
-            IOException exception)
-        {
-            return new LocalFileUnavailableException(ToRelativePathForException(fullRoot, fullPath), fullPath, exception);
-        }
-
-        private static void SortTree(LocalTreeSnapshot tree)
-        {
-            tree.Directories.Sort((left, right) => PathComparer.Compare(left.RelativePath, right.RelativePath));
-            tree.Files.Sort((left, right) => PathComparer.Compare(left.RelativePath, right.RelativePath));
-        }
-
-        private static void ReportScanProgress(
-            IProgress<LocalTreeScanProgress>? progress,
-            int filesScanned,
-            int directoriesScanned,
-            string currentPath)
-        {
-            if (progress is null)
-            {
-                return;
-            }
-
-            if (filesScanned == 1 || filesScanned % ProgressReportItemInterval == 0)
-            {
-                progress.Report(new LocalTreeScanProgress(filesScanned, directoriesScanned, currentPath));
-            }
-        }
-
-        private static void ReportDirectoryScanProgress(
-            IProgress<LocalTreeScanProgress>? progress,
-            int filesScanned,
-            int directoriesScanned,
-            string currentPath)
-        {
-            if (progress is null)
-            {
-                return;
-            }
-
-            if (directoriesScanned == 1 || directoriesScanned % ProgressReportItemInterval == 0)
-            {
-                progress.Report(new LocalTreeScanProgress(filesScanned, directoriesScanned, currentPath));
-            }
-        }
-
-        private static string ToRelativePath(string rootPath, string filePath)
-        {
-            string relative = Path.GetRelativePath(rootPath, filePath).Replace('\\', '/');
-            return SyncPath.Normalize(relative);
-        }
-
-        private static string ToRelativePathForException(string rootPath, string filePath)
-        {
-            string relative = Path.GetRelativePath(rootPath, filePath).Replace('\\', '/');
-            return relative == "." ? "sync root" : SyncPath.Normalize(relative);
-        }
-
-        private static bool DirectoryStillExists(string directoryPath)
-        {
-            try
-            {
-                return Directory.Exists(directoryPath);
-            }
-            catch (IOException)
-            {
-                return false;
-            }
-            catch (UnauthorizedAccessException)
-            {
-                return true;
-            }
-        }
-
-        private static bool PathsEqual(string left, string right)
-        {
-            return string.Equals(
-                Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
-                Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
-                StringComparison.OrdinalIgnoreCase);
-        }
-
         private static IEnumerable<string> ExpandAncestors(IEnumerable<string> relativePaths)
         {
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -695,19 +336,8 @@ namespace Cotton.Sync.Local
         private static string GetScopedFullPath(string fullRoot, string relativePath)
         {
             string fullPath = Path.GetFullPath(Path.Combine(fullRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
-            EnsurePathUnderRoot(fullRoot, fullPath);
+            LocalTreeTraversal.EnsurePathUnderRoot(fullRoot, fullPath);
             return fullPath;
-        }
-
-        private static void EnsurePathUnderRoot(string fullRoot, string fullPath)
-        {
-            string rootWithSeparator = fullRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                + Path.DirectorySeparatorChar;
-            if (!fullPath.Equals(fullRoot, StringComparison.OrdinalIgnoreCase)
-                && !fullPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new ArgumentException("Scoped local path must stay under the sync root.", nameof(fullPath));
-            }
         }
 
         private static void AddDirectory(LocalTreeLookupSnapshot tree, LocalDirectorySnapshot directory)
@@ -720,43 +350,6 @@ namespace Cotton.Sync.Local
         {
             string key = SyncPath.ToKey(file.RelativePath);
             tree.FilesByPath.TryAdd(key, file);
-        }
-
-        private static async Task<LocalFileSnapshot> CreateSnapshotAsync(
-            FileInfo file,
-            string relativePath,
-            bool computeHash,
-            bool isCloudFilesPlaceholder,
-            bool isCloudFilesOnlineOnlyPlaceholder,
-            CancellationToken cancellationToken)
-        {
-            LocalFilePlatformProbe.ValidatePermissions(file, relativePath);
-            LocalFileMetadata before = LocalFileContentHasher.ReadMetadata(file, relativePath);
-            string contentHash = computeHash && !isCloudFilesOnlineOnlyPlaceholder
-                ? await LocalFileContentHasher.ComputeAsync(
-                    file.FullName,
-                    relativePath,
-                    progress: null,
-                    before.Length,
-                    cancellationToken)
-                    .ConfigureAwait(false)
-                : string.Empty;
-            LocalFileMetadata after = LocalFileContentHasher.ReadMetadata(file, relativePath);
-            if (before.Length != after.Length || before.LastWriteUtc != after.LastWriteUtc)
-            {
-                throw new LocalFileUnavailableException(relativePath, file.FullName, "the file changed during scanning.");
-            }
-
-            return new LocalFileSnapshot
-            {
-                RelativePath = relativePath,
-                FullPath = file.FullName,
-                ContentHash = contentHash,
-                SizeBytes = after.Length,
-                LastWriteUtc = after.LastWriteUtc,
-                IsCloudFilesPlaceholder = isCloudFilesPlaceholder,
-                IsCloudFilesOnlineOnlyPlaceholder = isCloudFilesOnlineOnlyPlaceholder,
-            };
         }
 
         internal static bool ShouldIncludeScopedDirectory(
@@ -774,6 +367,11 @@ namespace Cotton.Sync.Local
         internal static bool IsCloudFilesOnlineOnlyAttributes(FileAttributes attributes)
         {
             return LocalFilePlatformProbe.IsCloudFilesOnlineOnlyAttributes(attributes);
+        }
+
+        internal static string CreateReparseTagOpenPath(string fullPath)
+        {
+            return LocalFilePlatformProbe.CreateReparseTagOpenPath(fullPath);
         }
 
     }
