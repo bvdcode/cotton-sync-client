@@ -13,6 +13,7 @@ using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using static Cotton.Sync.SyncPathOperations;
 
 namespace Cotton.Sync
 {
@@ -3418,25 +3419,7 @@ namespace Cotton.Sync
             stateByPath[targetKey] = movedState;
         }
 
-        private static string ReplacePathPrefix(string path, string sourcePrefix, string targetPrefix)
-        {
-            string normalizedPath = SyncPath.Normalize(path);
-            string normalizedSource = SyncPath.Normalize(sourcePrefix);
-            string normalizedTarget = SyncPath.Normalize(targetPrefix);
-            if (PathComparer.Equals(normalizedPath, normalizedSource))
-            {
-                return normalizedTarget;
-            }
 
-            return normalizedTarget + normalizedPath[normalizedSource.Length..];
-        }
-
-        private static string ResolveLocalPath(string localRootPath, string relativePath)
-        {
-            return Path.Combine(
-                Path.GetFullPath(localRootPath),
-                relativePath.Replace('/', Path.DirectorySeparatorChar));
-        }
 
         private async Task ReconcileDirectoriesWithoutBaselineAsync(DirectoryReconciliationContext context)
         {
@@ -3885,11 +3868,6 @@ namespace Cotton.Sync
             return false;
         }
 
-        private static string CombineRelativePath(string parentPath, string childPath)
-        {
-            string normalizedChild = childPath.Replace(Path.DirectorySeparatorChar, '/');
-            return SyncPath.Normalize(parentPath + "/" + normalizedChild);
-        }
 
         private async Task ReconcileEmptyLocalDirectoriesAfterFileDeletesAsync(
             SyncPair syncPair,
@@ -5931,32 +5909,9 @@ namespace Cotton.Sync
             };
         }
 
-        private static int GetPathDepth(string relativePath)
-        {
-            return string.IsNullOrWhiteSpace(relativePath)
-                ? 0
-                : relativePath.Count(static character => character == '/') + 1;
-        }
 
-        private static bool IsSameOrDescendantPathKey(string pathKey, string directoryKey)
-        {
-            return PathComparer.Equals(pathKey, directoryKey)
-                || pathKey.StartsWith(directoryKey.TrimEnd('/') + "/", StringComparison.OrdinalIgnoreCase);
-        }
 
-        private static string GetParentPath(string relativePath)
-        {
-            string normalized = SyncPath.Normalize(relativePath);
-            int lastSlashIndex = normalized.LastIndexOf('/');
-            return lastSlashIndex < 0 ? string.Empty : normalized[..lastSlashIndex];
-        }
 
-        private static string GetFileName(string relativePath)
-        {
-            string normalized = SyncPath.Normalize(relativePath);
-            int lastSlashIndex = normalized.LastIndexOf('/');
-            return lastSlashIndex < 0 ? normalized : normalized[(lastSlashIndex + 1)..];
-        }
 
         private static bool RemoteMatchesBaseline(NodeFileManifestDto remoteFile, SyncStateEntry state)
         {
@@ -7034,228 +6989,17 @@ namespace Cotton.Sync
             return exception.StatusCode == HttpStatusCode.Conflict;
         }
 
-        private static Dictionary<string, T> ToDictionary<T>(IEnumerable<T> entries, Func<T, string> pathSelector)
-        {
-            var result = new Dictionary<string, T>(PathComparer);
-            foreach (T entry in entries)
-            {
-                string relativePath = SyncPath.Normalize(pathSelector(entry));
-                if (SyncPathIgnoreRules.ShouldIgnore(relativePath))
-                {
-                    continue;
-                }
 
-                string key = SyncPath.ToKey(relativePath);
-                if (result.TryGetValue(key, out T? existing))
-                {
-                    throw new SyncPathCollisionException(pathSelector(existing), relativePath);
-                }
 
-                NormalizeSnapshotPath(entry, relativePath);
-                result[key] = entry;
-            }
 
-            return result;
-        }
 
-        private static void NormalizeSnapshotPath<T>(T entry, string relativePath)
-        {
-            switch (entry)
-            {
-                case LocalDirectorySnapshot directory:
-                    directory.RelativePath = relativePath;
-                    break;
-                case LocalFileSnapshot file:
-                    file.RelativePath = relativePath;
-                    break;
-                case RemoteDirectorySnapshot directory:
-                    directory.RelativePath = relativePath;
-                    break;
-                case RemoteFileSnapshot file:
-                    file.RelativePath = relativePath;
-                    break;
-            }
-        }
 
-        private static void ThrowIfPathKindCollisions<TLeft, TRight>(
-            IReadOnlyDictionary<string, TLeft> left,
-            IReadOnlyDictionary<string, TRight> right,
-            Func<TLeft, string> leftPathSelector,
-            Func<TRight, string> rightPathSelector)
-        {
-            foreach (KeyValuePair<string, TLeft> item in left)
-            {
-                if (right.TryGetValue(item.Key, out TRight? colliding))
-                {
-                    throw new SyncPathCollisionException(leftPathSelector(item.Value), rightPathSelector(colliding));
-                }
-            }
-        }
 
-        private static IReadOnlyList<string> BuildPathKeys(params IEnumerable<string>[] keySets)
-        {
-            List<string> keys = BuildUniquePathKeyList(keySets);
-            keys.Sort(PathComparer.Compare);
-            return keys;
-        }
 
-        private static IReadOnlyList<string> BuildDirectoryPathKeys(params IEnumerable<string>[] keySets)
-        {
-            List<string> keys = BuildUniquePathKeyList(keySets);
-            keys.Sort(static (left, right) =>
-            {
-                int depthComparison = GetPathDepth(left).CompareTo(GetPathDepth(right));
-                return depthComparison != 0
-                    ? depthComparison
-                    : StringComparer.OrdinalIgnoreCase.Compare(left, right);
-            });
-            return keys;
-        }
 
-        private static IReadOnlyList<string> BuildScopedRelativePaths(IEnumerable<string> relativePaths)
-        {
-            var yielded = new HashSet<string>(PathComparer);
-            var paths = new List<string>();
-            foreach (string relativePath in relativePaths)
-            {
-                string normalizedPath = SyncPath.Normalize(relativePath);
-                if (string.IsNullOrWhiteSpace(normalizedPath) || SyncPathIgnoreRules.ShouldIgnore(normalizedPath))
-                {
-                    continue;
-                }
 
-                if (yielded.Add(SyncPath.ToKey(normalizedPath)))
-                {
-                    paths.Add(normalizedPath);
-                }
-            }
 
-            return paths;
-        }
 
-        private static bool ShouldIncludeScopedDirectoryDescendants(SyncPair syncPair)
-        {
-            return syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles;
-        }
-
-        private static IEnumerable<string> BuildScopedPathKeys(IEnumerable<string> relativePaths)
-        {
-            var yielded = new HashSet<string>(PathComparer);
-            foreach (string relativePath in relativePaths)
-            {
-                string normalizedPath = SyncPath.Normalize(relativePath);
-                if (string.IsNullOrWhiteSpace(normalizedPath) || SyncPathIgnoreRules.ShouldIgnore(normalizedPath))
-                {
-                    continue;
-                }
-
-                string[] segments = normalizedPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-                string current = string.Empty;
-                for (int index = 0; index < segments.Length; index++)
-                {
-                    current = string.IsNullOrEmpty(current) ? segments[index] : current + "/" + segments[index];
-                    string key = SyncPath.ToKey(current);
-                    if (yielded.Add(key))
-                    {
-                        yield return key;
-                    }
-                }
-            }
-        }
-
-        private static List<string> BuildUniquePathKeyList(params IEnumerable<string>[] keySets)
-        {
-            if (TryBuildSingleSourcePathKeyList(keySets, out List<string> singleSourceKeys))
-            {
-                return singleSourceKeys;
-            }
-
-            int initialCapacity = EstimateUniquePathKeyCapacity(keySets);
-            var seen = new HashSet<string>(initialCapacity, PathComparer);
-            var keys = new List<string>(initialCapacity);
-            foreach (IEnumerable<string> keySet in keySets)
-            {
-                foreach (string key in keySet)
-                {
-                    if (seen.Add(key))
-                    {
-                        keys.Add(key);
-                    }
-                }
-            }
-
-            return keys;
-        }
-
-        private static bool TryBuildSingleSourcePathKeyList(IEnumerable<string>[] keySets, out List<string> keys)
-        {
-            IEnumerable<string>? singleSource = null;
-            int singleSourceCount = 0;
-            foreach (IEnumerable<string> keySet in keySets)
-            {
-                if (!keySet.TryGetNonEnumeratedCount(out int count))
-                {
-                    keys = [];
-                    return false;
-                }
-
-                if (count == 0)
-                {
-                    continue;
-                }
-
-                if (singleSource is not null)
-                {
-                    keys = [];
-                    return false;
-                }
-
-                singleSource = keySet;
-                singleSourceCount = count;
-            }
-
-            keys = singleSource is null ? [] : new List<string>(singleSourceCount);
-            if (singleSource is not null)
-            {
-                keys.AddRange(singleSource);
-            }
-
-            return true;
-        }
-
-        private static int EstimateUniquePathKeyCapacity(IEnumerable<string>[] keySets)
-        {
-            int capacity = 0;
-            foreach (IEnumerable<string> keySet in keySets)
-            {
-                if (keySet.TryGetNonEnumeratedCount(out int count) && count > capacity)
-                {
-                    capacity = count;
-                }
-            }
-
-            return capacity;
-        }
-
-        private static IEnumerable<string> EnumerateDirectoryDeleteKeys(IReadOnlyList<string> pathKeys)
-        {
-            for (int index = pathKeys.Count - 1; index >= 0;)
-            {
-                int depth = GetPathDepth(pathKeys[index]);
-                int groupStart = index;
-                while (groupStart > 0 && GetPathDepth(pathKeys[groupStart - 1]) == depth)
-                {
-                    groupStart--;
-                }
-
-                for (int groupIndex = groupStart; groupIndex <= index; groupIndex++)
-                {
-                    yield return pathKeys[groupIndex];
-                }
-
-                index = groupStart - 1;
-            }
-        }
 
         private static void Report(
             SyncRunResult result,
@@ -7375,31 +7119,7 @@ namespace Cotton.Sync
 
         private readonly record struct RemoteDirectoryCreationResult(NodeDto Node, bool ReusedExisting);
 
-        private static IReadOnlySet<string> BuildExactScopedPathKeys(IEnumerable<string> relativePaths)
-        {
-            HashSet<string> keys = new(PathComparer);
-            foreach (string relativePath in relativePaths)
-            {
-                string normalizedPath = SyncPath.Normalize(relativePath);
-                if (string.IsNullOrWhiteSpace(normalizedPath) || SyncPathIgnoreRules.ShouldIgnore(normalizedPath))
-                {
-                    continue;
-                }
 
-                keys.Add(SyncPath.ToKey(normalizedPath));
-            }
-
-            return keys;
-        }
-
-        private static IReadOnlySet<string> AddScopedPathKeys(
-            IReadOnlySet<string> existingKeys,
-            IEnumerable<string> additionalKeys)
-        {
-            HashSet<string> keys = new(existingKeys, PathComparer);
-            keys.UnionWith(additionalKeys);
-            return keys;
-        }
 
         private async Task LogInitialVirtualFilesPopulationHeartbeatAsync(
             SyncPair syncPair,
