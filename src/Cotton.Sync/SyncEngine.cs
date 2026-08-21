@@ -61,6 +61,7 @@ namespace Cotton.Sync
         private readonly ScopedVirtualFilesDirectoryRenamePlanner _scopedDirectoryRenamePlanner;
         private readonly InitialVirtualFilesStreamingPlanner _initialVirtualFilesStreamingPlanner;
         private readonly InitialVirtualFilesHeartbeatLogger _initialVirtualFilesHeartbeatLogger;
+        private readonly SyncRemoteFileTransfer _fileTransfer;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SyncEngine" /> class.
@@ -146,6 +147,11 @@ namespace Cotton.Sync
                 _treeScanner,
                 _logger);
             _initialVirtualFilesHeartbeatLogger = new InitialVirtualFilesHeartbeatLogger(_logger);
+            _fileTransfer = new SyncRemoteFileTransfer(
+                _localWriter,
+                _remoteFiles,
+                _remoteFileMaterializationObserver,
+                _remotePathLookupCrawler);
         }
 
         /// <inheritdoc />
@@ -2553,7 +2559,7 @@ namespace Cotton.Sync
             }
             catch (HttpRequestException exception) when (IsPreconditionFailed(exception))
             {
-                NodeFileManifestDto? latestRemoteFile = await FindLatestRemoteFileAsync(
+                NodeFileManifestDto? latestRemoteFile = await _fileTransfer.FindLatestRemoteFileAsync(
                         context.SyncPair,
                         match.SourceState.RelativePath,
                         context.CancellationToken)
@@ -2951,7 +2957,7 @@ namespace Cotton.Sync
             }
             catch (HttpRequestException exception) when (IsPreconditionFailed(exception))
             {
-                NodeFileManifestDto? latestRemoteFile = await FindLatestRemoteFileAsync(syncPair, sourcePath, cancellationToken).ConfigureAwait(false);
+                NodeFileManifestDto? latestRemoteFile = await _fileTransfer.FindLatestRemoteFileAsync(syncPair, sourcePath, cancellationToken).ConfigureAwait(false);
                 if (latestRemoteFile is null)
                 {
                     remoteByPath.Remove(sourceKey);
@@ -3033,7 +3039,7 @@ namespace Cotton.Sync
         {
             try
             {
-                return await UploadFileWithProgressAsync(
+                return await _fileTransfer.UploadFileWithProgressAsync(
                     syncPair.RemoteRootNodeId,
                     relativePath,
                     local,
@@ -3043,7 +3049,7 @@ namespace Cotton.Sync
             }
             catch (HttpRequestException exception) when (existingRemoteFile is not null && IsPreconditionFailed(exception))
             {
-                NodeFileManifestDto? latestRemoteFile = await FindLatestRemoteFileAsync(syncPair, relativePath, cancellationToken).ConfigureAwait(false);
+                NodeFileManifestDto? latestRemoteFile = await _fileTransfer.FindLatestRemoteFileAsync(syncPair, relativePath, cancellationToken).ConfigureAwait(false);
                 await PreserveConflictAsync(
                     syncPair,
                     options,
@@ -3056,7 +3062,7 @@ namespace Cotton.Sync
             }
             catch (HttpRequestException exception) when (existingRemoteFile is null && IsConflict(exception))
             {
-                NodeFileManifestDto? latestRemoteFile = await FindLatestRemoteFileAsync(
+                NodeFileManifestDto? latestRemoteFile = await _fileTransfer.FindLatestRemoteFileAsync(
                         syncPair,
                         relativePath,
                         cancellationToken)
@@ -3137,7 +3143,7 @@ namespace Cotton.Sync
             await _localWriter.WriteFileAsync(
                 syncPair.LocalRootPath,
                 relativePath,
-                (stream, token) => DownloadAndVerifyFileAsync(remoteFile, relativePath, options, stream, token),
+                (stream, token) => _fileTransfer.DownloadAndVerifyFileAsync(remoteFile, relativePath, options, stream, token),
                 remoteFile.UpdatedAt == default ? null : remoteFile.UpdatedAt,
                 cancellationToken).ConfigureAwait(false);
             await _stateStore.UpsertAsync(BuildBaseline(syncPair, relativePath, remoteFile.ContentHash, remoteFile.UpdatedAt, remoteFile.SizeBytes, remoteFile), cancellationToken)
@@ -3193,7 +3199,7 @@ namespace Cotton.Sync
             }
             catch (HttpRequestException exception) when (IsPreconditionFailed(exception))
             {
-                NodeFileManifestDto? latestRemoteFile = await FindLatestRemoteFileAsync(syncPair, relativePath, cancellationToken).ConfigureAwait(false);
+                NodeFileManifestDto? latestRemoteFile = await _fileTransfer.FindLatestRemoteFileAsync(syncPair, relativePath, cancellationToken).ConfigureAwait(false);
                 await PreserveConflictAsync(
                     syncPair,
                     options,
@@ -3289,7 +3295,7 @@ namespace Cotton.Sync
                 relativePath,
                 DateTime.UtcNow);
             EnsureEnoughLocalFreeSpace(syncPair.LocalRootPath, conflictPath, remoteFile.SizeBytes);
-            await WriteMaterializedRemoteFileAsync(
+            await _fileTransfer.WriteMaterializedRemoteFileAsync(
                     syncPair,
                     options,
                     conflictPath,
@@ -3311,7 +3317,7 @@ namespace Cotton.Sync
             LocalFileSnapshot local,
             CancellationToken cancellationToken)
         {
-            NodeFileManifestDto uploaded = await UploadFileWithProgressAsync(
+            NodeFileManifestDto uploaded = await _fileTransfer.UploadFileWithProgressAsync(
                     syncPair.RemoteRootNodeId,
                     relativePath,
                     local,
@@ -3336,7 +3342,7 @@ namespace Cotton.Sync
             CancellationToken cancellationToken)
         {
             EnsureEnoughLocalFreeSpace(syncPair.LocalRootPath, relativePath, remoteFile.SizeBytes);
-            await WriteRemoteFileAfterLocalDeletionAsync(
+            await _fileTransfer.WriteRemoteFileAfterLocalDeletionAsync(
                     syncPair,
                     options,
                     relativePath,
@@ -3357,226 +3363,14 @@ namespace Cotton.Sync
             return "Local deletion conflicted with remote change; remote version was restored locally.";
         }
 
-        private async Task WriteMaterializedRemoteFileAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            string targetRelativePath,
-            string remoteRelativePath,
-            NodeFileManifestDto remoteFile,
-            CancellationToken cancellationToken)
-        {
-            RemoteFileMaterializationRequest? request = await PrepareRemoteFileMaterializationAsync(
-                syncPair,
-                targetRelativePath,
-                remoteFile,
-                cancellationToken).ConfigureAwait(false);
 
-            await WriteRemoteFileContentAsync(
-                    syncPair,
-                    options,
-                    targetRelativePath,
-                    remoteRelativePath,
-                    remoteFile,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (request is not null)
-            {
-                await _remoteFileMaterializationObserver!.AfterWriteFileAsync(request, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-        }
 
-        private async Task WriteRemoteFileAfterLocalDeletionAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            string targetRelativePath,
-            string remoteRelativePath,
-            NodeFileManifestDto remoteFile,
-            CancellationToken cancellationToken)
-        {
-            await PrepareRemoteFileMaterializationAsync(
-                syncPair,
-                targetRelativePath,
-                remoteFile,
-                cancellationToken).ConfigureAwait(false);
 
-            await WriteRemoteFileContentAsync(
-                    syncPair,
-                    options,
-                    targetRelativePath,
-                    remoteRelativePath,
-                    remoteFile,
-                cancellationToken)
-                .ConfigureAwait(false);
-        }
 
-        private async Task<RemoteFileMaterializationRequest?> PrepareRemoteFileMaterializationAsync(
-            SyncPair syncPair,
-            string targetRelativePath,
-            NodeFileManifestDto remoteFile,
-            CancellationToken cancellationToken)
-        {
-            RemoteFileMaterializationRequest? request = CreateRemoteFileMaterializationRequest(
-                syncPair,
-                targetRelativePath,
-                remoteFile);
-            if (request is not null)
-            {
-                await _remoteFileMaterializationObserver!.BeforeWriteFileAsync(request, cancellationToken)
-                    .ConfigureAwait(false);
-            }
 
-            return request;
-        }
 
-        private async Task WriteRemoteFileContentAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            string targetRelativePath,
-            string remoteRelativePath,
-            NodeFileManifestDto remoteFile,
-            CancellationToken cancellationToken)
-        {
-            await _localWriter.WriteFileAsync(
-                    syncPair.LocalRootPath,
-                    targetRelativePath,
-                    (stream, token) => DownloadAndVerifyFileAsync(remoteFile, remoteRelativePath, options, stream, token),
-                    remoteFile.UpdatedAt == default ? null : remoteFile.UpdatedAt,
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
 
-        private RemoteFileMaterializationRequest? CreateRemoteFileMaterializationRequest(
-            SyncPair syncPair,
-            string relativePath,
-            NodeFileManifestDto remoteFile)
-        {
-            if (syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles
-                || _remoteFileMaterializationObserver is null)
-            {
-                return null;
-            }
 
-            return new RemoteFileMaterializationRequest(
-                syncPair.SyncPairId,
-                syncPair.LocalRootPath,
-                syncPair.RemoteRootNodeId,
-                relativePath,
-                remoteFile);
-        }
-
-        private async Task<NodeFileManifestDto> UploadFileWithProgressAsync(
-            Guid rootNodeId,
-            string relativePath,
-            LocalFileSnapshot local,
-            NodeFileManifestDto? existingRemoteFile,
-            SyncRunOptions options,
-            CancellationToken cancellationToken)
-        {
-            if (_remoteFiles is IRemoteFileTransferProgressSynchronizer progressSynchronizer)
-            {
-                return await progressSynchronizer.UploadFileAsync(
-                    rootNodeId,
-                    relativePath,
-                    local,
-                    existingRemoteFile,
-                    options.TransferProgress,
-                    cancellationToken).ConfigureAwait(false);
-            }
-
-            SyncActivityReporter.ReportTransfer(
-                options,
-                SyncTransferDirection.Upload,
-                relativePath,
-                transferredBytes: 0,
-                totalBytes: local.SizeBytes);
-            NodeFileManifestDto uploaded = await _remoteFiles.UploadFileAsync(
-                rootNodeId,
-                relativePath,
-                local,
-                existingRemoteFile,
-                cancellationToken).ConfigureAwait(false);
-            SyncActivityReporter.ReportTransfer(
-                options,
-                SyncTransferDirection.Upload,
-                relativePath,
-                local.SizeBytes,
-                local.SizeBytes,
-                isCompleted: true);
-            return uploaded;
-        }
-
-        private async Task DownloadFileWithProgressAsync(
-            NodeFileManifestDto remoteFile,
-            string relativePath,
-            SyncRunOptions options,
-            Stream destination,
-            CancellationToken cancellationToken)
-        {
-            if (_remoteFiles is IRemoteFileTransferProgressSynchronizer progressSynchronizer)
-            {
-                await progressSynchronizer.DownloadFileAsync(
-                    remoteFile.Id,
-                    relativePath,
-                    remoteFile.SizeBytes,
-                    destination,
-                    options.TransferProgress,
-                    cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            SyncActivityReporter.ReportTransfer(
-                options,
-                SyncTransferDirection.Download,
-                relativePath,
-                transferredBytes: 0,
-                totalBytes: remoteFile.SizeBytes);
-            await _remoteFiles.DownloadFileAsync(remoteFile.Id, destination, cancellationToken).ConfigureAwait(false);
-            SyncActivityReporter.ReportTransfer(
-                options,
-                SyncTransferDirection.Download,
-                relativePath,
-                remoteFile.SizeBytes,
-                remoteFile.SizeBytes,
-                isCompleted: true);
-        }
-
-        private async Task DownloadAndVerifyFileAsync(
-            NodeFileManifestDto remoteFile,
-            string relativePath,
-            SyncRunOptions options,
-            Stream destination,
-            CancellationToken cancellationToken)
-        {
-            await using VerifyingDownloadStream verifiedDestination = new VerifyingDownloadStream(destination);
-            await DownloadFileWithProgressAsync(remoteFile, relativePath, options, verifiedDestination, cancellationToken)
-                .ConfigureAwait(false);
-            verifiedDestination.Verify(remoteFile.ContentHash, remoteFile.SizeBytes, relativePath);
-        }
-
-        private async Task<NodeFileManifestDto?> FindLatestRemoteFileAsync(
-            SyncPair syncPair,
-            string relativePath,
-            CancellationToken cancellationToken)
-        {
-            if (_remotePathLookupCrawler is null)
-            {
-                throw new InvalidOperationException("Remote mutation recovery requires path lookup capability.");
-            }
-
-            string normalizedPath = SyncPath.Normalize(relativePath);
-            RemoteTreeLookupSnapshot latestTree = await _remotePathLookupCrawler
-                .CrawlPathLookupsAsync(
-                    syncPair.RemoteRootNodeId,
-                    [normalizedPath],
-                    progress: null,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            string key = SyncPath.ToKey(relativePath);
-            return latestTree.FilesByPath.TryGetValue(key, out RemoteFileSnapshot? remoteFile)
-                ? remoteFile.File
-                : null;
-        }
 
 
 
