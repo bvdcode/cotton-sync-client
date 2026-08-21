@@ -73,7 +73,7 @@ namespace Cotton.Sync.State
                 .AsAsyncEnumerable();
             await foreach (SyncStateEntity entity in entities.WithCancellation(cancellationToken).ConfigureAwait(false))
             {
-                yield return ToModel(entity);
+                yield return SyncStateEntityMapper.ToModel(entity);
             }
         }
 
@@ -92,7 +92,7 @@ namespace Cotton.Sync.State
                 .AsAsyncEnumerable();
             await foreach (SyncStateEntity entity in entities.WithCancellation(cancellationToken).ConfigureAwait(false))
             {
-                yield return ToModel(entity);
+                yield return SyncStateEntityMapper.ToModel(entity);
             }
         }
 
@@ -118,7 +118,7 @@ namespace Cotton.Sync.State
                 .ConfigureAwait(false);
             if (exactEntry is not null)
             {
-                yield return ToModel(exactEntry);
+                yield return SyncStateEntityMapper.ToModel(exactEntry);
             }
 
             IAsyncEnumerable<SyncStateEntity> entities = context.SyncEntries
@@ -130,7 +130,7 @@ namespace Cotton.Sync.State
                 .AsAsyncEnumerable();
             await foreach (SyncStateEntity entity in entities.WithCancellation(cancellationToken).ConfigureAwait(false))
             {
-                yield return ToModel(entity);
+                yield return SyncStateEntityMapper.ToModel(entity);
             }
         }
 
@@ -154,7 +154,7 @@ namespace Cotton.Sync.State
                 .ConfigureAwait(false);
             if (exactEntry is not null)
             {
-                yield return ToModel(exactEntry);
+                yield return SyncStateEntityMapper.ToModel(exactEntry);
             }
 
             IAsyncEnumerable<SyncStateEntity> entities = context.SyncEntries
@@ -165,7 +165,7 @@ namespace Cotton.Sync.State
                 .AsAsyncEnumerable();
             await foreach (SyncStateEntity entity in entities.WithCancellation(cancellationToken).ConfigureAwait(false))
             {
-                yield return ToModel(entity);
+                yield return SyncStateEntityMapper.ToModel(entity);
             }
         }
 
@@ -235,7 +235,7 @@ namespace Cotton.Sync.State
                 .Select(entry => (DateTime?)entry.SyncedAtUtc)
                 .MaxAsync(cancellationToken)
                 .ConfigureAwait(false);
-            return ToUtc(lastSyncedAtUtc);
+            return SyncStateEntityMapper.ToUtc(lastSyncedAtUtc);
         }
 
         /// <inheritdoc />
@@ -250,7 +250,7 @@ namespace Cotton.Sync.State
                     cursor => cursor.SyncPairId == syncPairId,
                     cancellationToken)
                 .ConfigureAwait(false);
-            return entity is null ? CreateDefaultCursor(syncPairId) : ToModel(entity);
+            return entity is null ? SyncStateEntityMapper.CreateDefaultCursor(syncPairId) : SyncStateEntityMapper.ToModel(entity);
         }
 
         public async Task<SyncStateStoreDiagnostics> GetDiagnosticsAsync(CancellationToken cancellationToken = default)
@@ -289,7 +289,7 @@ namespace Cotton.Sync.State
                     entry => entry.SyncPairId == syncPairId && entry.RelativePathKey == key,
                     cancellationToken)
                 .ConfigureAwait(false);
-            return entity is null ? null : ToModel(entity);
+            return entity is null ? null : SyncStateEntityMapper.ToModel(entity);
         }
 
         /// <inheritdoc />
@@ -325,7 +325,7 @@ namespace Cotton.Sync.State
                     context.SyncEntries.Add(entity);
                 }
 
-                UpdateEntity(entity, entry, key);
+                SyncStateEntityMapper.Update(entity, entry, key);
                 await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             }
             finally
@@ -479,7 +479,7 @@ namespace Cotton.Sync.State
                             context.SyncEntries.Add(entity);
                         }
 
-                        UpdateEntity(entity, entry, key);
+                        SyncStateEntityMapper.Update(entity, entry, key);
                     }
                 }
 
@@ -498,7 +498,7 @@ namespace Cotton.Sync.State
         {
             ArgumentNullException.ThrowIfNull(cursor);
             ArgumentException.ThrowIfNullOrWhiteSpace(cursor.SyncPairId);
-            ValidateCursor(cursor);
+            SyncStateEntityMapper.Validate(cursor);
 
             await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
             SemaphoreSlim gate = GetWriteGate();
@@ -520,7 +520,7 @@ namespace Cotton.Sync.State
                     context.SyncChangeCursors.Add(entity);
                 }
 
-                UpdateEntity(entity, cursor);
+                SyncStateEntityMapper.Update(entity, cursor);
                 await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             }
             finally
@@ -612,7 +612,7 @@ namespace Cotton.Sync.State
                         SyncPairId = syncPairId,
                         RelativePathKey = key,
                     };
-                    UpdateEntity(entity, entry, key);
+                    SyncStateEntityMapper.Update(entity, entry, key);
                     context.SyncEntries.Add(entity);
                 }
 
@@ -650,109 +650,6 @@ namespace Cotton.Sync.State
             finally
             {
                 gate.Release();
-            }
-        }
-
-        private static void UpdateEntity(SyncStateEntity entity, SyncStateEntry entry, string key)
-        {
-            if (entry.LocalSizeBytes.HasValue)
-            {
-                ArgumentOutOfRangeException.ThrowIfNegative(entry.LocalSizeBytes.Value);
-            }
-
-            if (entry.RemoteSizeBytes.HasValue)
-            {
-                ArgumentOutOfRangeException.ThrowIfNegative(entry.RemoteSizeBytes.Value);
-            }
-
-            entity.SyncPairId = entry.SyncPairId;
-            entity.RelativePathKey = key;
-            entity.RelativePath = SyncPath.Normalize(entry.RelativePath);
-            entity.Kind = entry.Kind;
-            entity.LocalContentHash = NormalizeNullable(entry.LocalContentHash);
-            entity.LocalLastWriteUtc = ToUtc(entry.LocalLastWriteUtc);
-            entity.LocalSizeBytes = entry.LocalSizeBytes;
-            entity.RemoteSizeBytes = entry.RemoteSizeBytes;
-            entity.RemoteNodeId = entry.RemoteNodeId;
-            entity.RemoteFileId = entry.RemoteFileId;
-            entity.RemoteFileManifestId = entry.RemoteFileManifestId;
-            entity.RemoteOriginalNodeFileId = entry.RemoteOriginalNodeFileId;
-            entity.RemoteContentHash = NormalizeNullable(entry.RemoteContentHash);
-            entity.RemoteETag = NormalizeNullable(entry.RemoteETag);
-            entity.PlaceholderIdentity = Clone(entry.PlaceholderIdentity);
-            entity.PlaceholderHydrationState = entry.PlaceholderHydrationState;
-            entity.SyncedAtUtc = ToUtc(entry.SyncedAtUtc) ?? DateTime.UtcNow;
-        }
-
-        private static SyncStateEntry ToModel(SyncStateEntity entity)
-        {
-            return new SyncStateEntry
-            {
-                SyncPairId = entity.SyncPairId,
-                RelativePath = entity.RelativePath,
-                Kind = entity.Kind,
-                LocalContentHash = entity.LocalContentHash,
-                LocalLastWriteUtc = ToUtc(entity.LocalLastWriteUtc),
-                LocalSizeBytes = entity.LocalSizeBytes,
-                RemoteSizeBytes = entity.RemoteSizeBytes,
-                RemoteNodeId = entity.RemoteNodeId,
-                RemoteFileId = entity.RemoteFileId,
-                RemoteFileManifestId = entity.RemoteFileManifestId,
-                RemoteOriginalNodeFileId = entity.RemoteOriginalNodeFileId,
-                RemoteContentHash = entity.RemoteContentHash,
-                RemoteETag = entity.RemoteETag,
-                PlaceholderIdentity = Clone(entity.PlaceholderIdentity),
-                PlaceholderHydrationState = entity.PlaceholderHydrationState,
-                SyncedAtUtc = ToUtc(entity.SyncedAtUtc) ?? DateTime.UtcNow,
-            };
-        }
-
-        private static SyncChangeCursor CreateDefaultCursor(string syncPairId)
-        {
-            return new SyncChangeCursor
-            {
-                SyncPairId = syncPairId,
-                LastCursor = 0,
-                UpdatedAtUtc = DateTime.UtcNow,
-            };
-        }
-
-        private static void UpdateEntity(SyncChangeCursorEntity entity, SyncChangeCursor cursor)
-        {
-            entity.SyncPairId = cursor.SyncPairId;
-            entity.LastCursor = cursor.LastCursor;
-            entity.CursorExpired = cursor.CursorExpired;
-            entity.EarliestAvailableCursor = cursor.EarliestAvailableCursor;
-            entity.HasCompletedFullReconcile = cursor.HasCompletedFullReconcile;
-            entity.UpdatedAtUtc = ToUtc(cursor.UpdatedAtUtc) ?? DateTime.UtcNow;
-        }
-
-        private static SyncChangeCursor ToModel(SyncChangeCursorEntity entity)
-        {
-            return new SyncChangeCursor
-            {
-                SyncPairId = entity.SyncPairId,
-                LastCursor = entity.LastCursor,
-                CursorExpired = entity.CursorExpired,
-                EarliestAvailableCursor = entity.EarliestAvailableCursor,
-                HasCompletedFullReconcile = entity.HasCompletedFullReconcile,
-                UpdatedAtUtc = ToUtc(entity.UpdatedAtUtc) ?? DateTime.UtcNow,
-            };
-        }
-
-        private static void ValidateCursor(SyncChangeCursor cursor)
-        {
-            if (cursor.LastCursor < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(cursor), cursor.LastCursor, "Change cursor cannot be negative.");
-            }
-
-            if (cursor.EarliestAvailableCursor < 0)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(cursor),
-                    cursor.EarliestAvailableCursor,
-                    "Earliest available cursor cannot be negative.");
             }
         }
 
@@ -820,7 +717,7 @@ namespace Cotton.Sync.State
                 .OrderBy(entry => entry.RelativePathKey)
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false);
-            return entities.Select(ToModel).ToArray();
+            return entities.Select(SyncStateEntityMapper.ToModel).ToArray();
         }
 
         private async Task<IReadOnlyList<SyncStateEntry>> LoadEntriesByRemoteNodeIdBatchAsync(
@@ -838,7 +735,7 @@ namespace Cotton.Sync.State
                 .OrderBy(entry => entry.RelativePathKey)
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false);
-            return entities.Select(ToModel).ToArray();
+            return entities.Select(SyncStateEntityMapper.ToModel).ToArray();
         }
 
         private async Task<IReadOnlyList<SyncStateEntry>> LoadEntriesByRemoteFileIdBatchAsync(
@@ -856,7 +753,7 @@ namespace Cotton.Sync.State
                 .OrderBy(entry => entry.RelativePathKey)
                 .ToListAsync(cancellationToken)
                 .ConfigureAwait(false);
-            return entities.Select(ToModel).ToArray();
+            return entities.Select(SyncStateEntityMapper.ToModel).ToArray();
         }
 
         private async Task<IReadOnlyList<SyncVirtualFilesResumeEntry>> LoadVirtualFilesResumeEntriesByPathKeyBatchAsync(
@@ -987,25 +884,5 @@ namespace Cotton.Sync.State
             }
         }
 
-        private static string? NormalizeNullable(string? value)
-        {
-            return string.IsNullOrWhiteSpace(value) ? null : value;
-        }
-
-        private static byte[]? Clone(byte[]? value)
-        {
-            return value is null ? null : (byte[])value.Clone();
-        }
-
-        private static DateTime? ToUtc(DateTime? value)
-        {
-            return value?.Kind switch
-            {
-                null => null,
-                DateTimeKind.Utc => value.Value,
-                DateTimeKind.Unspecified => DateTime.SpecifyKind(value.Value, DateTimeKind.Utc),
-                _ => value.Value.ToUniversalTime(),
-            };
-        }
     }
 }
