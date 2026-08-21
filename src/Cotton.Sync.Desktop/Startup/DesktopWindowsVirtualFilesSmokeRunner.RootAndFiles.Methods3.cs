@@ -39,42 +39,20 @@ namespace Cotton.Sync.Desktop.Startup
 {
     internal static partial class DesktopWindowsVirtualFilesSmokeRunner
     {
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        private static async Task<bool> WaitForTaskAsync(
+            Task task,
+            TimeSpan timeout,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                await task.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+            catch (TimeoutException)
+            {
+                return false;
+            }
+        }
     }
 }
