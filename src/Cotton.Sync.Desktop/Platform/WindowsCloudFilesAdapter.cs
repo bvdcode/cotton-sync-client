@@ -28,6 +28,8 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly Func<string, FileAttributes> _readFileAttributes;
         private readonly WindowsCloudFilesRegistrationManager _registrationManager;
         private readonly WindowsCloudFilesNativeOperationExecutor _operationExecutor;
+        private readonly WindowsCloudFilesPathGuard _pathGuard;
+        private readonly WindowsCloudFilesInSyncManager _inSyncManager;
 
         public WindowsCloudFilesAdapter(
             WindowsVirtualFilesRootSafetyPolicy? rootSafety = null,
@@ -58,6 +60,15 @@ namespace Cotton.Sync.Desktop.Platform
                 _nativeApi,
                 registrar,
                 _diagnostics);
+            _pathGuard = new WindowsCloudFilesPathGuard(_isReparsePoint, _isCloudFilesReparsePoint);
+            _inSyncManager = new WindowsCloudFilesInSyncManager(
+                _nativeApi,
+                _shellChangeNotifier,
+                _diagnostics,
+                _isReparsePoint,
+                _registrationManager,
+                _pathGuard,
+                _operationExecutor);
         }
 
         public WindowsCloudFilesSyncRootRegistration CreateRegistration(SyncPairSettings syncPair)
@@ -133,7 +144,7 @@ namespace Cotton.Sync.Desktop.Platform
                 SyncPlaceholderHydrationState hydrationState = ApplyExistingFilePlaceholderUpdate(
                     item,
                     existingPinState);
-                NotifyShellPathUpdated(item.FullPlaceholderPath, isDirectory: false);
+                _inSyncManager.NotifyShellPathUpdated(item.FullPlaceholderPath, isDirectory: false);
                 return CreateFilePlaceholderResult(item, hydrationState);
             }
             catch (Exception exception)
@@ -195,7 +206,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             _operationExecutor.ExecuteWithTransientPathRetry(
-                () => SetAndVerifyInSyncState(item.FullPlaceholderPath),
+                () => _inSyncManager.SetAndVerifyInSyncState(item.FullPlaceholderPath),
                 "set-in-sync-state",
                 item.SyncPairId,
                 item.LocalRootPath,
@@ -316,12 +327,12 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             _operationExecutor.ExecuteWithTransientPathRetry(
-                () => SetAndVerifyInSyncState(item.FullPlaceholderPath),
+                () => _inSyncManager.SetAndVerifyInSyncState(item.FullPlaceholderPath),
                 "set-in-sync-state",
                 item.SyncPairId,
                 item.LocalRootPath,
                 item.NormalizedRelativePath);
-            NotifyShellPathUpdated(item.FullPlaceholderPath, isDirectory: false);
+            _inSyncManager.NotifyShellPathUpdated(item.FullPlaceholderPath, isDirectory: false);
             return SyncPlaceholderHydrationState.Hydrated;
         }
 
@@ -390,7 +401,7 @@ namespace Cotton.Sync.Desktop.Platform
             PlaceholderPath placeholderPath = ResolvePlaceholderPath(safety.FullPath, normalizedPath);
             if (checkedBaseDirectories.Add(placeholderPath.BaseDirectoryPath))
             {
-                EnsureNoReparsePointDescendant(safety.FullPath, placeholderPath.BaseDirectoryPath);
+                _pathGuard.EnsureNoForeignReparsePointDescendant(safety.FullPath, placeholderPath.BaseDirectoryPath);
             }
 
             byte[] syncRootIdentity = CreateSyncRootIdentity(syncPairId, request.RemoteRootNodeId);
@@ -481,7 +492,7 @@ namespace Cotton.Sync.Desktop.Platform
             Guid syncPairId = ParseSyncPairId(request.SyncPairId);
             string normalizedPath = SyncPath.Normalize(request.RelativePath);
             PlaceholderPath placeholderPath = ResolvePlaceholderPath(safety.FullPath, normalizedPath);
-            EnsureNoReparsePointDescendant(safety.FullPath, placeholderPath.BaseDirectoryPath);
+            _pathGuard.EnsureNoForeignReparsePointDescendant(safety.FullPath, placeholderPath.BaseDirectoryPath);
             byte[] syncRootIdentity = CreateSyncRootIdentity(syncPairId, request.RemoteRootNodeId);
             byte[] directoryIdentity = CreateDirectoryIdentity(request, normalizedPath);
 
@@ -656,7 +667,7 @@ namespace Cotton.Sync.Desktop.Platform
                     localRootPath,
                     normalizedPath);
                 _operationExecutor.ExecuteWithTransientPathRetry(
-                    () => SetAndVerifyInSyncState(fullPlaceholderPath),
+                    () => _inSyncManager.SetAndVerifyInSyncState(fullPlaceholderPath),
                     "set-in-sync-state",
                     request.SyncPairId,
                     localRootPath,
@@ -731,7 +742,7 @@ namespace Cotton.Sync.Desktop.Platform
                     normalizedPath);
             }
             _operationExecutor.ExecuteWithTransientPathRetry(
-                () => SetAndVerifyInSyncState(fullPlaceholderPath),
+                () => _inSyncManager.SetAndVerifyInSyncState(fullPlaceholderPath),
                 "set-in-sync-state",
                 request.SyncPairId,
                 localRootPath,
@@ -789,7 +800,7 @@ namespace Cotton.Sync.Desktop.Platform
             WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
             string normalizedPath = SyncPath.Normalize(relativePath);
             PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
-            EnsureNoReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
+            _pathGuard.EnsureNoForeignReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
             string fullPlaceholderPath = Path.Combine(
                 placeholderPath.BaseDirectoryPath,
                 placeholderPath.RelativeFileName);
@@ -815,7 +826,7 @@ namespace Cotton.Sync.Desktop.Platform
                 registration.LocalRootPath,
                 normalizedPath,
                 "Windows Cloud Files placeholder was dehydrated.");
-            NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: false);
+            _inSyncManager.NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: false);
         }
 
         public async Task<bool> DehydratePlaceholderIfContentMatchesAsync(
@@ -831,7 +842,7 @@ namespace Cotton.Sync.Desktop.Platform
             WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
             string normalizedPath = SyncPath.Normalize(relativePath);
             PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
-            EnsureNoReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
+            _pathGuard.EnsureNoForeignReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
             string fullPlaceholderPath = Path.Combine(
                 placeholderPath.BaseDirectoryPath,
                 placeholderPath.RelativeFileName);
@@ -869,7 +880,7 @@ namespace Cotton.Sync.Desktop.Platform
                 registration.LocalRootPath,
                 normalizedPath,
                 "Windows Cloud Files placeholder was atomically validated and dehydrated.");
-            NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: false);
+            _inSyncManager.NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: false);
             return true;
         }
 
@@ -880,7 +891,7 @@ namespace Cotton.Sync.Desktop.Platform
             WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
             string normalizedPath = SyncPath.Normalize(relativePath);
             PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
-            EnsureNoReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
+            _pathGuard.EnsureNoForeignReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
             string fullPlaceholderPath = Path.Combine(
                 placeholderPath.BaseDirectoryPath,
                 placeholderPath.RelativeFileName);
@@ -924,12 +935,12 @@ namespace Cotton.Sync.Desktop.Platform
                     registration.LocalRootPath,
                     normalizedPath);
                 _operationExecutor.ExecuteWithTransientPathRetry(
-                    () => SetAndVerifyInSyncState(fullPlaceholderPath),
+                    () => _inSyncManager.SetAndVerifyInSyncState(fullPlaceholderPath),
                     "set-in-sync-state",
                     syncPair.Id.ToString(),
                     registration.LocalRootPath,
                     normalizedPath);
-                NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: false);
+                _inSyncManager.NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: false);
             }
             catch (Exception exception)
             {
@@ -953,70 +964,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         public void SetInSyncState(SyncPairSettings syncPair, string relativePath)
         {
-            ArgumentNullException.ThrowIfNull(syncPair);
-            ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
-            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
-            string normalizedPath = SyncPath.Normalize(relativePath);
-            PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
-            EnsureNoReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
-            string fullPlaceholderPath = Path.Combine(
-                placeholderPath.BaseDirectoryPath,
-                placeholderPath.RelativeFileName);
-            const string operation = "set-in-sync-state";
-            bool isFile = File.Exists(fullPlaceholderPath);
-            bool isDirectory = Directory.Exists(fullPlaceholderPath);
-            if (!isFile && !isDirectory)
-            {
-                _diagnostics.Record(
-                    operation,
-                    "skipped",
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath,
-                    "Windows Cloud Files in-sync state was skipped for a missing placeholder.");
-                return;
-            }
-
-            if (isFile && !_isReparsePoint(fullPlaceholderPath))
-            {
-                _diagnostics.Record(
-                    operation,
-                    "skipped",
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath,
-                    "Windows Cloud Files in-sync state was skipped for a non-placeholder file.");
-                return;
-            }
-
-            try
-            {
-                _operationExecutor.ExecuteWithTransientPathRetry(
-                    () => SetAndVerifyInSyncState(fullPlaceholderPath),
-                    operation,
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath);
-                NotifyShellPathUpdated(fullPlaceholderPath, isDirectory);
-            }
-            catch (Exception exception)
-            {
-                _operationExecutor.RecordFailure(
-                    operation,
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath,
-                    exception);
-                throw;
-            }
-
-            _diagnostics.Record(
-                operation,
-                "completed",
-                syncPair.Id.ToString(),
-                registration.LocalRootPath,
-                normalizedPath,
-                "Windows Cloud Files placeholder was marked in sync.");
+            _inSyncManager.SetInSyncState(syncPair, relativePath);
         }
 
         public void PinPlaceholder(SyncPairSettings syncPair, string relativePath)
@@ -1026,7 +974,7 @@ namespace Cotton.Sync.Desktop.Platform
             WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
             string normalizedPath = SyncPath.Normalize(relativePath);
             PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
-            EnsureNoReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
+            _pathGuard.EnsureNoForeignReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
             string fullPlaceholderPath = Path.Combine(
                 placeholderPath.BaseDirectoryPath,
                 placeholderPath.RelativeFileName);
@@ -1065,7 +1013,7 @@ namespace Cotton.Sync.Desktop.Platform
                     syncPair.Id.ToString(),
                     registration.LocalRootPath,
                     normalizedPath);
-                NotifyShellPathUpdated(fullPlaceholderPath, isDirectory);
+                _inSyncManager.NotifyShellPathUpdated(fullPlaceholderPath, isDirectory);
             }
             catch (Exception exception)
             {
@@ -1102,7 +1050,7 @@ namespace Cotton.Sync.Desktop.Platform
             string normalizedPath = preparation.NormalizedPath;
             string fullPlaceholderPath = preparation.FullPlaceholderPath;
             PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
-            EnsureNoReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
+            _pathGuard.EnsureNoForeignReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
             WindowsCloudFilesUploadedFileFinalizationResult finalization;
             const string operation = "finalize-uploaded-file-placeholder";
             try
@@ -1120,7 +1068,7 @@ namespace Cotton.Sync.Desktop.Platform
                         "the file changed after upload and before Cloud Files finalization.");
                 }
 
-                VerifyInSyncState(fullPlaceholderPath);
+                _inSyncManager.VerifyInSyncState(fullPlaceholderPath);
                 _shellChangeNotifier.NotifyItemUpdated(fullPlaceholderPath);
             }
             catch (LocalFileUnavailableException exception)
@@ -1176,37 +1124,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         public void SetSyncRootInSyncState(SyncPairSettings syncPair)
         {
-            ArgumentNullException.ThrowIfNull(syncPair);
-            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
-            const string operation = "set-sync-root-in-sync-state";
-            try
-            {
-                _operationExecutor.ExecuteWithTransientPathRetry(
-                    () => SetAndVerifyInSyncState(registration.LocalRootPath, allowPartialDirectory: true),
-                    operation,
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    null);
-                _shellChangeNotifier.NotifyDirectoryUpdated(registration.LocalRootPath);
-            }
-            catch (Exception exception)
-            {
-                _operationExecutor.RecordFailure(
-                    operation,
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    null,
-                    exception);
-                throw;
-            }
-
-            _diagnostics.Record(
-                operation,
-                "completed",
-                syncPair.Id.ToString(),
-                registration.LocalRootPath,
-                null,
-                "Windows Cloud Files sync root was marked in sync.");
+            _inSyncManager.SetSyncRootInSyncState(syncPair);
         }
 
         public WindowsCloudFilesPlaceholderState GetPlaceholderState(SyncPairSettings syncPair, string? relativePath = null)
@@ -1219,7 +1137,7 @@ namespace Cotton.Sync.Desktop.Platform
             {
                 normalizedPath = SyncPath.Normalize(relativePath);
                 PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
-                EnsureNoReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
+                _pathGuard.EnsureNoForeignReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
                 fullPlaceholderPath = Path.Combine(
                     placeholderPath.BaseDirectoryPath,
                     placeholderPath.RelativeFileName);
@@ -1256,7 +1174,7 @@ namespace Cotton.Sync.Desktop.Platform
             ArgumentNullException.ThrowIfNull(placeholderIdentity);
             string fullPlaceholderPath = ResolveTrackedPlaceholderPath(syncPair, relativePath);
             _nativeApi.UpdatePlaceholderIdentity(fullPlaceholderPath, placeholderIdentity);
-            NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: false);
+            _inSyncManager.NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: false);
         }
 
         private string ResolveTrackedPlaceholderPath(SyncPairSettings syncPair, string relativePath)
@@ -1266,81 +1184,13 @@ namespace Cotton.Sync.Desktop.Platform
             WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
             string normalizedPath = SyncPath.Normalize(relativePath);
             PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
-            EnsureNoReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
+            _pathGuard.EnsureNoForeignReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
             return Path.Combine(placeholderPath.BaseDirectoryPath, placeholderPath.RelativeFileName);
         }
 
-        private void SetAndVerifyInSyncState(string filePath, bool allowPartialDirectory = false)
-        {
-            _nativeApi.SetInSyncState(filePath);
-            VerifyInSyncState(filePath, allowPartialDirectory);
-        }
 
-        private void VerifyInSyncState(string filePath, bool allowPartialDirectory = false)
-        {
-            WindowsCloudFilesPlaceholderState state = _nativeApi.GetPlaceholderState(filePath);
-            if (!state.HasFlag(WindowsCloudFilesPlaceholderState.InSync))
-            {
-                throw new InvalidOperationException(
-                    "Windows Cloud Files placeholder did not report in-sync state after the native update. State: "
-                    + state
-                    + ".");
-            }
 
-            if (Directory.Exists(filePath)
-                && !allowPartialDirectory
-                && state.HasFlag(WindowsCloudFilesPlaceholderState.Partial))
-            {
-                throw new InvalidOperationException(
-                    "Windows Cloud Files directory did not report fully populated state after the native update. State: "
-                    + state
-                    + ".");
-            }
-        }
 
-        private void NotifyShellPathUpdated(string path, bool isDirectory)
-        {
-            if (isDirectory)
-            {
-                _shellChangeNotifier.NotifyDirectoryUpdated(path);
-                return;
-            }
-
-            _shellChangeNotifier.NotifyItemUpdated(path);
-        }
-
-        private void EnsureNoReparsePointDescendant(string syncRootPath, string targetDirectoryPath)
-        {
-            string root = Path.GetFullPath(syncRootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            string target = Path.GetFullPath(targetDirectoryPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            if (string.Equals(root, target, StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            string relative = Path.GetRelativePath(root, target);
-            if (relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative))
-            {
-                throw new InvalidOperationException("Virtual-files placeholder path escaped the sync root.");
-            }
-
-            string current = root;
-            foreach (string segment in relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
-            {
-                if (string.IsNullOrWhiteSpace(segment) || segment is "." or "..")
-                {
-                    continue;
-                }
-
-                current = Path.Combine(current, segment);
-                if ((Directory.Exists(current) || File.Exists(current))
-                    && _isReparsePoint(current)
-                    && !_isCloudFilesReparsePoint(current))
-                {
-                    throw new InvalidOperationException("Virtual-files placeholder path cannot traverse a reparse point.");
-                }
-            }
-        }
 
         public WindowsCloudFilesConnection ConnectSyncRoot(
             SyncPairSettings syncPair,
