@@ -86,7 +86,7 @@ namespace Cotton.Sync.Desktop.Platform
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(helperPath);
             ArgumentNullException.ThrowIfNull(arguments);
-            var startInfo = new ProcessStartInfo
+            ProcessStartInfo startInfo = new()
             {
                 FileName = helperPath,
                 UseShellExecute = false,

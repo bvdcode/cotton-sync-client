@@ -139,7 +139,7 @@ namespace Cotton.Sync.Desktop.Platform
                     CfCallbackInfo info = Marshal.PtrToStructure<CfCallbackInfo>(callbackInfo);
                     CfCallbackCancelFetchDataParameters parameters =
                         Marshal.PtrToStructure<CfCallbackCancelFetchDataParameters>(callbackParameters);
-                    var request = new WindowsCloudFilesCancelFetchDataRequest(
+                    WindowsCloudFilesCancelFetchDataRequest request = new(
                         new WindowsCloudFilesConnectionKey(info.ConnectionKey),
                         new WindowsCloudFilesTransferKey(info.TransferKey),
                         new WindowsCloudFilesRequestKey(info.RequestKey),
@@ -195,7 +195,7 @@ namespace Cotton.Sync.Desktop.Platform
                     CfCallbackInfo info = Marshal.PtrToStructure<CfCallbackInfo>(callbackInfo);
                     CfCallbackDehydrateCompletionParameters parameters =
                         Marshal.PtrToStructure<CfCallbackDehydrateCompletionParameters>(callbackParameters);
-                    var notification = new WindowsCloudFilesDehydrateCompletionNotification(
+                    WindowsCloudFilesDehydrateCompletionNotification notification = new(
                         new WindowsCloudFilesConnectionKey(info.ConnectionKey),
                         new WindowsCloudFilesTransferKey(info.TransferKey),
                         new WindowsCloudFilesRequestKey(info.RequestKey),

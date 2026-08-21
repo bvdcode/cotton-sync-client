@@ -120,7 +120,7 @@ namespace Cotton.Sync.Desktop.Platform
                     throw new InvalidOperationException("Cloud Files adapter returned a different number of placeholder results.");
                 }
 
-                var results = new RemoteFilePlaceholderBatchResult[requests.Count];
+                RemoteFilePlaceholderBatchResult[] results = new RemoteFilePlaceholderBatchResult[requests.Count];
                 for (int index = 0; index < requests.Count; index++)
                 {
                     results[index] = RemoteFilePlaceholderBatchResult.Success(requests[index], placeholders[index]);
@@ -244,7 +244,7 @@ namespace Cotton.Sync.Desktop.Platform
                 return Task.CompletedTask;
             }
 
-            var uniqueDirectories = new Dictionary<string, RemoteDirectoryMaterializationRequest>(
+            Dictionary<string, RemoteDirectoryMaterializationRequest> uniqueDirectories = new(
                 StringComparer.OrdinalIgnoreCase);
             foreach (RemoteDirectoryMaterializationRequest directory in directories)
             {
@@ -342,7 +342,7 @@ namespace Cotton.Sync.Desktop.Platform
             IReadOnlyList<RemoteFilePlaceholderRequest> requests,
             CancellationToken cancellationToken)
         {
-            var results = new RemoteFilePlaceholderBatchResult[requests.Count];
+            RemoteFilePlaceholderBatchResult[] results = new RemoteFilePlaceholderBatchResult[requests.Count];
             for (int index = 0; index < requests.Count; index++)
             {
                 RemoteFilePlaceholderRequest request = requests[index];

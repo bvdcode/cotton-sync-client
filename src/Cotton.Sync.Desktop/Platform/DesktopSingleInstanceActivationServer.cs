@@ -59,7 +59,7 @@ namespace Cotton.Sync.Desktop.Platform
                 {
                     await using NamedPipeServerStream pipe = CreatePipe();
                     await pipe.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
-                    using var reader = new StreamReader(pipe);
+                    using StreamReader reader = new(pipe);
                     string? command = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
                     if (DesktopSingleInstanceActivation.IsShowCommand(command))
                     {

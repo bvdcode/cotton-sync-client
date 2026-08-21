@@ -23,7 +23,7 @@ namespace Cotton.Sync.Desktop.Platform
         IReadOnlyList<RemoteFilePlaceholderResult> CreateFilePlaceholders(IReadOnlyList<RemoteFilePlaceholderRequest> requests)
         {
             ArgumentNullException.ThrowIfNull(requests);
-            var results = new List<RemoteFilePlaceholderResult>(requests.Count);
+            List<RemoteFilePlaceholderResult> results = new(requests.Count);
             foreach (RemoteFilePlaceholderRequest request in requests)
             {
                 results.Add(CreateFilePlaceholder(request));

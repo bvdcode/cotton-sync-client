@@ -51,7 +51,7 @@ namespace Cotton.Sync.Desktop.Platform
         private static void WriteCurrentProcessId(FileStream stream)
         {
             stream.SetLength(0);
-            using var writer = new StreamWriter(stream, leaveOpen: true);
+            using StreamWriter writer = new(stream, leaveOpen: true);
             writer.Write(Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
             writer.Flush();
             stream.Flush();

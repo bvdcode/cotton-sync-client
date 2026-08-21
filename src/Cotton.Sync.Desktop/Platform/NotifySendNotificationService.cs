@@ -49,7 +49,7 @@ namespace Cotton.Sync.Desktop.Platform
             ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
             ArgumentException.ThrowIfNullOrWhiteSpace(title);
             ArgumentException.ThrowIfNullOrWhiteSpace(message);
-            var startInfo = new ProcessStartInfo
+            ProcessStartInfo startInfo = new()
             {
                 FileName = executablePath,
                 UseShellExecute = false,

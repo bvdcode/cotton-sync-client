@@ -30,7 +30,7 @@ namespace Cotton.Sync.Desktop.Platform
 
             using IDisposable? providerWriteBurst = _localChangeSuppression?
                 .SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath);
-            var subtreeEntries = new List<SyncStateEntry>();
+            List<SyncStateEntry> subtreeEntries = new();
             await foreach (SyncStateEntry entry in _stateStore
                                .LoadPairEntriesAsync(syncPair.Id.ToString("D"), cancellationToken)
                                .WithCancellation(cancellationToken)

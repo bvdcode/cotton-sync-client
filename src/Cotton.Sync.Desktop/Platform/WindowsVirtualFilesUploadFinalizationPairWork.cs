@@ -72,7 +72,7 @@ namespace Cotton.Sync.Desktop.Platform
             using IDisposable subscription = _activityPublisher.Subscribe(collector);
             await runInnerAsync().ConfigureAwait(false);
 
-            var finalizedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> finalizedPaths = new(StringComparer.OrdinalIgnoreCase);
             IReadOnlyList<string> finalizationPaths = collector.GetPaths();
             if (finalizationPaths.Count == 0)
             {
@@ -294,7 +294,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         private static int CountFinalizationItems(IReadOnlyList<string> paths)
         {
-            var finalizationPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> finalizationPaths = new(StringComparer.OrdinalIgnoreCase);
             foreach (string path in paths)
             {
                 finalizationPaths.Add(path);

@@ -36,7 +36,7 @@ namespace Cotton.Sync.Desktop.Platform
             ArgumentNullException.ThrowIfNull(request);
             Directory.CreateDirectory(request.LocalRootPath);
 
-            var callbackState = new NativeCallbackState(request.CallbackHandler, this);
+            NativeCallbackState callbackState = new(request.CallbackHandler, this);
             int result = CfConnectSyncRoot(
                 request.LocalRootPath,
                 callbackState.CallbackTable,
@@ -79,7 +79,7 @@ namespace Cotton.Sync.Desktop.Platform
             PinnedBuffer buffer = PinnedBuffer.Pin(transfer.Buffer);
             try
             {
-                var operationInfo = new CfOperationInfo
+                CfOperationInfo operationInfo = new()
                 {
                     StructSize = (uint)Marshal.SizeOf<CfOperationInfo>(),
                     Type = CfOperationType.TransferData,
@@ -89,7 +89,7 @@ namespace Cotton.Sync.Desktop.Platform
                     SyncStatus = IntPtr.Zero,
                     RequestKey = transfer.RequestKey.Value,
                 };
-                var parameters = new CfOperationTransferDataParameters
+                CfOperationTransferDataParameters parameters = new()
                 {
                     ParamSize = (uint)Marshal.SizeOf<CfOperationTransferDataParameters>(),
                     Flags = CfOperationTransferDataFlags.None,
@@ -117,7 +117,7 @@ namespace Cotton.Sync.Desktop.Platform
             PinnedBuffer fileIdentity = PinnedBuffer.Pin(dehydrate.FileIdentity);
             try
             {
-                var operationInfo = new CfOperationInfo
+                CfOperationInfo operationInfo = new()
                 {
                     StructSize = (uint)Marshal.SizeOf<CfOperationInfo>(),
                     Type = CfOperationType.AckDehydrate,
@@ -127,7 +127,7 @@ namespace Cotton.Sync.Desktop.Platform
                     SyncStatus = IntPtr.Zero,
                     RequestKey = dehydrate.RequestKey.Value,
                 };
-                var parameters = new CfOperationAckDehydrateParameters
+                CfOperationAckDehydrateParameters parameters = new()
                 {
                     ParamSize = (uint)Marshal.SizeOf<CfOperationAckDehydrateParameters>(),
                     Flags = CfOperationAckDehydrateFlags.None,

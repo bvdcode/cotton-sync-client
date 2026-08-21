@@ -15,7 +15,7 @@ namespace Cotton.Sync.Desktop.Platform
             PinnedBuffer syncRootIdentity = PinnedBuffer.Pin(registration.SyncRootIdentity);
             try
             {
-                var nativeRegistration = new CfSyncRegistration
+                CfSyncRegistration nativeRegistration = new()
                 {
                     StructSize = (uint)Marshal.SizeOf<CfSyncRegistration>(),
                     ProviderName = registration.ProviderName,
@@ -68,10 +68,10 @@ namespace Cotton.Sync.Desktop.Platform
             IReadOnlyList<WindowsCloudFilesNativePlaceholder> placeholders)
         {
             Directory.CreateDirectory(baseDirectoryPath);
-            var pinnedIdentities = new PinnedBuffer[placeholders.Count];
+            PinnedBuffer[] pinnedIdentities = new PinnedBuffer[placeholders.Count];
             try
             {
-                var nativePlaceholders = new CfPlaceholderCreateInfo[placeholders.Count];
+                CfPlaceholderCreateInfo[] nativePlaceholders = new CfPlaceholderCreateInfo[placeholders.Count];
                 for (int index = 0; index < placeholders.Count; index++)
                 {
                     WindowsCloudFilesNativePlaceholder placeholder = placeholders[index];

@@ -49,7 +49,7 @@ namespace Cotton.Sync.Desktop.Platform
             string normalizedPath = SyncPath.Normalize(relativePath);
             string fullPath = ResolveInsideRoot(localRootPath, normalizedPath);
             string fileIdentity = ReadFileIdentity(fullPath);
-            var payload = new MarkerPayload
+            MarkerPayload payload = new()
             {
                 Version = MarkerVersion,
                 SyncPairId = syncPairId,

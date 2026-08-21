@@ -40,13 +40,13 @@ namespace Cotton.Sync.Desktop.Platform
             string pipeName = CreatePipeName(lockFilePath);
             try
             {
-                await using var pipe = new NamedPipeClientStream(
+                await using NamedPipeClientStream pipe = new(
                     ".",
                     pipeName,
                     PipeDirection.Out,
                     PipeOptions.Asynchronous);
                 await pipe.ConnectAsync(timeoutCancellation.Token).ConfigureAwait(false);
-                await using var writer = new StreamWriter(pipe, Encoding.UTF8)
+                await using StreamWriter writer = new(pipe, Encoding.UTF8)
                 {
                     AutoFlush = true,
                 };

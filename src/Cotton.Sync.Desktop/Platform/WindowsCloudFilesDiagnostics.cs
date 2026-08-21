@@ -29,7 +29,7 @@ namespace Cotton.Sync.Desktop.Platform
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(operation);
             ArgumentException.ThrowIfNullOrWhiteSpace(status);
-            var item = new WindowsCloudFilesDiagnosticEvent(
+            WindowsCloudFilesDiagnosticEvent item = new(
                 DateTimeOffset.UtcNow,
                 operation,
                 status,

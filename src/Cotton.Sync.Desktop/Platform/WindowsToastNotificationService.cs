@@ -50,7 +50,7 @@ namespace Cotton.Sync.Desktop.Platform
             ArgumentException.ThrowIfNullOrWhiteSpace(powerShellPath);
             ArgumentException.ThrowIfNullOrWhiteSpace(title);
             ArgumentException.ThrowIfNullOrWhiteSpace(message);
-            var startInfo = new ProcessStartInfo
+            ProcessStartInfo startInfo = new()
             {
                 FileName = powerShellPath,
                 UseShellExecute = false,

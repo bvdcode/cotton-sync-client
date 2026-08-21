@@ -98,7 +98,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         private string CreateDesktopFile()
         {
-            var builder = new StringBuilder();
+            StringBuilder builder = new();
             builder.AppendLine("[Desktop Entry]");
             builder.AppendLine("Type=Application");
             builder.AppendLine("Version=1.0");

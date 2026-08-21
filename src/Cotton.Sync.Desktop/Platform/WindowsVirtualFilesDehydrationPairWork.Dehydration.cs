@@ -254,7 +254,7 @@ namespace Cotton.Sync.Desktop.Platform
                 return false;
             }
 
-            var local = new LocalFileSnapshot
+            LocalFileSnapshot local = new()
             {
                 RelativePath = normalizedPath,
                 FullPath = fullPath,

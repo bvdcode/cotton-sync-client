@@ -205,7 +205,7 @@ namespace Cotton.Sync.Desktop.Platform
             SyncPairSettings syncPair,
             CancellationToken cancellationToken)
         {
-            var directories = new List<SyncStateEntry>();
+            List<SyncStateEntry> directories = new();
             await foreach (SyncStateEntry entry in _stateStore
                                .LoadPairDirectoryEntriesAsync(syncPair.Id.ToString("D"), cancellationToken)
                                .WithCancellation(cancellationToken)
@@ -223,9 +223,9 @@ namespace Cotton.Sync.Desktop.Platform
             CancellationToken cancellationToken)
         {
             string syncPairId = syncPair.Id.ToString("D");
-            var directories = new List<SyncStateEntry>();
-            var requestedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var ancestorKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            List<SyncStateEntry> directories = new();
+            HashSet<string> requestedKeys = new(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> ancestorKeys = new(StringComparer.OrdinalIgnoreCase);
             foreach (string path in request.LocalChangedPaths)
             {
                 cancellationToken.ThrowIfCancellationRequested();

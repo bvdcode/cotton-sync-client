@@ -52,7 +52,7 @@ namespace Cotton.Sync.Desktop.Platform
 
                 tempPath = CreateTempPath();
                 Directory.CreateDirectory(Path.GetDirectoryName(tempPath)!);
-                await using var stream = new FileStream(
+                await using FileStream stream = new(
                     tempPath,
                     FileMode.CreateNew,
                     FileAccess.ReadWrite,
@@ -224,7 +224,7 @@ namespace Cotton.Sync.Desktop.Platform
             IProgress<SyncTransferProgress>? transferProgress = null;
             try
             {
-                await using var stream = new FileStream(
+                await using FileStream stream = new(
                     tempPath,
                     FileMode.CreateNew,
                     FileAccess.ReadWrite,

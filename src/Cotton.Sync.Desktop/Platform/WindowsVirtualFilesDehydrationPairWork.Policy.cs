@@ -277,14 +277,14 @@ namespace Cotton.Sync.Desktop.Platform
         {
             if (File.Exists(fullPath))
             {
-                var file = new FileInfo(fullPath);
+                FileInfo file = new(fullPath);
                 file.Refresh();
                 return new WindowsVirtualFileDiskState(file.Attributes, file.Length, file.LastWriteTimeUtc);
             }
 
             if (Directory.Exists(fullPath))
             {
-                var directory = new DirectoryInfo(fullPath);
+                DirectoryInfo directory = new(fullPath);
                 directory.Refresh();
                 return new WindowsVirtualFileDiskState(directory.Attributes, 0, directory.LastWriteTimeUtc);
             }

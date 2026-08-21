@@ -140,7 +140,7 @@ namespace Cotton.Sync.Desktop.Platform
         {
             try
             {
-                var pending = new Stack<string>();
+                Stack<string> pending = new();
                 pending.Push(rootPath);
                 while (pending.Count > 0)
                 {

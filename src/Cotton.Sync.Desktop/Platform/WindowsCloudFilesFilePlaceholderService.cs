@@ -360,7 +360,7 @@ namespace Cotton.Sync.Desktop.Platform
                 ValidateExistingFilePlaceholderIdentity(request, syncPairId, normalizedPath, fullPlaceholderPath);
             }
 
-            var nativePlaceholder = new WindowsCloudFilesNativePlaceholder(
+            WindowsCloudFilesNativePlaceholder nativePlaceholder = new(
                 placeholderPath.BaseDirectoryPath,
                 placeholderPath.RelativeFileName,
                 fileIdentity,

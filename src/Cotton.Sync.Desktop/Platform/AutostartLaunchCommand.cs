@@ -186,9 +186,9 @@ namespace Cotton.Sync.Desktop.Platform
                 return value;
             }
 
-            var builder = new StringBuilder();
+            StringBuilder builder = new();
             builder.Append('"');
-            var backslashes = 0;
+            int backslashes = 0;
             foreach (char character in value)
             {
                 if (character == '\\')

@@ -37,7 +37,7 @@ namespace Cotton.Sync.Desktop.Composition
                 .ConfigureAwait(false);
             IReadOnlyList<IPAddress> orderedAddresses = OrderAddressesForConnect(addresses);
             Exception? lastException = null;
-            var attempts = new List<ConnectAttempt>();
+            List<ConnectAttempt> attempts = new();
             try
             {
                 foreach (IPAddress address in orderedAddresses)
@@ -94,7 +94,7 @@ namespace Cotton.Sync.Desktop.Composition
             int port,
             CancellationToken cancellationToken)
         {
-            var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
+            Socket socket = new(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
             {
                 NoDelay = true,
             };
