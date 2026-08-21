@@ -35,5 +35,4 @@ namespace Cotton.Sync.Desktop.Startup
         }
     }
 
-    internal record LiveSyncSmokeSeedFile(bool UseFirstClient, string RelativePath, string Content);
 }

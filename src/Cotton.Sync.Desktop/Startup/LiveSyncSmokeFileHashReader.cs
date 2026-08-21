@@ -123,5 +123,4 @@ namespace Cotton.Sync.Desktop.Startup
         }
     }
 
-    internal record LiveSyncSmokeFileHashReadResult(string Path, string? Sha256, string? Error);
 }
