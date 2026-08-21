@@ -240,9 +240,9 @@ namespace Cotton.Sync.Desktop.Startup
             ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
             ArgumentNullException.ThrowIfNull(matchesVerb);
             cancellationToken.ThrowIfCancellationRequested();
-            var completion = new TaskCompletionSource<ShellVerbInvocationResult>(
+            TaskCompletionSource<ShellVerbInvocationResult> completion = new(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-            var thread = new Thread(() =>
+            Thread thread = new(() =>
             {
                 try
                 {
@@ -302,7 +302,7 @@ namespace Cotton.Sync.Desktop.Startup
                 return new ShellVerbInvocationResult(false, null, []);
             }
 
-            var names = new List<string>();
+            List<string> names = new();
             dynamic verbs = item.Verbs();
             int count = verbs.Count;
             for (int index = 0; index < count; index++)

@@ -119,7 +119,7 @@ namespace Cotton.Sync.Desktop.Startup
             const int Unpinned = 0x00100000;
             const int RecallOnDataAccess = 0x00400000;
 
-            var names = new List<string>();
+            List<string> names = new();
             int raw = (int)attributes;
             foreach (FileAttributes known in Enum.GetValues<FileAttributes>())
             {
@@ -349,7 +349,7 @@ namespace Cotton.Sync.Desktop.Startup
             TimeSpan timeout,
             CancellationToken cancellationToken)
         {
-            var timer = Stopwatch.StartNew();
+            Stopwatch timer = Stopwatch.StartNew();
             while (timer.Elapsed < timeout)
             {
                 cancellationToken.ThrowIfCancellationRequested();

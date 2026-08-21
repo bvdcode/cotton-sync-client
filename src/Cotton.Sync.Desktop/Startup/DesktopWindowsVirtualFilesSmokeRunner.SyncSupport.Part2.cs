@@ -73,7 +73,7 @@ namespace Cotton.Sync.Desktop.Startup
                     return Task.FromResult(existing);
                 }
 
-                var node = new NodeDto
+                NodeDto node = new()
                 {
                     Id = Guid.CreateVersion7(),
                     ParentId = parentNodeId,
@@ -257,7 +257,7 @@ namespace Cotton.Sync.Desktop.Startup
                 CancellationToken cancellationToken = default)
             {
                 StreamingCrawlCalls++;
-                var root = new NodeDto
+                NodeDto root = new()
                 {
                     Id = _rootNodeId,
                     Name = "root",

@@ -61,8 +61,8 @@ namespace Cotton.Sync.Desktop.Startup
             string largeTreePath = Path.Combine(rootPath, LargeTreeDirectoryName);
             byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
             string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
-            var syncPairs = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
-            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            SqliteSyncPairSettingsStore syncPairs = new(paths.AppDatabasePath);
+            SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath);
             int failures = 0;
 
             try
@@ -79,8 +79,8 @@ namespace Cotton.Sync.Desktop.Startup
                     + rootPath)
                     .ConfigureAwait(false);
 
-                var createdEntries = new List<SyncStateEntry>(largeTreePlaceholderCount);
-                var createTimer = Stopwatch.StartNew();
+                List<SyncStateEntry> createdEntries = new(largeTreePlaceholderCount);
+                Stopwatch createTimer = Stopwatch.StartNew();
                 for (int index = 0; index < largeTreePlaceholderCount; index++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();

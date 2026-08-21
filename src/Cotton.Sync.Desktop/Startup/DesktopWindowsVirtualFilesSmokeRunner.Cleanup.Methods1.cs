@@ -61,14 +61,14 @@ namespace Cotton.Sync.Desktop.Startup
             byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
             string expectedText = Encoding.UTF8.GetString(expectedContent);
             string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
-            var contentProvider = new StaticSmokeContentProvider(expectedContent);
-            var callbackHandler = new WindowsCloudFilesHydrationCoordinator(
+            StaticSmokeContentProvider contentProvider = new(expectedContent);
+            WindowsCloudFilesHydrationCoordinator callbackHandler = new(
                 contentProvider,
                 nativeApi,
                 Path.Combine(paths.DataDirectory, "vfs-smoke-temp"),
                 diagnostics);
-            var syncPairs = new SingleSyncPairSettingsStore(syncPair);
-            var connectionCoordinator = new WindowsCloudFilesSyncRootConnectionCoordinator(
+            SingleSyncPairSettingsStore syncPairs = new(syncPair);
+            WindowsCloudFilesSyncRootConnectionCoordinator connectionCoordinator = new(
                 syncPairs,
                 cloudFiles,
                 callbackHandler);
@@ -233,8 +233,8 @@ namespace Cotton.Sync.Desktop.Startup
             string placeholderPath = Path.Combine(rootPath, RelativePlaceholderPath);
             byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
             string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
-            var syncPairs = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
-            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            SqliteSyncPairSettingsStore syncPairs = new(paths.AppDatabasePath);
+            SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath);
             int failures = 0;
 
             try

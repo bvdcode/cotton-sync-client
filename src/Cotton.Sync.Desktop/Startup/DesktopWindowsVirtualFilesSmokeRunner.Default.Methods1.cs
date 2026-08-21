@@ -59,7 +59,7 @@ namespace Cotton.Sync.Desktop.Startup
                 RelativePlaceholderPath,
                 expectedContent.LongLength,
                 expectedHash);
-            var contentProvider = new StaticSmokeContentProvider(expectedContent);
+            StaticSmokeContentProvider contentProvider = new(expectedContent);
             IWindowsCloudFilesCallbackHandler callbackHandler = nativeApi is null
                 ? new NoopCloudFilesCallbackHandler()
                 : new WindowsCloudFilesHydrationCoordinator(

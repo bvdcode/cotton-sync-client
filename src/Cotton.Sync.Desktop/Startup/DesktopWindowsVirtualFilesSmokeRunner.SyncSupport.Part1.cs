@@ -70,7 +70,7 @@ namespace Cotton.Sync.Desktop.Startup
 
             public async Task<bool> WaitForSampleCountAsync(int count, TimeSpan timeout)
             {
-                var timer = Stopwatch.StartNew();
+                Stopwatch timer = Stopwatch.StartNew();
                 while (timer.Elapsed < timeout)
                 {
                     lock (_gate)
@@ -263,10 +263,10 @@ namespace Cotton.Sync.Desktop.Startup
                 PathLookupCalls++;
                 ArgumentNullException.ThrowIfNull(relativePaths);
                 cancellationToken.ThrowIfCancellationRequested();
-                var requestedKeys = new HashSet<string>(
+                HashSet<string> requestedKeys = new(
                     relativePaths.Select(path => SyncPath.ToKey(SyncPath.Normalize(path))),
                     StringComparer.OrdinalIgnoreCase);
-                var lookup = new RemoteTreeLookupSnapshot
+                RemoteTreeLookupSnapshot lookup = new()
                 {
                     RootNode = _tree.RootNode,
                 };
@@ -316,7 +316,7 @@ namespace Cotton.Sync.Desktop.Startup
                 string contentHash = string.IsNullOrWhiteSpace(localFile.ContentHash)
                     ? "missing-local-content-hash"
                     : localFile.ContentHash;
-                var returned = new NodeFileManifestDto
+                NodeFileManifestDto returned = new()
                 {
                     Id = existingRemoteFile?.Id ?? Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
                     NodeId = existingRemoteFile?.NodeId ?? rootNodeId,

@@ -66,13 +66,13 @@ namespace Cotton.Sync.Desktop.Startup
             byte[] expectedContent = Encoding.UTF8.GetBytes(SmokeContentText);
             string expectedText = Encoding.UTF8.GetString(expectedContent);
             string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedContent));
-            var contentProvider = new StaticSmokeContentProvider(expectedContent);
-            var callbackHandler = new WindowsCloudFilesHydrationCoordinator(
+            StaticSmokeContentProvider contentProvider = new(expectedContent);
+            WindowsCloudFilesHydrationCoordinator callbackHandler = new(
                 contentProvider,
                 nativeApi,
                 Path.Combine(paths.DataDirectory, "vfs-smoke-temp"),
                 diagnostics);
-            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath);
             WindowsCloudFilesConnection? connection = null;
             int failures = 0;
 
@@ -148,7 +148,7 @@ namespace Cotton.Sync.Desktop.Startup
                         "attributes=" + FormatAttributes(File.GetAttributes(availabilityTargetPath)))
                     .ConfigureAwait(false);
 
-                var hydrationWork = new WindowsVirtualFilesDehydrationPairWork(
+                WindowsVirtualFilesDehydrationPairWork hydrationWork = new(
                     new FailOnInnerSyncPairWork("Explorer Always keep smoke must not run inner sync for availability-only changes."),
                     stateStore,
                     cloudFiles,

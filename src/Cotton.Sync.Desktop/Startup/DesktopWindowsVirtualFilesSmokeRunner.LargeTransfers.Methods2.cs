@@ -75,7 +75,7 @@ namespace Cotton.Sync.Desktop.Startup
                     FormatCheck(true, "Large-tree top-level directory placeholder was initialized."))
                     .ConfigureAwait(false);
 
-                var createTimer = Stopwatch.StartNew();
+                Stopwatch createTimer = Stopwatch.StartNew();
                 for (int index = 0; index < largeTreePlaceholderCount; index++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -146,7 +146,7 @@ namespace Cotton.Sync.Desktop.Startup
                         cancellationToken)
                     .ConfigureAwait(false);
 
-                var enumerationTimer = Stopwatch.StartNew();
+                Stopwatch enumerationTimer = Stopwatch.StartNew();
                 int enumeratedFiles = Directory.EnumerateFiles(largeTreePath, "*.txt", SearchOption.TopDirectoryOnly).Count();
                 enumerationTimer.Stop();
                 if (enumeratedFiles == largeTreePlaceholderCount)

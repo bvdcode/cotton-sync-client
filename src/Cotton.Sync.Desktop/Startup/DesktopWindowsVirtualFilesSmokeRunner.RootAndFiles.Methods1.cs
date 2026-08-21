@@ -156,7 +156,7 @@ namespace Cotton.Sync.Desktop.Startup
             string backingDirectory,
             CancellationToken cancellationToken)
         {
-            var startInfo = new ProcessStartInfo
+            ProcessStartInfo startInfo = new()
             {
                 FileName = Path.Combine(Environment.SystemDirectory, "subst.exe"),
                 UseShellExecute = false,
@@ -167,7 +167,7 @@ namespace Cotton.Sync.Desktop.Startup
             startInfo.ArgumentList.Add(driveName);
             startInfo.ArgumentList.Add(backingDirectory);
 
-            using var process = new Process { StartInfo = startInfo };
+            using Process process = new() { StartInfo = startInfo };
             if (!process.Start())
             {
                 return new SubstResult(1, string.Empty, "subst.exe could not be started.");
