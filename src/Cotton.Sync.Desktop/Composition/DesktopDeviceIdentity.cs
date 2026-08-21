@@ -1,7 +1,6 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
-using System.Reflection;
 using System.Runtime.InteropServices;
 using Cotton;
 
@@ -27,10 +26,17 @@ namespace Cotton.Sync.Desktop.Composition
 
         private static string CreateVersionLabel()
         {
-            Version? version = Assembly.GetExecutingAssembly().GetName().Version;
-            return version is null
-                ? "0.0.0"
-                : version.Major + "." + version.Minor + "." + Math.Max(0, version.Build);
+            string productVersion = DesktopProductVersion.Current;
+            int prereleaseStart = productVersion.IndexOf('-', StringComparison.Ordinal);
+            string versionText = prereleaseStart > 0
+                ? productVersion[..prereleaseStart]
+                : productVersion;
+            if (!Version.TryParse(versionText, out Version? version))
+            {
+                return "0.0.0";
+            }
+
+            return version.Major + "." + version.Minor + "." + Math.Max(0, version.Build);
         }
 
         private static string CreatePlatformLabel()

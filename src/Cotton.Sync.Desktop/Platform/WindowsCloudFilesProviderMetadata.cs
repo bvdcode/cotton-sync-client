@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
-using System.Reflection;
-
 namespace Cotton.Sync.Desktop.Platform
 {
     internal static class WindowsCloudFilesProviderMetadata
@@ -13,19 +11,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         public static string ResolveVersion()
         {
-            Assembly assembly = typeof(WindowsCloudFilesProviderMetadata).Assembly;
-            string? informationalVersion = assembly
-                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-                .InformationalVersion;
-            string version = string.IsNullOrWhiteSpace(informationalVersion)
-                ? assembly.GetName().Version?.ToString() ?? "unknown"
-                : informationalVersion;
-            int metadataStart = version.IndexOf('+', StringComparison.Ordinal);
-            if (metadataStart > 0)
-            {
-                version = version[..metadataStart];
-            }
-
+            string version = DesktopProductVersion.Current;
             return version.Length <= 255 ? version : version[..255];
         }
     }
