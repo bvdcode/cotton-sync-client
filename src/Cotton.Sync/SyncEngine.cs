@@ -72,6 +72,7 @@ namespace Cotton.Sync
         private readonly ScopedVirtualFilesDirectoryDeleteExecutor _scopedDirectoryDeleteExecutor;
         private readonly SyncOnlineOnlyPlaceholderMoveCoordinator _onlineOnlyPlaceholderMoveCoordinator;
         private readonly InitialVirtualFilesFileBatchProcessor _initialVirtualFilesFileBatchProcessor;
+        private readonly InitialVirtualFilesPopulationPipeline _initialVirtualFilesPopulationPipeline;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SyncEngine" /> class.
@@ -216,6 +217,12 @@ namespace Cotton.Sync
                 _fileMaterializer,
                 _stateStore,
                 _localFilePresenceProbe);
+            _initialVirtualFilesPopulationPipeline = new InitialVirtualFilesPopulationPipeline(
+                _remoteStreamingCrawler,
+                _initialVirtualFilesFileBatchProcessor,
+                _remoteDirectoryTreePopulationObserver,
+                _directoryReconciler,
+                _fileDeleteExecutor);
         }
 
         /// <inheritdoc />
@@ -880,7 +887,7 @@ namespace Cotton.Sync
                 streamingPlan,
                 metrics,
                 streamingCancellation.Token);
-            Task producer = ProduceInitialWindowsVirtualFilesPopulationAsync(
+            Task producer = _initialVirtualFilesPopulationPipeline.ProduceAsync(
                 syncPair,
                 options,
                 startedAtUtc,
@@ -888,7 +895,7 @@ namespace Cotton.Sync
                 sink,
                 initialVirtualFilesProgress,
                 streamingCancellation.Token);
-            Task consumer = ConsumeInitialWindowsVirtualFilesPopulationAsync(context);
+            Task consumer = _initialVirtualFilesPopulationPipeline.ConsumeAsync(context);
             using CancellationTokenSource heartbeatCancellation =
                 CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             Task heartbeat = _initialVirtualFilesHeartbeatLogger.RunAsync(
@@ -897,7 +904,7 @@ namespace Cotton.Sync
                 stopwatch,
                 metrics,
                 heartbeatCancellation.Token);
-            await RunInitialVirtualFilesPopulationPipelineAsync(
+            await InitialVirtualFilesPopulationPipeline.RunAsync(
                     producer,
                     consumer,
                     heartbeat,
@@ -926,31 +933,6 @@ namespace Cotton.Sync
                 startingManagedHeapBytes);
         }
 
-        private static async Task RunInitialVirtualFilesPopulationPipelineAsync(
-            Task producer,
-            Task consumer,
-            Task heartbeat,
-            ChannelWriter<InitialVirtualFilesPopulationItem> writer,
-            CancellationTokenSource streamingCancellation,
-            CancellationTokenSource heartbeatCancellation)
-        {
-            try
-            {
-                Task firstCompleted = await Task.WhenAny(producer, consumer).ConfigureAwait(false);
-                if (firstCompleted.IsFaulted || firstCompleted.IsCanceled)
-                {
-                    await streamingCancellation.CancelAsync().ConfigureAwait(false);
-                    writer.TryComplete(firstCompleted.Exception);
-                }
-
-                await Task.WhenAll(producer, consumer).ConfigureAwait(false);
-            }
-            finally
-            {
-                await heartbeatCancellation.CancelAsync().ConfigureAwait(false);
-                await InitialVirtualFilesHeartbeatLogger.IgnoreExpectedCancellationAsync(heartbeat, heartbeatCancellation.Token).ConfigureAwait(false);
-            }
-        }
 
         private void CompleteInitialVirtualFilesPopulation(
             SyncPair syncPair,
@@ -1044,357 +1026,16 @@ namespace Cotton.Sync
 
 
 
-        private async Task ProduceInitialWindowsVirtualFilesPopulationAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            DateTime startedAtUtc,
-            Channel<InitialVirtualFilesPopulationItem> channel,
-            IRemoteTreeStreamSink sink,
-            IProgress<RemoteTreeScanProgress> progress,
-            CancellationToken cancellationToken)
-        {
-            try
-            {
-                await _remoteStreamingCrawler!
-                    .CrawlStreamingAsync(
-                        syncPair.RemoteRootNodeId,
-                        sink,
-                        progress,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                channel.Writer.TryComplete();
-            }
-            catch (Exception exception)
-            {
-                channel.Writer.TryComplete(exception);
-                throw;
-            }
-        }
 
-        private async Task ConsumeInitialWindowsVirtualFilesPopulationAsync(
-            InitialVirtualFilesPopulationContext context)
-        {
-            int placeholderBatchSize = _initialVirtualFilesFileBatchProcessor.SupportsBatchWriting
-                ? context.Options.InitialVirtualFilesPlaceholderBatchSize
-                : 1;
-            InitialVirtualFilesConsumerState state = new(
-                context.Options.InitialVirtualFilesStateBatchSize,
-                placeholderBatchSize,
-                context.Options.InitialVirtualFilesPlaceholderConcurrency,
-                _remoteDirectoryTreePopulationObserver is not null,
-                PathComparer);
 
-            try
-            {
-                await foreach (InitialVirtualFilesPopulationItem item in context.Reader
-                                   .ReadAllAsync(context.CancellationToken)
-                                   .ConfigureAwait(false))
-                {
-                    context.CancellationToken.ThrowIfCancellationRequested();
-                    switch (item)
-                    {
-                        case InitialVirtualFilesDirectoryPopulationItem directoryItem:
-                            await ProcessInitialVirtualFilesDirectoryAsync(context, state, directoryItem.Directory)
-                                .ConfigureAwait(false);
-                            break;
 
-                        case InitialVirtualFilesFilePopulationItem fileItem:
-                            await ProcessInitialVirtualFilesFileAsync(context, state, fileItem.File)
-                                .ConfigureAwait(false);
-                            break;
 
-                        default:
-                            throw new InvalidOperationException(
-                                $"Unsupported initial virtual-files population item type '{item.GetType().FullName}'.");
-                    }
-                }
 
-                await FinalizeInitialVirtualFilesPopulationAsync(context, state).ConfigureAwait(false);
-            }
-            finally
-            {
-                await FlushInitialVirtualFilesPopulationStateAsync(context, state).ConfigureAwait(false);
-            }
-        }
 
-        private async Task ProcessInitialVirtualFilesDirectoryAsync(
-            InitialVirtualFilesPopulationContext context,
-            InitialVirtualFilesConsumerState state,
-            RemoteDirectorySnapshot directory)
-        {
-            RecordInitialVirtualFilesRemotePath(state, directory.RelativePath);
-            _initialVirtualFilesFileBatchProcessor.EnqueueInitialVirtualFilesFileBatchWork(
-                state.PendingFileTasks,
-                state.PendingFileBatch,
-                context.SyncPair,
-                context.Options,
-                context.CancellationToken);
-            await DrainCompletedInitialVirtualFilesAsync(
-                    state.PendingFileTasks,
-                    state.PendingFileStates,
-                    context,
-                    waitForOne: false)
-                .ConfigureAwait(false);
-            await _directoryReconciler.CreateRemoteBackedLocalDirectoryAsync(
-                    context.SyncPair,
-                    directory.RelativePath,
-                    directory.Node,
-                    context.CancellationToken)
-                .ConfigureAwait(false);
-            RecordInitialVirtualFilesDirectoryFinalization(context.SyncPair, state, directory);
-            state.PendingDirectoryStates.Add(BuildDirectoryBaseline(
-                context.SyncPair,
-                directory.RelativePath,
-                directory.Node));
-            if (state.PendingDirectoryStates.Count >= context.Options.InitialVirtualFilesStateBatchSize)
-            {
-                int flushedDirectoryRows = await _initialVirtualFilesFileBatchProcessor.FlushInitialVirtualFilesStateBatchAsync(
-                        state.PendingDirectoryStates,
-                        context.CancellationToken)
-                    .ConfigureAwait(false);
-                context.Metrics.RecordDirectoryStateWrite(flushedDirectoryRows);
-            }
 
-            context.Metrics.RecordCompletedDirectory();
-            InitialVirtualFilesProgress.Report(context, directory.RelativePath);
-        }
 
-        private static void RecordInitialVirtualFilesDirectoryFinalization(
-            SyncPair syncPair,
-            InitialVirtualFilesConsumerState state,
-            RemoteDirectorySnapshot directory)
-        {
-            if (state.DirectoryFinalizationRequests is null)
-            {
-                return;
-            }
 
-            RemoteDirectoryMaterializationRequest request =
-                SyncDirectoryReconciler.CreateRemoteDirectoryMaterializationRequest(
-                syncPair,
-                directory.RelativePath,
-                directory.Node);
-            state.DirectoryFinalizationRequests[SyncPath.ToKey(request.RelativePath)] = request;
-        }
 
-        private async Task ProcessInitialVirtualFilesFileAsync(
-            InitialVirtualFilesPopulationContext context,
-            InitialVirtualFilesConsumerState state,
-            RemoteFileSnapshot file)
-        {
-            string fileKey = RecordInitialVirtualFilesRemotePath(state, file.RelativePath);
-            state.StreamedRemoteFileKeys.Add(fileKey);
-            InitialVirtualFilesFileWorkResult? currentPlaceholderWorkResult =
-                _initialVirtualFilesFileBatchProcessor.TryCreateCurrentInitialVirtualFilesFileWorkResult(context.SyncPair, file, context.StreamingPlan);
-            if (currentPlaceholderWorkResult is not null)
-            {
-                await _initialVirtualFilesFileBatchProcessor.CompleteInitialVirtualFilesFileWorkAsync(
-                        currentPlaceholderWorkResult,
-                        state.PendingFileStates,
-                        context)
-                    .ConfigureAwait(false);
-                return;
-            }
-
-            state.PendingFileBatch.Add(file);
-            int placeholderBatchSize = _initialVirtualFilesFileBatchProcessor.SupportsBatchWriting
-                ? context.Options.InitialVirtualFilesPlaceholderBatchSize
-                : 1;
-            if (state.PendingFileBatch.Count >= placeholderBatchSize)
-            {
-                _initialVirtualFilesFileBatchProcessor.EnqueueInitialVirtualFilesFileBatchWork(
-                    state.PendingFileTasks,
-                    state.PendingFileBatch,
-                    context.SyncPair,
-                    context.Options,
-                    context.CancellationToken);
-            }
-
-            if (state.PendingFileTasks.Count >= context.Options.InitialVirtualFilesPlaceholderConcurrency)
-            {
-                await DrainCompletedInitialVirtualFilesAsync(
-                        state.PendingFileTasks,
-                        state.PendingFileStates,
-                        context,
-                        waitForOne: true)
-                    .ConfigureAwait(false);
-            }
-        }
-
-        private static string RecordInitialVirtualFilesRemotePath(
-            InitialVirtualFilesConsumerState state,
-            string relativePath)
-        {
-            string normalizedPath = SyncPath.Normalize(relativePath);
-            string pathKey = SyncPath.ToKey(normalizedPath);
-            if (state.StreamedRemotePathByKey.TryGetValue(pathKey, out string? existingPath))
-            {
-                throw new SyncPathCollisionException(existingPath, normalizedPath);
-            }
-
-            state.StreamedRemotePathByKey.Add(pathKey, normalizedPath);
-            return pathKey;
-        }
-
-        private async Task FinalizeInitialVirtualFilesPopulationAsync(
-            InitialVirtualFilesPopulationContext context,
-            InitialVirtualFilesConsumerState state)
-        {
-            _initialVirtualFilesFileBatchProcessor.EnqueueInitialVirtualFilesFileBatchWork(
-                state.PendingFileTasks,
-                state.PendingFileBatch,
-                context.SyncPair,
-                context.Options,
-                context.CancellationToken);
-            while (state.PendingFileTasks.Count > 0)
-            {
-                await DrainCompletedInitialVirtualFilesAsync(
-                        state.PendingFileTasks,
-                        state.PendingFileStates,
-                        context,
-                        waitForOne: true)
-                    .ConfigureAwait(false);
-            }
-
-            await DeleteMissingInitialVirtualFilesRemoteDeletesAsync(
-                    context.SyncPair,
-                    context.Options,
-                    context.Result,
-                    context.StreamingPlan,
-                    state.StreamedRemoteFileKeys,
-                    context.CancellationToken)
-                .ConfigureAwait(false);
-            await FlushInitialVirtualFilesPopulationStateAsync(context, state).ConfigureAwait(false);
-            await FinalizeInitialVirtualFilesDirectoryTreeAsync(context, state).ConfigureAwait(false);
-        }
-
-        private async Task FinalizeInitialVirtualFilesDirectoryTreeAsync(
-            InitialVirtualFilesPopulationContext context,
-            InitialVirtualFilesConsumerState state)
-        {
-            if (state.DirectoryFinalizationRequests is not { Count: > 0 } requests
-                || _remoteDirectoryTreePopulationObserver is null)
-            {
-                return;
-            }
-
-            int directoriesDiscovered = Math.Max(requests.Count, context.Metrics.DiscoveredDirectories);
-            SyncRunProgressReporter.ReportRunProgress(
-                context.Options,
-                SyncRunProgressStage.FinalizingCloudFiles,
-                0,
-                directoriesDiscovered,
-                null,
-                context.StartedAtUtc);
-            await _remoteDirectoryTreePopulationObserver
-                .AfterDirectoryTreePopulationAsync(requests.Values.ToArray(), context.CancellationToken)
-                .ConfigureAwait(false);
-            SyncRunProgressReporter.ReportRunProgress(
-                context.Options,
-                SyncRunProgressStage.FinalizingCloudFiles,
-                requests.Count,
-                directoriesDiscovered,
-                null,
-                context.StartedAtUtc,
-                isCompleted: true);
-        }
-
-        private async Task FlushInitialVirtualFilesPopulationStateAsync(
-            InitialVirtualFilesPopulationContext context,
-            InitialVirtualFilesConsumerState state)
-        {
-            int flushedFileRows = await _initialVirtualFilesFileBatchProcessor.FlushInitialVirtualFilesStateBatchAsync(
-                    state.PendingFileStates,
-                    context.CancellationToken)
-                .ConfigureAwait(false);
-            context.Metrics.RecordFileStateWrite(flushedFileRows);
-            int flushedDirectoryRows = await _initialVirtualFilesFileBatchProcessor.FlushInitialVirtualFilesStateBatchAsync(
-                    state.PendingDirectoryStates,
-                    context.CancellationToken)
-                .ConfigureAwait(false);
-            context.Metrics.RecordDirectoryStateWrite(flushedDirectoryRows);
-        }
-
-        private async Task DeleteMissingInitialVirtualFilesRemoteDeletesAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            SyncRunResult result,
-            InitialVirtualFilesStreamingPlan streamingPlan,
-            IReadOnlySet<string> streamedRemoteFileKeys,
-            CancellationToken cancellationToken)
-        {
-            if (streamingPlan.CurrentPlaceholderBaselineByPath.Count == 0)
-            {
-                return;
-            }
-
-            List<InitialVirtualFilesPlaceholderBaseline> missingBaselines = [];
-            foreach ((string pathKey, InitialVirtualFilesPlaceholderBaseline baseline) in streamingPlan.CurrentPlaceholderBaselineByPath)
-            {
-                if (!streamedRemoteFileKeys.Contains(pathKey))
-                {
-                    missingBaselines.Add(baseline);
-                }
-            }
-
-            if (missingBaselines.Count == 0)
-            {
-                return;
-            }
-
-            SyncDeleteGuard deleteGuard = new(options, plannedLocalDeletes: missingBaselines.Count, []);
-            foreach (InitialVirtualFilesPlaceholderBaseline baseline in missingBaselines)
-            {
-                await _fileDeleteExecutor.DeleteLocalAsync(
-                        syncPair,
-                        options,
-                        result,
-                        deleteGuard,
-                        baseline.RelativePath,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-        }
-
-        private async Task DrainCompletedInitialVirtualFilesAsync(
-            List<Task<IReadOnlyList<InitialVirtualFilesFileWorkResult>>> pendingFileTasks,
-            List<SyncStateEntry> pendingFileStates,
-            InitialVirtualFilesPopulationContext context,
-            bool waitForOne)
-        {
-            if (pendingFileTasks.Count == 0)
-            {
-                return;
-            }
-
-            if (waitForOne)
-            {
-                Task<IReadOnlyList<InitialVirtualFilesFileWorkResult>> completedTask =
-                    await Task.WhenAny(pendingFileTasks).ConfigureAwait(false);
-                pendingFileTasks.Remove(completedTask);
-                await _initialVirtualFilesFileBatchProcessor.CompleteInitialVirtualFilesFileWorkBatchAsync(
-                        await completedTask.ConfigureAwait(false),
-                        pendingFileStates,
-                        context)
-                    .ConfigureAwait(false);
-            }
-
-            for (int index = pendingFileTasks.Count - 1; index >= 0; index--)
-            {
-                Task<IReadOnlyList<InitialVirtualFilesFileWorkResult>> task = pendingFileTasks[index];
-                if (!task.IsCompleted)
-                {
-                    continue;
-                }
-
-                pendingFileTasks.RemoveAt(index);
-                await _initialVirtualFilesFileBatchProcessor.CompleteInitialVirtualFilesFileWorkBatchAsync(
-                        await task.ConfigureAwait(false),
-                        pendingFileStates,
-                        context)
-                    .ConfigureAwait(false);
-            }
-        }
 
 
 
