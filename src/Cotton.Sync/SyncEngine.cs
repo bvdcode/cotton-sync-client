@@ -54,6 +54,7 @@ namespace Cotton.Sync
         private readonly SyncDirectoryReconciler _directoryReconciler;
         private readonly SyncDirectoryDeleteReconciler _directoryDeleteReconciler;
         private readonly SyncLocalContentHashResolver _contentHashResolver;
+        private readonly RemoteDirectoryMoveCoordinator _remoteDirectoryMoveCoordinator;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SyncEngine" /> class.
@@ -107,6 +108,14 @@ namespace Cotton.Sync
             _contentHashResolver = new SyncLocalContentHashResolver(
                 _localContentHasher,
                 _localContentHashProgressHasher);
+            RemoteDirectoryMovePlanner remoteDirectoryMovePlanner = new(_logger);
+            _remoteDirectoryMoveCoordinator = new RemoteDirectoryMoveCoordinator(
+                remoteDirectoryMovePlanner,
+                _localWriter,
+                _stateStore,
+                _remoteDirectoryTreePopulationObserver,
+                _remoteFilePlaceholderWriter,
+                _contentHashResolver);
         }
 
         /// <inheritdoc />
@@ -233,7 +242,7 @@ namespace Cotton.Sync
 
         private async Task<IReadOnlyList<string>> ReconcileSyncDirectoriesAsync(SyncRunContext context)
         {
-            await CoalesceRemoteDirectoryMovesAsync(
+            await _remoteDirectoryMoveCoordinator.CoalesceAsync(
                     context.SyncPair,
                     context.Options,
                     context.Result,
@@ -2416,7 +2425,10 @@ namespace Cotton.Sync
             for (int index = 0; index < remoteFiles.Count; index++)
             {
                 RemoteFileSnapshot remote = remoteFiles[index];
-                requests[index] = CreateRemoteFilePlaceholderRequest(syncPair, remote.RelativePath, remote.File);
+                requests[index] = RemoteFilePlaceholderRequestFactory.Create(
+                    syncPair,
+                    remote.RelativePath,
+                    remote.File);
             }
 
             try
@@ -2626,7 +2638,7 @@ namespace Cotton.Sync
             {
                 placeholder = await _remoteFilePlaceholderWriter
                     .CreatePlaceholderAsync(
-                        CreateRemoteFilePlaceholderRequest(syncPair, relativePath, remoteFile),
+                        RemoteFilePlaceholderRequestFactory.Create(syncPair, relativePath, remoteFile),
                         cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -2636,21 +2648,6 @@ namespace Cotton.Sync
             }
 
             return BuildPlaceholderBaseline(syncPair, relativePath, remoteFile, placeholder, existingHydrationState);
-        }
-
-        private static RemoteFilePlaceholderRequest CreateRemoteFilePlaceholderRequest(
-            SyncPair syncPair,
-            string relativePath,
-            NodeFileManifestDto remoteFile,
-            SyncPlaceholderHydrationState? existingHydrationState = null)
-        {
-            return new RemoteFilePlaceholderRequest(
-                syncPair.SyncPairId,
-                syncPair.LocalRootPath,
-                syncPair.RemoteRootNodeId,
-                SyncPath.Normalize(relativePath),
-                remoteFile,
-                existingHydrationState);
         }
 
         private async Task MaterializeRemoteOnlyFileAsync(
@@ -2783,661 +2780,23 @@ namespace Cotton.Sync
             return checked(fileCount + directoryCount);
         }
 
-        private async Task CoalesceRemoteDirectoryMovesAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            SyncRunResult result,
-            IDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath,
-            IReadOnlyDictionary<string, RemoteDirectorySnapshot> remoteDirectoriesByPath,
-            IDictionary<string, LocalFileSnapshot> localFilesByPath,
-            IReadOnlyDictionary<string, RemoteFileSnapshot> remoteFilesByPath,
-            IDictionary<string, SyncStateEntry> directoryStateByPath,
-            IDictionary<string, SyncStateEntry> fileStateByPath,
-            CancellationToken cancellationToken)
-        {
-            if (directoryStateByPath.Count == 0)
-            {
-                return;
-            }
 
-            Dictionary<Guid, RemoteDirectorySnapshot> remoteDirectoriesById = BuildUniqueRemoteDirectoriesById(
-                remoteDirectoriesByPath.Values);
-            Dictionary<Guid, RemoteFileSnapshot> remoteFilesById = BuildUniqueRemoteFilesById(remoteFilesByPath.Values);
-            List<RemoteDirectoryMoveCandidate> accepted = FindRemoteDirectoryMoveCandidates(
-                localDirectoriesByPath,
-                localFilesByPath,
-                directoryStateByPath,
-                fileStateByPath,
-                remoteDirectoriesById,
-                remoteFilesById,
-                cancellationToken);
-            foreach (RemoteDirectoryMoveCandidate candidate in accepted)
-            {
-                await ApplyRemoteDirectoryMoveAsync(
-                    syncPair,
-                    options,
-                    result,
-                    candidate,
-                    localDirectoriesByPath,
-                    localFilesByPath,
-                    directoryStateByPath,
-                    fileStateByPath,
-                    remoteDirectoriesById,
-                    remoteFilesById,
-                    cancellationToken).ConfigureAwait(false);
-            }
-        }
 
-        private List<RemoteDirectoryMoveCandidate> FindRemoteDirectoryMoveCandidates(
-            IDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath,
-            IDictionary<string, LocalFileSnapshot> localFilesByPath,
-            IDictionary<string, SyncStateEntry> directoryStateByPath,
-            IDictionary<string, SyncStateEntry> fileStateByPath,
-            IReadOnlyDictionary<Guid, RemoteDirectorySnapshot> remoteDirectoriesById,
-            IReadOnlyDictionary<Guid, RemoteFileSnapshot> remoteFilesById,
-            CancellationToken cancellationToken)
-        {
-            List<RemoteDirectoryMoveCandidate> accepted = [];
-            foreach (KeyValuePair<string, SyncStateEntry> source in directoryStateByPath
-                         .OrderBy(entry => GetPathDepth(entry.Value.RelativePath))
-                         .ThenBy(entry => entry.Value.RelativePath, StringComparer.OrdinalIgnoreCase))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (TryCreateRemoteDirectoryMoveCandidate(
-                        source,
-                        accepted,
-                        localDirectoriesByPath,
-                        localFilesByPath,
-                        directoryStateByPath,
-                        fileStateByPath,
-                        remoteDirectoriesById,
-                        remoteFilesById,
-                        out RemoteDirectoryMoveCandidate candidate))
-                {
-                    accepted.Add(candidate);
-                }
-            }
 
-            return accepted;
-        }
 
-        private bool TryCreateRemoteDirectoryMoveCandidate(
-            KeyValuePair<string, SyncStateEntry> source,
-            IReadOnlyCollection<RemoteDirectoryMoveCandidate> accepted,
-            IDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath,
-            IDictionary<string, LocalFileSnapshot> localFilesByPath,
-            IDictionary<string, SyncStateEntry> directoryStateByPath,
-            IDictionary<string, SyncStateEntry> fileStateByPath,
-            IReadOnlyDictionary<Guid, RemoteDirectorySnapshot> remoteDirectoriesById,
-            IReadOnlyDictionary<Guid, RemoteFileSnapshot> remoteFilesById,
-            out RemoteDirectoryMoveCandidate candidate)
-        {
-            candidate = default;
-            if (!source.Value.RemoteNodeId.HasValue || !localDirectoriesByPath.ContainsKey(source.Key))
-            {
-                return false;
-            }
 
-            if (!remoteDirectoriesById.TryGetValue(
-                    source.Value.RemoteNodeId.Value,
-                    out RemoteDirectorySnapshot? target)
-                || string.Equals(source.Value.RelativePath, target.RelativePath, StringComparison.Ordinal))
-            {
-                return false;
-            }
 
-            string sourceKey = SyncPath.ToKey(source.Value.RelativePath);
-            if (accepted.Any(existing => IsSameOrDescendantPathKey(sourceKey, existing.SourceKey)))
-            {
-                return false;
-            }
 
-            candidate = new RemoteDirectoryMoveCandidate(
-                source.Value.RelativePath,
-                target.RelativePath,
-                sourceKey,
-                SyncPath.ToKey(target.RelativePath));
-            if (!CanCoalesceRemoteDirectoryMove(
-                    candidate,
-                    localDirectoriesByPath,
-                    localFilesByPath,
-                    directoryStateByPath,
-                    fileStateByPath,
-                    remoteDirectoriesById,
-                    remoteFilesById,
-                    out string? rejectionReason))
-            {
-                _logger.LogInformation(
-                    "Remote directory move from {SourcePath} to {TargetPath} was not coalesced: {Reason}",
-                    candidate.SourcePath,
-                    candidate.TargetPath,
-                    rejectionReason);
-                return false;
-            }
 
-            _logger.LogInformation(
-                "Remote directory move from {SourcePath} to {TargetPath} passed stable-id validation.",
-                candidate.SourcePath,
-                candidate.TargetPath);
-            return true;
-        }
 
-        private async Task ApplyRemoteDirectoryMoveAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            SyncRunResult result,
-            RemoteDirectoryMoveCandidate candidate,
-            IDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath,
-            IDictionary<string, LocalFileSnapshot> localFilesByPath,
-            IDictionary<string, SyncStateEntry> directoryStateByPath,
-            IDictionary<string, SyncStateEntry> fileStateByPath,
-            IReadOnlyDictionary<Guid, RemoteDirectorySnapshot> remoteDirectoriesById,
-            IReadOnlyDictionary<Guid, RemoteFileSnapshot> remoteFilesById,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            await EnsureRemoteDirectoryMoveLocalHashesAsync(
-                syncPair,
-                options,
-                candidate,
-                localFilesByPath,
-                fileStateByPath,
-                cancellationToken).ConfigureAwait(false);
-            await _localWriter.MoveDirectoryAsync(
-                syncPair.LocalRootPath,
-                candidate.SourcePath,
-                candidate.TargetPath,
-                cancellationToken).ConfigureAwait(false);
-            MoveLocalDirectoryLookups(syncPair.LocalRootPath, candidate, localDirectoriesByPath);
-            MoveLocalFileLookups(syncPair.LocalRootPath, candidate, localFilesByPath);
 
-            List<KeyValuePair<string, SyncStateEntry>> movedDirectoryStates = directoryStateByPath
-                .Where(entry => IsSameOrDescendantPathKey(entry.Key, candidate.SourceKey))
-                .OrderBy(entry => GetPathDepth(entry.Value.RelativePath))
-                .ToList();
-            await NotifyRemoteDirectoryMovePopulationAsync(
-                syncPair,
-                candidate,
-                movedDirectoryStates,
-                remoteDirectoriesById,
-                cancellationToken).ConfigureAwait(false);
-            await MoveRemoteDirectoryStatesAsync(
-                syncPair,
-                candidate,
-                movedDirectoryStates,
-                directoryStateByPath,
-                remoteDirectoriesById,
-                cancellationToken).ConfigureAwait(false);
-            await MoveRemoteFileStatesAsync(
-                syncPair,
-                options,
-                candidate,
-                localFilesByPath,
-                fileStateByPath,
-                remoteFilesById,
-                cancellationToken).ConfigureAwait(false);
-            Report(
-                result,
-                options,
-                SyncActivityKind.Moved,
-                candidate.TargetPath,
-                "Moved local folder to follow the remote folder path.");
-        }
 
-        private async Task NotifyRemoteDirectoryMovePopulationAsync(
-            SyncPair syncPair,
-            RemoteDirectoryMoveCandidate candidate,
-            IEnumerable<KeyValuePair<string, SyncStateEntry>> movedDirectoryStates,
-            IReadOnlyDictionary<Guid, RemoteDirectorySnapshot> remoteDirectoriesById,
-            CancellationToken cancellationToken)
-        {
-            if (_remoteDirectoryTreePopulationObserver is null)
-            {
-                return;
-            }
 
-            List<RemoteDirectoryMaterializationRequest> directoryRequests = movedDirectoryStates
-                .Select(entry =>
-                {
-                    RemoteDirectorySnapshot remote = remoteDirectoriesById[entry.Value.RemoteNodeId!.Value];
-                    string targetPath = ReplacePathPrefix(
-                        entry.Value.RelativePath,
-                        candidate.SourcePath,
-                        candidate.TargetPath);
-                    return SyncDirectoryReconciler.CreateRemoteDirectoryMaterializationRequest(
-                        syncPair,
-                        targetPath,
-                        remote.Node);
-                })
-                .ToList();
-            await _remoteDirectoryTreePopulationObserver
-                .AfterDirectoryTreePopulationAsync(directoryRequests, cancellationToken)
-                .ConfigureAwait(false);
-        }
 
-        private async Task MoveRemoteDirectoryStatesAsync(
-            SyncPair syncPair,
-            RemoteDirectoryMoveCandidate candidate,
-            IEnumerable<KeyValuePair<string, SyncStateEntry>> movedDirectoryStates,
-            IDictionary<string, SyncStateEntry> directoryStateByPath,
-            IReadOnlyDictionary<Guid, RemoteDirectorySnapshot> remoteDirectoriesById,
-            CancellationToken cancellationToken)
-        {
-            foreach (KeyValuePair<string, SyncStateEntry> entry in movedDirectoryStates)
-            {
-                string targetPath = ReplacePathPrefix(
-                    entry.Value.RelativePath,
-                    candidate.SourcePath,
-                    candidate.TargetPath);
-                RemoteDirectorySnapshot remote = remoteDirectoriesById[entry.Value.RemoteNodeId!.Value];
-                SyncStateEntry movedState = BuildDirectoryBaseline(syncPair, targetPath, remote.Node);
-                await MoveStateEntryAsync(
-                    syncPair.SyncPairId,
-                    entry.Value.RelativePath,
-                    movedState,
-                    directoryStateByPath,
-                    cancellationToken).ConfigureAwait(false);
-            }
-        }
 
-        private async Task MoveRemoteFileStatesAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            RemoteDirectoryMoveCandidate candidate,
-            IDictionary<string, LocalFileSnapshot> localFilesByPath,
-            IDictionary<string, SyncStateEntry> fileStateByPath,
-            IReadOnlyDictionary<Guid, RemoteFileSnapshot> remoteFilesById,
-            CancellationToken cancellationToken)
-        {
-            List<KeyValuePair<string, SyncStateEntry>> movedFileStates = fileStateByPath
-                .Where(entry => IsSameOrDescendantPathKey(entry.Key, candidate.SourceKey))
-                .OrderBy(entry => entry.Value.RelativePath, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            foreach (KeyValuePair<string, SyncStateEntry> entry in movedFileStates)
-            {
-                string targetPath = ReplacePathPrefix(
-                    entry.Value.RelativePath,
-                    candidate.SourcePath,
-                    candidate.TargetPath);
-                string targetKey = SyncPath.ToKey(targetPath);
-                RemoteFileSnapshot remote = remoteFilesById[entry.Value.RemoteFileId!.Value];
-                LocalFileSnapshot local = localFilesByPath[targetKey];
-                SyncStateEntry movedState = await BuildMovedRemoteFileStateAsync(
-                    syncPair,
-                    options,
-                    targetPath,
-                    local,
-                    remote.File,
-                    entry.Value,
-                    cancellationToken).ConfigureAwait(false);
-                await MoveStateEntryAsync(
-                    syncPair.SyncPairId,
-                    entry.Value.RelativePath,
-                    movedState,
-                    fileStateByPath,
-                    cancellationToken).ConfigureAwait(false);
-            }
-        }
 
-        private async Task EnsureRemoteDirectoryMoveLocalHashesAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            RemoteDirectoryMoveCandidate candidate,
-            IDictionary<string, LocalFileSnapshot> localFilesByPath,
-            IDictionary<string, SyncStateEntry> fileStateByPath,
-            CancellationToken cancellationToken)
-        {
-            foreach (KeyValuePair<string, SyncStateEntry> entry in fileStateByPath
-                         .Where(entry => IsSameOrDescendantPathKey(entry.Key, candidate.SourceKey)))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (!localFilesByPath.TryGetValue(entry.Key, out LocalFileSnapshot? local)
-                    || IsLocalOnlineOnlyPlaceholderBaseline(syncPair, local, entry.Value)
-                    || string.IsNullOrWhiteSpace(entry.Value.LocalContentHash))
-                {
-                    continue;
-                }
 
-                await EnsureLocalContentHashAsync(local, options, cancellationToken).ConfigureAwait(false);
-            }
-        }
 
-        private static Dictionary<Guid, RemoteDirectorySnapshot> BuildUniqueRemoteDirectoriesById(
-            IEnumerable<RemoteDirectorySnapshot> directories)
-        {
-            var unique = new Dictionary<Guid, RemoteDirectorySnapshot>();
-            HashSet<Guid> duplicates = [];
-            foreach (RemoteDirectorySnapshot directory in directories)
-            {
-                if (!unique.TryAdd(directory.Node.Id, directory))
-                {
-                    duplicates.Add(directory.Node.Id);
-                }
-            }
-
-            foreach (Guid duplicate in duplicates)
-            {
-                unique.Remove(duplicate);
-            }
-
-            return unique;
-        }
-
-        private static Dictionary<Guid, RemoteFileSnapshot> BuildUniqueRemoteFilesById(
-            IEnumerable<RemoteFileSnapshot> files)
-        {
-            var unique = new Dictionary<Guid, RemoteFileSnapshot>();
-            HashSet<Guid> duplicates = [];
-            foreach (RemoteFileSnapshot file in files)
-            {
-                if (!unique.TryAdd(file.File.Id, file))
-                {
-                    duplicates.Add(file.File.Id);
-                }
-            }
-
-            foreach (Guid duplicate in duplicates)
-            {
-                unique.Remove(duplicate);
-            }
-
-            return unique;
-        }
-
-        private static bool CanCoalesceRemoteDirectoryMove(
-            RemoteDirectoryMoveCandidate candidate,
-            IDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath,
-            IDictionary<string, LocalFileSnapshot> localFilesByPath,
-            IDictionary<string, SyncStateEntry> directoryStateByPath,
-            IDictionary<string, SyncStateEntry> fileStateByPath,
-            IReadOnlyDictionary<Guid, RemoteDirectorySnapshot> remoteDirectoriesById,
-            IReadOnlyDictionary<Guid, RemoteFileSnapshot> remoteFilesById,
-            out string? rejectionReason)
-        {
-            if (!PathComparer.Equals(candidate.SourceKey, candidate.TargetKey)
-                && IsSameOrDescendantPathKey(candidate.TargetKey, candidate.SourceKey))
-            {
-                rejectionReason = "the target path is inside the source subtree";
-                return false;
-            }
-
-            HashSet<string> sourceDirectoryKeys = localDirectoriesByPath.Keys
-                .Where(key => IsSameOrDescendantPathKey(key, candidate.SourceKey))
-                .ToHashSet(PathComparer);
-            HashSet<string> sourceFileKeys = localFilesByPath.Keys
-                .Where(key => IsSameOrDescendantPathKey(key, candidate.SourceKey))
-                .ToHashSet(PathComparer);
-            rejectionReason = FindRemoteDirectoryMoveLocalCollision(
-                candidate,
-                sourceDirectoryKeys,
-                sourceFileKeys,
-                localDirectoriesByPath,
-                localFilesByPath);
-            if (rejectionReason is not null)
-            {
-                return false;
-            }
-
-            rejectionReason = ValidateTrackedRemoteDirectoryMoveDirectories(
-                candidate,
-                directoryStateByPath,
-                localDirectoriesByPath,
-                remoteDirectoriesById);
-            if (rejectionReason is not null)
-            {
-                return false;
-            }
-
-            rejectionReason = ValidateTrackedRemoteDirectoryMoveFiles(
-                candidate,
-                fileStateByPath,
-                localFilesByPath,
-                remoteFilesById);
-            return rejectionReason is null;
-        }
-
-        private static string? FindRemoteDirectoryMoveLocalCollision(
-            RemoteDirectoryMoveCandidate candidate,
-            IReadOnlySet<string> sourceDirectoryKeys,
-            IReadOnlySet<string> sourceFileKeys,
-            IDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath,
-            IDictionary<string, LocalFileSnapshot> localFilesByPath)
-        {
-            foreach (string sourceKey in sourceDirectoryKeys)
-            {
-                LocalDirectorySnapshot local = localDirectoriesByPath[sourceKey];
-                string targetPath = ReplacePathPrefix(local.RelativePath, candidate.SourcePath, candidate.TargetPath);
-                string targetKey = SyncPath.ToKey(targetPath);
-                if ((localDirectoriesByPath.ContainsKey(targetKey) && !sourceDirectoryKeys.Contains(targetKey))
-                    || (localFilesByPath.ContainsKey(targetKey) && !sourceFileKeys.Contains(targetKey)))
-                {
-                    return $"the target path '{targetPath}' collides with an existing local item";
-                }
-            }
-
-            foreach (string sourceKey in sourceFileKeys)
-            {
-                LocalFileSnapshot local = localFilesByPath[sourceKey];
-                string targetPath = ReplacePathPrefix(local.RelativePath, candidate.SourcePath, candidate.TargetPath);
-                string targetKey = SyncPath.ToKey(targetPath);
-                if ((localFilesByPath.ContainsKey(targetKey) && !sourceFileKeys.Contains(targetKey))
-                    || (localDirectoriesByPath.ContainsKey(targetKey) && !sourceDirectoryKeys.Contains(targetKey)))
-                {
-                    return $"the target path '{targetPath}' collides with an existing local item";
-                }
-            }
-
-            return null;
-        }
-
-        private static string? ValidateTrackedRemoteDirectoryMoveDirectories(
-            RemoteDirectoryMoveCandidate candidate,
-            IDictionary<string, SyncStateEntry> directoryStateByPath,
-            IDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath,
-            IReadOnlyDictionary<Guid, RemoteDirectorySnapshot> remoteDirectoriesById)
-        {
-            foreach (KeyValuePair<string, SyncStateEntry> entry in directoryStateByPath
-                         .Where(entry => IsSameOrDescendantPathKey(entry.Key, candidate.SourceKey)))
-            {
-                if (!localDirectoriesByPath.ContainsKey(entry.Key))
-                {
-                    return $"tracked directory '{entry.Value.RelativePath}' is absent from the local snapshot";
-                }
-
-                if (!entry.Value.RemoteNodeId.HasValue)
-                {
-                    return $"tracked directory '{entry.Value.RelativePath}' has no remote node id";
-                }
-
-                if (!remoteDirectoriesById.TryGetValue(
-                        entry.Value.RemoteNodeId.Value,
-                        out RemoteDirectorySnapshot? remote))
-                {
-                    return $"tracked directory '{entry.Value.RelativePath}' is absent from the remote snapshot by id";
-                }
-
-                string expectedRemotePath = ReplacePathPrefix(
-                    entry.Value.RelativePath,
-                    candidate.SourcePath,
-                    candidate.TargetPath);
-                if (!string.Equals(remote.RelativePath, expectedRemotePath, StringComparison.Ordinal))
-                {
-                    return $"tracked directory '{entry.Value.RelativePath}' maps to remote path '{remote.RelativePath}' instead of '{expectedRemotePath}'";
-                }
-            }
-
-            return null;
-        }
-
-        private static string? ValidateTrackedRemoteDirectoryMoveFiles(
-            RemoteDirectoryMoveCandidate candidate,
-            IDictionary<string, SyncStateEntry> fileStateByPath,
-            IDictionary<string, LocalFileSnapshot> localFilesByPath,
-            IReadOnlyDictionary<Guid, RemoteFileSnapshot> remoteFilesById)
-        {
-            foreach (KeyValuePair<string, SyncStateEntry> entry in fileStateByPath
-                         .Where(entry => IsSameOrDescendantPathKey(entry.Key, candidate.SourceKey)))
-            {
-                if (!localFilesByPath.ContainsKey(entry.Key))
-                {
-                    return $"tracked file '{entry.Value.RelativePath}' is absent from the local snapshot";
-                }
-
-                if (!entry.Value.RemoteFileId.HasValue)
-                {
-                    return $"tracked file '{entry.Value.RelativePath}' has no remote file id";
-                }
-
-                if (!remoteFilesById.TryGetValue(entry.Value.RemoteFileId.Value, out RemoteFileSnapshot? remote))
-                {
-                    return $"tracked file '{entry.Value.RelativePath}' is absent from the remote snapshot by id";
-                }
-
-                string expectedRemotePath = ReplacePathPrefix(
-                    entry.Value.RelativePath,
-                    candidate.SourcePath,
-                    candidate.TargetPath);
-                if (!string.Equals(remote.RelativePath, expectedRemotePath, StringComparison.Ordinal))
-                {
-                    return $"tracked file '{entry.Value.RelativePath}' maps to remote path '{remote.RelativePath}' instead of '{expectedRemotePath}'";
-                }
-            }
-
-            return null;
-        }
-
-        private static void MoveLocalDirectoryLookups(
-            string localRootPath,
-            RemoteDirectoryMoveCandidate candidate,
-            IDictionary<string, LocalDirectorySnapshot> localDirectoriesByPath)
-        {
-            List<KeyValuePair<string, LocalDirectorySnapshot>> moved = localDirectoriesByPath
-                .Where(entry => IsSameOrDescendantPathKey(entry.Key, candidate.SourceKey))
-                .ToList();
-            foreach (KeyValuePair<string, LocalDirectorySnapshot> entry in moved)
-            {
-                localDirectoriesByPath.Remove(entry.Key);
-            }
-
-            foreach (KeyValuePair<string, LocalDirectorySnapshot> entry in moved)
-            {
-                string targetPath = ReplacePathPrefix(entry.Value.RelativePath, candidate.SourcePath, candidate.TargetPath);
-                entry.Value.RelativePath = targetPath;
-                entry.Value.FullPath = ResolveLocalPath(localRootPath, targetPath);
-                localDirectoriesByPath.Add(SyncPath.ToKey(targetPath), entry.Value);
-            }
-        }
-
-        private static void MoveLocalFileLookups(
-            string localRootPath,
-            RemoteDirectoryMoveCandidate candidate,
-            IDictionary<string, LocalFileSnapshot> localFilesByPath)
-        {
-            List<KeyValuePair<string, LocalFileSnapshot>> moved = localFilesByPath
-                .Where(entry => IsSameOrDescendantPathKey(entry.Key, candidate.SourceKey))
-                .ToList();
-            foreach (KeyValuePair<string, LocalFileSnapshot> entry in moved)
-            {
-                localFilesByPath.Remove(entry.Key);
-            }
-
-            foreach (KeyValuePair<string, LocalFileSnapshot> entry in moved)
-            {
-                string targetPath = ReplacePathPrefix(entry.Value.RelativePath, candidate.SourcePath, candidate.TargetPath);
-                entry.Value.RelativePath = targetPath;
-                entry.Value.FullPath = ResolveLocalPath(localRootPath, targetPath);
-                localFilesByPath.Add(SyncPath.ToKey(targetPath), entry.Value);
-            }
-        }
-
-        private async Task<SyncStateEntry> BuildMovedRemoteFileStateAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            string targetPath,
-            LocalFileSnapshot local,
-            NodeFileManifestDto remoteFile,
-            SyncStateEntry previousState,
-            CancellationToken cancellationToken)
-        {
-            bool localMatchesBaseline = IsLocalOnlineOnlyPlaceholderBaseline(syncPair, local, previousState);
-            if (!localMatchesBaseline && !string.IsNullOrWhiteSpace(previousState.LocalContentHash))
-            {
-                await EnsureLocalContentHashAsync(local, options, cancellationToken).ConfigureAwait(false);
-                localMatchesBaseline = ContentMatches(local.ContentHash, previousState.LocalContentHash)
-                    && (!previousState.LocalSizeBytes.HasValue || local.SizeBytes == previousState.LocalSizeBytes.Value);
-            }
-
-            if (syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
-                && local.IsCloudFilesPlaceholder
-                && localMatchesBaseline
-                && _remoteFilePlaceholderWriter is not null)
-            {
-                RemoteFilePlaceholderResult placeholder = await _remoteFilePlaceholderWriter
-                    .CreatePlaceholderAsync(
-                        CreateRemoteFilePlaceholderRequest(
-                            syncPair,
-                            targetPath,
-                            remoteFile,
-                            previousState.PlaceholderHydrationState),
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                if (placeholder.LocalSizeBytes.HasValue)
-                {
-                    local.SizeBytes = placeholder.LocalSizeBytes.Value;
-                }
-
-                if (placeholder.LocalLastWriteUtc.HasValue)
-                {
-                    local.LastWriteUtc = placeholder.LocalLastWriteUtc.Value.ToUniversalTime();
-                }
-
-                return BuildPlaceholderBaseline(
-                    syncPair,
-                    targetPath,
-                    remoteFile,
-                    placeholder,
-                    previousState.PlaceholderHydrationState);
-            }
-
-            return new SyncStateEntry
-            {
-                SyncPairId = syncPair.SyncPairId,
-                RelativePath = SyncPath.Normalize(targetPath),
-                Kind = SyncEntryKind.File,
-                LocalContentHash = previousState.LocalContentHash,
-                LocalLastWriteUtc = previousState.LocalLastWriteUtc,
-                LocalSizeBytes = previousState.LocalSizeBytes,
-                RemoteSizeBytes = previousState.RemoteSizeBytes,
-                RemoteNodeId = remoteFile.NodeId,
-                RemoteFileId = previousState.RemoteFileId,
-                RemoteFileManifestId = previousState.RemoteFileManifestId,
-                RemoteOriginalNodeFileId = previousState.RemoteOriginalNodeFileId,
-                RemoteContentHash = previousState.RemoteContentHash,
-                RemoteETag = previousState.RemoteETag,
-                PlaceholderIdentity = previousState.PlaceholderIdentity,
-                PlaceholderHydrationState = previousState.PlaceholderHydrationState,
-                SyncedAtUtc = DateTime.UtcNow,
-            };
-        }
-
-        private async Task MoveStateEntryAsync(
-            string syncPairId,
-            string sourcePath,
-            SyncStateEntry movedState,
-            IDictionary<string, SyncStateEntry> stateByPath,
-            CancellationToken cancellationToken)
-        {
-            string sourceKey = SyncPath.ToKey(sourcePath);
-            string targetKey = SyncPath.ToKey(movedState.RelativePath);
-            await _stateStore.UpsertAsync(movedState, cancellationToken).ConfigureAwait(false);
-            if (!PathComparer.Equals(sourceKey, targetKey))
-            {
-                await _stateStore.DeleteAsync(syncPairId, sourcePath, cancellationToken).ConfigureAwait(false);
-                stateByPath.Remove(sourceKey);
-            }
-
-            stateByPath[targetKey] = movedState;
-        }
 
 
 
