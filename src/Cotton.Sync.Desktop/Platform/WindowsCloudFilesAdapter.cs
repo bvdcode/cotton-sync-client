@@ -15,19 +15,9 @@ namespace Cotton.Sync.Desktop.Platform
         public const string ProviderId = WindowsCloudFilesProviderMetadata.ProviderId;
         public const string ProviderName = WindowsCloudFilesProviderMetadata.ProviderName;
 
-        private const int HResultFileNotFound = unchecked((int)0x80070002);
-        private const int HResultPathNotFound = unchecked((int)0x80070003);
-        private const int HResultSharingViolation = unchecked((int)0x80070020);
-        private const int HResultLockViolation = unchecked((int)0x80070021);
         private const int HResultCloudFileUnsuccessful = unchecked((int)0x80070185);
         private const int FileAttributePinned = 0x00080000;
         private const int FileAttributeUnpinned = 0x00100000;
-        private static readonly TimeSpan[] TransientPathRetryDelays =
-        [
-            TimeSpan.FromMilliseconds(25),
-            TimeSpan.FromMilliseconds(75),
-            TimeSpan.FromMilliseconds(150),
-        ];
 
         private readonly WindowsVirtualFilesRootSafetyPolicy _rootSafety;
         private readonly IWindowsCloudFilesNativeApi _nativeApi;
@@ -36,8 +26,8 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly Func<string, bool> _isReparsePoint;
         private readonly Func<string, bool> _isCloudFilesReparsePoint;
         private readonly Func<string, FileAttributes> _readFileAttributes;
-        private readonly Action<TimeSpan> _transientRetryDelay;
         private readonly WindowsCloudFilesRegistrationManager _registrationManager;
+        private readonly WindowsCloudFilesNativeOperationExecutor _operationExecutor;
 
         public WindowsCloudFilesAdapter(
             WindowsVirtualFilesRootSafetyPolicy? rootSafety = null,
@@ -60,7 +50,9 @@ namespace Cotton.Sync.Desktop.Platform
             _isCloudFilesReparsePoint = isCloudFilesReparsePoint
                 ?? WindowsCloudFilesReparsePointProbe.IsCloudFilesReparsePoint;
             _readFileAttributes = readFileAttributes ?? File.GetAttributes;
-            _transientRetryDelay = transientRetryDelay ?? Thread.Sleep;
+            _operationExecutor = new WindowsCloudFilesNativeOperationExecutor(
+                _diagnostics,
+                transientRetryDelay ?? Thread.Sleep);
             _registrationManager = new WindowsCloudFilesRegistrationManager(
                 _rootSafety,
                 _nativeApi,
@@ -147,7 +139,7 @@ namespace Cotton.Sync.Desktop.Platform
             catch (Exception exception)
             {
                 RestorePinStateAfterUpdateFailure(item, existingPinState);
-                RecordFailure(
+                _operationExecutor.RecordFailure(
                     operation,
                     item.SyncPairId,
                     item.LocalRootPath,
@@ -168,7 +160,7 @@ namespace Cotton.Sync.Desktop.Platform
                 SetFilePlaceholderPinState(item, WindowsCloudFilesPinState.Unpinned);
             }
 
-            ExecuteNativeOperationWithTransientPathRetry(
+            _operationExecutor.ExecuteWithTransientPathRetry(
                 () => _nativeApi.UpdatePlaceholder(item.Placeholder),
                 "update-placeholder",
                 item.SyncPairId,
@@ -202,7 +194,7 @@ namespace Cotton.Sync.Desktop.Platform
                 return SyncPlaceholderHydrationState.RemoteOnly;
             }
 
-            ExecuteNativeOperationWithTransientPathRetry(
+            _operationExecutor.ExecuteWithTransientPathRetry(
                 () => SetAndVerifyInSyncState(item.FullPlaceholderPath),
                 "set-in-sync-state",
                 item.SyncPairId,
@@ -215,7 +207,7 @@ namespace Cotton.Sync.Desktop.Platform
             PreparedFilePlaceholder item,
             WindowsCloudFilesPinState pinState)
         {
-            ExecuteNativeOperationWithTransientPathRetry(
+            _operationExecutor.ExecuteWithTransientPathRetry(
                 () => _nativeApi.SetPinState(item.FullPlaceholderPath, pinState),
                 "set-pin-state",
                 item.SyncPairId,
@@ -234,7 +226,7 @@ namespace Cotton.Sync.Desktop.Platform
 
             try
             {
-                ExecuteNativeOperationWithTransientPathRetry(
+                _operationExecutor.ExecuteWithTransientPathRetry(
                     () => _nativeApi.SetPinState(item.FullPlaceholderPath, existingPinState.Value),
                     "restore-pin-state",
                     item.SyncPairId,
@@ -243,7 +235,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
             catch (Exception exception)
             {
-                RecordFailure(
+                _operationExecutor.RecordFailure(
                     "restore-pin-state",
                     item.SyncPairId,
                     item.LocalRootPath,
@@ -281,7 +273,7 @@ namespace Cotton.Sync.Desktop.Platform
             {
                 foreach (PreparedFilePlaceholder item in batch)
                 {
-                    RecordFailure(
+                    _operationExecutor.RecordFailure(
                         operation,
                         item.SyncPairId,
                         item.LocalRootPath,
@@ -302,7 +294,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
             catch (Exception exception)
             {
-                RecordFailure(
+                _operationExecutor.RecordFailure(
                     "apply-new-placeholder-availability",
                     item.SyncPairId,
                     item.LocalRootPath,
@@ -323,7 +315,7 @@ namespace Cotton.Sync.Desktop.Platform
                 return SyncPlaceholderHydrationState.RemoteOnly;
             }
 
-            ExecuteNativeOperationWithTransientPathRetry(
+            _operationExecutor.ExecuteWithTransientPathRetry(
                 () => SetAndVerifyInSyncState(item.FullPlaceholderPath),
                 "set-in-sync-state",
                 item.SyncPairId,
@@ -352,7 +344,7 @@ namespace Cotton.Sync.Desktop.Platform
         {
             try
             {
-                ExecuteNativeOperationWithTransientPathRetry(
+                _operationExecutor.ExecuteWithTransientPathRetry(
                     () => _nativeApi.HydratePlaceholder(item.FullPlaceholderPath),
                     "hydrate-placeholder",
                     item.SyncPairId,
@@ -523,7 +515,7 @@ namespace Cotton.Sync.Desktop.Platform
                 }
                 catch (Exception exception)
                 {
-                    RecordFailure(
+                    _operationExecutor.RecordFailure(
                         "convert-directory-placeholder",
                         request.SyncPairId,
                         safety.FullPath,
@@ -596,7 +588,7 @@ namespace Cotton.Sync.Desktop.Platform
                 fullPlaceholderPath,
                 directoryPlaceholder.BaseDirectoryPath,
                 operation,
-                () => ExecuteNativeOperationWithTransientPathRetry(
+                () => _operationExecutor.ExecuteWithTransientPathRetry(
                     () => _nativeApi.CreatePlaceholder(directoryPlaceholder),
                     operation,
                     request.SyncPairId,
@@ -623,7 +615,7 @@ namespace Cotton.Sync.Desktop.Platform
                 operation,
                 () =>
                 {
-                    ExecuteNativeOperationWithTransientPathRetry(
+                    _operationExecutor.ExecuteWithTransientPathRetry(
                         () => _nativeApi.ConvertToPlaceholder(
                             fullPlaceholderPath,
                             directoryIdentity,
@@ -633,7 +625,7 @@ namespace Cotton.Sync.Desktop.Platform
                         request.SyncPairId,
                         localRootPath,
                         normalizedPath);
-                    ExecuteNativeOperationWithTransientPathRetry(
+                    _operationExecutor.ExecuteWithTransientPathRetry(
                         () => _nativeApi.UpdatePlaceholder(directoryPlaceholder),
                         "update-directory-placeholder",
                         request.SyncPairId,
@@ -657,13 +649,13 @@ namespace Cotton.Sync.Desktop.Platform
             {
                 WindowsCloudFilesPinState pinState = ResolveNewPlaceholderPinState(baseDirectoryPath);
                 placeholderOperation();
-                ExecuteNativeOperationWithTransientPathRetry(
+                _operationExecutor.ExecuteWithTransientPathRetry(
                     () => _nativeApi.SetPinState(fullPlaceholderPath, pinState),
                     "set-pin-state",
                     request.SyncPairId,
                     localRootPath,
                     normalizedPath);
-                ExecuteNativeOperationWithTransientPathRetry(
+                _operationExecutor.ExecuteWithTransientPathRetry(
                     () => SetAndVerifyInSyncState(fullPlaceholderPath),
                     "set-in-sync-state",
                     request.SyncPairId,
@@ -673,7 +665,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
             catch (Exception exception)
             {
-                RecordFailure(
+                _operationExecutor.RecordFailure(
                     operation,
                     request.SyncPairId,
                     localRootPath,
@@ -723,7 +715,7 @@ namespace Cotton.Sync.Desktop.Platform
                 placeholderPath,
                 directoryIdentity,
                 request.RemoteDirectory);
-            ExecuteNativeOperationWithTransientPathRetry(
+            _operationExecutor.ExecuteWithTransientPathRetry(
                 () => _nativeApi.UpdatePlaceholder(directoryPlaceholder),
                 "update-directory-placeholder",
                 request.SyncPairId,
@@ -731,14 +723,14 @@ namespace Cotton.Sync.Desktop.Platform
                 normalizedPath);
             if (existingPinState.HasValue)
             {
-                ExecuteNativeOperationWithTransientPathRetry(
+                _operationExecutor.ExecuteWithTransientPathRetry(
                     () => _nativeApi.SetPinState(fullPlaceholderPath, existingPinState.Value),
                     "set-pin-state",
                     request.SyncPairId,
                     localRootPath,
                     normalizedPath);
             }
-            ExecuteNativeOperationWithTransientPathRetry(
+            _operationExecutor.ExecuteWithTransientPathRetry(
                 () => SetAndVerifyInSyncState(fullPlaceholderPath),
                 "set-in-sync-state",
                 request.SyncPairId,
@@ -807,7 +799,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
             catch (Exception exception)
             {
-                RecordFailure(
+                _operationExecutor.RecordFailure(
                     "dehydrate-placeholder",
                     syncPair.Id.ToString(),
                     registration.LocalRootPath,
@@ -856,7 +848,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
             catch (Exception exception)
             {
-                RecordFailure(
+                _operationExecutor.RecordFailure(
                     "dehydrate-placeholder",
                     syncPair.Id.ToString(),
                     registration.LocalRootPath,
@@ -919,19 +911,19 @@ namespace Cotton.Sync.Desktop.Platform
 
             try
             {
-                ExecuteNativeOperationWithTransientPathRetry(
+                _operationExecutor.ExecuteWithTransientPathRetry(
                     () => _nativeApi.HydratePlaceholder(fullPlaceholderPath),
                     operation,
                     syncPair.Id.ToString(),
                     registration.LocalRootPath,
                     normalizedPath);
-                ExecuteNativeOperationWithTransientPathRetry(
+                _operationExecutor.ExecuteWithTransientPathRetry(
                     () => _nativeApi.SetPinState(fullPlaceholderPath, WindowsCloudFilesPinState.Pinned),
                     "set-pin-state",
                     syncPair.Id.ToString(),
                     registration.LocalRootPath,
                     normalizedPath);
-                ExecuteNativeOperationWithTransientPathRetry(
+                _operationExecutor.ExecuteWithTransientPathRetry(
                     () => SetAndVerifyInSyncState(fullPlaceholderPath),
                     "set-in-sync-state",
                     syncPair.Id.ToString(),
@@ -941,7 +933,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
             catch (Exception exception)
             {
-                RecordFailure(
+                _operationExecutor.RecordFailure(
                     operation,
                     syncPair.Id.ToString(),
                     registration.LocalRootPath,
@@ -999,7 +991,7 @@ namespace Cotton.Sync.Desktop.Platform
 
             try
             {
-                ExecuteNativeOperationWithTransientPathRetry(
+                _operationExecutor.ExecuteWithTransientPathRetry(
                     () => SetAndVerifyInSyncState(fullPlaceholderPath),
                     operation,
                     syncPair.Id.ToString(),
@@ -1009,7 +1001,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
             catch (Exception exception)
             {
-                RecordFailure(
+                _operationExecutor.RecordFailure(
                     operation,
                     syncPair.Id.ToString(),
                     registration.LocalRootPath,
@@ -1067,7 +1059,7 @@ namespace Cotton.Sync.Desktop.Platform
 
             try
             {
-                ExecuteNativeOperationWithTransientPathRetry(
+                _operationExecutor.ExecuteWithTransientPathRetry(
                     () => _nativeApi.SetPinState(fullPlaceholderPath, WindowsCloudFilesPinState.Pinned),
                     operation,
                     syncPair.Id.ToString(),
@@ -1077,7 +1069,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
             catch (Exception exception)
             {
-                RecordFailure(
+                _operationExecutor.RecordFailure(
                     operation,
                     syncPair.Id.ToString(),
                     registration.LocalRootPath,
@@ -1133,12 +1125,12 @@ namespace Cotton.Sync.Desktop.Platform
             }
             catch (LocalFileUnavailableException exception)
             {
-                RecordFailure(operation, syncPair.Id.ToString(), registration.LocalRootPath, normalizedPath, exception);
+                _operationExecutor.RecordFailure(operation, syncPair.Id.ToString(), registration.LocalRootPath, normalizedPath, exception);
                 throw;
             }
-            catch (WindowsCloudFilesNativeException exception) when (IsSharingViolation(exception))
+            catch (WindowsCloudFilesNativeException exception) when (WindowsCloudFilesNativeOperationExecutor.IsSharingViolation(exception))
             {
-                RecordFailure(operation, syncPair.Id.ToString(), registration.LocalRootPath, normalizedPath, exception);
+                _operationExecutor.RecordFailure(operation, syncPair.Id.ToString(), registration.LocalRootPath, normalizedPath, exception);
                 throw new LocalFileUnavailableException(
                     normalizedPath,
                     fullPlaceholderPath,
@@ -1147,7 +1139,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
             catch (IOException exception)
             {
-                RecordFailure(operation, syncPair.Id.ToString(), registration.LocalRootPath, normalizedPath, exception);
+                _operationExecutor.RecordFailure(operation, syncPair.Id.ToString(), registration.LocalRootPath, normalizedPath, exception);
                 throw new LocalFileUnavailableException(
                     normalizedPath,
                     fullPlaceholderPath,
@@ -1156,7 +1148,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
             catch (Exception exception)
             {
-                RecordFailure(operation, syncPair.Id.ToString(), registration.LocalRootPath, normalizedPath, exception);
+                _operationExecutor.RecordFailure(operation, syncPair.Id.ToString(), registration.LocalRootPath, normalizedPath, exception);
                 throw;
             }
 
@@ -1189,7 +1181,7 @@ namespace Cotton.Sync.Desktop.Platform
             const string operation = "set-sync-root-in-sync-state";
             try
             {
-                ExecuteNativeOperationWithTransientPathRetry(
+                _operationExecutor.ExecuteWithTransientPathRetry(
                     () => SetAndVerifyInSyncState(registration.LocalRootPath, allowPartialDirectory: true),
                     operation,
                     syncPair.Id.ToString(),
@@ -1199,7 +1191,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
             catch (Exception exception)
             {
-                RecordFailure(
+                _operationExecutor.RecordFailure(
                     operation,
                     syncPair.Id.ToString(),
                     registration.LocalRootPath,
@@ -1240,7 +1232,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
             catch (Exception exception)
             {
-                RecordFailure(
+                _operationExecutor.RecordFailure(
                     operation,
                     syncPair.Id.ToString(),
                     registration.LocalRootPath,
@@ -1363,65 +1355,11 @@ namespace Cotton.Sync.Desktop.Platform
         }
 
 
-        private void RecordFailure(
-            string operation,
-            string? syncPairId,
-            string? localRootPath,
-            string? relativePath,
-            Exception exception)
-        {
-            _diagnostics.Record(
-                operation,
-                "failed",
-                syncPairId,
-                localRootPath,
-                relativePath,
-                exception.Message,
-                exception is WindowsCloudFilesNativeException nativeException ? nativeException.HResult : null);
-        }
-
-        private void ExecuteNativeOperationWithTransientPathRetry(
-            Action operation,
-            string operationName,
-            string? syncPairId,
-            string? localRootPath,
-            string? relativePath)
-        {
-            for (int attempt = 0; ; attempt++)
-            {
-                try
-                {
-                    operation();
-                    return;
-                }
-                catch (WindowsCloudFilesNativeException exception)
-                    when (IsTransientPathOpenFailure(exception) && attempt < TransientPathRetryDelays.Length)
-                {
-                    _diagnostics.Record(
-                        operationName,
-                        "retrying",
-                        syncPairId,
-                        localRootPath,
-                        relativePath,
-                        exception.Message,
-                        exception.HResult);
-                    _transientRetryDelay(TransientPathRetryDelays[attempt]);
-                }
-            }
-        }
-
-        private static bool IsTransientPathOpenFailure(WindowsCloudFilesNativeException exception)
-        {
-            return exception.Operation == "CreateFile"
-                && (exception.HResult == HResultFileNotFound || exception.HResult == HResultPathNotFound);
-        }
 
 
 
-        private static bool IsSharingViolation(WindowsCloudFilesNativeException exception)
-        {
-            return exception.HResult is HResultSharingViolation or HResultLockViolation;
-        }
+
+
 
         internal static string CreateReparseTagOpenPath(string fullPath)
         {
