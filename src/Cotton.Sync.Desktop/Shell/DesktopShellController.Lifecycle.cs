@@ -112,7 +112,7 @@ namespace Cotton.Sync.Desktop.Shell
             DesktopStartupOptions? startupOptions = null)
         {
             ArgumentNullException.ThrowIfNull(paths);
-            var loggerFactory = new DesktopTraceLoggerFactory();
+            DesktopTraceLoggerFactory loggerFactory = new();
             return new DesktopShellController(
                 paths,
                 new DesktopSyncApplicationFactory(paths, loggerFactory),

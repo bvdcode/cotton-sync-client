@@ -22,7 +22,7 @@ namespace Cotton.Sync.Desktop.Shell
         {
             ArgumentNullException.ThrowIfNull(status);
             ArgumentNullException.ThrowIfNull(displayNames);
-            var notifications = new List<DesktopNotificationRequest>();
+            List<DesktopNotificationRequest> notifications = new();
             foreach (DesktopSyncPairStatusSnapshot pair in status.SyncPairs)
             {
                 string previousStatus = _previousStatuses.GetValueOrDefault(pair.Id, string.Empty);

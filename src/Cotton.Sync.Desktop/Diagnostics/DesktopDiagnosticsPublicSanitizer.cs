@@ -245,7 +245,7 @@ namespace Cotton.Sync.Desktop.Diagnostics
             DesktopAppPaths paths,
             DesktopDiagnosticsBundle bundle)
         {
-            var replacements = new List<KnownValueReplacement>
+            List<KnownValueReplacement> replacements = new()
             {
                 new(paths.DataDirectory, "[data-directory]"),
                 new(paths.AppDatabasePath, "[app-database]"),

@@ -107,7 +107,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private async Task SignInWithBrowserAsync()
         {
-            using var cancellation = new CancellationTokenSource();
+            using CancellationTokenSource cancellation = new();
             _browserSignInCancellation = cancellation;
             IsBrowserSignInPending = true;
             BrowserSignInStatus = "Approve this sign-in in your browser.";

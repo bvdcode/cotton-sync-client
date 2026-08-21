@@ -31,7 +31,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private async Task DownloadUpdateAsync()
         {
-            var progress = new ActionProgress<DesktopUpdateDownloadProgress>(ApplyUpdateDownloadProgress);
+            ActionProgress<DesktopUpdateDownloadProgress> progress = new(ApplyUpdateDownloadProgress);
             ShowPreparingUpdateDownloadProgress();
             UpdateDetailsText = "Preparing update download.";
             await RunUpdateActionAsync(
@@ -106,7 +106,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                     return;
                 }
 
-                var progress = new ActionProgress<DesktopUpdateDownloadProgress>(ApplyUpdateDownloadProgress);
+                ActionProgress<DesktopUpdateDownloadProgress> progress = new(ApplyUpdateDownloadProgress);
                 await RunUpdateActionAsync(
                         "Checking for updates",
                         () => _controller.DownloadUpdateAsync(

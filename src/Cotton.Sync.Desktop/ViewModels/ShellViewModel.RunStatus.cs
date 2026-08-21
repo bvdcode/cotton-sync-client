@@ -221,7 +221,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private HashSet<Guid> GetInitialSyncCompleteNotificationSuppressionIds()
         {
-            var syncPairIds = new HashSet<Guid>(_suppressedInitialSyncCompleteUntilRunProgressCompleted);
+            HashSet<Guid> syncPairIds = new(_suppressedInitialSyncCompleteUntilRunProgressCompleted);
             foreach (DesktopRunProgressSnapshot progress in _runProgressByPair.Values)
             {
                 if (!ShouldSuppressInitialSyncCompleteForRunProgress(progress.Stage)

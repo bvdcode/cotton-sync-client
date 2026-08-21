@@ -41,7 +41,7 @@ namespace Cotton.Sync.Desktop.Shell
             string localPath = NormalizeRequired(request.LocalFolderPath, nameof(request.LocalFolderPath));
             string remotePath = NormalizeRemotePath(request.RemoteFolderPath);
             NodeDto remoteRoot = await host.RemoteRootResolver.EnsureAsync(remotePath, cancellationToken).ConfigureAwait(false);
-            var syncPair = new SyncPairSettings
+            SyncPairSettings syncPair = new()
             {
                 Id = Guid.NewGuid(),
                 DisplayName = CreateDisplayName(localPath, remotePath, remoteRoot),
@@ -133,7 +133,7 @@ namespace Cotton.Sync.Desktop.Shell
                 await _syncPairStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
                 await _syncPairStore.DeleteAsync(syncPairId, cancellationToken).ConfigureAwait(false);
                 RemoveKnownSyncPairSettings(syncPairId);
-                var stateStore = new SqliteSyncStateStore(_paths.SyncStateDatabasePath);
+                SqliteSyncStateStore stateStore = new(_paths.SyncStateDatabasePath);
                 await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
                 await stateStore.DeletePairAsync(syncPairId.ToString(), cancellationToken).ConfigureAwait(false);
                 return;
@@ -178,10 +178,10 @@ namespace Cotton.Sync.Desktop.Shell
             }
 
             ReplaceKnownSyncPairSettings(settings);
-            var stateStore = new SqliteSyncStateStore(_paths.SyncStateDatabasePath);
+            SqliteSyncStateStore stateStore = new(_paths.SyncStateDatabasePath);
             await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
             SyncAppStatus? currentStatus = _host?.StatusPublisher.Current;
-            var snapshots = new List<DesktopSyncPairSnapshot>(settings.Count);
+            List<DesktopSyncPairSnapshot> snapshots = new(settings.Count);
             foreach (SyncPairSettings syncPair in settings)
             {
                 string syncPairId = syncPair.Id.ToString();

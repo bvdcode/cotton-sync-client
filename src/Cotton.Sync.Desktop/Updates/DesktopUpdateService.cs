@@ -371,7 +371,7 @@ namespace Cotton.Sync.Desktop.Updates
 
         private static string SanitizePathSegment(string value)
         {
-            var builder = new StringBuilder(value.Length);
+            StringBuilder builder = new(value.Length);
             foreach (char character in value)
             {
                 builder.Append(Path.GetInvalidFileNameChars().Contains(character) ? '_' : character);
@@ -391,7 +391,7 @@ namespace Cotton.Sync.Desktop.Updates
                 FileShare.Read,
                 bufferSize: 1024 * 128,
                 useAsync: true);
-            using var sha256 = SHA256.Create();
+            using SHA256 sha256 = SHA256.Create();
             byte[] hash = await sha256.ComputeHashAsync(stream, cancellationToken).ConfigureAwait(false);
             return new FileHashSnapshot(Convert.ToHexString(hash).ToLowerInvariant(), stream.Length);
         }

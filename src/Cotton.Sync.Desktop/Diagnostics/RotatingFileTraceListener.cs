@@ -72,12 +72,12 @@ namespace Cotton.Sync.Desktop.Diagnostics
         {
             try
             {
-                using var stream = new FileStream(
+                using FileStream stream = new(
                     _path,
                     FileMode.Append,
                     FileAccess.Write,
                     FileShare.ReadWrite | FileShare.Delete);
-                using var writer = new StreamWriter(stream, Encoding.UTF8);
+                using StreamWriter writer = new(stream, Encoding.UTF8);
                 writer.Write(message);
             }
             catch (IOException)

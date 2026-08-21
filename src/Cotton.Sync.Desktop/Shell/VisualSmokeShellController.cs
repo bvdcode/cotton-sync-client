@@ -84,7 +84,7 @@ namespace Cotton.Sync.Desktop.Shell
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var url = new Uri("https://app.cottoncloud.dev/");
+            Uri url = new("https://app.cottoncloud.dev/");
             return Task.FromResult(new DesktopServerProbeResult(url, true, "Cotton Cloud", "visual-smoke"));
         }
 

@@ -18,7 +18,7 @@ namespace Cotton.Sync.Desktop.Updates
         {
             ArgumentNullException.ThrowIfNull(paths);
             ArgumentException.ThrowIfNullOrWhiteSpace(currentVersion);
-            var store = new DesktopPendingUpdateStore(paths.UpdateCacheDirectory);
+            DesktopPendingUpdateStore store = new(paths.UpdateCacheDirectory);
             DesktopPendingUpdate? update = store.TryLoad();
             if (update is null)
             {
@@ -73,14 +73,14 @@ namespace Cotton.Sync.Desktop.Updates
                 return false;
             }
 
-            var fileInfo = new FileInfo(update.InstallerPath);
+            FileInfo fileInfo = new(update.InstallerPath);
             if (fileInfo.Length != update.SizeBytes)
             {
                 return false;
             }
 
             using FileStream stream = File.OpenRead(update.InstallerPath);
-            using var sha256 = SHA256.Create();
+            using SHA256 sha256 = SHA256.Create();
             string hash = Convert.ToHexString(sha256.ComputeHash(stream)).ToLowerInvariant();
             return string.Equals(hash, update.Sha256, StringComparison.OrdinalIgnoreCase);
         }

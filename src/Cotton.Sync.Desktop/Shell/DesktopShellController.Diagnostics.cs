@@ -62,7 +62,7 @@ namespace Cotton.Sync.Desktop.Shell
                     cloudFilesRegistration,
                     notificationCapabilities,
                     cancellationToken).ConfigureAwait(false);
-            var bundle = new DesktopDiagnosticsBundle(
+            DesktopDiagnosticsBundle bundle = new(
                 DateTimeOffset.UtcNow,
                 DesktopAppVersion.Current,
                 (_startupOptions.ServerUrl ?? preferences.RememberedServerUrl)?.AbsoluteUri,
@@ -90,7 +90,7 @@ namespace Cotton.Sync.Desktop.Shell
             DesktopNotificationCapabilitySnapshot notificationCapabilities,
             CancellationToken cancellationToken)
         {
-            var items = new List<DesktopSelfTestItemSnapshot>
+            List<DesktopSelfTestItemSnapshot> items = new()
             {
                 new(
                     "Diagnostics export",
@@ -148,13 +148,13 @@ namespace Cotton.Sync.Desktop.Shell
 
         private async Task InitializeSyncStateStoreAsync(CancellationToken cancellationToken)
         {
-            var stateStore = new SqliteSyncStateStore(_paths.SyncStateDatabasePath);
+            SqliteSyncStateStore stateStore = new(_paths.SyncStateDatabasePath);
             await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
         }
 
         private async Task<SyncStateStoreDiagnostics> CreateSyncStateDiagnosticsAsync(CancellationToken cancellationToken)
         {
-            var stateStore = new SqliteSyncStateStore(_paths.SyncStateDatabasePath);
+            SqliteSyncStateStore stateStore = new(_paths.SyncStateDatabasePath);
             await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
             return await stateStore.GetDiagnosticsAsync(cancellationToken).ConfigureAwait(false);
         }

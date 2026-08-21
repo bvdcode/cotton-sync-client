@@ -60,7 +60,7 @@ namespace Cotton.Sync.Desktop.Diagnostics
                 }
             }
 
-            var pairs = new List<DesktopCloudFilesSyncPairRegistrationSnapshot>(virtualFilePairs.Length);
+            List<DesktopCloudFilesSyncPairRegistrationSnapshot> pairs = new(virtualFilePairs.Length);
             foreach (SyncPairSettings syncPair in virtualFilePairs)
             {
                 pairs.Add(CreatePairSnapshot(syncPair, storageProviderRegistrar, unavailableStatus, unavailableDetails));

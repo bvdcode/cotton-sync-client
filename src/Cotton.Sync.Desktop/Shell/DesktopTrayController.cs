@@ -57,7 +57,7 @@ namespace Cotton.Sync.Desktop.Shell
 
         private static NativeMenuItem CreateMenuItem(string header, Action action)
         {
-            var item = new NativeMenuItem(header);
+            NativeMenuItem item = new(header);
             item.Click += (_, _) => RunOnUiThread(action);
             return item;
         }
@@ -82,7 +82,7 @@ namespace Cotton.Sync.Desktop.Shell
             _pauseResumeMenuItem = CreateMenuItem("Pause", () => Execute(commandSource => commandSource.PauseResumeCommand));
             _settingsMenuItem = CreateMenuItem("Settings", ShowSettings);
             _quitMenuItem = CreateMenuItem("Quit", Quit);
-            var trayIcon = new TrayIcon
+            TrayIcon trayIcon = new()
             {
                 Icon = LoadIcon(_currentIconUri),
                 ToolTipText = "Cotton Sync",

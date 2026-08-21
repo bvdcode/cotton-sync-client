@@ -135,7 +135,7 @@ namespace Cotton.Sync.Desktop.Shell
             DesktopSyncApplicationHost? host = _host;
             if (host is not null)
             {
-                var activeTokens = await host.TokenStore.GetAsync(cancellationToken).ConfigureAwait(false);
+                TokenPairDto? activeTokens = await host.TokenStore.GetAsync(cancellationToken).ConfigureAwait(false);
                 if (activeTokens is null)
                 {
                     throw new InvalidOperationException("Signed in session has no stored token pair.");
@@ -144,8 +144,8 @@ namespace Cotton.Sync.Desktop.Shell
                 return "Signed in";
             }
 
-            var tokenStore = new FileCottonTokenStore(_paths.TokenStorePath);
-            var storedTokens = await tokenStore.GetAsync(cancellationToken).ConfigureAwait(false);
+            FileCottonTokenStore tokenStore = new(_paths.TokenStorePath);
+            TokenPairDto? storedTokens = await tokenStore.GetAsync(cancellationToken).ConfigureAwait(false);
             return storedTokens is null ? "Signed out" : "Stored session available";
         }
 
@@ -156,7 +156,7 @@ namespace Cotton.Sync.Desktop.Shell
             Directory.CreateDirectory(directory);
             try
             {
-                using var watcher = new FileSystemWatcher(directory)
+                using FileSystemWatcher watcher = new(directory)
                 {
                     IncludeSubdirectories = true,
                     EnableRaisingEvents = true,
@@ -197,7 +197,7 @@ namespace Cotton.Sync.Desktop.Shell
             DesktopSyncApplicationHost host,
             CancellationToken cancellationToken)
         {
-            var response = await host.Sync.GetChangesAsync(sinceCursor: 0, limit: 1, cancellationToken)
+            SyncChangesResponseDto response = await host.Sync.GetChangesAsync(sinceCursor: 0, limit: 1, cancellationToken)
                 .ConfigureAwait(false);
             return "Ready; next cursor " + response.NextCursor.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }

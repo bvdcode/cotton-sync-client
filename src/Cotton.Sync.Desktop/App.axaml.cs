@@ -52,7 +52,7 @@ namespace Cotton.Sync.Desktop
                     StartupOptions.StartMinimizedToTray
                     && useTrayLifecycle
                     && StartupOptions.VisualSmokeScenario is null;
-                var window = new MainWindow(
+                MainWindow window = new(
                     controller,
                     StartupOptions.StartMinimizedToTray,
                     useTrayLifecycle,

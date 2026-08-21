@@ -35,7 +35,7 @@ namespace Cotton.Sync.Desktop.Shell
         private void OnTransferProgressChanged(AppTransferProgress progress)
         {
             DesktopTransferProgressSnapshot snapshot = ToTransferProgressSnapshot(progress);
-            var key = new TransferProgressKey(snapshot.SyncPairId, snapshot.Direction, snapshot.RelativePath);
+            TransferProgressKey key = new(snapshot.SyncPairId, snapshot.Direction, snapshot.RelativePath);
             lock (_progressGate)
             {
                 if (snapshot.IsCompleted)

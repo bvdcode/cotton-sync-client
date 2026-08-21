@@ -42,7 +42,7 @@ namespace Cotton.Sync.Desktop.Diagnostics
             string archivePath = Path.Combine(diagnosticsDirectory, CreateArchiveFileName(bundle.CreatedAtUtc, options));
 
             await using FileStream archiveStream = File.Create(archivePath);
-            using var archive = new ZipArchive(archiveStream, ZipArchiveMode.Create);
+            using ZipArchive archive = new(archiveStream, ZipArchiveMode.Create);
             await WriteJsonEntryAsync(archive, paths, bundle, options, cancellationToken).ConfigureAwait(false);
             await AddLogEntriesAsync(archive, paths, bundle, options, cancellationToken).ConfigureAwait(false);
             return archivePath;
@@ -67,7 +67,7 @@ namespace Cotton.Sync.Desktop.Diagnostics
 
         private static JsonSerializerOptions CreateJsonOptions()
         {
-            var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+            JsonSerializerOptions options = new(JsonSerializerDefaults.Web)
             {
                 WriteIndented = true,
             };
@@ -117,13 +117,13 @@ namespace Cotton.Sync.Desktop.Diagnostics
             ZipArchiveEntry entry = archive.CreateEntry(LogEntryPrefix + entryName);
             await using Stream entryStream = entry.Open();
             string logContent;
-            await using (var sourceStream = new FileStream(
+            await using (FileStream sourceStream = new(
                 sourcePath,
                 FileMode.Open,
                 FileAccess.Read,
                 FileShare.ReadWrite | FileShare.Delete))
             {
-                using var reader = new StreamReader(sourceStream, Encoding.UTF8);
+                using StreamReader reader = new(sourceStream, Encoding.UTF8);
                 logContent = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
             }
 

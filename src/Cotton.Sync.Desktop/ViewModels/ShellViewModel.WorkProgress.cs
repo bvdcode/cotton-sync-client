@@ -290,7 +290,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private List<DesktopRunProgressSnapshot> GetOrderedRunProgressSnapshots()
         {
-            var progressValues = new List<DesktopRunProgressSnapshot>();
+            List<DesktopRunProgressSnapshot> progressValues = new();
             foreach (SyncPairRowViewModel syncPair in SyncPairs)
             {
                 if (_runProgressByPair.TryGetValue(syncPair.Id, out DesktopRunProgressSnapshot? progress))

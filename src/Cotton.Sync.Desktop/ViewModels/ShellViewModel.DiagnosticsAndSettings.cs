@@ -63,7 +63,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return Task.CompletedTask;
             }
 
-            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
             _uiDispatcher.Post(() => completion.TrySetResult());
             return completion.Task;
         }

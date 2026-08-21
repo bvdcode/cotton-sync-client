@@ -210,7 +210,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 syncPair.LastError = details;
             }
 
-            var conflict = new ConflictRowViewModel
+            ConflictRowViewModel conflict = new()
             {
                 SyncPairId = syncPairId,
                 Time = occurredAt.ToString("HH:mm", CultureInfo.CurrentCulture),
