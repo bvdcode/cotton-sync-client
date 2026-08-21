@@ -63,6 +63,7 @@ namespace Cotton.Sync
         private readonly InitialVirtualFilesHeartbeatLogger _initialVirtualFilesHeartbeatLogger;
         private readonly SyncRemoteFileTransfer _fileTransfer;
         private readonly SyncFileConflictResolver _conflictResolver;
+        private readonly SyncFileUploadExecutor _fileUploadExecutor;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SyncEngine" /> class.
@@ -158,6 +159,12 @@ namespace Cotton.Sync
                 _localWriter,
                 _fileTransfer,
                 _stateStore);
+            _fileUploadExecutor = new SyncFileUploadExecutor(
+                _contentHashResolver,
+                _fileTransfer,
+                _conflictResolver,
+                _stateStore,
+                _logger);
         }
 
         /// <inheritdoc />
@@ -566,7 +573,7 @@ namespace Cotton.Sync
                 }
                 catch (LocalFileUnavailableException exception)
                 {
-                    ReportUnavailableLocalFile(context.Result, context.Options, relativePath, exception);
+                    ReportUnavailable(context.Result, context.Options, relativePath, exception);
                 }
             }
 
@@ -745,7 +752,7 @@ namespace Cotton.Sync
                         }
                         catch (LocalFileUnavailableException exception)
                         {
-                            ReportUnavailableLocalFile(result, options, local.RelativePath, exception);
+                            ReportUnavailable(result, options, local.RelativePath, exception);
                         }
                     }
 
@@ -1825,7 +1832,7 @@ namespace Cotton.Sync
                 return;
             }
 
-            await UploadAsync(syncPair, options, result, relativePath, local, null, cancellationToken).ConfigureAwait(false);
+            await _fileUploadExecutor.UploadAsync(syncPair, options, result, relativePath, local, null, cancellationToken).ConfigureAwait(false);
         }
 
         private async Task ReconcileLocalAndRemoteWithoutBaselineAsync(
@@ -2173,7 +2180,7 @@ namespace Cotton.Sync
 
             if (!remoteChanged)
             {
-                await UploadAsync(
+                await _fileUploadExecutor.UploadAsync(
                         context.SyncPair,
                         context.Options,
                         context.Result,
@@ -2274,7 +2281,7 @@ namespace Cotton.Sync
                         .ConfigureAwait(false);
                     return;
                 case SyncFileChangeKind.Upload:
-                    await UploadAsync(
+                    await _fileUploadExecutor.UploadAsync(
                             context.SyncPair,
                             context.Options,
                             context.Result,
@@ -2897,7 +2904,7 @@ namespace Cotton.Sync
                 }
                 catch (LocalFileUnavailableException exception)
                 {
-                    ReportUnavailableLocalFile(result, options, local.Value.RelativePath, exception);
+                    ReportUnavailable(result, options, local.Value.RelativePath, exception);
                     continue;
                 }
 
@@ -2995,147 +3002,9 @@ namespace Cotton.Sync
             SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.Moved, targetPath, "Moved from " + sourcePath + ".");
         }
 
-        private async Task UploadAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            SyncRunResult result,
-            string relativePath,
-            LocalFileSnapshot local,
-            NodeFileManifestDto? existingRemoteFile,
-            CancellationToken cancellationToken)
-        {
-            if (ShouldDefer(local, options, out TimeSpan remainingQuietTime))
-            {
-                ReportDeferred(result, options, relativePath, remainingQuietTime);
-                return;
-            }
 
-            await EnsureLocalContentHashAsync(local, options, cancellationToken).ConfigureAwait(false);
-            NodeFileManifestDto? uploaded = await TryUploadWithConflictHandlingAsync(
-                    syncPair,
-                    options,
-                    result,
-                    relativePath,
-                    local,
-                    existingRemoteFile,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (uploaded is null)
-            {
-                return;
-            }
 
-            string localContentHash = ResolveUploadedLocalContentHash(local, uploaded);
-            local.ContentHash = localContentHash;
-            await _stateStore.UpsertAsync(
-                    BuildBaseline(syncPair, relativePath, localContentHash, local.LastWriteUtc, local.SizeBytes, uploaded),
-                    cancellationToken)
-                .ConfigureAwait(false);
-            SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.Uploaded, relativePath, null);
-        }
 
-        private async Task<NodeFileManifestDto?> TryUploadWithConflictHandlingAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            SyncRunResult result,
-            string relativePath,
-            LocalFileSnapshot local,
-            NodeFileManifestDto? existingRemoteFile,
-            CancellationToken cancellationToken)
-        {
-            try
-            {
-                return await _fileTransfer.UploadFileWithProgressAsync(
-                    syncPair.RemoteRootNodeId,
-                    relativePath,
-                    local,
-                    existingRemoteFile,
-                    options,
-                    cancellationToken).ConfigureAwait(false);
-            }
-            catch (HttpRequestException exception) when (existingRemoteFile is not null && IsPreconditionFailed(exception))
-            {
-                NodeFileManifestDto? latestRemoteFile = await _fileTransfer.FindLatestRemoteFileAsync(syncPair, relativePath, cancellationToken).ConfigureAwait(false);
-                await _conflictResolver.PreserveAsync(
-                    syncPair,
-                    options,
-                    result,
-                    relativePath,
-                    local,
-                        latestRemoteFile ?? existingRemoteFile,
-                        cancellationToken).ConfigureAwait(false);
-                return null;
-            }
-            catch (HttpRequestException exception) when (existingRemoteFile is null && IsConflict(exception))
-            {
-                NodeFileManifestDto? latestRemoteFile = await _fileTransfer.FindLatestRemoteFileAsync(
-                        syncPair,
-                        relativePath,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                if (latestRemoteFile is null)
-                {
-                    throw;
-                }
-
-                return await ResolveRemoteCreateConflictAsync(
-                        syncPair,
-                        options,
-                        result,
-                        relativePath,
-                        local,
-                        latestRemoteFile,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (LocalFileUnavailableException exception)
-            {
-                ReportUnavailableLocalFile(result, options, relativePath, exception);
-                return null;
-            }
-        }
-
-        private static void ReportUnavailableLocalFile(
-            SyncRunResult result,
-            SyncRunOptions options,
-            string relativePath,
-            LocalFileUnavailableException exception)
-        {
-            SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.Skipped, relativePath, exception.Reason);
-            result.RecordDeferredLocalPath(relativePath);
-        }
-
-        private async Task<NodeFileManifestDto?> ResolveRemoteCreateConflictAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            SyncRunResult result,
-            string relativePath,
-            LocalFileSnapshot local,
-            NodeFileManifestDto latestRemoteFile,
-            CancellationToken cancellationToken)
-        {
-            bool contentMatches = ContentMatches(local.ContentHash, latestRemoteFile.ContentHash)
-                && local.SizeBytes == latestRemoteFile.SizeBytes;
-            if (!contentMatches)
-            {
-                await _conflictResolver.PreserveAsync(
-                        syncPair,
-                        options,
-                        result,
-                        relativePath,
-                        local,
-                        latestRemoteFile,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                return null;
-            }
-
-            _logger.LogInformation(
-                "Remote file create for {RelativePath} hit conflict after matching content was committed; reusing file {RemoteFileId}.",
-                relativePath,
-                latestRemoteFile.Id);
-            return latestRemoteFile;
-        }
 
         private async Task DownloadAsync(
             SyncPair syncPair,

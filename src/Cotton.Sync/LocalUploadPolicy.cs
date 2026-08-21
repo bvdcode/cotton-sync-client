@@ -42,6 +42,21 @@ namespace Cotton.Sync
             SyncActivityReporter.Record(result, options, SyncActivityKind.Skipped, relativePath, details);
         }
 
+        public static void ReportUnavailable(
+            SyncRunResult result,
+            SyncRunOptions options,
+            string relativePath,
+            LocalFileUnavailableException exception)
+        {
+            SyncActivityReporter.Record(
+                result,
+                options,
+                SyncActivityKind.Skipped,
+                relativePath,
+                exception.Reason);
+            result.RecordDeferredLocalPath(relativePath);
+        }
+
         private static string FormatQuietTime(TimeSpan value)
         {
             if (value.TotalMilliseconds < 1000)
