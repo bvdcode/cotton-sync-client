@@ -31,15 +31,13 @@ namespace Cotton.Sync.Desktop.Platform
 
         private readonly WindowsVirtualFilesRootSafetyPolicy _rootSafety;
         private readonly IWindowsCloudFilesNativeApi _nativeApi;
-        private readonly IWindowsStorageProviderSyncRootRegistrar? _storageProviderRegistrar;
         private readonly IWindowsShellChangeNotifier _shellChangeNotifier;
         private readonly IWindowsCloudFilesDiagnostics _diagnostics;
         private readonly Func<string, bool> _isReparsePoint;
         private readonly Func<string, bool> _isCloudFilesReparsePoint;
         private readonly Func<string, FileAttributes> _readFileAttributes;
         private readonly Action<TimeSpan> _transientRetryDelay;
-        private readonly object _registrationGate = new();
-        private readonly HashSet<string> _registeredRootPaths = new(StringComparer.OrdinalIgnoreCase);
+        private readonly WindowsCloudFilesRegistrationManager _registrationManager;
 
         public WindowsCloudFilesAdapter(
             WindowsVirtualFilesRootSafetyPolicy? rootSafety = null,
@@ -54,7 +52,8 @@ namespace Cotton.Sync.Desktop.Platform
         {
             _rootSafety = rootSafety ?? new WindowsVirtualFilesRootSafetyPolicy();
             _nativeApi = nativeApi ?? new WindowsCloudFilesNativeApi();
-            _storageProviderRegistrar = storageProviderRegistrar ?? WindowsStorageProviderSyncRootRegistrar.TryCreateDefault();
+            IWindowsStorageProviderSyncRootRegistrar? registrar = storageProviderRegistrar
+                ?? WindowsStorageProviderSyncRootRegistrar.TryCreateDefault();
             _shellChangeNotifier = shellChangeNotifier ?? new WindowsShellChangeNotifier();
             _diagnostics = diagnostics ?? WindowsCloudFilesDiagnostics.Shared;
             _isReparsePoint = isReparsePoint ?? WindowsCloudFilesReparsePointProbe.IsReparsePoint;
@@ -62,27 +61,16 @@ namespace Cotton.Sync.Desktop.Platform
                 ?? WindowsCloudFilesReparsePointProbe.IsCloudFilesReparsePoint;
             _readFileAttributes = readFileAttributes ?? File.GetAttributes;
             _transientRetryDelay = transientRetryDelay ?? Thread.Sleep;
+            _registrationManager = new WindowsCloudFilesRegistrationManager(
+                _rootSafety,
+                _nativeApi,
+                registrar,
+                _diagnostics);
         }
 
         public WindowsCloudFilesSyncRootRegistration CreateRegistration(SyncPairSettings syncPair)
         {
-            ArgumentNullException.ThrowIfNull(syncPair);
-            if (syncPair.Mode != SyncPairMode.WindowsVirtualFiles)
-            {
-                throw new InvalidOperationException("Cloud Files registration requires a Windows virtual-files sync pair.");
-            }
-
-            WindowsVirtualFilesRootSafetyResult safety = _rootSafety.Validate(syncPair.LocalRootPath);
-            if (!safety.IsSafe)
-            {
-                throw new InvalidOperationException(safety.Details);
-            }
-
-            return new WindowsCloudFilesSyncRootRegistration(
-                syncPair.Id,
-                ProviderId,
-                string.IsNullOrWhiteSpace(syncPair.DisplayName) ? "Cotton Sync" : syncPair.DisplayName.Trim(),
-                safety.FullPath);
+            return _registrationManager.CreateRegistration(syncPair);
         }
 
         public RemoteFilePlaceholderResult CreateFilePlaceholder(RemoteFilePlaceholderRequest request)
@@ -418,7 +406,7 @@ namespace Cotton.Sync.Desktop.Platform
 
             if (registeredRootPaths.Add(safety.FullPath))
             {
-                EnsureSyncRootRegistered(request.SyncPairId, safety.FullPath, syncRootIdentity);
+                _registrationManager.EnsureRegistered(request.SyncPairId, safety.FullPath, syncRootIdentity);
             }
 
             if (createdBaseDirectories.Add(placeholderPath.BaseDirectoryPath))
@@ -486,61 +474,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         public void UnregisterSyncRoot(SyncPairSettings syncPair)
         {
-            ArgumentNullException.ThrowIfNull(syncPair);
-            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
-            Exception? failure = null;
-            try
-            {
-                _nativeApi.UnregisterSyncRoot(registration.LocalRootPath);
-            }
-            catch (WindowsCloudFilesNativeException exception) when (IsMissingSyncRoot(exception))
-            {
-                _diagnostics.Record(
-                    "unregister-sync-root",
-                    "skipped",
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    null,
-                    "Windows Cloud Files sync root was already absent.",
-                    exception.HResult);
-            }
-            catch (Exception exception)
-            {
-                failure = exception;
-                RecordFailure("unregister-sync-root", syncPair.Id.ToString(), registration.LocalRootPath, null, exception);
-            }
-
-            try
-            {
-                _storageProviderRegistrar?.Unregister(syncPair.Id, registration.LocalRootPath);
-            }
-            catch (Exception exception)
-            {
-                failure ??= exception;
-                RecordFailure(
-                    "unregister-storage-provider-sync-root",
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    null,
-                    exception);
-            }
-
-            if (failure is not null)
-            {
-                throw failure;
-            }
-
-            _diagnostics.Record(
-                "unregister-sync-root",
-                "completed",
-                syncPair.Id.ToString(),
-                registration.LocalRootPath,
-                null,
-                "Windows Cloud Files sync root was unregistered.");
-            lock (_registrationGate)
-            {
-                _registeredRootPaths.Remove(registration.LocalRootPath);
-            }
+            _registrationManager.Unregister(syncPair);
         }
 
         public void CreateDirectoryPlaceholder(RemoteDirectoryMaterializationRequest request)
@@ -559,7 +493,7 @@ namespace Cotton.Sync.Desktop.Platform
             byte[] syncRootIdentity = CreateSyncRootIdentity(syncPairId, request.RemoteRootNodeId);
             byte[] directoryIdentity = CreateDirectoryIdentity(request, normalizedPath);
 
-            EnsureSyncRootRegistered(request.SyncPairId, safety.FullPath, syncRootIdentity);
+            _registrationManager.EnsureRegistered(request.SyncPairId, safety.FullPath, syncRootIdentity);
             string fullPlaceholderPath = Path.Combine(
                 placeholderPath.BaseDirectoryPath,
                 placeholderPath.RelativeFileName);
@@ -1416,63 +1350,11 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
-        private void EnsureSyncRootRegistered(
-            string syncPairId,
-            string localRootPath,
-            byte[] syncRootIdentity)
-        {
-            lock (_registrationGate)
-            {
-                if (_registeredRootPaths.Contains(localRootPath))
-                {
-                    return;
-                }
-
-                try
-                {
-                    _storageProviderRegistrar?.Register(new WindowsStorageProviderSyncRootRegistration(
-                        Guid.Parse(syncPairId),
-                        localRootPath,
-                        WindowsCloudFilesProviderMetadata.ResolveVersion(),
-                        WindowsStorageProviderSyncRootRegistrar.ResolveDefaultIconResource()));
-                    _nativeApi.RegisterSyncRoot(new WindowsCloudFilesNativeSyncRootRegistration(
-                        localRootPath,
-                        ProviderName,
-                        WindowsCloudFilesProviderMetadata.ResolveVersion(),
-                        WindowsCloudFilesProviderMetadata.ProviderGuid,
-                        syncRootIdentity));
-                    _registeredRootPaths.Add(localRootPath);
-                }
-                catch (Exception exception)
-                {
-                    RecordFailure("register-sync-root", syncPairId, localRootPath, null, exception);
-                    throw;
-                }
-            }
-        }
-
         public WindowsCloudFilesConnection ConnectSyncRoot(
             SyncPairSettings syncPair,
             IWindowsCloudFilesCallbackHandler callbackHandler)
         {
-            ArgumentNullException.ThrowIfNull(syncPair);
-            ArgumentNullException.ThrowIfNull(callbackHandler);
-            try
-            {
-                WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
-                EnsureSyncRootRegistered(
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    CreateSyncRootIdentity(syncPair.Id, syncPair.RemoteRootNodeId));
-                return _nativeApi.ConnectSyncRoot(new WindowsCloudFilesConnectionRequest(
-                    registration.LocalRootPath,
-                    callbackHandler));
-            }
-            catch (Exception exception)
-            {
-                RecordFailure("connect-sync-root", syncPair.Id.ToString(), syncPair.LocalRootPath, null, exception);
-                throw;
-            }
+            return _registrationManager.Connect(syncPair, callbackHandler);
         }
 
         public void TransferData(WindowsCloudFilesTransferData transfer)
@@ -1531,12 +1413,6 @@ namespace Cotton.Sync.Desktop.Platform
         private static bool IsTransientPathOpenFailure(WindowsCloudFilesNativeException exception)
         {
             return exception.Operation == "CreateFile"
-                && (exception.HResult == HResultFileNotFound || exception.HResult == HResultPathNotFound);
-        }
-
-        private static bool IsMissingSyncRoot(WindowsCloudFilesNativeException exception)
-        {
-            return exception.Operation == "CfUnregisterSyncRoot"
                 && (exception.HResult == HResultFileNotFound || exception.HResult == HResultPathNotFound);
         }
 
