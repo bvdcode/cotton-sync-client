@@ -16,7 +16,6 @@ namespace Cotton.Sync.State
     /// </summary>
     public class SqliteSyncStateStore : ISyncStateStore, IVirtualFilesResumeStateStore
     {
-        private static readonly ConcurrentDictionary<string, SemaphoreSlim> MigrationGates = new(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<string, SemaphoreSlim> WriteGates = new(StringComparer.OrdinalIgnoreCase);
         private const int DefaultSqliteTimeoutSeconds = 30;
         private const int MaintenanceSqliteTimeoutSeconds = 120;
@@ -26,16 +25,16 @@ namespace Cotton.Sync.State
         private const long MinimumFreelistBytesForVacuum = 4L * 1024 * 1024;
         private const double MinimumFreelistRatioForVacuum = 0.25d;
 
-        private readonly string _databasePath;
-        private bool _initialized;
+        private readonly SyncStateDbContextFactory _contextFactory;
+        private readonly SyncStateStoreInitializer _initializer;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SqliteSyncStateStore" /> class.
         /// </summary>
         public SqliteSyncStateStore(string databasePath)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
-            _databasePath = databasePath;
+            _contextFactory = new SyncStateDbContextFactory(databasePath, DefaultSqliteTimeoutSeconds);
+            _initializer = new SyncStateStoreInitializer(_contextFactory);
         }
 
         /// <inheritdoc />
@@ -65,7 +64,7 @@ namespace Cotton.Sync.State
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
             await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-            await using SyncStateDbContext context = CreateContext();
+            await using SyncStateDbContext context = _contextFactory.Create();
             IAsyncEnumerable<SyncStateEntity> entities = context.SyncEntries
                 .AsNoTracking()
                 .Where(entry => entry.SyncPairId == syncPairId)
@@ -84,7 +83,7 @@ namespace Cotton.Sync.State
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
             await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-            await using SyncStateDbContext context = CreateContext();
+            await using SyncStateDbContext context = _contextFactory.Create();
             IAsyncEnumerable<SyncStateEntity> entities = context.SyncEntries
                 .AsNoTracking()
                 .Where(entry => entry.SyncPairId == syncPairId && entry.Kind == SyncEntryKind.Directory)
@@ -107,7 +106,7 @@ namespace Cotton.Sync.State
             string prefixKey = SyncPath.ToKey(relativePathPrefix);
             string childPattern = CreateChildPathLikePattern(prefixKey);
             await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-            await using SyncStateDbContext context = CreateContext();
+            await using SyncStateDbContext context = _contextFactory.Create();
             SyncStateEntity? exactEntry = await context.SyncEntries
                 .AsNoTracking()
                 .SingleOrDefaultAsync(
@@ -145,7 +144,7 @@ namespace Cotton.Sync.State
             string prefixKey = SyncPath.ToKey(relativePathPrefix);
             string childPattern = CreateChildPathLikePattern(prefixKey);
             await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-            await using SyncStateDbContext context = CreateContext();
+            await using SyncStateDbContext context = _contextFactory.Create();
             SyncStateEntity? exactEntry = await context.SyncEntries
                 .AsNoTracking()
                 .SingleOrDefaultAsync(
@@ -228,7 +227,7 @@ namespace Cotton.Sync.State
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
             await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-            await using SyncStateDbContext context = CreateContext();
+            await using SyncStateDbContext context = _contextFactory.Create();
             DateTime? lastSyncedAtUtc = await context.SyncEntries
                 .AsNoTracking()
                 .Where(entry => entry.SyncPairId == syncPairId)
@@ -243,7 +242,7 @@ namespace Cotton.Sync.State
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
             await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-            await using SyncStateDbContext context = CreateContext();
+            await using SyncStateDbContext context = _contextFactory.Create();
             SyncChangeCursorEntity? entity = await context.SyncChangeCursors
                 .AsNoTracking()
                 .SingleOrDefaultAsync(
@@ -256,8 +255,8 @@ namespace Cotton.Sync.State
         public async Task<SyncStateStoreDiagnostics> GetDiagnosticsAsync(CancellationToken cancellationToken = default)
         {
             await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-            string fullPath = Path.GetFullPath(_databasePath);
-            await using SyncStateDbContext context = CreateContext();
+            string fullPath = Path.GetFullPath(_contextFactory.DatabasePath);
+            await using SyncStateDbContext context = _contextFactory.Create();
             long syncEntryCount = await context.SyncEntries
                 .LongCountAsync(cancellationToken)
                 .ConfigureAwait(false);
@@ -282,7 +281,7 @@ namespace Cotton.Sync.State
             ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
             string key = SyncPath.ToKey(relativePath);
             await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-            await using SyncStateDbContext context = CreateContext();
+            await using SyncStateDbContext context = _contextFactory.Create();
             SyncStateEntity? entity = await context.SyncEntries
                 .AsNoTracking()
                 .SingleOrDefaultAsync(
@@ -309,7 +308,7 @@ namespace Cotton.Sync.State
             await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                await using SyncStateDbContext context = CreateContext();
+                await using SyncStateDbContext context = _contextFactory.Create();
                 SyncStateEntity? entity = await context.SyncEntries
                     .SingleOrDefaultAsync(
                         existing => existing.SyncPairId == entry.SyncPairId && existing.RelativePathKey == key,
@@ -452,7 +451,7 @@ namespace Cotton.Sync.State
             await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                await using SyncStateDbContext context = CreateContext();
+                await using SyncStateDbContext context = _contextFactory.Create();
                 await using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
                 context.ChangeTracker.AutoDetectChangesEnabled = false;
                 foreach (IGrouping<string, (SyncStateEntry Entry, string Key)> group in normalizedEntries.GroupBy(item => item.Entry.SyncPairId))
@@ -505,7 +504,7 @@ namespace Cotton.Sync.State
             await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                await using SyncStateDbContext context = CreateContext();
+                await using SyncStateDbContext context = _contextFactory.Create();
                 SyncChangeCursorEntity? entity = await context.SyncChangeCursors
                     .SingleOrDefaultAsync(
                         existing => existing.SyncPairId == cursor.SyncPairId,
@@ -539,7 +538,7 @@ namespace Cotton.Sync.State
             await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                await using SyncStateDbContext context = CreateContext();
+                await using SyncStateDbContext context = _contextFactory.Create();
                 await context.SyncEntries
                     .Where(entry => entry.SyncPairId == syncPairId && entry.RelativePathKey == key)
                     .ExecuteDeleteAsync(cancellationToken)
@@ -560,7 +559,7 @@ namespace Cotton.Sync.State
             await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                await using (SyncStateDbContext context = CreateContext())
+                await using (SyncStateDbContext context = _contextFactory.Create())
                 {
                     await using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
                     await context.SyncEntries
@@ -595,7 +594,7 @@ namespace Cotton.Sync.State
             await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                await using SyncStateDbContext context = CreateContext();
+                await using SyncStateDbContext context = _contextFactory.Create();
                 await using IDbContextTransaction transaction = await context.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
                 await context.SyncEntries
                     .Where(entry => entry.SyncPairId == syncPairId)
@@ -627,44 +626,7 @@ namespace Cotton.Sync.State
 
         private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
         {
-            EnsureDirectoryExists();
-            string fullPath = Path.GetFullPath(_databasePath);
-            if (_initialized && File.Exists(fullPath))
-            {
-                return;
-            }
-
-            SemaphoreSlim gate = MigrationGates.GetOrAdd(fullPath, static _ => new SemaphoreSlim(1, 1));
-            await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                if (_initialized && File.Exists(fullPath))
-                {
-                    return;
-                }
-
-                await using SyncStateDbContext context = CreateContext();
-                await context.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
-                _initialized = true;
-            }
-            finally
-            {
-                gate.Release();
-            }
-        }
-
-        private SyncStateDbContext CreateContext()
-        {
-            string connectionString = new DbConnectionStringBuilder
-            {
-                ["Data Source"] = _databasePath,
-                ["Pooling"] = false,
-                ["Default Timeout"] = DefaultSqliteTimeoutSeconds,
-            }.ToString();
-            DbContextOptions<SyncStateDbContext> options = new DbContextOptionsBuilder<SyncStateDbContext>()
-                .UseSqlite(connectionString)
-                .Options;
-            return new SyncStateDbContext(options);
+            await _initializer.EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
         }
 
         private static string CreateChildPathLikePattern(string prefixKey)
@@ -710,7 +672,7 @@ namespace Cotton.Sync.State
             IReadOnlyCollection<string> keys,
             CancellationToken cancellationToken)
         {
-            await using SyncStateDbContext context = CreateContext();
+            await using SyncStateDbContext context = _contextFactory.Create();
             List<SyncStateEntity> entities = await context.SyncEntries
                 .AsNoTracking()
                 .Where(entry => entry.SyncPairId == syncPairId && keys.Contains(entry.RelativePathKey))
@@ -725,7 +687,7 @@ namespace Cotton.Sync.State
             IReadOnlyCollection<Guid> remoteNodeIds,
             CancellationToken cancellationToken)
         {
-            await using SyncStateDbContext context = CreateContext();
+            await using SyncStateDbContext context = _contextFactory.Create();
             List<SyncStateEntity> entities = await context.SyncEntries
                 .AsNoTracking()
                 .Where(entry => entry.SyncPairId == syncPairId
@@ -743,7 +705,7 @@ namespace Cotton.Sync.State
             IReadOnlyCollection<Guid> remoteFileIds,
             CancellationToken cancellationToken)
         {
-            await using SyncStateDbContext context = CreateContext();
+            await using SyncStateDbContext context = _contextFactory.Create();
             List<SyncStateEntity> entities = await context.SyncEntries
                 .AsNoTracking()
                 .Where(entry => entry.SyncPairId == syncPairId
@@ -761,7 +723,7 @@ namespace Cotton.Sync.State
             IReadOnlyCollection<string> keys,
             CancellationToken cancellationToken)
         {
-            await using SyncStateDbContext context = CreateContext();
+            await using SyncStateDbContext context = _contextFactory.Create();
             return await context.SyncEntries
                 .AsNoTracking()
                 .Where(entry => entry.SyncPairId == syncPairId && keys.Contains(entry.RelativePathKey))
@@ -782,7 +744,7 @@ namespace Cotton.Sync.State
         private SemaphoreSlim GetWriteGate()
         {
             return WriteGates.GetOrAdd(
-                Path.GetFullPath(_databasePath),
+                Path.GetFullPath(_contextFactory.DatabasePath),
                 static _ => new SemaphoreSlim(1, 1));
         }
 
@@ -802,7 +764,7 @@ namespace Cotton.Sync.State
 
         private async Task CompactLargeFreelistAsync(CancellationToken cancellationToken)
         {
-            await using SyncStateDbContext context = CreateContext();
+            await using SyncStateDbContext context = _contextFactory.Create();
             SqlitePageUsage pageUsage = await ReadPageUsageAsync(context, cancellationToken).ConfigureAwait(false);
             if (!ShouldVacuumFreelist(pageUsage.PageCount, pageUsage.FreelistCount, pageUsage.PageSize))
             {
@@ -874,15 +836,6 @@ namespace Cotton.Sync.State
         }
 
         private readonly record struct SqlitePageUsage(long PageCount, long FreelistCount, long PageSize);
-
-        private void EnsureDirectoryExists()
-        {
-            string? directory = Path.GetDirectoryName(_databasePath);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-        }
 
     }
 }
