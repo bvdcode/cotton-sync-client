@@ -13,6 +13,7 @@ using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using static Cotton.Sync.SyncFileStateEvaluator;
 using static Cotton.Sync.SyncPathOperations;
 
 namespace Cotton.Sync
@@ -27,7 +28,6 @@ namespace Cotton.Sync
         private const int RunProgressSparseItemInterval = 100;
         private static readonly TimeSpan InitialVirtualFilesHeartbeatLogInterval = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan RunProgressReportTimeInterval = TimeSpan.FromMilliseconds(250);
-        private static readonly TimeSpan CloudFilesMetadataTimestampTolerance = TimeSpan.FromSeconds(2);
         private static readonly StringComparer PathComparer = StringComparer.OrdinalIgnoreCase;
         private readonly ILocalFileScanner _localScanner;
         private readonly ILocalFileContentHasher? _localContentHasher;
@@ -5913,67 +5913,10 @@ namespace Cotton.Sync
 
 
 
-        private static bool RemoteMatchesBaseline(NodeFileManifestDto remoteFile, SyncStateEntry state)
-        {
-            if (!string.IsNullOrWhiteSpace(state.RemoteContentHash))
-            {
-                return ContentMatches(remoteFile.ContentHash, state.RemoteContentHash);
-            }
 
-            if (!string.IsNullOrWhiteSpace(state.RemoteETag))
-            {
-                return string.Equals(remoteFile.ETag, state.RemoteETag, StringComparison.Ordinal);
-            }
 
-            return state.RemoteFileId.HasValue && remoteFile.Id == state.RemoteFileId.Value;
-        }
 
-        private static bool RemoteMatchesBaseline(
-            NodeFileManifestDto remoteFile,
-            InitialVirtualFilesPlaceholderBaseline baseline)
-        {
-            if (!string.IsNullOrWhiteSpace(baseline.RemoteContentHash))
-            {
-                return ContentMatches(remoteFile.ContentHash, baseline.RemoteContentHash);
-            }
 
-            if (!string.IsNullOrWhiteSpace(baseline.RemoteETag))
-            {
-                return string.Equals(remoteFile.ETag, baseline.RemoteETag, StringComparison.Ordinal);
-            }
-
-            return baseline.RemoteFileId.HasValue && remoteFile.Id == baseline.RemoteFileId.Value;
-        }
-
-        private static bool BaselineMatchesCurrentFile(
-            SyncPair syncPair,
-            string relativePath,
-            SyncStateEntry state,
-            LocalFileSnapshot local,
-            NodeFileManifestDto remoteFile)
-        {
-            return state.Kind == SyncEntryKind.File
-                && string.Equals(state.SyncPairId, syncPair.SyncPairId, StringComparison.Ordinal)
-                && PathComparer.Equals(SyncPath.ToKey(state.RelativePath), SyncPath.ToKey(relativePath))
-                && ContentMatches(state.LocalContentHash, local.ContentHash)
-                && NullableUtcEquals(state.LocalLastWriteUtc, local.LastWriteUtc)
-                && state.LocalSizeBytes == local.SizeBytes
-                && state.RemoteFileId == remoteFile.Id
-                && state.RemoteNodeId == remoteFile.NodeId
-                && ContentMatches(state.RemoteContentHash, remoteFile.ContentHash)
-                && string.Equals(state.RemoteETag, remoteFile.ETag, StringComparison.Ordinal);
-        }
-
-        private static bool NullableUtcEquals(DateTime? left, DateTime? right)
-        {
-            return left?.ToUniversalTime() == right?.ToUniversalTime();
-        }
-
-        private static bool DateTimesMatchWithinCloudFilesMetadataTolerance(DateTime left, DateTime right)
-        {
-            TimeSpan difference = left.ToUniversalTime() - right.ToUniversalTime();
-            return difference.Duration() <= CloudFilesMetadataTimestampTolerance;
-        }
 
         private static void ValidateOptions(SyncRunOptions options)
         {
@@ -6741,22 +6684,7 @@ namespace Cotton.Sync
             return ToDeleteDirection(ResolveTrackedFileChange(CreateFileChangeState(state, local, remote)));
         }
 
-        private static bool IsMissingOnlineOnlyPlaceholder(
-            SyncStateEntry state,
-            LocalFileSnapshot? local,
-            RemoteFileSnapshot? remote)
-        {
-            return local is null && remote is not null && IsOnlineOnlyPlaceholderState(state);
-        }
 
-        private static bool LocalAndRemoteContentMatches(
-            LocalFileSnapshot? local,
-            RemoteFileSnapshot? remote)
-        {
-            return local is not null
-                && remote is not null
-                && ContentMatches(local.ContentHash, remote.File.ContentHash);
-        }
 
         private static SyncDeleteDirection ToDeleteDirection(SyncFileChangeKind changeKind)
         {
@@ -6773,131 +6701,19 @@ namespace Cotton.Sync
             };
         }
 
-        private static SyncFileChangeState CreateFileChangeState(
-            SyncStateEntry state,
-            LocalFileSnapshot? local,
-            RemoteFileSnapshot? remote)
-        {
-            return new SyncFileChangeState(
-                LocalDeleted: local is null && !string.IsNullOrWhiteSpace(state.LocalContentHash),
-                RemoteDeleted: remote is null && state.RemoteFileId.HasValue,
-                LocalChanged: local is not null && !ContentMatches(local.ContentHash, state.LocalContentHash),
-                RemoteChanged: remote is not null && !RemoteMatchesBaseline(remote.File, state),
-                BaselineDiverged: !ContentMatches(state.LocalContentHash, state.RemoteContentHash));
-        }
 
-        private static SyncFileChangeKind ResolveTrackedFileChange(SyncFileChangeState changeState)
-        {
-            if (changeState.BaselineDiverged)
-            {
-                return changeState.HasChanges ? SyncFileChangeKind.Conflict : SyncFileChangeKind.None;
-            }
 
-            return (changeState.LocalDeleted, changeState.RemoteDeleted, changeState.LocalChanged, changeState.RemoteChanged) switch
-            {
-                (false, false, false, false) => SyncFileChangeKind.None,
-                (true, true, false, false) => SyncFileChangeKind.DeleteState,
-                (false, true, false, false) => SyncFileChangeKind.DeleteLocal,
-                (true, false, false, false) => SyncFileChangeKind.DeleteRemote,
-                (false, false, true, false) => SyncFileChangeKind.Upload,
-                (false, false, false, true) => SyncFileChangeKind.Download,
-                _ => SyncFileChangeKind.Conflict
-            };
-        }
 
-        private static bool HasMissingRemoteOnlyPlaceholder(
-            SyncPair syncPair,
-            IReadOnlyDictionary<string, LocalFileSnapshot> localByPath,
-            IReadOnlyDictionary<string, RemoteFileSnapshot> remoteByPath,
-            IReadOnlyDictionary<string, SyncStateEntry> stateByPath)
-        {
-            if (syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles)
-            {
-                return false;
-            }
 
-            foreach (KeyValuePair<string, SyncStateEntry> state in stateByPath)
-            {
-                if (IsOnlineOnlyPlaceholderState(state.Value)
-                    && !localByPath.ContainsKey(state.Key)
-                    && remoteByPath.ContainsKey(state.Key))
-                {
-                    return true;
-                }
-            }
 
-            return false;
-        }
 
-        private static bool IsOnlineOnlyPlaceholderBaseline(SyncPair syncPair, SyncStateEntry state)
-        {
-            return syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
-                && IsOnlineOnlyPlaceholderState(state);
-        }
 
-        private static bool IsOnlineOnlyPlaceholderBaseline(
-            SyncPair syncPair,
-            InitialVirtualFilesPlaceholderBaseline baseline)
-        {
-            return syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
-                && IsOnlineOnlyPlaceholderState(baseline);
-        }
 
-        private static bool IsLocalOnlineOnlyPlaceholderBaseline(
-            SyncPair syncPair,
-            LocalFileSnapshot local,
-            SyncStateEntry state)
-        {
-            return local.IsCloudFilesOnlineOnlyPlaceholder
-                && IsOnlineOnlyPlaceholderBaseline(syncPair, state);
-        }
 
-        private static bool IsOnlineOnlyPlaceholderState(SyncStateEntry state)
-        {
-            return InitialVirtualFilesPlaceholderPolicy.IsOnlineOnly(state);
-        }
 
-        private static bool IsIncompleteOnlineOnlyPlaceholderBaseline(SyncStateEntry state)
-        {
-            return state.Kind == SyncEntryKind.File
-                && (state.PlaceholderHydrationState == SyncPlaceholderHydrationState.RemoteOnly
-                    || state.PlaceholderHydrationState == SyncPlaceholderHydrationState.Dehydrated)
-                && state.PlaceholderIdentity is not { Length: > 0 }
-                && HasRemoteFileBaseline(state);
-        }
 
-        private static bool HasRemoteFileBaseline(SyncStateEntry state)
-        {
-            return InitialVirtualFilesPlaceholderPolicy.HasRemoteBaseline(state);
-        }
 
-        private static bool IsOnlineOnlyPlaceholderState(InitialVirtualFilesPlaceholderBaseline baseline)
-        {
-            return InitialVirtualFilesPlaceholderPolicy.IsOnlineOnly(baseline);
-        }
 
-        private static bool IsVirtualFilesResumeCandidateState(InitialVirtualFilesPlaceholderBaseline baseline)
-        {
-            return InitialVirtualFilesPlaceholderPolicy.IsResumeCandidate(baseline);
-        }
-
-        private static bool HasRemoteFileBaseline(InitialVirtualFilesPlaceholderBaseline baseline)
-        {
-            return InitialVirtualFilesPlaceholderPolicy.HasRemoteBaseline(baseline);
-        }
-
-        private static bool ContentMatches(string? left, string? right)
-        {
-            return !string.IsNullOrWhiteSpace(left)
-                && !string.IsNullOrWhiteSpace(right)
-                && string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool ShouldFinalizeConvergedLocalFile(SyncPair syncPair, LocalFileSnapshot local)
-        {
-            return syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
-                && !local.IsCloudFilesOnlineOnlyPlaceholder;
-        }
 
         private static SyncRunOptions CloneWithoutRunProgress(SyncRunOptions options)
         {
