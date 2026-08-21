@@ -56,11 +56,11 @@ namespace Cotton.Sync.Desktop.Startup
             byte[] replacementContent = Encoding.UTF8.GetBytes("Cotton Sync local replacement content\n");
             string oldHash = Convert.ToHexStringLower(SHA256.HashData(oldContent));
             string replacementHash = Convert.ToHexStringLower(SHA256.HashData(replacementContent));
-            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
-            var activityPublisher = new InMemoryAppActivityPublisher();
-            var transferProgressPublisher = new InMemoryAppTransferProgressPublisher();
-            var runProgressPublisher = new InMemoryAppRunProgressPublisher();
-            var localChangeSuppression = new LocalChangeSuppression();
+            SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath);
+            InMemoryAppActivityPublisher activityPublisher = new();
+            InMemoryAppTransferProgressPublisher transferProgressPublisher = new();
+            InMemoryAppRunProgressPublisher runProgressPublisher = new();
+            LocalChangeSuppression localChangeSuppression = new();
             WindowsCloudFilesConnection? connection = null;
             int failures = 0;
 
@@ -118,7 +118,7 @@ namespace Cotton.Sync.Desktop.Startup
                     + FormatAttributes(File.GetAttributes(filePath)))
                     .ConfigureAwait(false);
 
-                var remoteTree = new RemoteTreeSnapshot
+                RemoteTreeSnapshot remoteTree = new()
                 {
                     RootNode = new NodeDto
                     {
@@ -142,9 +142,9 @@ namespace Cotton.Sync.Desktop.Startup
                         },
                     },
                 };
-                var crawler = new SinglePathRemoteTreeCrawler(remoteTree);
-                var remoteFiles = new RecordingUploadRemoteFileSynchronizer();
-                var syncEngine = new SyncEngine(
+                SinglePathRemoteTreeCrawler crawler = new(remoteTree);
+                RecordingUploadRemoteFileSynchronizer remoteFiles = new();
+                SyncEngine syncEngine = new(
                     new LocalFileScanner(),
                     crawler,
                     remoteFiles,

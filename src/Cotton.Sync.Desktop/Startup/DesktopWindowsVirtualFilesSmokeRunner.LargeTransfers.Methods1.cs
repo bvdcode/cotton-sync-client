@@ -60,18 +60,18 @@ namespace Cotton.Sync.Desktop.Startup
             string placeholderPath = Path.Combine(rootPath, LargeHydrationRelativePath);
             byte[] content = CreateLargeHydrationContent();
             string contentHash = Convert.ToHexStringLower(SHA256.HashData(content));
-            var contentProvider = new ChunkedSmokeContentProvider(
+            ChunkedSmokeContentProvider contentProvider = new(
                 content,
                 LargeHydrationChunkBytes,
                 TimeSpan.FromMilliseconds(8));
-            var progress = new RecordingTransferProgress();
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(
+            RecordingTransferProgress progress = new();
+            WindowsCloudFilesHydrationCoordinator coordinator = new(
                 contentProvider,
                 nativeApi,
                 Path.Combine(paths.DataDirectory, "vfs-smoke-temp"),
                 diagnostics,
                 _ => progress);
-            var callbackHandler = new RecordingCallbackHandler(coordinator);
+            RecordingCallbackHandler callbackHandler = new(coordinator);
             WindowsCloudFilesConnection? connection = null;
             int failures = 0;
 
@@ -107,7 +107,7 @@ namespace Cotton.Sync.Desktop.Startup
                     + connection.LocalRootPath)
                     .ConfigureAwait(false);
 
-                var hydrateTimer = Stopwatch.StartNew();
+                Stopwatch hydrateTimer = Stopwatch.StartNew();
                 FileContentHash hydrated = await ReadFileHashThroughExternalProcessAsync(placeholderPath, cancellationToken)
                     .ConfigureAwait(false);
                 hydrateTimer.Stop();
@@ -191,20 +191,20 @@ namespace Cotton.Sync.Desktop.Startup
             string contentHash,
             CancellationToken cancellationToken)
         {
-            var nativeApi = new RecordingCloudFilesNativeApi();
-            var provider = new ChunkedSmokeContentProvider(
+            RecordingCloudFilesNativeApi nativeApi = new();
+            ChunkedSmokeContentProvider provider = new(
                 content,
                 LargeHydrationChunkBytes,
                 TimeSpan.FromMilliseconds(50));
-            var progress = new RecordingTransferProgress();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(
+            RecordingTransferProgress progress = new();
+            WindowsCloudFilesDiagnostics diagnostics = new();
+            WindowsCloudFilesHydrationCoordinator coordinator = new(
                 provider,
                 nativeApi,
                 Path.Combine(paths.DataDirectory, "vfs-smoke-cancel-temp"),
                 diagnostics,
                 _ => progress);
-            using var dispatcher = new WindowsCloudFilesCallbackDispatcher(
+            using WindowsCloudFilesCallbackDispatcher dispatcher = new(
                 coordinator,
                 nativeApi.TransferData,
                 new WindowsCloudFilesCallbackDispatcherOptions(MaxConcurrentFetches: 1, QueueCapacity: 4));
@@ -216,7 +216,7 @@ namespace Cotton.Sync.Desktop.Startup
             byte[] identity = WindowsCloudFilesPlaceholderIdentity
                 .Create(placeholderRequest, Cotton.Sync.State.SyncPath.Normalize(LargeHydrationRelativePath))
                 .ToBytes();
-            var request = new WindowsCloudFilesFetchDataRequest(
+            WindowsCloudFilesFetchDataRequest request = new(
                 new WindowsCloudFilesConnectionKey(9001),
                 new WindowsCloudFilesTransferKey(9002),
                 new WindowsCloudFilesRequestKey(9003),
@@ -244,7 +244,7 @@ namespace Cotton.Sync.Desktop.Startup
                 0,
                 content.LongLength));
 
-            var drainTimer = Stopwatch.StartNew();
+            Stopwatch drainTimer = Stopwatch.StartNew();
             while (dispatcher.PendingFetchCount > 0 && drainTimer.Elapsed < TimeSpan.FromSeconds(5))
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(25), cancellationToken).ConfigureAwait(false);
