@@ -53,6 +53,7 @@ namespace Cotton.Sync
         private readonly ILogger<SyncEngine> _logger;
         private readonly SyncDirectoryReconciler _directoryReconciler;
         private readonly SyncDirectoryDeleteReconciler _directoryDeleteReconciler;
+        private readonly SyncLocalContentHashResolver _contentHashResolver;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SyncEngine" /> class.
@@ -103,6 +104,9 @@ namespace Cotton.Sync
                 _remoteDirectories,
                 _stateStore,
                 _localWriter);
+            _contentHashResolver = new SyncLocalContentHashResolver(
+                _localContentHasher,
+                _localContentHashProgressHasher);
         }
 
         /// <inheritdoc />
@@ -5486,21 +5490,7 @@ namespace Cotton.Sync
             SyncRunOptions options,
             CancellationToken cancellationToken)
         {
-            if (!string.IsNullOrWhiteSpace(local.ContentHash))
-            {
-                return;
-            }
-
-            if (_localContentHasher is null)
-            {
-                throw new InvalidOperationException("Local file snapshot does not include a content hash and no local content hasher is available.");
-            }
-
-            local.ContentHash = _localContentHashProgressHasher is null
-                ? await _localContentHasher.ComputeContentHashAsync(local, cancellationToken).ConfigureAwait(false)
-                : await _localContentHashProgressHasher
-                    .ComputeContentHashAsync(local, options.TransferProgress, cancellationToken)
-                    .ConfigureAwait(false);
+            await _contentHashResolver.EnsureAsync(local, options, cancellationToken).ConfigureAwait(false);
         }
 
         private async Task EnsureLocalContentHashForBaselineComparisonAsync(
@@ -5509,36 +5499,9 @@ namespace Cotton.Sync
             SyncRunOptions options,
             CancellationToken cancellationToken)
         {
-            if (!string.IsNullOrWhiteSpace(local.ContentHash))
-            {
-                return;
-            }
-
-            if (local.IsCloudFilesOnlineOnlyPlaceholder
-                && (IsOnlineOnlyPlaceholderState(state) || IsIncompleteOnlineOnlyPlaceholderBaseline(state)))
-            {
-                local.ContentHash = !string.IsNullOrWhiteSpace(state.LocalContentHash)
-                    ? state.LocalContentHash
-                    : state.RemoteContentHash ?? string.Empty;
-                return;
-            }
-
-            if (CanReuseBaselineLocalContentHash(local, state))
-            {
-                local.ContentHash = state.LocalContentHash!;
-                return;
-            }
-
-            await EnsureLocalContentHashAsync(local, options, cancellationToken).ConfigureAwait(false);
-        }
-
-        private static bool CanReuseBaselineLocalContentHash(LocalFileSnapshot local, SyncStateEntry state)
-        {
-            return !string.IsNullOrWhiteSpace(state.LocalContentHash)
-                && state.LocalSizeBytes.HasValue
-                && state.LocalSizeBytes.Value == local.SizeBytes
-                && state.LocalLastWriteUtc.HasValue
-                && state.LocalLastWriteUtc.Value.ToUniversalTime() == local.LastWriteUtc.ToUniversalTime();
+            await _contentHashResolver
+                .EnsureForBaselineComparisonAsync(local, state, options, cancellationToken)
+                .ConfigureAwait(false);
         }
 
 
