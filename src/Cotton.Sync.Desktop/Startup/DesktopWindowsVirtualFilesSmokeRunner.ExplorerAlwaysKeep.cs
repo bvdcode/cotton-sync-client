@@ -123,7 +123,7 @@ namespace Cotton.Sync.Desktop.Startup
                         restoreMissingPlaceholder)
                     .ConfigureAwait(false);
 
-                ShellVerbInvocationResult verbResult = await InvokeExplorerAlwaysKeepAsync(
+                WindowsShellVerbInvocationResult verbResult = await InvokeExplorerAlwaysKeepAsync(
                         availabilityTargetPath,
                         cancellationToken)
                     .ConfigureAwait(false);

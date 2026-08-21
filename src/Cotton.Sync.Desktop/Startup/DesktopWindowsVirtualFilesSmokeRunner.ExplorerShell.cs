@@ -218,21 +218,21 @@ namespace Cotton.Sync.Desktop.Startup
             return value.Contains(term, StringComparison.OrdinalIgnoreCase);
         }
 
-        private static Task<ShellVerbInvocationResult> InvokeExplorerFreeUpSpaceAsync(
+        private static Task<WindowsShellVerbInvocationResult> InvokeExplorerFreeUpSpaceAsync(
             string filePath,
             CancellationToken cancellationToken)
         {
             return InvokeExplorerVerbAsync(filePath, IsFreeUpSpaceVerb, cancellationToken);
         }
 
-        private static Task<ShellVerbInvocationResult> InvokeExplorerAlwaysKeepAsync(
+        private static Task<WindowsShellVerbInvocationResult> InvokeExplorerAlwaysKeepAsync(
             string filePath,
             CancellationToken cancellationToken)
         {
             return InvokeExplorerVerbAsync(filePath, IsAlwaysKeepVerb, cancellationToken);
         }
 
-        private static Task<ShellVerbInvocationResult> InvokeExplorerVerbAsync(
+        private static Task<WindowsShellVerbInvocationResult> InvokeExplorerVerbAsync(
             string filePath,
             Func<string, bool> matchesVerb,
             CancellationToken cancellationToken)
@@ -240,13 +240,13 @@ namespace Cotton.Sync.Desktop.Startup
             ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
             ArgumentNullException.ThrowIfNull(matchesVerb);
             cancellationToken.ThrowIfCancellationRequested();
-            TaskCompletionSource<ShellVerbInvocationResult> completion = new(
+            TaskCompletionSource<WindowsShellVerbInvocationResult> completion = new(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             Thread thread = new(() =>
             {
                 try
                 {
-                    completion.TrySetResult(InvokeExplorerVerbCore(filePath, matchesVerb));
+                    completion.TrySetResult(WindowsShellAutomation.InvokeVerb(filePath, matchesVerb));
                 }
                 catch (Exception exception)
                 {
@@ -261,74 +261,9 @@ namespace Cotton.Sync.Desktop.Startup
             thread.IsBackground = true;
             thread.Start();
             cancellationToken.Register(
-                static state => ((TaskCompletionSource<ShellVerbInvocationResult>)state!).TrySetCanceled(),
+                static state => ((TaskCompletionSource<WindowsShellVerbInvocationResult>)state!).TrySetCanceled(),
                 completion);
             return completion.Task;
-        }
-
-        private static ShellVerbInvocationResult InvokeExplorerVerbCore(
-            string filePath,
-            Func<string, bool> matchesVerb)
-        {
-            if (!OperatingSystem.IsWindows())
-            {
-                return new ShellVerbInvocationResult(false, null, []);
-            }
-
-            string? directory = Path.GetDirectoryName(filePath);
-            string fileName = Path.GetFileName(filePath);
-            if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(fileName))
-            {
-                return new ShellVerbInvocationResult(false, null, []);
-            }
-
-            Type? shellType = Type.GetTypeFromProgID("Shell.Application");
-            if (shellType is null)
-            {
-                return new ShellVerbInvocationResult(false, null, []);
-            }
-
-            dynamic shell = Activator.CreateInstance(shellType)
-                ?? throw new InvalidOperationException("Shell.Application COM object could not be created.");
-            dynamic folder = shell.Namespace(directory);
-            if (folder is null)
-            {
-                return new ShellVerbInvocationResult(false, null, []);
-            }
-
-            dynamic item = folder.ParseName(fileName);
-            if (item is null)
-            {
-                return new ShellVerbInvocationResult(false, null, []);
-            }
-
-            List<string> names = new();
-            dynamic verbs = item.Verbs();
-            int count = verbs.Count;
-            for (int index = 0; index < count; index++)
-            {
-                dynamic verb = verbs.Item(index);
-                string name = CleanShellVerbName((string)verb.Name);
-                if (!string.IsNullOrWhiteSpace(name))
-                {
-                    names.Add(name);
-                }
-
-                if (matchesVerb(name))
-                {
-                    verb.DoIt();
-                    return new ShellVerbInvocationResult(true, name, names);
-                }
-            }
-
-            return new ShellVerbInvocationResult(false, null, names);
-        }
-
-        private static string CleanShellVerbName(string? value)
-        {
-            return (value ?? string.Empty)
-                .Replace("&", string.Empty, StringComparison.Ordinal)
-                .Trim();
         }
 
         private static bool IsFreeUpSpaceVerb(string value)
@@ -344,10 +279,6 @@ namespace Cotton.Sync.Desktop.Startup
                 || value.Contains("\u0425\u0440\u0430\u043d\u0438\u0442\u044c \u044d\u0442\u0438 \u0444\u0430\u0439\u043b\u044b \u043d\u0430 \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0435", StringComparison.OrdinalIgnoreCase);
         }
 
-        private record ShellVerbInvocationResult(
-            bool Invoked,
-            string? InvokedVerbName,
-            IReadOnlyList<string> AvailableVerbNames);
 
         private record ShellStatusColumn(
             int Index,

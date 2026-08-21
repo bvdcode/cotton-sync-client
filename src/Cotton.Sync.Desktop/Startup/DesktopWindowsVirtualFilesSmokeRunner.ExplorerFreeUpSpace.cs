@@ -245,7 +245,7 @@ namespace Cotton.Sync.Desktop.Startup
                     .ConfigureAwait(false);
             }
 
-            ShellVerbInvocationResult shellResult = await InvokeExplorerFreeUpSpaceAsync(
+            WindowsShellVerbInvocationResult shellResult = await InvokeExplorerFreeUpSpaceAsync(
                     placeholderPath,
                     context.CancellationToken)
                 .ConfigureAwait(false);

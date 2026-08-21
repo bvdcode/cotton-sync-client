@@ -161,7 +161,7 @@ namespace Cotton.Sync.Desktop.Startup
                         string.Empty)
                     .ConfigureAwait(false);
 
-                ShellVerbInvocationResult verbResult = await InvokeExplorerAlwaysKeepAsync(folderPath, cancellationToken)
+                WindowsShellVerbInvocationResult verbResult = await InvokeExplorerAlwaysKeepAsync(folderPath, cancellationToken)
                     .ConfigureAwait(false);
                 failures += await WriteCheckAsync(
                         output,

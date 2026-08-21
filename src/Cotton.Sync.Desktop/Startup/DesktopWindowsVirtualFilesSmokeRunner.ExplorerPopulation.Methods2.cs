@@ -71,7 +71,7 @@ namespace Cotton.Sync.Desktop.Startup
             AlwaysKeepPopulationPaths paths)
         {
             int downloadsBeforeUnpin = contentProvider.DownloadCount;
-            ShellVerbInvocationResult verb = await InvokeExplorerAlwaysKeepAsync(
+            WindowsShellVerbInvocationResult verb = await InvokeExplorerAlwaysKeepAsync(
                     paths.FolderPath,
                     context.CancellationToken)
                 .ConfigureAwait(false);
@@ -115,7 +115,7 @@ namespace Cotton.Sync.Desktop.Startup
             AlwaysKeepPopulationPaths paths)
         {
             int downloadsBeforeRepin = contentProvider.DownloadCount;
-            ShellVerbInvocationResult verb = await InvokeExplorerAlwaysKeepAsync(
+            WindowsShellVerbInvocationResult verb = await InvokeExplorerAlwaysKeepAsync(
                     paths.FolderPath,
                     context.CancellationToken)
                 .ConfigureAwait(false);
@@ -170,7 +170,7 @@ namespace Cotton.Sync.Desktop.Startup
         }
 
         private static bool DidPopulationUnpinPass(
-            ShellVerbInvocationResult verb,
+            WindowsShellVerbInvocationResult verb,
             IReadOnlyList<bool> attributeResults,
             int downloadCount,
             int downloadsBeforeUnpin,
@@ -188,7 +188,7 @@ namespace Cotton.Sync.Desktop.Startup
         }
 
         private static bool DidPopulationRepinPass(
-            ShellVerbInvocationResult verb,
+            WindowsShellVerbInvocationResult verb,
             IReadOnlyList<bool> attributeResults,
             int downloadCount,
             int downloadsBeforeRepin,

@@ -3,7 +3,6 @@
 
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
-using Microsoft.CSharp.RuntimeBinder;
 
 namespace Cotton.Sync.Desktop.Platform
 {
@@ -257,8 +256,7 @@ namespace Cotton.Sync.Desktop.Platform
             catch (Exception exception) when (exception is IOException
                 or InvalidOperationException
                 or ObjectDisposedException
-                or COMException
-                or RuntimeBinderException)
+                or COMException)
             {
                 return false;
             }
@@ -267,35 +265,9 @@ namespace Cotton.Sync.Desktop.Platform
         [SupportedOSPlatform("windows")]
         private static string? ReadShortcutAppUserModelId(string shortcutPath)
         {
-            string fullShortcutPath = Path.GetFullPath(shortcutPath);
-            string? folderPath = Path.GetDirectoryName(fullShortcutPath);
-            string shortcutFileName = Path.GetFileName(fullShortcutPath);
-            if (string.IsNullOrWhiteSpace(folderPath) || string.IsNullOrWhiteSpace(shortcutFileName))
-            {
-                return null;
-            }
-
-            Type? shellType = Type.GetTypeFromProgID("Shell.Application");
-            if (shellType is null)
-            {
-                return null;
-            }
-
-            dynamic shell = Activator.CreateInstance(shellType)
-                ?? throw new InvalidOperationException("Shell.Application COM object could not be created.");
-            dynamic folder = shell.Namespace(folderPath);
-            if (folder is null)
-            {
-                return null;
-            }
-
-            dynamic shortcutItem = folder.ParseName(shortcutFileName);
-            if (shortcutItem is null)
-            {
-                return null;
-            }
-
-            string appUserModelId = (string)shortcutItem.ExtendedProperty("System.AppUserModel.ID");
+            string? appUserModelId = WindowsShellAutomation.ReadStringProperty(
+                shortcutPath,
+                "System.AppUserModel.ID");
             return string.IsNullOrWhiteSpace(appUserModelId) ? null : appUserModelId.Trim();
         }
     }
