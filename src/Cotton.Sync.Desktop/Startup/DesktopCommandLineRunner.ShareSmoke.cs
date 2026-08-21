@@ -345,19 +345,19 @@ namespace Cotton.Sync.Desktop.Startup
             }
 
             using HttpClient httpClient = DesktopHttpClientFactory.Create(TimeSpan.FromSeconds(30));
-            var tokenStore = new FileCottonTokenStore(paths.TokenStorePath);
-            var sdkOptions = new CottonSdkOptions
+            FileCottonTokenStore tokenStore = new(paths.TokenStorePath);
+            CottonSdkOptions sdkOptions = new()
             {
                 BaseAddress = serverUrl,
                 UserAgent = DesktopDeviceIdentity.CreateUserAgent(),
                 DeviceName = DesktopDeviceIdentity.CreateDeviceName(),
             };
-            await using var cottonClient = new CottonCloudClient(
+            await using CottonCloudClient cottonClient = new(
                 httpClient,
                 tokenStore,
                 sdkOptions,
                 new DesktopTraceLoggerFactory());
-            var client = new DesktopShellShareLinkClient(
+            DesktopShellShareLinkClient client = new(
                 httpClient,
                 tokenStore,
                 cottonClient.Auth,
@@ -375,7 +375,7 @@ namespace Cotton.Sync.Desktop.Startup
                 return startupOptions.ServerUrl;
             }
 
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
             AppPreferences preferences = await preferencesStore.GetAsync(cancellationToken).ConfigureAwait(false);
             return preferences.RememberedServerUrl;
@@ -386,7 +386,7 @@ namespace Cotton.Sync.Desktop.Startup
             Uri serverUrl,
             CancellationToken cancellationToken)
         {
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
             AppPreferences preferences = await preferencesStore.GetAsync(cancellationToken).ConfigureAwait(false);
             return preferences.RememberedServerUrl is not null

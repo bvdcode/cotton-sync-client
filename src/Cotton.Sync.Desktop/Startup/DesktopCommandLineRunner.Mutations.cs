@@ -45,7 +45,7 @@ namespace Cotton.Sync.Desktop.Startup
                 + Environment.NewLine
                 + DateTime.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture)
                 + Environment.NewLine;
-            var files = new[]
+            LiveSyncSmokeSeededLocalFile[] files = new LiveSyncSmokeSeededLocalFile[]
             {
                 await WriteSeededLocalFileAsync(
                     startupOptions.LocalRoot!,

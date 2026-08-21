@@ -148,7 +148,7 @@ namespace Cotton.Sync.Desktop.Startup
             string accessToken,
             CancellationToken cancellationToken)
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, CreateRouteUri(_serverUrl, path));
+            using HttpRequestMessage request = new(HttpMethod.Get, CreateRouteUri(_serverUrl, path));
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             return await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         }
@@ -271,7 +271,7 @@ namespace Cotton.Sync.Desktop.Startup
                 ? "/" + relativePath
                 : basePath + "/" + relativePath;
 
-            var builder = new UriBuilder(baseAddress)
+            UriBuilder builder = new(baseAddress)
             {
                 Path = combinedPath,
                 Query = query,

@@ -289,7 +289,7 @@ namespace Cotton.Sync.Desktop.Startup
             Guid syncPairId,
             CancellationToken cancellationToken)
         {
-            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath);
             await stateStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
             IReadOnlyList<SyncStateEntry> entries = await stateStore
                 .LoadPairAsync(syncPairId.ToString("D"), cancellationToken)

@@ -104,9 +104,9 @@ namespace Cotton.Sync.Desktop.Startup
             ArgumentNullException.ThrowIfNull(output);
 
             DesktopTraceLogging.Install(paths);
-            var syncPairs = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            SqliteSyncPairSettingsStore syncPairs = new(paths.AppDatabasePath);
             await syncPairs.InitializeAsync(cancellationToken).ConfigureAwait(false);
-            var syncState = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            SqliteSyncStateStore syncState = new(paths.SyncStateDatabasePath);
             await syncState.InitializeAsync(cancellationToken).ConfigureAwait(false);
             IReadOnlyList<SyncPairSettings> configuredPairs = await syncPairs
                 .ListAsync(cancellationToken)

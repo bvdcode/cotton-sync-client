@@ -206,8 +206,8 @@ namespace Cotton.Sync.Desktop.Startup
             DesktopStartupOptions startupOptions,
             TextWriter output)
         {
-            var loggerFactory = new DesktopTraceLoggerFactory();
-            var platformCommands = new LiveSmokePlatformCommandService(output, startupOptions.LiveSyncSmokeApprovalHold);
+            DesktopTraceLoggerFactory loggerFactory = new();
+            LiveSmokePlatformCommandService platformCommands = new(output, startupOptions.LiveSyncSmokeApprovalHold);
             return new DesktopShellController(
                 paths,
                 new DesktopSyncApplicationFactory(paths, loggerFactory, platformCommands),

@@ -14,7 +14,7 @@ namespace Cotton.Sync.Desktop.Startup
             CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
-            var startInfo = new ProcessStartInfo
+            ProcessStartInfo startInfo = new()
             {
                 FileName = "powershell.exe",
                 UseShellExecute = false,
@@ -30,7 +30,7 @@ namespace Cotton.Sync.Desktop.Startup
             startInfo.ArgumentList.Add(script);
             startInfo.Environment["COTTON_SYNC_EXTERNAL_READ_PATH"] = filePath;
 
-            using var process = new Process { StartInfo = startInfo };
+            using Process process = new() { StartInfo = startInfo };
             if (!process.Start())
             {
                 throw new InvalidOperationException("Failed to start the external file-read helper process.");
@@ -65,7 +65,7 @@ namespace Cotton.Sync.Desktop.Startup
                 return;
             }
 
-            using var timeoutCancellation = new CancellationTokenSource(timeout.Value);
+            using CancellationTokenSource timeoutCancellation = new(timeout.Value);
             using CancellationTokenSource linkedCancellation =
                 CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCancellation.Token);
             try

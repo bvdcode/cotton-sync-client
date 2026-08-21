@@ -339,7 +339,7 @@ namespace Cotton.Sync.Desktop.Startup
             IDesktopUpdateService? updateService = null,
             IDesktopUpdateInstaller? updateInstaller = null)
         {
-            var loggerFactory = new DesktopTraceLoggerFactory();
+            DesktopTraceLoggerFactory loggerFactory = new();
             return new DesktopShellController(
                 paths,
                 new DesktopSyncApplicationFactory(paths, loggerFactory),

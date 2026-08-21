@@ -11,7 +11,7 @@ namespace Cotton.Sync.Desktop.Startup
             DateTime normalizedCreatedAtUtc = createdAtUtc.Kind == DateTimeKind.Utc
                 ? createdAtUtc
                 : createdAtUtc.ToUniversalTime();
-            var files = new List<LiveSyncSmokeSeedFile>(fileCount);
+            List<LiveSyncSmokeSeedFile> files = new(fileCount);
             for (int index = 0; index < fileCount; index++)
             {
                 bool useFirstClient = index % 2 == 0;
