@@ -13,6 +13,8 @@ using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using static Cotton.Sync.LocalUploadPolicy;
+using static Cotton.Sync.RemoteSyncErrorClassifier;
 using static Cotton.Sync.SyncBaselineFactory;
 using static Cotton.Sync.SyncDeletePlanner;
 using static Cotton.Sync.SyncFileStateEvaluator;
@@ -163,7 +165,7 @@ namespace Cotton.Sync
                 _initialVirtualFilesStreamingPlanner.CanRun(syncPair, runOptions);
             if (!initialWindowsVirtualFilesStreamingCanApply)
             {
-                ReportRunProgress(runOptions, SyncRunProgressStage.ScanningLocal, 0, null, null, startedAtUtc);
+                SyncRunProgressReporter.ReportRunProgress(runOptions, SyncRunProgressStage.ScanningLocal, 0, null, null, startedAtUtc);
             }
 
             _logger.LogInformation("Starting sync pass for pair {SyncPairId}.", syncPair.SyncPairId);
@@ -182,7 +184,7 @@ namespace Cotton.Sync
 
             if (initialWindowsVirtualFilesStreamingCanApply)
             {
-                ReportRunProgress(runOptions, SyncRunProgressStage.ScanningLocal, 0, null, null, startedAtUtc);
+                SyncRunProgressReporter.ReportRunProgress(runOptions, SyncRunProgressStage.ScanningLocal, 0, null, null, startedAtUtc);
             }
 
             SyncRunContext context = await PrepareSyncRunContextAsync(
@@ -289,7 +291,7 @@ namespace Cotton.Sync
                 context.LocalDirectoriesByPath.Keys,
                 context.RemoteDirectoriesByPath.Keys,
                 context.DirectoryStateByPath.Keys);
-            ReportRunProgress(
+            SyncRunProgressReporter.ReportRunProgress(
                 context.Options,
                 SyncRunProgressStage.ReconcilingDirectories,
                 0,
@@ -638,7 +640,7 @@ namespace Cotton.Sync
                     .ConfigureAwait(false);
             }
 
-            ReportRunProgress(
+            SyncRunProgressReporter.ReportRunProgress(
                 context.Options,
                 SyncRunProgressStage.Completed,
                 filePhase.FilesCompleted,
@@ -717,7 +719,7 @@ namespace Cotton.Sync
                         local.RelativePath,
                         startedAtUtc,
                         ref lastReportedAtUtc);
-                    if (!ShouldDeferLocalUpload(local, options, out _))
+                    if (!ShouldDefer(local, options, out _))
                     {
                         try
                         {
@@ -790,7 +792,7 @@ namespace Cotton.Sync
                 metrics);
             if (!streamingPlan.SkipCurrentPlaceholders)
             {
-                ReportRunProgress(options, SyncRunProgressStage.CreatingPlaceholders, 0, null, null, startedAtUtc);
+                SyncRunProgressReporter.ReportRunProgress(options, SyncRunProgressStage.CreatingPlaceholders, 0, null, null, startedAtUtc);
             }
 
             using IDisposable? providerWriteBurst = _remoteFilePlaceholderPopulationObserver
@@ -893,7 +895,7 @@ namespace Cotton.Sync
             int totalItems = Math.Max(completedItems, discoveredItems);
             if (!streamingPlan.SkipCurrentPlaceholders || metrics.LastPlaceholderProgressReportedAtUtc.HasValue)
             {
-                ReportRunProgress(
+                SyncRunProgressReporter.ReportRunProgress(
                     options,
                     SyncRunProgressStage.CreatingPlaceholders,
                     completedItems,
@@ -901,7 +903,7 @@ namespace Cotton.Sync
                     null,
                     startedAtUtc);
             }
-            ReportRunProgress(
+            SyncRunProgressReporter.ReportRunProgress(
                 options,
                 SyncRunProgressStage.Completed,
                 completedItems,
@@ -1206,7 +1208,7 @@ namespace Cotton.Sync
             }
 
             int directoriesDiscovered = Math.Max(requests.Count, context.Metrics.DiscoveredDirectories);
-            ReportRunProgress(
+            SyncRunProgressReporter.ReportRunProgress(
                 context.Options,
                 SyncRunProgressStage.FinalizingCloudFiles,
                 0,
@@ -1216,7 +1218,7 @@ namespace Cotton.Sync
             await _remoteDirectoryTreePopulationObserver
                 .AfterDirectoryTreePopulationAsync(requests.Values.ToArray(), context.CancellationToken)
                 .ConfigureAwait(false);
-            ReportRunProgress(
+            SyncRunProgressReporter.ReportRunProgress(
                 context.Options,
                 SyncRunProgressStage.FinalizingCloudFiles,
                 requests.Count,
@@ -1528,7 +1530,7 @@ namespace Cotton.Sync
             }
             if (workResult.ReportActivity)
             {
-                Report(
+                SyncActivityReporter.ReportActivity(
                     context.Result,
                     context.Options,
                     workResult.ActivityKind,
@@ -1649,7 +1651,7 @@ namespace Cotton.Sync
             }
             catch (RemoteFilePlaceholderUnavailableException exception)
             {
-                Report(
+                SyncActivityReporter.ReportActivity(
                     result,
                     options,
                     SyncActivityKind.Skipped,
@@ -1662,7 +1664,7 @@ namespace Cotton.Sync
             if (placeholderState is not null)
             {
                 await _stateStore.UpsertAsync(placeholderState, cancellationToken).ConfigureAwait(false);
-                Report(result, options, SyncActivityKind.PlaceholderCreated, relativePath, null);
+                SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.PlaceholderCreated, relativePath, null);
             }
         }
 
@@ -1734,7 +1736,7 @@ namespace Cotton.Sync
             }
 
             setLastReportedAtUtc(occurredAtUtc);
-            ReportRunProgress(
+            SyncRunProgressReporter.ReportRunProgress(
                 options,
                 SyncRunProgressStage.CreatingPlaceholders,
                 itemsCompleted,
@@ -1852,7 +1854,7 @@ namespace Cotton.Sync
         {
             if (blockLocalOnlyUploads)
             {
-                Report(
+                SyncActivityReporter.ReportActivity(
                     result,
                     options,
                     SyncActivityKind.Skipped,
@@ -1908,7 +1910,7 @@ namespace Cotton.Sync
                 .ConfigureAwait(false);
             if (ShouldFinalizeConvergedLocalFile(syncPair, local))
             {
-                Report(
+                SyncActivityReporter.ReportActivity(
                     result,
                     options,
                     SyncActivityKind.Converged,
@@ -2102,7 +2104,7 @@ namespace Cotton.Sync
                 return;
             }
 
-            Report(
+            SyncActivityReporter.ReportActivity(
                 context.Result,
                 context.Options,
                 SyncActivityKind.Skipped,
@@ -2198,7 +2200,7 @@ namespace Cotton.Sync
                             context.State),
                         context.CancellationToken)
                     .ConfigureAwait(false);
-                Report(
+                SyncActivityReporter.ReportActivity(
                     context.Result,
                     context.Options,
                     SyncActivityKind.Converged,
@@ -2262,7 +2264,7 @@ namespace Cotton.Sync
 
             if (ShouldFinalizeConvergedLocalFile(context.SyncPair, context.Local))
             {
-                Report(
+                SyncActivityReporter.ReportActivity(
                     context.Result,
                     context.Options,
                     SyncActivityKind.Converged,
@@ -2582,7 +2584,7 @@ namespace Cotton.Sync
             await _stateStore.DeleteAsync(context.SyncPair.SyncPairId, sourcePath, context.CancellationToken)
                 .ConfigureAwait(false);
             await _stateStore.UpsertAsync(targetState, context.CancellationToken).ConfigureAwait(false);
-            Report(context.Result, context.Options, SyncActivityKind.Moved, targetPath, "Moved from " + sourcePath + ".");
+            SyncActivityReporter.ReportActivity(context.Result, context.Options, SyncActivityKind.Moved, targetPath, "Moved from " + sourcePath + ".");
         }
 
         private async Task<NodeFileManifestDto?> TryMoveOnlineOnlyPlaceholderRemoteFileAsync(
@@ -2599,7 +2601,7 @@ namespace Cotton.Sync
                         context.CancellationToken)
                     .ConfigureAwait(false);
             }
-            catch (HttpRequestException exception) when (IsRemotePreconditionFailed(exception))
+            catch (HttpRequestException exception) when (IsPreconditionFailed(exception))
             {
                 NodeFileManifestDto? latestRemoteFile = await FindLatestRemoteFileAsync(
                         context.SyncPair,
@@ -2641,7 +2643,7 @@ namespace Cotton.Sync
 
             if (_remoteDirectories is null)
             {
-                Report(
+                SyncActivityReporter.ReportActivity(
                     result,
                     options,
                     SyncActivityKind.Skipped,
@@ -2669,7 +2671,7 @@ namespace Cotton.Sync
             SyncDeleteGuard deleteGuard = new(options, plannedLocalDeletes: 0, remoteDeletePlanItems);
             if (!deleteGuard.CanDeleteRemote(out string? details))
             {
-                Report(
+                SyncActivityReporter.ReportActivity(
                     result,
                     options,
                     SyncActivityKind.Skipped,
@@ -2694,7 +2696,7 @@ namespace Cotton.Sync
                     .ConfigureAwait(false);
                 directoryStateByPath.Remove(key);
                 remoteDirectoriesByPath.Remove(key);
-                Report(
+                SyncActivityReporter.ReportActivity(
                     result,
                     options,
                     SyncActivityKind.DeletedRemote,
@@ -2802,7 +2804,7 @@ namespace Cotton.Sync
         {
             foreach (string rootPath in rootPaths)
             {
-                Report(
+                SyncActivityReporter.ReportActivity(
                     result,
                     options,
                     SyncActivityKind.Skipped,
@@ -2837,7 +2839,7 @@ namespace Cotton.Sync
                     .ConfigureAwait(false);
                 directoryStateByPath.Remove(key);
                 remoteDirectoriesByPath.Remove(key);
-                Report(
+                SyncActivityReporter.ReportActivity(
                     result,
                     options,
                     SyncActivityKind.DeletedRemote,
@@ -2997,7 +2999,7 @@ namespace Cotton.Sync
                     .MoveFileAsync(syncPair.RemoteRootNodeId, targetPath, remote.File, cancellationToken)
                     .ConfigureAwait(false);
             }
-            catch (HttpRequestException exception) when (IsRemotePreconditionFailed(exception))
+            catch (HttpRequestException exception) when (IsPreconditionFailed(exception))
             {
                 NodeFileManifestDto? latestRemoteFile = await FindLatestRemoteFileAsync(syncPair, sourcePath, cancellationToken).ConfigureAwait(false);
                 if (latestRemoteFile is null)
@@ -3028,7 +3030,7 @@ namespace Cotton.Sync
             stateByPath[targetKey] = targetState;
             await _stateStore.DeleteAsync(syncPair.SyncPairId, sourcePath, cancellationToken).ConfigureAwait(false);
             await _stateStore.UpsertAsync(targetState, cancellationToken).ConfigureAwait(false);
-            Report(result, options, SyncActivityKind.Moved, targetPath, "Moved from " + sourcePath + ".");
+            SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.Moved, targetPath, "Moved from " + sourcePath + ".");
         }
 
         private async Task UploadAsync(
@@ -3040,9 +3042,9 @@ namespace Cotton.Sync
             NodeFileManifestDto? existingRemoteFile,
             CancellationToken cancellationToken)
         {
-            if (ShouldDeferLocalUpload(local, options, out TimeSpan remainingQuietTime))
+            if (ShouldDefer(local, options, out TimeSpan remainingQuietTime))
             {
-                ReportDeferredLocalUpload(result, options, relativePath, remainingQuietTime);
+                ReportDeferred(result, options, relativePath, remainingQuietTime);
                 return;
             }
 
@@ -3067,7 +3069,7 @@ namespace Cotton.Sync
                     BuildBaseline(syncPair, relativePath, localContentHash, local.LastWriteUtc, local.SizeBytes, uploaded),
                     cancellationToken)
                 .ConfigureAwait(false);
-            Report(result, options, SyncActivityKind.Uploaded, relativePath, null);
+            SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.Uploaded, relativePath, null);
         }
 
         private async Task<NodeFileManifestDto?> TryUploadWithConflictHandlingAsync(
@@ -3089,7 +3091,7 @@ namespace Cotton.Sync
                     options,
                     cancellationToken).ConfigureAwait(false);
             }
-            catch (HttpRequestException exception) when (existingRemoteFile is not null && IsRemotePreconditionFailed(exception))
+            catch (HttpRequestException exception) when (existingRemoteFile is not null && IsPreconditionFailed(exception))
             {
                 NodeFileManifestDto? latestRemoteFile = await FindLatestRemoteFileAsync(syncPair, relativePath, cancellationToken).ConfigureAwait(false);
                 await PreserveConflictAsync(
@@ -3102,7 +3104,7 @@ namespace Cotton.Sync
                         cancellationToken).ConfigureAwait(false);
                 return null;
             }
-            catch (HttpRequestException exception) when (existingRemoteFile is null && IsRemoteConflict(exception))
+            catch (HttpRequestException exception) when (existingRemoteFile is null && IsConflict(exception))
             {
                 NodeFileManifestDto? latestRemoteFile = await FindLatestRemoteFileAsync(
                         syncPair,
@@ -3137,7 +3139,7 @@ namespace Cotton.Sync
             string relativePath,
             LocalFileUnavailableException exception)
         {
-            Report(result, options, SyncActivityKind.Skipped, relativePath, exception.Reason);
+            SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.Skipped, relativePath, exception.Reason);
             result.RecordDeferredLocalPath(relativePath);
         }
 
@@ -3190,7 +3192,7 @@ namespace Cotton.Sync
                 cancellationToken).ConfigureAwait(false);
             await _stateStore.UpsertAsync(BuildBaseline(syncPair, relativePath, remoteFile.ContentHash, remoteFile.UpdatedAt, remoteFile.SizeBytes, remoteFile), cancellationToken)
                 .ConfigureAwait(false);
-            Report(result, options, SyncActivityKind.Downloaded, relativePath, null);
+            SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.Downloaded, relativePath, null);
         }
 
         private static SyncRunProgressStage ResolveFileRunProgressStage(
@@ -3227,7 +3229,7 @@ namespace Cotton.Sync
         {
             if (!deleteGuard.CanDeleteRemote(out string? details))
             {
-                Report(result, options, SyncActivityKind.Skipped, relativePath, details, requiresUserAction: true);
+                SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.Skipped, relativePath, details, requiresUserAction: true);
                 return;
             }
 
@@ -3239,7 +3241,7 @@ namespace Cotton.Sync
                     remoteFile.ETag,
                     cancellationToken).ConfigureAwait(false);
             }
-            catch (HttpRequestException exception) when (IsRemotePreconditionFailed(exception))
+            catch (HttpRequestException exception) when (IsPreconditionFailed(exception))
             {
                 NodeFileManifestDto? latestRemoteFile = await FindLatestRemoteFileAsync(syncPair, relativePath, cancellationToken).ConfigureAwait(false);
                 await PreserveConflictAsync(
@@ -3254,7 +3256,7 @@ namespace Cotton.Sync
             }
 
             await _stateStore.DeleteAsync(syncPair.SyncPairId, relativePath, cancellationToken).ConfigureAwait(false);
-            Report(result, options, SyncActivityKind.DeletedRemote, relativePath, null);
+            SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.DeletedRemote, relativePath, null);
         }
 
         private async Task DeleteLocalAsync(
@@ -3267,13 +3269,13 @@ namespace Cotton.Sync
         {
             if (!deleteGuard.CanDeleteLocal(out string? details))
             {
-                Report(result, options, SyncActivityKind.Skipped, relativePath, details, requiresUserAction: true);
+                SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.Skipped, relativePath, details, requiresUserAction: true);
                 return;
             }
 
             await _localWriter.DeleteFileAsync(syncPair.LocalRootPath, relativePath, cancellationToken).ConfigureAwait(false);
             await _stateStore.DeleteAsync(syncPair.SyncPairId, relativePath, cancellationToken).ConfigureAwait(false);
-            Report(result, options, SyncActivityKind.DeletedLocal, relativePath, null);
+            SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.DeletedLocal, relativePath, null);
         }
 
 
@@ -3320,7 +3322,7 @@ namespace Cotton.Sync
                     .ConfigureAwait(false);
             }
 
-            Report(result, options, SyncActivityKind.Conflict, relativePath, details);
+            SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.Conflict, relativePath, details);
         }
 
         private async Task<string> PreserveDivergedConflictAsync(
@@ -3532,7 +3534,7 @@ namespace Cotton.Sync
                     cancellationToken).ConfigureAwait(false);
             }
 
-            ReportTransfer(
+            SyncActivityReporter.ReportTransfer(
                 options,
                 SyncTransferDirection.Upload,
                 relativePath,
@@ -3544,7 +3546,7 @@ namespace Cotton.Sync
                 local,
                 existingRemoteFile,
                 cancellationToken).ConfigureAwait(false);
-            ReportTransfer(
+            SyncActivityReporter.ReportTransfer(
                 options,
                 SyncTransferDirection.Upload,
                 relativePath,
@@ -3573,14 +3575,14 @@ namespace Cotton.Sync
                 return;
             }
 
-            ReportTransfer(
+            SyncActivityReporter.ReportTransfer(
                 options,
                 SyncTransferDirection.Download,
                 relativePath,
                 transferredBytes: 0,
                 totalBytes: remoteFile.SizeBytes);
             await _remoteFiles.DownloadFileAsync(remoteFile.Id, destination, cancellationToken).ConfigureAwait(false);
-            ReportTransfer(
+            SyncActivityReporter.ReportTransfer(
                 options,
                 SyncTransferDirection.Download,
                 relativePath,
@@ -3688,62 +3690,6 @@ namespace Cotton.Sync
 
 
 
-        private static bool ShouldDeferLocalUpload(
-            LocalFileSnapshot local,
-            SyncRunOptions options,
-            out TimeSpan remainingQuietTime)
-        {
-            remainingQuietTime = TimeSpan.Zero;
-            if (options.MinimumLocalUploadAge <= TimeSpan.Zero)
-            {
-                return false;
-            }
-
-            DateTime nowUtc = DateTime.UtcNow;
-            TimeSpan age = nowUtc - local.LastWriteUtc.ToUniversalTime();
-            if (age >= options.MinimumLocalUploadAge)
-            {
-                return false;
-            }
-
-            remainingQuietTime = options.MinimumLocalUploadAge - age;
-            return true;
-        }
-
-        private static void ReportDeferredLocalUpload(
-            SyncRunResult result,
-            SyncRunOptions options,
-            string relativePath,
-            TimeSpan remainingQuietTime)
-        {
-            result.RecordDeferredLocalPath(relativePath);
-            string details = "Local file is still changing; retry after "
-                + FormatQuietTime(remainingQuietTime)
-                + " quiet window.";
-            Report(result, options, SyncActivityKind.Skipped, relativePath, details);
-        }
-
-        private static string FormatQuietTime(TimeSpan value)
-        {
-            if (value.TotalMilliseconds < 1000)
-            {
-                return Math.Ceiling(value.TotalMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture)
-                    + "ms";
-            }
-
-            return value.TotalSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
-                + "s";
-        }
-
-        private static bool IsRemotePreconditionFailed(HttpRequestException exception)
-        {
-            return exception.StatusCode == HttpStatusCode.PreconditionFailed;
-        }
-
-        private static bool IsRemoteConflict(HttpRequestException exception)
-        {
-            return exception.StatusCode == HttpStatusCode.Conflict;
-        }
 
 
 
@@ -3757,41 +3703,11 @@ namespace Cotton.Sync
 
 
 
-        private static void Report(
-            SyncRunResult result,
-            SyncRunOptions options,
-            SyncActivityKind kind,
-            string relativePath,
-            string? details,
-            bool requiresUserAction = false,
-            bool publishActivityProgress = true)
-        {
-            SyncActivityReporter.Record(
-                result,
-                options,
-                kind,
-                relativePath,
-                details,
-                requiresUserAction,
-                publishActivityProgress);
-        }
 
-        private static void ReportTransfer(
-            SyncRunOptions options,
-            SyncTransferDirection direction,
-            string relativePath,
-            long transferredBytes,
-            long? totalBytes,
-            bool isCompleted = false)
-        {
-            SyncActivityReporter.RecordTransfer(
-                options,
-                direction,
-                relativePath,
-                transferredBytes,
-                totalBytes,
-                isCompleted);
-        }
+
+
+
+
 
         private async Task EnsureLocalContentHashAsync(
             LocalFileSnapshot local,
@@ -3930,7 +3846,7 @@ namespace Cotton.Sync
                     _metrics.CompletedDirectories);
                 int knownItemsTotal = value.EntriesExpected.GetValueOrDefault(itemsDiscovered);
                 int itemsTotal = Math.Max(itemsCompleted, Math.Max(itemsDiscovered, knownItemsTotal));
-                ReportRunProgress(
+                SyncRunProgressReporter.ReportRunProgress(
                     _options,
                     SyncRunProgressStage.CreatingPlaceholders,
                     itemsCompleted,
@@ -3940,28 +3856,6 @@ namespace Cotton.Sync
             }
         }
 
-        private static void ReportRunProgress(
-            SyncRunOptions options,
-            SyncRunProgressStage stage,
-            int filesCompleted,
-            int? filesTotal,
-            string? currentPath,
-            DateTime startedAtUtc,
-            bool isCompleted = false,
-            long bytesCompleted = 0,
-            long? bytesTotal = null)
-        {
-            SyncRunProgressReporter.Report(
-                options,
-                stage,
-                filesCompleted,
-                filesTotal,
-                currentPath,
-                startedAtUtc,
-                isCompleted,
-                bytesCompleted,
-                bytesTotal);
-        }
 
 
 

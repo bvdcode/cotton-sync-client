@@ -45,5 +45,35 @@ namespace Cotton.Sync
                 totalBytes,
                 isCompleted));
         }
+
+        public static void ReportActivity(
+            SyncRunResult result,
+            SyncRunOptions options,
+            SyncActivityKind kind,
+            string relativePath,
+            string? details,
+            bool requiresUserAction = false,
+            bool publishActivityProgress = true)
+        {
+            Record(
+                result,
+                options,
+                kind,
+                relativePath,
+                details,
+                requiresUserAction,
+                publishActivityProgress);
+        }
+
+        public static void ReportTransfer(
+            SyncRunOptions options,
+            SyncTransferDirection direction,
+            string relativePath,
+            long transferredBytes,
+            long? totalBytes,
+            bool isCompleted = false)
+        {
+            RecordTransfer(options, direction, relativePath, transferredBytes, totalBytes, isCompleted);
+        }
     }
 }

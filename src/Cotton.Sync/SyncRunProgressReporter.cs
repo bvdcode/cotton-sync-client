@@ -32,6 +32,29 @@ namespace Cotton.Sync
                 bytesTotal));
         }
 
+        public static void ReportRunProgress(
+            SyncRunOptions options,
+            SyncRunProgressStage stage,
+            int filesCompleted,
+            int? filesTotal,
+            string? currentPath,
+            DateTime startedAtUtc,
+            bool isCompleted = false,
+            long bytesCompleted = 0,
+            long? bytesTotal = null)
+        {
+            Report(
+                options,
+                stage,
+                filesCompleted,
+                filesTotal,
+                currentPath,
+                startedAtUtc,
+                isCompleted,
+                bytesCompleted,
+                bytesTotal);
+        }
+
         public static void ReportItemRunProgress(
             SyncRunOptions options,
             SyncRunProgressStage stage,
