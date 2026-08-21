@@ -2,10 +2,6 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Collections.Concurrent;
-using System.Data.Common;
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
-using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -18,15 +14,12 @@ namespace Cotton.Sync.State
     {
         private static readonly ConcurrentDictionary<string, SemaphoreSlim> WriteGates = new(StringComparer.OrdinalIgnoreCase);
         private const int DefaultSqliteTimeoutSeconds = 30;
-        private const int MaintenanceSqliteTimeoutSeconds = 120;
-        private const int DefaultPathKeyLookupBatchSize = 500;
-        private const string SqlLikeEscapeCharacter = "\\";
-        private const char SqlLikeEscapeCharacterValue = '\\';
-        private const long MinimumFreelistBytesForVacuum = 4L * 1024 * 1024;
-        private const double MinimumFreelistRatioForVacuum = 0.25d;
 
         private readonly SyncStateDbContextFactory _contextFactory;
         private readonly SyncStateStoreInitializer _initializer;
+        private readonly SyncStateStoreReader _reader;
+        private readonly SyncStateLookupReader _lookupReader;
+        private readonly SqliteSyncStateDiagnosticsReader _diagnosticsReader;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SqliteSyncStateStore" /> class.
@@ -35,6 +28,9 @@ namespace Cotton.Sync.State
         {
             _contextFactory = new SyncStateDbContextFactory(databasePath, DefaultSqliteTimeoutSeconds);
             _initializer = new SyncStateStoreInitializer(_contextFactory);
+            _reader = new SyncStateStoreReader(_contextFactory, _initializer);
+            _lookupReader = new SyncStateLookupReader(_contextFactory, _initializer);
+            _diagnosticsReader = new SqliteSyncStateDiagnosticsReader(_contextFactory, _initializer);
         }
 
         /// <inheritdoc />
@@ -44,251 +40,92 @@ namespace Cotton.Sync.State
         }
 
         /// <inheritdoc />
-        public async Task<IReadOnlyList<SyncStateEntry>> LoadPairAsync(string syncPairId, CancellationToken cancellationToken = default)
-        {
-            var entries = new List<SyncStateEntry>();
-            await foreach (SyncStateEntry entry in LoadPairEntriesAsync(syncPairId, cancellationToken)
-                               .WithCancellation(cancellationToken)
-                               .ConfigureAwait(false))
-            {
-                entries.Add(entry);
-            }
-
-            return entries;
-        }
-
-        /// <inheritdoc />
-        public async IAsyncEnumerable<SyncStateEntry> LoadPairEntriesAsync(
+        public async Task<IReadOnlyList<SyncStateEntry>> LoadPairAsync(
             string syncPairId,
-            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
-            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-            await using SyncStateDbContext context = _contextFactory.Create();
-            IAsyncEnumerable<SyncStateEntity> entities = context.SyncEntries
-                .AsNoTracking()
-                .Where(entry => entry.SyncPairId == syncPairId)
-                .OrderBy(entry => entry.RelativePathKey)
-                .AsAsyncEnumerable();
-            await foreach (SyncStateEntity entity in entities.WithCancellation(cancellationToken).ConfigureAwait(false))
-            {
-                yield return SyncStateEntityMapper.ToModel(entity);
-            }
+            return await _reader.LoadPairAsync(syncPairId, cancellationToken).ConfigureAwait(false);
         }
 
         /// <inheritdoc />
-        public async IAsyncEnumerable<SyncStateEntry> LoadPairDirectoryEntriesAsync(
+        public IAsyncEnumerable<SyncStateEntry> LoadPairEntriesAsync(
             string syncPairId,
-            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
-            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-            await using SyncStateDbContext context = _contextFactory.Create();
-            IAsyncEnumerable<SyncStateEntity> entities = context.SyncEntries
-                .AsNoTracking()
-                .Where(entry => entry.SyncPairId == syncPairId && entry.Kind == SyncEntryKind.Directory)
-                .OrderBy(entry => entry.RelativePathKey)
-                .AsAsyncEnumerable();
-            await foreach (SyncStateEntity entity in entities.WithCancellation(cancellationToken).ConfigureAwait(false))
-            {
-                yield return SyncStateEntityMapper.ToModel(entity);
-            }
+            return _reader.LoadPairEntriesAsync(syncPairId, cancellationToken);
         }
 
         /// <inheritdoc />
-        public async IAsyncEnumerable<SyncStateEntry> LoadDirectoryEntriesByPathPrefixAsync(
+        public IAsyncEnumerable<SyncStateEntry> LoadPairDirectoryEntriesAsync(
+            string syncPairId,
+            CancellationToken cancellationToken = default)
+        {
+            return _reader.LoadPairDirectoryEntriesAsync(syncPairId, cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public IAsyncEnumerable<SyncStateEntry> LoadDirectoryEntriesByPathPrefixAsync(
             string syncPairId,
             string relativePathPrefix,
-            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
-            ArgumentException.ThrowIfNullOrWhiteSpace(relativePathPrefix);
-            string prefixKey = SyncPath.ToKey(relativePathPrefix);
-            string childPattern = CreateChildPathLikePattern(prefixKey);
-            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-            await using SyncStateDbContext context = _contextFactory.Create();
-            SyncStateEntity? exactEntry = await context.SyncEntries
-                .AsNoTracking()
-                .SingleOrDefaultAsync(
-                    entry => entry.SyncPairId == syncPairId
-                        && entry.Kind == SyncEntryKind.Directory
-                        && entry.RelativePathKey == prefixKey,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (exactEntry is not null)
-            {
-                yield return SyncStateEntityMapper.ToModel(exactEntry);
-            }
-
-            IAsyncEnumerable<SyncStateEntity> entities = context.SyncEntries
-                .AsNoTracking()
-                .Where(entry => entry.SyncPairId == syncPairId
-                    && entry.Kind == SyncEntryKind.Directory
-                    && EF.Functions.Like(entry.RelativePathKey, childPattern, SqlLikeEscapeCharacter))
-                .OrderBy(entry => entry.RelativePathKey)
-                .AsAsyncEnumerable();
-            await foreach (SyncStateEntity entity in entities.WithCancellation(cancellationToken).ConfigureAwait(false))
-            {
-                yield return SyncStateEntityMapper.ToModel(entity);
-            }
+            return _reader.LoadDirectoryEntriesByPathPrefixAsync(
+                syncPairId,
+                relativePathPrefix,
+                cancellationToken);
         }
 
         /// <inheritdoc />
-        public async IAsyncEnumerable<SyncStateEntry> LoadEntriesByPathPrefixAsync(
+        public IAsyncEnumerable<SyncStateEntry> LoadEntriesByPathPrefixAsync(
             string syncPairId,
             string relativePathPrefix,
-            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
-            ArgumentException.ThrowIfNullOrWhiteSpace(relativePathPrefix);
-            string prefixKey = SyncPath.ToKey(relativePathPrefix);
-            string childPattern = CreateChildPathLikePattern(prefixKey);
-            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-            await using SyncStateDbContext context = _contextFactory.Create();
-            SyncStateEntity? exactEntry = await context.SyncEntries
-                .AsNoTracking()
-                .SingleOrDefaultAsync(
-                    entry => entry.SyncPairId == syncPairId && entry.RelativePathKey == prefixKey,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (exactEntry is not null)
-            {
-                yield return SyncStateEntityMapper.ToModel(exactEntry);
-            }
-
-            IAsyncEnumerable<SyncStateEntity> entities = context.SyncEntries
-                .AsNoTracking()
-                .Where(entry => entry.SyncPairId == syncPairId
-                    && EF.Functions.Like(entry.RelativePathKey, childPattern, SqlLikeEscapeCharacter))
-                .OrderBy(entry => entry.RelativePathKey)
-                .AsAsyncEnumerable();
-            await foreach (SyncStateEntity entity in entities.WithCancellation(cancellationToken).ConfigureAwait(false))
-            {
-                yield return SyncStateEntityMapper.ToModel(entity);
-            }
+            return _reader.LoadEntriesByPathPrefixAsync(syncPairId, relativePathPrefix, cancellationToken);
         }
 
         /// <inheritdoc />
-        public async IAsyncEnumerable<SyncStateEntry> LoadEntriesByRemoteIdsAsync(
+        public IAsyncEnumerable<SyncStateEntry> LoadEntriesByRemoteIdsAsync(
             string syncPairId,
             IEnumerable<Guid> remoteNodeIds,
             IEnumerable<Guid> remoteFileIds,
-            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
-            ArgumentNullException.ThrowIfNull(remoteNodeIds);
-            ArgumentNullException.ThrowIfNull(remoteFileIds);
-            Guid[] nodeIds = remoteNodeIds
-                .Where(static id => id != Guid.Empty)
-                .Distinct()
-                .OrderBy(static id => id)
-                .ToArray();
-            Guid[] fileIds = remoteFileIds
-                .Where(static id => id != Guid.Empty)
-                .Distinct()
-                .OrderBy(static id => id)
-                .ToArray();
-            if (nodeIds.Length == 0 && fileIds.Length == 0)
-            {
-                yield break;
-            }
-
-            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-            var yieldedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (IReadOnlyCollection<Guid> batch in CreateBatches(nodeIds, DefaultPathKeyLookupBatchSize))
-            {
-                IReadOnlyList<SyncStateEntry> entries =
-                    await LoadEntriesByRemoteNodeIdBatchAsync(syncPairId, batch, cancellationToken).ConfigureAwait(false);
-                foreach (SyncStateEntry entry in entries)
-                {
-                    if (yieldedKeys.Add(SyncPath.ToKey(entry.RelativePath)))
-                    {
-                        yield return entry;
-                    }
-                }
-            }
-
-            foreach (IReadOnlyCollection<Guid> batch in CreateBatches(fileIds, DefaultPathKeyLookupBatchSize))
-            {
-                IReadOnlyList<SyncStateEntry> entries =
-                    await LoadEntriesByRemoteFileIdBatchAsync(syncPairId, batch, cancellationToken).ConfigureAwait(false);
-                foreach (SyncStateEntry entry in entries)
-                {
-                    if (yieldedKeys.Add(SyncPath.ToKey(entry.RelativePath)))
-                    {
-                        yield return entry;
-                    }
-                }
-            }
+            return _lookupReader.LoadEntriesByRemoteIdsAsync(
+                syncPairId,
+                remoteNodeIds,
+                remoteFileIds,
+                cancellationToken);
         }
 
         /// <inheritdoc />
-        public async Task<DateTime?> GetPairLastSyncedAtUtcAsync(string syncPairId, CancellationToken cancellationToken = default)
+        public async Task<DateTime?> GetPairLastSyncedAtUtcAsync(
+            string syncPairId,
+            CancellationToken cancellationToken = default)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
-            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-            await using SyncStateDbContext context = _contextFactory.Create();
-            DateTime? lastSyncedAtUtc = await context.SyncEntries
-                .AsNoTracking()
-                .Where(entry => entry.SyncPairId == syncPairId)
-                .Select(entry => (DateTime?)entry.SyncedAtUtc)
-                .MaxAsync(cancellationToken)
-                .ConfigureAwait(false);
-            return SyncStateEntityMapper.ToUtc(lastSyncedAtUtc);
+            return await _reader.GetPairLastSyncedAtUtcAsync(syncPairId, cancellationToken).ConfigureAwait(false);
         }
 
         /// <inheritdoc />
-        public async Task<SyncChangeCursor> GetChangeCursorAsync(string syncPairId, CancellationToken cancellationToken = default)
+        public async Task<SyncChangeCursor> GetChangeCursorAsync(
+            string syncPairId,
+            CancellationToken cancellationToken = default)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
-            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-            await using SyncStateDbContext context = _contextFactory.Create();
-            SyncChangeCursorEntity? entity = await context.SyncChangeCursors
-                .AsNoTracking()
-                .SingleOrDefaultAsync(
-                    cursor => cursor.SyncPairId == syncPairId,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            return entity is null ? SyncStateEntityMapper.CreateDefaultCursor(syncPairId) : SyncStateEntityMapper.ToModel(entity);
+            return await _reader.GetChangeCursorAsync(syncPairId, cancellationToken).ConfigureAwait(false);
         }
 
         public async Task<SyncStateStoreDiagnostics> GetDiagnosticsAsync(CancellationToken cancellationToken = default)
         {
-            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-            string fullPath = Path.GetFullPath(_contextFactory.DatabasePath);
-            await using SyncStateDbContext context = _contextFactory.Create();
-            long syncEntryCount = await context.SyncEntries
-                .LongCountAsync(cancellationToken)
-                .ConfigureAwait(false);
-            long syncChangeCursorCount = await context.SyncChangeCursors
-                .LongCountAsync(cancellationToken)
-                .ConfigureAwait(false);
-            SqlitePageUsage pageUsage = await ReadPageUsageAsync(context, cancellationToken)
-                .ConfigureAwait(false);
-            long fileSizeBytes = File.Exists(fullPath) ? new FileInfo(fullPath).Length : 0;
-            return new SyncStateStoreDiagnostics(
-                fileSizeBytes,
-                pageUsage.PageCount,
-                pageUsage.FreelistCount,
-                pageUsage.PageSize,
-                syncEntryCount,
-                syncChangeCursorCount);
+            return await _diagnosticsReader.GetAsync(cancellationToken).ConfigureAwait(false);
         }
 
         /// <inheritdoc />
-        public async Task<SyncStateEntry?> GetAsync(string syncPairId, string relativePath, CancellationToken cancellationToken = default)
+        public async Task<SyncStateEntry?> GetAsync(
+            string syncPairId,
+            string relativePath,
+            CancellationToken cancellationToken = default)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
-            string key = SyncPath.ToKey(relativePath);
-            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-            await using SyncStateDbContext context = _contextFactory.Create();
-            SyncStateEntity? entity = await context.SyncEntries
-                .AsNoTracking()
-                .SingleOrDefaultAsync(
-                    entry => entry.SyncPairId == syncPairId && entry.RelativePathKey == key,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            return entity is null ? null : SyncStateEntityMapper.ToModel(entity);
+            return await _reader.GetAsync(syncPairId, relativePath, cancellationToken).ConfigureAwait(false);
         }
 
         /// <inheritdoc />
@@ -334,91 +171,24 @@ namespace Cotton.Sync.State
         }
 
         /// <inheritdoc />
-        public async IAsyncEnumerable<SyncStateEntry> LoadEntriesByPathKeysAsync(
+        public IAsyncEnumerable<SyncStateEntry> LoadEntriesByPathKeysAsync(
             string syncPairId,
             IEnumerable<string> relativePathKeys,
-            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
-            ArgumentNullException.ThrowIfNull(relativePathKeys);
-            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-            var keyBatch = new List<string>(DefaultPathKeyLookupBatchSize);
-            foreach (string key in relativePathKeys)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (string.IsNullOrWhiteSpace(key) || SyncPathIgnoreRules.ShouldIgnore(key))
-                {
-                    continue;
-                }
-
-                string normalizedKey = SyncPath.ToKey(key);
-                if (!keyBatch.Contains(normalizedKey, StringComparer.OrdinalIgnoreCase))
-                {
-                    keyBatch.Add(normalizedKey);
-                }
-
-                if (keyBatch.Count >= DefaultPathKeyLookupBatchSize)
-                {
-                    foreach (SyncStateEntry entry in await LoadEntriesByPathKeyBatchAsync(syncPairId, keyBatch, cancellationToken).ConfigureAwait(false))
-                    {
-                        yield return entry;
-                    }
-
-                    keyBatch.Clear();
-                }
-            }
-
-            if (keyBatch.Count > 0)
-            {
-                foreach (SyncStateEntry entry in await LoadEntriesByPathKeyBatchAsync(syncPairId, keyBatch, cancellationToken).ConfigureAwait(false))
-                {
-                    yield return entry;
-                }
-            }
+            return _lookupReader.LoadEntriesByPathKeysAsync(syncPairId, relativePathKeys, cancellationToken);
         }
 
         /// <inheritdoc />
-        public async IAsyncEnumerable<SyncVirtualFilesResumeEntry> LoadVirtualFilesResumeEntriesByPathKeysAsync(
+        public IAsyncEnumerable<SyncVirtualFilesResumeEntry> LoadVirtualFilesResumeEntriesByPathKeysAsync(
             string syncPairId,
             IEnumerable<string> relativePathKeys,
-            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
-            ArgumentNullException.ThrowIfNull(relativePathKeys);
-            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
-            var keyBatch = new List<string>(DefaultPathKeyLookupBatchSize);
-            foreach (string key in relativePathKeys)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (string.IsNullOrWhiteSpace(key) || SyncPathIgnoreRules.ShouldIgnore(key))
-                {
-                    continue;
-                }
-
-                string normalizedKey = SyncPath.ToKey(key);
-                if (!keyBatch.Contains(normalizedKey, StringComparer.OrdinalIgnoreCase))
-                {
-                    keyBatch.Add(normalizedKey);
-                }
-
-                if (keyBatch.Count >= DefaultPathKeyLookupBatchSize)
-                {
-                    foreach (SyncVirtualFilesResumeEntry entry in await LoadVirtualFilesResumeEntriesByPathKeyBatchAsync(syncPairId, keyBatch, cancellationToken).ConfigureAwait(false))
-                    {
-                        yield return entry;
-                    }
-
-                    keyBatch.Clear();
-                }
-            }
-
-            if (keyBatch.Count > 0)
-            {
-                foreach (SyncVirtualFilesResumeEntry entry in await LoadVirtualFilesResumeEntriesByPathKeyBatchAsync(syncPairId, keyBatch, cancellationToken).ConfigureAwait(false))
-                {
-                    yield return entry;
-                }
-            }
+            return _lookupReader.LoadVirtualFilesResumeEntriesByPathKeysAsync(
+                syncPairId,
+                relativePathKeys,
+                cancellationToken);
         }
 
         /// <inheritdoc />
@@ -572,8 +342,6 @@ namespace Cotton.Sync.State
                         .ConfigureAwait(false);
                     await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
                 }
-
-                await TryCompactLargeFreelistAsync(cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -629,213 +397,12 @@ namespace Cotton.Sync.State
             await _initializer.EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        private static string CreateChildPathLikePattern(string prefixKey)
-        {
-            return EscapeSqlLikePattern(prefixKey + "/") + "%";
-        }
-
-        private static string EscapeSqlLikePattern(string value)
-        {
-            StringBuilder builder = new(value.Length);
-            foreach (char character in value)
-            {
-                if (character == SqlLikeEscapeCharacterValue || character == '%' || character == '_')
-                {
-                    builder.Append(SqlLikeEscapeCharacterValue);
-                }
-
-                builder.Append(character);
-            }
-
-            return builder.ToString();
-        }
-
-        private static IEnumerable<IReadOnlyCollection<T>> CreateBatches<T>(IReadOnlyList<T> items, int batchSize)
-        {
-            ArgumentNullException.ThrowIfNull(items);
-            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
-            for (int index = 0; index < items.Count; index += batchSize)
-            {
-                int count = Math.Min(batchSize, items.Count - index);
-                T[] batch = new T[count];
-                for (int offset = 0; offset < count; offset++)
-                {
-                    batch[offset] = items[index + offset];
-                }
-
-                yield return batch;
-            }
-        }
-
-        private async Task<IReadOnlyList<SyncStateEntry>> LoadEntriesByPathKeyBatchAsync(
-            string syncPairId,
-            IReadOnlyCollection<string> keys,
-            CancellationToken cancellationToken)
-        {
-            await using SyncStateDbContext context = _contextFactory.Create();
-            List<SyncStateEntity> entities = await context.SyncEntries
-                .AsNoTracking()
-                .Where(entry => entry.SyncPairId == syncPairId && keys.Contains(entry.RelativePathKey))
-                .OrderBy(entry => entry.RelativePathKey)
-                .ToListAsync(cancellationToken)
-                .ConfigureAwait(false);
-            return entities.Select(SyncStateEntityMapper.ToModel).ToArray();
-        }
-
-        private async Task<IReadOnlyList<SyncStateEntry>> LoadEntriesByRemoteNodeIdBatchAsync(
-            string syncPairId,
-            IReadOnlyCollection<Guid> remoteNodeIds,
-            CancellationToken cancellationToken)
-        {
-            await using SyncStateDbContext context = _contextFactory.Create();
-            List<SyncStateEntity> entities = await context.SyncEntries
-                .AsNoTracking()
-                .Where(entry => entry.SyncPairId == syncPairId
-                    && entry.Kind == SyncEntryKind.Directory
-                    && entry.RemoteNodeId.HasValue
-                    && remoteNodeIds.Contains(entry.RemoteNodeId.Value))
-                .OrderBy(entry => entry.RelativePathKey)
-                .ToListAsync(cancellationToken)
-                .ConfigureAwait(false);
-            return entities.Select(SyncStateEntityMapper.ToModel).ToArray();
-        }
-
-        private async Task<IReadOnlyList<SyncStateEntry>> LoadEntriesByRemoteFileIdBatchAsync(
-            string syncPairId,
-            IReadOnlyCollection<Guid> remoteFileIds,
-            CancellationToken cancellationToken)
-        {
-            await using SyncStateDbContext context = _contextFactory.Create();
-            List<SyncStateEntity> entities = await context.SyncEntries
-                .AsNoTracking()
-                .Where(entry => entry.SyncPairId == syncPairId
-                    && entry.Kind == SyncEntryKind.File
-                    && entry.RemoteFileId.HasValue
-                    && remoteFileIds.Contains(entry.RemoteFileId.Value))
-                .OrderBy(entry => entry.RelativePathKey)
-                .ToListAsync(cancellationToken)
-                .ConfigureAwait(false);
-            return entities.Select(SyncStateEntityMapper.ToModel).ToArray();
-        }
-
-        private async Task<IReadOnlyList<SyncVirtualFilesResumeEntry>> LoadVirtualFilesResumeEntriesByPathKeyBatchAsync(
-            string syncPairId,
-            IReadOnlyCollection<string> keys,
-            CancellationToken cancellationToken)
-        {
-            await using SyncStateDbContext context = _contextFactory.Create();
-            return await context.SyncEntries
-                .AsNoTracking()
-                .Where(entry => entry.SyncPairId == syncPairId && keys.Contains(entry.RelativePathKey))
-                .OrderBy(entry => entry.RelativePathKey)
-                .Select(entry => new SyncVirtualFilesResumeEntry(
-                    entry.RelativePath,
-                    entry.Kind,
-                    entry.RemoteNodeId,
-                    entry.RemoteFileId,
-                    entry.RemoteContentHash,
-                    entry.RemoteETag,
-                    entry.PlaceholderHydrationState,
-                    entry.PlaceholderIdentity != null && entry.PlaceholderIdentity.Length > 0))
-                .ToArrayAsync(cancellationToken)
-                .ConfigureAwait(false);
-        }
-
         private SemaphoreSlim GetWriteGate()
         {
             return WriteGates.GetOrAdd(
                 Path.GetFullPath(_contextFactory.DatabasePath),
                 static _ => new SemaphoreSlim(1, 1));
         }
-
-        private async Task TryCompactLargeFreelistAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                await CompactLargeFreelistAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException)
-            {
-                Trace.TraceWarning(
-                    "Failed to compact sync state database after deleting a sync pair. {0}",
-                    exception);
-            }
-        }
-
-        private async Task CompactLargeFreelistAsync(CancellationToken cancellationToken)
-        {
-            await using SyncStateDbContext context = _contextFactory.Create();
-            SqlitePageUsage pageUsage = await ReadPageUsageAsync(context, cancellationToken).ConfigureAwait(false);
-            if (!ShouldVacuumFreelist(pageUsage.PageCount, pageUsage.FreelistCount, pageUsage.PageSize))
-            {
-                return;
-            }
-
-            await context.Database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                DbConnection connection = context.Database.GetDbConnection();
-                await using DbCommand command = connection.CreateCommand();
-                command.CommandText = "VACUUM;";
-                command.CommandTimeout = MaintenanceSqliteTimeoutSeconds;
-                await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
-            finally
-            {
-                await context.Database.CloseConnectionAsync().ConfigureAwait(false);
-            }
-        }
-
-        private static bool ShouldVacuumFreelist(long pageCount, long freelistCount, long pageSize)
-        {
-            if (pageCount <= 0 || freelistCount <= 0 || pageSize <= 0)
-            {
-                return false;
-            }
-
-            long freelistBytes = freelistCount > long.MaxValue / pageSize
-                ? long.MaxValue
-                : freelistCount * pageSize;
-            double freelistRatio = freelistCount / (double)pageCount;
-            return freelistBytes >= MinimumFreelistBytesForVacuum
-                && freelistRatio >= MinimumFreelistRatioForVacuum;
-        }
-
-        private static async Task<SqlitePageUsage> ReadPageUsageAsync(
-            SyncStateDbContext context,
-            CancellationToken cancellationToken)
-        {
-            await context.Database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                DbConnection connection = context.Database.GetDbConnection();
-                long pageCount = await ExecuteScalarLongAsync(connection, "PRAGMA page_count;", cancellationToken)
-                    .ConfigureAwait(false);
-                long freelistCount = await ExecuteScalarLongAsync(connection, "PRAGMA freelist_count;", cancellationToken)
-                    .ConfigureAwait(false);
-                long pageSize = await ExecuteScalarLongAsync(connection, "PRAGMA page_size;", cancellationToken)
-                    .ConfigureAwait(false);
-                return new SqlitePageUsage(pageCount, freelistCount, pageSize);
-            }
-            finally
-            {
-                await context.Database.CloseConnectionAsync().ConfigureAwait(false);
-            }
-        }
-
-        private static async Task<long> ExecuteScalarLongAsync(
-            DbConnection connection,
-            string commandText,
-            CancellationToken cancellationToken)
-        {
-            await using DbCommand command = connection.CreateCommand();
-            command.CommandText = commandText;
-            command.CommandTimeout = DefaultSqliteTimeoutSeconds;
-            object? result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-            return Convert.ToInt64(result, System.Globalization.CultureInfo.InvariantCulture);
-        }
-
-        private readonly record struct SqlitePageUsage(long PageCount, long FreelistCount, long PageSize);
 
     }
 }
