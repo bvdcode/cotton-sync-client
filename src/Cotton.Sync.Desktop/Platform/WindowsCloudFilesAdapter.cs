@@ -2,7 +2,6 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.SyncPairs;
-using Cotton.Files;
 using Cotton.Nodes;
 using Cotton.Sync.Local;
 using Cotton.Sync.State;
@@ -1167,46 +1166,24 @@ namespace Cotton.Sync.Desktop.Platform
             SyncStateEntry fileState,
             CancellationToken cancellationToken = default)
         {
-            ValidateUploadedFilePlaceholderArguments(syncPair, fileState);
             WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
-            string normalizedPath = SyncPath.Normalize(fileState.RelativePath);
+            WindowsCloudFilesUploadFinalizationPreparation preparation =
+                WindowsCloudFilesUploadFinalizationPolicy.Prepare(
+                    syncPair,
+                    registration,
+                    fileState,
+                    _isReparsePoint);
+            string normalizedPath = preparation.NormalizedPath;
+            string fullPlaceholderPath = preparation.FullPlaceholderPath;
             PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
             EnsureNoReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
-            string fullPlaceholderPath = Path.Combine(
-                placeholderPath.BaseDirectoryPath,
-                placeholderPath.RelativeFileName);
-            EnsureUploadedLocalFileExists(fullPlaceholderPath);
-            byte[] fileIdentity = CreateUploadedFileIdentity(
-                syncPair,
-                registration.LocalRootPath,
-                normalizedPath,
-                fullPlaceholderPath,
-                fileState);
-            string expectedContentHash = RequireUploadedLocalContentHash(fileState.LocalContentHash);
-            long expectedSizeBytes = RequireUploadedLocalSize(fileState.LocalSizeBytes);
-            DateTime expectedLastWriteUtc = RequireUploadedLocalLastWrite(fileState.LocalLastWriteUtc);
-            WindowsCloudFilesUploadedFileFinalizationMode mode = _isReparsePoint(fullPlaceholderPath)
-                ? WindowsCloudFilesUploadedFileFinalizationMode.UpdateExistingPlaceholder
-                : WindowsCloudFilesUploadedFileFinalizationMode.ConvertRegularFile;
-            WindowsCloudFilesNativePlaceholder nativePlaceholder = new(
-                placeholderPath.BaseDirectoryPath,
-                placeholderPath.RelativeFileName,
-                fileIdentity,
-                expectedSizeBytes,
-                fileState.SyncedAtUtc.ToUniversalTime(),
-                expectedLastWriteUtc);
             WindowsCloudFilesUploadedFileFinalizationResult finalization;
             const string operation = "finalize-uploaded-file-placeholder";
             try
             {
                 finalization = await _nativeApi
                     .FinalizeUploadedFileAsync(
-                        new WindowsCloudFilesUploadedFileFinalizationRequest(
-                            nativePlaceholder,
-                            expectedContentHash,
-                            expectedSizeBytes,
-                            expectedLastWriteUtc,
-                            mode),
+                        preparation.Request,
                         cancellationToken)
                     .ConfigureAwait(false);
                 if (!finalization.IsFinalized)
@@ -1257,111 +1234,19 @@ namespace Cotton.Sync.Desktop.Platform
                 normalizedPath,
                 "Uploaded local content was atomically validated and finalized as a Cloud Files placeholder.");
             return new RemoteFilePlaceholderResult(
-                fileIdentity,
+                preparation.FileIdentity,
                 SyncPlaceholderHydrationState.Hydrated,
                 finalization.LocalSizeBytes,
                 finalization.LocalLastWriteUtc);
         }
 
-        private static void ValidateUploadedFilePlaceholderArguments(
-            SyncPairSettings syncPair,
-            SyncStateEntry fileState)
-        {
-            ArgumentNullException.ThrowIfNull(syncPair);
-            ArgumentNullException.ThrowIfNull(fileState);
-            if (fileState.Kind != SyncEntryKind.File)
-            {
-                throw new InvalidOperationException("Uploaded Cloud Files finalization requires a file state entry.");
-            }
-        }
 
-        private static void EnsureUploadedLocalFileExists(string fullPlaceholderPath)
-        {
-            if (!File.Exists(fullPlaceholderPath))
-            {
-                throw new FileNotFoundException(
-                    "Uploaded Cloud Files placeholder finalization requires the uploaded local file.",
-                    fullPlaceholderPath);
-            }
-        }
 
-        private static byte[] CreateUploadedFileIdentity(
-            SyncPairSettings syncPair,
-            string localRootPath,
-            string normalizedPath,
-            string fullPlaceholderPath,
-            SyncStateEntry fileState)
-        {
-            Guid remoteFileId = RequireUploadedRemoteIdentity(fileState.RemoteFileId);
-            Guid remoteNodeId = RequireUploadedRemoteIdentity(fileState.RemoteNodeId);
-            Guid remoteFileManifestId = RequireUploadedRemoteIdentity(fileState.RemoteFileManifestId);
-            string remoteContentHash = RequireUploadedRemoteContentHash(fileState.RemoteContentHash);
-            long sizeBytes = fileState.RemoteSizeBytes
-                ?? fileState.LocalSizeBytes
-                ?? new FileInfo(fullPlaceholderPath).Length;
-            DateTime updatedAt = fileState.LocalLastWriteUtc?.ToUniversalTime()
-                ?? fileState.SyncedAtUtc.ToUniversalTime();
-            return CreateFileIdentity(
-                new RemoteFilePlaceholderRequest(
-                    syncPair.Id.ToString("D"),
-                    localRootPath,
-                    syncPair.RemoteRootNodeId,
-                    normalizedPath,
-                    new NodeFileManifestDto
-                    {
-                        Id = remoteFileId,
-                        NodeId = remoteNodeId,
-                        FileManifestId = remoteFileManifestId,
-                        OriginalNodeFileId = fileState.RemoteOriginalNodeFileId ?? remoteFileId,
-                        SizeBytes = sizeBytes,
-                        ContentHash = remoteContentHash,
-                        ETag = fileState.RemoteETag ?? string.Empty,
-                        CreatedAt = fileState.SyncedAtUtc.ToUniversalTime(),
-                        UpdatedAt = updatedAt,
-                        Name = Path.GetFileName(normalizedPath),
-                    }),
-                normalizedPath);
-        }
 
-        private static Guid RequireUploadedRemoteIdentity(Guid? value)
-        {
-            return value ?? throw new InvalidOperationException(
-                "Uploaded Cloud Files placeholder finalization requires remote file identity in sync state.");
-        }
 
-        private static string RequireUploadedRemoteContentHash(string? value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                throw new InvalidOperationException(
-                    "Uploaded Cloud Files placeholder finalization requires remote file identity in sync state.");
-            }
 
-            return value;
-        }
 
-        private static string RequireUploadedLocalContentHash(string? value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                throw new InvalidOperationException(
-                    "Uploaded Cloud Files placeholder finalization requires the uploaded local content hash.");
-            }
 
-            return value;
-        }
-
-        private static long RequireUploadedLocalSize(long? value)
-        {
-            return value ?? throw new InvalidOperationException(
-                "Uploaded Cloud Files placeholder finalization requires the uploaded local file size.");
-        }
-
-        private static DateTime RequireUploadedLocalLastWrite(DateTime? value)
-        {
-            return value?.ToUniversalTime() ?? throw new InvalidOperationException(
-                "Uploaded Cloud Files placeholder finalization requires the uploaded local write timestamp.");
-        }
 
         public void SetSyncRootInSyncState(SyncPairSettings syncPair)
         {
