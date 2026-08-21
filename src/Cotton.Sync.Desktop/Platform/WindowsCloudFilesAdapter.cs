@@ -29,6 +29,7 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly WindowsCloudFilesPlaceholderInspector _placeholderInspector;
         private readonly WindowsCloudFilesFilePlaceholderService _filePlaceholderService;
         private readonly WindowsCloudFilesDirectoryPlaceholderService _directoryPlaceholderService;
+        private readonly WindowsCloudFilesAvailabilityManager _availabilityManager;
 
         public WindowsCloudFilesAdapter(
             WindowsVirtualFilesRootSafetyPolicy? rootSafety = null,
@@ -92,6 +93,14 @@ namespace Cotton.Sync.Desktop.Platform
                 _isReparsePoint,
                 _isCloudFilesReparsePoint,
                 _readFileAttributes,
+                _registrationManager,
+                _operationExecutor,
+                _pathGuard,
+                _inSyncManager);
+            _availabilityManager = new WindowsCloudFilesAvailabilityManager(
+                _nativeApi,
+                _diagnostics,
+                _isReparsePoint,
                 _registrationManager,
                 _operationExecutor,
                 _pathGuard,
@@ -163,38 +172,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         public void DehydratePlaceholder(SyncPairSettings syncPair, string relativePath)
         {
-            ArgumentNullException.ThrowIfNull(syncPair);
-            ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
-            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
-            string normalizedPath = SyncPath.Normalize(relativePath);
-            PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
-            _pathGuard.EnsureNoForeignReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
-            string fullPlaceholderPath = Path.Combine(
-                placeholderPath.BaseDirectoryPath,
-                placeholderPath.RelativeFileName);
-            try
-            {
-                _nativeApi.DehydratePlaceholder(fullPlaceholderPath);
-            }
-            catch (Exception exception)
-            {
-                _operationExecutor.RecordFailure(
-                    "dehydrate-placeholder",
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath,
-                    exception);
-                throw;
-            }
-
-            _diagnostics.Record(
-                "dehydrate-placeholder",
-                "completed",
-                syncPair.Id.ToString(),
-                registration.LocalRootPath,
-                normalizedPath,
-                "Windows Cloud Files placeholder was dehydrated.");
-            _inSyncManager.NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: false);
+            _availabilityManager.DehydratePlaceholder(syncPair, relativePath);
         }
 
         public async Task<bool> DehydratePlaceholderIfContentMatchesAsync(
@@ -204,130 +182,19 @@ namespace Cotton.Sync.Desktop.Platform
             Action? contentValidated,
             CancellationToken cancellationToken = default)
         {
-            ArgumentNullException.ThrowIfNull(syncPair);
-            ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
-            ArgumentException.ThrowIfNullOrWhiteSpace(expectedContentHash);
-            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
-            string normalizedPath = SyncPath.Normalize(relativePath);
-            PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
-            _pathGuard.EnsureNoForeignReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
-            string fullPlaceholderPath = Path.Combine(
-                placeholderPath.BaseDirectoryPath,
-                placeholderPath.RelativeFileName);
-            bool contentMatched;
-            try
-            {
-                contentMatched = await _nativeApi
-                    .DehydratePlaceholderIfContentMatchesAsync(
-                        fullPlaceholderPath,
-                        expectedContentHash,
-                        contentValidated,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception exception)
-            {
-                _operationExecutor.RecordFailure(
-                    "dehydrate-placeholder",
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath,
-                    exception);
-                throw;
-            }
-
-            if (!contentMatched)
-            {
-                return false;
-            }
-
-            _diagnostics.Record(
-                "dehydrate-placeholder",
-                "completed",
-                syncPair.Id.ToString(),
-                registration.LocalRootPath,
-                normalizedPath,
-                "Windows Cloud Files placeholder was atomically validated and dehydrated.");
-            _inSyncManager.NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: false);
-            return true;
+            return await _availabilityManager
+                .DehydratePlaceholderIfContentMatchesAsync(
+                    syncPair,
+                    relativePath,
+                    expectedContentHash,
+                    contentValidated,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
 
         public void HydratePlaceholder(SyncPairSettings syncPair, string relativePath)
         {
-            ArgumentNullException.ThrowIfNull(syncPair);
-            ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
-            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
-            string normalizedPath = SyncPath.Normalize(relativePath);
-            PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
-            _pathGuard.EnsureNoForeignReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
-            string fullPlaceholderPath = Path.Combine(
-                placeholderPath.BaseDirectoryPath,
-                placeholderPath.RelativeFileName);
-            const string operation = "hydrate-placeholder";
-            if (!File.Exists(fullPlaceholderPath))
-            {
-                _diagnostics.Record(
-                    operation,
-                    "skipped",
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath,
-                    "Windows Cloud Files hydration was skipped for a missing placeholder.");
-                return;
-            }
-
-            if (!_isReparsePoint(fullPlaceholderPath))
-            {
-                _diagnostics.Record(
-                    operation,
-                    "skipped",
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath,
-                    "Windows Cloud Files hydration was skipped for a non-placeholder file.");
-                return;
-            }
-
-            try
-            {
-                _operationExecutor.ExecuteWithTransientPathRetry(
-                    () => _nativeApi.HydratePlaceholder(fullPlaceholderPath),
-                    operation,
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath);
-                _operationExecutor.ExecuteWithTransientPathRetry(
-                    () => _nativeApi.SetPinState(fullPlaceholderPath, WindowsCloudFilesPinState.Pinned),
-                    "set-pin-state",
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath);
-                _operationExecutor.ExecuteWithTransientPathRetry(
-                    () => _inSyncManager.SetAndVerifyInSyncState(fullPlaceholderPath),
-                    "set-in-sync-state",
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath);
-                _inSyncManager.NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: false);
-            }
-            catch (Exception exception)
-            {
-                _operationExecutor.RecordFailure(
-                    operation,
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath,
-                    exception);
-                throw;
-            }
-
-            _diagnostics.Record(
-                operation,
-                "completed",
-                syncPair.Id.ToString(),
-                registration.LocalRootPath,
-                normalizedPath,
-                "Windows Cloud Files placeholder was hydrated for offline availability.");
+            _availabilityManager.HydratePlaceholder(syncPair, relativePath);
         }
 
         public void SetInSyncState(SyncPairSettings syncPair, string relativePath)
@@ -337,70 +204,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         public void PinPlaceholder(SyncPairSettings syncPair, string relativePath)
         {
-            ArgumentNullException.ThrowIfNull(syncPair);
-            ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
-            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
-            string normalizedPath = SyncPath.Normalize(relativePath);
-            PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
-            _pathGuard.EnsureNoForeignReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
-            string fullPlaceholderPath = Path.Combine(
-                placeholderPath.BaseDirectoryPath,
-                placeholderPath.RelativeFileName);
-            const string operation = "pin-placeholder";
-            bool isFile = File.Exists(fullPlaceholderPath);
-            bool isDirectory = Directory.Exists(fullPlaceholderPath);
-            if (!isFile && !isDirectory)
-            {
-                _diagnostics.Record(
-                    operation,
-                    "skipped",
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath,
-                    "Windows Cloud Files pin state was skipped for a missing placeholder.");
-                return;
-            }
-
-            if (isFile && !_isReparsePoint(fullPlaceholderPath))
-            {
-                _diagnostics.Record(
-                    operation,
-                    "skipped",
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath,
-                    "Windows Cloud Files pin state was skipped for a non-placeholder file.");
-                return;
-            }
-
-            try
-            {
-                _operationExecutor.ExecuteWithTransientPathRetry(
-                    () => _nativeApi.SetPinState(fullPlaceholderPath, WindowsCloudFilesPinState.Pinned),
-                    operation,
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath);
-                _inSyncManager.NotifyShellPathUpdated(fullPlaceholderPath, isDirectory);
-            }
-            catch (Exception exception)
-            {
-                _operationExecutor.RecordFailure(
-                    operation,
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath,
-                    exception);
-                throw;
-            }
-
-            _diagnostics.Record(
-                operation,
-                "completed",
-                syncPair.Id.ToString(),
-                registration.LocalRootPath,
-                normalizedPath,
-                "Windows Cloud Files placeholder was pinned for offline availability.");
+            _availabilityManager.PinPlaceholder(syncPair, relativePath);
         }
 
         public async Task<RemoteFilePlaceholderResult> FinalizeUploadedFilePlaceholderAsync(
