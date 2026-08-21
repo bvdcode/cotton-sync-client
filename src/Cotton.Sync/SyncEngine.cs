@@ -16,6 +16,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using static Cotton.Sync.SyncDeletePlanner;
 using static Cotton.Sync.SyncFileStateEvaluator;
 using static Cotton.Sync.SyncPathOperations;
+using static Cotton.Sync.SyncRunProgressReporter;
 using static Cotton.Sync.SyncTransferPlanner;
 
 namespace Cotton.Sync
@@ -25,11 +26,7 @@ namespace Cotton.Sync
     /// </summary>
     public class SyncEngine : ISyncEngine
     {
-        private const int RunProgressDetailedItemInterval = 25;
-        private const int RunProgressDetailedItemLimit = 50_000;
-        private const int RunProgressSparseItemInterval = 100;
         private static readonly TimeSpan InitialVirtualFilesHeartbeatLogInterval = TimeSpan.FromSeconds(30);
-        private static readonly TimeSpan RunProgressReportTimeInterval = TimeSpan.FromMilliseconds(250);
         private static readonly StringComparer PathComparer = StringComparer.OrdinalIgnoreCase;
         private readonly ILocalFileScanner _localScanner;
         private readonly ILocalFileContentHasher? _localContentHasher;
@@ -107,7 +104,7 @@ namespace Cotton.Sync
             cancellationToken.ThrowIfCancellationRequested();
 
             SyncRunOptions runOptions = options ?? new SyncRunOptions();
-            ValidateOptions(runOptions);
+            SyncRunOptionsValidator.Validate(runOptions);
             DateTime startedAtUtc = DateTime.UtcNow;
             bool initialWindowsVirtualFilesStreamingCanApply =
                 CanRunInitialWindowsVirtualFilesStreaming(syncPair, runOptions);
@@ -5920,65 +5917,6 @@ namespace Cotton.Sync
 
 
 
-        private static void ValidateOptions(SyncRunOptions options)
-        {
-            ArgumentNullException.ThrowIfNull(options.Scope);
-            if (options.MinimumLocalUploadAge < TimeSpan.Zero)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(options),
-                    "Minimum local upload age cannot be negative.");
-            }
-
-            if (options.MaximumLocalDeletesPerRun < 0)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(options),
-                    "Maximum local deletes per run cannot be negative.");
-            }
-
-            if (options.MaximumRemoteDeletesPerRun < 0)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(options),
-                    "Maximum remote deletes per run cannot be negative.");
-            }
-
-            if (options.MaximumStoredResultActivities < 0)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(options),
-                    "Maximum stored result activities cannot be negative.");
-            }
-
-            if (options.InitialVirtualFilesPopulationQueueCapacity <= 0)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(options),
-                    "Initial virtual-files population queue capacity must be positive.");
-            }
-
-            if (options.InitialVirtualFilesStateBatchSize <= 0)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(options),
-                    "Initial virtual-files state batch size must be positive.");
-            }
-
-            if (options.InitialVirtualFilesPlaceholderConcurrency <= 0)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(options),
-                    "Initial virtual-files placeholder concurrency must be positive.");
-            }
-
-            if (options.InitialVirtualFilesPlaceholderBatchSize <= 0)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(options),
-                    "Initial virtual-files placeholder batch size must be positive.");
-            }
-        }
 
 
 
@@ -6394,82 +6332,8 @@ namespace Cotton.Sync
                 bytesTotal);
         }
 
-        private static void ReportItemRunProgress(
-            SyncRunOptions options,
-            SyncRunProgressStage stage,
-            int itemsCompleted,
-            int itemsTotal,
-            string? currentPath,
-            DateTime startedAtUtc,
-            ref DateTime? lastReportedAtUtc,
-            long bytesCompleted = 0,
-            long? bytesTotal = null)
-        {
-            DateTime occurredAtUtc = DateTime.UtcNow;
-            if (!ShouldReportItemRunProgress(itemsCompleted, itemsTotal, lastReportedAtUtc, occurredAtUtc))
-            {
-                return;
-            }
 
-            lastReportedAtUtc = occurredAtUtc;
 
-            ReportRunProgress(
-                options,
-                stage,
-                itemsCompleted,
-                itemsTotal,
-                currentPath,
-                startedAtUtc,
-                bytesCompleted: bytesCompleted,
-                bytesTotal: bytesTotal);
-        }
 
-        private static bool ShouldReportItemRunProgress(
-            int itemsCompleted,
-            int itemsTotal,
-            DateTime? lastReportedAtUtc,
-            DateTime occurredAtUtc)
-        {
-            int itemInterval = GetRunProgressReportItemInterval(itemsTotal);
-            return itemsTotal <= itemInterval
-                || itemsCompleted == 0
-                || itemsCompleted == itemsTotal
-                || itemsCompleted % itemInterval == 0
-                || (lastReportedAtUtc.HasValue
-                    && occurredAtUtc - lastReportedAtUtc.Value >= RunProgressReportTimeInterval);
-        }
-
-        private static int GetRunProgressReportItemInterval(int itemsTotal)
-        {
-            return itemsTotal <= RunProgressDetailedItemLimit
-                ? RunProgressDetailedItemInterval
-                : RunProgressSparseItemInterval;
-        }
-
-        private static async ValueTask YieldAfterLargeBatchAsync(
-            SyncRunOptions options,
-            int itemsCompleted,
-            int itemsTotal,
-            CancellationToken cancellationToken)
-        {
-            int itemInterval = GetRunProgressReportItemInterval(itemsTotal);
-            if (itemsTotal <= itemInterval
-                || itemsCompleted <= 0
-                || itemsCompleted >= itemsTotal
-                || itemsCompleted % itemInterval != 0)
-            {
-                return;
-            }
-
-            if (options.CooperativeYieldAsync is { } cooperativeYieldAsync)
-            {
-                await cooperativeYieldAsync(cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            cancellationToken.ThrowIfCancellationRequested();
-            await Task.Yield();
-            cancellationToken.ThrowIfCancellationRequested();
-        }
     }
 }
