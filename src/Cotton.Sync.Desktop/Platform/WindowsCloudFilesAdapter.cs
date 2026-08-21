@@ -30,6 +30,7 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly WindowsCloudFilesNativeOperationExecutor _operationExecutor;
         private readonly WindowsCloudFilesPathGuard _pathGuard;
         private readonly WindowsCloudFilesInSyncManager _inSyncManager;
+        private readonly WindowsCloudFilesPlaceholderInspector _placeholderInspector;
 
         public WindowsCloudFilesAdapter(
             WindowsVirtualFilesRootSafetyPolicy? rootSafety = null,
@@ -68,6 +69,12 @@ namespace Cotton.Sync.Desktop.Platform
                 _isReparsePoint,
                 _registrationManager,
                 _pathGuard,
+                _operationExecutor);
+            _placeholderInspector = new WindowsCloudFilesPlaceholderInspector(
+                _nativeApi,
+                _registrationManager,
+                _pathGuard,
+                _inSyncManager,
                 _operationExecutor);
         }
 
@@ -1127,43 +1134,16 @@ namespace Cotton.Sync.Desktop.Platform
             _inSyncManager.SetSyncRootInSyncState(syncPair);
         }
 
-        public WindowsCloudFilesPlaceholderState GetPlaceholderState(SyncPairSettings syncPair, string? relativePath = null)
+        public WindowsCloudFilesPlaceholderState GetPlaceholderState(
+            SyncPairSettings syncPair,
+            string? relativePath = null)
         {
-            ArgumentNullException.ThrowIfNull(syncPair);
-            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
-            string? normalizedPath = null;
-            string fullPlaceholderPath = registration.LocalRootPath;
-            if (!string.IsNullOrWhiteSpace(relativePath))
-            {
-                normalizedPath = SyncPath.Normalize(relativePath);
-                PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
-                _pathGuard.EnsureNoForeignReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
-                fullPlaceholderPath = Path.Combine(
-                    placeholderPath.BaseDirectoryPath,
-                    placeholderPath.RelativeFileName);
-            }
-
-            const string operation = "get-placeholder-state";
-            try
-            {
-                return _nativeApi.GetPlaceholderState(fullPlaceholderPath);
-            }
-            catch (Exception exception)
-            {
-                _operationExecutor.RecordFailure(
-                    operation,
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath,
-                    exception);
-                throw;
-            }
+            return _placeholderInspector.GetState(syncPair, relativePath);
         }
 
         public byte[] GetPlaceholderIdentity(SyncPairSettings syncPair, string relativePath)
         {
-            string fullPlaceholderPath = ResolveTrackedPlaceholderPath(syncPair, relativePath);
-            return _nativeApi.GetPlaceholderIdentity(fullPlaceholderPath);
+            return _placeholderInspector.GetIdentity(syncPair, relativePath);
         }
 
         public void UpdatePlaceholderIdentity(
@@ -1171,22 +1151,9 @@ namespace Cotton.Sync.Desktop.Platform
             string relativePath,
             byte[] placeholderIdentity)
         {
-            ArgumentNullException.ThrowIfNull(placeholderIdentity);
-            string fullPlaceholderPath = ResolveTrackedPlaceholderPath(syncPair, relativePath);
-            _nativeApi.UpdatePlaceholderIdentity(fullPlaceholderPath, placeholderIdentity);
-            _inSyncManager.NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: false);
+            _placeholderInspector.UpdateIdentity(syncPair, relativePath, placeholderIdentity);
         }
 
-        private string ResolveTrackedPlaceholderPath(SyncPairSettings syncPair, string relativePath)
-        {
-            ArgumentNullException.ThrowIfNull(syncPair);
-            ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
-            WindowsCloudFilesSyncRootRegistration registration = CreateRegistration(syncPair);
-            string normalizedPath = SyncPath.Normalize(relativePath);
-            PlaceholderPath placeholderPath = ResolvePlaceholderPath(registration.LocalRootPath, normalizedPath);
-            _pathGuard.EnsureNoForeignReparsePointDescendant(registration.LocalRootPath, placeholderPath.BaseDirectoryPath);
-            return Path.Combine(placeholderPath.BaseDirectoryPath, placeholderPath.RelativeFileName);
-        }
 
 
 
