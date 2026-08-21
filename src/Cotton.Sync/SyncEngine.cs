@@ -64,6 +64,8 @@ namespace Cotton.Sync
         private readonly SyncRemoteFileTransfer _fileTransfer;
         private readonly SyncFileConflictResolver _conflictResolver;
         private readonly SyncFileUploadExecutor _fileUploadExecutor;
+        private readonly SyncFileMaterializer _fileMaterializer;
+        private readonly SyncFileDeleteExecutor _fileDeleteExecutor;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SyncEngine" /> class.
@@ -165,6 +167,17 @@ namespace Cotton.Sync
                 _conflictResolver,
                 _stateStore,
                 _logger);
+            _fileMaterializer = new SyncFileMaterializer(
+                _remoteFilePlaceholderWriter,
+                _stateStore,
+                _localWriter,
+                _fileTransfer);
+            _fileDeleteExecutor = new SyncFileDeleteExecutor(
+                _remoteFiles,
+                _localWriter,
+                _stateStore,
+                _fileTransfer,
+                _conflictResolver);
         }
 
         /// <inheritdoc />
@@ -1294,7 +1307,7 @@ namespace Cotton.Sync
             SyncDeleteGuard deleteGuard = new(options, plannedLocalDeletes: missingBaselines.Count, []);
             foreach (InitialVirtualFilesPlaceholderBaseline baseline in missingBaselines)
             {
-                await DeleteLocalAsync(
+                await _fileDeleteExecutor.DeleteLocalAsync(
                         syncPair,
                         options,
                         result,
@@ -1481,7 +1494,7 @@ namespace Cotton.Sync
         {
             try
             {
-                SyncStateEntry? placeholderState = await TryCreateRemoteOnlyFilePlaceholderStateAsync(
+                SyncStateEntry? placeholderState = await _fileMaterializer.CreatePlaceholderStateAsync(
                         syncPair,
                         options,
                         remote.RelativePath,
@@ -1588,89 +1601,7 @@ namespace Cotton.Sync
             return writtenRows;
         }
 
-        private async Task<SyncStateEntry?> TryCreateRemoteOnlyFilePlaceholderStateAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            string relativePath,
-            NodeFileManifestDto remoteFile,
-            CancellationToken cancellationToken,
-            SyncPlaceholderHydrationState? existingHydrationState = null)
-        {
-            if (syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles)
-            {
-                throw new InvalidOperationException("Initial virtual-files placeholder creation requires Windows virtual-files materialization.");
-            }
 
-            if (_remoteFilePlaceholderWriter is null)
-            {
-                throw new RemoteFilePlaceholderUnavailableException(
-                    relativePath,
-                    "Windows virtual-files placeholder writer is not available.");
-            }
-
-            RemoteFilePlaceholderResult placeholder;
-            try
-            {
-                placeholder = await _remoteFilePlaceholderWriter
-                    .CreatePlaceholderAsync(
-                        RemoteFilePlaceholderRequestFactory.Create(syncPair, relativePath, remoteFile),
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (RemoteFilePlaceholderUnavailableException)
-            {
-                throw;
-            }
-
-            return BuildPlaceholderBaseline(syncPair, relativePath, remoteFile, placeholder, existingHydrationState);
-        }
-
-        private async Task MaterializeRemoteOnlyFileAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            SyncRunResult result,
-            string relativePath,
-            NodeFileManifestDto remoteFile,
-            CancellationToken cancellationToken,
-            SyncPlaceholderHydrationState? existingHydrationState = null)
-        {
-            if (syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles)
-            {
-                await DownloadAsync(syncPair, options, result, relativePath, remoteFile, cancellationToken)
-                    .ConfigureAwait(false);
-                return;
-            }
-
-            SyncStateEntry? placeholderState;
-            try
-            {
-                placeholderState = await TryCreateRemoteOnlyFilePlaceholderStateAsync(
-                        syncPair,
-                        options,
-                        relativePath,
-                        remoteFile,
-                        cancellationToken,
-                        existingHydrationState)
-                    .ConfigureAwait(false);
-            }
-            catch (RemoteFilePlaceholderUnavailableException exception)
-            {
-                SyncActivityReporter.ReportActivity(
-                    result,
-                    options,
-                    SyncActivityKind.Skipped,
-                    relativePath,
-                    exception.Reason,
-                    requiresUserAction: true);
-                return;
-            }
-
-            if (placeholderState is not null)
-            {
-                await _stateStore.UpsertAsync(placeholderState, cancellationToken).ConfigureAwait(false);
-                SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.PlaceholderCreated, relativePath, null);
-            }
-        }
 
         private InitialVirtualFilesFileWorkResult? TryCreateCurrentInitialVirtualFilesFileWorkResult(
             SyncPair syncPair,
@@ -1774,7 +1705,7 @@ namespace Cotton.Sync
             {
                 if (remote is not null)
                 {
-                    await MaterializeRemoteOnlyFileAsync(
+                    await _fileMaterializer.MaterializeAsync(
                             syncPair,
                             options,
                             result,
@@ -1847,7 +1778,7 @@ namespace Cotton.Sync
             if (syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
                 && local.IsCloudFilesOnlineOnlyPlaceholder)
             {
-                await MaterializeRemoteOnlyFileAsync(
+                await _fileMaterializer.MaterializeAsync(
                         syncPair,
                         options,
                         result,
@@ -1947,7 +1878,7 @@ namespace Cotton.Sync
                 return false;
             }
 
-            await MaterializeRemoteOnlyFileAsync(
+            await _fileMaterializer.MaterializeAsync(
                     context.SyncPair,
                     context.Options,
                     context.Result,
@@ -2042,7 +1973,7 @@ namespace Cotton.Sync
 
             if (context.IsExactLocalDelete)
             {
-                await DeleteRemoteAsync(
+                await _fileDeleteExecutor.DeleteRemoteAsync(
                         context.SyncPair,
                         context.Options,
                         context.Result,
@@ -2056,7 +1987,7 @@ namespace Cotton.Sync
 
             if (remoteChanged || context.Options.RestoreMissingRemoteOnlyPlaceholders)
             {
-                await MaterializeRemoteOnlyFileAsync(
+                await _fileMaterializer.MaterializeAsync(
                         context.SyncPair,
                         context.Options,
                         context.Result,
@@ -2096,7 +2027,7 @@ namespace Cotton.Sync
 
             if (IsLocalOnlineOnlyPlaceholderBaseline(context.SyncPair, context.Local, context.State))
             {
-                await DeleteLocalAsync(
+                await _fileDeleteExecutor.DeleteLocalAsync(
                         context.SyncPair,
                         context.Options,
                         context.Result,
@@ -2131,7 +2062,7 @@ namespace Cotton.Sync
             {
                 if (changeState.RemoteChanged)
                 {
-                    await MaterializeRemoteOnlyFileAsync(
+                    await _fileMaterializer.MaterializeAsync(
                             context.SyncPair,
                             context.Options,
                             context.Result,
@@ -2260,7 +2191,7 @@ namespace Cotton.Sync
                         .ConfigureAwait(false);
                     return;
                 case SyncFileChangeKind.DeleteLocal:
-                    await DeleteLocalAsync(
+                    await _fileDeleteExecutor.DeleteLocalAsync(
                             context.SyncPair,
                             context.Options,
                             context.Result,
@@ -2270,7 +2201,7 @@ namespace Cotton.Sync
                         .ConfigureAwait(false);
                     return;
                 case SyncFileChangeKind.DeleteRemote:
-                    await DeleteRemoteAsync(
+                    await _fileDeleteExecutor.DeleteRemoteAsync(
                             context.SyncPair,
                             context.Options,
                             context.Result,
@@ -2292,7 +2223,7 @@ namespace Cotton.Sync
                         .ConfigureAwait(false);
                     return;
                 case SyncFileChangeKind.Download:
-                    await DownloadAsync(
+                    await _fileMaterializer.DownloadAsync(
                             context.SyncPair,
                             context.Options,
                             context.Result,
@@ -2529,7 +2460,7 @@ namespace Cotton.Sync
 
             string sourcePath = match.SourceState.RelativePath;
             string targetPath = match.Local.RelativePath;
-            SyncStateEntry? targetState = await TryCreateRemoteOnlyFilePlaceholderStateAsync(
+            SyncStateEntry? targetState = await _fileMaterializer.CreatePlaceholderStateAsync(
                     context.SyncPair,
                     context.Options,
                     targetPath,
@@ -3006,25 +2937,6 @@ namespace Cotton.Sync
 
 
 
-        private async Task DownloadAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            SyncRunResult result,
-            string relativePath,
-            NodeFileManifestDto remoteFile,
-            CancellationToken cancellationToken)
-        {
-            EnsureEnoughLocalFreeSpace(syncPair.LocalRootPath, relativePath, remoteFile.SizeBytes);
-            await _localWriter.WriteFileAsync(
-                syncPair.LocalRootPath,
-                relativePath,
-                (stream, token) => _fileTransfer.DownloadAndVerifyFileAsync(remoteFile, relativePath, options, stream, token),
-                remoteFile.UpdatedAt == default ? null : remoteFile.UpdatedAt,
-                cancellationToken).ConfigureAwait(false);
-            await _stateStore.UpsertAsync(BuildBaseline(syncPair, relativePath, remoteFile.ContentHash, remoteFile.UpdatedAt, remoteFile.SizeBytes, remoteFile), cancellationToken)
-                .ConfigureAwait(false);
-            SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.Downloaded, relativePath, null);
-        }
 
         private static SyncRunProgressStage ResolveFileRunProgressStage(
             SyncPair syncPair,
@@ -3049,65 +2961,7 @@ namespace Cotton.Sync
             return SyncRunProgressStage.ReconcilingFiles;
         }
 
-        private async Task DeleteRemoteAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            SyncRunResult result,
-            SyncDeleteGuard deleteGuard,
-            string relativePath,
-            NodeFileManifestDto remoteFile,
-            CancellationToken cancellationToken)
-        {
-            if (!deleteGuard.CanDeleteRemote(out string? details))
-            {
-                SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.Skipped, relativePath, details, requiresUserAction: true);
-                return;
-            }
 
-            try
-            {
-                await _remoteFiles.DeleteFileAsync(
-                    remoteFile.Id,
-                    options.DeleteRemotePermanently,
-                    remoteFile.ETag,
-                    cancellationToken).ConfigureAwait(false);
-            }
-            catch (HttpRequestException exception) when (IsPreconditionFailed(exception))
-            {
-                NodeFileManifestDto? latestRemoteFile = await _fileTransfer.FindLatestRemoteFileAsync(syncPair, relativePath, cancellationToken).ConfigureAwait(false);
-                await _conflictResolver.PreserveAsync(
-                    syncPair,
-                    options,
-                    result,
-                    relativePath,
-                    local: null,
-                    remoteFile: latestRemoteFile ?? remoteFile,
-                    cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            await _stateStore.DeleteAsync(syncPair.SyncPairId, relativePath, cancellationToken).ConfigureAwait(false);
-            SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.DeletedRemote, relativePath, null);
-        }
-
-        private async Task DeleteLocalAsync(
-            SyncPair syncPair,
-            SyncRunOptions options,
-            SyncRunResult result,
-            SyncDeleteGuard deleteGuard,
-            string relativePath,
-            CancellationToken cancellationToken)
-        {
-            if (!deleteGuard.CanDeleteLocal(out string? details))
-            {
-                SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.Skipped, relativePath, details, requiresUserAction: true);
-                return;
-            }
-
-            await _localWriter.DeleteFileAsync(syncPair.LocalRootPath, relativePath, cancellationToken).ConfigureAwait(false);
-            await _stateStore.DeleteAsync(syncPair.SyncPairId, relativePath, cancellationToken).ConfigureAwait(false);
-            SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.DeletedLocal, relativePath, null);
-        }
 
 
 
