@@ -2,12 +2,12 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Globalization;
-using System.Text.Json;
 using Cotton.Sdk;
 using Cotton.Sync.App.Runners;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Local;
 using Cotton.Sync.VirtualFiles;
+using static Cotton.Sync.Desktop.Shell.DesktopActionRequiredMessageClassifier;
 
 namespace Cotton.Sync.Desktop.Shell
 {
@@ -435,38 +435,6 @@ namespace Cotton.Sync.Desktop.Shell
                         : null;
         }
 
-        private static string? ExtractResponseMessage(string? responseBody)
-        {
-            if (string.IsNullOrWhiteSpace(responseBody) || LooksLikeHtml(responseBody))
-            {
-                return null;
-            }
-
-            string trimmed = responseBody.Trim();
-            if (!trimmed.StartsWith('{'))
-            {
-                return trimmed;
-            }
-
-            try
-            {
-                using JsonDocument document = JsonDocument.Parse(trimmed);
-                JsonElement root = document.RootElement;
-                if (TryGetStringProperty(root, "message", out string? message)
-                    || TryGetStringProperty(root, "detail", out message)
-                    || TryGetStringProperty(root, "title", out message))
-                {
-                    return message;
-                }
-            }
-            catch (JsonException)
-            {
-                return null;
-            }
-
-            return null;
-        }
-
         private static string? NormalizeEmbeddedApiFailureMessage(string message)
         {
             if (!message.Contains("Cotton API request", StringComparison.OrdinalIgnoreCase))
@@ -494,140 +462,5 @@ namespace Cotton.Sync.Desktop.Shell
             return responseMessage;
         }
 
-        private static string? ExtractEmbeddedResponseBody(string message)
-        {
-            const string marker = "Response:";
-            int markerIndex = message.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-            if (markerIndex < 0)
-            {
-                return null;
-            }
-
-            string responseBody = message[(markerIndex + marker.Length)..].Trim();
-            if (!responseBody.StartsWith('{'))
-            {
-                return responseBody;
-            }
-
-            int endIndex = responseBody.LastIndexOf('}');
-            return endIndex >= 0 ? responseBody[..(endIndex + 1)] : responseBody;
-        }
-
-        private static bool LooksLikeCreateFileFromChunksBadRequest(string message)
-        {
-            return message.Contains("POST /api/v1/files/from-chunks", StringComparison.OrdinalIgnoreCase)
-                && message.Contains("status 400", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool IsGenericBadRequestMessage(string? message)
-        {
-            return !string.IsNullOrWhiteSpace(message)
-                && string.Equals(message.Trim(), "Bad request", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool TryGetStringProperty(JsonElement element, string propertyName, out string? value)
-        {
-            value = null;
-            if (!element.TryGetProperty(propertyName, out JsonElement property)
-                || property.ValueKind != JsonValueKind.String)
-            {
-                return false;
-            }
-
-            value = property.GetString();
-            return !string.IsNullOrWhiteSpace(value);
-        }
-
-        private static bool LooksLikeMissingDesktopSyncChangesApi(string message, string? responseBody)
-        {
-            return message.Contains("GET /api/v1/sync/changes", StringComparison.Ordinal)
-                && (LooksLikeHtmlInsteadOfJson(message, responseBody)
-                    || message.Contains("status 404", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(responseBody?.Trim(), "404 page not found", StringComparison.OrdinalIgnoreCase));
-        }
-
-        private static bool LooksLikeHtmlInsteadOfJson(string message, string? responseBody)
-        {
-            return (message.Contains("invalid JSON", StringComparison.OrdinalIgnoreCase)
-                    && (message.Contains("text/html", StringComparison.OrdinalIgnoreCase)
-                        || LooksLikeHtml(responseBody)
-                        || LooksLikeHtml(message)))
-                || LooksLikeJsonParserHtmlStartMessage(message);
-        }
-
-        private static bool LooksLikeJsonParserHtmlStartMessage(string message)
-        {
-            return message.Contains("'<' is an invalid start of a value", StringComparison.OrdinalIgnoreCase)
-                || message.Contains("\"<\" is an invalid start of a value", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool LooksLikeDiskFull(string message)
-        {
-            return message.Contains("no space left on device", StringComparison.OrdinalIgnoreCase)
-                || message.Contains("not enough space", StringComparison.OrdinalIgnoreCase)
-                || message.Contains("not enough disk space", StringComparison.OrdinalIgnoreCase)
-                || message.Contains("disk full", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool LooksLikeLocalPermissionDenied(string message)
-        {
-            return (message.Contains("local file", StringComparison.OrdinalIgnoreCase)
-                    && message.Contains("permission was denied", StringComparison.OrdinalIgnoreCase))
-                || (message.Contains("access to the path", StringComparison.OrdinalIgnoreCase)
-                    && message.Contains("is denied", StringComparison.OrdinalIgnoreCase));
-        }
-
-        private static bool LooksLikeLocalFileUnavailable(string message)
-        {
-            return message.Contains("local file", StringComparison.OrdinalIgnoreCase)
-                && message.Contains("could not be scanned safely", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool LooksLikeLocalSyncFolderMissing(string message)
-        {
-            return message.Contains("local root does not exist", StringComparison.OrdinalIgnoreCase)
-                || (message.Contains("local sync root", StringComparison.OrdinalIgnoreCase)
-                    && message.Contains("does not exist", StringComparison.OrdinalIgnoreCase));
-        }
-
-        private static bool LooksLikeLocalSyncStateDatabaseUnavailable(string message)
-        {
-            return message.Contains("SQLite Error", StringComparison.OrdinalIgnoreCase)
-                && message.Contains("no such table", StringComparison.OrdinalIgnoreCase)
-                && (message.Contains("sync_change_cursors", StringComparison.OrdinalIgnoreCase)
-                    || message.Contains("sync_entries", StringComparison.OrdinalIgnoreCase));
-        }
-
-        private static bool LooksLikeLocalStateDatabaseCorrupt(string message)
-        {
-            return message.Contains("SQLite Error", StringComparison.OrdinalIgnoreCase)
-                && (message.Contains("file is not a database", StringComparison.OrdinalIgnoreCase)
-                    || message.Contains("database disk image is malformed", StringComparison.OrdinalIgnoreCase)
-                    || message.Contains("file is encrypted or is not a database", StringComparison.OrdinalIgnoreCase));
-        }
-
-        private static string? ExtractSingleQuotedPath(string message)
-        {
-            int start = message.IndexOf('\'');
-            if (start < 0)
-            {
-                return null;
-            }
-
-            int end = message.IndexOf('\'', start + 1);
-            return end > start + 1 ? message[(start + 1)..end] : null;
-        }
-
-        private static bool LooksLikeHtml(string? value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return false;
-            }
-
-            string trimmed = value.TrimStart();
-            return trimmed.StartsWith("<!doctype html", StringComparison.OrdinalIgnoreCase)
-                || trimmed.StartsWith("<html", StringComparison.OrdinalIgnoreCase);
-        }
     }
 }
