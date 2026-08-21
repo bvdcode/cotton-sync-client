@@ -7,35 +7,22 @@ using Cotton.Nodes;
 using Cotton.Sync.Local;
 using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
-using Microsoft.Win32.SafeHandles;
-using System.Buffers.Binary;
-using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Text.Json;
+using static Cotton.Sync.Desktop.Platform.WindowsCloudFilesPlaceholderFactory;
 
 namespace Cotton.Sync.Desktop.Platform
 {
     internal class WindowsCloudFilesAdapter : IWindowsCloudFilesAdapter
     {
-        public const string ProviderId = "Cotton.Sync.Desktop";
-        public const string ProviderName = "Cotton Cloud";
+        public const string ProviderId = WindowsCloudFilesProviderMetadata.ProviderId;
+        public const string ProviderName = WindowsCloudFilesProviderMetadata.ProviderName;
 
         private const int HResultFileNotFound = unchecked((int)0x80070002);
         private const int HResultPathNotFound = unchecked((int)0x80070003);
         private const int HResultSharingViolation = unchecked((int)0x80070020);
         private const int HResultLockViolation = unchecked((int)0x80070021);
         private const int HResultCloudFileUnsuccessful = unchecked((int)0x80070185);
-        private const int ReparseDataBufferSize = 16 * 1024;
-        private const uint FsctlGetReparsePoint = 0x000900A8;
-        private const uint ReparseTagCloudLowByte = 0x1A;
-        private const uint ReparseTagCloudFamilyMask = 0xF00000FF;
-        private const uint ReparseTagCloudFamily = 0x9000001A;
-        private const uint FileFlagBackupSemantics = 0x02000000;
-        private const int FileAttributeRecallOnOpen = 0x00040000;
         private const int FileAttributePinned = 0x00080000;
         private const int FileAttributeUnpinned = 0x00100000;
-        private const int FileAttributeRecallOnDataAccess = 0x00400000;
-        private static readonly Guid ProviderGuid = Guid.Parse("6453b9dc-e042-4a73-a675-c5b2aa6c9607");
         private static readonly TimeSpan[] TransientPathRetryDelays =
         [
             TimeSpan.FromMilliseconds(25),
@@ -71,8 +58,9 @@ namespace Cotton.Sync.Desktop.Platform
             _storageProviderRegistrar = storageProviderRegistrar ?? WindowsStorageProviderSyncRootRegistrar.TryCreateDefault();
             _shellChangeNotifier = shellChangeNotifier ?? new WindowsShellChangeNotifier();
             _diagnostics = diagnostics ?? WindowsCloudFilesDiagnostics.Shared;
-            _isReparsePoint = isReparsePoint ?? IsReparsePoint;
-            _isCloudFilesReparsePoint = isCloudFilesReparsePoint ?? IsCloudFilesReparsePoint;
+            _isReparsePoint = isReparsePoint ?? WindowsCloudFilesReparsePointProbe.IsReparsePoint;
+            _isCloudFilesReparsePoint = isCloudFilesReparsePoint
+                ?? WindowsCloudFilesReparsePointProbe.IsCloudFilesReparsePoint;
             _readFileAttributes = readFileAttributes ?? File.GetAttributes;
             _transientRetryDelay = transientRetryDelay ?? Thread.Sleep;
         }
@@ -108,81 +96,7 @@ namespace Cotton.Sync.Desktop.Platform
             SyncPairSettings syncPair,
             SyncStateEntry fileState)
         {
-            byte[] placeholderIdentity = ValidateMissingFilePlaceholderArguments(syncPair, fileState);
-            string normalizedPath = SyncPath.Normalize(fileState.RelativePath);
-            WindowsCloudFilesPlaceholderIdentity identity =
-                WindowsCloudFilesPlaceholderIdentity.Parse(placeholderIdentity);
-            ValidateMissingFilePlaceholderIdentity(syncPair, normalizedPath, identity);
-            return CreateFilePlaceholder(CreateMissingFilePlaceholderRequest(
-                syncPair,
-                fileState,
-                normalizedPath,
-                identity));
-        }
-
-        private static byte[] ValidateMissingFilePlaceholderArguments(
-            SyncPairSettings syncPair,
-            SyncStateEntry fileState)
-        {
-            ArgumentNullException.ThrowIfNull(syncPair);
-            ArgumentNullException.ThrowIfNull(fileState);
-            if (fileState.Kind != SyncEntryKind.File)
-            {
-                throw new InvalidOperationException(
-                    "Cloud Files missing-placeholder recovery requires tracked file identity.");
-            }
-
-            if (fileState.PlaceholderIdentity is not { Length: > 0 } placeholderIdentity)
-            {
-                throw new InvalidOperationException(
-                    "Cloud Files missing-placeholder recovery requires tracked file identity.");
-            }
-
-            return placeholderIdentity;
-        }
-
-        private static void ValidateMissingFilePlaceholderIdentity(
-            SyncPairSettings syncPair,
-            string normalizedPath,
-            WindowsCloudFilesPlaceholderIdentity identity)
-        {
-            if (identity.SyncPairId != syncPair.Id
-                || identity.RemoteRootNodeId != syncPair.RemoteRootNodeId
-                || !string.Equals(
-                    SyncPath.ToKey(identity.RelativePath),
-                    SyncPath.ToKey(normalizedPath),
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException(
-                    "Cloud Files missing-placeholder recovery found mismatched tracked identity.");
-            }
-        }
-
-        private static RemoteFilePlaceholderRequest CreateMissingFilePlaceholderRequest(
-            SyncPairSettings syncPair,
-            SyncStateEntry fileState,
-            string normalizedPath,
-            WindowsCloudFilesPlaceholderIdentity identity)
-        {
-            return new RemoteFilePlaceholderRequest(
-                syncPair.Id.ToString("D"),
-                syncPair.LocalRootPath,
-                syncPair.RemoteRootNodeId,
-                normalizedPath,
-                new NodeFileManifestDto
-                {
-                    Id = identity.NodeFileId,
-                    NodeId = identity.NodeId,
-                    FileManifestId = identity.FileManifestId,
-                    OriginalNodeFileId = identity.OriginalNodeFileId ?? identity.NodeFileId,
-                    Name = Path.GetFileName(normalizedPath),
-                    SizeBytes = identity.SizeBytes,
-                    ContentHash = identity.ContentHash ?? fileState.RemoteContentHash ?? string.Empty,
-                    ETag = identity.ETag ?? fileState.RemoteETag ?? string.Empty,
-                    CreatedAt = identity.UpdatedAt,
-                    UpdatedAt = identity.UpdatedAt,
-                },
-                SyncPlaceholderHydrationState.RemoteOnly);
+            return CreateFilePlaceholder(CreateMissingFilePlaceholderRequest(syncPair, fileState));
         }
 
         public IReadOnlyList<RemoteFilePlaceholderResult> CreateFilePlaceholders(
@@ -1634,13 +1548,13 @@ namespace Cotton.Sync.Desktop.Platform
                     _storageProviderRegistrar?.Register(new WindowsStorageProviderSyncRootRegistration(
                         Guid.Parse(syncPairId),
                         localRootPath,
-                        ResolveProviderVersion(),
+                        WindowsCloudFilesProviderMetadata.ResolveVersion(),
                         WindowsStorageProviderSyncRootRegistrar.ResolveDefaultIconResource()));
                     _nativeApi.RegisterSyncRoot(new WindowsCloudFilesNativeSyncRootRegistration(
                         localRootPath,
                         ProviderName,
-                        ResolveProviderVersion(),
-                        ProviderGuid,
+                        WindowsCloudFilesProviderMetadata.ResolveVersion(),
+                        WindowsCloudFilesProviderMetadata.ProviderGuid,
                         syncRootIdentity));
                     _registeredRootPaths.Add(localRootPath);
                 }
@@ -1681,31 +1595,6 @@ namespace Cotton.Sync.Desktop.Platform
             _nativeApi.TransferData(transfer);
         }
 
-        private static PlaceholderPath ResolvePlaceholderPath(string syncRootPath, string normalizedRelativePath)
-        {
-            string[] segments = normalizedRelativePath.Split('/');
-            if (segments.Any(static segment => segment is "." or ".."))
-            {
-                throw new InvalidOperationException("Virtual-files placeholder paths cannot contain '.' or '..' segments.");
-            }
-
-            string root = Path.GetFullPath(syncRootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            string relativeFileName = segments[^1];
-            string baseDirectoryPath = root;
-            foreach (string segment in segments[..^1])
-            {
-                baseDirectoryPath = Path.Combine(baseDirectoryPath, segment);
-            }
-
-            baseDirectoryPath = Path.GetFullPath(baseDirectoryPath);
-            string finalPath = Path.GetFullPath(Path.Combine(baseDirectoryPath, relativeFileName));
-            if (!IsSamePathOrChild(baseDirectoryPath, root) || !IsSamePathOrChild(finalPath, root))
-            {
-                throw new InvalidOperationException("Virtual-files placeholder path escaped the sync root.");
-            }
-
-            return new PlaceholderPath(baseDirectoryPath, relativeFileName);
-        }
 
         private void RecordFailure(
             string operation,
@@ -1766,93 +1655,7 @@ namespace Cotton.Sync.Desktop.Platform
                 && (exception.HResult == HResultFileNotFound || exception.HResult == HResultPathNotFound);
         }
 
-        private static bool IsSamePathOrChild(string candidatePath, string rootPath)
-        {
-            string normalizedRoot = Path.GetFullPath(rootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                + Path.DirectorySeparatorChar;
-            string normalizedCandidate = Path.GetFullPath(candidatePath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                + Path.DirectorySeparatorChar;
-            return normalizedCandidate.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
-        }
 
-        private static Guid ParseSyncPairId(string syncPairId)
-        {
-            if (!Guid.TryParse(syncPairId, out Guid parsed))
-            {
-                throw new ArgumentException("Virtual-files placeholder request contains an invalid sync pair id.", nameof(syncPairId));
-            }
-
-            return parsed;
-        }
-
-        private static bool IsReparsePoint(string path)
-        {
-            return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
-        }
-
-        private static bool IsCloudFilesReparsePoint(string path)
-        {
-            FileAttributes attributes = File.GetAttributes(path);
-            if ((attributes & FileAttributes.ReparsePoint) == 0)
-            {
-                return false;
-            }
-
-            if (OperatingSystem.IsWindows() && TryReadReparseTag(path, out uint reparseTag))
-            {
-                return IsCloudFilesReparseTag(reparseTag);
-            }
-
-            return HasRawAttribute(attributes, FileAttributeRecallOnOpen)
-                || HasRawAttribute(attributes, FileAttributeRecallOnDataAccess)
-                || (attributes & FileAttributes.Offline) != 0;
-        }
-
-        private static bool IsCloudFilesReparseTag(uint reparseTag)
-        {
-            return (reparseTag & ReparseTagCloudFamilyMask) == ReparseTagCloudFamily
-                && (reparseTag & 0xFF) == ReparseTagCloudLowByte;
-        }
-
-        private static bool HasRawAttribute(FileAttributes attributes, int flag)
-        {
-            return (((int)attributes) & flag) == flag;
-        }
-
-        private static bool TryReadReparseTag(string fullPath, out uint reparseTag)
-        {
-            reparseTag = 0;
-            using SafeFileHandle handle = CreateFile(
-                CreateReparseTagOpenPath(fullPath),
-                0,
-                FileShareRead | FileShareWrite | FileShareDelete,
-                IntPtr.Zero,
-                OpenExisting,
-                CreateReparseTagOpenFlags(fullPath),
-                IntPtr.Zero);
-            if (handle.IsInvalid)
-            {
-                return false;
-            }
-
-            byte[] buffer = new byte[ReparseDataBufferSize];
-            if (!DeviceIoControl(
-                    handle,
-                    FsctlGetReparsePoint,
-                    IntPtr.Zero,
-                    0,
-                    buffer,
-                    buffer.Length,
-                    out int bytesReturned,
-                    IntPtr.Zero)
-                || bytesReturned < sizeof(uint))
-            {
-                return false;
-            }
-
-            reparseTag = BinaryPrimitives.ReadUInt32LittleEndian(buffer);
-            return true;
-        }
 
         private static bool IsSharingViolation(WindowsCloudFilesNativeException exception)
         {
@@ -1861,110 +1664,18 @@ namespace Cotton.Sync.Desktop.Platform
 
         internal static string CreateReparseTagOpenPath(string fullPath)
         {
-            return WindowsNativePath.ToWin32FilePath(fullPath);
+            return WindowsCloudFilesReparsePointProbe.CreateOpenPath(fullPath);
         }
 
         internal static uint CreateReparseTagOpenFlags(string fullPath)
         {
-            uint flags = FileFlagOpenReparsePoint;
-            if (Directory.Exists(fullPath))
-            {
-                flags |= FileFlagBackupSemantics;
-            }
-
-            return flags;
+            return WindowsCloudFilesReparsePointProbe.CreateOpenFlags(fullPath);
         }
 
-        private static byte[] CreateSyncRootIdentity(Guid syncPairId, Guid remoteRootNodeId)
-        {
-            return JsonSerializer.SerializeToUtf8Bytes(new
-            {
-                schema = 1,
-                product = ProviderId,
-                syncPairId,
-                remoteRootNodeId,
-            });
-        }
 
-        private static byte[] CreateFileIdentity(RemoteFilePlaceholderRequest request, string normalizedPath)
-        {
-            return WindowsCloudFilesPlaceholderIdentity.Create(request, normalizedPath).ToBytes();
-        }
 
-        private static byte[] CreateDirectoryIdentity(RemoteDirectoryMaterializationRequest request, string normalizedPath)
-        {
-            return WindowsCloudFilesDirectoryPlaceholderIdentity.Create(request, normalizedPath).ToBytes();
-        }
 
-        private static WindowsCloudFilesNativePlaceholder CreateDirectoryNativePlaceholder(
-            PlaceholderPath placeholderPath,
-            byte[] directoryIdentity,
-            NodeDto remoteDirectory)
-        {
-            return new WindowsCloudFilesNativePlaceholder(
-                placeholderPath.BaseDirectoryPath,
-                placeholderPath.RelativeFileName,
-                directoryIdentity,
-                0,
-                remoteDirectory.CreatedAt,
-                remoteDirectory.UpdatedAt,
-                IsDirectory: true);
-        }
 
-        private static string ResolveProviderVersion()
-        {
-            Assembly assembly = typeof(WindowsCloudFilesAdapter).Assembly;
-            string? informationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-            string version = string.IsNullOrWhiteSpace(informationalVersion)
-                ? assembly.GetName().Version?.ToString() ?? "unknown"
-                : informationalVersion;
-            int metadataStart = version.IndexOf('+', StringComparison.Ordinal);
-            if (metadataStart > 0)
-            {
-                version = version[..metadataStart];
-            }
 
-            return version.Length <= 255 ? version : version[..255];
-        }
-
-        private record PlaceholderPath(string BaseDirectoryPath, string RelativeFileName);
-
-        private record PreparedFilePlaceholder(
-            int Index,
-            string SyncPairId,
-            string LocalRootPath,
-            string NormalizedRelativePath,
-            WindowsCloudFilesNativePlaceholder Placeholder,
-            string FullPlaceholderPath,
-            bool UpdateExistingPlaceholder,
-            byte[] FileIdentity,
-            SyncPlaceholderHydrationState? ExistingHydrationState);
-
-        private const uint FileFlagOpenReparsePoint = 0x00200000;
-        private const uint FileShareRead = 0x00000001;
-        private const uint FileShareWrite = 0x00000002;
-        private const uint FileShareDelete = 0x00000004;
-        private const uint OpenExisting = 3;
-
-        [DllImport("kernel32.dll", EntryPoint = "CreateFileW", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
-        private static extern SafeFileHandle CreateFile(
-            string lpFileName,
-            uint dwDesiredAccess,
-            uint dwShareMode,
-            IntPtr lpSecurityAttributes,
-            uint dwCreationDisposition,
-            uint dwFlagsAndAttributes,
-            IntPtr hTemplateFile);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool DeviceIoControl(
-            SafeFileHandle hDevice,
-            uint dwIoControlCode,
-            IntPtr lpInBuffer,
-            int nInBufferSize,
-            byte[] lpOutBuffer,
-            int nOutBufferSize,
-            out int lpBytesReturned,
-            IntPtr lpOverlapped);
     }
 }
