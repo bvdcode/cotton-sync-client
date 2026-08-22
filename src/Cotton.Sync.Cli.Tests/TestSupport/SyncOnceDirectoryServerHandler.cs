@@ -92,11 +92,13 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
                     throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 100 seconds elapsing.");
                 }
 
-                return Json(HttpStatusCode.OK, new NodeContentDto
+                NodeContentDto content = new NodeContentDto
                 {
                     Id = _remoteRootId,
-                    TotalCount = 0,
-                });
+                };
+                HttpResponseMessage response = Json(HttpStatusCode.OK, content);
+                response.Headers.Add("X-Total-Count", "0");
+                return response;
             }
 
             if (request.Method == HttpMethod.Put && request.PathAndQuery == "/api/v1/layouts/nodes")

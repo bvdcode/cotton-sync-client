@@ -53,7 +53,7 @@ namespace Cotton.Sync.Cli.Tests
 
         private static Process StartCliProcess(IEnumerable<string> args)
         {
-            string cliPath = typeof(SyncCliCommandRunner).Assembly.Location;
+            string cliPath = Path.Combine(AppContext.BaseDirectory, "Cotton.Sync.Cli.dll");
             ProcessStartInfo startInfo = new ProcessStartInfo("dotnet")
             {
                 UseShellExecute = false,
@@ -80,6 +80,35 @@ namespace Cotton.Sync.Cli.Tests
                 KillProcessTree(process);
                 throw new AssertionException("Cotton Sync CLI process did not exit within " + timeout.TotalSeconds.ToStringInvariant() + " seconds.", exception);
             }
+        }
+
+        private static async Task WaitForServerSignalAsync(
+            Task signal,
+            Process process,
+            Task<string> outputTask,
+            Task<string> errorTask,
+            TimeSpan timeout)
+        {
+            Task processExit = process.WaitForExitAsync();
+            Task completed = await Task.WhenAny(signal, processExit)
+                .WaitAsync(timeout)
+                .ConfigureAwait(false);
+            if (completed == processExit)
+            {
+                string output = await outputTask.ConfigureAwait(false);
+                string error = await errorTask.ConfigureAwait(false);
+                throw new AssertionException(
+                    "Cotton Sync CLI exited before the expected server request. Exit code: "
+                    + process.ExitCode.ToStringInvariant()
+                    + Environment.NewLine
+                    + "stdout: "
+                    + output
+                    + Environment.NewLine
+                    + "stderr: "
+                    + error);
+            }
+
+            await signal.ConfigureAwait(false);
         }
 
         private static async Task WaitForTemporaryDownloadAsync(string temporaryDirectory, TimeSpan timeout)

@@ -106,7 +106,14 @@ namespace Cotton.Sync.Cli.Tests
             Task<string> firstErrorTask = crashingProcess.StandardError.ReadToEndAsync();
             try
             {
-                await server.WaitForFirstDownloadStartedAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+                Task downloadStarted = server.WaitForFirstDownloadStartedAsync(TimeSpan.FromSeconds(10));
+                await WaitForServerSignalAsync(
+                        downloadStarted,
+                        crashingProcess,
+                        firstOutputTask,
+                        firstErrorTask,
+                        TimeSpan.FromSeconds(10))
+                    .ConfigureAwait(false);
                 await WaitForTemporaryDownloadAsync(temporaryDirectory, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
                 KillProcessTree(crashingProcess);
                 await WaitForProcessExitAsync(crashingProcess, TimeSpan.FromSeconds(10)).ConfigureAwait(false);

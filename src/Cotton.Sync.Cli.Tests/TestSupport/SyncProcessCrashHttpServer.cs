@@ -200,14 +200,12 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
                 return new NodeContentDto
                 {
                     Id = _remoteRootId,
-                    TotalCount = 0,
                 };
             }
 
             return new NodeContentDto
             {
                 Id = _remoteRootId,
-                TotalCount = 1,
                 Files = [CreateManifest()],
             };
         }

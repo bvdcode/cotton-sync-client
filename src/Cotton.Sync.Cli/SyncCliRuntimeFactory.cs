@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Auth;
+using Cotton.Nodes;
 using Cotton.Sdk;
 using Cotton.Sdk.Auth;
 using Cotton.Sync.App.Auth;

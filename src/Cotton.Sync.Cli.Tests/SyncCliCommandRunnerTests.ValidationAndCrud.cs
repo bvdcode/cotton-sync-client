@@ -323,39 +323,15 @@ namespace Cotton.Sync.Cli.Tests
             string nestedSecondLocalRoot = Path.Combine(firstLocalRoot, "nested");
             string firstDatabasePath = Path.Combine(_tempDirectory, "client-a.db");
             string secondDatabasePath = Path.Combine(_tempDirectory, "client-b.db");
-            var cases = new[]
-            {
-                new
-                {
-                    SecondLocalRoot = firstLocalRoot,
-                    SecondSyncPairId = "pair-b",
-                    SecondDatabasePath = secondDatabasePath,
-                    ExpectedMessage = "local roots",
-                },
-                new
-                {
-                    SecondLocalRoot = nestedSecondLocalRoot,
-                    SecondSyncPairId = "pair-b",
-                    SecondDatabasePath = secondDatabasePath,
-                    ExpectedMessage = "local roots",
-                },
-                new
-                {
-                    SecondLocalRoot = secondLocalRoot,
-                    SecondSyncPairId = "pair-a",
-                    SecondDatabasePath = secondDatabasePath,
-                    ExpectedMessage = "sync pair ids",
-                },
-                new
-                {
-                    SecondLocalRoot = secondLocalRoot,
-                    SecondSyncPairId = "pair-b",
-                    SecondDatabasePath = firstDatabasePath,
-                    ExpectedMessage = "databases",
-                },
-            };
+            (string SecondLocalRoot, string SecondSyncPairId, string SecondDatabasePath, string ExpectedMessage)[] cases =
+            [
+                (firstLocalRoot, "pair-b", secondDatabasePath, "local roots"),
+                (nestedSecondLocalRoot, "pair-b", secondDatabasePath, "local roots"),
+                (secondLocalRoot, "pair-a", secondDatabasePath, "sync pair ids"),
+                (secondLocalRoot, "pair-b", firstDatabasePath, "databases"),
+            ];
 
-            foreach (var testCase in cases)
+            foreach ((string SecondLocalRoot, string SecondSyncPairId, string SecondDatabasePath, string ExpectedMessage) testCase in cases)
             {
                 using StringWriter output = new StringWriter();
                 using StringWriter error = new StringWriter();

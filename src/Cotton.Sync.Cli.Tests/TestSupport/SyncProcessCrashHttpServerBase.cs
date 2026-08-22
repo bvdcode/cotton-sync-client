@@ -139,6 +139,8 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
                     + remoteRootId.ToString("D")
                     + "/children?page=1&pageSize=500&depth=0")
             {
+                response.Headers["X-Total-Count"] = (rootContent.Nodes.Count + rootContent.Files.Count)
+                    .ToStringInvariant();
                 await WriteJsonAsync(response, HttpStatusCode.OK, rootContent, cancellationToken).ConfigureAwait(false);
                 return true;
             }

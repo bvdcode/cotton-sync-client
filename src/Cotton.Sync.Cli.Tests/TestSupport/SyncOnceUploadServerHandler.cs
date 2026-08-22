@@ -199,7 +199,12 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
             if (request.Method == HttpMethod.Get
                 && request.PathAndQuery == "/api/v1/layouts/nodes/" + _remoteRootId.ToString("D") + "/children?page=1&pageSize=500&depth=0")
             {
-                return Json(HttpStatusCode.OK, CreateRootContent());
+                NodeContentDto content = CreateRootContent();
+                HttpResponseMessage response = Json(HttpStatusCode.OK, content);
+                response.Headers.Add(
+                    "X-Total-Count",
+                    (content.Nodes.Count + content.Files.Count).ToStringInvariant());
+                return response;
             }
 
             if (request.Method == HttpMethod.Get && request.PathAndQuery == "/api/v1/settings")
@@ -277,13 +282,11 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
                 ? new NodeContentDto
                 {
                     Id = _remoteRootId,
-                    TotalCount = 1,
                     Files = [CreateManifest()],
                 }
                 : new NodeContentDto
                 {
                     Id = _remoteRootId,
-                    TotalCount = 0,
                 };
         }
 
