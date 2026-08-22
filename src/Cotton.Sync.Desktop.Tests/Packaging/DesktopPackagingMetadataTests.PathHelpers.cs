@@ -46,6 +46,19 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             return GetDesktopFilePath(Path.Combine("Properties", "PublishProfiles", runtimeIdentifier + ".pubxml"));
         }
 
+        private static string ReadDesktopPartialTypeSource(string relativeDirectory, string typeName)
+        {
+            string projectPath = GetDesktopFilePath("Cotton.Sync.Desktop.csproj");
+            string projectDirectory = Path.GetDirectoryName(projectPath)
+                ?? throw new InvalidOperationException("Desktop project directory is unavailable.");
+            string directory = Path.Combine(projectDirectory, relativeDirectory);
+            return string.Join(
+                Environment.NewLine,
+                Directory.EnumerateFiles(directory, typeName + "*.cs")
+                    .Order(StringComparer.Ordinal)
+                    .Select(File.ReadAllText));
+        }
+
         private static string GetDesktopFilePath(string relativePath)
         {
             string? path = TryGetRepositoryFilePath(Path.Combine("src", "Cotton.Sync.Desktop", relativePath));

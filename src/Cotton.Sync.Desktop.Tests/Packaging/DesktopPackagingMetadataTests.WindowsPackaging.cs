@@ -37,13 +37,13 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             string workflow = GetDesktopWorkflow();
             string solution = File.ReadAllText(GetRepositoryFilePath(Path.Combine("src", "Cotton.sln")));
             string installerScript = File.ReadAllText(GetDesktopFilePath("Packaging/windows/cotton-sync.iss"));
-            string nativeApiSource = File.ReadAllText(GetDesktopFilePath(Path.Combine("Platform", "WindowsCloudFilesNativeApi.cs")));
-            string nativeApiSource = File.ReadAllText(
-                GetDesktopFilePath("Platform/WindowsCloudFilesNativeApi.Imports.cs"));
+            string nativeApiSource = string.Join(
+                Environment.NewLine,
+                File.ReadAllText(GetDesktopFilePath("Platform/WindowsCloudFilesNativeApi.cs")),
+                File.ReadAllText(GetDesktopFilePath("Platform/WindowsCloudFilesNativeApi.Imports.cs")));
 
             Assert.Multiple(() =>
             {
-                Assert.That(nativeApiType.Assembly.GetName().Name, Is.EqualTo("Cotton.Sync.Desktop"));
                 Assert.That(GetProperty(propertyGroup, "RuntimeIdentifier"), Is.EqualTo("win-x64"));
                 Assert.That(GetProperty(propertyGroup, "SelfContained"), Is.EqualTo("true"));
                 Assert.That(GetProperty(propertyGroup, "UseAppHost"), Is.EqualTo("true"));

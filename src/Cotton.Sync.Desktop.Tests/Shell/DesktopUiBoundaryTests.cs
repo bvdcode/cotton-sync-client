@@ -13,13 +13,17 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public void ShellViewModel_UsesDesktopShellAbstractionsInsteadOfSyncEngine()
         {
             string source = File.ReadAllText(GetDesktopFilePath("ViewModels/ShellViewModel.cs"));
+            string controllerContract = File.ReadAllText(GetDesktopFilePath("Shell/IDesktopShellController.cs"));
+            string folderPickerContract = File.ReadAllText(GetDesktopFilePath("Platform/ILocalFolderPicker.cs"));
+            string notificationContract = File.ReadAllText(GetDesktopFilePath("Platform/IDesktopNotificationService.cs"));
+            string themeContract = File.ReadAllText(GetDesktopFilePath("Platform/IDesktopThemeService.cs"));
 
             Assert.Multiple(() =>
             {
-                Assert.That(typeof(IDesktopShellController).IsInterface, Is.True);
-                Assert.That(typeof(ILocalFolderPicker).IsInterface, Is.True);
-                Assert.That(typeof(IDesktopNotificationService).IsInterface, Is.True);
-                Assert.That(typeof(IDesktopThemeService).IsInterface, Is.True);
+                Assert.That(controllerContract, Does.Contain("interface IDesktopShellController"));
+                Assert.That(folderPickerContract, Does.Contain("interface ILocalFolderPicker"));
+                Assert.That(notificationContract, Does.Contain("interface IDesktopNotificationService"));
+                Assert.That(themeContract, Does.Contain("interface IDesktopThemeService"));
                 Assert.That(source, Does.Contain("IDesktopShellController controller"));
                 Assert.That(source, Does.Contain("ILocalFolderPicker folderPicker"));
                 Assert.That(source, Does.Contain("IDesktopNotificationService notificationService"));

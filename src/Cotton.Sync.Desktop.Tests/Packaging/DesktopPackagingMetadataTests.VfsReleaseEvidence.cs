@@ -65,8 +65,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         public void WindowsVfsReleaseEvidenceVerifierScript_ChecksRequiredEvidenceBundleFiles()
         {
             string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/verify-vfs-release-evidence.ps1"));
-            string alwaysKeepPopulationRunner = File.ReadAllText(GetDesktopFilePath(
-                "Startup/DesktopWindowsVirtualFilesSmokeRunner.ExplorerPopulation.cs"));
+            string alwaysKeepPopulationRunner = ReadDesktopPartialTypeSource(
+                "Startup",
+                "DesktopWindowsVirtualFilesSmokeRunner");
             const string inheritedAvailabilityProof =
                 "Late-created descendants inherited Always keep before initial population completed.";
 

@@ -64,8 +64,8 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             {
                 Assert.That(runner, Does.Contain("\"large-remove-pair-cleanup\""));
                 Assert.That(runner, Does.Contain("RunLargeRemovePairCleanupAsync("));
-                Assert.That(runner, Does.Contain("new SqliteSyncPairSettingsStore(paths.AppDatabasePath)"));
-                Assert.That(runner, Does.Contain("new SqliteSyncStateStore(paths.SyncStateDatabasePath)"));
+                Assert.That(runner, Does.Contain("SqliteSyncPairSettingsStore syncPairs = new(paths.AppDatabasePath)"));
+                Assert.That(runner, Does.Contain("SqliteSyncStateStore stateStore = new(paths.SyncStateDatabasePath)"));
                 Assert.That(runner, Does.Contain("CreateDeletionSmokeApplication(syncPairs, stateStore, cloudFiles)"));
                 Assert.That(runner, Does.Contain("DeleteSyncPairAsync(syncPair.Id"));
                 Assert.That(runner, Does.Contain("StopSyncAsync(cancellationToken)"));
