@@ -246,6 +246,11 @@ namespace Cotton.Sync.Desktop.Startup
             {
                 try
                 {
+                    if (!OperatingSystem.IsWindows())
+                    {
+                        throw new PlatformNotSupportedException("Explorer shell verbs require Windows.");
+                    }
+
                     completion.TrySetResult(WindowsShellAutomation.InvokeVerb(filePath, matchesVerb));
                 }
                 catch (Exception exception)

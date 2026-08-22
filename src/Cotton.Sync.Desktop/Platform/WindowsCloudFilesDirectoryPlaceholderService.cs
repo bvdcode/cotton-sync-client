@@ -13,15 +13,12 @@ namespace Cotton.Sync.Desktop.Platform
         IWindowsCloudFilesDiagnostics diagnostics,
         Func<string, bool> isReparsePoint,
         Func<string, bool> isCloudFilesReparsePoint,
-        Func<string, FileAttributes> readFileAttributes,
+        WindowsCloudFilesPinStateResolver pinStateResolver,
         WindowsCloudFilesRegistrationManager registrationManager,
         WindowsCloudFilesNativeOperationExecutor operationExecutor,
         WindowsCloudFilesPathGuard pathGuard,
         WindowsCloudFilesInSyncManager inSyncManager)
     {
-        private const int FileAttributePinned = 0x00080000;
-        private const int FileAttributeUnpinned = 0x00100000;
-
         public void CreateDirectoryPlaceholder(RemoteDirectoryMaterializationRequest request)
         {
             ArgumentNullException.ThrowIfNull(request);
@@ -200,7 +197,7 @@ namespace Cotton.Sync.Desktop.Platform
         {
             try
             {
-                WindowsCloudFilesPinState pinState = ResolveNewPlaceholderPinState(baseDirectoryPath);
+                WindowsCloudFilesPinState pinState = pinStateResolver.ResolveNew(baseDirectoryPath);
                 placeholderOperation();
                 operationExecutor.ExecuteWithTransientPathRetry(
                     () => nativeApi.SetPinState(fullPlaceholderPath, pinState),
@@ -214,7 +211,7 @@ namespace Cotton.Sync.Desktop.Platform
                     request.SyncPairId,
                     localRootPath,
                     normalizedPath);
-                _shellChangeNotifier.NotifyDirectoryUpdated(fullPlaceholderPath);
+                inSyncManager.NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: true);
             }
             catch (Exception exception)
             {
@@ -263,7 +260,7 @@ namespace Cotton.Sync.Desktop.Platform
             string fullPlaceholderPath,
             byte[] directoryIdentity)
         {
-            WindowsCloudFilesPinState? existingPinState = ReadExistingPinState(fullPlaceholderPath);
+            WindowsCloudFilesPinState? existingPinState = pinStateResolver.ReadExisting(fullPlaceholderPath);
             WindowsCloudFilesNativePlaceholder directoryPlaceholder = CreateDirectoryNativePlaceholder(
                 placeholderPath,
                 directoryIdentity,
@@ -289,7 +286,7 @@ namespace Cotton.Sync.Desktop.Platform
                 request.SyncPairId,
                 localRootPath,
                 normalizedPath);
-            _shellChangeNotifier.NotifyDirectoryUpdated(fullPlaceholderPath);
+            inSyncManager.NotifyShellPathUpdated(fullPlaceholderPath, isDirectory: true);
             diagnostics.Record(
                 "convert-directory-placeholder",
                 "repaired-placeholder",
@@ -299,40 +296,5 @@ namespace Cotton.Sync.Desktop.Platform
                 "Windows Cloud Files directory placeholder already existed and was repaired.");
         }
 
-        private WindowsCloudFilesPinState? ReadExistingPinState(string fullPlaceholderPath)
-        {
-            FileAttributes attributes;
-            try
-            {
-                attributes = readFileAttributes(fullPlaceholderPath);
-            }
-            catch (IOException)
-            {
-                return null;
-            }
-            catch (UnauthorizedAccessException)
-            {
-                return null;
-            }
-
-            if (HasRawAttribute(attributes, FileAttributePinned))
-            {
-                return WindowsCloudFilesPinState.Pinned;
-            }
-
-            if (HasRawAttribute(attributes, FileAttributeUnpinned))
-            {
-                return WindowsCloudFilesPinState.Unpinned;
-            }
-
-            return null;
-        }
-
-        private WindowsCloudFilesPinState ResolveNewPlaceholderPinState(string parentDirectoryPath)
-        {
-            return ReadExistingPinState(parentDirectoryPath) == WindowsCloudFilesPinState.Pinned
-                ? WindowsCloudFilesPinState.Inherit
-                : WindowsCloudFilesPinState.Unpinned;
-        }
     }
 }

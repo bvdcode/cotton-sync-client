@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using Cotton;
+using Cotton.Auth;
 using Cotton.Nodes;
 using Cotton.Models;
 using Cotton.Sdk;

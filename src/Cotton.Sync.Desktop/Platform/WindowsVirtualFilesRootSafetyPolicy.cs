@@ -128,7 +128,7 @@ namespace Cotton.Sync.Desktop.Platform
                 return null;
             }
 
-            DirectoryInfo directory = new(currentDirectory);
+            DirectoryInfo? directory = new(currentDirectory);
             while (directory is not null)
             {
                 string gitDirectory = Path.Combine(directory.FullName, ".git");

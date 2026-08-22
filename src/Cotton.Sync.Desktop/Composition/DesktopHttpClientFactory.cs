@@ -167,25 +167,17 @@ namespace Cotton.Sync.Desktop.Composition
                 .ToArray();
         }
 
-        internal static void ObserveConnectCleanupFailure(Task connectTask)
+        internal static async Task ObserveConnectCleanupFailureAsync(Task connectTask)
         {
             ArgumentNullException.ThrowIfNull(connectTask);
-            if (connectTask.IsFaulted)
+            try
+            {
+                await connectTask.ConfigureAwait(false);
+            }
+            catch (Exception)
             {
                 _ = connectTask.Exception;
-                return;
             }
-
-            if (connectTask.IsCompleted)
-            {
-                return;
-            }
-
-            _ = connectTask.ContinueWith(
-                static task => _ = task.Exception,
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
-                TaskScheduler.Default);
         }
 
         internal class ConnectAttempt : IDisposable
@@ -205,6 +197,8 @@ namespace Cotton.Sync.Desktop.Composition
 
             public Task ConnectTask { get; }
 
+            public Task CleanupTask { get; private set; } = Task.CompletedTask;
+
             public NetworkStream CreateStream()
             {
                 _completed = true;
@@ -216,7 +210,7 @@ namespace Cotton.Sync.Desktop.Composition
                 if (!_completed)
                 {
                     Socket.Dispose();
-                    ObserveConnectCleanupFailure(ConnectTask);
+                    CleanupTask = ObserveConnectCleanupFailureAsync(ConnectTask);
                 }
             }
         }

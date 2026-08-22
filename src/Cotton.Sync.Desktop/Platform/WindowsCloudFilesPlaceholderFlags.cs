@@ -7,11 +7,11 @@ namespace Cotton.Sync.Desktop.Platform
     {
         private const uint PlaceholderCreateDisableOnDemandPopulation = 0x00000001;
         private const uint PlaceholderCreateMarkInSync = 0x00000002;
-        private const uint UpdateDehydrate = 0x00000001;
+        private const uint UpdateVerifyInSync = 0x00000001;
         private const uint UpdateMarkInSync = 0x00000002;
-        private const uint UpdateAllowPartial = 0x00000008;
-        private const uint UpdateVerifyInSync = 0x00000010;
-        private const uint UpdateDisableOnDemandPopulation = 0x00000040;
+        private const uint UpdateDehydrate = 0x00000004;
+        private const uint UpdateDisableOnDemandPopulation = 0x00000010;
+        private const uint UpdateAllowPartial = 0x00000400;
 
         public static uint CreatePlaceholderCreateFlags(bool isDirectory)
         {

@@ -7,6 +7,7 @@ using Cotton.Sdk;
 using Cotton.Sync.App.Continuous;
 using Cotton.Sync.App.LocalChanges;
 using Cotton.Sync.App.RemoteChanges;
+using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.SyncApplication;
 using Cotton.Sync.Desktop.Composition;
 using Cotton.Sync.Desktop.Platform;
@@ -168,16 +169,15 @@ namespace Cotton.Sync.Desktop.Tests.Composition
         }
 
         [Test]
-        public void DesktopHttpClientFactory_ObservesAlreadyFaultedConnectCleanup()
+        public async Task DesktopHttpClientFactory_ObservesAlreadyFaultedConnectCleanup()
         {
             TaskCompletionSource connectTask = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             connectTask.SetException(new SocketException((int)SocketError.OperationAborted));
 
-            Assert.That(IsTaskExceptionObserved(connectTask.Task), Is.False);
+            Task cleanupTask = DesktopHttpClientFactory.ObserveConnectCleanupFailureAsync(connectTask.Task);
+            await cleanupTask;
 
-            DesktopHttpClientFactory.ObserveConnectCleanupFailure(connectTask.Task);
-
-            Assert.That(IsTaskExceptionObserved(connectTask.Task), Is.True);
+            Assert.That(cleanupTask.IsCompletedSuccessfully, Is.True);
         }
 
         [Test]
@@ -185,10 +185,11 @@ namespace Cotton.Sync.Desktop.Tests.Composition
         {
             TaskCompletionSource connectTask = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            DesktopHttpClientFactory.ObserveConnectCleanupFailure(connectTask.Task);
+            Task cleanupTask = DesktopHttpClientFactory.ObserveConnectCleanupFailureAsync(connectTask.Task);
             connectTask.SetException(new SocketException((int)SocketError.OperationAborted));
 
-            await WaitForTaskExceptionObservationAsync(connectTask.Task);
+            await cleanupTask.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(cleanupTask.IsCompletedSuccessfully, Is.True);
         }
 
         [Test]
@@ -214,10 +215,9 @@ namespace Cotton.Sync.Desktop.Tests.Composition
             });
 
             connectTask.SetException(new SocketException((int)SocketError.OperationAborted));
-            Assert.That(IsTaskExceptionObserved(connectTask.Task), Is.False);
-
             attempt.Dispose();
-            await WaitForTaskExceptionObservationAsync(connectTask.Task);
+            await attempt.CleanupTask.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(attempt.CleanupTask.IsCompletedSuccessfully, Is.True);
         }
 
         [Test]
@@ -225,16 +225,18 @@ namespace Cotton.Sync.Desktop.Tests.Composition
         {
             TaskCompletionSource firstConnectTask = new(TaskCreationOptions.RunContinuationsAsynchronously);
             TaskCompletionSource secondConnectTask = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            DesktopHttpClientFactory.ConnectAttempt firstAttempt = new(
+                IPAddress.Loopback,
+                new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp),
+                firstConnectTask.Task);
+            DesktopHttpClientFactory.ConnectAttempt secondAttempt = new(
+                IPAddress.IPv6Loopback,
+                new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp),
+                secondConnectTask.Task);
             List<DesktopHttpClientFactory.ConnectAttempt> attempts =
             [
-                new DesktopHttpClientFactory.ConnectAttempt(
-                    IPAddress.Loopback,
-                    new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp),
-                    firstConnectTask.Task),
-                new DesktopHttpClientFactory.ConnectAttempt(
-                    IPAddress.IPv6Loopback,
-                    new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp),
-                    secondConnectTask.Task),
+                firstAttempt,
+                secondAttempt,
             ];
 
             DesktopHttpClientFactory.DisposeRemainingAttempts(attempts);
@@ -244,43 +246,13 @@ namespace Cotton.Sync.Desktop.Tests.Composition
             firstConnectTask.SetException(new SocketException((int)SocketError.OperationAborted));
             secondConnectTask.SetException(new SocketException((int)SocketError.OperationAborted));
 
-            await WaitForTaskExceptionObservationAsync(firstConnectTask.Task);
-            await WaitForTaskExceptionObservationAsync(secondConnectTask.Task);
-        }
-
-        private static async Task WaitForTaskExceptionObservationAsync(Task task)
-        {
-            using CancellationTokenSource timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            while (!IsTaskExceptionObserved(task))
+            await Task.WhenAll(firstAttempt.CleanupTask, secondAttempt.CleanupTask)
+                .WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Multiple(() =>
             {
-                await Task.Delay(10, timeout.Token);
-            }
-        }
-
-        private static bool IsTaskExceptionObserved(Task task)
-        {
-            FieldInfo? contingentPropertiesField = typeof(Task).GetField(
-                "m_contingentProperties",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            object? contingentProperties = contingentPropertiesField?.GetValue(task);
-            if (contingentProperties is null)
-            {
-                return true;
-            }
-
-            FieldInfo? exceptionHolderField = contingentProperties.GetType().GetField(
-                "m_exceptionsHolder",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            object? exceptionHolder = exceptionHolderField?.GetValue(contingentProperties);
-            if (exceptionHolder is null)
-            {
-                return true;
-            }
-
-            FieldInfo? isHandledField = exceptionHolder.GetType().GetField(
-                "m_isHandled",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            return isHandledField is null || (bool)isHandledField.GetValue(exceptionHolder)!;
+                Assert.That(firstAttempt.CleanupTask.IsCompletedSuccessfully, Is.True);
+                Assert.That(secondAttempt.CleanupTask.IsCompletedSuccessfully, Is.True);
+            });
         }
     }
 }

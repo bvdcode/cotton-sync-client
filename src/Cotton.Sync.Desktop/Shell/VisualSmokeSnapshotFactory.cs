@@ -3,6 +3,7 @@
 
 using Cotton.Sync.App.Preferences;
 using Cotton.Sync.Desktop.Platform;
+using Cotton.Sync.Desktop.Startup;
 
 namespace Cotton.Sync.Desktop.Shell
 {

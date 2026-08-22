@@ -26,6 +26,7 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly WindowsCloudFilesNativeOperationExecutor _operationExecutor;
         private readonly WindowsCloudFilesPathGuard _pathGuard;
         private readonly WindowsCloudFilesInSyncManager _inSyncManager;
+        private readonly WindowsCloudFilesPinStateResolver _pinStateResolver;
         private readonly WindowsCloudFilesPlaceholderInspector _placeholderInspector;
         private readonly WindowsCloudFilesFilePlaceholderService _filePlaceholderService;
         private readonly WindowsCloudFilesDirectoryPlaceholderService _directoryPlaceholderService;
@@ -69,6 +70,7 @@ namespace Cotton.Sync.Desktop.Platform
                 _registrationManager,
                 _pathGuard,
                 _operationExecutor);
+            _pinStateResolver = new WindowsCloudFilesPinStateResolver(_readFileAttributes);
             _placeholderInspector = new WindowsCloudFilesPlaceholderInspector(
                 _nativeApi,
                 _registrationManager,
@@ -81,7 +83,7 @@ namespace Cotton.Sync.Desktop.Platform
                 _diagnostics,
                 _isReparsePoint,
                 _isCloudFilesReparsePoint,
-                _readFileAttributes,
+                _pinStateResolver,
                 _registrationManager,
                 _operationExecutor,
                 _pathGuard,
@@ -92,7 +94,7 @@ namespace Cotton.Sync.Desktop.Platform
                 _diagnostics,
                 _isReparsePoint,
                 _isCloudFilesReparsePoint,
-                _readFileAttributes,
+                _pinStateResolver,
                 _registrationManager,
                 _operationExecutor,
                 _pathGuard,

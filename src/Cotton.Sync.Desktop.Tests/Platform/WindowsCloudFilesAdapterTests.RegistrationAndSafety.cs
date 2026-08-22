@@ -48,7 +48,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             RemoteFilePlaceholderResult result = await adapter.FinalizeUploadedFilePlaceholderAsync(syncPair, state);
 
-            RecordingWindowsCloudFilesNativeApi.ConvertedPlaceholderCall converted =
+            FakeCloudFilesNativeApi.ConvertedPlaceholderCall converted =
                 nativeApi.ConvertedPlaceholders.Single();
             WindowsCloudFilesPlaceholderIdentity identity =
                 WindowsCloudFilesPlaceholderIdentity.Parse(converted.FileIdentity);

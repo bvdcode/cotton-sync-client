@@ -13,16 +13,13 @@ namespace Cotton.Sync.Desktop.Platform
         IWindowsCloudFilesDiagnostics diagnostics,
         Func<string, bool> isReparsePoint,
         Func<string, bool> isCloudFilesReparsePoint,
-        Func<string, FileAttributes> readFileAttributes,
+        WindowsCloudFilesPinStateResolver pinStateResolver,
         WindowsCloudFilesRegistrationManager registrationManager,
         WindowsCloudFilesNativeOperationExecutor operationExecutor,
         WindowsCloudFilesPathGuard pathGuard,
         WindowsCloudFilesInSyncManager inSyncManager)
     {
         private const int HResultCloudFileUnsuccessful = unchecked((int)0x80070185);
-        private const int FileAttributePinned = 0x00080000;
-        private const int FileAttributeUnpinned = 0x00100000;
-
         public IReadOnlyList<RemoteFilePlaceholderResult> CreateFilePlaceholders(
             IReadOnlyList<RemoteFilePlaceholderRequest> requests)
         {
@@ -72,7 +69,7 @@ namespace Cotton.Sync.Desktop.Platform
         private RemoteFilePlaceholderResult UpdateExistingFilePlaceholder(PreparedFilePlaceholder item)
         {
             const string operation = "update-placeholder";
-            WindowsCloudFilesPinState? existingPinState = ReadExistingPinState(item.FullPlaceholderPath);
+            WindowsCloudFilesPinState? existingPinState = pinStateResolver.ReadExisting(item.FullPlaceholderPath);
             try
             {
                 SyncPlaceholderHydrationState hydrationState = ApplyExistingFilePlaceholderUpdate(
@@ -251,7 +248,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         private SyncPlaceholderHydrationState ApplyNewFilePlaceholderAvailability(PreparedFilePlaceholder item)
         {
-            WindowsCloudFilesPinState pinState = ResolveNewPlaceholderPinState(item.Placeholder.BaseDirectoryPath);
+            WindowsCloudFilesPinState pinState = pinStateResolver.ResolveNew(item.Placeholder.BaseDirectoryPath);
             bool isHydrated = pinState == WindowsCloudFilesPinState.Inherit
                 && TryHydratePlaceholderOrDefer(item);
             SetFilePlaceholderPinState(item, pinState);
