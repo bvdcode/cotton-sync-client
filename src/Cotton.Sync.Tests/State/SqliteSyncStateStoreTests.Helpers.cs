@@ -33,7 +33,7 @@ namespace Cotton.Sync.Tests.State
             await context.Database.MigrateAsync(migration);
         }
 
-        private static async Task<SqlitePageUsage> ReadPageUsageAsync(string databasePath)
+        private static string ReadDirectoryRepairIndexColumns(string databasePath)
         {
             DbConnectionStringBuilder connectionString = new DbConnectionStringBuilder
             {
@@ -43,65 +43,13 @@ namespace Cotton.Sync.Tests.State
             DbContextOptions<SyncStateDbContext> options = new DbContextOptionsBuilder<SyncStateDbContext>()
                 .UseSqlite(connectionString)
                 .Options;
-            await using SyncStateDbContext context = new SyncStateDbContext(options);
-            await context.Database.OpenConnectionAsync();
-            try
-            {
-                DbConnection connection = context.Database.GetDbConnection();
-                long pageCount = await ExecuteScalarLongAsync(connection, "PRAGMA page_count;");
-                long freelistCount = await ExecuteScalarLongAsync(connection, "PRAGMA freelist_count;");
-                long pageSize = await ExecuteScalarLongAsync(connection, "PRAGMA page_size;");
-                return new SqlitePageUsage(pageCount, freelistCount, pageSize);
-            }
-            finally
-            {
-                await context.Database.CloseConnectionAsync();
-            }
-        }
-
-        private static async Task<long> ExecuteScalarLongAsync(DbConnection connection, string commandText)
-        {
-            await using DbCommand command = connection.CreateCommand();
-            command.CommandText = commandText;
-            object? result = await command.ExecuteScalarAsync();
-            return Convert.ToInt64(result, System.Globalization.CultureInfo.InvariantCulture);
-        }
-
-        private static async Task<string> ReadIndexColumnsAsync(string databasePath, string indexName)
-        {
-            DbConnectionStringBuilder connectionString = new DbConnectionStringBuilder
-            {
-                ["Data Source"] = databasePath,
-                ["Pooling"] = false,
-            }.ToString();
-            DbContextOptions<SyncStateDbContext> options = new DbContextOptionsBuilder<SyncStateDbContext>()
-                .UseSqlite(connectionString)
-                .Options;
-            await using SyncStateDbContext context = new SyncStateDbContext(options);
-            await context.Database.OpenConnectionAsync();
-            try
-            {
-                DbConnection connection = context.Database.GetDbConnection();
-                await using DbCommand command = connection.CreateCommand();
-                command.CommandText = "SELECT group_concat(name, ',') FROM pragma_index_info($indexName) ORDER BY seqno;";
-                DbParameter parameter = command.CreateParameter();
-                parameter.ParameterName = "$indexName";
-                parameter.Value = indexName;
-                command.Parameters.Add(parameter);
-                object? result = await command.ExecuteScalarAsync();
-                return Convert.ToString(result, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
-            }
-            finally
-            {
-                await context.Database.CloseConnectionAsync();
-            }
-        }
-
-        private record SqlitePageUsage(long PageCount, long FreelistCount, long PageSize)
-        {
-            public long FileBytes => PageCount * PageSize;
-
-            public long FreelistBytes => FreelistCount * PageSize;
+            using SyncStateDbContext context = new SyncStateDbContext(options);
+            Microsoft.EntityFrameworkCore.Metadata.IIndex index = context.Model
+                .FindEntityType(typeof(SyncStateEntity))!
+                .GetIndexes()
+                .Single(candidate => candidate.Properties.Select(property => property.Name).SequenceEqual(
+                    [nameof(SyncStateEntity.SyncPairId), nameof(SyncStateEntity.Kind), nameof(SyncStateEntity.RelativePathKey)]));
+            return string.Join(',', index.Properties.Select(property => property.GetColumnName()));
         }
     }
 }

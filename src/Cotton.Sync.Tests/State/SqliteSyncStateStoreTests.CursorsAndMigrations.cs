@@ -88,9 +88,7 @@ namespace Cotton.Sync.Tests.State
 
             await store.InitializeAsync();
 
-            string indexColumns = await ReadIndexColumnsAsync(
-                databasePath,
-                "IX_sync_entries_sync_pair_id_kind_relative_path_key");
+            string indexColumns = ReadDirectoryRepairIndexColumns(databasePath);
 
             Assert.That(indexColumns, Is.EqualTo("sync_pair_id,kind,relative_path_key"));
         }
@@ -199,13 +197,13 @@ namespace Cotton.Sync.Tests.State
                 .Options;
             await using (SyncStateDbContext context = new SyncStateDbContext(options))
             {
-                await context.Database.ExecuteSqlRawAsync(
-                    """
-                    INSERT INTO sync_change_cursors
-                        (sync_pair_id, last_cursor, cursor_expired, earliest_available_cursor, updated_at_utc)
-                    VALUES
-                        ('pair-a', 11944, 0, NULL, '2026-07-26 06:13:01');
-                    """);
+                context.SyncChangeCursors.Add(new SyncChangeCursorEntity
+                {
+                    SyncPairId = "pair-a",
+                    LastCursor = 11944,
+                    UpdatedAtUtc = new DateTime(2026, 7, 26, 6, 13, 1, DateTimeKind.Utc),
+                });
+                await context.SaveChangesAsync();
             }
 
             SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);

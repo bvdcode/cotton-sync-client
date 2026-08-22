@@ -296,7 +296,7 @@ namespace Cotton.Sync.Tests.State
             });
 
             long beforeLength = new FileInfo(databasePath).Length;
-            SqlitePageUsage beforeUsage = await ReadPageUsageAsync(databasePath);
+            SyncStateStoreDiagnostics beforeUsage = await store.GetDiagnosticsAsync();
 
             await store.DeletePairAsync("pair-a");
 
@@ -304,11 +304,11 @@ namespace Cotton.Sync.Tests.State
             IReadOnlyList<SyncStateEntry> pairB = await store.LoadPairAsync("pair-b");
             SyncChangeCursor pairACursor = await store.GetChangeCursorAsync("pair-a");
             long afterLength = new FileInfo(databasePath).Length;
-            SqlitePageUsage afterUsage = await ReadPageUsageAsync(databasePath);
+            SyncStateStoreDiagnostics afterUsage = await store.GetDiagnosticsAsync();
 
             Assert.Multiple(() =>
             {
-                Assert.That(beforeUsage.FileBytes, Is.GreaterThan(4L * 1024 * 1024));
+                Assert.That(beforeUsage.FileSizeBytes, Is.GreaterThan(4L * 1024 * 1024));
                 Assert.That(pairA, Is.Empty);
                 Assert.That(pairB.Select(entry => entry.RelativePath), Is.EqualTo(new[] { "keep.txt" }));
                 Assert.That(pairACursor.LastCursor, Is.Zero);
