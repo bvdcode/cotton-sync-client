@@ -3,8 +3,6 @@
 
 using System.Diagnostics;
 using System.Globalization;
-using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Cotton.Sync.Desktop.Platform;
@@ -96,14 +94,20 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             return Regex.Replace(withoutLineMarkers, "\\s+", " ");
         }
 
-        private static void AssertCloudFilesImport(Type nativeApiType, string entryPoint)
+        private static void AssertCloudFilesImport(string source, string entryPoint)
         {
-            MethodInfo? method = nativeApiType.GetMethod(entryPoint, BindingFlags.NonPublic | BindingFlags.Static);
-            Assert.That(method, Is.Not.Null, entryPoint + " must stay in the desktop Cloud Files native bridge.");
-            DllImportAttribute? dllImport = method!.GetCustomAttribute<DllImportAttribute>();
-            Assert.That(dllImport, Is.Not.Null, entryPoint + " must use the Windows Cloud Files API.");
-            Assert.That(dllImport!.Value, Is.EqualTo("CldApi.dll"));
-            Assert.That(dllImport.ExactSpelling, Is.True);
+            string declaration = "private static extern";
+            int entryPointIndex = source.IndexOf(entryPoint + "(", StringComparison.Ordinal);
+            Assert.That(entryPointIndex, Is.GreaterThanOrEqualTo(0), entryPoint);
+            string prefix = source[..entryPointIndex];
+            int declarationIndex = prefix.LastIndexOf(declaration, StringComparison.Ordinal);
+            Assert.That(declarationIndex, Is.GreaterThanOrEqualTo(0), entryPoint);
+            string importBlock = prefix[declarationIndex..];
+            int attributeIndex = prefix.LastIndexOf("[DllImport", StringComparison.Ordinal);
+            Assert.That(attributeIndex, Is.GreaterThanOrEqualTo(0), entryPoint);
+            importBlock = prefix[attributeIndex..] + entryPoint + "(";
+            Assert.That(importBlock, Does.Contain("[DllImport(\"CldApi.dll\""), entryPoint);
+            Assert.That(importBlock, Does.Contain("ExactSpelling = true"), entryPoint);
         }
     }
 }

@@ -32,7 +32,8 @@ namespace Cotton.Sync.Desktop.Composition
             ICottonSyncClient sync,
             HttpClient httpClient,
             Uri serverUrl,
-            IAsyncDisposable? asyncResource = null)
+            IAsyncDisposable? asyncResource = null,
+            DesktopCompositionSnapshot? composition = null)
         {
             App = app ?? throw new ArgumentNullException(nameof(app));
             RemoteRootResolver = remoteRootResolver ?? throw new ArgumentNullException(nameof(remoteRootResolver));
@@ -47,6 +48,7 @@ namespace Cotton.Sync.Desktop.Composition
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
             _asyncResource = asyncResource;
             ServerUrl = serverUrl ?? throw new ArgumentNullException(nameof(serverUrl));
+            Composition = composition;
         }
 
         public ISyncApplicationService App { get; }
@@ -70,6 +72,8 @@ namespace Cotton.Sync.Desktop.Composition
         public ICottonSyncClient Sync { get; }
 
         public Uri ServerUrl { get; }
+
+        internal DesktopCompositionSnapshot? Composition { get; }
 
         public void Dispose()
         {

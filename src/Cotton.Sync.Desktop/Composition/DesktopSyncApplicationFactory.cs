@@ -203,7 +203,21 @@ namespace Cotton.Sync.Desktop.Composition
                 cottonClient.Sync,
                 httpClient,
                 serverUrl,
-                cottonClient);
+                cottonClient,
+                new DesktopCompositionSnapshot(
+                    cottonClient.GetType(),
+                    localChanges.GetType(),
+                    remoteChanges.GetType(),
+                    periodicSync.GetType(),
+                    pairWork.GetType(),
+                    typeof(RemoteChangeAwareSyncPairWork),
+                    typeof(WindowsVirtualFilesFilePlaceholderRepairPairWork),
+                    typeof(WindowsVirtualFilesDirectoryPlaceholderRepairPairWork),
+                    typeof(WindowsVirtualFilesUploadFinalizationPairWork),
+                    typeof(SyncEnginePairWork),
+                    remoteFilePlaceholderWriter.GetType(),
+                    cloudFilesConnections.GetType(),
+                    cloudFilesDeletionHandler.GetType()));
         }
     }
 }

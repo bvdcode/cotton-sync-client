@@ -3,8 +3,6 @@
 
 using System.Diagnostics;
 using System.Globalization;
-using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Cotton.Sync.Desktop.Platform;
@@ -40,7 +38,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             string solution = File.ReadAllText(GetRepositoryFilePath(Path.Combine("src", "Cotton.sln")));
             string installerScript = File.ReadAllText(GetDesktopFilePath("Packaging/windows/cotton-sync.iss"));
             string nativeApiSource = File.ReadAllText(GetDesktopFilePath(Path.Combine("Platform", "WindowsCloudFilesNativeApi.cs")));
-            Type nativeApiType = typeof(WindowsCloudFilesNativeApi);
+            string nativeApiSource = File.ReadAllText(
+                GetDesktopFilePath("Platform/WindowsCloudFilesNativeApi.Imports.cs"));
 
             Assert.Multiple(() =>
             {
@@ -83,18 +82,18 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(installerScript, Does.Contain("Cloud Files cleanup command exited with code %d."));
                 Assert.That(workflow, Does.Contain("Cloud Files cleanup did not exit cleanly during uninstall."));
                 Assert.That(workflow, Does.Contain("Cloud Files cleanup did not exit cleanly during reinstall cleanup."));
-                AssertCloudFilesImport(nativeApiType, "CfRegisterSyncRoot");
-                AssertCloudFilesImport(nativeApiType, "CfUnregisterSyncRoot");
-                AssertCloudFilesImport(nativeApiType, "CfCreatePlaceholders");
-                AssertCloudFilesImport(nativeApiType, "CfConnectSyncRoot");
-                AssertCloudFilesImport(nativeApiType, "CfDisconnectSyncRoot");
-                AssertCloudFilesImport(nativeApiType, "CfSetPinState");
-                AssertCloudFilesImport(nativeApiType, "CfConvertToPlaceholder");
-                AssertCloudFilesImport(nativeApiType, "CfExecute");
-                AssertCloudFilesImport(nativeApiType, "CfOpenFileWithOplock");
-                AssertCloudFilesImport(nativeApiType, "CfDehydratePlaceholder");
-                AssertCloudFilesImport(nativeApiType, "CfUpdatePlaceholder");
-                AssertCloudFilesImport(nativeApiType, "CfCloseHandle");
+                AssertCloudFilesImport(nativeApiSource, "CfRegisterSyncRoot");
+                AssertCloudFilesImport(nativeApiSource, "CfUnregisterSyncRoot");
+                AssertCloudFilesImport(nativeApiSource, "CfCreatePlaceholders");
+                AssertCloudFilesImport(nativeApiSource, "CfConnectSyncRoot");
+                AssertCloudFilesImport(nativeApiSource, "CfDisconnectSyncRoot");
+                AssertCloudFilesImport(nativeApiSource, "CfSetPinState");
+                AssertCloudFilesImport(nativeApiSource, "CfConvertToPlaceholder");
+                AssertCloudFilesImport(nativeApiSource, "CfExecute");
+                AssertCloudFilesImport(nativeApiSource, "CfOpenFileWithOplock");
+                AssertCloudFilesImport(nativeApiSource, "CfDehydratePlaceholder");
+                AssertCloudFilesImport(nativeApiSource, "CfUpdatePlaceholder");
+                AssertCloudFilesImport(nativeApiSource, "CfCloseHandle");
                 Assert.That(nativeApiSource, Does.Contain("AutoDehydrationAllowed"));
             });
         }

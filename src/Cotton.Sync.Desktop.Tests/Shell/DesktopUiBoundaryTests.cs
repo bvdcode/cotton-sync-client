@@ -1,12 +1,9 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
-using System.Reflection;
-using Cotton.Sync.App.Runners;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Shell;
 using Cotton.Sync.Desktop.ViewModels;
-using CoreSyncEngine = Cotton.Sync.SyncEngine;
 
 namespace Cotton.Sync.Desktop.Tests.Shell
 {
@@ -15,46 +12,58 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void ShellViewModel_UsesDesktopShellAbstractionsInsteadOfSyncEngine()
         {
-            ConstructorInfo constructor = typeof(ShellViewModel)
-                .GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)
-                .Single();
-            Type[] parameterTypes = constructor.GetParameters()
-                .Select(static parameter => parameter.ParameterType)
-                .ToArray();
+            string source = File.ReadAllText(GetDesktopFilePath("ViewModels/ShellViewModel.cs"));
 
             Assert.Multiple(() =>
             {
-                Assert.That(parameterTypes, Does.Contain(typeof(IDesktopShellController)));
-                Assert.That(parameterTypes, Does.Contain(typeof(ILocalFolderPicker)));
-                Assert.That(parameterTypes, Does.Contain(typeof(IDesktopNotificationService)));
-                Assert.That(parameterTypes, Does.Contain(typeof(IDesktopThemeService)));
-                Assert.That(parameterTypes, Does.Not.Contain(typeof(CoreSyncEngine)));
-                Assert.That(parameterTypes, Does.Not.Contain(typeof(SyncEnginePairWork)));
+                Assert.That(typeof(IDesktopShellController).IsInterface, Is.True);
+                Assert.That(typeof(ILocalFolderPicker).IsInterface, Is.True);
+                Assert.That(typeof(IDesktopNotificationService).IsInterface, Is.True);
+                Assert.That(typeof(IDesktopThemeService).IsInterface, Is.True);
+                Assert.That(source, Does.Contain("IDesktopShellController controller"));
+                Assert.That(source, Does.Contain("ILocalFolderPicker folderPicker"));
+                Assert.That(source, Does.Contain("IDesktopNotificationService notificationService"));
+                Assert.That(source, Does.Contain("IDesktopThemeService themeService"));
+                Assert.That(source, Does.Not.Contain("Cotton.Sync.SyncEngine"));
+                Assert.That(source, Does.Not.Contain("SyncEnginePairWork"));
             });
         }
 
         [Test]
         public void UiShellTypes_DoNotStoreSyncEngineDependencies()
         {
-            Type[] forbiddenTypes = [typeof(CoreSyncEngine), typeof(SyncEnginePairWork)];
-            Type[] uiTypes = [typeof(MainWindow), typeof(ShellViewModel)];
+            string mainWindowSource = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml.cs"));
+            string viewModelSource = string.Join(
+                Environment.NewLine,
+                Directory.EnumerateFiles(
+                        Path.Combine(Path.GetDirectoryName(GetDesktopFilePath("Cotton.Sync.Desktop.csproj"))!, "ViewModels"),
+                        "ShellViewModel*.cs")
+                    .Select(File.ReadAllText));
 
-            foreach (Type uiType in uiTypes)
+            Assert.Multiple(() =>
             {
-                Type[] dependencyTypes = uiType
-                    .GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
-                    .Select(static field => field.FieldType)
-                    .Concat(uiType
-                        .GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
-                        .SelectMany(static constructor => constructor.GetParameters())
-                        .Select(static parameter => parameter.ParameterType))
-                    .ToArray();
+                Assert.That(mainWindowSource, Does.Not.Contain("Cotton.Sync.SyncEngine"));
+                Assert.That(mainWindowSource, Does.Not.Contain("SyncEnginePairWork"));
+                Assert.That(viewModelSource, Does.Not.Contain("Cotton.Sync.SyncEngine"));
+                Assert.That(viewModelSource, Does.Not.Contain("SyncEnginePairWork"));
+            });
+        }
 
-                Assert.That(
-                    dependencyTypes.Intersect(forbiddenTypes).ToArray(),
-                    Is.Empty,
-                    uiType.FullName + " must depend on desktop/app abstractions instead of sync engine internals.");
+        private static string GetDesktopFilePath(string relativePath)
+        {
+            string directory = TestContext.CurrentContext.TestDirectory;
+            while (!string.IsNullOrEmpty(directory))
+            {
+                string candidate = Path.Combine(directory, "src", "Cotton.Sync.Desktop", relativePath);
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
+
+                directory = Directory.GetParent(directory)?.FullName ?? string.Empty;
             }
+
+            throw new FileNotFoundException(relativePath);
         }
     }
 }

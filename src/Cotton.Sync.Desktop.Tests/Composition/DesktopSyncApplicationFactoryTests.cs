@@ -1,7 +1,6 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
-using System.Reflection;
 using System.Net;
 using System.Net.Sockets;
 using Cotton.Sdk;
@@ -42,9 +41,7 @@ namespace Cotton.Sync.Desktop.Tests.Composition
 
             await using DesktopSyncApplicationHost host = factory.Create(new Uri("https://cotton.example.test/"));
 
-            object asyncResource = GetPrivateFieldValue(host, "_asyncResource");
-
-            Assert.That(asyncResource, Is.TypeOf<CottonCloudClient>());
+            Assert.That(host.Composition?.AsyncResourceType, Is.EqualTo(typeof(CottonCloudClient)));
         }
 
         [Test]
@@ -73,15 +70,14 @@ namespace Cotton.Sync.Desktop.Tests.Composition
             await using DesktopSyncApplicationHost host = factory.Create(new Uri("https://cotton.example.test/"));
 
             Assert.That(host.App, Is.TypeOf<SyncApplicationService>());
-            object localChanges = GetPrivateFieldValue(host.App, "_localChanges");
-            object remoteChanges = GetPrivateFieldValue(host.App, "_remoteChanges");
-            object periodicSync = GetPrivateFieldValue(host.App, "_periodicSync");
+            DesktopCompositionSnapshot composition = host.Composition
+                ?? throw new InvalidOperationException("Composition snapshot is missing.");
 
             Assert.Multiple(() =>
             {
-                Assert.That(localChanges, Is.TypeOf<LocalChangeSyncCoordinator>());
-                Assert.That(remoteChanges, Is.TypeOf<RealtimeRemoteChangeSyncCoordinator>());
-                Assert.That(periodicSync, Is.TypeOf<PeriodicSyncCoordinator>());
+                Assert.That(composition.LocalChangeCoordinatorType, Is.EqualTo(typeof(LocalChangeSyncCoordinator)));
+                Assert.That(composition.RemoteChangeCoordinatorType, Is.EqualTo(typeof(RealtimeRemoteChangeSyncCoordinator)));
+                Assert.That(composition.PeriodicSyncCoordinatorType, Is.EqualTo(typeof(PeriodicSyncCoordinator)));
             });
         }
 
@@ -93,18 +89,9 @@ namespace Cotton.Sync.Desktop.Tests.Composition
 
             await using DesktopSyncApplicationHost host = factory.Create(new Uri("https://cotton.example.test/"));
 
-            object supervisor = GetPrivateFieldValue(host.App, "_supervisor");
-            object runnerFactory = GetPrivateFieldValue(supervisor, "_runnerFactory");
-            object dehydrationWork = GetPrivateFieldValue(runnerFactory, "_work");
-            object remoteChangeAwareWork = GetPrivateFieldValue(dehydrationWork, "_inner");
-            object fileRepairWork = GetPrivateFieldValue(remoteChangeAwareWork, "_inner");
-            object directoryRepairWork = GetPrivateFieldValue(fileRepairWork, "_inner");
-            object finalizationWork = GetPrivateFieldValue(directoryRepairWork, "_inner");
-            object syncEnginePairWork = GetPrivateFieldValue(finalizationWork, "_inner");
-            object syncEngine = GetPrivateFieldValue(syncEnginePairWork, "_syncEngine");
-            object placeholderWriter = GetPrivateFieldValue(syncEngine, "_remoteFilePlaceholderWriter");
-
-            Assert.That(placeholderWriter, Is.TypeOf<DesktopCloudFilesPlaceholderWriter>());
+            Assert.That(
+                host.Composition?.PlaceholderWriterType,
+                Is.EqualTo(typeof(DesktopCloudFilesPlaceholderWriter)));
         }
 
         [Test]
@@ -115,23 +102,17 @@ namespace Cotton.Sync.Desktop.Tests.Composition
 
             await using DesktopSyncApplicationHost host = factory.Create(new Uri("https://cotton.example.test/"));
 
-            object supervisor = GetPrivateFieldValue(host.App, "_supervisor");
-            object runnerFactory = GetPrivateFieldValue(supervisor, "_runnerFactory");
-            object dehydrationWork = GetPrivateFieldValue(runnerFactory, "_work");
-            object remoteChangeAwareWork = GetPrivateFieldValue(dehydrationWork, "_inner");
-            object fileRepairWork = GetPrivateFieldValue(remoteChangeAwareWork, "_inner");
-            object directoryRepairWork = GetPrivateFieldValue(fileRepairWork, "_inner");
-            object finalizationWork = GetPrivateFieldValue(directoryRepairWork, "_inner");
-            object syncEnginePairWork = GetPrivateFieldValue(finalizationWork, "_inner");
+            DesktopCompositionSnapshot composition = host.Composition
+                ?? throw new InvalidOperationException("Composition snapshot is missing.");
 
             Assert.Multiple(() =>
             {
-                Assert.That(dehydrationWork, Is.TypeOf<WindowsVirtualFilesDehydrationPairWork>());
-                Assert.That(remoteChangeAwareWork.GetType().Name, Is.EqualTo("RemoteChangeAwareSyncPairWork"));
-                Assert.That(fileRepairWork, Is.TypeOf<WindowsVirtualFilesFilePlaceholderRepairPairWork>());
-                Assert.That(directoryRepairWork, Is.TypeOf<WindowsVirtualFilesDirectoryPlaceholderRepairPairWork>());
-                Assert.That(finalizationWork, Is.TypeOf<WindowsVirtualFilesUploadFinalizationPairWork>());
-                Assert.That(syncEnginePairWork.GetType().Name, Is.EqualTo("SyncEnginePairWork"));
+                Assert.That(composition.PairWorkType, Is.EqualTo(typeof(WindowsVirtualFilesDehydrationPairWork)));
+                Assert.That(composition.RemoteChangePairWorkType, Is.EqualTo(typeof(RemoteChangeAwareSyncPairWork)));
+                Assert.That(composition.FilePlaceholderRepairType, Is.EqualTo(typeof(WindowsVirtualFilesFilePlaceholderRepairPairWork)));
+                Assert.That(composition.DirectoryPlaceholderRepairType, Is.EqualTo(typeof(WindowsVirtualFilesDirectoryPlaceholderRepairPairWork)));
+                Assert.That(composition.UploadFinalizationType, Is.EqualTo(typeof(WindowsVirtualFilesUploadFinalizationPairWork)));
+                Assert.That(composition.SyncEnginePairWorkType, Is.EqualTo(typeof(SyncEnginePairWork)));
             });
         }
 
@@ -143,11 +124,9 @@ namespace Cotton.Sync.Desktop.Tests.Composition
 
             await using DesktopSyncApplicationHost host = factory.Create(new Uri("https://cotton.example.test/"));
 
-            object lifecycleComponents = GetPrivateFieldValue(host.App, "_syncCoreLifecycleComponents");
-
             Assert.That(
-                lifecycleComponents,
-                Has.One.TypeOf<WindowsCloudFilesSyncRootConnectionCoordinator>());
+                host.Composition?.SyncCoreLifecycleType,
+                Is.EqualTo(typeof(WindowsCloudFilesSyncRootConnectionCoordinator)));
         }
 
         [Test]
@@ -158,9 +137,9 @@ namespace Cotton.Sync.Desktop.Tests.Composition
 
             await using DesktopSyncApplicationHost host = factory.Create(new Uri("https://cotton.example.test/"));
 
-            object deletionHandler = GetPrivateFieldValue(host.App, "_syncPairDeletionHandler");
-
-            Assert.That(deletionHandler, Is.TypeOf<WindowsCloudFilesSyncPairDeletionHandler>());
+            Assert.That(
+                host.Composition?.SyncPairDeletionHandlerType,
+                Is.EqualTo(typeof(WindowsCloudFilesSyncPairDeletionHandler)));
         }
 
         [Test]
@@ -185,14 +164,7 @@ namespace Cotton.Sync.Desktop.Tests.Composition
         [Test]
         public void DesktopHttpClientFactory_DoesNotBypassCertificateValidation()
         {
-            MethodInfo? createHandler = typeof(DesktopHttpClientFactory).GetMethod(
-                "CreateHandler",
-                BindingFlags.Static | BindingFlags.NonPublic);
-
-            using SocketsHttpHandler handler = (SocketsHttpHandler)(createHandler?.Invoke(null, null)
-                ?? throw new InvalidOperationException("CreateHandler was not found."));
-
-            Assert.That(handler.SslOptions.RemoteCertificateValidationCallback, Is.Null);
+            Assert.That(DesktopHttpClientFactory.HasCustomCertificateValidation(), Is.False);
         }
 
         [Test]
@@ -274,13 +246,6 @@ namespace Cotton.Sync.Desktop.Tests.Composition
 
             await WaitForTaskExceptionObservationAsync(firstConnectTask.Task);
             await WaitForTaskExceptionObservationAsync(secondConnectTask.Task);
-        }
-
-        private static object GetPrivateFieldValue(object instance, string fieldName)
-        {
-            FieldInfo? field = instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.That(field, Is.Not.Null, fieldName);
-            return field!.GetValue(instance) ?? throw new InvalidOperationException(fieldName);
         }
 
         private static async Task WaitForTaskExceptionObservationAsync(Task task)

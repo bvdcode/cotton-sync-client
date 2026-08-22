@@ -27,6 +27,12 @@ namespace Cotton.Sync.Desktop.Composition
             };
         }
 
+        internal static bool HasCustomCertificateValidation()
+        {
+            using SocketsHttpHandler handler = CreateHandler();
+            return handler.SslOptions.RemoteCertificateValidationCallback is not null;
+        }
+
         private static async ValueTask<Stream> ConnectAsync(
             SocketsHttpConnectionContext context,
             CancellationToken cancellationToken)
