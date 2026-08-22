@@ -236,6 +236,17 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
 
             public event EventHandler<CottonRealtimeEvent>? SessionRevoked;
 
+            public event EventHandler<CottonRealtimeEvent>? NotificationReceived
+            {
+                add
+                {
+                }
+
+                remove
+                {
+                }
+            }
+
             public int StartCallCount { get; private set; }
 
             public int StopCallCount { get; private set; }
