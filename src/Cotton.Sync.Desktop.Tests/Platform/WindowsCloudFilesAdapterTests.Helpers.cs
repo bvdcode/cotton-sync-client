@@ -14,18 +14,6 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 {
     public partial class WindowsCloudFilesAdapterTests
     {
-        private static uint InvokeNativeFlagFactory(string methodName, bool isDirectory)
-        {
-            System.Reflection.MethodInfo? method = typeof(WindowsCloudFilesNativeApi).GetMethod(
-                methodName,
-                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-            Assert.That(method, Is.Not.Null);
-
-            object? result = method!.Invoke(null, [isDirectory]);
-            Assert.That(result, Is.Not.Null);
-            return Convert.ToUInt32(result);
-        }
-
         private WindowsVirtualFilesRootSafetyPolicy CreatePolicy()
         {
             return new WindowsVirtualFilesRootSafetyPolicy(

@@ -48,7 +48,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreatePlaceholderCreateFlags_ForDirectoryMarksFullyPopulated()
         {
-            uint flags = InvokeNativeFlagFactory("CreatePlaceholderCreateFlags", isDirectory: true);
+            uint flags = WindowsCloudFilesPlaceholderFlags.CreatePlaceholderCreateFlags(isDirectory: true);
 
             Assert.That(
                 flags,
@@ -58,7 +58,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateUpdateFlags_ForDirectoryMarksFullyPopulated()
         {
-            uint flags = InvokeNativeFlagFactory("CreateUpdateFlags", isDirectory: true);
+            uint flags = WindowsCloudFilesPlaceholderFlags.CreateUpdateFlags(isDirectory: true);
 
             Assert.That(
                 flags,
@@ -71,7 +71,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateUpdateFlags_ForFileDehydratesStaleContentAndAllowsPartialUpdates()
         {
-            uint flags = InvokeNativeFlagFactory("CreateUpdateFlags", isDirectory: false);
+            uint flags = WindowsCloudFilesPlaceholderFlags.CreateUpdateFlags(isDirectory: false);
 
             Assert.That(
                 flags,

@@ -274,26 +274,13 @@ namespace Cotton.Sync.Desktop.Platform
 
         private static CfPlaceholderCreateFlags CreatePlaceholderCreateFlags(bool isDirectory)
         {
-            CfPlaceholderCreateFlags flags = CfPlaceholderCreateFlags.MarkInSync;
-            if (isDirectory)
-            {
-                flags |= CfPlaceholderCreateFlags.DisableOnDemandPopulation;
-            }
-
-            return flags;
+            return (CfPlaceholderCreateFlags)WindowsCloudFilesPlaceholderFlags
+                .CreatePlaceholderCreateFlags(isDirectory);
         }
 
         private static CfUpdateFlags CreateUpdateFlags(bool isDirectory)
         {
-            CfUpdateFlags flags = CfUpdateFlags.VerifyInSync | CfUpdateFlags.MarkInSync;
-            if (!isDirectory)
-            {
-                flags |= CfUpdateFlags.Dehydrate;
-            }
-
-            return isDirectory
-                ? flags | CfUpdateFlags.DisableOnDemandPopulation
-                : flags | CfUpdateFlags.AllowPartial;
+            return (CfUpdateFlags)WindowsCloudFilesPlaceholderFlags.CreateUpdateFlags(isDirectory);
         }
 
         [Flags]
