@@ -3,6 +3,7 @@
 
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.App.State;
+using Cotton.Sync.TestSupport;
 using Microsoft.EntityFrameworkCore;
 
 namespace Cotton.Sync.App.Tests.SyncPairs
@@ -87,17 +88,14 @@ namespace Cotton.Sync.App.Tests.SyncPairs
             await contextFactory.MigrateAsync(CancellationToken.None);
             await using (SyncAppDbContext context = contextFactory.Create())
             {
-                context.SyncPairSettings.Add(new SyncPairSettingsEntity
+                context.SyncPairSettings.Add(new SyncPairSettingsEntity(syncPairId)
                 {
-                    Id = syncPairId,
                     DisplayName = "Documents",
                     LocalRootPath = "/home/user/Documents",
                     RemoteRootNodeId = Guid.NewGuid(),
                     RemoteDisplayPath = "/Documents",
                     IsEnabled = true,
                     Mode = SyncPairMode.Unknown,
-                    CreatedAtUtc = new DateTime(2026, 6, 3, 10, 0, 0, DateTimeKind.Utc),
-                    UpdatedAtUtc = new DateTime(2026, 6, 3, 10, 0, 0, DateTimeKind.Utc),
                 });
                 await context.SaveChangesAsync();
             }
@@ -215,19 +213,33 @@ namespace Cotton.Sync.App.Tests.SyncPairs
             contextFactory.EnsureDirectoryExists();
             await using SyncAppDbContext context = contextFactory.Create();
             await context.Database.MigrateAsync("20260607084529_AddSyncPausedPreference");
-            context.SyncPairSettings.Add(new SyncPairSettingsEntity
-            {
-                Id = syncPairId,
-                DisplayName = "Legacy reserved mode",
-                LocalRootPath = "/home/user/Legacy",
-                RemoteRootNodeId = Guid.NewGuid(),
-                RemoteDisplayPath = "/Legacy",
-                IsEnabled = true,
-                Mode = (SyncPairMode)2,
-                CreatedAtUtc = new DateTime(2026, 6, 3, 10, 0, 0, DateTimeKind.Utc),
-                UpdatedAtUtc = new DateTime(2026, 6, 3, 10, 0, 0, DateTimeKind.Utc),
-            });
-            await context.SaveChangesAsync();
+            DateTime timestamp = new(2026, 6, 7, 8, 45, 29, DateTimeKind.Utc);
+            await HistoricalMigrationDataWriter.InsertAsync(
+                context,
+                "sync_pair_settings",
+                [
+                    "id",
+                    "display_name",
+                    "local_root_path",
+                    "remote_root_node_id",
+                    "remote_display_path",
+                    "is_enabled",
+                    "mode",
+                    "created_at_utc",
+                    "updated_at_utc",
+                ],
+                ["TEXT", "TEXT", "TEXT", "TEXT", "TEXT", "INTEGER", "INTEGER", "TEXT", "TEXT"],
+                [
+                    syncPairId,
+                    "Legacy reserved mode",
+                    "/home/user/Legacy",
+                    Guid.NewGuid(),
+                    "/Legacy",
+                    true,
+                    2,
+                    timestamp,
+                    timestamp,
+                ]);
         }
 
         private static SyncPairSettings CreatePair(string displayName, string localRootPath, string remoteDisplayPath)

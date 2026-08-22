@@ -63,7 +63,7 @@ namespace Cotton.Sync.App.SyncPairs
                             .ConfigureAwait(false);
                         if (entity is null)
                         {
-                            entity = new SyncPairSettingsEntity { Id = syncPair.Id };
+                            entity = new SyncPairSettingsEntity(syncPair.Id);
                             context.SyncPairSettings.Add(entity);
                         }
 
@@ -98,15 +98,12 @@ namespace Cotton.Sync.App.SyncPairs
         private static void UpdateEntity(SyncPairSettingsEntity entity, SyncPairSettings syncPair)
         {
             ArgumentOutOfRangeException.ThrowIfEqual(syncPair.Mode, SyncPairMode.Unknown);
-            DateTime now = DateTime.UtcNow;
             entity.DisplayName = syncPair.DisplayName.Trim();
             entity.LocalRootPath = syncPair.LocalRootPath.Trim();
             entity.RemoteRootNodeId = syncPair.RemoteRootNodeId;
             entity.RemoteDisplayPath = syncPair.RemoteDisplayPath.Trim();
             entity.IsEnabled = syncPair.IsEnabled;
             entity.Mode = syncPair.Mode;
-            entity.CreatedAtUtc = UtcDateTime.Normalize(syncPair.CreatedAtUtc == default ? now : syncPair.CreatedAtUtc);
-            entity.UpdatedAtUtc = UtcDateTime.Normalize(syncPair.UpdatedAtUtc == default ? now : syncPair.UpdatedAtUtc);
         }
 
         private static SyncPairSettings ToModel(SyncPairSettingsEntity entity)
@@ -120,8 +117,8 @@ namespace Cotton.Sync.App.SyncPairs
                 RemoteDisplayPath = entity.RemoteDisplayPath,
                 IsEnabled = entity.IsEnabled,
                 Mode = NormalizeStoredMode(entity.Mode),
-                CreatedAtUtc = UtcDateTime.Normalize(entity.CreatedAtUtc),
-                UpdatedAtUtc = UtcDateTime.Normalize(entity.UpdatedAtUtc),
+                CreatedAtUtc = UtcDateTime.Normalize(entity.CreatedAt),
+                UpdatedAtUtc = UtcDateTime.Normalize(entity.UpdatedAt),
             };
         }
 

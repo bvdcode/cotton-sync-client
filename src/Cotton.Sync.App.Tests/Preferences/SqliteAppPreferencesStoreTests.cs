@@ -65,7 +65,9 @@ namespace Cotton.Sync.App.Tests.Preferences
                 UpdatedAtUtc = new DateTime(2026, 6, 3, 10, 1, 0, DateTimeKind.Utc),
             };
 
+            DateTime saveStartedAt = DateTime.UtcNow;
             await firstStore.SaveAsync(expected);
+            DateTime saveCompletedAt = DateTime.UtcNow;
 
             SqliteAppPreferencesStore secondStore = new SqliteAppPreferencesStore(databasePath);
             await secondStore.InitializeAsync();
@@ -79,8 +81,10 @@ namespace Cotton.Sync.App.Tests.Preferences
                 Assert.That(actual.StartMinimizedToTray, Is.True);
                 Assert.That(actual.EnableNotifications, Is.False);
                 Assert.That(actual.ThemeMode, Is.EqualTo(AppThemeMode.Dark));
-                Assert.That(actual.CreatedAtUtc, Is.EqualTo(expected.CreatedAtUtc));
-                Assert.That(actual.UpdatedAtUtc, Is.EqualTo(expected.UpdatedAtUtc));
+                Assert.That(actual.CreatedAtUtc.Kind, Is.EqualTo(DateTimeKind.Utc));
+                Assert.That(actual.UpdatedAtUtc.Kind, Is.EqualTo(DateTimeKind.Utc));
+                Assert.That(actual.CreatedAtUtc, Is.InRange(saveStartedAt, saveCompletedAt));
+                Assert.That(actual.UpdatedAtUtc, Is.InRange(actual.CreatedAtUtc, saveCompletedAt));
             });
         }
 

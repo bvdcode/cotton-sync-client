@@ -53,7 +53,7 @@ namespace Cotton.Sync.App.Preferences
                             .ConfigureAwait(false);
                         if (entity is null)
                         {
-                            entity = new AppPreferencesEntity { Id = PreferencesId };
+                            entity = new AppPreferencesEntity(PreferencesId);
                             context.AppPreferences.Add(entity);
                         }
 
@@ -66,11 +66,6 @@ namespace Cotton.Sync.App.Preferences
 
         private static void UpdateEntity(AppPreferencesEntity entity, AppPreferences preferences)
         {
-            DateTime now = DateTime.UtcNow;
-            DateTime createdAt = preferences.CreatedAtUtc == default
-                ? (entity.CreatedAtUtc == default ? now : entity.CreatedAtUtc)
-                : preferences.CreatedAtUtc;
-            DateTime updatedAt = preferences.UpdatedAtUtc == default ? now : preferences.UpdatedAtUtc;
             entity.RememberedServerUrl = preferences.RememberedServerUrl?.AbsoluteUri;
             entity.RememberedUsername = NormalizeOptional(preferences.RememberedUsername);
             entity.StartWithOperatingSystem = preferences.StartWithOperatingSystem;
@@ -78,8 +73,6 @@ namespace Cotton.Sync.App.Preferences
             entity.EnableNotifications = preferences.EnableNotifications;
             entity.IsSyncPaused = preferences.IsSyncPaused;
             entity.ThemeMode = preferences.ThemeMode;
-            entity.CreatedAtUtc = UtcDateTime.Normalize(createdAt);
-            entity.UpdatedAtUtc = UtcDateTime.Normalize(updatedAt);
         }
 
         private static AppPreferences ToModel(AppPreferencesEntity entity)
@@ -95,8 +88,8 @@ namespace Cotton.Sync.App.Preferences
                 EnableNotifications = entity.EnableNotifications,
                 IsSyncPaused = entity.IsSyncPaused,
                 ThemeMode = entity.ThemeMode,
-                CreatedAtUtc = UtcDateTime.Normalize(entity.CreatedAtUtc),
-                UpdatedAtUtc = UtcDateTime.Normalize(entity.UpdatedAtUtc),
+                CreatedAtUtc = UtcDateTime.Normalize(entity.CreatedAt),
+                UpdatedAtUtc = UtcDateTime.Normalize(entity.UpdatedAt),
             };
         }
 

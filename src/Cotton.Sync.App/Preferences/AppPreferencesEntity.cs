@@ -3,15 +3,21 @@
 
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using EasyExtensions.EntityFrameworkCore.Abstractions;
 
 namespace Cotton.Sync.App.Preferences
 {
     [Table("app_preferences")]
-    internal class AppPreferencesEntity
+    internal class AppPreferencesEntity : BaseEntity<int>
     {
-        [Key]
-        [Column("id")]
-        public int Id { get; set; }
+        public AppPreferencesEntity()
+        {
+        }
+
+        public AppPreferencesEntity(int id)
+        {
+            Id = id;
+        }
 
         [MaxLength(2048)]
         [Column("remembered_server_url")]
@@ -36,10 +42,5 @@ namespace Cotton.Sync.App.Preferences
         [Column("theme_mode")]
         public AppThemeMode ThemeMode { get; set; }
 
-        [Column("created_at_utc")]
-        public DateTime CreatedAtUtc { get; set; }
-
-        [Column("updated_at_utc")]
-        public DateTime UpdatedAtUtc { get; set; }
     }
 }

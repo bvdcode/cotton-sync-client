@@ -3,11 +3,12 @@
 
 using Cotton.Sync.App.Preferences;
 using Cotton.Sync.App.SyncPairs;
+using EasyExtensions.EntityFrameworkCore.Database;
 using Microsoft.EntityFrameworkCore;
 
 namespace Cotton.Sync.App.State
 {
-    internal class SyncAppDbContext : DbContext
+    internal class SyncAppDbContext : AuditedDbContext
     {
         public SyncAppDbContext(DbContextOptions<SyncAppDbContext> options)
             : base(options)
