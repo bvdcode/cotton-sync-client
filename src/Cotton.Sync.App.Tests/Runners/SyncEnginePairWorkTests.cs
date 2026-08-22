@@ -29,9 +29,9 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_MapsAppSyncPairToCoreSyncPair()
         {
-            var engine = new FakeSyncEngine();
-            var work = new SyncEnginePairWork(engine);
-            var syncPair = new SyncPairSettings
+            FakeSyncEngine engine = new FakeSyncEngine();
+            SyncEnginePairWork work = new SyncEnginePairWork(engine);
+            SyncPairSettings syncPair = new SyncPairSettings
             {
                 Id = Guid.NewGuid(),
                 DisplayName = "Documents",
@@ -58,8 +58,8 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_MapsWindowsVirtualFilesModeToCoreMaterializationMode()
         {
-            var engine = new FakeSyncEngine();
-            var work = new SyncEnginePairWork(engine);
+            FakeSyncEngine engine = new FakeSyncEngine();
+            SyncEnginePairWork work = new SyncEnginePairWork(engine);
             SyncPairSettings syncPair = CreateSyncPair(Guid.NewGuid());
             syncPair.Mode = SyncPairMode.WindowsVirtualFiles;
 
@@ -71,8 +71,8 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_MapsScopedRequestToCoreScope()
         {
-            var engine = new FakeSyncEngine();
-            var work = new SyncEnginePairWork(engine);
+            FakeSyncEngine engine = new FakeSyncEngine();
+            SyncEnginePairWork work = new SyncEnginePairWork(engine);
             SyncPairSettings syncPair = CreateSyncPair(Guid.NewGuid());
 
             await work.RunOnceAsync(
@@ -170,7 +170,7 @@ namespace Cotton.Sync.App.Tests.Runners
         public async Task RunOnceAsync_PublishesCoreSyncActivities()
         {
             Guid syncPairId = Guid.NewGuid();
-            var engine = new FakeSyncEngine
+            FakeSyncEngine engine = new FakeSyncEngine
             {
                 ActivityToReport = new CoreSyncActivity
                 {
@@ -179,10 +179,10 @@ namespace Cotton.Sync.App.Tests.Runners
                     Details = "Remote version saved as report conflict.txt",
                 },
             };
-            var publisher = new InMemoryAppActivityPublisher();
-            var observer = new RecordingObserver<AppSyncActivity>();
+            InMemoryAppActivityPublisher publisher = new InMemoryAppActivityPublisher();
+            RecordingObserver<AppSyncActivity> observer = new RecordingObserver<AppSyncActivity>();
             using IDisposable subscription = publisher.Subscribe(observer);
-            var work = new SyncEnginePairWork(engine, publisher);
+            SyncEnginePairWork work = new SyncEnginePairWork(engine, publisher);
             SyncPairSettings syncPair = CreateSyncPair(syncPairId);
 
             await work.RunOnceAsync(syncPair);
@@ -203,7 +203,7 @@ namespace Cotton.Sync.App.Tests.Runners
         public async Task RunOnceAsync_PublishesCoreMoveActivities()
         {
             Guid syncPairId = Guid.NewGuid();
-            var engine = new FakeSyncEngine
+            FakeSyncEngine engine = new FakeSyncEngine
             {
                 ActivityToReport = new CoreSyncActivity
                 {
@@ -212,10 +212,10 @@ namespace Cotton.Sync.App.Tests.Runners
                     Details = "Moved from Documents/old-name.txt.",
                 },
             };
-            var publisher = new InMemoryAppActivityPublisher();
-            var observer = new RecordingObserver<AppSyncActivity>();
+            InMemoryAppActivityPublisher publisher = new InMemoryAppActivityPublisher();
+            RecordingObserver<AppSyncActivity> observer = new RecordingObserver<AppSyncActivity>();
             using IDisposable subscription = publisher.Subscribe(observer);
-            var work = new SyncEnginePairWork(engine, publisher);
+            SyncEnginePairWork work = new SyncEnginePairWork(engine, publisher);
             SyncPairSettings syncPair = CreateSyncPair(syncPairId);
 
             await work.RunOnceAsync(syncPair);
@@ -235,7 +235,7 @@ namespace Cotton.Sync.App.Tests.Runners
         public async Task RunOnceAsync_PublishesCorePlaceholderActivities()
         {
             Guid syncPairId = Guid.NewGuid();
-            var engine = new FakeSyncEngine
+            FakeSyncEngine engine = new FakeSyncEngine
             {
                 ActivityToReport = new CoreSyncActivity
                 {
@@ -243,10 +243,10 @@ namespace Cotton.Sync.App.Tests.Runners
                     RelativePath = "Documents/cloud-only.txt",
                 },
             };
-            var publisher = new InMemoryAppActivityPublisher();
-            var observer = new RecordingObserver<AppSyncActivity>();
+            InMemoryAppActivityPublisher publisher = new InMemoryAppActivityPublisher();
+            RecordingObserver<AppSyncActivity> observer = new RecordingObserver<AppSyncActivity>();
             using IDisposable subscription = publisher.Subscribe(observer);
-            var work = new SyncEnginePairWork(engine, publisher);
+            SyncEnginePairWork work = new SyncEnginePairWork(engine, publisher);
             SyncPairSettings syncPair = CreateSyncPair(syncPairId);
 
             await work.RunOnceAsync(syncPair);
@@ -266,7 +266,7 @@ namespace Cotton.Sync.App.Tests.Runners
         public async Task RunOnceAsync_PublishesCoreTransferProgress()
         {
             Guid syncPairId = Guid.NewGuid();
-            var engine = new FakeSyncEngine
+            FakeSyncEngine engine = new FakeSyncEngine
             {
                 TransferProgressToReport = new CoreSyncTransferProgress(
                     CoreSyncTransferDirection.Upload,
@@ -274,10 +274,10 @@ namespace Cotton.Sync.App.Tests.Runners
                     transferredBytes: 512,
                     totalBytes: 1024),
             };
-            var publisher = new InMemoryAppTransferProgressPublisher();
-            var observer = new RecordingObserver<AppSyncTransferProgress>();
+            InMemoryAppTransferProgressPublisher publisher = new InMemoryAppTransferProgressPublisher();
+            RecordingObserver<AppSyncTransferProgress> observer = new RecordingObserver<AppSyncTransferProgress>();
             using IDisposable subscription = publisher.Subscribe(observer);
-            var work = new SyncEnginePairWork(engine, progressPublisher: publisher);
+            SyncEnginePairWork work = new SyncEnginePairWork(engine, progressPublisher: publisher);
             SyncPairSettings syncPair = CreateSyncPair(syncPairId);
 
             await work.RunOnceAsync(syncPair);
@@ -303,7 +303,7 @@ namespace Cotton.Sync.App.Tests.Runners
         public async Task RunOnceAsync_PublishesCoreRunProgress()
         {
             Guid syncPairId = Guid.NewGuid();
-            var engine = new FakeSyncEngine
+            FakeSyncEngine engine = new FakeSyncEngine
             {
                 RunProgressToReport = new CoreSyncRunProgress(
                     CoreSyncRunProgressStage.ReconcilingFiles,
@@ -312,10 +312,10 @@ namespace Cotton.Sync.App.Tests.Runners
                     currentPath: "Documents/report.txt",
                     startedAtUtc: new DateTime(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc)),
             };
-            var publisher = new InMemoryAppRunProgressPublisher();
-            var observer = new RecordingObserver<AppSyncRunProgress>();
+            InMemoryAppRunProgressPublisher publisher = new InMemoryAppRunProgressPublisher();
+            RecordingObserver<AppSyncRunProgress> observer = new RecordingObserver<AppSyncRunProgress>();
             using IDisposable subscription = publisher.Subscribe(observer);
-            var work = new SyncEnginePairWork(engine, runProgressPublisher: publisher);
+            SyncEnginePairWork work = new SyncEnginePairWork(engine, runProgressPublisher: publisher);
             SyncPairSettings syncPair = CreateSyncPair(syncPairId);
 
             await work.RunOnceAsync(syncPair);
@@ -376,7 +376,7 @@ namespace Cotton.Sync.App.Tests.Runners
         public void RunOnceAsync_PublishesTerminalRunProgressWhenCoreFails()
         {
             Guid syncPairId = Guid.NewGuid();
-            var engine = new FakeSyncEngine
+            FakeSyncEngine engine = new FakeSyncEngine
             {
                 RunProgressToReport = new CoreSyncRunProgress(
                     CoreSyncRunProgressStage.CreatingPlaceholders,
@@ -386,10 +386,10 @@ namespace Cotton.Sync.App.Tests.Runners
                     startedAtUtc: new DateTime(2026, 7, 10, 21, 44, 0, DateTimeKind.Utc)),
                 Failure = new HttpRequestException("Bad Gateway"),
             };
-            var publisher = new InMemoryAppRunProgressPublisher();
-            var observer = new RecordingObserver<AppSyncRunProgress>();
+            InMemoryAppRunProgressPublisher publisher = new InMemoryAppRunProgressPublisher();
+            RecordingObserver<AppSyncRunProgress> observer = new RecordingObserver<AppSyncRunProgress>();
             using IDisposable subscription = publisher.Subscribe(observer);
-            var work = new SyncEnginePairWork(engine, runProgressPublisher: publisher);
+            SyncEnginePairWork work = new SyncEnginePairWork(engine, runProgressPublisher: publisher);
 
             Assert.ThrowsAsync<HttpRequestException>(
                 async () => await work.RunOnceAsync(CreateSyncPair(syncPairId)));
@@ -470,7 +470,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public void RunOnceAsync_ThrowsWhenCoreRunRequiresUserAction()
         {
-            var engine = new FakeSyncEngine
+            FakeSyncEngine engine = new FakeSyncEngine
             {
                 ResultToReturn = new CoreSyncRunResult
                 {
@@ -486,7 +486,7 @@ namespace Cotton.Sync.App.Tests.Runners
                     },
                 },
             };
-            var work = new SyncEnginePairWork(engine);
+            SyncEnginePairWork work = new SyncEnginePairWork(engine);
 
             CoreSyncActionRequiredException? exception = Assert.ThrowsAsync<CoreSyncActionRequiredException>(
                 async () => await work.RunOnceAsync(CreateSyncPair(Guid.NewGuid())));

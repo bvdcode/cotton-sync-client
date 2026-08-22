@@ -31,7 +31,7 @@ namespace Cotton.Sync.Tests.Local
         {
             string relativePath = "Docs/file.txt";
             WriteFile(relativePath, "existing");
-            var writer = new AtomicLocalFileSyncWriter();
+            AtomicLocalFileSyncWriter writer = new AtomicLocalFileSyncWriter();
 
             InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(
                 async () => await writer.WriteFileAsync(
@@ -63,7 +63,7 @@ namespace Cotton.Sync.Tests.Local
             Directory.CreateDirectory(temporaryDirectory);
             string staleDownload = Path.Combine(temporaryDirectory, "stale.download");
             File.WriteAllText(staleDownload, "partial", new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-            var writer = new AtomicLocalFileSyncWriter();
+            AtomicLocalFileSyncWriter writer = new AtomicLocalFileSyncWriter();
 
             await writer.WriteFileAsync(
                 _root,
@@ -84,7 +84,7 @@ namespace Cotton.Sync.Tests.Local
         {
             string relativePath = "Docs/file.txt";
             WriteFile(relativePath, "deleted-content");
-            var writer = new AtomicLocalFileSyncWriter();
+            AtomicLocalFileSyncWriter writer = new AtomicLocalFileSyncWriter();
 
             await writer.DeleteFileAsync(_root, relativePath);
 
@@ -124,7 +124,7 @@ namespace Cotton.Sync.Tests.Local
         [Test]
         public async Task CreateDirectoryAsync_CreatesLocalDirectory()
         {
-            var writer = new AtomicLocalFileSyncWriter();
+            AtomicLocalFileSyncWriter writer = new AtomicLocalFileSyncWriter();
 
             await writer.CreateDirectoryAsync(_root, "Docs/Empty");
 
@@ -136,7 +136,7 @@ namespace Cotton.Sync.Tests.Local
         {
             WriteFile("Projects/Source/file.txt", "move-content");
             Directory.CreateDirectory(FullPath("Archive"));
-            var writer = new AtomicLocalFileSyncWriter();
+            AtomicLocalFileSyncWriter writer = new AtomicLocalFileSyncWriter();
 
             await writer.MoveDirectoryAsync(_root, "Projects", "Archive/ProjectsRenamed");
 
@@ -167,7 +167,7 @@ namespace Cotton.Sync.Tests.Local
         public async Task MoveDirectoryAsync_RenamesDirectoryWhenOnlyCasingChanges()
         {
             WriteFile("Projects/file.txt", "case-content");
-            var writer = new AtomicLocalFileSyncWriter();
+            AtomicLocalFileSyncWriter writer = new AtomicLocalFileSyncWriter();
 
             await writer.MoveDirectoryAsync(_root, "Projects", "projects");
 
@@ -184,7 +184,7 @@ namespace Cotton.Sync.Tests.Local
         {
             WriteFile("Source/source.txt", "source-content");
             WriteFile("Target/target.txt", "target-content");
-            var writer = new AtomicLocalFileSyncWriter();
+            AtomicLocalFileSyncWriter writer = new AtomicLocalFileSyncWriter();
 
             Assert.That(
                 async () => await writer.MoveDirectoryAsync(_root, "Source", "Target"),
@@ -200,7 +200,7 @@ namespace Cotton.Sync.Tests.Local
         public async Task DeleteDirectoryAsync_MovesEmptyDirectoryToDeletedQuarantine()
         {
             Directory.CreateDirectory(FullPath("Docs/Empty"));
-            var writer = new AtomicLocalFileSyncWriter();
+            AtomicLocalFileSyncWriter writer = new AtomicLocalFileSyncWriter();
 
             await writer.DeleteDirectoryAsync(_root, "Docs/Empty");
 
@@ -220,7 +220,7 @@ namespace Cotton.Sync.Tests.Local
         public async Task DeleteDirectoryAsync_MovesNonEmptyDirectoryToDeletedQuarantine()
         {
             WriteFile("Docs/NotEmpty/file.txt", "keep");
-            var writer = new AtomicLocalFileSyncWriter();
+            AtomicLocalFileSyncWriter writer = new AtomicLocalFileSyncWriter();
 
             await writer.DeleteDirectoryAsync(_root, "Docs/NotEmpty");
 
@@ -250,7 +250,7 @@ namespace Cotton.Sync.Tests.Local
         [Test]
         public async Task PayloadOperations_RejectIgnoredPaths()
         {
-            var writer = new AtomicLocalFileSyncWriter();
+            AtomicLocalFileSyncWriter writer = new AtomicLocalFileSyncWriter();
             const string ignoredFilePath = ".cotton-sync/payload.txt";
             const string ignoredDirectoryPath = ".cotton-sync/payload";
 
@@ -285,7 +285,7 @@ namespace Cotton.Sync.Tests.Local
         [Test]
         public void CreateConflictRelativePath_UsesIndexedSuffixWhenTimestampNameExists()
         {
-            var writer = new AtomicLocalFileSyncWriter();
+            AtomicLocalFileSyncWriter writer = new AtomicLocalFileSyncWriter();
             DateTime timestamp = new(2026, 6, 3, 12, 30, 0, DateTimeKind.Utc);
             string firstConflictPath = writer.CreateConflictRelativePath(_root, "Docs/file.txt", timestamp);
             WriteFile(firstConflictPath, "first conflict");
@@ -304,7 +304,7 @@ namespace Cotton.Sync.Tests.Local
         [Test]
         public void CreateConflictRelativePath_SkipsExistingDirectoryWithCandidateName()
         {
-            var writer = new AtomicLocalFileSyncWriter();
+            AtomicLocalFileSyncWriter writer = new AtomicLocalFileSyncWriter();
             DateTime timestamp = new(2026, 6, 3, 12, 30, 0, DateTimeKind.Utc);
             Directory.CreateDirectory(FullPath("Docs/file (Cotton conflict 20260603T123000Z).txt"));
 

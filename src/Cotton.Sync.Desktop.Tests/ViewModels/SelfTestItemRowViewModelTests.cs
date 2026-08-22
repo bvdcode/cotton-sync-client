@@ -10,7 +10,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public void ResultState_TracksPassAndFailure()
         {
-            var row = new SelfTestItemRowViewModel();
+            SelfTestItemRowViewModel row = new SelfTestItemRowViewModel();
 
             Assert.Multiple(() =>
             {

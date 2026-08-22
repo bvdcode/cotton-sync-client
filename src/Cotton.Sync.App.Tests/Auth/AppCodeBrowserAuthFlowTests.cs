@@ -16,7 +16,7 @@ namespace Cotton.Sync.App.Tests.Auth
         public async Task SignInAsync_StartsSessionOpensBrowserPollsAndReturnsSession()
         {
             Guid userId = Guid.NewGuid();
-            var authClient = new FakeCottonAuthClient
+            FakeCottonAuthClient authClient = new FakeCottonAuthClient
             {
                 CurrentUser = new UserDto
                 {
@@ -31,8 +31,8 @@ namespace Cotton.Sync.App.Tests.Auth
                 Status = AppCodePollStatus.Approved,
                 Tokens = new TokenPairDto { AccessToken = "access", RefreshToken = "refresh" },
             });
-            var platformCommands = new FakePlatformCommandService();
-            var flow = new AppCodeBrowserAuthFlow(authClient, platformCommands);
+            FakePlatformCommandService platformCommands = new FakePlatformCommandService();
+            AppCodeBrowserAuthFlow flow = new AppCodeBrowserAuthFlow(authClient, platformCommands);
 
             AuthSession session = await flow.SignInAsync(new AppCodeBrowserSignInRequest
             {
@@ -90,8 +90,8 @@ namespace Cotton.Sync.App.Tests.Auth
         [Test]
         public async Task SignInAsync_WaitsForPendingPollAndContinues()
         {
-            var delays = new List<TimeSpan>();
-            var authClient = new FakeCottonAuthClient();
+            List<TimeSpan> delays = new List<TimeSpan>();
+            FakeCottonAuthClient authClient = new FakeCottonAuthClient();
             authClient.PollResults.Enqueue(new AppCodePollResult
             {
                 Status = AppCodePollStatus.Pending,
@@ -103,7 +103,7 @@ namespace Cotton.Sync.App.Tests.Auth
                 Status = AppCodePollStatus.Approved,
                 Tokens = new TokenPairDto { AccessToken = "access", RefreshToken = "refresh" },
             });
-            var flow = new AppCodeBrowserAuthFlow(
+            AppCodeBrowserAuthFlow flow = new AppCodeBrowserAuthFlow(
                 authClient,
                 new FakePlatformCommandService(),
                 (delay, _) =>
@@ -127,15 +127,15 @@ namespace Cotton.Sync.App.Tests.Auth
         [Test]
         public async Task SignInAsync_RetriesTransientPollFailureAndContinues()
         {
-            var delays = new List<TimeSpan>();
-            var authClient = new FakeCottonAuthClient();
+            List<TimeSpan> delays = new List<TimeSpan>();
+            FakeCottonAuthClient authClient = new FakeCottonAuthClient();
             authClient.PollExceptions.Enqueue(new HttpRequestException("Temporary network failure."));
             authClient.PollResults.Enqueue(new AppCodePollResult
             {
                 Status = AppCodePollStatus.Approved,
                 Tokens = new TokenPairDto { AccessToken = "access", RefreshToken = "refresh" },
             });
-            var flow = new AppCodeBrowserAuthFlow(
+            AppCodeBrowserAuthFlow flow = new AppCodeBrowserAuthFlow(
                 authClient,
                 new FakePlatformCommandService(),
                 (delay, _) =>
@@ -161,16 +161,16 @@ namespace Cotton.Sync.App.Tests.Auth
         [Test]
         public async Task SignInAsync_RetriesTransientStartFailureAndContinues()
         {
-            var delays = new List<TimeSpan>();
-            var authClient = new FakeCottonAuthClient();
+            List<TimeSpan> delays = new List<TimeSpan>();
+            FakeCottonAuthClient authClient = new FakeCottonAuthClient();
             authClient.StartExceptions.Enqueue(new HttpRequestException("Firewall blocked first request."));
             authClient.PollResults.Enqueue(new AppCodePollResult
             {
                 Status = AppCodePollStatus.Approved,
                 Tokens = new TokenPairDto { AccessToken = "access", RefreshToken = "refresh" },
             });
-            var platformCommands = new FakePlatformCommandService();
-            var flow = new AppCodeBrowserAuthFlow(
+            FakePlatformCommandService platformCommands = new FakePlatformCommandService();
+            AppCodeBrowserAuthFlow flow = new AppCodeBrowserAuthFlow(
                 authClient,
                 platformCommands,
                 (delay, _) =>
@@ -197,13 +197,13 @@ namespace Cotton.Sync.App.Tests.Auth
         [Test]
         public void SignInAsync_ConvertsPersistentStartFailureToBrowserSignInException()
         {
-            var delays = new List<TimeSpan>();
-            var authClient = new FakeCottonAuthClient();
+            List<TimeSpan> delays = new List<TimeSpan>();
+            FakeCottonAuthClient authClient = new FakeCottonAuthClient();
             authClient.StartExceptions.Enqueue(new HttpRequestException("network blocked 1"));
             authClient.StartExceptions.Enqueue(new HttpRequestException("network blocked 2"));
             authClient.StartExceptions.Enqueue(new HttpRequestException("network blocked 3"));
-            var platformCommands = new FakePlatformCommandService();
-            var flow = new AppCodeBrowserAuthFlow(
+            FakePlatformCommandService platformCommands = new FakePlatformCommandService();
+            AppCodeBrowserAuthFlow flow = new AppCodeBrowserAuthFlow(
                 authClient,
                 platformCommands,
                 (delay, _) =>
@@ -233,7 +233,7 @@ namespace Cotton.Sync.App.Tests.Auth
         [Test]
         public void SignInAsync_ExplainsSocketAccessDeniedStartFailure()
         {
-            var authClient = new FakeCottonAuthClient();
+            FakeCottonAuthClient authClient = new FakeCottonAuthClient();
             authClient.StartExceptions.Enqueue(new HttpRequestException(
                 "socket denied 1",
                 new SocketException(10013)));
@@ -243,8 +243,8 @@ namespace Cotton.Sync.App.Tests.Auth
             authClient.StartExceptions.Enqueue(new HttpRequestException(
                 "socket denied 3",
                 new SocketException(10013)));
-            var platformCommands = new FakePlatformCommandService();
-            var flow = new AppCodeBrowserAuthFlow(
+            FakePlatformCommandService platformCommands = new FakePlatformCommandService();
+            AppCodeBrowserAuthFlow flow = new AppCodeBrowserAuthFlow(
                 authClient,
                 platformCommands,
                 (_, _) => Task.CompletedTask);
@@ -271,15 +271,15 @@ namespace Cotton.Sync.App.Tests.Auth
         [Test]
         public async Task SignInAsync_RetriesTransientUserLookupFailureAfterApproval()
         {
-            var delays = new List<TimeSpan>();
-            var authClient = new FakeCottonAuthClient();
+            List<TimeSpan> delays = new List<TimeSpan>();
+            FakeCottonAuthClient authClient = new FakeCottonAuthClient();
             authClient.PollResults.Enqueue(new AppCodePollResult
             {
                 Status = AppCodePollStatus.Approved,
                 Tokens = new TokenPairDto { AccessToken = "access", RefreshToken = "refresh" },
             });
             authClient.MeExceptions.Enqueue(new IOException("Temporary user lookup failure."));
-            var flow = new AppCodeBrowserAuthFlow(
+            AppCodeBrowserAuthFlow flow = new AppCodeBrowserAuthFlow(
                 authClient,
                 new FakePlatformCommandService(),
                 (delay, _) =>
@@ -306,8 +306,8 @@ namespace Cotton.Sync.App.Tests.Auth
         public void SignInAsync_StopsTransientUserLookupRetriesWhenSessionExpires()
         {
             DateTime currentTime = DateTime.UtcNow;
-            var delays = new List<TimeSpan>();
-            var authClient = new FakeCottonAuthClient();
+            List<TimeSpan> delays = new List<TimeSpan>();
+            FakeCottonAuthClient authClient = new FakeCottonAuthClient();
             authClient.Session.ExpiresAt = currentTime.AddSeconds(1);
             authClient.PollResults.Enqueue(new AppCodePollResult
             {
@@ -316,7 +316,7 @@ namespace Cotton.Sync.App.Tests.Auth
             });
             authClient.MeExceptions.Enqueue(new IOException("Temporary user lookup failure."));
             authClient.MeExceptions.Enqueue(new IOException("Still unavailable."));
-            var flow = new AppCodeBrowserAuthFlow(
+            AppCodeBrowserAuthFlow flow = new AppCodeBrowserAuthFlow(
                 authClient,
                 new FakePlatformCommandService(),
                 (delay, _) =>
@@ -348,11 +348,11 @@ namespace Cotton.Sync.App.Tests.Auth
         public void SignInAsync_StopsTransientPollRetriesWhenSessionExpires()
         {
             DateTime currentTime = DateTime.UtcNow;
-            var delays = new List<TimeSpan>();
-            var authClient = new FakeCottonAuthClient();
+            List<TimeSpan> delays = new List<TimeSpan>();
+            FakeCottonAuthClient authClient = new FakeCottonAuthClient();
             authClient.Session.ExpiresAt = currentTime.AddSeconds(1);
             authClient.PollExceptions.Enqueue(new HttpRequestException("Temporary network failure."));
-            var flow = new AppCodeBrowserAuthFlow(
+            AppCodeBrowserAuthFlow flow = new AppCodeBrowserAuthFlow(
                 authClient,
                 new FakePlatformCommandService(),
                 (delay, _) =>
@@ -388,13 +388,13 @@ namespace Cotton.Sync.App.Tests.Auth
             string error,
             string message)
         {
-            var authClient = new FakeCottonAuthClient();
+            FakeCottonAuthClient authClient = new FakeCottonAuthClient();
             authClient.PollResults.Enqueue(new AppCodePollResult
             {
                 Status = status,
                 Error = error,
             });
-            var flow = new AppCodeBrowserAuthFlow(authClient, new FakePlatformCommandService());
+            AppCodeBrowserAuthFlow flow = new AppCodeBrowserAuthFlow(authClient, new FakePlatformCommandService());
 
             AppCodeBrowserSignInException? exception = Assert.ThrowsAsync<AppCodeBrowserSignInException>(
                 async () => await flow.SignInAsync(new AppCodeBrowserSignInRequest
@@ -415,8 +415,8 @@ namespace Cotton.Sync.App.Tests.Auth
         [Test]
         public void SignInAsync_RejectsMissingApplicationNameBeforeSdkCall()
         {
-            var authClient = new FakeCottonAuthClient();
-            var flow = new AppCodeBrowserAuthFlow(authClient, new FakePlatformCommandService());
+            FakeCottonAuthClient authClient = new FakeCottonAuthClient();
+            AppCodeBrowserAuthFlow flow = new AppCodeBrowserAuthFlow(authClient, new FakePlatformCommandService());
 
             ArgumentException? exception = Assert.ThrowsAsync<ArgumentException>(
                 async () => await flow.SignInAsync(new AppCodeBrowserSignInRequest

@@ -17,9 +17,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             SyncPairSettings fullMirror = CreatePair("Full", @"S:\CottonFull", SyncPairMode.FullMirror);
             SyncPairSettings disabledVfs = CreatePair("Disabled", @"S:\CottonDisabled", SyncPairMode.WindowsVirtualFiles, isEnabled: false);
             SyncPairSettings enabledVfs = CreatePair("Virtual", @"S:\CottonVirtual", SyncPairMode.WindowsVirtualFiles);
-            var store = new FakeSyncPairSettingsStore([fullMirror, disabledVfs, enabledVfs]);
-            var adapter = new FakeCloudFilesAdapter();
-            var coordinator = new WindowsCloudFilesSyncRootConnectionCoordinator(
+            FakeSyncPairSettingsStore store = new FakeSyncPairSettingsStore([fullMirror, disabledVfs, enabledVfs]);
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter();
+            WindowsCloudFilesSyncRootConnectionCoordinator coordinator = new WindowsCloudFilesSyncRootConnectionCoordinator(
                 store,
                 adapter,
                 new RecordingCallbackHandler());
@@ -39,8 +39,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             SyncPairSettings first = CreatePair("First", @"S:\CottonFirst", SyncPairMode.WindowsVirtualFiles);
             SyncPairSettings second = CreatePair("Second", @"S:\CottonSecond", SyncPairMode.WindowsVirtualFiles);
-            var adapter = new FakeCloudFilesAdapter();
-            var coordinator = new WindowsCloudFilesSyncRootConnectionCoordinator(
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter();
+            WindowsCloudFilesSyncRootConnectionCoordinator coordinator = new WindowsCloudFilesSyncRootConnectionCoordinator(
                 new FakeSyncPairSettingsStore([first, second]),
                 adapter,
                 new RecordingCallbackHandler());
@@ -60,12 +60,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public void StartAsync_StopsBeforeConnectingRootsWhenCanceled()
         {
             SyncPairSettings syncPair = CreatePair("Virtual", @"S:\CottonVirtual", SyncPairMode.WindowsVirtualFiles);
-            var adapter = new FakeCloudFilesAdapter();
-            var coordinator = new WindowsCloudFilesSyncRootConnectionCoordinator(
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter();
+            WindowsCloudFilesSyncRootConnectionCoordinator coordinator = new WindowsCloudFilesSyncRootConnectionCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 adapter,
                 new RecordingCallbackHandler());
-            using var cancellation = new CancellationTokenSource();
+            using CancellationTokenSource cancellation = new CancellationTokenSource();
             cancellation.Cancel();
 
             Assert.That(
@@ -80,13 +80,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             SyncPairSettings first = CreatePair("First", @"S:\CottonFirst", SyncPairMode.WindowsVirtualFiles);
             SyncPairSettings second = CreatePair("Second", @"S:\CottonSecond", SyncPairMode.WindowsVirtualFiles);
-            var startupError = new InvalidOperationException("Cloud Files connect failed.");
-            var adapter = new FakeCloudFilesAdapter
+            InvalidOperationException startupError = new InvalidOperationException("Cloud Files connect failed.");
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter
             {
                 ThrowOnConnectionNumber = 2,
                 ConnectException = startupError,
             };
-            var coordinator = new WindowsCloudFilesSyncRootConnectionCoordinator(
+            WindowsCloudFilesSyncRootConnectionCoordinator coordinator = new WindowsCloudFilesSyncRootConnectionCoordinator(
                 new FakeSyncPairSettingsStore([first, second]),
                 adapter,
                 new RecordingCallbackHandler());
@@ -205,7 +205,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     throw ConnectException ?? new InvalidOperationException("Connect failed.");
                 }
 
-                var key = new WindowsCloudFilesConnectionKey(_nextConnectionKey++);
+                WindowsCloudFilesConnectionKey key = new WindowsCloudFilesConnectionKey(_nextConnectionKey++);
                 return new WindowsCloudFilesConnection(syncPair.LocalRootPath, key, DisconnectedKeys.Add);
             }
 

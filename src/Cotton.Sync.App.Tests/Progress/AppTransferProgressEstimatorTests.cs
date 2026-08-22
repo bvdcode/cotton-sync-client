@@ -10,7 +10,7 @@ namespace Cotton.Sync.App.Tests.Progress
         [Test]
         public void AddSample_CalculatesRollingSpeedAndRemainingTime()
         {
-            var estimator = new AppTransferProgressEstimator();
+            AppTransferProgressEstimator estimator = new AppTransferProgressEstimator();
             DateTime startedAtUtc = new(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc);
 
             AppTransferProgressEstimate first = estimator.AddSample(
@@ -40,7 +40,7 @@ namespace Cotton.Sync.App.Tests.Progress
         [Test]
         public void AddSample_UsesTenSecondRollingWindowInsteadOfWholeTransferDuration()
         {
-            var estimator = new AppTransferProgressEstimator();
+            AppTransferProgressEstimator estimator = new AppTransferProgressEstimator();
             DateTime startedAtUtc = new(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc);
 
             _ = estimator.AddSample(
@@ -75,7 +75,7 @@ namespace Cotton.Sync.App.Tests.Progress
         [Test]
         public void AddSample_DoesNotAverageRepeatedIdleZeroSamplesIntoSpeed()
         {
-            var estimator = new AppTransferProgressEstimator();
+            AppTransferProgressEstimator estimator = new AppTransferProgressEstimator();
             DateTime startedAtUtc = new(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc);
 
             _ = estimator.AddSample(
@@ -110,7 +110,7 @@ namespace Cotton.Sync.App.Tests.Progress
         [Test]
         public void AddSample_UsesFirstProgressAfterStaleZeroAsBaseline()
         {
-            var estimator = new AppTransferProgressEstimator();
+            AppTransferProgressEstimator estimator = new AppTransferProgressEstimator();
             DateTime startedAtUtc = new(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc);
 
             _ = estimator.AddSample(
@@ -147,7 +147,7 @@ namespace Cotton.Sync.App.Tests.Progress
         [Test]
         public void AddSample_WaitsForMeaningfulLargeFileProgressBeforeEstimating()
         {
-            var estimator = new AppTransferProgressEstimator();
+            AppTransferProgressEstimator estimator = new AppTransferProgressEstimator();
             DateTime startedAtUtc = new(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc);
             const long totalBytes = 10L * 1024 * 1024 * 1024;
 
@@ -185,7 +185,7 @@ namespace Cotton.Sync.App.Tests.Progress
         [Test]
         public void AddSample_SmoothsRemainingTimePrediction()
         {
-            var estimator = new AppTransferProgressEstimator();
+            AppTransferProgressEstimator estimator = new AppTransferProgressEstimator();
             DateTime startedAtUtc = new(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc);
 
             _ = estimator.AddSample(
@@ -222,7 +222,7 @@ namespace Cotton.Sync.App.Tests.Progress
         [Test]
         public void AddSample_DampensFrequentSpeedChangesWithTenSecondTimeConstant()
         {
-            var estimator = new AppTransferProgressEstimator();
+            AppTransferProgressEstimator estimator = new AppTransferProgressEstimator();
             DateTime startedAtUtc = new(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc);
 
             _ = estimator.AddSample(
@@ -257,7 +257,7 @@ namespace Cotton.Sync.App.Tests.Progress
         [Test]
         public void AddSample_DampensSharpRemainingTimeIncrease()
         {
-            var estimator = new AppTransferProgressEstimator();
+            AppTransferProgressEstimator estimator = new AppTransferProgressEstimator();
             DateTime startedAtUtc = new(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc);
 
             _ = estimator.AddSample(
@@ -293,7 +293,7 @@ namespace Cotton.Sync.App.Tests.Progress
         [Test]
         public void AddSample_DampensSharpRemainingTimeDecrease()
         {
-            var estimator = new AppTransferProgressEstimator();
+            AppTransferProgressEstimator estimator = new AppTransferProgressEstimator();
             DateTime startedAtUtc = new(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc);
 
             _ = estimator.AddSample(
@@ -329,7 +329,7 @@ namespace Cotton.Sync.App.Tests.Progress
         [Test]
         public void AddSample_ResetsWhenTransferChanges()
         {
-            var estimator = new AppTransferProgressEstimator();
+            AppTransferProgressEstimator estimator = new AppTransferProgressEstimator();
             DateTime startedAtUtc = new(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc);
 
             _ = estimator.AddSample(
@@ -364,7 +364,7 @@ namespace Cotton.Sync.App.Tests.Progress
         [Test]
         public void AddSample_DoesNotReportSpeedForCompletionSample()
         {
-            var estimator = new AppTransferProgressEstimator();
+            AppTransferProgressEstimator estimator = new AppTransferProgressEstimator();
             DateTime startedAtUtc = new(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc);
 
             _ = estimator.AddSample(

@@ -19,9 +19,9 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task LocalChanges_AreCoalescedIntoOneSyncRequest()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -50,9 +50,9 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task DeletedLocalChange_RequestsScopedSync()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -236,9 +236,9 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task RenamedLocalChange_WithOldPathRequestsScopedSyncForOldAndNewPaths()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -266,9 +266,9 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task RenamedLocalChanges_FromIgnoredTemporaryPathsRequestOnlyWorkbookTargets()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -300,9 +300,9 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task RenamedLocalChange_ToIgnoredTemporaryPathRequestsOnlyWorkbookSource()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -429,9 +429,9 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task RenamedLocalChange_WithoutOldPathRequestsFullSync()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -458,9 +458,9 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task LocalWatcherError_RequestsFullSync()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -489,9 +489,9 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         {
             const int ChangeCount = 1_000;
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -587,9 +587,9 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         {
             const int ChangeCount = 60_000;
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -618,9 +618,9 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         {
             int changeCount = PendingLocalSyncRequest.MaxScopedChangedPaths + 2_000;
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -652,9 +652,9 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         {
             int changeCount = PendingLocalSyncRequest.MaxScopedChangedPaths + 2_000;
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -746,10 +746,10 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task ProviderSuppressedFileChange_DoesNotRequestSync()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var suppression = new LocalChangeSuppression();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSuppression suppression = new LocalChangeSuppression();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -777,10 +777,10 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task ProviderMetadataSuppression_DoesNotHideCrossDirectoryMoveDelete()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var suppression = new LocalChangeSuppression();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSuppression suppression = new LocalChangeSuppression();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -819,10 +819,10 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task ProviderMetadataSuppression_StillSuppressesFinalizationChange()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var suppression = new LocalChangeSuppression();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSuppression suppression = new LocalChangeSuppression();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -853,10 +853,10 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task ProviderMetadataSuppression_DoesNotHideSubsequentContentEdit()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var suppression = new LocalChangeSuppression();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSuppression suppression = new LocalChangeSuppression();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -939,7 +939,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
             File.WriteAllBytes(fullPath, content);
             File.SetLastWriteTimeUtc(fullPath, expectedLastWriteUtc);
-            var suppression = new LocalChangeSuppression(eventBudget: 2);
+            LocalChangeSuppression suppression = new LocalChangeSuppression(eventBudget: 2);
             suppression.SuppressProviderFileMaterialization(
                 syncPairId,
                 rootPath,
@@ -1162,11 +1162,11 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task ProviderSuppressedChangeStorm_LogsOneProviderOriginSummaryWithoutPerFileFlood()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var suppression = new LocalChangeSuppression();
-            var logger = new RecordingLogger<LocalChangeSyncCoordinator>();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSuppression suppression = new LocalChangeSuppression();
+            RecordingLogger<LocalChangeSyncCoordinator> logger = new RecordingLogger<LocalChangeSyncCoordinator>();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -1205,10 +1205,10 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task UserChange_LogsUserOrExternalOriginBeforeRequestingSync()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var logger = new RecordingLogger<LocalChangeSyncCoordinator>();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            RecordingLogger<LocalChangeSyncCoordinator> logger = new RecordingLogger<LocalChangeSyncCoordinator>();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -1236,11 +1236,11 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task ProviderWriteBurstWatcherOverflow_RequestsFullSync()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var suppression = new LocalChangeSuppression();
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSuppression suppression = new LocalChangeSuppression();
             using IDisposable burst = suppression.SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath);
-            var coordinator = new LocalChangeSyncCoordinator(
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -1268,14 +1268,14 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task ProviderWriteBurstLateWatcherOverflow_RequestsFullSyncDuringGrace()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var suppression = new LocalChangeSuppression();
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSuppression suppression = new LocalChangeSuppression();
             using (suppression.SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath))
             {
             }
 
-            var coordinator = new LocalChangeSyncCoordinator(
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -1303,10 +1303,10 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task ProviderWriteBurstExpiredGrace_DoesNotHideRealWatcherError()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var timeProvider = new MutableTimeProvider();
-            var suppression = new LocalChangeSuppression(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            MutableTimeProvider timeProvider = new MutableTimeProvider();
+            LocalChangeSuppression suppression = new LocalChangeSuppression(
                 entryLifetime: TimeSpan.FromSeconds(1),
                 timeProvider: timeProvider);
             using (suppression.SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath))
@@ -1314,7 +1314,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             }
 
             timeProvider.Advance(TimeSpan.FromSeconds(2));
-            var coordinator = new LocalChangeSyncCoordinator(
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -1341,11 +1341,11 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task ProviderWriteBurst_DoesNotHideNormalUserChange()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var suppression = new LocalChangeSuppression();
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSuppression suppression = new LocalChangeSuppression();
             using IDisposable burst = suppression.SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath);
-            var coordinator = new LocalChangeSyncCoordinator(
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -1371,12 +1371,12 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task ProviderWriteBurst_OnlineOnlyRegistrationDoesNotHidePinnedUserChange()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var suppression = new LocalChangeSuppression(_ => false);
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSuppression suppression = new LocalChangeSuppression(_ => false);
             using IDisposable burst = suppression.SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath);
             suppression.SuppressProviderOnlineOnlyWrite(syncPair.Id, syncPair.LocalRootPath, "Music");
-            var coordinator = new LocalChangeSyncCoordinator(
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -1485,9 +1485,9 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task ProviderWriteBurstLatePlaceholderStorm_DoesNotRequestSyncAfterEntryCapacityTrim()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var suppression = new LocalChangeSuppression(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSuppression suppression = new LocalChangeSuppression(
                 path => path.Contains("generated-", StringComparison.OrdinalIgnoreCase),
                 maxEntriesPerPair: 4);
             using (IDisposable burst = suppression.SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath))
@@ -1498,7 +1498,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 }
             }
 
-            var coordinator = new LocalChangeSyncCoordinator(
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -1526,15 +1526,15 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task ProviderWriteBurstGrace_DoesNotHideNormalUserChange()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var suppression = new LocalChangeSuppression(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSuppression suppression = new LocalChangeSuppression(
                 path => path.Contains("generated-", StringComparison.OrdinalIgnoreCase));
             using (suppression.SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath))
             {
             }
 
-            var coordinator = new LocalChangeSyncCoordinator(
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -1560,10 +1560,10 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task ProviderSuppressedParentDirectoryChange_DoesNotRequestSync()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var suppression = new LocalChangeSuppression();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSuppression suppression = new LocalChangeSuppression();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -1591,10 +1591,10 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task ProviderSuppression_DoesNotHideSiblingUserChange()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var suppression = new LocalChangeSuppression();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSuppression suppression = new LocalChangeSuppression();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -1621,8 +1621,8 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task StartAsync_DoesNotWatchDisabledPairs()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: false);
-            var watcherFactory = new FakeWatcherFactory();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 new FakeSyncSupervisor(),
                 watcherFactory,
@@ -1638,14 +1638,14 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task StartAsync_RequestsDetectedOfflineChangesAfterWatcherStarts()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
             SyncRunRequest expectedRequest = SyncRunRequest.ForLocalChangedPaths(
                 ["Docs/old.txt", "Docs/renamed.txt"],
                 ["Docs/old.txt"],
                 SyncRunCause.LocalChange);
-            var detector = new FakeOfflineChangeDetector(expectedRequest);
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeOfflineChangeDetector detector = new FakeOfflineChangeDetector(expectedRequest);
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -1701,10 +1701,10 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task StartAsync_OfflineDetectionFailureRequestsFullRecovery()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var detector = new FakeOfflineChangeDetector(new InvalidOperationException("Scan failed."));
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            FakeOfflineChangeDetector detector = new FakeOfflineChangeDetector(new InvalidOperationException("Scan failed."));
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -1727,9 +1727,9 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task StopAsync_CancelsPendingSyncRequest()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -1747,12 +1747,12 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task StopAsync_WaitsForRunningSyncRequest()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory();
-            var supervisor = new FakeSyncSupervisor
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor
             {
                 BlockSyncNow = true,
             };
-            var coordinator = new LocalChangeSyncCoordinator(
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([syncPair]),
                 supervisor,
                 watcherFactory,
@@ -1781,12 +1781,12 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         {
             SyncPairSettings firstPair = CreatePair(isEnabled: true);
             SyncPairSettings secondPair = CreatePair(isEnabled: true);
-            var watcherFactory = new FakeWatcherFactory
+            FakeWatcherFactory watcherFactory = new FakeWatcherFactory
             {
                 FailingStartPairId = secondPair.Id,
             };
-            var supervisor = new FakeSyncSupervisor();
-            var coordinator = new LocalChangeSyncCoordinator(
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
                 new FakeSyncPairSettingsStore([firstPair, secondPair]),
                 supervisor,
                 watcherFactory,
@@ -1906,7 +1906,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
 
             public ILocalSyncRootWatcher Create(SyncPairSettings syncPair)
             {
-                var watcher = new FakeWatcher(syncPair.Id);
+                FakeWatcher watcher = new FakeWatcher(syncPair.Id);
                 if (syncPair.Id == FailingStartPairId)
                 {
                     watcher.StartException = new InvalidOperationException("Watcher failed to start.");

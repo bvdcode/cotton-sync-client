@@ -15,8 +15,8 @@ namespace Cotton.Sync.Tests.Remote
         public async Task CreateDirectoryAsync_And_DeleteDirectoryAsync_DelegateToSdkNodeClient()
         {
             Guid parentId = Guid.NewGuid();
-            var client = new FakeNodeClient();
-            var synchronizer = new SdkRemoteDirectorySynchronizer(client);
+            FakeNodeClient client = new FakeNodeClient();
+            SdkRemoteDirectorySynchronizer synchronizer = new SdkRemoteDirectorySynchronizer(client);
 
             NodeDto created = await synchronizer.CreateDirectoryAsync(parentId, " Reports ");
             await synchronizer.DeleteDirectoryAsync(created.Id, skipTrash: true);
@@ -34,15 +34,15 @@ namespace Cotton.Sync.Tests.Remote
         public async Task FindChildDirectoryAsync_ReturnsCaseInsensitiveChildDirectory()
         {
             Guid parentId = Guid.NewGuid();
-            var child = new NodeDto
+            NodeDto child = new NodeDto
             {
                 Id = Guid.NewGuid(),
                 ParentId = parentId,
                 Name = "Reports",
             };
-            var client = new FakeNodeClient();
+            FakeNodeClient client = new FakeNodeClient();
             client.Children[parentId] = [child];
-            var synchronizer = new SdkRemoteDirectorySynchronizer(client);
+            SdkRemoteDirectorySynchronizer synchronizer = new SdkRemoteDirectorySynchronizer(client);
 
             NodeDto? found = await synchronizer.FindChildDirectoryAsync(parentId, " reports ");
 
@@ -95,8 +95,8 @@ namespace Cotton.Sync.Tests.Remote
         public async Task FindChildDirectoryAsync_ReturnsNullWhenChildDirectoryIsMissing()
         {
             Guid parentId = Guid.NewGuid();
-            var client = new FakeNodeClient();
-            var synchronizer = new SdkRemoteDirectorySynchronizer(client);
+            FakeNodeClient client = new FakeNodeClient();
+            SdkRemoteDirectorySynchronizer synchronizer = new SdkRemoteDirectorySynchronizer(client);
 
             NodeDto? found = await synchronizer.FindChildDirectoryAsync(parentId, "Missing");
 

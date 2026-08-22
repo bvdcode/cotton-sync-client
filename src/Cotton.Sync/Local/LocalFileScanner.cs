@@ -316,7 +316,7 @@ namespace Cotton.Sync.Local
 
         private static IEnumerable<string> ExpandAncestors(IEnumerable<string> relativePaths)
         {
-            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (string relativePath in relativePaths)
             {
                 string normalizedPath = SyncPath.Normalize(relativePath);

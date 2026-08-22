@@ -14,7 +14,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromStatus_ReturnsFirstPairError()
         {
-            var status = new DesktopSyncStatusSnapshot(
+            DesktopSyncStatusSnapshot status = new DesktopSyncStatusSnapshot(
             [
                 new DesktopSyncPairStatusSnapshot(Guid.NewGuid(), "Idle", null),
                 new DesktopSyncPairStatusSnapshot(Guid.NewGuid(), "Error", "Remote folder is unavailable."),
@@ -122,7 +122,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromStatus_ExplainsMissingDesktopSyncChangesApi()
         {
-            var status = new DesktopSyncStatusSnapshot(
+            DesktopSyncStatusSnapshot status = new DesktopSyncStatusSnapshot(
             [
                 new DesktopSyncPairStatusSnapshot(
                     Guid.NewGuid(),
@@ -141,7 +141,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_ExplainsTemporaryChangeFeedRoute404()
         {
-            var exception = new CottonApiException(
+            CottonApiException exception = new CottonApiException(
                 HttpStatusCode.NotFound,
                 "404 page not found",
                 "Cotton API request GET /api/v1/sync/changes?since=9828&limit=500 failed with status 404 (NotFound).");
@@ -156,7 +156,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_ExplainsTemporarilyLockedServer()
         {
-            var exception = new CottonApiException(
+            CottonApiException exception = new CottonApiException(
                 HttpStatusCode.Locked,
                 "{\"locked\":true,\"message\":\"Cotton is locked until the master key is provided.\"}",
                 "Cotton API request GET /api/v1/auth/me failed with status 423 (Locked).");
@@ -171,7 +171,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromStatus_ExplainsRawJsonParserHtmlStartMessage()
         {
-            var status = new DesktopSyncStatusSnapshot(
+            DesktopSyncStatusSnapshot status = new DesktopSyncStatusSnapshot(
             [
                 new DesktopSyncPairStatusSnapshot(
                     Guid.NewGuid(),
@@ -189,7 +189,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromStatus_ExplainsLocalPermissionDeniedMessage()
         {
-            var status = new DesktopSyncStatusSnapshot(
+            DesktopSyncStatusSnapshot status = new DesktopSyncStatusSnapshot(
             [
                 new DesktopSyncPairStatusSnapshot(
                     Guid.NewGuid(),
@@ -207,7 +207,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromStatus_ExplainsDiskFullMessage()
         {
-            var status = new DesktopSyncStatusSnapshot(
+            DesktopSyncStatusSnapshot status = new DesktopSyncStatusSnapshot(
             [
                 new DesktopSyncPairStatusSnapshot(Guid.NewGuid(), "Error", "There is not enough space on the disk."),
             ]);
@@ -222,7 +222,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromStatus_ExplainsLocalFileUnavailableMessage()
         {
-            var status = new DesktopSyncStatusSnapshot(
+            DesktopSyncStatusSnapshot status = new DesktopSyncStatusSnapshot(
             [
                 new DesktopSyncPairStatusSnapshot(
                     Guid.NewGuid(),
@@ -240,7 +240,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromStatus_ExplainsMissingSyncStateTable()
         {
-            var status = new DesktopSyncStatusSnapshot(
+            DesktopSyncStatusSnapshot status = new DesktopSyncStatusSnapshot(
             [
                 new DesktopSyncPairStatusSnapshot(
                     Guid.NewGuid(),
@@ -258,7 +258,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromStatus_ExplainsCorruptLocalStateDatabase()
         {
-            var status = new DesktopSyncStatusSnapshot(
+            DesktopSyncStatusSnapshot status = new DesktopSyncStatusSnapshot(
             [
                 new DesktopSyncPairStatusSnapshot(
                     Guid.NewGuid(),
@@ -278,7 +278,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             const string expected =
                 "An online-only file was deleted or moved locally. Restore it from Cotton Sync or delete/rename it from Cotton web before syncing.";
-            var status = new DesktopSyncStatusSnapshot(
+            DesktopSyncStatusSnapshot status = new DesktopSyncStatusSnapshot(
             [
                 new DesktopSyncPairStatusSnapshot(Guid.NewGuid(), "Error", expected),
             ]);
@@ -291,7 +291,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromStatus_ExplainsCloudFilesSyncRootRegistrationFailure()
         {
-            var status = new DesktopSyncStatusSnapshot(
+            DesktopSyncStatusSnapshot status = new DesktopSyncStatusSnapshot(
             [
                 new DesktopSyncPairStatusSnapshot(
                     Guid.NewGuid(),
@@ -309,7 +309,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromStatus_ExplainsCloudFilesPlaceholderFailure()
         {
-            var status = new DesktopSyncStatusSnapshot(
+            DesktopSyncStatusSnapshot status = new DesktopSyncStatusSnapshot(
             [
                 new DesktopSyncPairStatusSnapshot(
                     Guid.NewGuid(),
@@ -327,7 +327,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromStatus_NormalizesEmbeddedUploadBadRequestProblemDetails()
         {
-            var status = new DesktopSyncStatusSnapshot(
+            DesktopSyncStatusSnapshot status = new DesktopSyncStatusSnapshot(
             [
                 new DesktopSyncPairStatusSnapshot(
                     Guid.NewGuid(),
@@ -348,7 +348,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromStatus_ReturnsEmptyWhenNoPairHasError()
         {
-            var status = new DesktopSyncStatusSnapshot(
+            DesktopSyncStatusSnapshot status = new DesktopSyncStatusSnapshot(
             [
                 new DesktopSyncPairStatusSnapshot(Guid.NewGuid(), "Idle", null),
                 new DesktopSyncPairStatusSnapshot(Guid.NewGuid(), "Syncing", string.Empty),
@@ -362,7 +362,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromStatus_ReturnsEmptyForOfflinePairDetails()
         {
-            var status = new DesktopSyncStatusSnapshot(
+            DesktopSyncStatusSnapshot status = new DesktopSyncStatusSnapshot(
             [
                 new DesktopSyncPairStatusSnapshot(Guid.NewGuid(), "Offline", "Cannot reach Cotton Cloud."),
             ]);
@@ -375,7 +375,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromStatus_ReturnsGenericMessageWhenPairErrorHasNoDetails()
         {
-            var status = new DesktopSyncStatusSnapshot(
+            DesktopSyncStatusSnapshot status = new DesktopSyncStatusSnapshot(
             [
                 new DesktopSyncPairStatusSnapshot(Guid.NewGuid(), "Error", null),
             ]);
@@ -390,7 +390,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromSelfTest_ReturnsFirstFailedCheckDetails()
         {
-            var result = new DesktopSelfTestSnapshot(
+            DesktopSelfTestSnapshot result = new DesktopSelfTestSnapshot(
             [
                 new DesktopSelfTestItemSnapshot("Database", true, "Ready"),
                 new DesktopSelfTestItemSnapshot("Server", false, "Cotton server not found."),
@@ -405,7 +405,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromSelfTest_ReturnsEmptyWhenSelfTestPassed()
         {
-            var result = new DesktopSelfTestSnapshot(
+            DesktopSelfTestSnapshot result = new DesktopSelfTestSnapshot(
             [
                 new DesktopSelfTestItemSnapshot("Database", true, "Ready"),
             ]);
@@ -418,7 +418,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromSelfTest_ReturnsEmptyWhenSelfTestOnlySkippedChecks()
         {
-            var result = new DesktopSelfTestSnapshot(
+            DesktopSelfTestSnapshot result = new DesktopSelfTestSnapshot(
             [
                 new DesktopSelfTestItemSnapshot("Desktop sync change feed", false, "Sign in to verify", Skipped: true),
             ]);
@@ -431,7 +431,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_ExplainsHtmlApiResponse()
         {
-            var exception = new CottonApiException(
+            CottonApiException exception = new CottonApiException(
                 HttpStatusCode.OK,
                 "<!doctype html><html>App</html>",
                 "Cotton API request GET /api/v1/settings returned invalid JSON with content type 'text/html' and status 200 (OK).");
@@ -446,7 +446,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_ExplainsRawJsonParserHtmlStartMessage()
         {
-            var exception = new InvalidOperationException(
+            InvalidOperationException exception = new InvalidOperationException(
                 "'<' is an invalid start of a value. Path: $ | LineNumber: 0 | BytePositionInLine: 0.");
 
             string message = DesktopActionRequiredMessageResolver.FromException(exception);
@@ -459,7 +459,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_ExplainsLocalPermissionDeniedException()
         {
-            var exception = new LocalFilePermissionDeniedException(
+            LocalFilePermissionDeniedException exception = new LocalFilePermissionDeniedException(
                 "Locked/report.docx",
                 "/home/qa/Cotton/Locked/report.docx",
                 "owner does not have read permission");
@@ -474,7 +474,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_ExplainsDiskFullException()
         {
-            var exception = new IOException("No space left on device");
+            IOException exception = new IOException("No space left on device");
 
             string message = DesktopActionRequiredMessageResolver.FromException(exception);
 
@@ -486,7 +486,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_ExplainsLocalFileUnavailableException()
         {
-            var exception = new LocalFileUnavailableException(
+            LocalFileUnavailableException exception = new LocalFileUnavailableException(
                 "Drafts/report.docx",
                 "/home/qa/Cotton/Drafts/report.docx",
                 "the file changed during scanning.");
@@ -501,7 +501,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_ExplainsMissingLocalSyncFolder()
         {
-            var exception = new DirectoryNotFoundException(
+            DirectoryNotFoundException exception = new DirectoryNotFoundException(
                 "Local root does not exist: C:\\Users\\QA\\Cotton.");
 
             string message = DesktopActionRequiredMessageResolver.FromException(exception);
@@ -514,7 +514,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_ExplainsRemoteQuotaExceeded()
         {
-            var exception = new CottonApiException(
+            CottonApiException exception = new CottonApiException(
                 (HttpStatusCode)507,
                 null,
                 "Cotton API request failed with status 507.");
@@ -529,7 +529,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_ExplainsRemoteUploadTooLarge()
         {
-            var exception = new CottonApiException(
+            CottonApiException exception = new CottonApiException(
                 HttpStatusCode.RequestEntityTooLarge,
                 null,
                 "Cotton API request failed with status 413.");
@@ -544,7 +544,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_ExplainsMissingSyncStateTable()
         {
-            var exception = new InvalidOperationException("SQLite Error 1: 'no such table: sync_entries'.");
+            InvalidOperationException exception = new InvalidOperationException("SQLite Error 1: 'no such table: sync_entries'.");
 
             string message = DesktopActionRequiredMessageResolver.FromException(exception);
 
@@ -556,7 +556,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_ExplainsCorruptLocalStateDatabase()
         {
-            var exception = new InvalidOperationException("SQLite Error 26: 'file is not a database'.");
+            InvalidOperationException exception = new InvalidOperationException("SQLite Error 26: 'file is not a database'.");
 
             string message = DesktopActionRequiredMessageResolver.FromException(exception);
 
@@ -568,7 +568,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_ExplainsCloudFilesSyncRootConnectionFailure()
         {
-            var exception = new WindowsCloudFilesNativeException("CfConnectSyncRoot", unchecked((int)0x8007017C));
+            WindowsCloudFilesNativeException exception = new WindowsCloudFilesNativeException("CfConnectSyncRoot", unchecked((int)0x8007017C));
 
             string message = DesktopActionRequiredMessageResolver.FromException(exception);
 
@@ -580,7 +580,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_ExplainsCloudFilesPlaceholderFailure()
         {
-            var exception = new WindowsCloudFilesNativeException("CfCreatePlaceholders", unchecked((int)0x8007017C));
+            WindowsCloudFilesNativeException exception = new WindowsCloudFilesNativeException("CfCreatePlaceholders", unchecked((int)0x8007017C));
 
             string message = DesktopActionRequiredMessageResolver.FromException(exception);
 
@@ -592,7 +592,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_UsesHumanTotpRequiredMessage()
         {
-            var exception = new CottonApiException(
+            CottonApiException exception = new CottonApiException(
                 HttpStatusCode.Forbidden,
                 "{\"success\":false,\"message\":\"Two-factor authentication code is required\"}",
                 "Cotton API request POST /api/v1/auth/login failed with status 403 (Forbidden).");
@@ -605,7 +605,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_UsesHumanInvalidCredentialsMessage()
         {
-            var exception = new CottonApiException(
+            CottonApiException exception = new CottonApiException(
                 HttpStatusCode.Unauthorized,
                 "{\"success\":false,\"message\":\"User not found\"}",
                 "Cotton API request POST /api/v1/auth/login failed with status 401 (Unauthorized).");
@@ -618,7 +618,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_UsesHumanInvalidPasswordMessageForForbiddenServerResponse()
         {
-            var exception = new CottonApiException(
+            CottonApiException exception = new CottonApiException(
                 HttpStatusCode.Forbidden,
                 "{\"success\":false,\"message\":\"Invalid password\"}",
                 "Cotton API request POST /api/v1/auth/login failed with status 403 (Forbidden).");
@@ -631,7 +631,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_UsesHumanInvalidTotpMessage()
         {
-            var exception = new CottonApiException(
+            CottonApiException exception = new CottonApiException(
                 HttpStatusCode.Forbidden,
                 "{\"success\":false,\"message\":\"Invalid two-factor authentication code\"}",
                 "Cotton API request POST /api/v1/auth/login failed with status 403 (Forbidden).");
@@ -644,7 +644,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_UsesHumanTotpLockoutMessage()
         {
-            var exception = new CottonApiException(
+            CottonApiException exception = new CottonApiException(
                 HttpStatusCode.Forbidden,
                 "{\"success\":false,\"message\":\"Maximum number of TOTP verification attempts exceeded\"}",
                 "Cotton API request POST /api/v1/auth/login failed with status 403 (Forbidden).");
@@ -657,7 +657,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void FromException_UsesReadableFallbackWhenExceptionHasNoMessage()
         {
-            var exception = new InvalidOperationException(string.Empty);
+            InvalidOperationException exception = new InvalidOperationException(string.Empty);
 
             string message = DesktopActionRequiredMessageResolver.FromException(exception);
 

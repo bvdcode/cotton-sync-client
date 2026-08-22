@@ -35,7 +35,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreatePlaceholderAsync_RejectsUnsupportedCloudFilesHost()
         {
-            var writer = new DesktopCloudFilesPlaceholderWriter(
+            DesktopCloudFilesPlaceholderWriter writer = new DesktopCloudFilesPlaceholderWriter(
                 getCapabilities: () => new SyncPairModeCapabilitySnapshot(false, "Cloud Files is disabled."));
 
             RemoteFilePlaceholderUnavailableException? exception =
@@ -52,7 +52,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreatePlaceholderAsync_RejectsUnsafeRootBeforeNativeCall()
         {
-            var writer = new DesktopCloudFilesPlaceholderWriter(
+            DesktopCloudFilesPlaceholderWriter writer = new DesktopCloudFilesPlaceholderWriter(
                 new WindowsVirtualFilesRootSafetyPolicy(
                     folder => folder == Environment.SpecialFolder.UserProfile ? @"C:\Users\Example" : string.Empty,
                     () => _tempDirectory),
@@ -72,8 +72,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task CreatePlaceholderAsync_CreatesPlaceholderThroughAdapter()
         {
-            var adapter = new FakeCloudFilesAdapter();
-            var writer = new DesktopCloudFilesPlaceholderWriter(
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter();
+            DesktopCloudFilesPlaceholderWriter writer = new DesktopCloudFilesPlaceholderWriter(
                 cloudFilesAdapter: adapter,
                 getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
 
@@ -91,12 +91,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task CreatePlaceholderAsync_SuppressesLocalWatcherEventsBeforeAdapterCall()
         {
-            var suppression = new RecordingLocalChangeSuppression();
-            var adapter = new FakeCloudFilesAdapter
+            RecordingLocalChangeSuppression suppression = new RecordingLocalChangeSuppression();
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter
             {
                 OnCreate = _ => Assert.That(suppression.SuppressedWrites, Has.Count.EqualTo(1)),
             };
-            var writer = new DesktopCloudFilesPlaceholderWriter(
+            DesktopCloudFilesPlaceholderWriter writer = new DesktopCloudFilesPlaceholderWriter(
                 cloudFilesAdapter: adapter,
                 localChangeSuppression: suppression,
                 getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
@@ -115,12 +115,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task CreatePlaceholdersAsync_SuppressesLocalWatcherEventsBeforeBatchAdapterCall()
         {
-            var suppression = new RecordingLocalChangeSuppression();
-            var adapter = new FakeCloudFilesAdapter
+            RecordingLocalChangeSuppression suppression = new RecordingLocalChangeSuppression();
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter
             {
                 OnCreateBatch = _ => Assert.That(suppression.SuppressedWrites, Has.Count.EqualTo(2)),
             };
-            var writer = new DesktopCloudFilesPlaceholderWriter(
+            DesktopCloudFilesPlaceholderWriter writer = new DesktopCloudFilesPlaceholderWriter(
                 cloudFilesAdapter: adapter,
                 localChangeSuppression: suppression,
                 getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
@@ -154,9 +154,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task BeforeCreateDirectoryAsync_SuppressesLocalWatcherEventsForDirectoryPath()
         {
-            var adapter = new FakeCloudFilesAdapter();
-            var suppression = new RecordingLocalChangeSuppression();
-            var writer = new DesktopCloudFilesPlaceholderWriter(
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter();
+            RecordingLocalChangeSuppression suppression = new RecordingLocalChangeSuppression();
+            DesktopCloudFilesPlaceholderWriter writer = new DesktopCloudFilesPlaceholderWriter(
                 cloudFilesAdapter: adapter,
                 localChangeSuppression: suppression,
                 getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
@@ -222,7 +222,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task AfterWriteFileAsync_PersistsProviderCreatedFileMarker()
         {
-            var marker = new RecordingProviderFileMarker();
+            RecordingProviderFileMarker marker = new RecordingProviderFileMarker();
             DesktopCloudFilesPlaceholderWriter writer = new(
                 getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."),
                 providerFileMarker: marker);
@@ -252,8 +252,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task AfterCreateDirectoryAsync_EnsuresDirectoryPlaceholderThroughAdapter()
         {
-            var adapter = new FakeCloudFilesAdapter();
-            var writer = new DesktopCloudFilesPlaceholderWriter(
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter();
+            DesktopCloudFilesPlaceholderWriter writer = new DesktopCloudFilesPlaceholderWriter(
                 cloudFilesAdapter: adapter,
                 getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
             Guid syncPairId = Guid.Parse("77777777-7777-7777-7777-777777777777");
@@ -280,9 +280,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task AfterDirectoryTreePopulationAsync_MarksChildrenBeforeParentsInSync()
         {
-            var adapter = new FakeCloudFilesAdapter();
-            var suppression = new RecordingLocalChangeSuppression();
-            var writer = new DesktopCloudFilesPlaceholderWriter(
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter();
+            RecordingLocalChangeSuppression suppression = new RecordingLocalChangeSuppression();
+            DesktopCloudFilesPlaceholderWriter writer = new DesktopCloudFilesPlaceholderWriter(
                 cloudFilesAdapter: adapter,
                 localChangeSuppression: suppression,
                 getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
@@ -318,11 +318,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreatePlaceholderAsync_StopsBeforeAdapterWhenCanceled()
         {
-            var adapter = new FakeCloudFilesAdapter();
-            var writer = new DesktopCloudFilesPlaceholderWriter(
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter();
+            DesktopCloudFilesPlaceholderWriter writer = new DesktopCloudFilesPlaceholderWriter(
                 cloudFilesAdapter: adapter,
                 getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
-            using var cancellation = new CancellationTokenSource();
+            using CancellationTokenSource cancellation = new CancellationTokenSource();
             cancellation.Cancel();
 
             Assert.ThrowsAsync<OperationCanceledException>(
@@ -334,11 +334,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreatePlaceholderAsync_ReportsAdapterFailureAsPlaceholderUnavailable()
         {
-            var adapter = new FakeCloudFilesAdapter
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter
             {
                 Exception = new WindowsCloudFilesNativeException("CfCreatePlaceholders", unchecked((int)0x8007017C)),
             };
-            var writer = new DesktopCloudFilesPlaceholderWriter(
+            DesktopCloudFilesPlaceholderWriter writer = new DesktopCloudFilesPlaceholderWriter(
                 cloudFilesAdapter: adapter,
                 getCapabilities: () => new SyncPairModeCapabilitySnapshot(true, "Cloud Files available."));
 

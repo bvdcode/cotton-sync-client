@@ -17,9 +17,9 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
         [Test]
         public async Task RemoteChanges_AreCoalescedIntoOneSyncAllRequest()
         {
-            var realtime = new FakeCottonRealtimeClient();
-            var supervisor = new FakeSyncSupervisor();
-            var coordinator = new RealtimeRemoteChangeSyncCoordinator(realtime, supervisor, DebounceInterval);
+            FakeCottonRealtimeClient realtime = new FakeCottonRealtimeClient();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            RealtimeRemoteChangeSyncCoordinator coordinator = new RealtimeRemoteChangeSyncCoordinator(realtime, supervisor, DebounceInterval);
             await coordinator.StartAsync();
 
             realtime.RaiseRemoteFileTreeChanged("FileCreated");
@@ -42,9 +42,9 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
         public async Task RemoteChangeStorm_KeepsOnePendingSyncRequest()
         {
             const int ChangeCount = 1_000;
-            var realtime = new FakeCottonRealtimeClient();
-            var supervisor = new FakeSyncSupervisor();
-            var coordinator = new RealtimeRemoteChangeSyncCoordinator(
+            FakeCottonRealtimeClient realtime = new FakeCottonRealtimeClient();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            RealtimeRemoteChangeSyncCoordinator coordinator = new RealtimeRemoteChangeSyncCoordinator(
                 realtime,
                 supervisor,
                 TimeSpan.FromSeconds(5));
@@ -108,9 +108,9 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
         [Test]
         public async Task StopAsync_CancelsPendingSyncRequest()
         {
-            var realtime = new FakeCottonRealtimeClient();
-            var supervisor = new FakeSyncSupervisor();
-            var coordinator = new RealtimeRemoteChangeSyncCoordinator(
+            FakeCottonRealtimeClient realtime = new FakeCottonRealtimeClient();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            RealtimeRemoteChangeSyncCoordinator coordinator = new RealtimeRemoteChangeSyncCoordinator(
                 realtime,
                 supervisor,
                 TimeSpan.FromMilliseconds(100));
@@ -146,12 +146,12 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
         [Test]
         public async Task StopAsync_CancelsAndWaitsForRunningSyncRequest()
         {
-            var realtime = new FakeCottonRealtimeClient();
-            var supervisor = new FakeSyncSupervisor
+            FakeCottonRealtimeClient realtime = new FakeCottonRealtimeClient();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor
             {
                 BlockSyncAll = true,
             };
-            var coordinator = new RealtimeRemoteChangeSyncCoordinator(
+            RealtimeRemoteChangeSyncCoordinator coordinator = new RealtimeRemoteChangeSyncCoordinator(
                 realtime,
                 supervisor,
                 TimeSpan.Zero);
@@ -175,10 +175,10 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
         [Test]
         public async Task StopAsync_UnsubscribesFromRealtimeEvents()
         {
-            var realtime = new FakeCottonRealtimeClient();
-            var supervisor = new FakeSyncSupervisor();
-            var sessionRevocationHandler = new FakeSessionRevocationHandler();
-            var coordinator = new RealtimeRemoteChangeSyncCoordinator(
+            FakeCottonRealtimeClient realtime = new FakeCottonRealtimeClient();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            FakeSessionRevocationHandler sessionRevocationHandler = new FakeSessionRevocationHandler();
+            RealtimeRemoteChangeSyncCoordinator coordinator = new RealtimeRemoteChangeSyncCoordinator(
                 realtime,
                 supervisor,
                 DebounceInterval,
@@ -200,13 +200,13 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
         [Test]
         public async Task StartAsync_UnsubscribesWhenRealtimeStartFails()
         {
-            var realtime = new FakeCottonRealtimeClient
+            FakeCottonRealtimeClient realtime = new FakeCottonRealtimeClient
             {
                 StartException = new InvalidOperationException("Realtime failed to start."),
             };
-            var supervisor = new FakeSyncSupervisor();
-            var sessionRevocationHandler = new FakeSessionRevocationHandler();
-            var coordinator = new RealtimeRemoteChangeSyncCoordinator(
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            FakeSessionRevocationHandler sessionRevocationHandler = new FakeSessionRevocationHandler();
+            RealtimeRemoteChangeSyncCoordinator coordinator = new RealtimeRemoteChangeSyncCoordinator(
                 realtime,
                 supervisor,
                 DebounceInterval,
@@ -233,10 +233,10 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
         [Test]
         public async Task SessionRevoked_InvokesHandlerAndStopsRealtime()
         {
-            var realtime = new FakeCottonRealtimeClient();
-            var supervisor = new FakeSyncSupervisor();
-            var sessionRevocationHandler = new FakeSessionRevocationHandler();
-            var coordinator = new RealtimeRemoteChangeSyncCoordinator(
+            FakeCottonRealtimeClient realtime = new FakeCottonRealtimeClient();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            FakeSessionRevocationHandler sessionRevocationHandler = new FakeSessionRevocationHandler();
+            RealtimeRemoteChangeSyncCoordinator coordinator = new RealtimeRemoteChangeSyncCoordinator(
                 realtime,
                 supervisor,
                 DebounceInterval,
@@ -261,10 +261,10 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
         [Test]
         public async Task SessionRevoked_CancelsPendingRemoteSyncRequest()
         {
-            var realtime = new FakeCottonRealtimeClient();
-            var supervisor = new FakeSyncSupervisor();
-            var sessionRevocationHandler = new FakeSessionRevocationHandler();
-            var coordinator = new RealtimeRemoteChangeSyncCoordinator(
+            FakeCottonRealtimeClient realtime = new FakeCottonRealtimeClient();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            FakeSessionRevocationHandler sessionRevocationHandler = new FakeSessionRevocationHandler();
+            RealtimeRemoteChangeSyncCoordinator coordinator = new RealtimeRemoteChangeSyncCoordinator(
                 realtime,
                 supervisor,
                 TimeSpan.FromMilliseconds(100),
@@ -287,16 +287,16 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
         [Test]
         public async Task SessionRevoked_CancelsRunningRemoteSyncRequestBeforeHandlerCompletes()
         {
-            var realtime = new FakeCottonRealtimeClient();
-            var supervisor = new FakeSyncSupervisor
+            FakeCottonRealtimeClient realtime = new FakeCottonRealtimeClient();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor
             {
                 BlockSyncAll = true,
             };
-            var sessionRevocationHandler = new FakeSessionRevocationHandler
+            FakeSessionRevocationHandler sessionRevocationHandler = new FakeSessionRevocationHandler
             {
                 BlockHandler = true,
             };
-            var coordinator = new RealtimeRemoteChangeSyncCoordinator(
+            RealtimeRemoteChangeSyncCoordinator coordinator = new RealtimeRemoteChangeSyncCoordinator(
                 realtime,
                 supervisor,
                 TimeSpan.Zero,

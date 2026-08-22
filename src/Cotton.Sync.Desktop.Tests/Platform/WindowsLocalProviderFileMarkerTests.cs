@@ -41,7 +41,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             const string relativePath = "Docs/recovery.txt";
             string fullPath = WriteFile(relativePath, "remote recovery content");
             string hash = HashFile(fullPath);
-            var marker = new WindowsLocalProviderFileMarker(_markerPath);
+            WindowsLocalProviderFileMarker marker = new WindowsLocalProviderFileMarker(_markerPath);
 
             await marker.MarkAsync(
                 syncPairId,
@@ -74,7 +74,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             const string sourcePath = "Docs/recovery.txt";
             const string targetPath = "Docs/renamed-recovery.txt";
             string sourceFullPath = WriteFile(sourcePath, "remote recovery content");
-            var marker = new WindowsLocalProviderFileMarker(_markerPath);
+            WindowsLocalProviderFileMarker marker = new WindowsLocalProviderFileMarker(_markerPath);
             await marker.MarkAsync(
                 syncPairId,
                 _rootPath,
@@ -99,7 +99,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             const string relativePath = "Docs/recovery.txt";
             string fullPath = WriteFile(relativePath, "remote recovery content");
             string hash = HashFile(fullPath);
-            var marker = new WindowsLocalProviderFileMarker(_markerPath);
+            WindowsLocalProviderFileMarker marker = new WindowsLocalProviderFileMarker(_markerPath);
             await marker.MarkAsync(
                 syncPairId,
                 _rootPath,
@@ -127,7 +127,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
         private static LocalFileSnapshot Snapshot(string relativePath, string fullPath)
         {
-            var info = new FileInfo(fullPath);
+            FileInfo info = new FileInfo(fullPath);
             return new LocalFileSnapshot
             {
                 RelativePath = relativePath,

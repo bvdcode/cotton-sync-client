@@ -163,7 +163,7 @@ namespace Cotton.Sync.Desktop.Tests.Updates
         public async Task CheckAsync_RetriesTransientManifestRequest()
         {
             byte[] installerBytes = Encoding.UTF8.GetBytes("installer-v2");
-            var handler = new SequenceHttpMessageHandler(
+            SequenceHttpMessageHandler handler = new SequenceHttpMessageHandler(
                 _ => throw new HttpRequestException("firewall denied first request"),
                 request => CreateBytesResponse(
                     request,
@@ -189,7 +189,7 @@ namespace Cotton.Sync.Desktop.Tests.Updates
         public async Task DownloadInstallerAsync_RetriesTransientInstallerResponse()
         {
             byte[] installerBytes = Encoding.UTF8.GetBytes("installer-v2");
-            var handler = new SequenceHttpMessageHandler(
+            SequenceHttpMessageHandler handler = new SequenceHttpMessageHandler(
                 request => CreateBytesResponse(
                     request,
                     Encoding.UTF8.GetBytes(CreateManifestJson("0.0.2", installerBytes))),
@@ -251,7 +251,7 @@ namespace Cotton.Sync.Desktop.Tests.Updates
             DesktopUpdateService service = CreateLocalUpdateService(httpClient);
 
             DesktopUpdateCheckResult check = await service.CheckAsync();
-            var progressReports = new List<DesktopUpdateDownloadProgress>();
+            List<DesktopUpdateDownloadProgress> progressReports = new List<DesktopUpdateDownloadProgress>();
             DesktopUpdateDownloadResult download = await service.DownloadInstallerAsync(
                 check,
                 new InlineProgress<DesktopUpdateDownloadProgress>(progressReports.Add));
@@ -281,8 +281,8 @@ namespace Cotton.Sync.Desktop.Tests.Updates
                 ["/CottonSync-Windows-Setup.exe"] = installerBytes,
             });
             DesktopUpdateService service = CreateLocalUpdateService(httpClient);
-            using var writer = new StringWriter(System.Globalization.CultureInfo.InvariantCulture);
-            var listener = new TextWriterTraceListener(writer);
+            using StringWriter writer = new StringWriter(System.Globalization.CultureInfo.InvariantCulture);
+            TextWriterTraceListener listener = new TextWriterTraceListener(writer);
             Trace.Listeners.Add(listener);
             try
             {

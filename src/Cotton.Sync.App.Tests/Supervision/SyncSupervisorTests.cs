@@ -18,10 +18,10 @@ namespace Cotton.Sync.App.Tests.Supervision
         {
             SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
             SyncPairSettings pictures = CreatePair("Pictures", isEnabled: false);
-            var store = new FakeSyncPairSettingsStore([documents, pictures]);
-            var factory = new FakeSyncPairRunnerFactory();
-            var publisher = new InMemoryAppStatusPublisher(new SyncAppStatus(true, [], DateTime.UtcNow));
-            var supervisor = new SyncSupervisor(store, factory, publisher);
+            FakeSyncPairSettingsStore store = new FakeSyncPairSettingsStore([documents, pictures]);
+            FakeSyncPairRunnerFactory factory = new FakeSyncPairRunnerFactory();
+            InMemoryAppStatusPublisher publisher = new InMemoryAppStatusPublisher(new SyncAppStatus(true, [], DateTime.UtcNow));
+            SyncSupervisor supervisor = new SyncSupervisor(store, factory, publisher);
 
             await supervisor.StartAsync();
 
@@ -42,9 +42,9 @@ namespace Cotton.Sync.App.Tests.Supervision
         public async Task StartAsync_StopsExistingRunnersBeforeReplacingThem()
         {
             SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
-            var store = new FakeSyncPairSettingsStore([documents]);
-            var factory = new FakeSyncPairRunnerFactory();
-            var supervisor = new SyncSupervisor(store, factory, new InMemoryAppStatusPublisher());
+            FakeSyncPairSettingsStore store = new FakeSyncPairSettingsStore([documents]);
+            FakeSyncPairRunnerFactory factory = new FakeSyncPairRunnerFactory();
+            SyncSupervisor supervisor = new SyncSupervisor(store, factory, new InMemoryAppStatusPublisher());
             await supervisor.StartAsync();
             FakeSyncPairRunner firstRunner = factory.CreatedRunners[documents.Id];
 
@@ -65,13 +65,13 @@ namespace Cotton.Sync.App.Tests.Supervision
         {
             SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
             SyncPairSettings pictures = CreatePair("Pictures", isEnabled: true);
-            var store = new FakeSyncPairSettingsStore([documents, pictures]);
-            var factory = new FakeSyncPairRunnerFactory
+            FakeSyncPairSettingsStore store = new FakeSyncPairSettingsStore([documents, pictures]);
+            FakeSyncPairRunnerFactory factory = new FakeSyncPairRunnerFactory
             {
                 FailingStartPairId = pictures.Id,
             };
-            var publisher = new InMemoryAppStatusPublisher(new SyncAppStatus(true, [], DateTime.UtcNow));
-            var supervisor = new SyncSupervisor(store, factory, publisher);
+            InMemoryAppStatusPublisher publisher = new InMemoryAppStatusPublisher(new SyncAppStatus(true, [], DateTime.UtcNow));
+            SyncSupervisor supervisor = new SyncSupervisor(store, factory, publisher);
 
             InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(
                 async () => await supervisor.StartAsync());
@@ -92,9 +92,9 @@ namespace Cotton.Sync.App.Tests.Supervision
         {
             SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
             SyncPairSettings pictures = CreatePair("Pictures", isEnabled: true);
-            var factory = new FakeSyncPairRunnerFactory();
-            var publisher = new InMemoryAppStatusPublisher();
-            var supervisor = new SyncSupervisor(
+            FakeSyncPairRunnerFactory factory = new FakeSyncPairRunnerFactory();
+            InMemoryAppStatusPublisher publisher = new InMemoryAppStatusPublisher();
+            SyncSupervisor supervisor = new SyncSupervisor(
                 new FakeSyncPairSettingsStore([documents, pictures]),
                 factory,
                 publisher);
@@ -120,8 +120,8 @@ namespace Cotton.Sync.App.Tests.Supervision
         {
             SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
             SyncPairSettings pictures = CreatePair("Pictures", isEnabled: false);
-            var factory = new FakeSyncPairRunnerFactory();
-            var supervisor = new SyncSupervisor(
+            FakeSyncPairRunnerFactory factory = new FakeSyncPairRunnerFactory();
+            SyncSupervisor supervisor = new SyncSupervisor(
                 new FakeSyncPairSettingsStore([documents, pictures]),
                 factory,
                 new InMemoryAppStatusPublisher());
@@ -143,8 +143,8 @@ namespace Cotton.Sync.App.Tests.Supervision
         public async Task ResumeAsync_DoesNotBlockStopWhileResumeSyncIsRunning()
         {
             SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
-            var factory = new FakeSyncPairRunnerFactory();
-            var supervisor = new SyncSupervisor(
+            FakeSyncPairRunnerFactory factory = new FakeSyncPairRunnerFactory();
+            SyncSupervisor supervisor = new SyncSupervisor(
                 new FakeSyncPairSettingsStore([documents]),
                 factory,
                 new InMemoryAppStatusPublisher());
@@ -175,8 +175,8 @@ namespace Cotton.Sync.App.Tests.Supervision
         {
             SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
             SyncPairSettings pictures = CreatePair("Pictures", isEnabled: true);
-            var factory = new FakeSyncPairRunnerFactory();
-            var supervisor = new SyncSupervisor(
+            FakeSyncPairRunnerFactory factory = new FakeSyncPairRunnerFactory();
+            SyncSupervisor supervisor = new SyncSupervisor(
                 new FakeSyncPairSettingsStore([documents, pictures]),
                 factory,
                 new InMemoryAppStatusPublisher());
@@ -195,9 +195,9 @@ namespace Cotton.Sync.App.Tests.Supervision
         public async Task SyncNowAsync_PublishesSyncingStatusWhileRunnerIsActive()
         {
             SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
-            var factory = new FakeSyncPairRunnerFactory();
-            var publisher = new InMemoryAppStatusPublisher();
-            var supervisor = new SyncSupervisor(
+            FakeSyncPairRunnerFactory factory = new FakeSyncPairRunnerFactory();
+            InMemoryAppStatusPublisher publisher = new InMemoryAppStatusPublisher();
+            SyncSupervisor supervisor = new SyncSupervisor(
                 new FakeSyncPairSettingsStore([documents]),
                 factory,
                 publisher);
@@ -223,11 +223,11 @@ namespace Cotton.Sync.App.Tests.Supervision
         public async Task SyncNowAsync_RepublishesActiveStatusWhileRunnerRemainsActive()
         {
             SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
-            var factory = new FakeSyncPairRunnerFactory();
-            var publisher = new InMemoryAppStatusPublisher();
-            var statusObserver = new RecordingObserver<SyncAppStatus>();
+            FakeSyncPairRunnerFactory factory = new FakeSyncPairRunnerFactory();
+            InMemoryAppStatusPublisher publisher = new InMemoryAppStatusPublisher();
+            RecordingObserver<SyncAppStatus> statusObserver = new RecordingObserver<SyncAppStatus>();
             using IDisposable subscription = publisher.Subscribe(statusObserver);
-            var supervisor = new SyncSupervisor(
+            SyncSupervisor supervisor = new SyncSupervisor(
                 new FakeSyncPairSettingsStore([documents]),
                 factory,
                 publisher,
@@ -260,9 +260,9 @@ namespace Cotton.Sync.App.Tests.Supervision
         public async Task SyncNowAsync_PublishesErrorWhenActiveRunnerFailsAsynchronously()
         {
             SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
-            var factory = new FakeSyncPairRunnerFactory();
-            var publisher = new InMemoryAppStatusPublisher();
-            var supervisor = new SyncSupervisor(
+            FakeSyncPairRunnerFactory factory = new FakeSyncPairRunnerFactory();
+            InMemoryAppStatusPublisher publisher = new InMemoryAppStatusPublisher();
+            SyncSupervisor supervisor = new SyncSupervisor(
                 new FakeSyncPairSettingsStore([documents]),
                 factory,
                 publisher);
@@ -291,9 +291,9 @@ namespace Cotton.Sync.App.Tests.Supervision
         public async Task SyncAllAsync_PublishesSyncingStatusWhileRunnerIsActive()
         {
             SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
-            var factory = new FakeSyncPairRunnerFactory();
-            var publisher = new InMemoryAppStatusPublisher();
-            var supervisor = new SyncSupervisor(
+            FakeSyncPairRunnerFactory factory = new FakeSyncPairRunnerFactory();
+            InMemoryAppStatusPublisher publisher = new InMemoryAppStatusPublisher();
+            SyncSupervisor supervisor = new SyncSupervisor(
                 new FakeSyncPairSettingsStore([documents]),
                 factory,
                 publisher);
@@ -320,9 +320,9 @@ namespace Cotton.Sync.App.Tests.Supervision
         {
             SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
             SyncPairSettings pictures = CreatePair("Pictures", isEnabled: true);
-            var factory = new FakeSyncPairRunnerFactory();
-            var publisher = new InMemoryAppStatusPublisher();
-            var supervisor = new SyncSupervisor(
+            FakeSyncPairRunnerFactory factory = new FakeSyncPairRunnerFactory();
+            InMemoryAppStatusPublisher publisher = new InMemoryAppStatusPublisher();
+            SyncSupervisor supervisor = new SyncSupervisor(
                 new FakeSyncPairSettingsStore([documents, pictures]),
                 factory,
                 publisher);
@@ -349,9 +349,9 @@ namespace Cotton.Sync.App.Tests.Supervision
         {
             SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
             SyncPairSettings pictures = CreatePair("Pictures", isEnabled: true);
-            var factory = new FakeSyncPairRunnerFactory();
-            var publisher = new InMemoryAppStatusPublisher();
-            var supervisor = new SyncSupervisor(
+            FakeSyncPairRunnerFactory factory = new FakeSyncPairRunnerFactory();
+            InMemoryAppStatusPublisher publisher = new InMemoryAppStatusPublisher();
+            SyncSupervisor supervisor = new SyncSupervisor(
                 new FakeSyncPairSettingsStore([documents, pictures]),
                 factory,
                 publisher);
@@ -388,8 +388,8 @@ namespace Cotton.Sync.App.Tests.Supervision
         public async Task StopAsync_ReachesRunnerWhileSyncAllIsRunning()
         {
             SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
-            var factory = new FakeSyncPairRunnerFactory();
-            var supervisor = new SyncSupervisor(
+            FakeSyncPairRunnerFactory factory = new FakeSyncPairRunnerFactory();
+            SyncSupervisor supervisor = new SyncSupervisor(
                 new FakeSyncPairSettingsStore([documents]),
                 factory,
                 new InMemoryAppStatusPublisher());
@@ -418,8 +418,8 @@ namespace Cotton.Sync.App.Tests.Supervision
             CreateStoppedRunnerWeakReferencesAsync()
         {
             SyncPairSettings documents = CreatePair("Documents", isEnabled: true);
-            var factory = new WeakReferenceRunnerFactory();
-            var supervisor = new SyncSupervisor(
+            WeakReferenceRunnerFactory factory = new WeakReferenceRunnerFactory();
+            SyncSupervisor supervisor = new SyncSupervisor(
                 new FakeSyncPairSettingsStore([documents]),
                 factory,
                 new InMemoryAppStatusPublisher());
@@ -519,7 +519,7 @@ namespace Cotton.Sync.App.Tests.Supervision
 
             public ISyncPairRunner Create(SyncPairSettings syncPair)
             {
-                var runner = new FakeSyncPairRunner(syncPair);
+                FakeSyncPairRunner runner = new FakeSyncPairRunner(syncPair);
                 if (syncPair.Id == FailingStartPairId)
                 {
                     runner.StartException = new InvalidOperationException("Runner failed to start.");
@@ -674,8 +674,8 @@ namespace Cotton.Sync.App.Tests.Supervision
 
             public ISyncPairRunner Create(SyncPairSettings syncPair)
             {
-                var payload = new byte[8 * 1024 * 1024];
-                var runner = new MemoryProbeSyncPairRunner(syncPair, payload);
+                byte[] payload = new byte[8 * 1024 * 1024];
+                MemoryProbeSyncPairRunner runner = new MemoryProbeSyncPairRunner(syncPair, payload);
                 RunnerReference = new WeakReference(runner);
                 PayloadReference = new WeakReference(payload);
                 return runner;

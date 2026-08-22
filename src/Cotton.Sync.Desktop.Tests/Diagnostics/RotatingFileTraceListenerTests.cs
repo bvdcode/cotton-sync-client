@@ -29,7 +29,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         public void WriteLine_CreatesLogFile()
         {
             string path = LogPath();
-            using var listener = new RotatingFileTraceListener(path, maxFileSizeBytes: 1024);
+            using RotatingFileTraceListener listener = new RotatingFileTraceListener(path, maxFileSizeBytes: 1024);
 
             listener.WriteLine("sync started");
 
@@ -41,7 +41,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         {
             string path = LogPath();
             File.WriteAllText(path, new string('a', 80));
-            using var listener = new RotatingFileTraceListener(path, maxFileSizeBytes: 96, retainedFileCount: 2);
+            using RotatingFileTraceListener listener = new RotatingFileTraceListener(path, maxFileSizeBytes: 96, retainedFileCount: 2);
 
             listener.WriteLine("sync started");
 
@@ -59,7 +59,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
             File.WriteAllText(path, "current");
             File.WriteAllText(path + ".1", "previous");
             File.WriteAllText(path + ".2", "oldest");
-            using var listener = new RotatingFileTraceListener(path, maxFileSizeBytes: 1, retainedFileCount: 2);
+            using RotatingFileTraceListener listener = new RotatingFileTraceListener(path, maxFileSizeBytes: 1, retainedFileCount: 2);
 
             listener.WriteLine("next");
 
@@ -76,7 +76,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         {
             string path = LogPath();
             using FileStream lockedLog = File.Open(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-            using var listener = new RotatingFileTraceListener(path, maxFileSizeBytes: 1024);
+            using RotatingFileTraceListener listener = new RotatingFileTraceListener(path, maxFileSizeBytes: 1024);
 
             Assert.DoesNotThrow(() => listener.WriteLine("sync started"));
         }

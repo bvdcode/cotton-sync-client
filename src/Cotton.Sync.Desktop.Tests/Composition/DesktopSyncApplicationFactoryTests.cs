@@ -38,7 +38,7 @@ namespace Cotton.Sync.Desktop.Tests.Composition
         public async Task Create_TransfersCottonClientOwnershipToHost()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var factory = new DesktopSyncApplicationFactory(paths);
+            DesktopSyncApplicationFactory factory = new DesktopSyncApplicationFactory(paths);
 
             await using DesktopSyncApplicationHost host = factory.Create(new Uri("https://cotton.example.test/"));
 
@@ -68,7 +68,7 @@ namespace Cotton.Sync.Desktop.Tests.Composition
         public async Task Create_WiresContinuousSyncCoordinators()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var factory = new DesktopSyncApplicationFactory(paths);
+            DesktopSyncApplicationFactory factory = new DesktopSyncApplicationFactory(paths);
 
             await using DesktopSyncApplicationHost host = factory.Create(new Uri("https://cotton.example.test/"));
 
@@ -89,7 +89,7 @@ namespace Cotton.Sync.Desktop.Tests.Composition
         public async Task Create_WiresCloudFilesPlaceholderWriterIntoSyncEngine()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var factory = new DesktopSyncApplicationFactory(paths);
+            DesktopSyncApplicationFactory factory = new DesktopSyncApplicationFactory(paths);
 
             await using DesktopSyncApplicationHost host = factory.Create(new Uri("https://cotton.example.test/"));
 
@@ -111,7 +111,7 @@ namespace Cotton.Sync.Desktop.Tests.Composition
         public async Task Create_WiresRemoteChangeScopingAroundWindowsVirtualFilesWork()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var factory = new DesktopSyncApplicationFactory(paths);
+            DesktopSyncApplicationFactory factory = new DesktopSyncApplicationFactory(paths);
 
             await using DesktopSyncApplicationHost host = factory.Create(new Uri("https://cotton.example.test/"));
 
@@ -139,7 +139,7 @@ namespace Cotton.Sync.Desktop.Tests.Composition
         public async Task Create_WiresCloudFilesConnectionCoordinatorIntoSyncCoreLifecycle()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var factory = new DesktopSyncApplicationFactory(paths);
+            DesktopSyncApplicationFactory factory = new DesktopSyncApplicationFactory(paths);
 
             await using DesktopSyncApplicationHost host = factory.Create(new Uri("https://cotton.example.test/"));
 
@@ -154,7 +154,7 @@ namespace Cotton.Sync.Desktop.Tests.Composition
         public async Task Create_WiresCloudFilesDeletionHandlerIntoSyncApplication()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var factory = new DesktopSyncApplicationFactory(paths);
+            DesktopSyncApplicationFactory factory = new DesktopSyncApplicationFactory(paths);
 
             await using DesktopSyncApplicationHost host = factory.Create(new Uri("https://cotton.example.test/"));
 
@@ -189,7 +189,7 @@ namespace Cotton.Sync.Desktop.Tests.Composition
                 "CreateHandler",
                 BindingFlags.Static | BindingFlags.NonPublic);
 
-            using var handler = (SocketsHttpHandler)(createHandler?.Invoke(null, null)
+            using SocketsHttpHandler handler = (SocketsHttpHandler)(createHandler?.Invoke(null, null)
                 ?? throw new InvalidOperationException("CreateHandler was not found."));
 
             Assert.That(handler.SslOptions.RemoteCertificateValidationCallback, Is.Null);
@@ -198,7 +198,7 @@ namespace Cotton.Sync.Desktop.Tests.Composition
         [Test]
         public void DesktopHttpClientFactory_ObservesAlreadyFaultedConnectCleanup()
         {
-            var connectTask = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource connectTask = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             connectTask.SetException(new SocketException((int)SocketError.OperationAborted));
 
             Assert.That(IsTaskExceptionObserved(connectTask.Task), Is.False);
@@ -211,7 +211,7 @@ namespace Cotton.Sync.Desktop.Tests.Composition
         [Test]
         public async Task DesktopHttpClientFactory_ObservesLaterFaultedConnectCleanup()
         {
-            var connectTask = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource connectTask = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
             DesktopHttpClientFactory.ObserveConnectCleanupFailure(connectTask.Task);
             connectTask.SetException(new SocketException((int)SocketError.OperationAborted));
@@ -285,7 +285,7 @@ namespace Cotton.Sync.Desktop.Tests.Composition
 
         private static async Task WaitForTaskExceptionObservationAsync(Task task)
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using CancellationTokenSource timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             while (!IsTaskExceptionObserved(task))
             {
                 await Task.Delay(10, timeout.Token);

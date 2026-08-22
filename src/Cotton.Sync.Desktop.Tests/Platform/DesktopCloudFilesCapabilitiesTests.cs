@@ -33,7 +33,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateSyncPairModeCapabilities_ReportsCurrentHostSupportWithoutThrowing()
         {
-            var snapshot = DesktopCloudFilesCapabilities.CreateSyncPairModeCapabilities();
+            SyncPairModeCapabilitySnapshot snapshot = DesktopCloudFilesCapabilities.CreateSyncPairModeCapabilities();
 
             Assert.Multiple(() =>
             {
@@ -62,7 +62,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateSelfTestCapability_SkipsWhenBasicCapabilityIsUnavailable()
         {
-            var adapter = new FakeCloudFilesAdapter();
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter();
 
             DesktopCloudFilesSelfTestCapabilitySnapshot snapshot =
                 DesktopCloudFilesCapabilities.CreateSelfTestCapability(
@@ -85,7 +85,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateSelfTestCapability_VerifiesConnectBoundaryAndCleansUpProbeRoot()
         {
-            var adapter = new FakeCloudFilesAdapter();
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter();
             string probeRoot = CreateProbeRoot();
 
             DesktopCloudFilesSelfTestCapabilitySnapshot snapshot =
@@ -113,7 +113,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateSelfTestCapability_ReusesStableSyncPairIdentityForCleanup()
         {
-            var adapter = new FakeCloudFilesAdapter();
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter();
             string firstProbeRoot = CreateProbeRoot();
             string secondProbeRoot = CreateProbeRoot();
 
@@ -158,7 +158,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateSelfTestCapability_FailsWhenConnectBoundaryFailsAndStillCleansUp()
         {
-            var adapter = new FakeCloudFilesAdapter
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter
             {
                 ConnectException = new WindowsCloudFilesNativeException(
                     "CfConnectSyncRoot",

@@ -17,7 +17,7 @@ namespace Cotton.Sync.Tests.Remote
             Guid previousParentId = Guid.NewGuid();
             Guid fileId = Guid.NewGuid();
             Guid layoutId = Guid.NewGuid();
-            var changes = new[]
+            SyncChangeDto[] changes = new[]
             {
                 new SyncChangeDto
                 {
@@ -91,7 +91,7 @@ namespace Cotton.Sync.Tests.Remote
         [Test]
         public void FromChanges_RejectsNonPositiveCursor()
         {
-            var changes = new[]
+            SyncChangeDto[] changes = new[]
             {
                 new SyncChangeDto
                 {
@@ -106,7 +106,7 @@ namespace Cotton.Sync.Tests.Remote
         [Test]
         public void FromChanges_RejectsDefaultCursor()
         {
-            var changes = new[]
+            SyncChangeDto[] changes = new[]
             {
                 new SyncChangeDto
                 {

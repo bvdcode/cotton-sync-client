@@ -88,7 +88,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public void Validate_RejectsUnsafeRoot(string root, int expectedIssueValue)
         {
             WindowsVirtualFilesRootSafetyPolicy policy = CreatePolicy();
-            var expectedIssue = (WindowsVirtualFilesRootSafetyIssue)expectedIssueValue;
+            WindowsVirtualFilesRootSafetyIssue expectedIssue = (WindowsVirtualFilesRootSafetyIssue)expectedIssueValue;
 
             WindowsVirtualFilesRootSafetyResult result = policy.Validate(root);
 
@@ -131,7 +131,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateRegistration_RequiresWindowsVirtualFilesMode()
         {
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy());
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy());
             SyncPairSettings syncPair = CreatePair(Path.Combine(_tempDirectory, "CottonSyncVfsQa", "root"));
             syncPair.Mode = SyncPairMode.FullMirror;
 
@@ -141,7 +141,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateRegistration_RejectsUnsafeRootBeforeCloudFilesRegistration()
         {
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy());
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy());
             SyncPairSettings syncPair = CreatePair(_repoDirectory);
 
             InvalidOperationException? exception =
@@ -153,7 +153,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateRegistration_ReturnsStableProviderIdentityAndNormalizedRoot()
         {
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy());
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy());
             string root = Path.Combine(_tempDirectory, "CottonSyncVfsQa", "root") + Path.DirectorySeparatorChar;
             SyncPairSettings syncPair = CreatePair(root);
 

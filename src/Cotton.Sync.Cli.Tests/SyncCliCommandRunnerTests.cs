@@ -37,8 +37,8 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task RunAsync_PrintsHelpForEmptyArguments()
         {
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync([], output, error);
 
@@ -92,8 +92,8 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task SyncOnceSuccess_PrintsTotalActivitiesWhenRetainedActivityListIsTruncated()
         {
-            using var output = new StringWriter();
-            var result = new SyncRunResult();
+            using StringWriter output = new StringWriter();
+            SyncRunResult result = new SyncRunResult();
             result.RecordActivity(
                 new SyncActivity
                 {
@@ -108,7 +108,7 @@ namespace Cotton.Sync.Cli.Tests
                     RelativePath = "Cloud/file-0002.txt",
                 },
                 maximumStoredActivities: 1);
-            var options = new SyncCliConnectionOptions(
+            SyncCliConnectionOptions options = new SyncCliConnectionOptions(
                 new Uri("https://cotton.test/"),
                 "testuser",
                 "testpassword",
@@ -119,7 +119,7 @@ namespace Cotton.Sync.Cli.Tests
                 "sync-state.db",
                 null,
                 UseBrowserLogin: false);
-            var pass = new SyncCliPassResult(result, []);
+            SyncCliPassResult pass = new SyncCliPassResult(result, []);
 
             await SyncCliCommandRunner.WriteSyncOnceSuccessAsync(output, options, pass);
 
@@ -136,10 +136,10 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task AuthBrowser_PrintsApprovalUrlAndSignedInAccount()
         {
-            var handler = new AppCodeAuthServerHandler();
-            using var httpClient = new HttpClient(handler);
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            AppCodeAuthServerHandler handler = new AppCodeAuthServerHandler();
+            using HttpClient httpClient = new HttpClient(handler);
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -182,10 +182,10 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task AuthBrowser_ReturnsFailureForDeniedApproval()
         {
-            var handler = new AppCodeAuthServerHandler(deny: true);
-            using var httpClient = new HttpClient(handler);
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            AppCodeAuthServerHandler handler = new AppCodeAuthServerHandler(deny: true);
+            using HttpClient httpClient = new HttpClient(handler);
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -215,10 +215,10 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task AuthBrowser_DefaultStartRequestUsesCliVersion()
         {
-            var handler = new AppCodeAuthServerHandler(deny: true);
-            using var httpClient = new HttpClient(handler);
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            AppCodeAuthServerHandler handler = new AppCodeAuthServerHandler(deny: true);
+            using HttpClient httpClient = new HttpClient(handler);
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -250,8 +250,8 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task RunAsync_PrintsVersionForVersionFlag()
         {
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(["--version"], output, error);
 
@@ -266,10 +266,10 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task AuthBrowser_ReturnsFailureWhenApprovalTimesOut()
         {
-            var handler = new AppCodeAuthServerHandler(alwaysPending: true);
-            using var httpClient = new HttpClient(handler);
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            AppCodeAuthServerHandler handler = new AppCodeAuthServerHandler(alwaysPending: true);
+            using HttpClient httpClient = new HttpClient(handler);
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -295,8 +295,8 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task AuthBrowser_ReturnsErrorForInvalidTimeout()
         {
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -320,10 +320,10 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task AuthBrowser_ReturnsFailureWithoutStackTraceWhenStartNetworkFails()
         {
-            var handler = new AppCodeAuthServerHandler(startException: new HttpRequestException("firewall blocked"));
-            using var httpClient = new HttpClient(handler);
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            AppCodeAuthServerHandler handler = new AppCodeAuthServerHandler(startException: new HttpRequestException("firewall blocked"));
+            using HttpClient httpClient = new HttpClient(handler);
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -349,8 +349,8 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task AuthBrowser_HelpMentionsTimeout()
         {
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync([], output, error);
 
@@ -364,8 +364,8 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task AuthBrowser_ReturnsErrorForMissingServer()
         {
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(["auth-browser"], output, error);
 
@@ -380,8 +380,8 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task RunAsync_ReturnsErrorForMissingStateSummaryArguments()
         {
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(["state-summary"], output, error);
 
@@ -397,8 +397,8 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task RunAsync_ReturnsErrorForMissingSyncOnceArguments()
         {
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(["sync-once"], output, error);
 
@@ -415,8 +415,8 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task RunAsync_ReturnsErrorForMissingSyncSoakLimiter()
         {
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -452,8 +452,8 @@ namespace Cotton.Sync.Cli.Tests
         public async Task RunAsync_ReturnsErrorForMissingSyncCrudSmokeSecondClientArguments()
         {
             string localRoot = Path.Combine(_tempDirectory, "crud-local-a");
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -494,8 +494,8 @@ namespace Cotton.Sync.Cli.Tests
             Directory.CreateDirectory(firstLocalRoot);
             Directory.CreateDirectory(secondLocalRoot);
             await File.WriteAllTextAsync(Path.Combine(firstLocalRoot, "existing.txt"), "do not touch");
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -599,8 +599,8 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task RunAsync_ReturnsErrorForInvalidSyncSoakProbeFile()
         {
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -638,8 +638,8 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task RunAsync_ReturnsErrorForIncompleteSyncSoakSecondClient()
         {
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -718,8 +718,8 @@ namespace Cotton.Sync.Cli.Tests
 
             foreach (var testCase in cases)
             {
-                using var output = new StringWriter();
-                using var error = new StringWriter();
+                using StringWriter output = new StringWriter();
+                using StringWriter error = new StringWriter();
 
                 int exitCode = await SyncCliCommandRunner.RunAsync(
                     [
@@ -762,8 +762,8 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task RunAsync_ReturnsErrorForInvalidSyncOnceRemoteRoot()
         {
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -798,8 +798,8 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task RunAsync_ReturnsErrorWhenSyncOnceRemoteRootAndRemotePathAreBothProvided()
         {
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -837,8 +837,8 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task RunAsync_AcceptsBareSyncOnceServerHostBeforeRemoteRootValidation()
         {
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -874,8 +874,8 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public async Task RunAsync_ReturnsErrorForUnsupportedSyncOnceServerScheme()
         {
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -915,10 +915,10 @@ namespace Cotton.Sync.Cli.Tests
             File.WriteAllText(Path.Combine(localRoot, "file.txt"), "content");
             string databasePath = Path.Combine(_tempDirectory, "missing-remote-root-state.db");
             Guid remoteRootId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-            var handler = new RemoteRootNotFoundServerHandler(remoteRootId);
-            using var httpClient = new HttpClient(handler);
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            RemoteRootNotFoundServerHandler handler = new RemoteRootNotFoundServerHandler(remoteRootId);
+            using HttpClient httpClient = new HttpClient(handler);
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -974,13 +974,13 @@ namespace Cotton.Sync.Cli.Tests
             string databasePath = Path.Combine(_tempDirectory, "sync-timeout-state.db");
             Guid remoteRootId = Guid.Parse("11111111-1111-1111-1111-111111111111");
             string syncPairId = Guid.NewGuid().ToString("D");
-            var handler = new SyncOnceDirectoryServerHandler(
+            SyncOnceDirectoryServerHandler handler = new SyncOnceDirectoryServerHandler(
                 remoteRootId,
                 "unused",
                 throwTimeoutOnChildren: true);
-            using var httpClient = new HttpClient(handler);
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using HttpClient httpClient = new HttpClient(handler);
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -1046,13 +1046,13 @@ namespace Cotton.Sync.Cli.Tests
             string databasePath = Path.Combine(_tempDirectory, "sync-transient-timeout-state.db");
             string syncPairId = Guid.NewGuid().ToString("D");
             Guid remoteRootId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-            var handler = new SyncOnceDirectoryServerHandler(
+            SyncOnceDirectoryServerHandler handler = new SyncOnceDirectoryServerHandler(
                 remoteRootId,
                 relativePath,
                 childrenTimeoutsBeforeSuccess: 1);
-            using var httpClient = new HttpClient(handler);
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using HttpClient httpClient = new HttpClient(handler);
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -1076,7 +1076,7 @@ namespace Cotton.Sync.Cli.Tests
                 error,
                 httpClient);
 
-            var store = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
             SyncStateEntry? entry = await store.GetAsync(syncPairId, relativePath);
             string text = output.ToString();
             Assert.Multiple(() =>
@@ -1107,8 +1107,8 @@ namespace Cotton.Sync.Cli.Tests
         [Test]
         public void SyncCliRunProgressWriter_SuppressesShortRunsAndWritesLongRunProgress()
         {
-            var output = new StringWriter();
-            var writer = new SyncCliRunProgressWriter(output);
+            StringWriter output = new StringWriter();
+            SyncCliRunProgressWriter writer = new SyncCliRunProgressWriter(output);
             DateTime now = DateTime.UtcNow;
             writer.Report(new SyncRunProgress(
                 SyncRunProgressStage.ScanningLocal,
@@ -1158,7 +1158,7 @@ namespace Cotton.Sync.Cli.Tests
         {
             string databasePath = Path.Combine(_tempDirectory, "sync-state.db");
             string syncPairId = Guid.NewGuid().ToString("D");
-            var store = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
             await store.InitializeAsync();
             await store.UpsertAsync(new SyncStateEntry
             {
@@ -1173,8 +1173,8 @@ namespace Cotton.Sync.Cli.Tests
                 LastCursor = 42,
                 UpdatedAtUtc = new DateTime(2026, 6, 3, 10, 0, 0, DateTimeKind.Utc),
             });
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 ["state-summary", "--database", databasePath, "--sync-pair", syncPairId],
@@ -1198,8 +1198,8 @@ namespace Cotton.Sync.Cli.Tests
             string databasePath = Path.Combine(_tempDirectory, "corrupt-sync-state.db");
             string syncPairId = Guid.NewGuid().ToString("D");
             await File.WriteAllTextAsync(databasePath, "not a sqlite database");
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 ["state-summary", "--database", databasePath, "--sync-pair", syncPairId],
@@ -1235,10 +1235,10 @@ namespace Cotton.Sync.Cli.Tests
             string databasePath = Path.Combine(_tempDirectory, "sync-state.db");
             string syncPairId = Guid.NewGuid().ToString("D");
             Guid remoteRootId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-            var handler = new SyncOnceUploadServerHandler(remoteRootId, relativePath, contentHash, content);
-            using var httpClient = new HttpClient(handler);
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            SyncOnceUploadServerHandler handler = new SyncOnceUploadServerHandler(remoteRootId, relativePath, contentHash, content);
+            using HttpClient httpClient = new HttpClient(handler);
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -1262,7 +1262,7 @@ namespace Cotton.Sync.Cli.Tests
                 error,
                 httpClient);
 
-            var store = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
             SyncStateEntry? entry = await store.GetAsync(syncPairId, relativePath);
             string text = output.ToString();
             Assert.Multiple(() =>
@@ -1304,10 +1304,10 @@ namespace Cotton.Sync.Cli.Tests
             string databasePath = Path.Combine(_tempDirectory, "sync-state-remote-path.db");
             string syncPairId = Guid.NewGuid().ToString("D");
             Guid remoteRootId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-            var handler = new SyncOnceUploadServerHandler(remoteRootId, relativePath, contentHash, content);
-            using var httpClient = new HttpClient(handler);
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            SyncOnceUploadServerHandler handler = new SyncOnceUploadServerHandler(remoteRootId, relativePath, contentHash, content);
+            using HttpClient httpClient = new HttpClient(handler);
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -1331,7 +1331,7 @@ namespace Cotton.Sync.Cli.Tests
                 error,
                 httpClient);
 
-            var store = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
             SyncStateEntry? entry = await store.GetAsync(syncPairId, relativePath);
             Assert.Multiple(() =>
             {
@@ -1368,15 +1368,15 @@ namespace Cotton.Sync.Cli.Tests
             string databasePath = Path.Combine(_tempDirectory, "sync-state-refresh.db");
             string syncPairId = Guid.NewGuid().ToString("D");
             Guid remoteRootId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-            var handler = new SyncOnceUploadServerHandler(
+            SyncOnceUploadServerHandler handler = new SyncOnceUploadServerHandler(
                 remoteRootId,
                 relativePath,
                 contentHash,
                 content,
                 expireAccessTokenBeforeChunkExists: true);
-            using var httpClient = new HttpClient(handler);
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using HttpClient httpClient = new HttpClient(handler);
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -1400,7 +1400,7 @@ namespace Cotton.Sync.Cli.Tests
                 error,
                 httpClient);
 
-            var store = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
             SyncStateEntry? entry = await store.GetAsync(syncPairId, relativePath);
             string chunkExistsPath = "/api/v1/chunks/" + contentHash + "/exists";
             Assert.Multiple(() =>
@@ -1444,15 +1444,15 @@ namespace Cotton.Sync.Cli.Tests
             string databasePath = Path.Combine(_tempDirectory, "sync-state-browser.db");
             string syncPairId = Guid.NewGuid().ToString("D");
             Guid remoteRootId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-            var handler = new SyncOnceUploadServerHandler(
+            SyncOnceUploadServerHandler handler = new SyncOnceUploadServerHandler(
                 remoteRootId,
                 relativePath,
                 contentHash,
                 content,
                 allowAppCodeAuth: true);
-            using var httpClient = new HttpClient(handler);
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using HttpClient httpClient = new HttpClient(handler);
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -1473,7 +1473,7 @@ namespace Cotton.Sync.Cli.Tests
                 error,
                 httpClient);
 
-            var store = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
             SyncStateEntry? entry = await store.GetAsync(syncPairId, relativePath);
             string text = output.ToString();
             Assert.Multiple(() =>
@@ -1517,16 +1517,16 @@ namespace Cotton.Sync.Cli.Tests
             string databasePath = Path.Combine(_tempDirectory, "sync-state-browser-network-retry.db");
             string syncPairId = Guid.NewGuid().ToString("D");
             Guid remoteRootId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-            var handler = new SyncOnceUploadServerHandler(
+            SyncOnceUploadServerHandler handler = new SyncOnceUploadServerHandler(
                 remoteRootId,
                 relativePath,
                 contentHash,
                 content,
                 allowAppCodeAuth: true,
                 appCodeStartNetworkFailuresBeforeSuccess: 3);
-            using var httpClient = new HttpClient(handler);
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using HttpClient httpClient = new HttpClient(handler);
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -1547,7 +1547,7 @@ namespace Cotton.Sync.Cli.Tests
                 error,
                 httpClient);
 
-            var store = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
             SyncStateEntry? entry = await store.GetAsync(syncPairId, relativePath);
             string text = output.ToString();
             Assert.Multiple(() =>
@@ -1594,7 +1594,7 @@ namespace Cotton.Sync.Cli.Tests
             string databasePath = Path.Combine(_tempDirectory, "process-crash-state.db");
             string syncPairId = Guid.NewGuid().ToString("D");
             Guid remoteRootId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-            await using var server = new SyncProcessCrashHttpServer(remoteRootId, relativePath, contentHash, content);
+            await using SyncProcessCrashHttpServer server = new SyncProcessCrashHttpServer(remoteRootId, relativePath, contentHash, content);
             string[] args = CreateSyncOnceProcessArgs(server.BaseUri, localRoot, remoteRootId, syncPairId, databasePath);
 
             using Process crashingProcess = StartCliProcess(args);
@@ -1615,7 +1615,7 @@ namespace Cotton.Sync.Cli.Tests
             _ = await firstOutputTask.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
             _ = await firstErrorTask.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
 
-            var storeAfterCrash = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore storeAfterCrash = new SqliteSyncStateStore(databasePath);
             IReadOnlyList<SyncStateEntry> entriesAfterCrash = await storeAfterCrash.LoadPairAsync(syncPairId);
 
             using Process recoveryProcess = StartCliProcess(args);
@@ -1625,7 +1625,7 @@ namespace Cotton.Sync.Cli.Tests
             string recoveryOutput = await recoveryOutputTask.ConfigureAwait(false);
             string recoveryError = await recoveryErrorTask.ConfigureAwait(false);
 
-            var storeAfterRecovery = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore storeAfterRecovery = new SqliteSyncStateStore(databasePath);
             SyncStateEntry? entry = await storeAfterRecovery.GetAsync(syncPairId, relativePath);
             IReadOnlyList<HttpRequestSnapshot> requests = server.Requests;
             server.AssertNoFaults();
@@ -1662,7 +1662,7 @@ namespace Cotton.Sync.Cli.Tests
             Guid remoteRootId = Guid.Parse("11111111-1111-1111-1111-111111111111");
             string targetPath = Path.Combine(localRoot, relativePath);
             string temporaryDirectory = Path.Combine(localRoot, ".cotton-sync", "tmp");
-            await using var server = new SyncProcessDownloadCrashHttpServer(remoteRootId, relativePath, contentHash, content);
+            await using SyncProcessDownloadCrashHttpServer server = new SyncProcessDownloadCrashHttpServer(remoteRootId, relativePath, contentHash, content);
             string[] args = CreateSyncOnceProcessArgs(server.BaseUri, localRoot, remoteRootId, syncPairId, databasePath);
 
             using Process crashingProcess = StartCliProcess(args);
@@ -1684,7 +1684,7 @@ namespace Cotton.Sync.Cli.Tests
             _ = await firstOutputTask.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
             _ = await firstErrorTask.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
 
-            var store = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
             SyncStateEntry? entryAfterCrash = await store.GetAsync(syncPairId, relativePath);
             string[] staleTemporaryFiles = ListTemporaryDownloads(temporaryDirectory);
             bool targetExistsAfterCrash = File.Exists(targetPath);
@@ -1734,8 +1734,8 @@ namespace Cotton.Sync.Cli.Tests
             string databasePath = Path.Combine(_tempDirectory, "process-delete-crash-state.db");
             string syncPairId = Guid.NewGuid().ToString("D");
             Guid remoteRootId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-            await using var server = new SyncProcessRemoteDeleteCrashHttpServer(remoteRootId, relativePath, contentHash);
-            var store = new SqliteSyncStateStore(databasePath);
+            await using SyncProcessRemoteDeleteCrashHttpServer server = new SyncProcessRemoteDeleteCrashHttpServer(remoteRootId, relativePath, contentHash);
+            SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
             await store.UpsertAsync(new SyncStateEntry
             {
                 SyncPairId = syncPairId,
@@ -1812,10 +1812,10 @@ namespace Cotton.Sync.Cli.Tests
             string databasePath = Path.Combine(_tempDirectory, "sync-soak-state.db");
             string syncPairId = Guid.NewGuid().ToString("D");
             Guid remoteRootId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-            var handler = new SyncOnceUploadServerHandler(remoteRootId, relativePath, contentHash, content);
-            using var httpClient = new HttpClient(handler);
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            SyncOnceUploadServerHandler handler = new SyncOnceUploadServerHandler(remoteRootId, relativePath, contentHash, content);
+            using HttpClient httpClient = new HttpClient(handler);
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -1841,7 +1841,7 @@ namespace Cotton.Sync.Cli.Tests
                 error,
                 httpClient);
 
-            var store = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
             SyncStateEntry? entry = await store.GetAsync(syncPairId, relativePath);
             string text = output.ToString();
             Assert.Multiple(() =>
@@ -1893,15 +1893,15 @@ namespace Cotton.Sync.Cli.Tests
             string databasePath = Path.Combine(_tempDirectory, "sync-soak-browser-state.db");
             string syncPairId = Guid.NewGuid().ToString("D");
             Guid remoteRootId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-            var handler = new SyncOnceUploadServerHandler(
+            SyncOnceUploadServerHandler handler = new SyncOnceUploadServerHandler(
                 remoteRootId,
                 relativePath,
                 contentHash,
                 content,
                 allowAppCodeAuth: true);
-            using var httpClient = new HttpClient(handler);
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using HttpClient httpClient = new HttpClient(handler);
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -1924,7 +1924,7 @@ namespace Cotton.Sync.Cli.Tests
                 error,
                 httpClient);
 
-            var store = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
             SyncStateEntry? entry = await store.GetAsync(syncPairId, relativePath);
             string text = output.ToString();
             Assert.Multiple(() =>
@@ -1960,14 +1960,14 @@ namespace Cotton.Sync.Cli.Tests
             string databasePath = Path.Combine(_tempDirectory, "sync-soak-failing-state.db");
             string syncPairId = Guid.NewGuid().ToString("D");
             Guid remoteRootId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-            var handler = new SyncOnceUploadServerHandler(
+            SyncOnceUploadServerHandler handler = new SyncOnceUploadServerHandler(
                 remoteRootId,
                 relativePath,
                 expectedContentHash: "unexpected-hash",
                 expectedContent: content);
-            using var httpClient = new HttpClient(handler);
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using HttpClient httpClient = new HttpClient(handler);
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -2039,15 +2039,15 @@ namespace Cotton.Sync.Cli.Tests
             string databasePath = Path.Combine(_tempDirectory, "sync-soak-non-converged-state.db");
             string syncPairId = Guid.NewGuid().ToString("D");
             Guid remoteRootId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-            var handler = new SyncOnceUploadServerHandler(
+            SyncOnceUploadServerHandler handler = new SyncOnceUploadServerHandler(
                 remoteRootId,
                 relativePath,
                 contentHash,
                 content,
                 exposeCreatedFileInChildren: false);
-            using var httpClient = new HttpClient(handler);
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            using HttpClient httpClient = new HttpClient(handler);
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -2104,10 +2104,10 @@ namespace Cotton.Sync.Cli.Tests
             string firstSyncPairId = Guid.NewGuid().ToString("D");
             string secondSyncPairId = Guid.NewGuid().ToString("D");
             Guid remoteRootId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-            var handler = new SyncOnceUploadServerHandler(remoteRootId, relativePath, contentHash, content);
-            using var httpClient = new HttpClient(handler);
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            SyncOnceUploadServerHandler handler = new SyncOnceUploadServerHandler(remoteRootId, relativePath, contentHash, content);
+            using HttpClient httpClient = new HttpClient(handler);
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -2139,8 +2139,8 @@ namespace Cotton.Sync.Cli.Tests
                 error,
                 httpClient);
 
-            var firstStore = new SqliteSyncStateStore(firstDatabasePath);
-            var secondStore = new SqliteSyncStateStore(secondDatabasePath);
+            SqliteSyncStateStore firstStore = new SqliteSyncStateStore(firstDatabasePath);
+            SqliteSyncStateStore secondStore = new SqliteSyncStateStore(secondDatabasePath);
             SyncStateEntry? firstEntry = await firstStore.GetAsync(firstSyncPairId, relativePath);
             SyncStateEntry? secondEntry = await secondStore.GetAsync(secondSyncPairId, relativePath);
             string secondLocalFilePath = Path.Combine(secondLocalRoot, relativePath);
@@ -2179,10 +2179,10 @@ namespace Cotton.Sync.Cli.Tests
             string databasePath = Path.Combine(_tempDirectory, "sync-state.db");
             string syncPairId = Guid.NewGuid().ToString("D");
             Guid remoteRootId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-            var handler = new SyncOnceDirectoryServerHandler(remoteRootId, relativePath);
-            using var httpClient = new HttpClient(handler);
-            using var output = new StringWriter();
-            using var error = new StringWriter();
+            SyncOnceDirectoryServerHandler handler = new SyncOnceDirectoryServerHandler(remoteRootId, relativePath);
+            using HttpClient httpClient = new HttpClient(handler);
+            using StringWriter output = new StringWriter();
+            using StringWriter error = new StringWriter();
 
             int exitCode = await SyncCliCommandRunner.RunAsync(
                 [
@@ -2206,7 +2206,7 @@ namespace Cotton.Sync.Cli.Tests
                 error,
                 httpClient);
 
-            var store = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
             SyncStateEntry? entry = await store.GetAsync(syncPairId, relativePath);
             string text = output.ToString();
             Assert.Multiple(() =>
@@ -2269,7 +2269,7 @@ namespace Cotton.Sync.Cli.Tests
         private static Process StartCliProcess(IEnumerable<string> args)
         {
             string cliPath = typeof(SyncCliCommandRunner).Assembly.Location;
-            var startInfo = new ProcessStartInfo("dotnet")
+            ProcessStartInfo startInfo = new ProcessStartInfo("dotnet")
             {
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
@@ -2299,7 +2299,7 @@ namespace Cotton.Sync.Cli.Tests
 
         private static async Task WaitForTemporaryDownloadAsync(string temporaryDirectory, TimeSpan timeout)
         {
-            using var cancellation = new CancellationTokenSource(timeout);
+            using CancellationTokenSource cancellation = new CancellationTokenSource(timeout);
             try
             {
                 while (!cancellation.IsCancellationRequested)
@@ -2368,7 +2368,7 @@ namespace Cotton.Sync.Cli.Tests
                     ? []
                     : await request.Content.ReadAsByteArrayAsync(cancellationToken);
                 string body = Encoding.UTF8.GetString(rawBody);
-                var snapshot = new HttpRequestSnapshot(
+                HttpRequestSnapshot snapshot = new HttpRequestSnapshot(
                     request.Method,
                     request.RequestUri?.PathAndQuery ?? string.Empty,
                     request.Headers.Authorization?.Parameter,

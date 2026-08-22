@@ -34,14 +34,14 @@ namespace Cotton.Sync.Tests.Remote
         [Test]
         public async Task ReadAsync_UsesSavedCursorAndDoesNotAdvanceBeforeAcknowledge()
         {
-            var stateStore = CreateStore();
+            SqliteSyncStateStore stateStore = CreateStore();
             await stateStore.InitializeAsync();
             await stateStore.SaveChangeCursorAsync(new SyncChangeCursor
             {
                 SyncPairId = "pair-a",
                 LastCursor = 10,
             });
-            var syncClient = new FakeCottonSyncClient(new SyncChangesResponseDto
+            FakeCottonSyncClient syncClient = new FakeCottonSyncClient(new SyncChangesResponseDto
             {
                 SinceCursor = 10,
                 NextCursor = 12,
@@ -59,7 +59,7 @@ namespace Cotton.Sync.Tests.Remote
                     },
                 ],
             });
-            var reader = new RemoteChangeFeedReader(syncClient, stateStore);
+            RemoteChangeFeedReader reader = new RemoteChangeFeedReader(syncClient, stateStore);
 
             RemoteChangeFeedBatch batch = await reader.ReadAsync("pair-a", limit: 25);
             SyncChangeCursor cursor = await stateStore.GetChangeCursorAsync("pair-a");
@@ -79,20 +79,20 @@ namespace Cotton.Sync.Tests.Remote
         [Test]
         public async Task ReadFromCursorAsync_UsesExplicitCursorAndDoesNotAdvanceSavedCursor()
         {
-            var stateStore = CreateStore();
+            SqliteSyncStateStore stateStore = CreateStore();
             await stateStore.InitializeAsync();
             await stateStore.SaveChangeCursorAsync(new SyncChangeCursor
             {
                 SyncPairId = "pair-a",
                 LastCursor = 10,
             });
-            var syncClient = new FakeCottonSyncClient(new SyncChangesResponseDto
+            FakeCottonSyncClient syncClient = new FakeCottonSyncClient(new SyncChangesResponseDto
             {
                 SinceCursor = 12,
                 NextCursor = 14,
                 HasMore = false,
             });
-            var reader = new RemoteChangeFeedReader(syncClient, stateStore);
+            RemoteChangeFeedReader reader = new RemoteChangeFeedReader(syncClient, stateStore);
 
             RemoteChangeFeedBatch batch = await reader.ReadFromCursorAsync("pair-a", sinceCursor: 12, limit: 30);
             SyncChangeCursor cursor = await stateStore.GetChangeCursorAsync("pair-a");
@@ -109,15 +109,15 @@ namespace Cotton.Sync.Tests.Remote
         [Test]
         public async Task ReadFromCursorAsync_RejectsMismatchedResponseCursor()
         {
-            var stateStore = CreateStore();
+            SqliteSyncStateStore stateStore = CreateStore();
             await stateStore.InitializeAsync();
-            var syncClient = new FakeCottonSyncClient(new SyncChangesResponseDto
+            FakeCottonSyncClient syncClient = new FakeCottonSyncClient(new SyncChangesResponseDto
             {
                 SinceCursor = 9,
                 NextCursor = 10,
                 HasMore = false,
             });
-            var reader = new RemoteChangeFeedReader(syncClient, stateStore);
+            RemoteChangeFeedReader reader = new RemoteChangeFeedReader(syncClient, stateStore);
 
             Assert.ThrowsAsync<InvalidOperationException>(
                 () => reader.ReadFromCursorAsync("pair-a", sinceCursor: 10, limit: 30));
@@ -128,14 +128,14 @@ namespace Cotton.Sync.Tests.Remote
         {
             SqliteSyncStateStore stateStore = CreateStore();
             await stateStore.InitializeAsync();
-            var syncClient = new FakeCottonSyncClient
+            FakeCottonSyncClient syncClient = new FakeCottonSyncClient
             {
                 Failure = new CottonApiException(
                     System.Net.HttpStatusCode.NotFound,
                     "404 page not found",
                     "Cotton API request GET /api/v1/sync/changes?since=10&limit=500 failed with status 404 (NotFound)."),
             };
-            var reader = new RemoteChangeFeedReader(syncClient, stateStore);
+            RemoteChangeFeedReader reader = new RemoteChangeFeedReader(syncClient, stateStore);
 
             RemoteChangeFeedUnavailableException? exception = Assert.ThrowsAsync<RemoteChangeFeedUnavailableException>(
                 async () => await reader.ReadAsync("pair-a"));
@@ -151,7 +151,7 @@ namespace Cotton.Sync.Tests.Remote
         [Test]
         public async Task AcknowledgeAsync_SavesNextCursorForProcessedBatch()
         {
-            var stateStore = CreateStore();
+            SqliteSyncStateStore stateStore = CreateStore();
             await stateStore.InitializeAsync();
             await stateStore.SaveChangeCursorAsync(new SyncChangeCursor
             {
@@ -159,8 +159,8 @@ namespace Cotton.Sync.Tests.Remote
                 LastCursor = 10,
                 HasCompletedFullReconcile = true,
             });
-            var reader = new RemoteChangeFeedReader(new FakeCottonSyncClient(), stateStore);
-            var batch = new RemoteChangeFeedBatch(
+            RemoteChangeFeedReader reader = new RemoteChangeFeedReader(new FakeCottonSyncClient(), stateStore);
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 "pair-a",
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -184,15 +184,15 @@ namespace Cotton.Sync.Tests.Remote
         [Test]
         public async Task AcknowledgeAsync_MarksExpiredCursorWithoutAdvancing()
         {
-            var stateStore = CreateStore();
+            SqliteSyncStateStore stateStore = CreateStore();
             await stateStore.InitializeAsync();
             await stateStore.SaveChangeCursorAsync(new SyncChangeCursor
             {
                 SyncPairId = "pair-a",
                 LastCursor = 10,
             });
-            var reader = new RemoteChangeFeedReader(new FakeCottonSyncClient(), stateStore);
-            var batch = new RemoteChangeFeedBatch(
+            RemoteChangeFeedReader reader = new RemoteChangeFeedReader(new FakeCottonSyncClient(), stateStore);
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 "pair-a",
                 sinceCursor: 10,
                 nextCursor: 10,
@@ -215,7 +215,7 @@ namespace Cotton.Sync.Tests.Remote
         [Test]
         public async Task AcknowledgeFullResyncAsync_RecoversExpiredCursorToEarliestAvailableCursor()
         {
-            var stateStore = CreateStore();
+            SqliteSyncStateStore stateStore = CreateStore();
             await stateStore.InitializeAsync();
             await stateStore.SaveChangeCursorAsync(new SyncChangeCursor
             {
@@ -224,8 +224,8 @@ namespace Cotton.Sync.Tests.Remote
                 CursorExpired = true,
                 EarliestAvailableCursor = 15,
             });
-            var reader = new RemoteChangeFeedReader(new FakeCottonSyncClient(), stateStore);
-            var batch = new RemoteChangeFeedBatch(
+            RemoteChangeFeedReader reader = new RemoteChangeFeedReader(new FakeCottonSyncClient(), stateStore);
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 "pair-a",
                 sinceCursor: 10,
                 nextCursor: 10,
@@ -252,10 +252,10 @@ namespace Cotton.Sync.Tests.Remote
             const int pageCount = 10;
             const int expectedChangeCount = pageSize * pageCount;
             TimeSpan smokeTarget = TimeSpan.FromSeconds(10);
-            var stateStore = CreateStore();
+            SqliteSyncStateStore stateStore = CreateStore();
             await stateStore.InitializeAsync();
-            var syncClient = new FakeCottonSyncClient(CreateChangePages(pageSize, pageCount));
-            var reader = new RemoteChangeFeedReader(syncClient, stateStore);
+            FakeCottonSyncClient syncClient = new FakeCottonSyncClient(CreateChangePages(pageSize, pageCount));
+            RemoteChangeFeedReader reader = new RemoteChangeFeedReader(syncClient, stateStore);
             int totalChanges = 0;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -294,7 +294,7 @@ namespace Cotton.Sync.Tests.Remote
 
         private static SyncChangesResponseDto[] CreateChangePages(int pageSize, int pageCount)
         {
-            var pages = new SyncChangesResponseDto[pageCount];
+            SyncChangesResponseDto[] pages = new SyncChangesResponseDto[pageCount];
             for (int page = 0; page < pageCount; page++)
             {
                 long sinceCursor = page * pageSize;

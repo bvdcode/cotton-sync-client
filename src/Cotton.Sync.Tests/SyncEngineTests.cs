@@ -32,7 +32,7 @@ namespace Cotton.Sync.Tests
         [Test]
         public async Task RunOnceAsync_WritesStructuredStartAndCompletionLogs()
         {
-            var logger = new RecordingLogger<SyncEngine>();
+            RecordingLogger<SyncEngine> logger = new RecordingLogger<SyncEngine>();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(),
                 EmptyRemoteTree(),
@@ -53,7 +53,7 @@ namespace Cotton.Sync.Tests
         [Test]
         public async Task RunOnceAsync_LoadsBaselineThroughStreamingStateApi()
         {
-            var stateStore = new StreamingOnlyStateStore(new SqliteSyncStateStore(_databasePath));
+            StreamingOnlyStateStore stateStore = new StreamingOnlyStateStore(new SqliteSyncStateStore(_databasePath));
             SyncEngine engine = new(
                 new FakeLocalFileScanner(),
                 new FakeRemoteTreeCrawler(EmptyRemoteTree()),
@@ -86,9 +86,9 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_UploadsLocalOnlyFileAndStoresBaseline()
         {
             LocalFileSnapshot local = LocalFile("Docs/local.txt", "local-content");
-            var scanner = new FakeLocalFileScanner(local);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var progress = new List<SyncActivity>();
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(local);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            List<SyncActivity> progress = new List<SyncActivity>();
             SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), remoteFiles, out SqliteSyncStateStore stateStore);
 
             SyncRunResult result = await engine.RunOnceAsync(
@@ -114,9 +114,9 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_WithWindowsVirtualFilesUploadsLocalOnlyFileAndStoresBaseline()
         {
             LocalFileSnapshot local = LocalFile("Docs/local-created.txt", "local-created-content");
-            var scanner = new FakeLocalFileScanner(local);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(local);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
             SyncEngine engine = CreateEngine(
                 scanner,
                 EmptyRemoteTree(),
@@ -144,7 +144,7 @@ namespace Cotton.Sync.Tests
         [Test]
         public async Task RunOnceAsync_UploadsLocalOnlyMetadataSnapshotAfterLazyHashing()
         {
-            var local = new LocalFileSnapshot
+            LocalFileSnapshot local = new LocalFileSnapshot
             {
                 RelativePath = "Docs/large.bin",
                 FullPath = Path.Combine(_root, "Docs", "large.bin"),
@@ -152,8 +152,8 @@ namespace Cotton.Sync.Tests
                 SizeBytes = 1024,
                 LastWriteUtc = new DateTime(2026, 6, 6, 8, 0, 0, DateTimeKind.Utc),
             };
-            var scanner = new MetadataOnlyLocalFileScanner(local);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            MetadataOnlyLocalFileScanner scanner = new MetadataOnlyLocalFileScanner(local);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), remoteFiles, out SqliteSyncStateStore stateStore);
 
             SyncRunResult result = await engine.RunOnceAsync(Pair());
@@ -232,7 +232,7 @@ namespace Cotton.Sync.Tests
         [Test]
         public async Task RunOnceAsync_UsesMetadataLookupScannerWhenAvailable()
         {
-            var local = new LocalFileSnapshot
+            LocalFileSnapshot local = new LocalFileSnapshot
             {
                 RelativePath = "Docs/direct-lookup.bin",
                 FullPath = Path.Combine(_root, "Docs", "direct-lookup.bin"),
@@ -240,8 +240,8 @@ namespace Cotton.Sync.Tests
                 SizeBytes = 2048,
                 LastWriteUtc = new DateTime(2026, 6, 6, 9, 0, 0, DateTimeKind.Utc),
             };
-            var scanner = new LookupOnlyLocalFileScanner(local);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            LookupOnlyLocalFileScanner scanner = new LookupOnlyLocalFileScanner(local);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), remoteFiles, out SqliteSyncStateStore stateStore);
 
             await engine.RunOnceAsync(Pair());
@@ -262,9 +262,9 @@ namespace Cotton.Sync.Tests
         [Test]
         public async Task RunOnceAsync_UsesRemoteLookupCrawlerWhenAvailable()
         {
-            var scanner = new FakeLocalFileScanner();
-            var crawler = new LookupOnlyRemoteTreeCrawler(EmptyRemoteTree());
-            var stateStore = new SqliteSyncStateStore(_databasePath);
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner();
+            LookupOnlyRemoteTreeCrawler crawler = new LookupOnlyRemoteTreeCrawler(EmptyRemoteTree());
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
             SyncEngine engine = new(scanner, crawler, new FakeRemoteFileSynchronizer(), stateStore);
 
             await engine.RunOnceAsync(Pair());
@@ -281,14 +281,14 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_WithLocalChangedPathUsesScopedScanners()
         {
             WriteFile("changed.txt", "local");
-            var scanner = new LocalFileScanner();
-            var crawler = new PathOnlyRemoteTreeCrawler(EmptyRemoteTree());
-            var remoteFiles = new FakeRemoteFileSynchronizer
+            LocalFileScanner scanner = new LocalFileScanner();
+            PathOnlyRemoteTreeCrawler crawler = new PathOnlyRemoteTreeCrawler(EmptyRemoteTree());
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer
             {
                 EmptyLocalHashUploadContentHash = "uploaded-content-hash",
             };
-            var stateStore = new SqliteSyncStateStore(_databasePath);
-            var engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore);
 
             SyncRunResult result = await engine.RunOnceAsync(
                 Pair(),
@@ -308,14 +308,14 @@ namespace Cotton.Sync.Tests
         {
             WriteFile("Project/changed.txt", "local");
             WriteFile("Project/sibling.txt", "sibling");
-            var scanner = new LocalFileScanner();
-            var crawler = new PathOnlyRemoteTreeCrawler(EmptyRemoteTree());
-            var remoteFiles = new FakeRemoteFileSynchronizer
+            LocalFileScanner scanner = new LocalFileScanner();
+            PathOnlyRemoteTreeCrawler crawler = new PathOnlyRemoteTreeCrawler(EmptyRemoteTree());
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer
             {
                 EmptyLocalHashUploadContentHash = "uploaded-content-hash",
             };
-            var stateStore = new SqliteSyncStateStore(_databasePath);
-            var engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore);
 
             SyncRunResult result = await engine.RunOnceAsync(
                 Pair(),
@@ -334,12 +334,12 @@ namespace Cotton.Sync.Tests
         {
             string relativePath = "Project/deleted.txt";
             NodeFileManifestDto remote = RemoteFile(relativePath, HashText("old"));
-            var scanner = new LocalFileScanner();
-            var crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(remote));
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var stateStore = new SqliteSyncStateStore(_databasePath);
+            LocalFileScanner scanner = new LocalFileScanner();
+            PathOnlyRemoteTreeCrawler crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(remote));
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
             await InsertBaselineAsync(stateStore, relativePath, remote.ContentHash, remote);
-            var engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore);
+            SyncEngine engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore);
 
             SyncRunResult result = await engine.RunOnceAsync(
                 Pair(),
@@ -365,15 +365,15 @@ namespace Cotton.Sync.Tests
             NodeFileManifestDto oldRemote = RemoteFile(oldPath, HashText("old"));
             WriteFile(newPath, "new");
             string newContentHash = HashText("new");
-            var scanner = new LocalFileScanner();
-            var crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(oldRemote));
-            var remoteFiles = new FakeRemoteFileSynchronizer
+            LocalFileScanner scanner = new LocalFileScanner();
+            PathOnlyRemoteTreeCrawler crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(oldRemote));
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer
             {
                 EmptyLocalHashUploadContentHash = newContentHash,
             };
-            var stateStore = new SqliteSyncStateStore(_databasePath);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
             await InsertBaselineAsync(stateStore, oldPath, oldRemote.ContentHash, oldRemote);
-            var engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore);
+            SyncEngine engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore);
 
             SyncRunResult result = await engine.RunOnceAsync(
                 Pair(),
@@ -493,12 +493,12 @@ namespace Cotton.Sync.Tests
         {
             const string relativePath = "remote-only.txt";
             NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote-content"), sizeBytes: 1024);
-            var scanner = new LocalFileScanner();
-            var crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(remote));
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
-            var stateStore = new SqliteSyncStateStore(_databasePath);
-            var engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore, remoteFilePlaceholderWriter: placeholderWriter);
+            LocalFileScanner scanner = new LocalFileScanner();
+            PathOnlyRemoteTreeCrawler crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(remote));
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore, remoteFilePlaceholderWriter: placeholderWriter);
             await InsertPlaceholderBaselineAsync(stateStore, relativePath, remote);
 
             SyncRunResult result = await engine.RunOnceAsync(
@@ -633,12 +633,12 @@ namespace Cotton.Sync.Tests
         {
             const string relativePath = "remote-created.txt";
             NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote-content"), sizeBytes: 1024);
-            var scanner = new FakeLocalFileScanner();
-            var crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(remote));
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
-            var stateStore = new SqliteSyncStateStore(_databasePath);
-            var engine = new SyncEngine(
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner();
+            PathOnlyRemoteTreeCrawler crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(remote));
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine engine = new SyncEngine(
                 scanner,
                 crawler,
                 remoteFiles,
@@ -672,12 +672,12 @@ namespace Cotton.Sync.Tests
             NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote-content"), sizeBytes: 1024);
             LocalFileSnapshot local = CloudFilesPlaceholderLocal(relativePath, remote.SizeBytes);
             local.LastWriteUtc = remote.UpdatedAt;
-            var scanner = new FakeLocalFileScanner(local);
-            var crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(remote));
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
-            var stateStore = new SqliteSyncStateStore(_databasePath);
-            var engine = new SyncEngine(
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(local);
+            PathOnlyRemoteTreeCrawler crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(remote));
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine engine = new SyncEngine(
                 scanner,
                 crawler,
                 remoteFiles,
@@ -713,12 +713,12 @@ namespace Cotton.Sync.Tests
             NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote-content"), sizeBytes: 1024);
             LocalFileSnapshot local = CloudFilesPlaceholderLocal(relativePath, remote.SizeBytes);
             local.LastWriteUtc = remote.UpdatedAt.AddMinutes(-5);
-            var scanner = new FakeLocalFileScanner(local);
-            var crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(remote));
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
-            var stateStore = new SqliteSyncStateStore(_databasePath);
-            var engine = new SyncEngine(
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(local);
+            PathOnlyRemoteTreeCrawler crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(remote));
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine engine = new SyncEngine(
                 scanner,
                 crawler,
                 remoteFiles,
@@ -752,11 +752,11 @@ namespace Cotton.Sync.Tests
             NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote-content"), sizeBytes: 1024);
             LocalFileSnapshot local = CloudFilesPlaceholderLocal(relativePath, remote.SizeBytes);
             local.LastWriteUtc = remote.UpdatedAt;
-            var scanner = new FakeLocalFileScanner(local);
-            var crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(remote));
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
-            var stateStore = new SqliteSyncStateStore(_databasePath);
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(local);
+            PathOnlyRemoteTreeCrawler crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(remote));
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
             await stateStore.InitializeAsync();
             await stateStore.UpsertAsync(new SyncStateEntry
             {
@@ -773,7 +773,7 @@ namespace Cotton.Sync.Tests
                 PlaceholderHydrationState = SyncPlaceholderHydrationState.RemoteOnly,
                 SyncedAtUtc = DateTime.UtcNow,
             });
-            var engine = new SyncEngine(
+            SyncEngine engine = new SyncEngine(
                 scanner,
                 crawler,
                 remoteFiles,
@@ -806,17 +806,17 @@ namespace Cotton.Sync.Tests
             RemoteDirectorySnapshot remoteDirectory = RemoteDirectory(relativePath);
             RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
             remoteTree.Directories.Add(remoteDirectory);
-            var scanner = new FakeLocalFileScanner();
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner();
             scanner.Directories.Add(new LocalDirectorySnapshot
             {
                 RelativePath = relativePath,
                 FullPath = Path.Combine(_root, relativePath),
             });
             scanner.Files.Add(LocalFile("LargeTree/Child/placeholder.txt", "placeholder-content"));
-            var crawler = new PathOnlyRemoteTreeCrawler(remoteTree);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var stateStore = new SqliteSyncStateStore(_databasePath);
-            var engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore);
+            PathOnlyRemoteTreeCrawler crawler = new PathOnlyRemoteTreeCrawler(remoteTree);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore);
 
             SyncRunResult result = await engine.RunOnceAsync(
                 Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
@@ -985,9 +985,9 @@ namespace Cotton.Sync.Tests
         {
             const string relativePath = "remote-only-restart.txt";
             NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote-content"), sizeBytes: 1024);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var firstPlaceholderWriter = new FakeRemoteFilePlaceholderWriter();
-            var firstStateStore = new SqliteSyncStateStore(_databasePath);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter firstPlaceholderWriter = new FakeRemoteFilePlaceholderWriter();
+            SqliteSyncStateStore firstStateStore = new SqliteSyncStateStore(_databasePath);
             SyncEngine firstEngine = new(
                 new FakeLocalFileScanner(),
                 new FakeRemoteTreeCrawler(RemoteTree(remote)),
@@ -997,8 +997,8 @@ namespace Cotton.Sync.Tests
 
             SyncRunResult firstResult = await firstEngine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
 
-            var restartedPlaceholderWriter = new FakeRemoteFilePlaceholderWriter();
-            var restartedStateStore = new SqliteSyncStateStore(_databasePath);
+            FakeRemoteFilePlaceholderWriter restartedPlaceholderWriter = new FakeRemoteFilePlaceholderWriter();
+            SqliteSyncStateStore restartedStateStore = new SqliteSyncStateStore(_databasePath);
             SyncEngine restartedEngine = new(
                 new LocalFileScanner(),
                 new PathOnlyRemoteTreeCrawler(RemoteTree(remote)),
@@ -1034,11 +1034,11 @@ namespace Cotton.Sync.Tests
             string oldHash = HashText("old-content");
             WriteFile(relativePath, "local-new-content");
             NodeFileManifestDto remote = RemoteFile(relativePath, oldHash, sizeBytes: Encoding.UTF8.GetByteCount("old-content"));
-            var scanner = new LocalFileScanner();
-            var crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(remote));
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var stateStore = new SqliteSyncStateStore(_databasePath);
-            var engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore);
+            LocalFileScanner scanner = new LocalFileScanner();
+            PathOnlyRemoteTreeCrawler crawler = new PathOnlyRemoteTreeCrawler(RemoteTree(remote));
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine engine = new SyncEngine(scanner, crawler, remoteFiles, stateStore);
             await stateStore.InitializeAsync();
             await stateStore.UpsertAsync(new SyncStateEntry
             {
@@ -1086,7 +1086,7 @@ namespace Cotton.Sync.Tests
             WriteFile(newPath, content);
             LocalFileSnapshot local = LocalFile(newPath, content);
             NodeFileManifestDto oldRemote = RemoteFile(oldPath, local.ContentHash, sizeBytes: local.SizeBytes);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(local),
                 RemoteTree(oldRemote),
@@ -1122,7 +1122,7 @@ namespace Cotton.Sync.Tests
             LocalFileSnapshot secondLocal = LocalFile("moved-b.txt", "content-b");
             NodeFileManifestDto firstRemote = RemoteFile("a.txt", firstLocal.ContentHash, sizeBytes: firstLocal.SizeBytes);
             NodeFileManifestDto secondRemote = RemoteFile("b.txt", secondLocal.ContentHash, sizeBytes: secondLocal.SizeBytes);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(firstLocal, secondLocal),
                 RemoteTree(firstRemote, secondRemote),
@@ -1163,7 +1163,7 @@ namespace Cotton.Sync.Tests
             NodeFileManifestDto oldRemote = RemoteFile(oldPath, local.ContentHash, remoteId, local.SizeBytes);
             byte[] latestRemoteContent = Encoding.UTF8.GetBytes("remote-changed");
             NodeFileManifestDto latestRemote = RemoteFile(oldPath, Hash(latestRemoteContent), remoteId, latestRemoteContent.Length);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.PreconditionFailedMoveIds.Add(remoteId);
             remoteFiles.Downloads[remoteId] = latestRemoteContent;
             SyncEngine engine = CreateEngine(
@@ -1193,7 +1193,7 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_HashesMetadataSnapshotWhenBaselineNeedsComparison()
         {
             const string baselineHash = "precomputed-content-hash";
-            var local = new LocalFileSnapshot
+            LocalFileSnapshot local = new LocalFileSnapshot
             {
                 RelativePath = "Docs/existing.bin",
                 FullPath = Path.Combine(_root, "Docs", "existing.bin"),
@@ -1201,9 +1201,9 @@ namespace Cotton.Sync.Tests
                 SizeBytes = 1024,
                 LastWriteUtc = new DateTime(2026, 6, 6, 8, 0, 0, DateTimeKind.Utc),
             };
-            var scanner = new MetadataOnlyLocalFileScanner(local);
+            MetadataOnlyLocalFileScanner scanner = new MetadataOnlyLocalFileScanner(local);
             NodeFileManifestDto remote = RemoteFile("Docs/existing.bin", baselineHash, sizeBytes: local.SizeBytes);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(scanner, RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
             await InsertBaselineAsync(stateStore, "Docs/existing.bin", baselineHash, remote);
 
@@ -1221,8 +1221,8 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_ReusesBaselineHashWhenMetadataIsUnchanged()
         {
             const string baselineHash = "existing-content-hash";
-            var baselineSyncedAtUtc = new DateTime(2026, 6, 6, 8, 1, 0, DateTimeKind.Utc);
-            var local = new LocalFileSnapshot
+            DateTime baselineSyncedAtUtc = new DateTime(2026, 6, 6, 8, 1, 0, DateTimeKind.Utc);
+            LocalFileSnapshot local = new LocalFileSnapshot
             {
                 RelativePath = "Docs/existing.bin",
                 FullPath = Path.Combine(_root, "Docs", "existing.bin"),
@@ -1230,9 +1230,9 @@ namespace Cotton.Sync.Tests
                 SizeBytes = 1024,
                 LastWriteUtc = new DateTime(2026, 6, 6, 8, 0, 0, DateTimeKind.Utc),
             };
-            var scanner = new MetadataOnlyLocalFileScanner(local);
+            MetadataOnlyLocalFileScanner scanner = new MetadataOnlyLocalFileScanner(local);
             NodeFileManifestDto remote = RemoteFile("Docs/existing.bin", baselineHash, sizeBytes: local.SizeBytes);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(scanner, RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
             await stateStore.InitializeAsync();
             await stateStore.UpsertAsync(new SyncStateEntry
@@ -1268,10 +1268,10 @@ namespace Cotton.Sync.Tests
         [Test]
         public async Task RunOnceAsync_ReportsAggregateRunProgressFileCounts()
         {
-            var scanner = new FakeLocalFileScanner(
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(
                 LocalFile("Docs/a.txt", "a"),
                 LocalFile("Docs/b.txt", "b"));
-            var progress = new RecordingProgress<SyncRunProgress>();
+            RecordingProgress<SyncRunProgress> progress = new RecordingProgress<SyncRunProgress>();
             SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), new FakeRemoteFileSynchronizer(), out _);
 
             await engine.RunOnceAsync(
@@ -1344,13 +1344,13 @@ namespace Cotton.Sync.Tests
         [Test]
         public async Task RunOnceAsync_ReportsLocalScanFileDiscoveryProgress()
         {
-            var scanner = new MetadataOnlyLocalFileScanner(
+            MetadataOnlyLocalFileScanner scanner = new MetadataOnlyLocalFileScanner(
                 LocalFile("Docs/a.txt", "a"),
                 LocalFile("Docs/b.txt", "b"))
             {
                 ReportMetadataScanProgress = true,
             };
-            var progress = new RecordingProgress<SyncRunProgress>();
+            RecordingProgress<SyncRunProgress> progress = new RecordingProgress<SyncRunProgress>();
             SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), new FakeRemoteFileSynchronizer(), out _);
 
             await engine.RunOnceAsync(
@@ -1376,8 +1376,8 @@ namespace Cotton.Sync.Tests
         [Test]
         public async Task RunOnceAsync_ReportsRemoteScanFileDiscoveryProgress()
         {
-            var progress = new RecordingProgress<SyncRunProgress>();
-            var remoteCrawler = new FakeRemoteTreeProgressCrawler(
+            RecordingProgress<SyncRunProgress> progress = new RecordingProgress<SyncRunProgress>();
+            FakeRemoteTreeProgressCrawler remoteCrawler = new FakeRemoteTreeProgressCrawler(
                 EmptyRemoteTree(),
                 "Cloud/a.txt",
                 "Cloud/b.txt");
@@ -1500,7 +1500,7 @@ namespace Cotton.Sync.Tests
         [Test]
         public async Task RunOnceAsync_ReportsDirectoryReconcileProgressWithFolderCounts()
         {
-            var scanner = new FakeLocalFileScanner
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner
             {
                 Directories =
                 {
@@ -1508,7 +1508,7 @@ namespace Cotton.Sync.Tests
                     LocalDirectory("Projects/Archive"),
                 },
             };
-            var progress = new RecordingProgress<SyncRunProgress>();
+            RecordingProgress<SyncRunProgress> progress = new RecordingProgress<SyncRunProgress>();
             SyncEngine engine = CreateEngine(
                 scanner,
                 EmptyRemoteTree(),
@@ -1537,8 +1537,8 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_ThrottlesLargeFileReconcileProgress()
         {
             const int fileCount = 250;
-            var locals = new List<LocalFileSnapshot>();
-            var remotes = new List<NodeFileManifestDto>();
+            List<LocalFileSnapshot> locals = new List<LocalFileSnapshot>();
+            List<NodeFileManifestDto> remotes = new List<NodeFileManifestDto>();
             for (int index = 0; index < fileCount; index++)
             {
                 string path = "Docs/file-" + index.ToString("000", CultureInfo.InvariantCulture) + ".txt";
@@ -1549,7 +1549,7 @@ namespace Cotton.Sync.Tests
                 remotes.Add(remote);
             }
 
-            var progress = new RecordingProgress<SyncRunProgress>();
+            RecordingProgress<SyncRunProgress> progress = new RecordingProgress<SyncRunProgress>();
             SyncEngine engine = CreateEngine(new FakeLocalFileScanner(locals.ToArray()), RemoteTree(remotes.ToArray()), new FakeRemoteFileSynchronizer(), out SqliteSyncStateStore stateStore);
             for (int index = 0; index < fileCount; index++)
             {
@@ -1580,13 +1580,13 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_ThrottlesLargeDirectoryReconcileProgress()
         {
             const int directoryCount = 250;
-            var scanner = new FakeLocalFileScanner();
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner();
             for (int index = 0; index < directoryCount; index++)
             {
                 scanner.Directories.Add(LocalDirectory("Folder-" + index.ToString("000", CultureInfo.InvariantCulture)));
             }
 
-            var progress = new RecordingProgress<SyncRunProgress>();
+            RecordingProgress<SyncRunProgress> progress = new RecordingProgress<SyncRunProgress>();
             SyncEngine engine = CreateEngine(
                 scanner,
                 EmptyRemoteTree(),
@@ -1618,12 +1618,12 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_ReportsRunTransferAndActivityProgressForUpload()
         {
             LocalFileSnapshot local = LocalFile("Docs/local.txt", "local-content");
-            var eventLog = new List<string>();
-            var runProgress = new RecordingProgress<SyncRunProgress>(
+            List<string> eventLog = new List<string>();
+            RecordingProgress<SyncRunProgress> runProgress = new RecordingProgress<SyncRunProgress>(
                 item => eventLog.Add($"run:{item.Stage}:{item.FilesCompleted}:{item.CurrentPath}:{item.IsCompleted}"));
-            var transferProgress = new RecordingProgress<SyncTransferProgress>(
+            RecordingProgress<SyncTransferProgress> transferProgress = new RecordingProgress<SyncTransferProgress>(
                 item => eventLog.Add($"transfer:{item.Direction}:{item.RelativePath}:{item.TransferredBytes}:{item.TotalBytes}:{item.IsCompleted}"));
-            var activityProgress = new RecordingProgress<SyncActivity>(
+            RecordingProgress<SyncActivity> activityProgress = new RecordingProgress<SyncActivity>(
                 item => eventLog.Add($"activity:{item.Kind}:{item.RelativePath}"));
             SyncEngine engine = CreateEngine(new FakeLocalFileScanner(local), EmptyRemoteTree(), new FakeRemoteFileSynchronizer(), out _);
 
@@ -1668,7 +1668,7 @@ namespace Cotton.Sync.Tests
         {
             const string relativePath = "Docs/conflict.txt";
             byte[] remoteContent = Encoding.UTF8.GetBytes("remote-content");
-            var local = new LocalFileSnapshot
+            LocalFileSnapshot local = new LocalFileSnapshot
             {
                 RelativePath = relativePath,
                 FullPath = Path.Combine(_root, "Docs", "conflict.txt"),
@@ -1677,10 +1677,10 @@ namespace Cotton.Sync.Tests
                 LastWriteUtc = new DateTime(2026, 6, 2, 13, 0, 0, DateTimeKind.Utc),
             };
             NodeFileManifestDto remote = RemoteFile(relativePath, Hash(remoteContent), sizeBytes: remoteContent.Length);
-            var scanner = new MetadataOnlyLocalFileScanner(local);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            MetadataOnlyLocalFileScanner scanner = new MetadataOnlyLocalFileScanner(local);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.Downloads[remote.Id] = remoteContent;
-            var runProgress = new RecordingProgress<SyncRunProgress>();
+            RecordingProgress<SyncRunProgress> runProgress = new RecordingProgress<SyncRunProgress>();
             SyncEngine engine = CreateEngine(scanner, RemoteTree(remote), remoteFiles, out _);
 
             SyncRunResult result = await engine.RunOnceAsync(
@@ -1710,8 +1710,8 @@ namespace Cotton.Sync.Tests
             local.ContentHash = string.Empty;
             local.LastWriteUtc = new DateTime(2026, 6, 2, 14, 0, 0, DateTimeKind.Utc);
             NodeFileManifestDto remote = RemoteFile(relativePath, HashText("old"));
-            var scanner = new MetadataOnlyLocalFileScanner(local);
-            var transferProgress = new RecordingProgress<SyncTransferProgress>();
+            MetadataOnlyLocalFileScanner scanner = new MetadataOnlyLocalFileScanner(local);
+            RecordingProgress<SyncTransferProgress> transferProgress = new RecordingProgress<SyncTransferProgress>();
             SyncEngine engine = CreateEngine(scanner, RemoteTree(remote), new FakeRemoteFileSynchronizer(), out SqliteSyncStateStore stateStore);
             await InsertBaselineAsync(stateStore, relativePath, HashText("old"), remote);
 
@@ -1741,8 +1741,8 @@ namespace Cotton.Sync.Tests
             LocalFileSnapshot local = LocalFile(relativePath, "local-new-content");
             local.LastWriteUtc = new DateTime(2026, 6, 2, 14, 0, 0, DateTimeKind.Utc);
             NodeFileManifestDto remote = RemoteFile(relativePath, oldHash, sizeBytes: Encoding.UTF8.GetByteCount("old-content"));
-            var scanner = new FakeLocalFileScanner(local);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(local);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(scanner, RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
             await stateStore.InitializeAsync();
             await stateStore.UpsertAsync(new SyncStateEntry
@@ -1792,8 +1792,8 @@ namespace Cotton.Sync.Tests
             Guid remoteFileId = Guid.NewGuid();
             NodeFileManifestDto baselineRemote = RemoteFile(relativePath, oldHash, remoteFileId, sizeBytes: Encoding.UTF8.GetByteCount("old-content"));
             NodeFileManifestDto changedRemote = RemoteFile(relativePath, Hash(remoteContent), remoteFileId, sizeBytes: remoteContent.Length);
-            var scanner = new FakeLocalFileScanner(local);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(local);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.Downloads[changedRemote.Id] = remoteContent;
             FakeRemoteFilePlaceholderWriter materializationObserver = new();
             SyncEngine engine = CreateEngine(
@@ -1862,8 +1862,8 @@ namespace Cotton.Sync.Tests
             NodeFileManifestDto baselineRemote = RemoteFile(relativePath, oldHash, remoteFileId, sizeBytes: Encoding.UTF8.GetByteCount("old-content"));
             NodeFileManifestDto changedRemote = RemoteFile(relativePath, Hash(remoteContent), remoteFileId, sizeBytes: remoteContent.Length);
             changedRemote.UpdatedAt = new DateTime(2026, 6, 2, 13, 0, 4, DateTimeKind.Utc);
-            var scanner = new FakeLocalFileScanner(local);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(local);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.Downloads[changedRemote.Id] = remoteContent;
             SyncEngine engine = CreateEngine(scanner, RemoteTree(changedRemote), remoteFiles, out SqliteSyncStateStore stateStore);
             await stateStore.InitializeAsync();
@@ -1916,9 +1916,9 @@ namespace Cotton.Sync.Tests
                 Hash(remoteContent),
                 remoteFileId,
                 sizeBytes: remoteContent.Length);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.Downloads[changedRemote.Id] = remoteContent;
-            var materializationObserver = new FakeRemoteFilePlaceholderWriter();
+            FakeRemoteFilePlaceholderWriter materializationObserver = new FakeRemoteFilePlaceholderWriter();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(),
                 RemoteTree(changedRemote),
@@ -1960,7 +1960,7 @@ namespace Cotton.Sync.Tests
         {
             byte[] content = Encoding.UTF8.GetBytes("remote-content");
             NodeFileManifestDto remote = RemoteFile("remote.txt", Hash(content), sizeBytes: content.Length);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.Downloads[remote.Id] = content;
             SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
 
@@ -1982,10 +1982,10 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_WithWindowsVirtualFilesCreatesRemoteOnlyPlaceholderWithoutDownloadingContent()
         {
             NodeFileManifestDto remote = RemoteFile("remote-only.txt", HashText("remote-content"), sizeBytes: long.MaxValue);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
-            var runProgress = new RecordingProgress<SyncRunProgress>();
-            var transferProgress = new RecordingProgress<SyncTransferProgress>();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            RecordingProgress<SyncRunProgress> runProgress = new RecordingProgress<SyncRunProgress>();
+            RecordingProgress<SyncTransferProgress> transferProgress = new RecordingProgress<SyncTransferProgress>();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(),
                 RemoteTree(remote),
@@ -2094,12 +2094,12 @@ namespace Cotton.Sync.Tests
                 new() { RelativePath = "Desktop/second.txt", File = RemoteFile("Desktop/second.txt", HashText("second"), sizeBytes: 12) },
                 new() { RelativePath = "Desktop/third.txt", File = RemoteFile("Desktop/third.txt", HashText("third"), sizeBytes: 13) },
             ];
-            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(_remoteRootNodeId, remoteFiles);
-            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
-            var stateStore = new SqliteSyncStateStore(_databasePath);
-            var logger = new RecordingLogger<SyncEngine>();
-            var engine = new SyncEngine(
+            BlockingStreamingRemoteTreeCrawler remoteCrawler = new BlockingStreamingRemoteTreeCrawler(_remoteRootNodeId, remoteFiles);
+            FakeRemoteFileSynchronizer remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            SignalingRemoteFilePlaceholderWriter placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
+            RecordingLogger<SyncEngine> logger = new RecordingLogger<SyncEngine>();
+            SyncEngine engine = new SyncEngine(
                 new FakeLocalFileScanner(),
                 remoteCrawler,
                 remoteFileSynchronizer,
@@ -2193,11 +2193,11 @@ namespace Cotton.Sync.Tests
                     };
                 })
                 .ToList();
-            var remoteCrawler = new StreamingRemoteTreeCrawler(_remoteRootNodeId, remoteFiles);
-            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new BatchRemoteFilePlaceholderWriter();
-            var stateStore = new SqliteSyncStateStore(_databasePath);
-            var engine = new SyncEngine(
+            StreamingRemoteTreeCrawler remoteCrawler = new StreamingRemoteTreeCrawler(_remoteRootNodeId, remoteFiles);
+            FakeRemoteFileSynchronizer remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            BatchRemoteFilePlaceholderWriter placeholderWriter = new BatchRemoteFilePlaceholderWriter();
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine engine = new SyncEngine(
                 new FakeLocalFileScanner(),
                 remoteCrawler,
                 remoteFileSynchronizer,
@@ -2255,13 +2255,13 @@ namespace Cotton.Sync.Tests
                 new() { RelativePath = "Desktop/existing.txt", File = existingRemote },
                 new() { RelativePath = "Desktop/new.txt", File = newRemote },
             ];
-            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(_remoteRootNodeId, remoteFiles);
-            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
-            var stateStore = new SqliteSyncStateStore(_databasePath);
+            BlockingStreamingRemoteTreeCrawler remoteCrawler = new BlockingStreamingRemoteTreeCrawler(_remoteRootNodeId, remoteFiles);
+            FakeRemoteFileSynchronizer remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            SignalingRemoteFilePlaceholderWriter placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
             await InsertPlaceholderBaselineAsync(stateStore, "Desktop/existing.txt", existingRemote);
-            var scanner = new FakeLocalFileScanner(CloudFilesPlaceholderLocal("Desktop/existing.txt", existingRemote.SizeBytes));
-            var engine = new SyncEngine(
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(CloudFilesPlaceholderLocal("Desktop/existing.txt", existingRemote.SizeBytes));
+            SyncEngine engine = new SyncEngine(
                 scanner,
                 remoteCrawler,
                 remoteFileSynchronizer,
@@ -2337,14 +2337,14 @@ namespace Cotton.Sync.Tests
                 new() { RelativePath = "Desktop/new.txt", File = newRemote },
                 new() { RelativePath = "Desktop/existing.txt", File = existingRemote },
             ];
-            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(_remoteRootNodeId, remoteFiles);
-            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
-            var innerStateStore = new SqliteSyncStateStore(_databasePath);
+            BlockingStreamingRemoteTreeCrawler remoteCrawler = new BlockingStreamingRemoteTreeCrawler(_remoteRootNodeId, remoteFiles);
+            FakeRemoteFileSynchronizer remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            SignalingRemoteFilePlaceholderWriter placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
+            SqliteSyncStateStore innerStateStore = new SqliteSyncStateStore(_databasePath);
             await InsertPlaceholderBaselineAsync(innerStateStore, "Desktop/existing.txt", existingRemote);
-            var stateStore = new StreamingOnlyStateStore(innerStateStore);
-            var scanner = new FakeLocalFileScanner(CloudFilesPlaceholderLocal("Desktop/existing.txt", existingRemote.SizeBytes));
-            var engine = new SyncEngine(
+            StreamingOnlyStateStore stateStore = new StreamingOnlyStateStore(innerStateStore);
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(CloudFilesPlaceholderLocal("Desktop/existing.txt", existingRemote.SizeBytes));
+            SyncEngine engine = new SyncEngine(
                 scanner,
                 remoteCrawler,
                 remoteFileSynchronizer,
@@ -2383,15 +2383,15 @@ namespace Cotton.Sync.Tests
                 HashText("new"),
                 id: oldRemote.Id,
                 sizeBytes: 12);
-            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
+            BlockingStreamingRemoteTreeCrawler remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
                 _remoteRootNodeId,
                 [new RemoteFileSnapshot { RelativePath = relativePath, File = newRemote }]);
-            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
-            var stateStore = new SqliteSyncStateStore(_databasePath);
+            FakeRemoteFileSynchronizer remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            SignalingRemoteFilePlaceholderWriter placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
             await InsertPlaceholderBaselineAsync(stateStore, relativePath, oldRemote);
-            var scanner = new FakeLocalFileScanner(CloudFilesPlaceholderLocal(relativePath, oldRemote.SizeBytes));
-            var engine = new SyncEngine(
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(CloudFilesPlaceholderLocal(relativePath, oldRemote.SizeBytes));
+            SyncEngine engine = new SyncEngine(
                 scanner,
                 remoteCrawler,
                 remoteFileSynchronizer,
@@ -2533,16 +2533,16 @@ namespace Cotton.Sync.Tests
         {
             LocalFileSnapshot local = LocalFile("local.txt", "local-content");
             NodeFileManifestDto remote = RemoteFile("remote-only.txt", HashText("remote-content"), sizeBytes: 1024);
-            var scanner = new FakeLocalFileScanner(local);
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(local);
             RemoteTreeSnapshot remoteTree = RemoteTree(remote);
-            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
+            BlockingStreamingRemoteTreeCrawler remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
                 _remoteRootNodeId,
                 [new RemoteFileSnapshot { RelativePath = "remote-only.txt", File = remote }],
                 snapshotCrawlResult: remoteTree);
-            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
-            var stateStore = new SqliteSyncStateStore(_databasePath);
-            var engine = new SyncEngine(
+            FakeRemoteFileSynchronizer remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            SignalingRemoteFilePlaceholderWriter placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine engine = new SyncEngine(
                 scanner,
                 remoteCrawler,
                 remoteFileSynchronizer,
@@ -2615,7 +2615,7 @@ namespace Cotton.Sync.Tests
         [Test]
         public async Task RunOnceAsync_WithInitialWindowsVirtualFilesCreatesRemoteFoldersForPreservedDirectoryTree()
         {
-            var scanner = new FakeLocalFileScanner
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner
             {
                 Directories =
                 {
@@ -2623,16 +2623,16 @@ namespace Cotton.Sync.Tests
                     LocalDirectory("Projects/Archive"),
                 },
             };
-            var remoteTree = EmptyRemoteTree();
-            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
+            RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
+            BlockingStreamingRemoteTreeCrawler remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
                 _remoteRootNodeId,
                 [],
                 snapshotCrawlResult: remoteTree);
-            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
-            var remoteDirectories = new FakeRemoteDirectorySynchronizer();
-            var stateStore = new SqliteSyncStateStore(_databasePath);
-            var engine = new SyncEngine(
+            FakeRemoteFileSynchronizer remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            FakeRemoteDirectorySynchronizer remoteDirectories = new FakeRemoteDirectorySynchronizer();
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine engine = new SyncEngine(
                 scanner,
                 remoteCrawler,
                 remoteFileSynchronizer,
@@ -2668,14 +2668,14 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_WithWindowsVirtualFilesLogsStateFirstFallbackWithoutRelativePath()
         {
             string privateRelativePath = "Private/Family/video_2026_06_17.mp4";
-            var scanner = new FakeLocalFileScanner();
-            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner();
+            BlockingStreamingRemoteTreeCrawler remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
                 _remoteRootNodeId,
                 [],
                 snapshotCrawlResult: EmptyRemoteTree());
-            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
-            var stateStore = new SqliteSyncStateStore(_databasePath);
+            FakeRemoteFileSynchronizer remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
             await stateStore.UpsertAsync(new SyncStateEntry
             {
                 SyncPairId = "pair-a",
@@ -2684,8 +2684,8 @@ namespace Cotton.Sync.Tests
                 PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated,
                 PlaceholderIdentity = [1, 2, 3],
             });
-            var logger = new RecordingLogger<SyncEngine>();
-            var engine = new SyncEngine(
+            RecordingLogger<SyncEngine> logger = new RecordingLogger<SyncEngine>();
+            SyncEngine engine = new SyncEngine(
                 scanner,
                 remoteCrawler,
                 remoteFileSynchronizer,
@@ -2794,16 +2794,16 @@ namespace Cotton.Sync.Tests
         {
             string relativePath = "Desktop/orphaned-placeholder.txt";
             NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote"), sizeBytes: 12);
-            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
+            BlockingStreamingRemoteTreeCrawler remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
                 _remoteRootNodeId,
                 [new RemoteFileSnapshot { RelativePath = relativePath, File = remote }]);
-            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
-            var stateStore = new SqliteSyncStateStore(_databasePath);
+            FakeRemoteFileSynchronizer remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            SignalingRemoteFilePlaceholderWriter placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
             LocalFileSnapshot local = CloudFilesPlaceholderLocal(relativePath, remote.SizeBytes);
             local.LastWriteUtc = remote.UpdatedAt;
-            var scanner = new FakeLocalFileScanner(local);
-            var engine = new SyncEngine(
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(local);
+            SyncEngine engine = new SyncEngine(
                 scanner,
                 remoteCrawler,
                 remoteFileSynchronizer,
@@ -2838,16 +2838,16 @@ namespace Cotton.Sync.Tests
         {
             string relativePath = "Desktop/orphaned-placeholder.txt";
             NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote"), sizeBytes: 12);
-            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
+            BlockingStreamingRemoteTreeCrawler remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
                 _remoteRootNodeId,
                 [new RemoteFileSnapshot { RelativePath = relativePath, File = remote }]);
-            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
-            var stateStore = new SqliteSyncStateStore(_databasePath);
+            FakeRemoteFileSynchronizer remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
             LocalFileSnapshot local = CloudFilesPlaceholderLocal(relativePath, remote.SizeBytes);
             local.LastWriteUtc = remote.UpdatedAt.AddMinutes(-5);
-            var scanner = new FakeLocalFileScanner(local);
-            var engine = new SyncEngine(
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(local);
+            SyncEngine engine = new SyncEngine(
                 scanner,
                 remoteCrawler,
                 remoteFileSynchronizer,
@@ -2879,16 +2879,16 @@ namespace Cotton.Sync.Tests
             string relativePath = "Desktop/orphaned-placeholder.txt";
             RemoteDirectorySnapshot remoteDirectory = RemoteDirectory("Desktop");
             NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote"), sizeBytes: 12);
-            var remoteCrawler = new StreamingRemoteTreeCrawler(
+            StreamingRemoteTreeCrawler remoteCrawler = new StreamingRemoteTreeCrawler(
                 _remoteRootNodeId,
                 [new RemoteFileSnapshot { RelativePath = relativePath, File = remote }],
                 [remoteDirectory]);
-            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
-            var stateStore = new SqliteSyncStateStore(_databasePath);
-            var scanner = new FakeLocalFileScanner(CloudFilesPlaceholderLocal(relativePath, remote.SizeBytes));
+            FakeRemoteFileSynchronizer remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(CloudFilesPlaceholderLocal(relativePath, remote.SizeBytes));
             scanner.Directories.Add(LocalDirectory("Desktop"));
-            var engine = new SyncEngine(
+            SyncEngine engine = new SyncEngine(
                 scanner,
                 remoteCrawler,
                 remoteFileSynchronizer,
@@ -2925,15 +2925,15 @@ namespace Cotton.Sync.Tests
                 new() { RelativePath = "Desktop/first.txt", File = RemoteFile("Desktop/first.txt", HashText("first"), sizeBytes: 11) },
                 new() { RelativePath = "Desktop/second.txt", File = RemoteFile("Desktop/second.txt", HashText("second"), sizeBytes: 12) },
             ];
-            var remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
+            BlockingStreamingRemoteTreeCrawler remoteCrawler = new BlockingStreamingRemoteTreeCrawler(
                 _remoteRootNodeId,
                 remoteFiles,
                 entriesExpected: remoteFiles.Count);
-            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
-            var stateStore = new SqliteSyncStateStore(_databasePath);
-            var runProgress = new RecordingProgress<SyncRunProgress>();
-            var engine = new SyncEngine(
+            FakeRemoteFileSynchronizer remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            SignalingRemoteFilePlaceholderWriter placeholderWriter = new SignalingRemoteFilePlaceholderWriter(remoteCrawler.FirstPlaceholderStarted);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
+            RecordingProgress<SyncRunProgress> runProgress = new RecordingProgress<SyncRunProgress>();
+            SyncEngine engine = new SyncEngine(
                 new FakeLocalFileScanner(),
                 remoteCrawler,
                 remoteFileSynchronizer,
@@ -2975,8 +2975,8 @@ namespace Cotton.Sync.Tests
             NodeFileManifestDto remote = RemoteFile("Projects/remote-only.txt", HashText("remote-content"), sizeBytes: long.MaxValue);
             RemoteTreeSnapshot remoteTree = RemoteTree(remote);
             remoteTree.Directories.Add(remoteDirectory);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(),
                 remoteTree,
@@ -3028,15 +3028,15 @@ namespace Cotton.Sync.Tests
             RemoteTreeSnapshot remoteTree = RemoteTree(firstRemote, secondRemote);
             remoteTree.Directories.Add(parentDirectory);
             remoteTree.Directories.Add(nestedDirectory);
-            var remoteCrawler = new StreamingRemoteTreeCrawler(
+            StreamingRemoteTreeCrawler remoteCrawler = new StreamingRemoteTreeCrawler(
                 _remoteRootNodeId,
                 remoteTree.Files,
                 remoteTree.Directories);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
-            var stateStore = new SqliteSyncStateStore(_databasePath);
-            var runProgress = new RecordingProgress<SyncRunProgress>();
-            var engine = new SyncEngine(
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
+            RecordingProgress<SyncRunProgress> runProgress = new RecordingProgress<SyncRunProgress>();
+            SyncEngine engine = new SyncEngine(
                 new FakeLocalFileScanner(),
                 remoteCrawler,
                 remoteFiles,
@@ -3106,10 +3106,10 @@ namespace Cotton.Sync.Tests
                 .ToArray();
             RemoteTreeSnapshot remoteTree = RemoteTree(remoteFiles);
             remoteTree.Directories.Add(RemoteDirectory("LargeTree"));
-            var remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
-            var cooperativeYieldRequestCounts = new List<int>();
-            var runProgress = new RecordingProgress<SyncRunProgress>();
+            FakeRemoteFileSynchronizer remoteFileSynchronizer = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            List<int> cooperativeYieldRequestCounts = new List<int>();
+            RecordingProgress<SyncRunProgress> runProgress = new RecordingProgress<SyncRunProgress>();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(),
                 remoteTree,
@@ -3162,7 +3162,7 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_WithWindowsVirtualFilesDoesNotFallBackToDownloadWhenPlaceholderWriterIsMissing()
         {
             NodeFileManifestDto remote = RemoteFile("remote-only.txt", HashText("remote-content"), sizeBytes: 1024);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
 
             SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
@@ -3183,8 +3183,8 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_WithWindowsVirtualFilesReportsPlaceholderUnavailableAsActionRequired()
         {
             NodeFileManifestDto remote = RemoteFile("remote-only.txt", HashText("remote-content"), sizeBytes: 1024);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter
             {
                 UnavailableReason = "Cloud Files sync root is not connected.",
             };
@@ -3213,8 +3213,8 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_WithWindowsVirtualFilesRestoresMissingRemoteOnlyPlaceholderDuringFullReconcile()
         {
             NodeFileManifestDto remote = RemoteFile("placeholder-deleted.txt", HashText("remote-content"), sizeBytes: 1024);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(),
                 RemoteTree(remote),
@@ -3251,7 +3251,7 @@ namespace Cotton.Sync.Tests
             NodeFileManifestDto existingRemote = RemoteFile(existingPath, HashText("remote-content"), sizeBytes: 79);
             LocalFileSnapshot existingPlaceholder = CloudFilesPlaceholderLocal(existingPath, existingRemote.SizeBytes);
             LocalFileSnapshot newLocal = LocalFile("remote-origin.txt", "Cotton Sync Desktop live smoke from client B");
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(existingPlaceholder, newLocal),
                 RemoteTree(existingRemote),
@@ -3280,8 +3280,8 @@ namespace Cotton.Sync.Tests
             Guid remoteFileId = Guid.NewGuid();
             NodeFileManifestDto baselineRemote = RemoteFile("remote-updated.txt", HashText("old-content"), remoteFileId, sizeBytes: 1024);
             NodeFileManifestDto changedRemote = RemoteFile("remote-updated.txt", HashText("new-content"), remoteFileId, sizeBytes: 2048);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(),
                 RemoteTree(changedRemote),
@@ -3316,8 +3316,8 @@ namespace Cotton.Sync.Tests
             NodeFileManifestDto baselineRemote = RemoteFile(relativePath, HashText("old-content"), remoteFileId, sizeBytes: 1024);
             NodeFileManifestDto changedRemote = RemoteFile(relativePath, HashText("new-content"), remoteFileId, sizeBytes: 2048);
             LocalFileSnapshot localPlaceholder = CloudFilesPlaceholderLocal(relativePath, baselineRemote.SizeBytes);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(localPlaceholder),
                 RemoteTree(changedRemote),
@@ -3353,8 +3353,8 @@ namespace Cotton.Sync.Tests
             LocalFileSnapshot local = LocalFile(relativePath, content);
             local.IsCloudFilesPlaceholder = true;
             local.IsCloudFilesOnlineOnlyPlaceholder = false;
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(local),
                 RemoteTree(remote),
@@ -3392,7 +3392,7 @@ namespace Cotton.Sync.Tests
             LocalFileSnapshot local = LocalFile(relativePath, "local replacement");
             local.IsCloudFilesPlaceholder = true;
             local.IsCloudFilesOnlineOnlyPlaceholder = false;
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(local),
                 RemoteTree(currentRemote),
@@ -3423,8 +3423,8 @@ namespace Cotton.Sync.Tests
             Guid remoteFileId = Guid.NewGuid();
             NodeFileManifestDto baselineRemote = RemoteFile("remote-updated.txt", HashText("old-content"), remoteFileId, sizeBytes: 1024);
             NodeFileManifestDto changedRemote = RemoteFile("remote-updated.txt", HashText("new-content"), remoteFileId, sizeBytes: 2048);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(),
                 RemoteTree(changedRemote),
@@ -3462,7 +3462,7 @@ namespace Cotton.Sync.Tests
             WriteFile(relativePath, string.Empty);
             LocalFileSnapshot local = CloudFilesPlaceholderLocal(relativePath, 1024);
             NodeFileManifestDto baselineRemote = RemoteFile(relativePath, HashText("remote-content"), sizeBytes: 1024);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(local),
                 EmptyRemoteTree(),
@@ -3498,7 +3498,7 @@ namespace Cotton.Sync.Tests
             local.IsCloudFilesPlaceholder = true;
             local.IsCloudFilesOnlineOnlyPlaceholder = false;
             NodeFileManifestDto baselineRemote = RemoteFile(relativePath, HashText("remote-content"), sizeBytes: 1024);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(local),
                 EmptyRemoteTree(),
@@ -3537,8 +3537,8 @@ namespace Cotton.Sync.Tests
             NodeFileManifestDto movedRemote = RemoteFile(newPath, baselineRemote.ContentHash, remoteFileId, sizeBytes: 1024);
             WriteFile(oldPath, string.Empty);
             LocalFileSnapshot oldLocalPlaceholder = CloudFilesPlaceholderLocal(oldPath, baselineRemote.SizeBytes);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(oldLocalPlaceholder),
                 RemoteTree(movedRemote),
@@ -4007,7 +4007,7 @@ namespace Cotton.Sync.Tests
         {
             NodeFileManifestDto remote = RemoteFile("placeholder-renamed.txt", HashText("remote-content"), sizeBytes: 1024);
             LocalFileSnapshot renamedLocal = LocalFile("aaa-renamed-placeholder.txt", "remote-content");
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(renamedLocal),
                 RemoteTree(remote),
@@ -4039,7 +4039,7 @@ namespace Cotton.Sync.Tests
         public void RunOnceAsync_FailsBeforeDownloadWhenPlannedDownloadsExceedFreeSpace()
         {
             NodeFileManifestDto remote = RemoteFile("huge.bin", HashText("huge"), sizeBytes: long.MaxValue);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), RemoteTree(remote), remoteFiles, out _);
 
             LocalInsufficientDiskSpaceException? exception = Assert.ThrowsAsync<LocalInsufficientDiskSpaceException>(
@@ -4059,7 +4059,7 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_CreatesRemoteFolderForLocalOnlyEmptyDirectoryAndStoresBaseline()
         {
             Directory.CreateDirectory(Path.Combine(_root, "Projects", "Archive"));
-            var scanner = new FakeLocalFileScanner
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner
             {
                 Directories =
                 {
@@ -4067,7 +4067,7 @@ namespace Cotton.Sync.Tests
                     LocalDirectory("Projects/Archive"),
                 },
             };
-            var remoteDirectories = new FakeRemoteDirectorySynchronizer();
+            FakeRemoteDirectorySynchronizer remoteDirectories = new FakeRemoteDirectorySynchronizer();
             SyncEngine engine = CreateEngine(
                 scanner,
                 EmptyRemoteTree(),
@@ -4095,13 +4095,13 @@ namespace Cotton.Sync.Tests
         [Test]
         public async Task RunOnceAsync_ReusesExistingRemoteFolderWhenLocalCreateHitsConflict()
         {
-            var existingProjectsNode = new NodeDto
+            NodeDto existingProjectsNode = new NodeDto
             {
                 Id = Guid.NewGuid(),
                 ParentId = _remoteRootNodeId,
                 Name = "Projects",
             };
-            var scanner = new FakeLocalFileScanner
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner
             {
                 Directories =
                 {
@@ -4109,7 +4109,7 @@ namespace Cotton.Sync.Tests
                     LocalDirectory("Projects/Archive"),
                 },
             };
-            var remoteDirectories = new FakeRemoteDirectorySynchronizer();
+            FakeRemoteDirectorySynchronizer remoteDirectories = new FakeRemoteDirectorySynchronizer();
             remoteDirectories.ConflictCreates.Add((_remoteRootNodeId, "Projects"));
             remoteDirectories.ExistingDirectories.Add(existingProjectsNode);
             SyncEngine engine = CreateEngine(
@@ -4169,7 +4169,7 @@ namespace Cotton.Sync.Tests
             RemoteDirectorySnapshot remoteDirectory = RemoteDirectory("Projects");
             RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
             remoteTree.Directories.Add(remoteDirectory);
-            var remoteDirectories = new FakeRemoteDirectorySynchronizer();
+            FakeRemoteDirectorySynchronizer remoteDirectories = new FakeRemoteDirectorySynchronizer();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(),
                 remoteTree,
@@ -4194,7 +4194,7 @@ namespace Cotton.Sync.Tests
         {
             Directory.CreateDirectory(Path.Combine(_root, "Projects"));
             RemoteDirectorySnapshot remoteDirectory = RemoteDirectory("Projects");
-            var scanner = new FakeLocalFileScanner
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner
             {
                 Directories =
                 {
@@ -4221,7 +4221,7 @@ namespace Cotton.Sync.Tests
             WriteFile("Projects/keep.txt", "keep");
             RemoteDirectorySnapshot remoteDirectory = RemoteDirectory("Projects");
             LocalFileSnapshot localFile = LocalFile("Projects/keep.txt", "keep");
-            var scanner = new FakeLocalFileScanner(localFile)
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(localFile)
             {
                 Directories =
                 {
@@ -4254,7 +4254,7 @@ namespace Cotton.Sync.Tests
             RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
             remoteTree.Directories.Add(first);
             remoteTree.Directories.Add(second);
-            var remoteDirectories = new FakeRemoteDirectorySynchronizer();
+            FakeRemoteDirectorySynchronizer remoteDirectories = new FakeRemoteDirectorySynchronizer();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(),
                 remoteTree,
@@ -4481,7 +4481,7 @@ namespace Cotton.Sync.Tests
             RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
             remoteTree.Directories.Add(parent);
             remoteTree.Directories.Add(child);
-            var remoteDirectories = new FakeRemoteDirectorySynchronizer();
+            FakeRemoteDirectorySynchronizer remoteDirectories = new FakeRemoteDirectorySynchronizer();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(),
                 remoteTree,
@@ -4509,7 +4509,7 @@ namespace Cotton.Sync.Tests
             Directory.CreateDirectory(Path.Combine(_root, "Projects", "Archive"));
             RemoteDirectorySnapshot parent = RemoteDirectory("Projects");
             RemoteDirectorySnapshot child = RemoteDirectory("Projects/Archive", parent.Node.Id);
-            var scanner = new FakeLocalFileScanner
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner
             {
                 Directories =
                 {
@@ -4546,7 +4546,7 @@ namespace Cotton.Sync.Tests
             RemoteDirectorySnapshot remoteDirectory = RemoteDirectory(directoryPath);
             RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
             remoteTree.Directories.Add(remoteDirectory);
-            var scanner = new FakeLocalFileScanner(local)
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(local)
             {
                 Directories =
                 {
@@ -4581,14 +4581,14 @@ namespace Cotton.Sync.Tests
             RemoteDirectorySnapshot oldRemoteDirectory = RemoteDirectory(oldPath);
             RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
             remoteTree.Directories.Add(oldRemoteDirectory);
-            var scanner = new FakeLocalFileScanner
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner
             {
                 Directories =
                 {
                     LocalDirectory(newPath),
                 },
             };
-            var remoteDirectories = new FakeRemoteDirectorySynchronizer();
+            FakeRemoteDirectorySynchronizer remoteDirectories = new FakeRemoteDirectorySynchronizer();
             SyncEngine engine = CreateEngine(
                 scanner,
                 remoteTree,
@@ -4658,7 +4658,7 @@ namespace Cotton.Sync.Tests
             movedRemote.NodeId = movedChild.Node.Id;
             RemoteTreeSnapshot remoteTree = RemoteTree(movedRemote);
             remoteTree.Directories.AddRange([targetParent, movedRoot, movedChild]);
-            var scanner = new FakeLocalFileScanner(localFile)
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(localFile)
             {
                 ContentHashFactory = file =>
                 {
@@ -4672,7 +4672,7 @@ namespace Cotton.Sync.Tests
                     LocalDirectory(oldChildPath),
                 },
             };
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter
             {
                 HydrationState = SyncPlaceholderHydrationState.Hydrated,
                 LocalLastWriteUtc = baselineRemote.UpdatedAt.AddMinutes(1),
@@ -4749,7 +4749,7 @@ namespace Cotton.Sync.Tests
             RemoteDirectorySnapshot remoteChild = RemoteDirectory(childPath, remoteRoot.Node.Id);
             NodeFileManifestDto baselineRemote = RemoteFile(filePath, localFile.ContentHash, sizeBytes: localFile.SizeBytes);
             baselineRemote.NodeId = remoteChild.Node.Id;
-            var scanner = new FakeLocalFileScanner(localFile)
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(localFile)
             {
                 Directories =
                 {
@@ -4799,7 +4799,7 @@ namespace Cotton.Sync.Tests
             RemoteDirectorySnapshot newRemoteDirectory = RemoteDirectory(newPath);
             RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
             remoteTree.Directories.Add(newRemoteDirectory);
-            var scanner = new FakeLocalFileScanner
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner
             {
                 Directories =
                 {
@@ -4833,7 +4833,7 @@ namespace Cotton.Sync.Tests
             RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
             remoteTree.Directories.Add(remoteParent);
             remoteTree.Directories.Add(oldRemoteDirectory);
-            var scanner = new FakeLocalFileScanner
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner
             {
                 Directories =
                 {
@@ -4841,7 +4841,7 @@ namespace Cotton.Sync.Tests
                     LocalDirectory(newPath),
                 },
             };
-            var remoteDirectories = new FakeRemoteDirectorySynchronizer();
+            FakeRemoteDirectorySynchronizer remoteDirectories = new FakeRemoteDirectorySynchronizer();
             SyncEngine engine = CreateEngine(
                 scanner,
                 remoteTree,
@@ -4879,7 +4879,7 @@ namespace Cotton.Sync.Tests
             RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
             remoteTree.Directories.Add(remoteParent);
             remoteTree.Directories.Add(movedRemoteDirectory);
-            var scanner = new FakeLocalFileScanner
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner
             {
                 Directories =
                 {
@@ -4915,14 +4915,14 @@ namespace Cotton.Sync.Tests
             RemoteDirectorySnapshot remoteRenamedDirectory = RemoteDirectory(remoteRenamePath);
             RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
             remoteTree.Directories.Add(remoteRenamedDirectory);
-            var scanner = new FakeLocalFileScanner
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner
             {
                 Directories =
                 {
                     LocalDirectory(localRenamePath),
                 },
             };
-            var remoteDirectories = new FakeRemoteDirectorySynchronizer();
+            FakeRemoteDirectorySynchronizer remoteDirectories = new FakeRemoteDirectorySynchronizer();
             SyncEngine engine = CreateEngine(
                 scanner,
                 remoteTree,
@@ -4956,8 +4956,8 @@ namespace Cotton.Sync.Tests
         {
             const string relativePath = "Документы/設計-notes.txt";
             LocalFileSnapshot local = LocalFile(relativePath, "unicode-local-content");
-            var scanner = new FakeLocalFileScanner(local);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(local);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), remoteFiles, out SqliteSyncStateStore stateStore);
 
             SyncRunResult result = await engine.RunOnceAsync(Pair());
@@ -4981,8 +4981,8 @@ namespace Cotton.Sync.Tests
             const string localRelativePath = "Mixed/Cafe\u0301-\u05d3\u05d5\u05d7-\ud83d\udcc4.txt";
             const string normalizedRelativePath = "Mixed/Caf\u00e9-\u05d3\u05d5\u05d7-\ud83d\udcc4.txt";
             LocalFileSnapshot local = LocalFile(localRelativePath, "mixed-unicode-local-content");
-            var scanner = new FakeLocalFileScanner(local);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(local);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), remoteFiles, out SqliteSyncStateStore stateStore);
 
             SyncRunResult result = await engine.RunOnceAsync(Pair());
@@ -5006,7 +5006,7 @@ namespace Cotton.Sync.Tests
             const string relativePath = "Документы/設計-remote.txt";
             byte[] content = Encoding.UTF8.GetBytes("unicode-remote-content");
             NodeFileManifestDto remote = RemoteFile(relativePath, Hash(content), sizeBytes: content.Length);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.Downloads[remote.Id] = content;
             SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
 
@@ -5029,7 +5029,7 @@ namespace Cotton.Sync.Tests
         {
             LocalFileSnapshot local = LocalFile("changed.txt", "local-new");
             NodeFileManifestDto remote = RemoteFile("changed.txt", HashText("old"));
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(new FakeLocalFileScanner(local), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
             await InsertBaselineAsync(stateStore, "changed.txt", HashText("old"), remote);
 
@@ -5052,7 +5052,7 @@ namespace Cotton.Sync.Tests
             string relativePath = "upload-fails.txt";
             LocalFileSnapshot local = LocalFile(relativePath, "local-new");
             NodeFileManifestDto remote = RemoteFile(relativePath, HashText("old"));
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.UploadFailureIds.Add(remote.Id);
             SyncEngine engine = CreateEngine(new FakeLocalFileScanner(local), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
             await InsertBaselineAsync(stateStore, relativePath, HashText("old"), remote);
@@ -5076,10 +5076,10 @@ namespace Cotton.Sync.Tests
         {
             string relativePath = "uploaded-before-baseline.txt";
             LocalFileSnapshot local = LocalFile(relativePath, "local-new");
-            var scanner = new FakeLocalFileScanner(local);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var durableStore = new SqliteSyncStateStore(_databasePath);
-            var failingStore = new FailingUpsertStateStore(durableStore);
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(local);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            SqliteSyncStateStore durableStore = new SqliteSyncStateStore(_databasePath);
+            FailingUpsertStateStore failingStore = new FailingUpsertStateStore(durableStore);
             SyncEngine firstRun = new(scanner, new FakeRemoteTreeCrawler(EmptyRemoteTree()), remoteFiles, failingStore);
 
             InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(
@@ -5107,8 +5107,8 @@ namespace Cotton.Sync.Tests
         {
             const string relativePath = "sequential-surface.txt";
             LocalFileSnapshot local = LocalFile(relativePath, "desktop-local");
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var desktopStateStore = new SqliteSyncStateStore(_databasePath);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            SqliteSyncStateStore desktopStateStore = new SqliteSyncStateStore(_databasePath);
             SyncEngine desktopRun = new(
                 new FakeLocalFileScanner(local),
                 new FakeRemoteTreeCrawler(EmptyRemoteTree()),
@@ -5118,7 +5118,7 @@ namespace Cotton.Sync.Tests
             SyncRunResult firstResult = await desktopRun.RunOnceAsync(Pair());
 
             NodeFileManifestDto uploaded = remoteFiles.Uploads.Single().ReturnedFile;
-            var cliStateStore = new SqliteSyncStateStore(_databasePath);
+            SqliteSyncStateStore cliStateStore = new SqliteSyncStateStore(_databasePath);
             SyncEngine cliRun = new(
                 new FakeLocalFileScanner(local),
                 new FakeRemoteTreeCrawler(RemoteTree(uploaded)),
@@ -5133,7 +5133,7 @@ namespace Cotton.Sync.Tests
                 uploaded.Id,
                 remoteUpdateContent.Length);
             remoteFiles.Downloads[uploaded.Id] = remoteUpdateContent;
-            var restartedDesktopStateStore = new SqliteSyncStateStore(_databasePath);
+            SqliteSyncStateStore restartedDesktopStateStore = new SqliteSyncStateStore(_databasePath);
             SyncEngine restartedDesktopRun = new(
                 new FakeLocalFileScanner(local),
                 new FakeRemoteTreeCrawler(RemoteTree(remoteUpdate)),
@@ -5161,9 +5161,9 @@ namespace Cotton.Sync.Tests
         {
             const string relativePath = "cli-interrupted-upload.txt";
             LocalFileSnapshot local = LocalFile(relativePath, "cli-local-before-crash");
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var durableStore = new SqliteSyncStateStore(_databasePath);
-            var cliCrashStore = new FailingUpsertStateStore(durableStore);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            SqliteSyncStateStore durableStore = new SqliteSyncStateStore(_databasePath);
+            FailingUpsertStateStore cliCrashStore = new FailingUpsertStateStore(durableStore);
             SyncEngine cliRun = new(
                 new FakeLocalFileScanner(local),
                 new FakeRemoteTreeCrawler(EmptyRemoteTree()),
@@ -5200,10 +5200,10 @@ namespace Cotton.Sync.Tests
             const string relativePath = "desktop-interrupted-download.txt";
             byte[] remoteContent = Encoding.UTF8.GetBytes("remote content before desktop crash");
             NodeFileManifestDto remote = RemoteFile(relativePath, Hash(remoteContent), sizeBytes: remoteContent.Length);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.Downloads[remote.Id] = remoteContent;
-            var durableStore = new SqliteSyncStateStore(_databasePath);
-            var desktopCrashStore = new FailingUpsertStateStore(durableStore);
+            SqliteSyncStateStore durableStore = new SqliteSyncStateStore(_databasePath);
+            FailingUpsertStateStore desktopCrashStore = new FailingUpsertStateStore(durableStore);
             SyncEngine desktopRun = new(
                 new FakeLocalFileScanner(),
                 new FakeRemoteTreeCrawler(RemoteTree(remote)),
@@ -5247,10 +5247,10 @@ namespace Cotton.Sync.Tests
         {
             string relativePath = "network-drop-upload.txt";
             LocalFileSnapshot local = LocalFile(relativePath, "local");
-            var scanner = new FakeLocalFileScanner(local);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(local);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.UploadFailureRelativePaths.Add(relativePath);
-            var stateStore = new SqliteSyncStateStore(_databasePath);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
             SyncEngine firstRun = new(scanner, new FakeRemoteTreeCrawler(EmptyRemoteTree()), remoteFiles, stateStore);
 
             Assert.ThrowsAsync<HttpRequestException>(
@@ -5278,8 +5278,8 @@ namespace Cotton.Sync.Tests
         {
             LocalFileSnapshot volatileLocal = LocalFile("hot/volatile.txt", "first local content");
             LocalFileSnapshot stableLocal = LocalFile("hot/stable.txt", "stable local content");
-            var scanner = new FakeLocalFileScanner(volatileLocal, stableLocal);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(volatileLocal, stableLocal);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.LocalUnavailableUploadRelativePaths.Add(volatileLocal.RelativePath);
             SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), remoteFiles, out SqliteSyncStateStore stateStore);
 
@@ -5310,10 +5310,10 @@ namespace Cotton.Sync.Tests
         {
             LocalFileSnapshot freshLocal = LocalFile("hot/fresh.txt", "fresh local content");
             freshLocal.LastWriteUtc = DateTime.UtcNow;
-            var scanner = new FakeLocalFileScanner(freshLocal);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(freshLocal);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), remoteFiles, out SqliteSyncStateStore stateStore);
-            var options = new SyncRunOptions { MinimumLocalUploadAge = TimeSpan.FromMinutes(5) };
+            SyncRunOptions options = new SyncRunOptions { MinimumLocalUploadAge = TimeSpan.FromMinutes(5) };
 
             SyncRunResult firstResult = await engine.RunOnceAsync(Pair(), options);
             SyncStateEntry? deferredEntry = await stateStore.GetAsync("pair-a", freshLocal.RelativePath);
@@ -5341,11 +5341,11 @@ namespace Cotton.Sync.Tests
         {
             LocalFileSnapshot first = LocalFile("offline/first.txt", "first offline local content");
             LocalFileSnapshot second = LocalFile("offline/second.txt", "second offline local content");
-            var scanner = new FakeLocalFileScanner(first, second);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(first, second);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.UploadFailureRelativePaths.Add(first.RelativePath);
             remoteFiles.UploadFailureRelativePaths.Add(second.RelativePath);
-            var stateStore = new SqliteSyncStateStore(_databasePath);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
             SyncEngine firstRun = new(scanner, new FakeRemoteTreeCrawler(EmptyRemoteTree()), remoteFiles, stateStore);
 
             Assert.ThrowsAsync<HttpRequestException>(
@@ -5378,7 +5378,7 @@ namespace Cotton.Sync.Tests
             LocalFileSnapshot local = LocalFile(relativePath, "old");
             byte[] remoteContent = Encoding.UTF8.GetBytes("remote-new");
             NodeFileManifestDto remote = RemoteFile(relativePath, Hash(remoteContent), sizeBytes: remoteContent.Length);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.Downloads[remote.Id] = remoteContent;
             SyncEngine engine = CreateEngine(new FakeLocalFileScanner(local), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
             await InsertBaselineAsync(stateStore, relativePath, local.ContentHash, RemoteFile(relativePath, local.ContentHash, remote.Id));
@@ -5406,7 +5406,7 @@ namespace Cotton.Sync.Tests
                 relativePath,
                 HashText("remote-new"),
                 sizeBytes: Encoding.UTF8.GetByteCount("remote-new"));
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.DownloadFailureIds.Add(remote.Id);
             SyncEngine engine = CreateEngine(new FakeLocalFileScanner(local), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
             await InsertBaselineAsync(stateStore, relativePath, local.ContentHash, RemoteFile(relativePath, local.ContentHash, remote.Id));
@@ -5439,10 +5439,10 @@ namespace Cotton.Sync.Tests
             LocalFileSnapshot local = LocalFile(relativePath, "local-before-server-error");
             byte[] remoteContent = Encoding.UTF8.GetBytes("remote");
             NodeFileManifestDto remote = RemoteFile(relativePath, Hash(remoteContent), sizeBytes: remoteContent.Length);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.PartialDownloadFailureIds.Add(remote.Id);
             remoteFiles.Downloads[remote.Id] = remoteContent;
-            var stateStore = new SqliteSyncStateStore(_databasePath);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
             await InsertBaselineAsync(
                 stateStore,
                 relativePath,
@@ -5500,12 +5500,12 @@ namespace Cotton.Sync.Tests
             byte[] secondContent = Encoding.UTF8.GetBytes("second remote content");
             NodeFileManifestDto first = RemoteFile("offline/remote-first.txt", Hash(firstContent), sizeBytes: firstContent.Length);
             NodeFileManifestDto second = RemoteFile("offline/remote-second.txt", Hash(secondContent), sizeBytes: secondContent.Length);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.DownloadFailureIds.Add(first.Id);
             remoteFiles.DownloadFailureIds.Add(second.Id);
             remoteFiles.Downloads[first.Id] = firstContent;
             remoteFiles.Downloads[second.Id] = secondContent;
-            var stateStore = new SqliteSyncStateStore(_databasePath);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
             SyncEngine firstRun = new(
                 new FakeLocalFileScanner(),
                 new FakeRemoteTreeCrawler(RemoteTree(first, second)),
@@ -5547,7 +5547,7 @@ namespace Cotton.Sync.Tests
                 relativePath,
                 Hash(expectedContent),
                 sizeBytes: expectedContent.Length);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.Downloads[remote.Id] = partialContent;
             SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
 
@@ -5575,10 +5575,10 @@ namespace Cotton.Sync.Tests
             string relativePath = "downloaded-before-baseline.txt";
             byte[] remoteContent = Encoding.UTF8.GetBytes("remote-new");
             NodeFileManifestDto remote = RemoteFile(relativePath, Hash(remoteContent), sizeBytes: remoteContent.Length);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.Downloads[remote.Id] = remoteContent;
-            var durableStore = new SqliteSyncStateStore(_databasePath);
-            var failingStore = new FailingUpsertStateStore(durableStore);
+            SqliteSyncStateStore durableStore = new SqliteSyncStateStore(_databasePath);
+            FailingUpsertStateStore failingStore = new FailingUpsertStateStore(durableStore);
             SyncEngine firstRun = new(
                 new FakeLocalFileScanner(),
                 new FakeRemoteTreeCrawler(RemoteTree(remote)),
@@ -5617,7 +5617,7 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_DeletesRemoteOnlyWhenBaselineKnowsLocalDelete()
         {
             NodeFileManifestDto remote = RemoteFile("delete-remote.txt", HashText("old"));
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
             await InsertBaselineAsync(stateStore, "delete-remote.txt", remote.ContentHash, remote);
 
@@ -5636,7 +5636,7 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_CanBypassRemoteTrashWhenExplicitlyConfigured()
         {
             NodeFileManifestDto remote = RemoteFile("delete-remote-permanent.txt", HashText("old"));
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
             await InsertBaselineAsync(stateStore, "delete-remote-permanent.txt", remote.ContentHash, remote);
 
@@ -5656,7 +5656,7 @@ namespace Cotton.Sync.Tests
         {
             string relativePath = "delete-remote-fails.txt";
             NodeFileManifestDto remote = RemoteFile(relativePath, HashText("old"));
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.DeleteFailureIds.Add(remote.Id);
             SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
             await InsertBaselineAsync(stateStore, relativePath, remote.ContentHash, remote);
@@ -5680,10 +5680,10 @@ namespace Cotton.Sync.Tests
         {
             string relativePath = "remote-deleted-before-baseline.txt";
             NodeFileManifestDto remote = RemoteFile(relativePath, HashText("old"));
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var durableStore = new SqliteSyncStateStore(_databasePath);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            SqliteSyncStateStore durableStore = new SqliteSyncStateStore(_databasePath);
             await InsertBaselineAsync(durableStore, relativePath, remote.ContentHash, remote);
-            var failingStore = new FailingDeleteStateStore(durableStore);
+            FailingDeleteStateStore failingStore = new FailingDeleteStateStore(durableStore);
             SyncEngine firstRun = new(
                 new FakeLocalFileScanner(),
                 new FakeRemoteTreeCrawler(RemoteTree(remote)),
@@ -5719,10 +5719,10 @@ namespace Cotton.Sync.Tests
             WriteFile(relativePath, "old");
             LocalFileSnapshot local = LocalFile(relativePath, "old");
             NodeFileManifestDto remote = RemoteFile(relativePath, local.ContentHash);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var durableStore = new SqliteSyncStateStore(_databasePath);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            SqliteSyncStateStore durableStore = new SqliteSyncStateStore(_databasePath);
             await InsertBaselineAsync(durableStore, relativePath, local.ContentHash, remote);
-            var failingStore = new FailingDeleteStateStore(durableStore);
+            FailingDeleteStateStore failingStore = new FailingDeleteStateStore(durableStore);
             SyncEngine firstRun = new(
                 new FakeLocalFileScanner(local),
                 new FakeRemoteTreeCrawler(EmptyRemoteTree()),
@@ -5758,7 +5758,7 @@ namespace Cotton.Sync.Tests
         {
             NodeFileManifestDto firstRemote = RemoteFile("a.txt", HashText("old-a"));
             NodeFileManifestDto secondRemote = RemoteFile("b.txt", HashText("old-b"));
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(),
                 RemoteTree(firstRemote, secondRemote),
@@ -5793,7 +5793,7 @@ namespace Cotton.Sync.Tests
         {
             byte[] content = Encoding.UTF8.GetBytes("no-baseline-remote");
             NodeFileManifestDto remote = RemoteFile("safe-download.txt", Hash(content), sizeBytes: content.Length);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.Downloads[remote.Id] = content;
             SyncEngine engine = CreateEngine(new FakeLocalFileScanner(), RemoteTree(remote), remoteFiles, out _);
 
@@ -5875,7 +5875,7 @@ namespace Cotton.Sync.Tests
             LocalFileSnapshot local = LocalFile(relativePath, "local-new");
             byte[] remoteContent = Encoding.UTF8.GetBytes("remote-new");
             NodeFileManifestDto remote = RemoteFile(relativePath, Hash(remoteContent), sizeBytes: remoteContent.Length);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.Downloads[remote.Id] = remoteContent;
             SyncEngine engine = CreateEngine(new FakeLocalFileScanner(local), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
             await InsertBaselineAsync(stateStore, relativePath, HashText("old"), RemoteFile(relativePath, HashText("old"), remote.Id));
@@ -5916,7 +5916,7 @@ namespace Cotton.Sync.Tests
             NodeFileManifestDto baselineRemote = RemoteFile(relativePath, HashText(baselineContent), remoteId, baselineContent.Length);
             NodeFileManifestDto remote = RemoteFile(relativePath, Hash(remoteContent), remoteId, remoteContent.Length);
             remote.UpdatedAt = remoteEditUtc;
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.Downloads[remote.Id] = remoteContent;
             SyncEngine engine = CreateEngine(new FakeLocalFileScanner(local), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
             await InsertBaselineAsync(stateStore, relativePath, HashText(baselineContent), baselineRemote);
@@ -5966,7 +5966,7 @@ namespace Cotton.Sync.Tests
             NodeFileManifestDto? remote = remoteState == MatrixFileState.Missing
                 ? null
                 : RemoteFile(relativePath, HashText(remoteContent), remoteId, Encoding.UTF8.GetByteCount(remoteContent));
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             if (remote is not null && remoteState == MatrixFileState.Changed)
             {
                 remoteFiles.Downloads[remote.Id] = Encoding.UTF8.GetBytes(remoteContent);
@@ -6003,7 +6003,7 @@ namespace Cotton.Sync.Tests
             NodeFileManifestDto initialRemote = RemoteFile(relativePath, HashText("old"), remoteId);
             byte[] latestRemoteContent = Encoding.UTF8.GetBytes("remote-new");
             NodeFileManifestDto latestRemote = RemoteFile(relativePath, Hash(latestRemoteContent), remoteId, latestRemoteContent.Length);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.PreconditionFailedUploadIds.Add(remoteId);
             remoteFiles.Downloads[remoteId] = latestRemoteContent;
             SyncEngine engine = CreateEngine(
@@ -6041,7 +6041,7 @@ namespace Cotton.Sync.Tests
             NodeFileManifestDto baselineRemote = RemoteFile(relativePath, HashText("old"), remoteId);
             NodeFileManifestDto initialRemote = RemoteFile(relativePath, HashText("old"), remoteId);
             NodeFileManifestDto latestRemote = RemoteFile(relativePath, HashText("remote-huge"), remoteId, long.MaxValue);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.PreconditionFailedUploadIds.Add(remoteId);
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(local),
@@ -6073,7 +6073,7 @@ namespace Cotton.Sync.Tests
             NodeFileManifestDto initialRemote = RemoteFile(relativePath, HashText("old"), remoteId);
             byte[] latestRemoteContent = Encoding.UTF8.GetBytes("remote-new");
             NodeFileManifestDto latestRemote = RemoteFile(relativePath, Hash(latestRemoteContent), remoteId, latestRemoteContent.Length);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.PreconditionFailedDeleteIds.Add(remoteId);
             remoteFiles.Downloads[remoteId] = latestRemoteContent;
             SyncEngine engine = CreateEngine(
@@ -6105,7 +6105,7 @@ namespace Cotton.Sync.Tests
             WriteFile(relativePath, "local-new");
             LocalFileSnapshot local = LocalFile(relativePath, "local-new");
             NodeFileManifestDto remote = RemoteFile(relativePath, HashText("remote-new"));
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SyncEngine engine = CreateEngine(new FakeLocalFileScanner(local), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
             await InsertBaselineAsync(stateStore, relativePath, local.ContentHash, remote);
 
@@ -6130,7 +6130,7 @@ namespace Cotton.Sync.Tests
             LocalFileSnapshot local = LocalFile(relativePath, "local-new");
             byte[] remoteContent = Encoding.UTF8.GetBytes("remote-newer");
             NodeFileManifestDto remote = RemoteFile(relativePath, Hash(remoteContent), sizeBytes: remoteContent.Length);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             remoteFiles.Downloads[remote.Id] = remoteContent;
             SyncEngine engine = CreateEngine(new FakeLocalFileScanner(local), RemoteTree(remote), remoteFiles, out SqliteSyncStateStore stateStore);
             await InsertBaselineAsync(stateStore, relativePath, local.ContentHash, RemoteFile(relativePath, HashText("remote-old"), remote.Id));
@@ -6155,9 +6155,9 @@ namespace Cotton.Sync.Tests
         [Test]
         public void RunOnceAsync_HonorsCancellationBeforeScanning()
         {
-            var scanner = new FakeLocalFileScanner(LocalFile("cancel.txt", "cancel"));
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(LocalFile("cancel.txt", "cancel"));
             SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), new FakeRemoteFileSynchronizer(), out _);
-            using var cancellation = new CancellationTokenSource();
+            using CancellationTokenSource cancellation = new CancellationTokenSource();
             cancellation.Cancel();
 
             Assert.ThrowsAsync<OperationCanceledException>(() => engine.RunOnceAsync(Pair(), cancellationToken: cancellation.Token));
@@ -6167,7 +6167,7 @@ namespace Cotton.Sync.Tests
         [Test]
         public void RunOnceAsync_RejectsLocalCaseInsensitivePathCollision()
         {
-            var scanner = new FakeLocalFileScanner(
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(
                 LocalFile("Case.txt", "first"),
                 LocalFile("case.txt", "second"));
             SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), new FakeRemoteFileSynchronizer(), out _);
@@ -6188,7 +6188,7 @@ namespace Cotton.Sync.Tests
         [Test]
         public void RunOnceAsync_RejectsLocalFileDirectoryCaseInsensitivePathCollision()
         {
-            var scanner = new FakeLocalFileScanner(LocalFile("Project", "file"));
+            FakeLocalFileScanner scanner = new FakeLocalFileScanner(LocalFile("Project", "file"));
             scanner.Directories.Add(LocalDirectory("project"));
             SyncEngine engine = CreateEngine(scanner, EmptyRemoteTree(), new FakeRemoteFileSynchronizer(), out _);
 
@@ -6274,8 +6274,8 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_WithWindowsVirtualFilesIgnoresRemoteMetadataPathsAtEngineBoundary()
         {
             NodeFileManifestDto remote = RemoteFile(".cotton-sync/remote-placeholder.txt", HashText("remote"), sizeBytes: 1024);
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var placeholderWriter = new FakeRemoteFilePlaceholderWriter();
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
             SyncEngine engine = CreateEngine(
                 new FakeLocalFileScanner(),
                 RemoteTree(remote),
@@ -6313,10 +6313,10 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_DoesNotLeakStateAcrossSyncPairsSharingDatabaseAndRelativePath()
         {
             LocalFileSnapshot pairALocal = LocalFile("shared.txt", "pair-a-local");
-            var remoteFiles = new FakeRemoteFileSynchronizer();
-            var stateStore = new SqliteSyncStateStore(_databasePath);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
             await stateStore.InitializeAsync();
-            var pairBRemoteFileId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+            Guid pairBRemoteFileId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
             await stateStore.UpsertAsync(new SyncStateEntry
             {
                 SyncPairId = "pair-b",
@@ -6697,9 +6697,9 @@ namespace Cotton.Sync.Tests
             {
                 PathLookupCalls++;
                 LastIncludeDirectoryDescendants = includeDirectoryDescendants;
-                var snapshot = new LocalTreeLookupSnapshot();
-                var requested = relativePaths.Select(SyncPath.Normalize).ToArray();
-                var requestedKeys = new HashSet<string>(
+                LocalTreeLookupSnapshot snapshot = new LocalTreeLookupSnapshot();
+                string[] requested = relativePaths.Select(SyncPath.Normalize).ToArray();
+                HashSet<string> requestedKeys = new HashSet<string>(
                     requested.Select(SyncPath.ToKey),
                     StringComparer.OrdinalIgnoreCase);
                 foreach (LocalDirectorySnapshot directory in Directories)
@@ -6897,7 +6897,7 @@ namespace Cotton.Sync.Tests
                 CancellationToken cancellationToken = default)
             {
                 LookupScanCalls++;
-                var snapshot = new LocalTreeLookupSnapshot();
+                LocalTreeLookupSnapshot snapshot = new LocalTreeLookupSnapshot();
                 foreach (LocalFileSnapshot file in Files)
                 {
                     snapshot.FilesByPath.Add(SyncPath.ToKey(file.RelativePath), file);
@@ -7075,7 +7075,7 @@ namespace Cotton.Sync.Tests
                 CancellationToken cancellationToken = default)
             {
                 StreamingCrawlCalls++;
-                var root = new NodeDto
+                NodeDto root = new NodeDto
                 {
                     Id = _rootNodeId,
                     Name = "root",
@@ -7161,7 +7161,7 @@ namespace Cotton.Sync.Tests
                 CancellationToken cancellationToken = default)
             {
                 StreamingCrawlCalls++;
-                var root = new NodeDto
+                NodeDto root = new NodeDto
                 {
                     Id = _rootNodeId,
                     Name = "root",
@@ -7234,7 +7234,7 @@ namespace Cotton.Sync.Tests
                 CancellationToken cancellationToken = default)
             {
                 LookupCrawlCalls++;
-                var snapshot = new RemoteTreeLookupSnapshot
+                RemoteTreeLookupSnapshot snapshot = new RemoteTreeLookupSnapshot
                 {
                     RootNode = _snapshot.RootNode,
                 };
@@ -7278,7 +7278,7 @@ namespace Cotton.Sync.Tests
                 CancellationToken cancellationToken = default)
             {
                 PathCrawlCalls++;
-                var snapshot = new RemoteTreeLookupSnapshot
+                RemoteTreeLookupSnapshot snapshot = new RemoteTreeLookupSnapshot
                 {
                     RootNode = _snapshot.RootNode,
                 };

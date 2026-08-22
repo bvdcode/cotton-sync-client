@@ -14,8 +14,8 @@ namespace Cotton.Sync.App.Tests.Continuous
         [Test]
         public async Task StartAsync_RequestsImmediateSyncAllByDefault()
         {
-            var supervisor = new FakeSyncSupervisor();
-            var coordinator = new PeriodicSyncCoordinator(supervisor, TimeSpan.FromMinutes(1));
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            PeriodicSyncCoordinator coordinator = new PeriodicSyncCoordinator(supervisor, TimeSpan.FromMinutes(1));
 
             await coordinator.StartAsync();
             bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
@@ -32,8 +32,8 @@ namespace Cotton.Sync.App.Tests.Continuous
         [Test]
         public async Task PeriodicTick_RequestsSyncAll()
         {
-            var supervisor = new FakeSyncSupervisor();
-            var coordinator = new PeriodicSyncCoordinator(
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            PeriodicSyncCoordinator coordinator = new PeriodicSyncCoordinator(
                 supervisor,
                 TimeSpan.FromMilliseconds(25),
                 runImmediately: false);
@@ -52,8 +52,8 @@ namespace Cotton.Sync.App.Tests.Continuous
         [Test]
         public async Task StopAsync_CancelsPeriodicRequests()
         {
-            var supervisor = new FakeSyncSupervisor();
-            var coordinator = new PeriodicSyncCoordinator(
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            PeriodicSyncCoordinator coordinator = new PeriodicSyncCoordinator(
                 supervisor,
                 TimeSpan.FromMilliseconds(100),
                 runImmediately: false);
@@ -68,13 +68,13 @@ namespace Cotton.Sync.App.Tests.Continuous
         [Test]
         public async Task TransientServerFailure_RetriesBeforeNormalPeriodicInterval()
         {
-            var supervisor = new FakeSyncSupervisor();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
             supervisor.SyncAllFailures.Enqueue(new AggregateException(
                 new CottonApiException(
                     System.Net.HttpStatusCode.BadGateway,
                     "502 Bad Gateway",
                     "Cotton API request failed with status 502.")));
-            var coordinator = new PeriodicSyncCoordinator(
+            PeriodicSyncCoordinator coordinator = new PeriodicSyncCoordinator(
                 supervisor,
                 interval: TimeSpan.FromMinutes(10),
                 connectionRetryInterval: TimeSpan.FromMilliseconds(20));

@@ -23,7 +23,7 @@ namespace Cotton.Sync.App.SyncPairs
         public SyncPairValidationResult Validate(IReadOnlyCollection<SyncPairSettings> syncPairs)
         {
             ArgumentNullException.ThrowIfNull(syncPairs);
-            var errors = new List<SyncPairValidationError>();
+            List<SyncPairValidationError> errors = new List<SyncPairValidationError>();
             foreach (SyncPairSettings syncPair in syncPairs)
             {
                 ValidateSingle(syncPair, errors);

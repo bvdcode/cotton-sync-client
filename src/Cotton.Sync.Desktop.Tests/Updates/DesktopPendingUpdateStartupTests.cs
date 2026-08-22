@@ -34,14 +34,14 @@ namespace Cotton.Sync.Desktop.Tests.Updates
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             byte[] installerBytes = Encoding.UTF8.GetBytes("installer-v2");
             string installerPath = WriteInstaller(paths, installerBytes);
-            var store = new DesktopPendingUpdateStore(paths.UpdateCacheDirectory);
+            DesktopPendingUpdateStore store = new DesktopPendingUpdateStore(paths.UpdateCacheDirectory);
             store.Save(new DesktopPendingUpdate(
                 "0.0.2",
                 installerPath,
                 Sha256(installerBytes),
                 installerBytes.Length,
                 DateTime.UtcNow));
-            var installer = new FakeUpdateInstaller();
+            FakeUpdateInstaller installer = new FakeUpdateInstaller();
 
             bool started = DesktopPendingUpdateStartup.TryStartPendingUpdate(paths, "0.0.1", installer);
 
@@ -61,14 +61,14 @@ namespace Cotton.Sync.Desktop.Tests.Updates
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             byte[] installerBytes = Encoding.UTF8.GetBytes("installer-v1");
             string installerPath = WriteInstaller(paths, installerBytes);
-            var store = new DesktopPendingUpdateStore(paths.UpdateCacheDirectory);
+            DesktopPendingUpdateStore store = new DesktopPendingUpdateStore(paths.UpdateCacheDirectory);
             store.Save(new DesktopPendingUpdate(
                 "0.0.1",
                 installerPath,
                 Sha256(installerBytes),
                 installerBytes.Length,
                 DateTime.UtcNow));
-            var installer = new FakeUpdateInstaller();
+            FakeUpdateInstaller installer = new FakeUpdateInstaller();
 
             bool started = DesktopPendingUpdateStartup.TryStartPendingUpdate(paths, "0.0.1", installer);
 
@@ -86,14 +86,14 @@ namespace Cotton.Sync.Desktop.Tests.Updates
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             byte[] installerBytes = Encoding.UTF8.GetBytes("installer-v2");
             string installerPath = WriteInstaller(paths, installerBytes);
-            var store = new DesktopPendingUpdateStore(paths.UpdateCacheDirectory);
+            DesktopPendingUpdateStore store = new DesktopPendingUpdateStore(paths.UpdateCacheDirectory);
             store.Save(new DesktopPendingUpdate(
                 "0.0.2",
                 installerPath,
                 new string('b', 64),
                 installerBytes.Length,
                 DateTime.UtcNow));
-            var installer = new FakeUpdateInstaller();
+            FakeUpdateInstaller installer = new FakeUpdateInstaller();
 
             bool started = DesktopPendingUpdateStartup.TryStartPendingUpdate(paths, "0.0.1", installer);
 
@@ -111,7 +111,7 @@ namespace Cotton.Sync.Desktop.Tests.Updates
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             byte[] installerBytes = Encoding.UTF8.GetBytes("installer-v2");
             string installerPath = WriteInstaller(paths, installerBytes);
-            var store = new DesktopPendingUpdateStore(paths.UpdateCacheDirectory);
+            DesktopPendingUpdateStore store = new DesktopPendingUpdateStore(paths.UpdateCacheDirectory);
             store.Save(new DesktopPendingUpdate(
                 "0.0.2",
                 installerPath,
@@ -119,7 +119,7 @@ namespace Cotton.Sync.Desktop.Tests.Updates
                 installerBytes.Length,
                 DateTime.UtcNow,
                 AttemptCount: 3));
-            var installer = new FakeUpdateInstaller();
+            FakeUpdateInstaller installer = new FakeUpdateInstaller();
 
             bool started = DesktopPendingUpdateStartup.TryStartPendingUpdate(paths, "0.0.1", installer);
 

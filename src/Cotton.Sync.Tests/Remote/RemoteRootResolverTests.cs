@@ -16,8 +16,8 @@ namespace Cotton.Sync.Tests.Remote
         public async Task EnsureAsync_ReturnsAccountRootForEmptyPath()
         {
             Guid rootId = Guid.NewGuid();
-            var client = new FakeNodeClient { Root = Node(rootId, null, "root") };
-            var resolver = new RemoteRootResolver(client);
+            FakeNodeClient client = new FakeNodeClient { Root = Node(rootId, null, "root") };
+            RemoteRootResolver resolver = new RemoteRootResolver(client);
 
             NodeDto root = await resolver.EnsureAsync();
 
@@ -33,13 +33,13 @@ namespace Cotton.Sync.Tests.Remote
         {
             Guid rootId = Guid.NewGuid();
             Guid docsId = Guid.NewGuid();
-            var client = new FakeNodeClient { Root = Node(rootId, null, "root") };
+            FakeNodeClient client = new FakeNodeClient { Root = Node(rootId, null, "root") };
             client.Children[(rootId, 1)] = new FakeNodePage
             {
                 TotalCount = 1,
                 Nodes = [Node(docsId, rootId, "Docs")],
             };
-            var resolver = new RemoteRootResolver(client);
+            RemoteRootResolver resolver = new RemoteRootResolver(client);
 
             NodeDto node = await resolver.EnsureAsync("docs");
 
@@ -77,7 +77,7 @@ namespace Cotton.Sync.Tests.Remote
         {
             Guid rootId = Guid.NewGuid();
             Guid existingId = Guid.NewGuid();
-            var client = new FakeNodeClient { Root = Node(rootId, null, "root") };
+            FakeNodeClient client = new FakeNodeClient { Root = Node(rootId, null, "root") };
             client.Children[(rootId, 1)] = new FakeNodePage
             {
                 TotalCount = 2,
@@ -88,7 +88,7 @@ namespace Cotton.Sync.Tests.Remote
                 TotalCount = 2,
                 Files = [File(rootId, "skip.txt")],
             };
-            var resolver = new RemoteRootResolver(client, pageSize: 1);
+            RemoteRootResolver resolver = new RemoteRootResolver(client, pageSize: 1);
 
             NodeDto created = await resolver.EnsureAsync("Docs/Reports");
 

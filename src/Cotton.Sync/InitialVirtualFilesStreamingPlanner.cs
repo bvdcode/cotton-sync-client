@@ -75,7 +75,7 @@ namespace Cotton.Sync
                 directoryStateByPath.Count,
                 fileBaselineByPath.Count,
                 stopwatch.ElapsedMilliseconds);
-            var adoptableUntrackedPlaceholderByPath = new Dictionary<string, LocalFileSnapshot>(PathComparer);
+            Dictionary<string, LocalFileSnapshot> adoptableUntrackedPlaceholderByPath = new Dictionary<string, LocalFileSnapshot>(PathComparer);
             foreach ((string fileKey, LocalFileSnapshot local) in localFilesByPath)
             {
                 if (fileBaselineByPath.TryGetValue(fileKey, out InitialVirtualFilesPlaceholderBaseline baseline)
@@ -262,8 +262,8 @@ namespace Cotton.Sync
             IEnumerable<string> keys,
             CancellationToken cancellationToken)
         {
-            var directoryStateByPath = new Dictionary<string, Guid?>(PathComparer);
-            var fileBaselineByPath = new Dictionary<string, InitialVirtualFilesPlaceholderBaseline>(PathComparer);
+            Dictionary<string, Guid?> directoryStateByPath = new Dictionary<string, Guid?>(PathComparer);
+            Dictionary<string, InitialVirtualFilesPlaceholderBaseline> fileBaselineByPath = new Dictionary<string, InitialVirtualFilesPlaceholderBaseline>(PathComparer);
             if (stateStore is IVirtualFilesResumeStateStore virtualFilesResumeStateStore)
             {
                 await foreach (SyncVirtualFilesResumeEntry entry in virtualFilesResumeStateStore.LoadVirtualFilesResumeEntriesByPathKeysAsync(syncPairId, keys, cancellationToken)

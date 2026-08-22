@@ -51,9 +51,9 @@ namespace Cotton.Sync.App.Tests.Preferences
         public async Task SaveAsync_RoundtripsAfterReopen()
         {
             string databasePath = DatabasePath();
-            var firstStore = new SqliteAppPreferencesStore(databasePath);
+            SqliteAppPreferencesStore firstStore = new SqliteAppPreferencesStore(databasePath);
             await firstStore.InitializeAsync();
-            var expected = new AppPreferences
+            AppPreferences expected = new AppPreferences
             {
                 RememberedServerUrl = new Uri("https://cotton.example.test/"),
                 RememberedUsername = "desktop@example.test",
@@ -67,7 +67,7 @@ namespace Cotton.Sync.App.Tests.Preferences
 
             await firstStore.SaveAsync(expected);
 
-            var secondStore = new SqliteAppPreferencesStore(databasePath);
+            SqliteAppPreferencesStore secondStore = new SqliteAppPreferencesStore(databasePath);
             await secondStore.InitializeAsync();
             AppPreferences actual = await secondStore.GetAsync();
 
@@ -89,7 +89,7 @@ namespace Cotton.Sync.App.Tests.Preferences
         {
             SqliteAppPreferencesStore store = CreateStore();
             await store.InitializeAsync();
-            var preferences = new AppPreferences
+            AppPreferences preferences = new AppPreferences
             {
                 RememberedServerUrl = new Uri("/cotton", UriKind.Relative),
             };
@@ -108,8 +108,8 @@ namespace Cotton.Sync.App.Tests.Preferences
         public async Task StoresSyncPairsAndPreferencesInSameDatabase()
         {
             string databasePath = DatabasePath();
-            var syncPairStore = new SqliteSyncPairSettingsStore(databasePath);
-            var preferencesStore = new SqliteAppPreferencesStore(databasePath);
+            SqliteSyncPairSettingsStore syncPairStore = new SqliteSyncPairSettingsStore(databasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(databasePath);
             SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
             await syncPairStore.InitializeAsync();
             await syncPairStore.UpsertAsync(syncPair);
@@ -141,8 +141,8 @@ namespace Cotton.Sync.App.Tests.Preferences
 
             await Task.WhenAll(migrations);
 
-            var syncPairStore = new SqliteSyncPairSettingsStore(databasePath);
-            var preferencesStore = new SqliteAppPreferencesStore(databasePath);
+            SqliteSyncPairSettingsStore syncPairStore = new SqliteSyncPairSettingsStore(databasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(databasePath);
             SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
             await syncPairStore.UpsertAsync(syncPair);
             await preferencesStore.SaveAsync(new AppPreferences

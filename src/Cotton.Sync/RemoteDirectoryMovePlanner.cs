@@ -110,7 +110,7 @@ namespace Cotton.Sync
         public static Dictionary<Guid, RemoteDirectorySnapshot> BuildUniqueRemoteDirectoriesById(
             IEnumerable<RemoteDirectorySnapshot> directories)
         {
-            var unique = new Dictionary<Guid, RemoteDirectorySnapshot>();
+            Dictionary<Guid, RemoteDirectorySnapshot> unique = new Dictionary<Guid, RemoteDirectorySnapshot>();
             HashSet<Guid> duplicates = [];
             foreach (RemoteDirectorySnapshot directory in directories)
             {
@@ -131,7 +131,7 @@ namespace Cotton.Sync
         public static Dictionary<Guid, RemoteFileSnapshot> BuildUniqueRemoteFilesById(
             IEnumerable<RemoteFileSnapshot> files)
         {
-            var unique = new Dictionary<Guid, RemoteFileSnapshot>();
+            Dictionary<Guid, RemoteFileSnapshot> unique = new Dictionary<Guid, RemoteFileSnapshot>();
             HashSet<Guid> duplicates = [];
             foreach (RemoteFileSnapshot file in files)
             {

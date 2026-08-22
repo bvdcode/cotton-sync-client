@@ -96,9 +96,9 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             using VisualSmokeShellController controller = VisualSmokeShellController.Create(
                 DesktopVisualSmokeScenario.HydrationProgress,
                 TimeSpan.FromMilliseconds(1));
-            var runProgress = new List<DesktopRunProgressSnapshot>();
-            var transferProgress = new List<DesktopTransferProgressSnapshot>();
-            var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            List<DesktopRunProgressSnapshot> runProgress = new List<DesktopRunProgressSnapshot>();
+            List<DesktopTransferProgressSnapshot> transferProgress = new List<DesktopTransferProgressSnapshot>();
+            TaskCompletionSource<bool> completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             controller.RunProgressChanged += (_, progress) =>
             {
                 lock (runProgress)
@@ -166,9 +166,9 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             using VisualSmokeShellController controller = VisualSmokeShellController.Create(
                 DesktopVisualSmokeScenario.DehydrationProgress,
                 TimeSpan.FromMilliseconds(1));
-            var runProgress = new List<DesktopRunProgressSnapshot>();
-            var transferProgress = new List<DesktopTransferProgressSnapshot>();
-            var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            List<DesktopRunProgressSnapshot> runProgress = new List<DesktopRunProgressSnapshot>();
+            List<DesktopTransferProgressSnapshot> transferProgress = new List<DesktopTransferProgressSnapshot>();
+            TaskCompletionSource<bool> completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             controller.RunProgressChanged += (_, progress) =>
             {
                 lock (runProgress)

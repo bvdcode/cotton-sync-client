@@ -130,8 +130,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateFilePlaceholder_RegistersSyncRootAndCreatesChildPlaceholder()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
             string root = Path.Combine(_tempDirectory, "root");
             RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/remote-only.txt");
             string target = Path.GetFullPath(Path.Combine(root, "Projects", "remote-only.txt"));
@@ -200,10 +200,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateFilePlaceholder_RegistersStorageProviderSyncRootBeforeNativeSyncRoot()
         {
-            var operations = new List<string>();
-            var nativeApi = new FakeCloudFilesNativeApi { OperationLog = operations };
-            var storageProvider = new FakeStorageProviderSyncRootRegistrar(operations);
-            var adapter = new WindowsCloudFilesAdapter(
+            List<string> operations = new List<string>();
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi { OperationLog = operations };
+            FakeStorageProviderSyncRootRegistrar storageProvider = new FakeStorageProviderSyncRootRegistrar(operations);
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 storageProviderRegistrar: storageProvider);
@@ -227,8 +227,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateFilePlaceholder_RegistersSyncRootOncePerAdapterForSameRoot()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
             string root = Path.Combine(_tempDirectory, "root");
 
             adapter.CreateFilePlaceholder(CreateRequest(root, "Projects/first.txt"));
@@ -245,8 +245,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateFilePlaceholders_BatchesNativeCreatesByDirectoryAndReturnsResults()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
             string root = Path.Combine(_tempDirectory, "root");
             RemoteFilePlaceholderRequest[] requests =
             [
@@ -283,12 +283,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             string parentPath = Path.GetFullPath(Path.Combine(root, "Projects"));
             string filePath = Path.GetFullPath(Path.Combine(parentPath, "remote.txt"));
             Directory.CreateDirectory(parentPath);
-            var nativeApi = new FakeCloudFilesNativeApi
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi
             {
                 HydrateAction = path => File.WriteAllBytes(path, new byte[12]),
             };
-            var shellChangeNotifier = new RecordingShellChangeNotifier();
-            var adapter = new WindowsCloudFilesAdapter(
+            RecordingShellChangeNotifier shellChangeNotifier = new RecordingShellChangeNotifier();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 shellChangeNotifier: shellChangeNotifier,
@@ -326,14 +326,14 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             string parentPath = Path.GetFullPath(Path.Combine(root, "Projects"));
             string filePath = Path.GetFullPath(Path.Combine(parentPath, "remote.txt"));
             Directory.CreateDirectory(parentPath);
-            var nativeApi = new FakeCloudFilesNativeApi
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi
             {
                 HydrateAction = _ => throw new WindowsCloudFilesNativeException(
                     "CfHydratePlaceholder",
                     cloudFileUnsuccessful),
             };
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var adapter = new WindowsCloudFilesAdapter(
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 diagnostics: diagnostics,
@@ -368,9 +368,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateDirectoryPlaceholder_CreatesRemoteDirectoryPlaceholderWithoutConversion()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var adapter = new WindowsCloudFilesAdapter(
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 diagnostics: diagnostics,
@@ -414,8 +414,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             string parentPath = Path.GetFullPath(Path.Combine(root, "Projects"));
             string directoryPath = Path.GetFullPath(Path.Combine(parentPath, "Nested"));
             Directory.CreateDirectory(parentPath);
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var adapter = new WindowsCloudFilesAdapter(
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 isReparsePoint: _ => false,
@@ -440,9 +440,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateDirectoryPlaceholder_ConvertsNonEmptyExistingDirectoryToCloudFilesPlaceholder()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var adapter = new WindowsCloudFilesAdapter(
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 diagnostics: diagnostics,
@@ -485,14 +485,14 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateDirectoryPlaceholder_RepairsExistingCloudFilesDirectoryPlaceholderAndPreservesPinnedState()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
             string root = Path.Combine(_tempDirectory, "root");
             string directoryPath = Path.GetFullPath(Path.Combine(root, "Projects"));
             Directory.CreateDirectory(directoryPath);
             RemoteDirectoryMaterializationRequest request = CreateDirectoryRequest(root, "Projects");
             TrackExistingDirectoryPlaceholder(nativeApi, directoryPath, request);
-            var adapter = new WindowsCloudFilesAdapter(
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 diagnostics: diagnostics,
@@ -530,11 +530,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateFilePlaceholder_AllowsCloudFilesDirectoryPlaceholderAncestors()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
             string root = Path.Combine(_tempDirectory, "root");
             string parent = Path.GetFullPath(Path.Combine(root, "Projects"));
             Directory.CreateDirectory(parent);
-            var adapter = new WindowsCloudFilesAdapter(
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 isReparsePoint: path => string.Equals(Path.GetFullPath(path), parent, StringComparison.OrdinalIgnoreCase),
@@ -548,12 +548,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateFilePlaceholder_RetriesTransientPinStatePathOpenFailure()
         {
-            var nativeApi = new FakeCloudFilesNativeApi
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi
             {
                 PinStateFailuresBeforeSuccess = 2,
             };
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var adapter = new WindowsCloudFilesAdapter(
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 diagnostics: diagnostics,
@@ -576,14 +576,14 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateFilePlaceholder_UpdatesExistingCloudFilesPlaceholder()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
             string root = Path.Combine(_tempDirectory, "root");
             string target = Path.GetFullPath(Path.Combine(root, "Projects", "remote-only.txt"));
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.WriteAllText(target, string.Empty);
             RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/remote-only.txt");
             TrackExistingFilePlaceholder(nativeApi, target, request);
-            var adapter = new WindowsCloudFilesAdapter(
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 isReparsePoint: path => string.Equals(Path.GetFullPath(path), target, StringComparison.OrdinalIgnoreCase),
@@ -729,7 +729,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             string target = Path.GetFullPath(Path.Combine(root, "Projects", "available-offline.txt"));
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.WriteAllText(target, "old remote content");
-            var nativeApi = new FakeCloudFilesNativeApi
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi
             {
                 HydrateAction = _ => throw new WindowsCloudFilesNativeException(
                     "CfHydratePlaceholder",
@@ -737,8 +737,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             };
             RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/available-offline.txt");
             TrackExistingFilePlaceholder(nativeApi, target, request);
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var adapter = new WindowsCloudFilesAdapter(
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 diagnostics: diagnostics,
@@ -886,18 +886,18 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateFilePlaceholder_RetriesTransientUpdatePathOpenFailure()
         {
-            var nativeApi = new FakeCloudFilesNativeApi
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi
             {
                 UpdateFailuresBeforeSuccess = 1,
             };
-            var diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
             string root = Path.Combine(_tempDirectory, "root");
             string target = Path.GetFullPath(Path.Combine(root, "Projects", "remote-only.txt"));
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.WriteAllText(target, string.Empty);
             RemoteFilePlaceholderRequest request = CreateRequest(root, "Projects/remote-only.txt");
             TrackExistingFilePlaceholder(nativeApi, target, request);
-            var adapter = new WindowsCloudFilesAdapter(
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 diagnostics: diagnostics,
@@ -924,8 +924,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void UnregisterSyncRoot_ClearsRegistrationCacheForFuturePlaceholderCreation()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
             string root = Path.Combine(_tempDirectory, "root");
             SyncPairSettings syncPair = CreateSyncPair(root);
 
@@ -944,8 +944,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task FinalizeUploadedFilePlaceholder_ConvertsRegularUploadedFileAndMarksInSync()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
             string root = Path.Combine(_tempDirectory, "root");
             string target = Path.GetFullPath(Path.Combine(root, "Projects", "report.txt"));
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
@@ -955,7 +955,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             RemoteFilePlaceholderResult result = await adapter.FinalizeUploadedFilePlaceholderAsync(syncPair, state);
 
-            var converted = nativeApi.ConvertedPlaceholders.Single();
+            RecordingWindowsCloudFilesNativeApi.ConvertedPlaceholderCall converted =
+                nativeApi.ConvertedPlaceholders.Single();
             WindowsCloudFilesPlaceholderIdentity identity =
                 WindowsCloudFilesPlaceholderIdentity.Parse(converted.FileIdentity);
             Assert.Multiple(() =>
@@ -982,12 +983,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task FinalizeUploadedFilePlaceholder_WhenPathIsAlreadyPlaceholderUpdatesIdentityAndMarksInSync()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
             string root = Path.Combine(_tempDirectory, "root");
             string target = Path.GetFullPath(Path.Combine(root, "Projects", "report.txt"));
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.WriteAllText(target, "uploaded content");
-            var adapter = new WindowsCloudFilesAdapter(
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 isReparsePoint: path => string.Equals(Path.GetFullPath(path), target, StringComparison.OrdinalIgnoreCase));
@@ -1013,8 +1014,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task FinalizeUploadedFilePlaceholder_RejectsMissingRemoteIdentityBeforeNativeCalls()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
             string root = Path.Combine(_tempDirectory, "root");
             string target = Path.GetFullPath(Path.Combine(root, "Projects", "report.txt"));
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
@@ -1037,8 +1038,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateFilePlaceholder_RejectsDotSegmentsBeforeNativeCalls()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
             RemoteFilePlaceholderRequest request = CreateRequest(Path.Combine(_tempDirectory, "root"), @"Projects\..\outside.txt");
 
             Assert.Throws<SyncPathValidationException>(() => adapter.CreateFilePlaceholder(request));
@@ -1053,11 +1054,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateFilePlaceholder_RejectsReparsePointAncestorsBeforeNativeCalls()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
             string root = Path.Combine(_tempDirectory, "root");
             string reparseDirectory = Path.GetFullPath(Path.Combine(root, "Projects"));
             Directory.CreateDirectory(reparseDirectory);
-            var adapter = new WindowsCloudFilesAdapter(
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 isReparsePoint: path => string.Equals(Path.GetFullPath(path), reparseDirectory, StringComparison.OrdinalIgnoreCase));
@@ -1077,8 +1078,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateFilePlaceholder_RejectsOversizedIdentityBeforeNativeCalls()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
             string longPath = string.Join("/", Enumerable.Range(0, 24).Select(index => "segment-" + index.ToString("D2").PadRight(180, 'x'))) + "/file.txt";
             RemoteFilePlaceholderRequest request = CreateRequest(Path.Combine(_tempDirectory, "root"), longPath);
 
@@ -1096,8 +1097,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateFilePlaceholder_RejectsInvalidSyncPairIdBeforeNativeCalls()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
             RemoteFilePlaceholderRequest request = CreateRequest(Path.Combine(_tempDirectory, "root"), "remote-only.txt", syncPairId: "not-a-guid");
 
             ArgumentException? exception =
@@ -1114,12 +1115,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void CreateFilePlaceholder_PropagatesNativeCloudFilesFailures()
         {
-            var nativeApi = new FakeCloudFilesNativeApi
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi
             {
                 RegisterException = new WindowsCloudFilesNativeException("CfRegisterSyncRoot", unchecked((int)0x8007017C)),
             };
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi, diagnostics: diagnostics);
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi, diagnostics: diagnostics);
             RemoteFilePlaceholderRequest request = CreateRequest(Path.Combine(_tempDirectory, "root"), "remote-only.txt");
 
             WindowsCloudFilesNativeException? exception =
@@ -1141,10 +1142,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void ConnectSyncRoot_ConnectsSafeRootThroughNativeBoundary()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
             string root = Path.Combine(_tempDirectory, "root");
-            var handler = new RecordingCallbackHandler();
+            RecordingCallbackHandler handler = new RecordingCallbackHandler();
 
             using WindowsCloudFilesConnection connection = adapter.ConnectSyncRoot(CreateSyncPair(root), handler);
 
@@ -1167,9 +1168,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void ConnectSyncRoot_RejectsUnsafeRootBeforeNativeBoundary()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
-            var handler = new RecordingCallbackHandler();
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            RecordingCallbackHandler handler = new RecordingCallbackHandler();
 
             InvalidOperationException? exception =
                 Assert.Throws<InvalidOperationException>(() => adapter.ConnectSyncRoot(CreateSyncPair(@"C:\"), handler));
@@ -1184,9 +1185,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void UnregisterSyncRoot_UsesSafeRegisteredRootThroughNativeBoundary()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi, diagnostics: diagnostics);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi, diagnostics: diagnostics);
             string root = Path.Combine(_tempDirectory, "root");
             SyncPairSettings syncPair = CreateSyncPair(root);
 
@@ -1206,10 +1207,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void UnregisterSyncRoot_UnregistersStorageProviderSyncRoot()
         {
-            var operations = new List<string>();
-            var nativeApi = new FakeCloudFilesNativeApi { OperationLog = operations };
-            var storageProvider = new FakeStorageProviderSyncRootRegistrar(operations);
-            var adapter = new WindowsCloudFilesAdapter(
+            List<string> operations = new List<string>();
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi { OperationLog = operations };
+            FakeStorageProviderSyncRootRegistrar storageProvider = new FakeStorageProviderSyncRootRegistrar(operations);
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 storageProviderRegistrar: storageProvider);
@@ -1230,15 +1231,15 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void UnregisterSyncRoot_UnregistersStorageProviderWhenNativeRootIsAlreadyMissing()
         {
-            var operations = new List<string>();
-            var nativeApi = new FakeCloudFilesNativeApi
+            List<string> operations = new List<string>();
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi
             {
                 OperationLog = operations,
                 UnregisterException = new WindowsCloudFilesNativeException("CfUnregisterSyncRoot", HResultPathNotFound),
             };
-            var storageProvider = new FakeStorageProviderSyncRootRegistrar(operations);
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var adapter = new WindowsCloudFilesAdapter(
+            FakeStorageProviderSyncRootRegistrar storageProvider = new FakeStorageProviderSyncRootRegistrar(operations);
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 storageProviderRegistrar: storageProvider,
@@ -1264,8 +1265,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void UnregisterSyncRoot_RejectsUnsafeRootBeforeNativeBoundary()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
 
             InvalidOperationException? exception =
                 Assert.Throws<InvalidOperationException>(() => adapter.UnregisterSyncRoot(CreateSyncPair(@"C:\")));
@@ -1280,12 +1281,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void UnregisterSyncRoot_PropagatesNativeCloudFilesFailures()
         {
-            var nativeApi = new FakeCloudFilesNativeApi
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi
             {
                 UnregisterException = new WindowsCloudFilesNativeException("CfUnregisterSyncRoot", unchecked((int)0x8007017C)),
             };
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi, diagnostics: diagnostics);
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi, diagnostics: diagnostics);
             SyncPairSettings syncPair = CreateSyncPair(Path.Combine(_tempDirectory, "root"));
 
             WindowsCloudFilesNativeException? exception =
@@ -1306,9 +1307,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void DehydratePlaceholder_UsesSafeRootAndRelativePathThroughNativeBoundary()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi, diagnostics: diagnostics);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi, diagnostics: diagnostics);
             string root = Path.Combine(_tempDirectory, "root");
             SyncPairSettings syncPair = CreateSyncPair(root);
 
@@ -1356,13 +1357,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void HydratePlaceholder_HydratesPinsMarksInSyncAndNotifiesShell()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var shellChanges = new RecordingShellChangeNotifier();
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            RecordingShellChangeNotifier shellChanges = new RecordingShellChangeNotifier();
             string root = Path.Combine(_tempDirectory, "root");
             string target = Path.GetFullPath(Path.Combine(root, "Projects", "remote-only.txt"));
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.WriteAllText(target, string.Empty);
-            var adapter = new WindowsCloudFilesAdapter(
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 shellChangeNotifier: shellChanges,
@@ -1420,13 +1421,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void PinPlaceholder_PinsDirectoryAndNotifiesShell()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var shellChanges = new RecordingShellChangeNotifier();
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            RecordingShellChangeNotifier shellChanges = new RecordingShellChangeNotifier();
             string root = Path.Combine(_tempDirectory, "root");
             string target = Path.GetFullPath(Path.Combine(root, "Music", "Album"));
             Directory.CreateDirectory(target);
-            var adapter = new WindowsCloudFilesAdapter(
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 diagnostics: diagnostics,
@@ -1451,9 +1452,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void SetInSyncState_ForwardsDirectoryPlaceholderToNativeBoundary()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var adapter = new WindowsCloudFilesAdapter(
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 diagnostics: diagnostics,
@@ -1480,9 +1481,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void SetInSyncState_ForwardsDirectoryWhenReparseHeuristicIsFalse()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var adapter = new WindowsCloudFilesAdapter(
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 diagnostics: diagnostics,
@@ -1508,13 +1509,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void SetInSyncState_FailsWhenDirectoryStillReportsPartialState()
         {
-            var nativeApi = new FakeCloudFilesNativeApi
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi
             {
                 InSyncStateAfterSet = WindowsCloudFilesPlaceholderState.InSync | WindowsCloudFilesPlaceholderState.Partial,
             };
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var shellChanges = new RecordingShellChangeNotifier();
-            var adapter = new WindowsCloudFilesAdapter(
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            RecordingShellChangeNotifier shellChanges = new RecordingShellChangeNotifier();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 shellChangeNotifier: shellChanges,
@@ -1546,9 +1547,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void SetInSyncState_NotifiesExplorerAfterDirectoryStatusFinalization()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var shellChanges = new RecordingShellChangeNotifier();
-            var adapter = new WindowsCloudFilesAdapter(
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            RecordingShellChangeNotifier shellChanges = new RecordingShellChangeNotifier();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 shellChangeNotifier: shellChanges,
@@ -1571,9 +1572,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void SetInSyncState_SkipsNonPlaceholderFileWhenReparseHeuristicIsFalse()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var adapter = new WindowsCloudFilesAdapter(
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 diagnostics: diagnostics,
@@ -1627,9 +1628,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void SetSyncRootInSyncState_ForwardsRootToNativeBoundary()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var adapter = new WindowsCloudFilesAdapter(
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 diagnostics: diagnostics);
@@ -1653,12 +1654,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void SetSyncRootInSyncState_FailsWhenNativeStateDoesNotReportInSync()
         {
-            var nativeApi = new FakeCloudFilesNativeApi
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi
             {
                 InSyncStateAfterSet = WindowsCloudFilesPlaceholderState.SyncRoot,
             };
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var adapter = new WindowsCloudFilesAdapter(
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 diagnostics: diagnostics);
@@ -1684,15 +1685,15 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void SetSyncRootInSyncState_AllowsRootAggregatePartialState()
         {
-            var nativeApi = new FakeCloudFilesNativeApi
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi
             {
                 InSyncStateAfterSet =
                     WindowsCloudFilesPlaceholderState.SyncRoot
                     | WindowsCloudFilesPlaceholderState.InSync
                     | WindowsCloudFilesPlaceholderState.Partial,
             };
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var adapter = new WindowsCloudFilesAdapter(
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 diagnostics: diagnostics);
@@ -1715,9 +1716,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void SetSyncRootInSyncState_NotifiesExplorerAfterRootStatusFinalization()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var shellChanges = new RecordingShellChangeNotifier();
-            var adapter = new WindowsCloudFilesAdapter(
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            RecordingShellChangeNotifier shellChanges = new RecordingShellChangeNotifier();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 shellChangeNotifier: shellChanges);
@@ -1738,9 +1739,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task FinalizeUploadedFilePlaceholder_NotifiesExplorerAfterUploadedFileStatusFinalization()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var shellChanges = new RecordingShellChangeNotifier();
-            var adapter = new WindowsCloudFilesAdapter(
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            RecordingShellChangeNotifier shellChanges = new RecordingShellChangeNotifier();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
                 shellChangeNotifier: shellChanges,
@@ -1844,9 +1845,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void TransferData_ForwardsToNativeBoundary()
         {
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
-            var request = new WindowsCloudFilesFetchDataRequest(
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(CreatePolicy(), nativeApi);
+            WindowsCloudFilesFetchDataRequest request = new WindowsCloudFilesFetchDataRequest(
                 new WindowsCloudFilesConnectionKey(1),
                 new WindowsCloudFilesTransferKey(2),
                 new WindowsCloudFilesRequestKey(3),

@@ -38,7 +38,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             File.WriteAllText(paths.LogFilePath, "sync log");
-            var exporter = new DesktopDiagnosticsExporter();
+            DesktopDiagnosticsExporter exporter = new DesktopDiagnosticsExporter();
 
             string archivePath = await exporter.ExportAsync(paths, CreateBundle(paths));
 
@@ -57,7 +57,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
             File.WriteAllText(paths.TokenStorePath, "secret-token");
             File.WriteAllText(paths.AppDatabasePath, "app-db");
             File.WriteAllText(paths.SyncStateDatabasePath, "sync-db");
-            var exporter = new DesktopDiagnosticsExporter();
+            DesktopDiagnosticsExporter exporter = new DesktopDiagnosticsExporter();
 
             string archivePath = await exporter.ExportAsync(paths, CreateBundle(paths));
 
@@ -82,7 +82,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                 {"password":"secret","refreshToken":"refresh-token","totpCode":"123456","twoFactorCode":"654321"}
                 https://app.cottoncloud.dev/callback?access_token=query-access&refresh_token=query-refresh
                 """);
-            var exporter = new DesktopDiagnosticsExporter();
+            DesktopDiagnosticsExporter exporter = new DesktopDiagnosticsExporter();
 
             string archivePath = await exporter.ExportAsync(paths, CreateBundle(paths));
 
@@ -111,7 +111,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         public async Task ExportAsync_SerializesSyncPairModeAsReadableString()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var exporter = new DesktopDiagnosticsExporter();
+            DesktopDiagnosticsExporter exporter = new DesktopDiagnosticsExporter();
 
             string archivePath = await exporter.ExportAsync(paths, CreateBundle(paths));
 
@@ -130,7 +130,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         public async Task ExportAsync_SerializesDataPathMetadata()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var exporter = new DesktopDiagnosticsExporter();
+            DesktopDiagnosticsExporter exporter = new DesktopDiagnosticsExporter();
 
             string archivePath = await exporter.ExportAsync(paths, CreateBundle(paths));
 
@@ -152,8 +152,8 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         public async Task ExportAsync_SerializesCloudFilesDiagnosticEvents()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var exporter = new DesktopDiagnosticsExporter();
-            var cloudFilesEvent = new WindowsCloudFilesDiagnosticEvent(
+            DesktopDiagnosticsExporter exporter = new DesktopDiagnosticsExporter();
+            WindowsCloudFilesDiagnosticEvent cloudFilesEvent = new WindowsCloudFilesDiagnosticEvent(
                 DateTimeOffset.Parse("2026-06-16T10:00:00Z", System.Globalization.CultureInfo.InvariantCulture),
                 "hydrate",
                 "failed",
@@ -203,7 +203,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                 + Environment.NewLine
                 + cloudRelativePath;
             File.WriteAllText(paths.LogFilePath, logContent);
-            var exporter = new DesktopDiagnosticsExporter();
+            DesktopDiagnosticsExporter exporter = new DesktopDiagnosticsExporter();
 
             string archivePath = await exporter.ExportAsync(
                 paths,
@@ -259,7 +259,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
             File.WriteAllText(
                 paths.LogFilePath,
                 "Scanned local tree metadata for " + historicalPath + " with 0 directories and 1 files in 12 ms.");
-            var exporter = new DesktopDiagnosticsExporter();
+            DesktopDiagnosticsExporter exporter = new DesktopDiagnosticsExporter();
 
             string archivePath = await exporter.ExportAsync(paths, CreateBundle(paths));
 
@@ -293,7 +293,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                     remoteRoot,
                     cloudRelativePath,
                     "Authorization: Bearer access-token"));
-            var exporter = new DesktopDiagnosticsExporter();
+            DesktopDiagnosticsExporter exporter = new DesktopDiagnosticsExporter();
 
             string archivePath = await exporter.ExportAsync(
                 paths,
@@ -350,8 +350,8 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             const string serverUrl = "https://private.cotton.example/";
-            var exporter = new DesktopDiagnosticsExporter();
-            var auth = DesktopAuthDiagnosticsSnapshot.Initial with
+            DesktopDiagnosticsExporter exporter = new DesktopDiagnosticsExporter();
+            DesktopAuthDiagnosticsSnapshot auth = DesktopAuthDiagnosticsSnapshot.Initial with
             {
                 LastSessionRestoreStatus = "failed",
                 LastSessionRestoreFailureType = "CottonApiException",
@@ -380,15 +380,15 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         public async Task ExportAsync_SerializesStateAndRuntimeHealthMetrics()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var exporter = new DesktopDiagnosticsExporter();
-            var syncState = new SyncStateStoreDiagnostics(
+            DesktopDiagnosticsExporter exporter = new DesktopDiagnosticsExporter();
+            SyncStateStoreDiagnostics syncState = new SyncStateStoreDiagnostics(
                 FileSizeBytes: 8192,
                 PageCount: 2,
                 FreelistCount: 1,
                 PageSizeBytes: 4096,
                 SyncEntryCount: 3,
                 SyncChangeCursorCount: 1);
-            var runtimeHealth = new DesktopRuntimeHealthSnapshot(
+            DesktopRuntimeHealthSnapshot runtimeHealth = new DesktopRuntimeHealthSnapshot(
                 ProcessId: 123,
                 ProcessName: "Cotton.Sync.Desktop",
                 WorkingSetBytes: 456,
@@ -425,8 +425,8 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         public async Task ExportAsync_SerializesSyncLifecycleDiagnostics()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var exporter = new DesktopDiagnosticsExporter();
-            var syncLifecycle = new DesktopSyncLifecycleDiagnosticsSnapshot(
+            DesktopDiagnosticsExporter exporter = new DesktopDiagnosticsExporter();
+            DesktopSyncLifecycleDiagnosticsSnapshot syncLifecycle = new DesktopSyncLifecycleDiagnosticsSnapshot(
                 IsSignedIn: true,
                 SyncCoreState: "running",
                 IsBackgroundActive: true,
@@ -463,8 +463,8 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         public async Task ExportAsync_SerializesNotificationDiagnosticsAndSanitizesSelfTestDetails()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var exporter = new DesktopDiagnosticsExporter();
-            var notification = new DesktopNotificationDiagnosticsSnapshot(
+            DesktopDiagnosticsExporter exporter = new DesktopDiagnosticsExporter();
+            DesktopNotificationDiagnosticsSnapshot notification = new DesktopNotificationDiagnosticsSnapshot(
                 Platform: "Windows",
                 AdapterName: "Windows toast",
                 IsSupported: true,
@@ -475,7 +475,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                 IsInstalledAppIdentityVerified: false,
                 IdentityStatus: "debug-identity-only",
                 Details: "PowerShell toast delivery helper is available, but installed Start Menu AppUserModelID identity is not verified.");
-            var selfTestItems = new[]
+            DesktopSelfTestItemSnapshot[] selfTestItems = new[]
             {
                 new DesktopSelfTestItemSnapshot(
                     "Notification adapter",
@@ -510,9 +510,9 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         public async Task ExportAsync_SerializesUpdateDiagnosticsWithoutInstallerPath()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var exporter = new DesktopDiagnosticsExporter();
+            DesktopDiagnosticsExporter exporter = new DesktopDiagnosticsExporter();
             string installerPath = Path.Combine(paths.UpdateCacheDirectory, "0.0.2", "CottonSync-Windows-Setup.exe");
-            var update = new DesktopUpdateDiagnosticsSnapshot(
+            DesktopUpdateDiagnosticsSnapshot update = new DesktopUpdateDiagnosticsSnapshot(
                 CurrentVersion: "0.0.1",
                 IsUpdateCacheDirectoryPresent: true,
                 HasPendingUpdate: true,
@@ -556,9 +556,9 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         public async Task ExportAsync_SerializesCloudFilesRegistrationDiagnosticsWithoutLocalPaths()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var exporter = new DesktopDiagnosticsExporter();
+            DesktopDiagnosticsExporter exporter = new DesktopDiagnosticsExporter();
             const string localRoot = @"C:\Users\Person\Cotton\Virtual";
-            var cloudFilesRegistration = new DesktopCloudFilesRegistrationDiagnosticsSnapshot(
+            DesktopCloudFilesRegistrationDiagnosticsSnapshot cloudFilesRegistration = new DesktopCloudFilesRegistrationDiagnosticsSnapshot(
                 IsWindows: true,
                 IsStorageProviderHelperAvailable: true,
                 IsStorageProviderSupported: true,
@@ -607,8 +607,8 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         public async Task ExportAsync_RemainsBoundedAfterLargeCloudFilesDiagnosticStorm()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var exporter = new DesktopDiagnosticsExporter();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
+            DesktopDiagnosticsExporter exporter = new DesktopDiagnosticsExporter();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
 
             for (int index = 0; index < 10_000; index++)
             {
@@ -740,7 +740,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
             ZipArchiveEntry entry = archive.GetEntry(entryName) ?? throw new InvalidOperationException(
                 "Diagnostics archive entry is missing: " + entryName);
             using Stream stream = entry.Open();
-            using var reader = new StreamReader(stream);
+            using StreamReader reader = new StreamReader(stream);
             return reader.ReadToEnd();
         }
     }

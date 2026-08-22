@@ -192,7 +192,7 @@ namespace Cotton.Sync.Cli
             SyncChangeCursor cursor;
             try
             {
-                var store = new SqliteSyncStateStore(databasePath);
+                SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
                 await store.InitializeAsync(cancellationToken).ConfigureAwait(false);
                 entries = await store
                     .LoadPairAsync(syncPairId, cancellationToken)

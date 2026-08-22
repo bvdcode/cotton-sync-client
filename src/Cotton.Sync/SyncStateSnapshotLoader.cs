@@ -35,8 +35,8 @@ namespace Cotton.Sync
             IEnumerable<string> keys,
             CancellationToken cancellationToken)
         {
-            var directoryStateByPath = new Dictionary<string, SyncStateEntry>(PathComparer);
-            var fileStateByPath = new Dictionary<string, SyncStateEntry>(PathComparer);
+            Dictionary<string, SyncStateEntry> directoryStateByPath = new Dictionary<string, SyncStateEntry>(PathComparer);
+            Dictionary<string, SyncStateEntry> fileStateByPath = new Dictionary<string, SyncStateEntry>(PathComparer);
             await foreach (SyncStateEntry entry in stateStore.LoadEntriesByPathKeysAsync(syncPairId, keys, cancellationToken)
                                .WithCancellation(cancellationToken)
                                .ConfigureAwait(false))
@@ -69,8 +69,8 @@ namespace Cotton.Sync
             string syncPairId,
             CancellationToken cancellationToken)
         {
-            var directoryStateByPath = new Dictionary<string, SyncStateEntry>(PathComparer);
-            var fileStateByPath = new Dictionary<string, SyncStateEntry>(PathComparer);
+            Dictionary<string, SyncStateEntry> directoryStateByPath = new Dictionary<string, SyncStateEntry>(PathComparer);
+            Dictionary<string, SyncStateEntry> fileStateByPath = new Dictionary<string, SyncStateEntry>(PathComparer);
             await foreach (SyncStateEntry entry in stateStore.LoadPairEntriesAsync(syncPairId, cancellationToken)
                                .WithCancellation(cancellationToken)
                                .ConfigureAwait(false))

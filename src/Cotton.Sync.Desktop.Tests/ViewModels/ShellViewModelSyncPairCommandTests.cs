@@ -26,7 +26,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public void SelfTestItemRowViewModel_TracksDetailsAvailability()
         {
-            var item = new SelfTestItemRowViewModel
+            SelfTestItemRowViewModel item = new SelfTestItemRowViewModel
             {
                 Details = "Server identity check failed with a long supportable explanation.",
             };
@@ -40,7 +40,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task ToggleSelectedSyncPairEnabledCommand_DisablesSelectedPair()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -64,7 +64,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             Guid disabledSyncPairId = Guid.NewGuid();
             Guid otherSyncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(disabledSyncPairId, "Cloud", "Paused"),
                     CreatePair(otherSyncPairId, "Videos", "Paused")));
@@ -94,7 +94,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             Guid firstSyncPairId = Guid.NewGuid();
             Guid secondSyncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(firstSyncPairId, "Documents", "Idle"),
                     CreatePair(secondSyncPairId, "Pictures", "Idle")));
@@ -146,7 +146,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RemoveSelectedSyncPairCommand_NotifiesConfirmationActionsVisibility()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Idle", mode: SyncPairMode.WindowsVirtualFiles)));
             using ShellViewModel viewModel = CreateViewModel(controller);
             List<string?> changedProperties = new();
@@ -169,7 +169,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RemoveSelectedSyncPairCommand_WarnsBeforeRemovingVirtualFilesPair()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(CreatePair(syncPairId, "Desktop", "Idle", mode: SyncPairMode.WindowsVirtualFiles)));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
@@ -187,7 +187,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task ConfirmRemoveSelectedSyncPairCommand_ShowsProgressWhileVirtualFilesRootIsRemoved()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(CreatePair(syncPairId, "Desktop", "Idle", mode: SyncPairMode.WindowsVirtualFiles)))
             {
                 RemoveSyncPairStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
@@ -231,7 +231,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task ConfirmRemoveSelectedSyncPairCommand_RunsRemovalAwayFromCallerThread()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(CreatePair(syncPairId, "Desktop", "Idle", mode: SyncPairMode.WindowsVirtualFiles)))
             {
                 RemoveSyncPairStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
@@ -260,7 +260,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             Guid firstSyncPairId = Guid.NewGuid();
             Guid secondSyncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(firstSyncPairId, "Documents", "Idle"),
                     CreatePair(secondSyncPairId, "Pictures", "Idle")));
@@ -306,7 +306,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task SaveSelectedSyncPairNameCommand_PersistsTrimmedName()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             viewModel.SelectedSyncPair!.EditableDisplayName = "  Work documents  ";
@@ -329,7 +329,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task SaveSelectedSyncPairNameCommand_RejectsEmptyName()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             viewModel.SelectedSyncPair!.EditableDisplayName = "   ";
@@ -350,7 +350,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task SyncNowCommand_RetriesActionRequiredSyncAndClearsMessage()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Error")))
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Error")))
             {
                 SyncAllStatus = new DesktopSyncStatusSnapshot(
                 [
@@ -400,7 +400,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             [
                 new DesktopSyncPairStatusSnapshot(syncPairId, "Error", rawError),
             ]);
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(CreatePair(syncPairId, "Music", "Error")))
             {
                 SyncAllStatus = guardedStatus,
@@ -439,7 +439,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             Guid firstSyncPairId = Guid.NewGuid();
             Guid secondSyncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(firstSyncPairId, "Music", "Error"),
                     CreatePair(secondSyncPairId, "Photos", "Error")));
@@ -471,7 +471,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task Initialize_TreatsSyncPairErrorAsAttentionBeforeErrorMessageIsResolved()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Videos", "Error")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Videos", "Error")));
             using ShellViewModel viewModel = CreateViewModel(controller);
 
             await viewModel.InitializeAsync();
@@ -492,7 +492,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task SelfTestPass_PreservesCurrentSyncPairErrorActionRequired()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Idle")))
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Idle")))
             {
                 SelfTestSnapshot = new DesktopSelfTestSnapshot(
                 [
@@ -526,7 +526,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task CommandFailure_UpdatesProgressTextInsteadOfReportingUpToDate()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
             {
                 SyncAllException = new CottonApiException(
                     HttpStatusCode.OK,
@@ -554,7 +554,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task CommandTransientServerFailure_ShowsOfflineWithoutActionRequired()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
             {
                 SyncAllException = new AggregateException(
                     new CottonApiException(
@@ -582,7 +582,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsSettings()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -641,8 +641,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsAddFolderWizard()
         {
-            var localFolderPicker = new FakeLocalFolderPicker();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            FakeLocalFolderPicker localFolderPicker = new FakeLocalFolderPicker();
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
             controller.RemoteFoldersByPath["/"] = new DesktopRemoteFolderListSnapshot(
                 "/",
                 [
@@ -672,8 +672,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsManyRemoteFolders()
         {
-            var localFolderPicker = new FakeLocalFolderPicker();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            FakeLocalFolderPicker localFolderPicker = new FakeLocalFolderPicker();
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
             controller.RemoteFoldersByPath["/"] = new DesktopRemoteFolderListSnapshot(
                 "/",
                 Enumerable.Range(1, 250)
@@ -702,8 +702,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsEmptyDashboardWithoutOpeningWizard()
         {
-            var localFolderPicker = new FakeLocalFolderPicker();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            FakeLocalFolderPicker localFolderPicker = new FakeLocalFolderPicker();
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
             using ShellViewModel viewModel = CreateViewModel(controller, localFolderPicker: localFolderPicker);
             await viewModel.InitializeAsync();
 
@@ -725,7 +725,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsSettingsDiagnosticsTab()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
             {
                 SelfTestSnapshot = new DesktopSelfTestSnapshot(
                 [
@@ -754,7 +754,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsActionRequiredError()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -774,7 +774,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsMissingLocalRootError()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -797,7 +797,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsOfflineState()
         {
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(Guid.NewGuid(), "Documents", "Idle"),
                     CreatePair(Guid.NewGuid(), "Camera uploads", "Idle")));
@@ -824,7 +824,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsProgressCards()
         {
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(Guid.NewGuid(), "Documents", "Syncing"),
                     CreatePair(Guid.NewGuid(), "Camera uploads", "Syncing")));
@@ -854,7 +854,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsLongProgressFileName()
         {
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(Guid.NewGuid(), "Documents", "Syncing"),
                     CreatePair(Guid.NewGuid(), "Camera uploads", "Idle")));
@@ -881,7 +881,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsManySmallDownloadProgress()
         {
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(Guid.NewGuid(), "Documents", "Syncing"),
                     CreatePair(Guid.NewGuid(), "Camera uploads", "Idle")));
@@ -908,7 +908,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsHighPressureStartingWithoutZeroCounter()
         {
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(Guid.NewGuid(), "Documents", "Syncing"),
                     CreatePair(Guid.NewGuid(), "Camera uploads", "Idle")));
@@ -934,7 +934,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsVirtualFilesSeedingWithoutQueuedOrDownloadCopy()
         {
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(Guid.NewGuid(), "Cloud", "Syncing", mode: SyncPairMode.WindowsVirtualFiles),
                     CreatePair(Guid.NewGuid(), "Camera uploads", "Idle")));
@@ -1010,7 +1010,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             Guid firstPairId = Guid.NewGuid();
             Guid secondPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(firstPairId, "Documents", "Idle"),
                     CreatePair(secondPairId, "Photos", "Idle")));
@@ -1034,7 +1034,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsConflictList()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -1052,7 +1052,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task PauseResumeCommands_AreMutuallyAvailable()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -1100,8 +1100,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task GlobalControls_RemainAvailableWhileManualSyncIsRunning()
         {
-            var syncAllCompletion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            TaskCompletionSource<bool> syncAllCompletion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
             {
                 SyncAllCompletion = syncAllCompletion,
             };
@@ -1139,9 +1139,9 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task PauseResumeCommand_ShowsPausingWhilePauseRequestIsRunning()
         {
-            var pauseAllCompletion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> pauseAllCompletion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")))
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")))
             {
                 PauseAllCompletion = pauseAllCompletion,
             };
@@ -1181,7 +1181,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task PauseResumeCommand_RemainsAvailableDuringBackgroundSyncProgress()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -1219,7 +1219,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             Guid enabledPairId = Guid.NewGuid();
             Guid disabledPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(enabledPairId, "Documents", "Idle"),
                     CreatePair(disabledPairId, "Archive", "Disabled")));
@@ -1258,7 +1258,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task OpenFolderCommand_UsesRowParameterWhenProvided()
         {
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(Guid.NewGuid(), "Documents", "Idle"),
                     CreatePair(Guid.NewGuid(), "Pictures", "Idle")));
@@ -1273,7 +1273,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task OpenTrayFolderCommand_OpensSingleSyncPair()
         {
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
@@ -1293,7 +1293,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task OpenTrayFolderCommand_IsDisabledForMultipleSyncPairs()
         {
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(Guid.NewGuid(), "Documents", "Idle"),
                     CreatePair(Guid.NewGuid(), "Pictures", "Idle")));
@@ -1312,7 +1312,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task StatusChanged_UpdatesCurrentProgressText()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -1339,7 +1339,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             Guid enabledPairId = Guid.NewGuid();
             Guid disabledPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(enabledPairId, "Documents", "Idle"),
                     CreatePair(disabledPairId, "Archive", "Disabled")));
@@ -1366,7 +1366,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task StatusChanged_ShowsOfflineAsDistinctGlobalStatus()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -1393,7 +1393,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task StatusChanged_ShowsWaitingForLocalFileWithoutActionRequired()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             const string message = "Local file is not ready yet: Drafts/report.docx. Sync will retry.";
@@ -1425,7 +1425,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             Guid waitingPairId = Guid.NewGuid();
             Guid errorPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(
                 CreatePair(waitingPairId, "Documents", "Idle"),
                 CreatePair(errorPairId, "Photos", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
@@ -1449,7 +1449,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task StatusChanged_ClearsOfflineStateAfterConnectionRecovers()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -1481,7 +1481,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task StatusChanged_UsesHumanDiskFullActionRequiredMessage()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshotWithNotifications(
                     enableNotifications: false,
                     CreatePair(syncPairId, "Documents", "Idle")));
@@ -1506,7 +1506,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsHydrationProgressStartingState()
         {
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(Guid.NewGuid(), "Documents", "Syncing"),
                     CreatePair(Guid.NewGuid(), "Camera uploads", "Idle")));
@@ -1530,7 +1530,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsDehydrationProgressStartingState()
         {
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(Guid.NewGuid(), "Documents", "Syncing"),
                     CreatePair(Guid.NewGuid(), "Camera uploads", "Idle")));
@@ -1558,7 +1558,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             const string expectedMessage =
                 "Cotton Sync blocked a large remote delete plan (2207 pending deletes exceed limit 100). "
                 + "Check local files and Cotton Cloud, then explicitly approve the exact delete plan.";
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshotWithNotifications(
                     enableNotifications: false,
                     CreatePair(syncPairId, "Music", "Idle")));
@@ -1593,7 +1593,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             const string rawError = "'<' is an invalid start of a value. Path: $ | LineNumber: 0 | BytePositionInLine: 0.";
             const string expectedMessage =
                 "Cotton API returned a web page instead of JSON. Check the server URL or backend deployment and retry.";
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshotWithNotifications(
                     enableNotifications: false,
                     CreatePair(syncPairId, "Documents", "Idle")));
@@ -1620,7 +1620,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             Guid syncPairId = Guid.NewGuid();
             const string rawError = "There is not enough space on the disk.";
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshotWithNotifications(
                     enableNotifications: false,
                     CreatePair(syncPairId, "Documents", "Idle")));
@@ -1654,11 +1654,11 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task StatusChanged_BoundsChangingErrorFloodAndNativeNotifications()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshotWithNotifications(
                     enableNotifications: true,
                     CreatePair(syncPairId, "Documents", "Idle")));
-            var notificationService = new CollectingDesktopNotificationService();
+            CollectingDesktopNotificationService notificationService = new CollectingDesktopNotificationService();
             using ShellViewModel viewModel = CreateViewModel(controller, notificationService: notificationService);
             await viewModel.InitializeAsync();
 
@@ -1701,7 +1701,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task TransferProgressChanged_UpdatesCurrentTransferState()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -1736,7 +1736,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task TransferProgressChanged_ShowsHashProgressAsChecking()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -1764,7 +1764,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task TransferProgressChanged_DoesNotCountHashBytesAsRunTransferBytes()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             DateTime startedAtUtc = new(2026, 6, 7, 9, 0, 0, DateTimeKind.Utc);
@@ -1806,7 +1806,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task TransferProgressChanged_ShowsSyncingHeaderEvenWhenLatestStatusIsIdle()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Idle")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -1832,7 +1832,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task TransferProgressChanged_ShowsTransferSpeedAndRemainingTime()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -1861,8 +1861,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task TransferProgressChanged_CoalescesBurstBeforeUiQueue()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
-            var dispatcher = new QueuedDesktopUiDispatcher();
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            QueuedDesktopUiDispatcher dispatcher = new QueuedDesktopUiDispatcher();
             using ShellViewModel viewModel = CreateViewModel(controller, uiDispatcher: dispatcher);
             await viewModel.InitializeAsync();
             DateTime occurredAtUtc = new(2026, 6, 6, 10, 0, 0, DateTimeKind.Utc);
@@ -1901,7 +1901,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task TransferProgressChanged_ThrottlesVisibleUpdates()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             DateTime startedAtUtc = new(2026, 6, 7, 10, 0, 0, DateTimeKind.Utc);
@@ -1949,7 +1949,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task TransferProgressChanged_ClearsCompletedTransferState()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             DateTime startedAtUtc = new(2026, 6, 7, 10, 0, 0, DateTimeKind.Utc);
@@ -1987,8 +1987,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task TransferProgressChanged_CoalescedCompletionDoesNotLeaveStaleTransfer()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
-            var dispatcher = new QueuedDesktopUiDispatcher();
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            QueuedDesktopUiDispatcher dispatcher = new QueuedDesktopUiDispatcher();
             using ShellViewModel viewModel = CreateViewModel(controller, uiDispatcher: dispatcher);
             await viewModel.InitializeAsync();
             DateTime startedAtUtc = new(2026, 7, 25, 20, 46, 18, DateTimeKind.Utc);
@@ -2074,7 +2074,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_UpdatesCurrentRunProgressState()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -2113,7 +2113,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_UpdatesPlaceholderCreationProgressState()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -2148,7 +2148,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_HidesZeroOfTotalBeforeFirstCountedFile()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -2179,7 +2179,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_DoesNotFlickerBackToZeroWhenCurrentPathDropsDuringPressure()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             DateTime startedAtUtc = new(2026, 6, 15, 11, 20, 0, DateTimeKind.Utc);
@@ -2218,7 +2218,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_UsesPlannedBytesForGlobalProgress()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             const long totalBytes = 10L * 1024 * 1024 * 1024;
@@ -2249,7 +2249,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_ManySmallDownloadCounterMovesForward()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             DateTime startedAtUtc = new(2026, 6, 15, 11, 5, 0, DateTimeKind.Utc);
@@ -2298,7 +2298,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_KeepsQueuedWorkIndicatorOffForSmallBatches()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -2319,7 +2319,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_UsesGlobalBytesForHeaderSpeedAndEstimate()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             DateTime startedAtUtc = new(2026, 6, 7, 9, 0, 0, DateTimeKind.Utc);
@@ -2360,7 +2360,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_ThrottlesVisibleUpdates()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             DateTime startedAtUtc = new(2026, 6, 7, 10, 0, 0, DateTimeKind.Utc);
@@ -2411,7 +2411,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_UpdatesDirectoryRunProgressState()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -2446,8 +2446,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_CoalescesBurstBeforeUiQueue()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
-            var dispatcher = new QueuedDesktopUiDispatcher();
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            QueuedDesktopUiDispatcher dispatcher = new QueuedDesktopUiDispatcher();
             using ShellViewModel viewModel = CreateViewModel(controller, uiDispatcher: dispatcher);
             await viewModel.InitializeAsync();
             DateTime occurredAtUtc = new(2026, 6, 6, 10, 0, 0, DateTimeKind.Utc);
@@ -2488,7 +2488,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_ShowsLocalScanDiscoveryCount()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -2519,7 +2519,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_ShowsLocalScanCurrentPathBeforeFilesAreFound()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -2546,7 +2546,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_ShowsRemoteScanDiscoveryCount()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -2577,7 +2577,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_KeepsQueuedWorkIndicatorOffForLargeRemoteScan()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -2603,7 +2603,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_KeepsQueuedWorkIndicatorOffForLargePlaceholderCreation()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -2629,7 +2629,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_KeepsPlaceholderCreationStableBeforeFirstCreatedFile()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             DateTime startedAtUtc = new(2026, 6, 17, 3, 50, 0, DateTimeKind.Utc);
@@ -2702,7 +2702,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_ShowsRemoteScanCurrentPathBeforeFilesAreFound()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -2730,7 +2730,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             Guid documentsPairId = Guid.NewGuid();
             Guid videosPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(documentsPairId, "Documents", "Syncing"),
                     CreatePair(videosPairId, "Videos", "Syncing")));
@@ -2775,7 +2775,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             Guid documentsPairId = Guid.NewGuid();
             Guid videosPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(documentsPairId, "Documents", "Syncing"),
                     CreatePair(videosPairId, "Videos", "Syncing")));
@@ -2818,7 +2818,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             Guid documentsPairId = Guid.NewGuid();
             Guid videosPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(documentsPairId, "Documents", "Syncing"),
                     CreatePair(videosPairId, "Videos", "Syncing")));
@@ -2860,7 +2860,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             Guid documentsPairId = Guid.NewGuid();
             Guid videosPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(documentsPairId, "Documents", "Syncing"),
                     CreatePair(videosPairId, "Videos", "Syncing")));
@@ -2901,7 +2901,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_ClearsCompletedRunProgressBeforeIdleStatusArrives()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             controller.ReportRunProgress(new DesktopRunProgressSnapshot(
@@ -2943,7 +2943,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             Guid documentsPairId = Guid.NewGuid();
             Guid videosPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(documentsPairId, "Documents", "Syncing"),
                     CreatePair(videosPairId, "Videos", "Syncing")));
@@ -3027,7 +3027,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task TransferProgressChanged_KeepsRunProgressPrimaryForOneFolder()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -3256,7 +3256,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task TransferProgressChanged_KeepsGlobalRunByteProgressPrimaryForOneFolder()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             DateTime startedAtUtc = new(2026, 6, 7, 9, 0, 0, DateTimeKind.Utc);
@@ -3359,7 +3359,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 _ => throw new ArgumentOutOfRangeException(nameof(direction), direction, "Unexpected test direction."),
             };
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(CreatePair(syncPairId, "Music", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
@@ -3485,7 +3485,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task TransferProgressChanged_DoesNotCountUntransferredBytesOnTerminalSample()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             DateTime startedAtUtc = new(2026, 7, 25, 20, 46, 18, DateTimeKind.Utc);
@@ -3528,7 +3528,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task TransferProgressChanged_KeepsRunMetricsAfterCompletedSmallTransfers()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             DateTime startedAtUtc = new(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc);
@@ -3591,7 +3591,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_ShowsGlobalFileRateWhenByteRateIsUnavailable()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             DateTime startedAtUtc = new(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc);
@@ -3628,7 +3628,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_ShowsFolderRateForCloudFileFinalization()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             DateTime startedAtUtc = new(2026, 6, 26, 3, 40, 0, DateTimeKind.Utc);
@@ -3664,7 +3664,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_DoesNotShowPlaceholderEtaForGrowingStreamingTotal()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             DateTime startedAtUtc = new(2026, 6, 17, 4, 35, 0, DateTimeKind.Utc);
@@ -3702,7 +3702,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_KeepsPlaceholderRowOperationStableDuringStreamingBurst()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(
                 syncPairId,
                 "Cloud",
                 "Syncing",
@@ -3749,7 +3749,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_ShowsGlobalFileRateAfterShortManyFileProgress()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             DateTime startedAtUtc = new(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc);
@@ -3785,7 +3785,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             Guid firstSyncPairId = Guid.NewGuid();
             Guid secondSyncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(
                 CreatePair(firstSyncPairId, "Cloud", "Syncing"),
                 CreatePair(secondSyncPairId, "Videos", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
@@ -3832,7 +3832,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task TransferProgressChanged_UsesGlobalFileRateWhenActiveTransferHasNoByteRate()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             DateTime startedAtUtc = new(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc);
@@ -3876,7 +3876,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RunProgressChanged_EstimatesFromRecentFileProgressInsteadOfPassStart()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Videos", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             DateTime passStartedAtUtc = new(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc);
@@ -3912,7 +3912,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task StatusChanged_ClearsCurrentRunProgressWhenSyncBecomesIdle()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             controller.ReportRunProgress(new DesktopRunProgressSnapshot(
@@ -3953,7 +3953,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task StatusChanged_ClearsCurrentTransferWhenSyncBecomesIdle()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             controller.ReportTransferProgress(new DesktopTransferProgressSnapshot(
@@ -3992,7 +3992,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task Initialize_ShowsFirstSyncPendingUntilPairHasBaseline()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
 
             await viewModel.InitializeAsync();
@@ -4009,7 +4009,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task Initialize_ShowsUpToDateAfterPairHasBaseline()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(
                 Guid.NewGuid(),
                 "Documents",
                 "Idle",
@@ -4029,7 +4029,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task StatusChanged_UpdatesBaselineAndShowsUpToDateAfterSuccessfulSync()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -4054,7 +4054,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task StatusChanged_RecordsCompletionNotificationWithoutDashboardCard()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshotWithNotifications(
                     enableNotifications: false,
                     CreatePair(syncPairId, "Documents", "Syncing")));
@@ -4099,7 +4099,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task StatusChanged_DelaysVirtualFilesCompletionNotificationWhileCloudFilesProgressIsFresh()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshotWithNotifications(
                     enableNotifications: false,
                     CreatePair(syncPairId, "Cloud", "Syncing", mode: SyncPairMode.WindowsVirtualFiles)));
@@ -4174,7 +4174,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task StatusChanged_DelaysVirtualFilesCompletionNotificationWhileCloudFilesStatusIsFinalizing()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshotWithNotifications(
                     enableNotifications: false,
                     CreatePair(syncPairId, "Cloud", "Syncing", mode: SyncPairMode.WindowsVirtualFiles)));
@@ -4243,7 +4243,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             Guid completedPairId = Guid.NewGuid();
             Guid activePairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshotWithNotifications(
                     enableNotifications: false,
                     CreatePair(completedPairId, "Documents", "Syncing"),
@@ -4288,7 +4288,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task Initialize_AsksToEnableFolderWhenAllPairsAreDisabled()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Disabled")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Disabled")));
             using ShellViewModel viewModel = CreateViewModel(controller);
 
             await viewModel.InitializeAsync();
@@ -4303,7 +4303,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task InitializeAsync_UsesRememberedUsernameWhenRestoredAccountNameIsBlank()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot() with
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot() with
             {
                 AccountName = "   ",
                 RememberedUsername = "  desktop@example.test  ",
@@ -4327,7 +4327,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task InitializeAsync_UsesSnapshotDeviceName()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot() with
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot() with
             {
                 DeviceName = "Cotton Sync Desktop (QA-WIN11)",
             });
@@ -4341,7 +4341,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ActivityReported_AddsRecentActivityRow()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -4364,7 +4364,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task ActivityReported_CoalescesHighVolumeTransferBurst()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             int initialActivityCount = viewModel.Activities.Count;
@@ -4395,8 +4395,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task ActivityReported_CoalescesHighVolumeTransferBurstBeforeUiQueue()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
-            var dispatcher = new QueuedDesktopUiDispatcher();
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            QueuedDesktopUiDispatcher dispatcher = new QueuedDesktopUiDispatcher();
             using ShellViewModel viewModel = CreateViewModel(controller, uiDispatcher: dispatcher);
             await viewModel.InitializeAsync();
             int initialActivityCount = viewModel.Activities.Count;
@@ -4435,7 +4435,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task ActivityReported_CoalescesHighVolumePlaceholderBurst()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             int initialActivityCount = viewModel.Activities.Count;
@@ -4466,8 +4466,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task ActivityReported_CoalescesHighVolumePlaceholderBurstBeforeUiQueue()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
-            var dispatcher = new QueuedDesktopUiDispatcher();
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Syncing")));
+            QueuedDesktopUiDispatcher dispatcher = new QueuedDesktopUiDispatcher();
             using ShellViewModel viewModel = CreateViewModel(controller, uiDispatcher: dispatcher);
             await viewModel.InitializeAsync();
             int initialActivityCount = viewModel.Activities.Count;
@@ -4507,7 +4507,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             Guid documentsPairId = Guid.NewGuid();
             Guid videosPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(documentsPairId, "Documents", "Syncing"),
                     CreatePair(videosPairId, "Videos", "Syncing")));
@@ -4542,11 +4542,11 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         {
             Guid documentsPairId = Guid.NewGuid();
             Guid videosPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(
                     CreatePair(documentsPairId, "Documents", "Syncing"),
                     CreatePair(videosPairId, "Videos", "Syncing")));
-            var dispatcher = new QueuedDesktopUiDispatcher();
+            QueuedDesktopUiDispatcher dispatcher = new QueuedDesktopUiDispatcher();
             using ShellViewModel viewModel = CreateViewModel(controller, uiDispatcher: dispatcher);
             await viewModel.InitializeAsync();
             int initialActivityCount = viewModel.Activities.Count;
@@ -4581,7 +4581,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task InitializeAsync_AddsDataPathsToDiagnostics()
         {
             DesktopDataPathSnapshot dataPaths = CreateTestDataPathSnapshot();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -4600,17 +4600,17 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task InitializeAsync_AddsCloudFilesCapabilityAndSyncRootDiagnostics()
         {
-            var virtualFiles = CreatePair(
+            DesktopSyncPairSnapshot virtualFiles = CreatePair(
                 Guid.NewGuid(),
                 "Documents",
                 "Idle",
                 mode: SyncPairMode.WindowsVirtualFiles);
-            var fullMirror = CreatePair(Guid.NewGuid(), "Mirror", "Idle");
-            var snapshot = CreateSignedInSnapshot(virtualFiles, fullMirror) with
+            DesktopSyncPairSnapshot fullMirror = CreatePair(Guid.NewGuid(), "Mirror", "Idle");
+            DesktopShellSnapshot snapshot = CreateSignedInSnapshot(virtualFiles, fullMirror) with
             {
                 PlatformCapabilities = CreatePlatformCapabilities(windowsVirtualFilesSupported: true),
             };
-            var controller = new FakeDesktopShellController(snapshot);
+            FakeDesktopShellController controller = new FakeDesktopShellController(snapshot);
             using ShellViewModel viewModel = CreateViewModel(controller);
 
             await viewModel.InitializeAsync();
@@ -4633,7 +4633,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task OpenDataFolderCommand_OpensDiagnosticsDataDirectory()
         {
             DesktopDataPathSnapshot dataPaths = CreateTestDataPathSnapshot();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -4654,7 +4654,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ExportDiagnosticsCommand_AddsStatusAndRecentActivity()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot())
             {
                 ExportDiagnosticsPath = "/home/vadim/.local/share/Cotton Sync/diagnostics/cotton-sync-diagnostics.zip",
             };
@@ -4688,7 +4688,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task ExportDiagnosticsCommand_RunsDuringBackgroundSyncProgress()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")))
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")))
             {
                 ExportDiagnosticsPath = "/home/vadim/.local/share/Cotton Sync/diagnostics/cotton-sync-diagnostics.zip",
             };
@@ -4721,7 +4721,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task ExportDiagnosticsCommand_ShowsProgressWithoutBlockingGlobalControls()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")))
             {
                 ExportDiagnosticsPath = "/home/vadim/.local/share/Cotton Sync/diagnostics/cotton-sync-diagnostics.zip",
@@ -4795,11 +4795,11 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ExportDiagnosticsCommand_YieldsProgressBeforeStartingExport()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot())
             {
                 ExportDiagnosticsCompletion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously),
             };
-            var dispatcher = new QueuedAccessDesktopUiDispatcher();
+            QueuedAccessDesktopUiDispatcher dispatcher = new QueuedAccessDesktopUiDispatcher();
             using ShellViewModel viewModel = CreateViewModel(controller, uiDispatcher: dispatcher);
             await viewModel.InitializeAsync();
 
@@ -4823,7 +4823,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ExportDiagnosticsCommand_ReportsFailureAsActionRequired()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot())
             {
                 ExportDiagnosticsException = new IOException("There is not enough space on the disk."),
             };
@@ -4852,7 +4852,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task ConflictActivity_AddsConflictRow()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(
                 syncPairId,
                 "Documents",
                 "Idle",
@@ -4890,7 +4890,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task OpenConflictCommand_OpensRequestedConflictParentFolder()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             controller.ReportActivity(new DesktopActivitySnapshot(
@@ -4917,7 +4917,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task OpenConflictCommand_RejectsConflictPathOutsideSyncRoot()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             controller.ReportActivity(new DesktopActivitySnapshot(
@@ -4935,7 +4935,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public void ActivityEmptyState_UpdatesWhenActivityIsReported()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
             using ShellViewModel viewModel = CreateViewModel(controller);
 
             Assert.Multiple(() =>
@@ -4960,7 +4960,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ToggleActivityCommand_TogglesDashboardActivityVisibility()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
 
@@ -4984,8 +4984,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ShowAddSyncPairCommand_LoadsRemoteRootFolders()
         {
-            var localFolderPicker = new FakeLocalFolderPicker();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            FakeLocalFolderPicker localFolderPicker = new FakeLocalFolderPicker();
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
             controller.RemoteFoldersByPath["/"] = new DesktopRemoteFolderListSnapshot(
                 "/",
                 [
@@ -5015,10 +5015,10 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ShowAddSyncPairCommand_ShowsCloudFolderLoadingStateWhileRemoteFoldersLoad()
         {
-            var localFolderPicker = new FakeLocalFolderPicker();
-            var listCompletion = new TaskCompletionSource<DesktopRemoteFolderListSnapshot>(
+            FakeLocalFolderPicker localFolderPicker = new FakeLocalFolderPicker();
+            TaskCompletionSource<DesktopRemoteFolderListSnapshot> listCompletion = new TaskCompletionSource<DesktopRemoteFolderListSnapshot>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot())
             {
                 ListRemoteFoldersCompletion = listCompletion,
             };
@@ -5058,8 +5058,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task RemoteFolderFilter_FiltersLoadedCloudFoldersAndKeepsCurrentFolderSelectable()
         {
-            var localFolderPicker = new FakeLocalFolderPicker();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            FakeLocalFolderPicker localFolderPicker = new FakeLocalFolderPicker();
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
             controller.RemoteFoldersByPath["/"] = new DesktopRemoteFolderListSnapshot(
                 "/",
                 [
@@ -5110,8 +5110,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ShowAddSyncPairCommand_OpensLocalStepWithoutPromptingForFolder()
         {
-            var localFolderPicker = new FakeLocalFolderPicker("/home/user/Cotton");
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            FakeLocalFolderPicker localFolderPicker = new FakeLocalFolderPicker("/home/user/Cotton");
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
             using ShellViewModel viewModel = CreateViewModel(controller, localFolderPicker: localFolderPicker);
             await viewModel.InitializeAsync();
 
@@ -5135,8 +5135,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task BrowseLocalFolderCommand_StaysOnLocalStepWhenFolderSelectionIsCanceled()
         {
-            var localFolderPicker = new FakeLocalFolderPicker();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            FakeLocalFolderPicker localFolderPicker = new FakeLocalFolderPicker();
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
             controller.RemoteFoldersByPath["/"] = new DesktopRemoteFolderListSnapshot("/", []);
             using ShellViewModel viewModel = CreateViewModel(controller, localFolderPicker: localFolderPicker);
             await viewModel.InitializeAsync();
@@ -5161,8 +5161,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task BrowseLocalFolderCommand_LoadsCloudStepAfterSelection()
         {
-            var localFolderPicker = new FakeLocalFolderPicker("/home/user/Cotton");
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            FakeLocalFolderPicker localFolderPicker = new FakeLocalFolderPicker("/home/user/Cotton");
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
             controller.RemoteFoldersByPath["/"] = new DesktopRemoteFolderListSnapshot(
                 "/",
                 [
@@ -5195,8 +5195,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             string selectedLocalPath,
             string expectedMessage)
         {
-            var localFolderPicker = new FakeLocalFolderPicker(selectedLocalPath);
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(
+            FakeLocalFolderPicker localFolderPicker = new FakeLocalFolderPicker(selectedLocalPath);
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(
                 Guid.NewGuid(),
                 "Downloads",
                 "Idle",
@@ -5231,8 +5231,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task BrowseLocalFolderCommand_ClearsOverlapErrorWhenNextSelectionIsValid()
         {
-            var localFolderPicker = new FakeLocalFolderPicker("/home/user/Downloads", "/home/user/Cotton");
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(
+            FakeLocalFolderPicker localFolderPicker = new FakeLocalFolderPicker("/home/user/Downloads", "/home/user/Cotton");
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(
                 Guid.NewGuid(),
                 "Downloads",
                 "Idle",
@@ -5265,8 +5265,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task MissingDesktopSyncChangesApi_BlocksAddFolderFlowWithoutReplacingTheServerError()
         {
-            var localFolderPicker = new FakeLocalFolderPicker("/home/user/Downloads");
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(
+            FakeLocalFolderPicker localFolderPicker = new FakeLocalFolderPicker("/home/user/Downloads");
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(
                 Guid.NewGuid(),
                 "Downloads",
                 "Idle",
@@ -5327,7 +5327,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task SelfTestPass_ClearsMissingDesktopSyncChangesApiAddFolderBlock()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot())
             {
                 SelfTestSnapshot = new DesktopSelfTestSnapshot(
                 [
@@ -5364,7 +5364,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task SelfTest_BlocksAddFolderWhenMissingSyncApiFailureIsNotFirst()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot())
             {
                 SelfTestSnapshot = new DesktopSelfTestSnapshot(
                 [
@@ -5396,7 +5396,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task StatusChanged_MissingDesktopSyncChangesApiBlocksAddFolderFlow()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshotWithNotifications(
                     enableNotifications: false,
                     CreatePair(syncPairId, "Documents", "Idle")));
@@ -5429,8 +5429,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task CancelAddSyncPairCommand_ClearsLocalFolderOverlapError()
         {
             Guid existingPairId = Guid.NewGuid();
-            var localFolderPicker = new FakeLocalFolderPicker("/home/user/Downloads");
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(
+            FakeLocalFolderPicker localFolderPicker = new FakeLocalFolderPicker("/home/user/Downloads");
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(
                 existingPairId,
                 "Downloads",
                 "Idle",
@@ -5459,8 +5459,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task CreateRemoteFolderCommand_CreatesFolderAndUsesItAsCurrentCloudTarget()
         {
-            var localFolderPicker = new FakeLocalFolderPicker("/home/user/Cotton");
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            FakeLocalFolderPicker localFolderPicker = new FakeLocalFolderPicker("/home/user/Cotton");
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
             controller.RemoteFoldersByPath["/"] = new DesktopRemoteFolderListSnapshot("/", []);
             using ShellViewModel viewModel = CreateViewModel(controller, localFolderPicker: localFolderPicker);
             await viewModel.InitializeAsync();
@@ -5487,8 +5487,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task OpenRemoteFolderCommand_NavigatesToSelectedCloudFolder()
         {
             Guid archiveId = Guid.NewGuid();
-            var localFolderPicker = new FakeLocalFolderPicker("/home/user/Cotton");
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            FakeLocalFolderPicker localFolderPicker = new FakeLocalFolderPicker("/home/user/Cotton");
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
             controller.RemoteFoldersByPath["/"] = new DesktopRemoteFolderListSnapshot(
                 "/",
                 [
@@ -5522,7 +5522,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task UseRemoteFolderCommand_AddsSyncPairInAddMode()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             viewModel.LocalFolderPath = "/home/user/Cotton";
@@ -5546,8 +5546,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task AddSyncPairFlow_CreatesDesktopPairAndRequestsInitialSync()
         {
-            var localFolderPicker = new FakeLocalFolderPicker(@"C:\Users\QA\Desktop");
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            FakeLocalFolderPicker localFolderPicker = new FakeLocalFolderPicker(@"C:\Users\QA\Desktop");
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
             controller.RemoteFoldersByPath["/"] = new DesktopRemoteFolderListSnapshot("/", []);
             using ShellViewModel viewModel = CreateViewModel(controller, localFolderPicker: localFolderPicker);
             await viewModel.InitializeAsync();
@@ -5579,8 +5579,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task AddSyncPairFlow_CanCreateWindowsVirtualFilesPairWhenSupported()
         {
-            var localFolderPicker = new FakeLocalFolderPicker(@"C:\Users\QA\Desktop");
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(
+            FakeLocalFolderPicker localFolderPicker = new FakeLocalFolderPicker(@"C:\Users\QA\Desktop");
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(
                 platformCapabilities: CreatePlatformCapabilities(windowsVirtualFilesSupported: true)));
             controller.RemoteFoldersByPath["/"] = new DesktopRemoteFolderListSnapshot("/", []);
             using ShellViewModel viewModel = CreateViewModel(controller, localFolderPicker: localFolderPicker);
@@ -5610,8 +5610,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task UseRemoteFolderCommand_ShowsSetupProgressWithoutGlobalBusyWhileAddPairIsPending()
         {
             Guid existingPairId = Guid.NewGuid();
-            var addPairCompletion = new TaskCompletionSource<SyncPairSettings>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(
+            TaskCompletionSource<SyncPairSettings> addPairCompletion = new TaskCompletionSource<SyncPairSettings>(TaskCreationOptions.RunContinuationsAsynchronously);
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(
                 CreatePlatformCapabilities(windowsVirtualFilesSupported: true),
                 CreatePair(existingPairId, "Documents", "Idle")))
             {
@@ -5668,7 +5668,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ServerProbe_NormalizesVerifiedBareHostAndEnablesSignIn()
         {
-            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
             {
                 ServerProbeResult = new DesktopServerProbeResult(
                     new Uri("https://app.cottoncloud.dev/"),
@@ -5701,8 +5701,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ServerProbe_RetriesTransientNetworkFailureAndThenEnablesSignIn()
         {
-            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot());
-            var probeExceptions = new Queue<Exception>();
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedOutSnapshot());
+            Queue<Exception> probeExceptions = new Queue<Exception>();
             probeExceptions.Enqueue(new HttpRequestException(
                 "Firewall blocked the request.",
                 new System.Net.Sockets.SocketException(10013)));
@@ -5736,8 +5736,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ServerProbe_ShowsNetworkFirewallMessageAfterTransientFailuresAreExhausted()
         {
-            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot());
-            var probeExceptions = new Queue<Exception>();
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedOutSnapshot());
+            Queue<Exception> probeExceptions = new Queue<Exception>();
             for (int i = 0; i < 3; i++)
             {
                 probeExceptions.Enqueue(new HttpRequestException(
@@ -5771,8 +5771,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ServerProbe_IgnoresStaleFailureAfterServerUrlChanges()
         {
-            var staleProbe = new TaskCompletionSource<DesktopServerProbeResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
+            TaskCompletionSource<DesktopServerProbeResult> staleProbe = new TaskCompletionSource<DesktopServerProbeResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
             {
                 IgnoreServerProbeCancellation = true,
             };
@@ -5827,8 +5827,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task InitializeAsync_ShowsStartupLoadingInsteadOfSetupWhileRestoringSession()
         {
-            var loadCompletion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Cloud", "Idle")))
+            TaskCompletionSource<bool> loadCompletion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Cloud", "Idle")))
             {
                 LoadCompletion = loadCompletion,
             };
@@ -5861,7 +5861,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task InitializeAsync_WhenLoadFailsBeforeSignInStepShowsActionRequired()
         {
-            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
             {
                 LoadException = new InvalidOperationException("Preferences database is unavailable."),
             };
@@ -5882,7 +5882,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task InitializeAsync_WhenLocalDatabaseIsCorruptShowsRepairGuidance()
         {
-            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
             {
                 LoadException = new InvalidOperationException("SQLite Error 26: 'file is not a database'."),
             };
@@ -5905,7 +5905,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task ChangeServerCommand_ReturnsSetupFlowToServerStepAndClearsSecrets()
         {
-            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
             {
                 ServerProbeResult = new DesktopServerProbeResult(
                     new Uri("https://app.cottoncloud.dev/"),
@@ -5936,7 +5936,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task SignInCommand_LeavesAddFolderWizardClosedWhenNoSyncPairsExist()
         {
-            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
             {
                 ServerProbeResult = new DesktopServerProbeResult(
                     new Uri("https://app.cottoncloud.dev/"),
@@ -5979,7 +5979,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task SignInCommand_ShowsNativeNotificationWhenSupported()
         {
-            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
             {
                 ServerProbeResult = new DesktopServerProbeResult(
                     new Uri("https://app.cottoncloud.dev/"),
@@ -5987,7 +5987,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     "Cotton Cloud",
                     "instance-hash"),
             };
-            var notificationService = new CollectingDesktopNotificationService();
+            CollectingDesktopNotificationService notificationService = new CollectingDesktopNotificationService();
             using ShellViewModel viewModel = CreateViewModel(controller, notificationService: notificationService);
             await viewModel.InitializeAsync();
             viewModel.ServerUrl = "app.cottoncloud.dev";
@@ -6008,7 +6008,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task SignInWithBrowserCommand_UsesVerifiedServerAndAppliesSession()
         {
-            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
             {
                 ServerProbeResult = new DesktopServerProbeResult(
                     new Uri("https://app.cottoncloud.dev/"),
@@ -6040,7 +6040,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task SignInWithBrowserCommand_AppliesSessionAfterPendingApproval()
         {
-            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
             {
                 ServerProbeResult = new DesktopServerProbeResult(
                     new Uri("https://app.cottoncloud.dev/"),
@@ -6082,7 +6082,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task SignInWithBrowserCommand_CanCancelPendingApproval()
         {
-            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
             {
                 ServerProbeResult = new DesktopServerProbeResult(
                     new Uri("https://app.cottoncloud.dev/"),
@@ -6129,7 +6129,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task DisposeAsync_CancelsPendingBrowserSignIn()
         {
-            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
             {
                 ServerProbeResult = new DesktopServerProbeResult(
                     new Uri("https://app.cottoncloud.dev/"),
@@ -6162,7 +6162,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task SignInCommand_DoesNotShowNativeNotificationWhenDisabled()
         {
-            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot(enableNotifications: false))
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedOutSnapshot(enableNotifications: false))
             {
                 ServerProbeResult = new DesktopServerProbeResult(
                     new Uri("https://app.cottoncloud.dev/"),
@@ -6170,7 +6170,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     "Cotton Cloud",
                     "instance-hash"),
             };
-            var notificationService = new CollectingDesktopNotificationService();
+            CollectingDesktopNotificationService notificationService = new CollectingDesktopNotificationService();
             using ShellViewModel viewModel = CreateViewModel(controller, notificationService: notificationService);
             await viewModel.InitializeAsync();
             viewModel.ServerUrl = "app.cottoncloud.dev";
@@ -6186,8 +6186,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task InitializeAsync_ShowsSessionRestoredNotificationWhenVisibleLaunchAllowsIt()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
-            var notificationService = new CollectingDesktopNotificationService();
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            CollectingDesktopNotificationService notificationService = new CollectingDesktopNotificationService();
             using ShellViewModel viewModel = CreateViewModel(
                 controller,
                 notificationService: notificationService,
@@ -6206,8 +6206,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task InitializeAsync_DoesNotShowSessionRestoredNotificationWhenStartupNoiseSuppressed()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot());
-            var notificationService = new CollectingDesktopNotificationService();
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot());
+            CollectingDesktopNotificationService notificationService = new CollectingDesktopNotificationService();
             using ShellViewModel viewModel = CreateViewModel(
                 controller,
                 notificationService: notificationService,
@@ -6221,9 +6221,9 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task InitializeAsync_DoesNotShowSessionRestoredNotificationWhenNotificationsDisabled()
         {
-            var controller = new FakeDesktopShellController(
+            FakeDesktopShellController controller = new FakeDesktopShellController(
                 CreateSignedInSnapshotWithNotifications(enableNotifications: false));
-            var notificationService = new CollectingDesktopNotificationService();
+            CollectingDesktopNotificationService notificationService = new CollectingDesktopNotificationService();
             using ShellViewModel viewModel = CreateViewModel(
                 controller,
                 notificationService: notificationService,
@@ -6237,7 +6237,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task SignInCommand_ShowsSetupErrorWhenAuthenticationFails()
         {
-            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
             {
                 ServerProbeResult = new DesktopServerProbeResult(
                     new Uri("https://app.cottoncloud.dev/"),
@@ -6268,7 +6268,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task SignInCommand_ShowsHumanTotpRequiredMessage()
         {
-            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
             {
                 ServerProbeResult = new DesktopServerProbeResult(
                     new Uri("https://app.cottoncloud.dev/"),
@@ -6302,7 +6302,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task SignInCommand_RetriesSuccessfullyAfterTotpRequired()
         {
-            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
             {
                 ServerProbeResult = new DesktopServerProbeResult(
                     new Uri("https://app.cottoncloud.dev/"),
@@ -6344,7 +6344,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task SignInCommand_ShowsHumanInvalidPasswordMessage()
         {
-            var controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedOutSnapshot())
             {
                 ServerProbeResult = new DesktopServerProbeResult(
                     new Uri("https://app.cottoncloud.dev/"),
@@ -6379,7 +6379,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task SignOutCommand_ClearsSensitiveSetupState()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")));
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")));
             using ShellViewModel viewModel = CreateViewModel(controller);
             await viewModel.InitializeAsync();
             viewModel.Password = "password";
@@ -6406,7 +6406,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task SignOutThenSignInAgain_ReusesSameInstallationFlow()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
             {
                 ServerProbeResult = new DesktopServerProbeResult(
                     new Uri("https://app.cottoncloud.dev/"),
@@ -6439,8 +6439,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task SignOutCommand_ShowsNativeNotificationWhenSupported()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")));
-            var notificationService = new CollectingDesktopNotificationService();
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")));
+            CollectingDesktopNotificationService notificationService = new CollectingDesktopNotificationService();
             using ShellViewModel viewModel = CreateViewModel(controller, notificationService: notificationService);
             await viewModel.InitializeAsync();
 
@@ -6458,8 +6458,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task SessionRevoked_SignsOutAndShowsNativeNotificationWhenSupported()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
-            var notificationService = new CollectingDesktopNotificationService();
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            CollectingDesktopNotificationService notificationService = new CollectingDesktopNotificationService();
             using ShellViewModel viewModel = CreateViewModel(controller, notificationService: notificationService);
             await viewModel.InitializeAsync();
             viewModel.Password = "password";
@@ -6491,8 +6491,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task SessionRevoked_DuringTransferClearsProgressAndReturnsToRecoverableSignIn()
         {
             Guid syncPairId = Guid.NewGuid();
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
-            var notificationService = new CollectingDesktopNotificationService();
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(syncPairId, "Documents", "Syncing")));
+            CollectingDesktopNotificationService notificationService = new CollectingDesktopNotificationService();
             using ShellViewModel viewModel = CreateViewModel(controller, notificationService: notificationService);
             await viewModel.InitializeAsync();
             DateTime startedAtUtc = new(2026, 7, 17, 18, 0, 0, DateTimeKind.Utc);
@@ -6595,7 +6595,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task CheckForUpdatesCommand_ShowsAvailableUpdateWithoutBlockingSyncCommands()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
             {
                 UpdateCheckSnapshot = new DesktopUpdateStatusSnapshot(
                     "0.0.1",
@@ -6625,7 +6625,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task DownloadUpdateCommand_MarksUpdateReadyForInstallNowOrNextStartup()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot())
             {
                 UpdateCheckSnapshot = new DesktopUpdateStatusSnapshot(
                     "0.0.1",
@@ -6665,9 +6665,9 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task DownloadUpdateCommand_ShowsDownloadProgressUntilInstallerIsReady()
         {
-            var downloadCompletion = new TaskCompletionSource<DesktopUpdateStatusSnapshot>(
+            TaskCompletionSource<DesktopUpdateStatusSnapshot> downloadCompletion = new TaskCompletionSource<DesktopUpdateStatusSnapshot>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot())
             {
                 UpdateCheckSnapshot = new DesktopUpdateStatusSnapshot(
                     "0.0.1",
@@ -6726,9 +6726,9 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task DownloadUpdateCommand_ShowsPreparingStateBeforeFirstProgress()
         {
-            var downloadCompletion = new TaskCompletionSource<DesktopUpdateStatusSnapshot>(
+            TaskCompletionSource<DesktopUpdateStatusSnapshot> downloadCompletion = new TaskCompletionSource<DesktopUpdateStatusSnapshot>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot())
             {
                 UpdateCheckSnapshot = new DesktopUpdateStatusSnapshot(
                     "0.0.1",
@@ -6777,7 +6777,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task InitializeAsync_AutoDownloadsUpdateOnStartupWithoutBlockingSyncCommands()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
             {
                 UpdateDownloadSnapshot = new DesktopUpdateStatusSnapshot(
                     "0.0.1",
@@ -6788,7 +6788,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     @"C:\Users\qa\AppData\Roaming\Cotton\Sync\updates\0.0.2\CottonSync-Windows-Setup.exe",
                     new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/v0.0.2")),
             };
-            var notificationService = new CollectingDesktopNotificationService();
+            CollectingDesktopNotificationService notificationService = new CollectingDesktopNotificationService();
             using ShellViewModel viewModel = CreateViewModel(
                 controller,
                 notificationService: notificationService,
@@ -6815,7 +6815,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task InitializeAsync_WhenStartupUpdateIsCurrentDoesNotShowDownloadProgress()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
             {
                 UpdateDownloadSnapshot = new DesktopUpdateStatusSnapshot(
                     "0.0.2",
@@ -6849,9 +6849,9 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task InitializeAsync_AutoDownloadShowsProgressUntilInstallerIsReady()
         {
-            var downloadCompletion = new TaskCompletionSource<DesktopUpdateStatusSnapshot>(
+            TaskCompletionSource<DesktopUpdateStatusSnapshot> downloadCompletion = new TaskCompletionSource<DesktopUpdateStatusSnapshot>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
             {
                 UpdateDownloadSnapshot = new DesktopUpdateStatusSnapshot(
                     "0.0.1",
@@ -6886,7 +6886,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task InitializeAsync_RunsPeriodicUpdateCheckAfterStartupUpdatePolicyDelay()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
             {
                 UpdateDownloadSnapshot = new DesktopUpdateStatusSnapshot(
                     "0.0.1",
@@ -6905,7 +6905,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     null,
                     new Uri("https://github.com/bvdcode/cotton-sync-client/releases/tag/v0.0.2")),
             };
-            using var periodicDelay = new ManualPeriodicUpdateDelay();
+            using ManualPeriodicUpdateDelay periodicDelay = new ManualPeriodicUpdateDelay();
             using ShellViewModel viewModel = CreateViewModel(
                 controller,
                 checkForUpdatesOnStartup: true,
@@ -6934,7 +6934,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task InstallUpdateCommand_StartsDownloadedInstaller()
         {
             string installerPath = @"C:\CottonSyncUpdateCache\0.0.2\CottonSync-Windows-Setup.exe";
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot())
             {
                 UpdateCheckSnapshot = new DesktopUpdateStatusSnapshot(
                     "0.0.1",
@@ -6983,7 +6983,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task InitializeAsync_WithTemporarilyUnavailableStoredSessionHidesSignInAndOffersRetry()
         {
             DesktopShellSnapshot snapshot = CreateStoredSessionWaitingSnapshot();
-            var controller = new FakeDesktopShellController(snapshot)
+            FakeDesktopShellController controller = new FakeDesktopShellController(snapshot)
             {
                 ServerProbeResult = new DesktopServerProbeResult(
                     new Uri("https://cotton.example.test/"),
@@ -7015,7 +7015,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task RetryStoredSessionCommand_RestoresDashboardWithoutNewSignIn()
         {
             AuthSession session = new(Guid.NewGuid(), "restored", "restored@example.test", false);
-            var controller = new FakeDesktopShellController(CreateStoredSessionWaitingSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateStoredSessionWaitingSnapshot())
             {
                 StoredSessionRestoreSnapshot = new DesktopStoredSessionRestoreSnapshot(session, true, null),
             };
@@ -7041,11 +7041,11 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task StoredSessionRetry_AutomaticallyRestoresAfterServerUnlocks()
         {
             AuthSession session = new(Guid.NewGuid(), "restored", "restored@example.test", false);
-            var controller = new FakeDesktopShellController(CreateStoredSessionWaitingSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateStoredSessionWaitingSnapshot())
             {
                 StoredSessionRestoreSnapshot = new DesktopStoredSessionRestoreSnapshot(session, true, null),
             };
-            using var retryDelay = new ManualPeriodicUpdateDelay();
+            using ManualPeriodicUpdateDelay retryDelay = new ManualPeriodicUpdateDelay();
             using ShellViewModel viewModel = CreateViewModel(
                 controller,
                 storedSessionRetryInterval: TimeSpan.FromSeconds(15),
@@ -7068,8 +7068,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task InstallUpdateCommand_ShowsInstallingStateBeforeInstallerLaunchCompletes()
         {
             string installerPath = @"C:\CottonSyncUpdateCache\0.0.2\CottonSync-Windows-Setup.exe";
-            var installCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            TaskCompletionSource installCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot())
             {
                 UpdateCheckSnapshot = new DesktopUpdateStatusSnapshot(
                     "0.0.1",
@@ -7120,7 +7120,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         public async Task InstallUpdateCommand_ShowsFailureWhenInstallerLaunchFails()
         {
             string installerPath = @"C:\CottonSyncUpdateCache\0.0.2\CottonSync-Windows-Setup.exe";
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot())
             {
                 UpdateCheckSnapshot = new DesktopUpdateStatusSnapshot(
                     "0.0.1",
@@ -7167,7 +7167,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task CheckForUpdatesCommand_ShowsRetryableNetworkFailure()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
             {
                 UpdateCheckException = new HttpRequestException("firewall denied first request"),
             };
@@ -7188,7 +7188,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task InitializeAsync_WhenStartupUpdateFailsShowsRetryableStatusWithoutOverridingSyncStatus()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(CreatePair(Guid.NewGuid(), "Documents", "Idle")))
             {
                 UpdateDownloadException = new HttpRequestException("firewall denied first request"),
             };
@@ -7211,7 +7211,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task CheckForUpdatesCommand_ShowsPublishingRaceForNotFound()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot())
             {
                 UpdateCheckException = new HttpRequestException(
                     "not found",
@@ -7236,7 +7236,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public async Task DownloadUpdateCommand_ShowsRetryableHashMismatchAndKeepsDownloadAvailable()
         {
-            var controller = new FakeDesktopShellController(CreateSignedInSnapshot())
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot())
             {
                 UpdateCheckSnapshot = new DesktopUpdateStatusSnapshot(
                     "0.0.1",
@@ -7784,7 +7784,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 using CancellationTokenRegistration registration = cancellationToken.Register(
                     static state =>
                     {
-                        var taskCompletion = (TaskCompletionSource<AuthSession>)state!;
+                        TaskCompletionSource<AuthSession> taskCompletion = (TaskCompletionSource<AuthSession>)state!;
                         taskCompletion.TrySetCanceled();
                     },
                     completion);
@@ -7813,7 +7813,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 using CancellationTokenRegistration registration = cancellationToken.Register(
                     static state =>
                     {
-                        var taskCompletion = (TaskCompletionSource<DesktopRemoteFolderListSnapshot>)state!;
+                        TaskCompletionSource<DesktopRemoteFolderListSnapshot> taskCompletion = (TaskCompletionSource<DesktopRemoteFolderListSnapshot>)state!;
                         taskCompletion.TrySetCanceled();
                     },
                     completion);
@@ -7830,7 +7830,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 string path = parentPath == "/"
                     ? "/" + folderName.Trim()
                     : parentPath.TrimEnd('/') + "/" + folderName.Trim();
-                var folder = new DesktopRemoteFolderSnapshot(Guid.NewGuid(), folderName.Trim(), path);
+                DesktopRemoteFolderSnapshot folder = new DesktopRemoteFolderSnapshot(Guid.NewGuid(), folderName.Trim(), path);
                 RemoteFoldersByPath[path] = new DesktopRemoteFolderListSnapshot(path, []);
                 return Task.FromResult(folder);
             }
@@ -7969,8 +7969,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
                 if (!SuppressDownloadProgress)
                 {
-                    var firstProgress = new DesktopUpdateDownloadProgress("0.0.2", "CottonSync-Windows-Setup.exe", 512, 1024);
-                    var finalProgress = new DesktopUpdateDownloadProgress("0.0.2", "CottonSync-Windows-Setup.exe", 1024, 1024);
+                    DesktopUpdateDownloadProgress firstProgress = new DesktopUpdateDownloadProgress("0.0.2", "CottonSync-Windows-Setup.exe", 512, 1024);
+                    DesktopUpdateDownloadProgress finalProgress = new DesktopUpdateDownloadProgress("0.0.2", "CottonSync-Windows-Setup.exe", 1024, 1024);
                     DownloadProgressReports.Add(firstProgress);
                     DownloadProgressReports.Add(finalProgress);
                     progress?.Report(firstProgress);
@@ -8085,7 +8085,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken)
             {
                 RequestedDelays.Add(delay);
-                var source = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                TaskCompletionSource source = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 if (_disposed || cancellationToken.IsCancellationRequested)
                 {
                     source.SetCanceled(cancellationToken);

@@ -8,7 +8,7 @@ namespace Cotton.Sync.Tests
         [Test]
         public void RecordActivity_CapsStoredActivitiesButKeepsActionRequiredSummary()
         {
-            var result = new SyncRunResult();
+            SyncRunResult result = new SyncRunResult();
 
             result.RecordActivity(
                 new SyncActivity
@@ -41,7 +41,7 @@ namespace Cotton.Sync.Tests
         [Test]
         public void RecordDeferredLocalPath_NormalizesAndDeduplicatesPaths()
         {
-            var result = new SyncRunResult();
+            SyncRunResult result = new SyncRunResult();
 
             result.RecordDeferredLocalPath("Hot/File.txt");
             result.RecordDeferredLocalPath("hot\\file.txt");

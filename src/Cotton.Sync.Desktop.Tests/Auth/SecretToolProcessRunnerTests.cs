@@ -18,8 +18,8 @@ namespace Cotton.Sync.Desktop.Tests.Auth
                 return;
             }
 
-            var runner = new SecretToolProcessRunner(TimeSpan.FromMilliseconds(100));
-            var startInfo = new ProcessStartInfo("/bin/sh");
+            SecretToolProcessRunner runner = new SecretToolProcessRunner(TimeSpan.FromMilliseconds(100));
+            ProcessStartInfo startInfo = new ProcessStartInfo("/bin/sh");
             startInfo.ArgumentList.Add("-c");
             startInfo.ArgumentList.Add("sleep 5");
 

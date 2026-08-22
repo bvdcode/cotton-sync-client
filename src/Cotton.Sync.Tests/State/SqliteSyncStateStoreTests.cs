@@ -30,7 +30,7 @@ namespace Cotton.Sync.Tests.State
         [Test]
         public async Task LoadPairAsync_ReturnsEmptyListForNewDatabase()
         {
-            var store = CreateStore();
+            SqliteSyncStateStore store = CreateStore();
             await store.InitializeAsync();
 
             IReadOnlyList<SyncStateEntry> entries = await store.LoadPairAsync("pair-a");
@@ -41,7 +41,7 @@ namespace Cotton.Sync.Tests.State
         [Test]
         public async Task LoadPairEntriesAsync_StreamsEntriesInPathOrder()
         {
-            var store = CreateStore();
+            SqliteSyncStateStore store = CreateStore();
             await store.InitializeAsync();
             DateTime firstSyncedAtUtc = new(2026, 6, 7, 10, 0, 0, DateTimeKind.Utc);
             DateTime lastSyncedAtUtc = new(2026, 6, 7, 10, 5, 0, DateTimeKind.Utc);
@@ -67,7 +67,7 @@ namespace Cotton.Sync.Tests.State
                 SyncedAtUtc = lastSyncedAtUtc.AddMinutes(1),
             });
 
-            var entries = new List<SyncStateEntry>();
+            List<SyncStateEntry> entries = new List<SyncStateEntry>();
             await foreach (SyncStateEntry entry in store.LoadPairEntriesAsync("pair-a"))
             {
                 entries.Add(entry);
@@ -84,7 +84,7 @@ namespace Cotton.Sync.Tests.State
         [Test]
         public async Task LoadPairDirectoryEntriesAsync_StreamsOnlyDirectoriesInPathOrder()
         {
-            var store = CreateStore();
+            SqliteSyncStateStore store = CreateStore();
             await store.InitializeAsync();
             Guid parentNodeId = Guid.NewGuid();
             Guid directoryNodeId = Guid.NewGuid();
@@ -118,7 +118,7 @@ namespace Cotton.Sync.Tests.State
                 RemoteNodeId = Guid.NewGuid(),
             });
 
-            var entries = new List<SyncStateEntry>();
+            List<SyncStateEntry> entries = new List<SyncStateEntry>();
             await foreach (SyncStateEntry entry in store.LoadPairDirectoryEntriesAsync("pair-a"))
             {
                 entries.Add(entry);
@@ -135,7 +135,7 @@ namespace Cotton.Sync.Tests.State
         [Test]
         public async Task LoadDirectoryEntriesByPathPrefixAsync_StreamsOnlyMatchingDirectorySubtree()
         {
-            var store = CreateStore();
+            SqliteSyncStateStore store = CreateStore();
             await store.InitializeAsync();
             Guid parentNodeId = Guid.NewGuid();
             Guid childNodeId = Guid.NewGuid();
@@ -176,7 +176,7 @@ namespace Cotton.Sync.Tests.State
                 RemoteNodeId = Guid.NewGuid(),
             });
 
-            var entries = new List<SyncStateEntry>();
+            List<SyncStateEntry> entries = new List<SyncStateEntry>();
             await foreach (SyncStateEntry entry in store.LoadDirectoryEntriesByPathPrefixAsync("pair-a", "docs"))
             {
                 entries.Add(entry);
@@ -266,19 +266,19 @@ namespace Cotton.Sync.Tests.State
                 RemoteFileId = Guid.NewGuid(),
             });
 
-            var entries = new List<SyncStateEntry>();
+            List<SyncStateEntry> entries = new List<SyncStateEntry>();
             await foreach (SyncStateEntry entry in store.LoadEntriesByPathPrefixAsync("pair-a", "music"))
             {
                 entries.Add(entry);
             }
 
-            var bracketEntries = new List<SyncStateEntry>();
+            List<SyncStateEntry> bracketEntries = new List<SyncStateEntry>();
             await foreach (SyncStateEntry entry in store.LoadEntriesByPathPrefixAsync("pair-a", "music [live]"))
             {
                 bracketEntries.Add(entry);
             }
 
-            var likeWildcardEntries = new List<SyncStateEntry>();
+            List<SyncStateEntry> likeWildcardEntries = new List<SyncStateEntry>();
             await foreach (SyncStateEntry entry in store.LoadEntriesByPathPrefixAsync("pair-a", "music %_live"))
             {
                 likeWildcardEntries.Add(entry);
@@ -304,7 +304,7 @@ namespace Cotton.Sync.Tests.State
         [Test]
         public async Task LoadEntriesByPathKeysAsync_LoadsOnlyRequestedKeysInPathOrder()
         {
-            var store = CreateStore();
+            SqliteSyncStateStore store = CreateStore();
             await store.InitializeAsync();
             await store.UpsertAsync(new SyncStateEntry
             {
@@ -331,7 +331,7 @@ namespace Cotton.Sync.Tests.State
                 Kind = SyncEntryKind.File,
             });
 
-            var entries = new List<SyncStateEntry>();
+            List<SyncStateEntry> entries = new List<SyncStateEntry>();
             await foreach (SyncStateEntry entry in store.LoadEntriesByPathKeysAsync(
                                "pair-a",
                                ["z-last.txt", "missing.txt", "a-first.txt"]))
@@ -345,7 +345,7 @@ namespace Cotton.Sync.Tests.State
         [Test]
         public async Task LoadEntriesByRemoteIdsAsync_LoadsDirectoryAndFileTargetsWithoutParentFileFanout()
         {
-            var store = CreateStore();
+            SqliteSyncStateStore store = CreateStore();
             await store.InitializeAsync();
             Guid parentNodeId = Guid.NewGuid();
             Guid directoryNodeId = Guid.NewGuid();
@@ -389,7 +389,7 @@ namespace Cotton.Sync.Tests.State
                 RemoteFileId = requestedFileId,
             });
 
-            var entries = new List<SyncStateEntry>();
+            List<SyncStateEntry> entries = new List<SyncStateEntry>();
             await foreach (SyncStateEntry entry in store.LoadEntriesByRemoteIdsAsync(
                                "pair-a",
                                [parentNodeId, directoryNodeId],
@@ -406,7 +406,7 @@ namespace Cotton.Sync.Tests.State
         [Test]
         public async Task LoadVirtualFilesResumeEntriesByPathKeysAsync_LoadsCompactResumeRows()
         {
-            var store = CreateStore();
+            SqliteSyncStateStore store = CreateStore();
             await store.InitializeAsync();
             Guid remoteNodeId = Guid.NewGuid();
             Guid remoteFileId = Guid.NewGuid();
@@ -436,7 +436,7 @@ namespace Cotton.Sync.Tests.State
                 PlaceholderIdentity = [0x01],
             });
 
-            var entries = new List<SyncVirtualFilesResumeEntry>();
+            List<SyncVirtualFilesResumeEntry> entries = new List<SyncVirtualFilesResumeEntry>();
             await foreach (SyncVirtualFilesResumeEntry entry in store.LoadVirtualFilesResumeEntriesByPathKeysAsync(
                                "pair-a",
                                ["Docs/remote-only.txt", "Docs", "missing.txt"]))
@@ -461,7 +461,7 @@ namespace Cotton.Sync.Tests.State
         [Test]
         public async Task UpsertManyAsync_InsertsAndUpdatesEntriesInOneBatch()
         {
-            var store = CreateStore();
+            SqliteSyncStateStore store = CreateStore();
             await store.InitializeAsync();
             await store.UpsertAsync(new SyncStateEntry
             {
@@ -506,7 +506,7 @@ namespace Cotton.Sync.Tests.State
         [Test]
         public async Task GetChangeCursorAsync_ReturnsDefaultCursorForNewPair()
         {
-            var store = CreateStore();
+            SqliteSyncStateStore store = CreateStore();
             await store.InitializeAsync();
 
             SyncChangeCursor cursor = await store.GetChangeCursorAsync("pair-a");
@@ -525,7 +525,7 @@ namespace Cotton.Sync.Tests.State
         [Test]
         public async Task GetChangeCursorAsync_InitializesNewDatabaseWithoutExplicitInitialize()
         {
-            var store = CreateStore();
+            SqliteSyncStateStore store = CreateStore();
 
             SyncChangeCursor cursor = await store.GetChangeCursorAsync("pair-a");
 
@@ -541,7 +541,7 @@ namespace Cotton.Sync.Tests.State
         public async Task SaveChangeCursorAsync_InitializesNewDatabaseWithoutExplicitInitialize()
         {
             string databasePath = DatabasePath();
-            var first = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore first = new SqliteSyncStateStore(databasePath);
 
             await first.SaveChangeCursorAsync(new SyncChangeCursor
             {
@@ -549,7 +549,7 @@ namespace Cotton.Sync.Tests.State
                 LastCursor = 9,
             });
 
-            var second = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore second = new SqliteSyncStateStore(databasePath);
             SyncChangeCursor cursor = await second.GetChangeCursorAsync("pair-a");
 
             Assert.That(cursor.LastCursor, Is.EqualTo(9));
@@ -560,7 +560,7 @@ namespace Cotton.Sync.Tests.State
         {
             string databasePath = DatabasePath();
             await CreateInitialStateDatabaseAsync(databasePath);
-            var store = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
 
             await store.InitializeAsync();
             await store.SaveChangeCursorAsync(new SyncChangeCursor
@@ -578,7 +578,7 @@ namespace Cotton.Sync.Tests.State
         public async Task InitializeAsync_CreatesDirectoryRepairLookupIndex()
         {
             string databasePath = DatabasePath();
-            var store = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
 
             await store.InitializeAsync();
 
@@ -594,7 +594,7 @@ namespace Cotton.Sync.Tests.State
         {
             string databasePath = DatabasePath();
             await CreateLocalSizeStateDatabaseAsync(databasePath);
-            var store = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
             Guid fileId = Guid.NewGuid();
             byte[] placeholderIdentity = [0x01, 0x02, 0x03, 0x04];
 
@@ -629,7 +629,7 @@ namespace Cotton.Sync.Tests.State
         [Test]
         public async Task UpsertAsync_InitializesNewDatabaseWithoutExplicitInitialize()
         {
-            var store = CreateStore();
+            SqliteSyncStateStore store = CreateStore();
 
             await store.UpsertAsync(new SyncStateEntry
             {
@@ -648,9 +648,9 @@ namespace Cotton.Sync.Tests.State
         public async Task SaveChangeCursorAsync_RoundtripsAndPersistsAfterReopen()
         {
             string databasePath = DatabasePath();
-            var first = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore first = new SqliteSyncStateStore(databasePath);
             await first.InitializeAsync();
-            var updatedAt = new DateTime(2026, 6, 3, 10, 0, 0, DateTimeKind.Utc);
+            DateTime updatedAt = new DateTime(2026, 6, 3, 10, 0, 0, DateTimeKind.Utc);
             await first.SaveChangeCursorAsync(new SyncChangeCursor
             {
                 SyncPairId = "pair-a",
@@ -661,7 +661,7 @@ namespace Cotton.Sync.Tests.State
                 UpdatedAtUtc = updatedAt,
             });
 
-            var second = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore second = new SqliteSyncStateStore(databasePath);
             await second.InitializeAsync();
             SyncChangeCursor cursor = await second.GetChangeCursorAsync("pair-a");
 
@@ -683,7 +683,7 @@ namespace Cotton.Sync.Tests.State
             await CreateMigratedStateDatabaseAsync(
                 databasePath,
                 "20260622002311_AddRemoteFileIdentityMetadata");
-            var connectionString = new DbConnectionStringBuilder
+            DbConnectionStringBuilder connectionString = new DbConnectionStringBuilder
             {
                 ["Data Source"] = databasePath,
                 ["Pooling"] = false,
@@ -691,7 +691,7 @@ namespace Cotton.Sync.Tests.State
             DbContextOptions<SyncStateDbContext> options = new DbContextOptionsBuilder<SyncStateDbContext>()
                 .UseSqlite(connectionString)
                 .Options;
-            await using (var context = new SyncStateDbContext(options))
+            await using (SyncStateDbContext context = new SyncStateDbContext(options))
             {
                 await context.Database.ExecuteSqlRawAsync(
                     """
@@ -702,7 +702,7 @@ namespace Cotton.Sync.Tests.State
                     """);
             }
 
-            var store = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
             await store.InitializeAsync();
             SyncChangeCursor cursor = await store.GetChangeCursorAsync("pair-a");
 
@@ -716,7 +716,7 @@ namespace Cotton.Sync.Tests.State
         [Test]
         public async Task SaveChangeCursorAsync_UpdatesExistingPairOnly()
         {
-            var store = CreateStore();
+            SqliteSyncStateStore store = CreateStore();
             await store.InitializeAsync();
             await store.SaveChangeCursorAsync(new SyncChangeCursor
             {
@@ -752,7 +752,7 @@ namespace Cotton.Sync.Tests.State
         public async Task UpsertAsync_RoundtripsAndPersistsAfterReopen()
         {
             string databasePath = DatabasePath();
-            var first = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore first = new SqliteSyncStateStore(databasePath);
             await first.InitializeAsync();
             Guid fileId = Guid.NewGuid();
             Guid nodeId = Guid.NewGuid();
@@ -775,7 +775,7 @@ namespace Cotton.Sync.Tests.State
                 SyncedAtUtc = new DateTime(2026, 6, 2, 12, 1, 0, DateTimeKind.Utc),
             });
 
-            var second = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore second = new SqliteSyncStateStore(databasePath);
             await second.InitializeAsync();
             SyncStateEntry? entry = await second.GetAsync("pair-a", "docs/report.TXT");
 
@@ -802,7 +802,7 @@ namespace Cotton.Sync.Tests.State
         {
             string databasePath = DatabasePath();
             Guid nodeId = Guid.NewGuid();
-            var first = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore first = new SqliteSyncStateStore(databasePath);
             await first.InitializeAsync();
             await first.UpsertAsync(new SyncStateEntry
             {
@@ -813,7 +813,7 @@ namespace Cotton.Sync.Tests.State
                 SyncedAtUtc = new DateTime(2026, 6, 4, 10, 0, 0, DateTimeKind.Utc),
             });
 
-            var second = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore second = new SqliteSyncStateStore(databasePath);
             await second.InitializeAsync();
             SyncStateEntry? entry = await second.GetAsync("pair-a", "docs/empty");
 
@@ -832,7 +832,7 @@ namespace Cotton.Sync.Tests.State
         [Test]
         public async Task UpsertAsync_UsesCaseInsensitivePathKeyWithinPair()
         {
-            var store = CreateStore();
+            SqliteSyncStateStore store = CreateStore();
             await store.InitializeAsync();
             await store.UpsertAsync(new SyncStateEntry
             {
@@ -864,7 +864,7 @@ namespace Cotton.Sync.Tests.State
         [Test]
         public async Task ReplacePairAsync_ReplacesOnlyRequestedPair()
         {
-            var store = CreateStore();
+            SqliteSyncStateStore store = CreateStore();
             await store.InitializeAsync();
             await store.UpsertAsync(new SyncStateEntry
             {
@@ -915,7 +915,7 @@ namespace Cotton.Sync.Tests.State
 
             await Task.WhenAll(migrations);
 
-            var store = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
             await store.UpsertAsync(new SyncStateEntry
             {
                 SyncPairId = "pair-a",
@@ -932,7 +932,7 @@ namespace Cotton.Sync.Tests.State
         [Test]
         public async Task DeleteAsync_RemovesOneEntryOnly()
         {
-            var store = CreateStore();
+            SqliteSyncStateStore store = CreateStore();
             await store.InitializeAsync();
             await store.UpsertAsync(new SyncStateEntry
             {
@@ -956,7 +956,7 @@ namespace Cotton.Sync.Tests.State
         [Test]
         public async Task DeletePairAsync_RemovesEntriesAndCursorForRequestedPairOnly()
         {
-            var store = CreateStore();
+            SqliteSyncStateStore store = CreateStore();
             await store.InitializeAsync();
             await store.UpsertAsync(new SyncStateEntry
             {
@@ -1001,7 +1001,7 @@ namespace Cotton.Sync.Tests.State
         public async Task DeletePairAsync_CompactsLargeFreelistAfterRemovingLargePair()
         {
             string databasePath = DatabasePath();
-            var store = new SqliteSyncStateStore(databasePath);
+            SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
             await store.InitializeAsync();
             byte[] placeholderIdentity = Enumerable.Range(0, 16 * 1024)
                 .Select(index => (byte)(index % 251))
@@ -1078,7 +1078,7 @@ namespace Cotton.Sync.Tests.State
 
         private static async Task CreateMigratedStateDatabaseAsync(string databasePath, string migration)
         {
-            var connectionString = new System.Data.Common.DbConnectionStringBuilder
+            DbConnectionStringBuilder connectionString = new DbConnectionStringBuilder
             {
                 ["Data Source"] = databasePath,
                 ["Pooling"] = false,
@@ -1086,13 +1086,13 @@ namespace Cotton.Sync.Tests.State
             DbContextOptions<SyncStateDbContext> options = new DbContextOptionsBuilder<SyncStateDbContext>()
                 .UseSqlite(connectionString)
                 .Options;
-            await using var context = new SyncStateDbContext(options);
+            await using SyncStateDbContext context = new SyncStateDbContext(options);
             await context.Database.MigrateAsync(migration);
         }
 
         private static async Task<SqlitePageUsage> ReadPageUsageAsync(string databasePath)
         {
-            var connectionString = new DbConnectionStringBuilder
+            DbConnectionStringBuilder connectionString = new DbConnectionStringBuilder
             {
                 ["Data Source"] = databasePath,
                 ["Pooling"] = false,
@@ -1100,7 +1100,7 @@ namespace Cotton.Sync.Tests.State
             DbContextOptions<SyncStateDbContext> options = new DbContextOptionsBuilder<SyncStateDbContext>()
                 .UseSqlite(connectionString)
                 .Options;
-            await using var context = new SyncStateDbContext(options);
+            await using SyncStateDbContext context = new SyncStateDbContext(options);
             await context.Database.OpenConnectionAsync();
             try
             {
@@ -1126,7 +1126,7 @@ namespace Cotton.Sync.Tests.State
 
         private static async Task<string> ReadIndexColumnsAsync(string databasePath, string indexName)
         {
-            var connectionString = new DbConnectionStringBuilder
+            DbConnectionStringBuilder connectionString = new DbConnectionStringBuilder
             {
                 ["Data Source"] = databasePath,
                 ["Pooling"] = false,
@@ -1134,7 +1134,7 @@ namespace Cotton.Sync.Tests.State
             DbContextOptions<SyncStateDbContext> options = new DbContextOptionsBuilder<SyncStateDbContext>()
                 .UseSqlite(connectionString)
                 .Options;
-            await using var context = new SyncStateDbContext(options);
+            await using SyncStateDbContext context = new SyncStateDbContext(options);
             await context.Database.OpenConnectionAsync();
             try
             {

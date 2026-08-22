@@ -203,7 +203,7 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
             try
             {
                 byte[] rawBody = await ReadBodyAsync(context.Request, cancellationToken).ConfigureAwait(false);
-                var snapshot = new HttpRequestSnapshot(
+                HttpRequestSnapshot snapshot = new HttpRequestSnapshot(
                     new HttpMethod(context.Request.HttpMethod),
                     context.Request.RawUrl ?? string.Empty,
                     ReadBearerToken(context.Request),
@@ -239,7 +239,7 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
 
         private static async Task<byte[]> ReadBodyAsync(HttpListenerRequest request, CancellationToken cancellationToken)
         {
-            using var memory = new MemoryStream();
+            using MemoryStream memory = new MemoryStream();
             await request.InputStream.CopyToAsync(memory, cancellationToken).ConfigureAwait(false);
             return memory.ToArray();
         }
@@ -255,7 +255,7 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
 
         private static IReadOnlyDictionary<string, string> ReadHeaders(HttpListenerRequest request)
         {
-            var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, string> headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (string? key in request.Headers.AllKeys)
             {
                 if (!string.IsNullOrWhiteSpace(key))
@@ -269,7 +269,7 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
 
         private static int GetFreePort()
         {
-            using var listener = new TcpListener(IPAddress.Loopback, 0);
+            using TcpListener listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
             return ((IPEndPoint)listener.LocalEndpoint).Port;
         }

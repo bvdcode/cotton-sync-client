@@ -39,9 +39,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task HandleFetchDataAsync_DownloadsAndTransfersRequestedRange()
         {
             byte[] content = Encoding.UTF8.GetBytes("0123456789abcdef");
-            var provider = new FakeContentProvider(content);
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
+            FakeContentProvider provider = new FakeContentProvider(content);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesHydrationCoordinator coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
             WindowsCloudFilesFetchDataRequest request = CreateFetchRequest(content, offset: 4, length: 6);
 
             await coordinator.HandleFetchDataAsync(request);
@@ -62,9 +62,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task HandleFetchDataAsync_UsesVerifiedRangeProviderForPartialRequest()
         {
             byte[] content = Encoding.UTF8.GetBytes("0123456789abcdef");
-            var provider = new VerifiedRangeContentProvider(content);
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
+            VerifiedRangeContentProvider provider = new VerifiedRangeContentProvider(content);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesHydrationCoordinator coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
             WindowsCloudFilesFetchDataRequest request = CreateFetchRequest(content, offset: 4, length: 6);
 
             await coordinator.HandleFetchDataAsync(request);
@@ -89,9 +89,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task HandleFetchDataAsync_UsesFullDownloadForFullRequestWhenRangeProviderExists()
         {
             byte[] content = Encoding.UTF8.GetBytes("0123456789abcdef");
-            var provider = new VerifiedRangeContentProvider(content);
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
+            VerifiedRangeContentProvider provider = new VerifiedRangeContentProvider(content);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesHydrationCoordinator coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
             WindowsCloudFilesFetchDataRequest request = CreateFetchRequest(content, offset: 0, length: content.Length);
 
             await coordinator.HandleFetchDataAsync(request);
@@ -111,10 +111,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task HandleFetchDataAsync_ReportsFailureWhenVerifiedRangeSizeDoesNotMatch()
         {
             byte[] content = Encoding.UTF8.GetBytes("0123456789abcdef");
-            var provider = new VerifiedRangeContentProvider(content, rangeBytesToWrite: 3);
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory, diagnostics);
+            VerifiedRangeContentProvider provider = new VerifiedRangeContentProvider(content, rangeBytesToWrite: 3);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesHydrationCoordinator coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory, diagnostics);
             WindowsCloudFilesFetchDataRequest request = CreateFetchRequest(content, offset: 4, length: 6);
 
             await coordinator.HandleFetchDataAsync(request);
@@ -136,9 +136,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task HandleFetchDataAsync_MarksFullHydrationInSync()
         {
             byte[] content = Encoding.UTF8.GetBytes("0123456789abcdef");
-            var provider = new FakeContentProvider(content);
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
+            FakeContentProvider provider = new FakeContentProvider(content);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesHydrationCoordinator coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
             WindowsCloudFilesFetchDataRequest request = CreateFetchRequest(content, offset: 0, length: content.Length);
 
             await coordinator.HandleFetchDataAsync(request);
@@ -150,13 +150,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task HandleFetchDataAsync_RecordsFailureWhenFullHydrationDoesNotReportInSync()
         {
             byte[] content = Encoding.UTF8.GetBytes("0123456789abcdef");
-            var provider = new FakeContentProvider(content);
-            var nativeApi = new FakeCloudFilesNativeApi
+            FakeContentProvider provider = new FakeContentProvider(content);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi
             {
                 InSyncStateAfterSet = WindowsCloudFilesPlaceholderState.Placeholder,
             };
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesHydrationCoordinator coordinator = new WindowsCloudFilesHydrationCoordinator(
                 provider,
                 nativeApi,
                 _tempDirectory,
@@ -183,11 +183,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task HandleFetchDataAsync_ReportsHydrationDownloadProgress()
         {
             byte[] content = Encoding.UTF8.GetBytes("0123456789abcdef");
-            var provider = new ProgressContentProvider(content);
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var progress = new RecordingProgress<SyncTransferProgress>();
+            ProgressContentProvider provider = new ProgressContentProvider(content);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            RecordingProgress<SyncTransferProgress> progress = new RecordingProgress<SyncTransferProgress>();
             Guid expectedSyncPairId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(
+            WindowsCloudFilesHydrationCoordinator coordinator = new WindowsCloudFilesHydrationCoordinator(
                 provider,
                 nativeApi,
                 _tempDirectory,
@@ -217,10 +217,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task HandleFetchDataAsync_RecordsRequesterProcessInfoWhenAvailable()
         {
             byte[] content = Encoding.UTF8.GetBytes("hello world");
-            var provider = new FakeContentProvider(content);
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(
+            FakeContentProvider provider = new FakeContentProvider(content);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesHydrationCoordinator coordinator = new WindowsCloudFilesHydrationCoordinator(
                 provider,
                 nativeApi,
                 _tempDirectory,
@@ -255,13 +255,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task RemoteContentProvider_UsesProgressAwareDownloadWhenAvailable()
         {
-            var remoteFiles = new ProgressRemoteFileSynchronizer();
-            var provider = new RemoteFileSynchronizerCloudFilesContentProvider(remoteFiles);
-            var progress = new RecordingProgress<SyncTransferProgress>();
+            ProgressRemoteFileSynchronizer remoteFiles = new ProgressRemoteFileSynchronizer();
+            RemoteFileSynchronizerCloudFilesContentProvider provider = new RemoteFileSynchronizerCloudFilesContentProvider(remoteFiles);
+            RecordingProgress<SyncTransferProgress> progress = new RecordingProgress<SyncTransferProgress>();
             byte[] content = Encoding.UTF8.GetBytes("remote");
             WindowsCloudFilesPlaceholderIdentity identity = WindowsCloudFilesPlaceholderIdentity
                 .Create(CreatePlaceholderRequest(content), "remote-only.txt");
-            await using var destination = new MemoryStream();
+            await using MemoryStream destination = new MemoryStream();
 
             await provider.DownloadAsync(identity, destination, progress);
 
@@ -279,13 +279,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task RemoteRangeContentProvider_UsesRangeDownloadWithPlaceholderETag()
         {
-            var remoteFiles = new ProgressRemoteFileSynchronizer();
-            var provider = new RemoteFileRangeSynchronizerCloudFilesContentProvider(remoteFiles);
-            var progress = new RecordingProgress<SyncTransferProgress>();
+            ProgressRemoteFileSynchronizer remoteFiles = new ProgressRemoteFileSynchronizer();
+            RemoteFileRangeSynchronizerCloudFilesContentProvider provider = new RemoteFileRangeSynchronizerCloudFilesContentProvider(remoteFiles);
+            RecordingProgress<SyncTransferProgress> progress = new RecordingProgress<SyncTransferProgress>();
             byte[] content = Encoding.UTF8.GetBytes("0123456789abcdef");
             WindowsCloudFilesPlaceholderIdentity identity = WindowsCloudFilesPlaceholderIdentity
                 .Create(CreatePlaceholderRequest(content), "remote-only.txt");
-            await using var destination = new MemoryStream();
+            await using MemoryStream destination = new MemoryStream();
 
             await provider.DownloadVerifiedRangeAsync(
                 identity,
@@ -311,11 +311,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void AppTransferProgressReporter_PublishesHydrationProgressToDesktopPipeline()
         {
-            var publisher = new InMemoryAppTransferProgressPublisher();
-            var observer = new RecordingObserver<AppTransferProgress>();
+            InMemoryAppTransferProgressPublisher publisher = new InMemoryAppTransferProgressPublisher();
+            RecordingObserver<AppTransferProgress> observer = new RecordingObserver<AppTransferProgress>();
             using IDisposable subscription = publisher.Subscribe(observer);
             Guid syncPairId = Guid.Parse("22222222-2222-2222-2222-222222222222");
-            var reporter = new WindowsCloudFilesAppTransferProgressReporter(syncPairId, publisher);
+            WindowsCloudFilesAppTransferProgressReporter reporter = new WindowsCloudFilesAppTransferProgressReporter(syncPairId, publisher);
 
             reporter.Report(new SyncTransferProgress(
                 SyncTransferDirection.Download,
@@ -342,10 +342,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task QueueFetchData_StartsDeepTreeHydrationWithoutSyncTreeWork()
         {
             byte[] content = Encoding.UTF8.GetBytes("small");
-            var provider = new BlockingStartContentProvider(content);
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
-            using var dispatcher = new WindowsCloudFilesCallbackDispatcher(
+            BlockingStartContentProvider provider = new BlockingStartContentProvider(content);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesHydrationCoordinator coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
+            using WindowsCloudFilesCallbackDispatcher dispatcher = new WindowsCloudFilesCallbackDispatcher(
                 coordinator,
                 nativeApi.TransferData,
                 new WindowsCloudFilesCallbackDispatcherOptions(MaxConcurrentFetches: 1, QueueCapacity: 4));
@@ -380,10 +380,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task HandleFetchDataAsync_ReportsFailureWhenContentHashDoesNotMatch()
         {
             byte[] expectedContent = Encoding.UTF8.GetBytes("expected");
-            var provider = new FakeContentProvider(Encoding.UTF8.GetBytes("mismatch"));
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory, diagnostics);
+            FakeContentProvider provider = new FakeContentProvider(Encoding.UTF8.GetBytes("mismatch"));
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesHydrationCoordinator coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory, diagnostics);
             WindowsCloudFilesFetchDataRequest request = CreateFetchRequest(expectedContent, offset: 0, length: expectedContent.Length);
 
             await coordinator.HandleFetchDataAsync(request);
@@ -407,9 +407,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task HandleFetchDataAsync_ReportsFailureWhenContentSizeDoesNotMatch()
         {
             byte[] expectedContent = Encoding.UTF8.GetBytes("expected");
-            var provider = new FakeContentProvider(Encoding.UTF8.GetBytes("short"));
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
+            FakeContentProvider provider = new FakeContentProvider(Encoding.UTF8.GetBytes("short"));
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesHydrationCoordinator coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
             WindowsCloudFilesFetchDataRequest request = CreateFetchRequest(expectedContent, offset: 0, length: expectedContent.Length);
 
             await coordinator.HandleFetchDataAsync(request);
@@ -428,12 +428,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task HandleFetchDataAsync_AllowsRetryAfterFailedHydration()
         {
             byte[] expectedContent = Encoding.UTF8.GetBytes("expected");
-            var provider = new SequencedContentProvider(
+            SequencedContentProvider provider = new SequencedContentProvider(
                 Encoding.UTF8.GetBytes("mismatch"),
                 expectedContent);
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory, diagnostics);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesHydrationCoordinator coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory, diagnostics);
             WindowsCloudFilesFetchDataRequest failedAttempt =
                 CreateFetchRequest(expectedContent, offset: 0, length: expectedContent.Length, requestKey: 3);
             WindowsCloudFilesFetchDataRequest retryAttempt =
@@ -457,9 +457,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void HandleFetchDataAsync_PropagatesCancellationWithoutFailureTransfer()
         {
-            var provider = new CanceledContentProvider();
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
+            CanceledContentProvider provider = new CanceledContentProvider();
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesHydrationCoordinator coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
             byte[] content = Encoding.UTF8.GetBytes("cancel");
             WindowsCloudFilesFetchDataRequest request = CreateFetchRequest(content, offset: 0, length: content.Length);
 
@@ -472,9 +472,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void HandleFetchDataAsync_DeletesTempFileWhenCanceled()
         {
-            var provider = new PartialCanceledContentProvider(Encoding.UTF8.GetBytes("partial"));
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
+            PartialCanceledContentProvider provider = new PartialCanceledContentProvider(Encoding.UTF8.GetBytes("partial"));
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesHydrationCoordinator coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory);
             byte[] content = Encoding.UTF8.GetBytes("cancel");
             WindowsCloudFilesFetchDataRequest request = CreateFetchRequest(content, offset: 0, length: content.Length);
 
@@ -492,10 +492,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task HandleDehydrateAsync_AcknowledgesWithoutRemoteDownloadOrTransfer()
         {
             byte[] content = Encoding.UTF8.GetBytes("remote");
-            var provider = new FakeContentProvider(content);
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory, diagnostics);
+            FakeContentProvider provider = new FakeContentProvider(content);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesHydrationCoordinator coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory, diagnostics);
             WindowsCloudFilesDehydrateRequest request = CreateDehydrateRequest(content);
 
             await coordinator.HandleDehydrateAsync(request);
@@ -518,11 +518,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task HandleDehydrateAsync_ReportsFailureWhenIdentityIsInvalid()
         {
-            var provider = new FakeContentProvider(Encoding.UTF8.GetBytes("remote"));
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory, diagnostics);
-            var request = new WindowsCloudFilesDehydrateRequest(
+            FakeContentProvider provider = new FakeContentProvider(Encoding.UTF8.GetBytes("remote"));
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesHydrationCoordinator coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory, diagnostics);
+            WindowsCloudFilesDehydrateRequest request = new WindowsCloudFilesDehydrateRequest(
                 new WindowsCloudFilesConnectionKey(1),
                 new WindowsCloudFilesTransferKey(2),
                 new WindowsCloudFilesRequestKey(5),
@@ -550,10 +550,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public void NotifyDehydrateCompleted_RecordsCompletionDiagnostic()
         {
             byte[] content = Encoding.UTF8.GetBytes("remote");
-            var provider = new FakeContentProvider(content);
-            var nativeApi = new FakeCloudFilesNativeApi();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory, diagnostics);
+            FakeContentProvider provider = new FakeContentProvider(content);
+            FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsCloudFilesHydrationCoordinator coordinator = new WindowsCloudFilesHydrationCoordinator(provider, nativeApi, _tempDirectory, diagnostics);
             WindowsCloudFilesDehydrateRequest request = CreateDehydrateRequest(content);
 
             coordinator.NotifyDehydrateCompleted(new WindowsCloudFilesDehydrateCompletionNotification(
@@ -653,7 +653,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
         private static async Task WaitUntilAsync(Func<bool> condition)
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using CancellationTokenSource timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             while (!condition())
             {
                 await Task.Delay(10, timeout.Token).ConfigureAwait(false);

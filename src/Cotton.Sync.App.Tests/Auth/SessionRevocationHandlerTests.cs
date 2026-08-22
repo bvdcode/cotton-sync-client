@@ -16,11 +16,11 @@ namespace Cotton.Sync.App.Tests.Auth
         [Test]
         public async Task HandleSessionRevokedAsync_StopsBackgroundWorkAndSignsOut()
         {
-            var authFlow = new FakeAuthFlow();
-            var localChanges = new FakeLocalChangeSyncCoordinator();
-            var periodicSync = new FakePeriodicSyncCoordinator();
-            var supervisor = new FakeSyncSupervisor();
-            var handler = new SessionRevocationHandler(authFlow, localChanges, periodicSync, supervisor);
+            FakeAuthFlow authFlow = new FakeAuthFlow();
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator();
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            SessionRevocationHandler handler = new SessionRevocationHandler(authFlow, localChanges, periodicSync, supervisor);
 
             await handler.HandleSessionRevokedAsync();
 
@@ -36,14 +36,14 @@ namespace Cotton.Sync.App.Tests.Auth
         [Test]
         public async Task HandleSessionRevokedAsync_ContinuesShutdownWhenSignOutFails()
         {
-            var authFlow = new FakeAuthFlow
+            FakeAuthFlow authFlow = new FakeAuthFlow
             {
                 SignOutException = new InvalidOperationException("logout failed"),
             };
-            var localChanges = new FakeLocalChangeSyncCoordinator();
-            var periodicSync = new FakePeriodicSyncCoordinator();
-            var supervisor = new FakeSyncSupervisor();
-            var handler = new SessionRevocationHandler(authFlow, localChanges, periodicSync, supervisor);
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator();
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            SessionRevocationHandler handler = new SessionRevocationHandler(authFlow, localChanges, periodicSync, supervisor);
 
             await handler.HandleSessionRevokedAsync();
 
@@ -59,14 +59,14 @@ namespace Cotton.Sync.App.Tests.Auth
         [Test]
         public async Task HandleSessionRevokedAsync_PublishesSessionRevocationEvent()
         {
-            var authFlow = new FakeAuthFlow();
-            var localChanges = new FakeLocalChangeSyncCoordinator();
-            var periodicSync = new FakePeriodicSyncCoordinator();
-            var supervisor = new FakeSyncSupervisor();
-            var publisher = new InMemorySessionRevocationPublisher();
-            var observer = new RecordingObserver<SessionRevocationEvent>();
+            FakeAuthFlow authFlow = new FakeAuthFlow();
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator();
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            InMemorySessionRevocationPublisher publisher = new InMemorySessionRevocationPublisher();
+            RecordingObserver<SessionRevocationEvent> observer = new RecordingObserver<SessionRevocationEvent>();
             using IDisposable subscription = publisher.Subscribe(observer);
-            var handler = new SessionRevocationHandler(
+            SessionRevocationHandler handler = new SessionRevocationHandler(
                 authFlow,
                 localChanges,
                 periodicSync,

@@ -95,8 +95,8 @@ namespace Cotton.Sync.Desktop.Tests.Auth
         [Test]
         public async Task ProtectAndUnprotectAsync_RoundtripsThroughSecretToolRunner()
         {
-            var runner = new FakeSecretToolProcessRunner();
-            var protector = new LinuxSecretServiceTokenPayloadProtector("/usr/bin/secret-tool", runner);
+            FakeSecretToolProcessRunner runner = new FakeSecretToolProcessRunner();
+            LinuxSecretServiceTokenPayloadProtector protector = new LinuxSecretServiceTokenPayloadProtector("/usr/bin/secret-tool", runner);
             byte[] plaintext = Encoding.UTF8.GetBytes("token payload");
 
             byte[] protectedPayload = await protector.ProtectAsync(plaintext);
@@ -115,8 +115,8 @@ namespace Cotton.Sync.Desktop.Tests.Auth
         [Test]
         public async Task DeleteAsync_ClearsSecretToolPayload()
         {
-            var runner = new FakeSecretToolProcessRunner();
-            var protector = new LinuxSecretServiceTokenPayloadProtector("/usr/bin/secret-tool", runner);
+            FakeSecretToolProcessRunner runner = new FakeSecretToolProcessRunner();
+            LinuxSecretServiceTokenPayloadProtector protector = new LinuxSecretServiceTokenPayloadProtector("/usr/bin/secret-tool", runner);
 
             byte[] protectedPayload = await protector.ProtectAsync(Encoding.UTF8.GetBytes("token payload"));
             string payloadId = Encoding.UTF8.GetString(protectedPayload);
@@ -132,11 +132,11 @@ namespace Cotton.Sync.Desktop.Tests.Auth
         [Test]
         public void UnprotectAsync_ThrowsWhenSecretToolReturnsInvalidBase64()
         {
-            var runner = new FakeSecretToolProcessRunner
+            FakeSecretToolProcessRunner runner = new FakeSecretToolProcessRunner
             {
                 LookupOverride = "not base64",
             };
-            var protector = new LinuxSecretServiceTokenPayloadProtector("/usr/bin/secret-tool", runner);
+            LinuxSecretServiceTokenPayloadProtector protector = new LinuxSecretServiceTokenPayloadProtector("/usr/bin/secret-tool", runner);
             byte[] protectedPayload = Encoding.UTF8.GetBytes("payload-id");
 
             Assert.ThrowsAsync<CryptographicException>(async () => await protector.UnprotectAsync(protectedPayload));

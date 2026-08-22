@@ -191,7 +191,7 @@ namespace Cotton.Sync.App.Runners
                     "Remote change feed returned more changes than the maximum accumulation limit.");
             }
 
-            var changes = new List<SyncChangeDto>(batch.Changes);
+            List<SyncChangeDto> changes = new List<SyncChangeDto>(batch.Changes);
 
             while (ShouldReadNextPage(batch) && changes.Count < MaximumAccumulatedRemoteChanges)
             {

@@ -57,7 +57,7 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
                 ? []
                 : await request.Content.ReadAsByteArrayAsync(cancellationToken);
             string body = Encoding.UTF8.GetString(rawBody);
-            var snapshot = new HttpRequestSnapshot(
+            HttpRequestSnapshot snapshot = new HttpRequestSnapshot(
                 request.Method,
                 request.RequestUri?.PathAndQuery ?? string.Empty,
                 request.Headers.Authorization?.Parameter,

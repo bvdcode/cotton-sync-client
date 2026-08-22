@@ -18,7 +18,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         [Test]
         public void Format_IncludesLevelCategoryEventAndException()
         {
-            var exception = new InvalidOperationException("sync failed");
+            InvalidOperationException exception = new InvalidOperationException("sync failed");
 
             string formatted = DesktopTraceLogFormatter.Format(
                 "Cotton.Sync.App.Runners.SyncPairRunner",
@@ -40,7 +40,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         [Test]
         public void Log_WritesRedactedMessageToTrace()
         {
-            var listener = new CollectingTraceListener();
+            CollectingTraceListener listener = new CollectingTraceListener();
             Trace.Listeners.Add(listener);
             try
             {
@@ -65,7 +65,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         [Test]
         public void Log_DefaultMinimumLevelSkipsDebugMessages()
         {
-            var listener = new CollectingTraceListener();
+            CollectingTraceListener listener = new CollectingTraceListener();
             Trace.Listeners.Add(listener);
             try
             {
@@ -89,7 +89,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         [Test]
         public void Log_DebugMinimumLevelKeepsDebugMessages()
         {
-            var listener = new CollectingTraceListener();
+            CollectingTraceListener listener = new CollectingTraceListener();
             Trace.Listeners.Add(listener);
             try
             {
@@ -108,7 +108,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         [Test]
         public void Log_DowngradesSdkUnauthorizedChallengeToInformation()
         {
-            var listener = new CollectingTraceListener();
+            CollectingTraceListener listener = new CollectingTraceListener();
             Trace.Listeners.Add(listener);
             try
             {
@@ -134,7 +134,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         [Test]
         public void Log_KeepsNonSdkUnauthorizedWarningsAsWarnings()
         {
-            var listener = new CollectingTraceListener();
+            CollectingTraceListener listener = new CollectingTraceListener();
             Trace.Listeners.Add(listener);
             try
             {
@@ -160,11 +160,11 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         {
             string? previous = Environment.GetEnvironmentVariable(DesktopTraceLogLevel.EnvironmentVariableName);
             Environment.SetEnvironmentVariable(DesktopTraceLogLevel.EnvironmentVariableName, "Debug");
-            var listener = new CollectingTraceListener();
+            CollectingTraceListener listener = new CollectingTraceListener();
             Trace.Listeners.Add(listener);
             try
             {
-                using var factory = new DesktopTraceLoggerFactory();
+                using DesktopTraceLoggerFactory factory = new DesktopTraceLoggerFactory();
                 ILogger logger = factory.CreateLogger("Cotton.Sync.Desktop.Tests");
 
                 logger.LogDebug("debug enabled from environment");

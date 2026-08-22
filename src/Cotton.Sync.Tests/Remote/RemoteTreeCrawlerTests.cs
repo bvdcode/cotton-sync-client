@@ -16,7 +16,7 @@ namespace Cotton.Sync.Tests.Remote
         {
             Guid rootId = Guid.NewGuid();
             Guid docsId = Guid.NewGuid();
-            var client = new FakeNodeClient();
+            FakeNodeClient client = new FakeNodeClient();
             client.Nodes[rootId] = Node(rootId, null, "root");
             client.Nodes[docsId] = Node(docsId, rootId, "Docs");
             client.Children[(rootId, 1)] = new FakeNodePage
@@ -35,8 +35,8 @@ namespace Cotton.Sync.Tests.Remote
                 TotalCount = 1,
                 Files = [File(docsId, "report.txt")],
             };
-            var crawler = new RemoteTreeCrawler(client, pageSize: 2);
-            var progress = new RecordingProgress<RemoteTreeScanProgress>();
+            RemoteTreeCrawler crawler = new RemoteTreeCrawler(client, pageSize: 2);
+            RecordingProgress<RemoteTreeScanProgress> progress = new RecordingProgress<RemoteTreeScanProgress>();
 
             RemoteTreeSnapshot snapshot = await crawler.CrawlAsync(rootId, progress);
 
@@ -56,7 +56,7 @@ namespace Cotton.Sync.Tests.Remote
             Guid rootId = Guid.NewGuid();
             Guid docsId = Guid.NewGuid();
             Guid videosId = Guid.NewGuid();
-            var client = new FakeNodeClient();
+            FakeNodeClient client = new FakeNodeClient();
             client.Nodes[rootId] = Node(rootId, null, "root");
             client.Nodes[docsId] = Node(docsId, rootId, "Docs");
             client.Nodes[videosId] = Node(videosId, rootId, "Videos");
@@ -80,7 +80,7 @@ namespace Cotton.Sync.Tests.Remote
                 TotalCount = 1,
                 Files = [File(videosId, "clip.mp4")],
             };
-            var crawler = new RemoteTreeCrawler(client, pageSize: 1);
+            RemoteTreeCrawler crawler = new RemoteTreeCrawler(client, pageSize: 1);
 
             RemoteTreeSnapshot snapshot = await crawler.CrawlAsync(rootId);
 
@@ -97,7 +97,7 @@ namespace Cotton.Sync.Tests.Remote
         {
             Guid rootId = Guid.NewGuid();
             Guid docsId = Guid.NewGuid();
-            var client = new FakeNodeClient();
+            FakeNodeClient client = new FakeNodeClient();
             client.Nodes[rootId] = Node(rootId, null, "root");
             client.Nodes[docsId] = Node(docsId, rootId, "Docs");
             client.Children[(rootId, 1)] = new FakeNodePage
@@ -111,8 +111,8 @@ namespace Cotton.Sync.Tests.Remote
                 TotalCount = 1,
                 Files = [File(docsId, "report.txt")],
             };
-            var crawler = new RemoteTreeCrawler(client);
-            var progress = new RecordingProgress<RemoteTreeScanProgress>();
+            RemoteTreeCrawler crawler = new RemoteTreeCrawler(client);
+            RecordingProgress<RemoteTreeScanProgress> progress = new RecordingProgress<RemoteTreeScanProgress>();
 
             RemoteTreeLookupSnapshot snapshot = await crawler.CrawlLookupsAsync(rootId, progress);
 
@@ -135,10 +135,10 @@ namespace Cotton.Sync.Tests.Remote
         public async Task CrawlAsync_ReturnsEmptySnapshotForEmptyRoot()
         {
             Guid rootId = Guid.NewGuid();
-            var client = new FakeNodeClient();
+            FakeNodeClient client = new FakeNodeClient();
             client.Nodes[rootId] = Node(rootId, null, "root");
             client.Children[(rootId, 1)] = new FakeNodePage { TotalCount = 0 };
-            var crawler = new RemoteTreeCrawler(client);
+            RemoteTreeCrawler crawler = new RemoteTreeCrawler(client);
 
             RemoteTreeSnapshot snapshot = await crawler.CrawlAsync(rootId);
 
@@ -155,7 +155,7 @@ namespace Cotton.Sync.Tests.Remote
             Guid rootId = Guid.NewGuid();
             Guid metadataId = Guid.NewGuid();
             Guid docsId = Guid.NewGuid();
-            var client = new FakeNodeClient();
+            FakeNodeClient client = new FakeNodeClient();
             client.Nodes[rootId] = Node(rootId, null, "root");
             client.Nodes[metadataId] = Node(metadataId, rootId, ".cotton-sync");
             client.Nodes[docsId] = Node(docsId, rootId, "Docs");
@@ -175,7 +175,7 @@ namespace Cotton.Sync.Tests.Remote
                 TotalCount = 1,
                 Files = [File(docsId, "report.txt")],
             };
-            var crawler = new RemoteTreeCrawler(client);
+            RemoteTreeCrawler crawler = new RemoteTreeCrawler(client);
 
             RemoteTreeSnapshot snapshot = await crawler.CrawlAsync(rootId);
 
@@ -192,7 +192,7 @@ namespace Cotton.Sync.Tests.Remote
         {
             Guid rootId = Guid.NewGuid();
             Guid docsId = Guid.NewGuid();
-            var client = new FakeNodeClient();
+            FakeNodeClient client = new FakeNodeClient();
             client.Nodes[rootId] = Node(rootId, null, "root");
             client.Nodes[docsId] = Node(docsId, rootId, "Docs");
             client.Children[(rootId, 1)] = new FakeNodePage
@@ -206,8 +206,8 @@ namespace Cotton.Sync.Tests.Remote
                 TotalCount = 2,
                 Files = [File(docsId, "a.txt"), File(docsId, "b.txt")],
             };
-            var crawler = new RemoteTreeCrawler(client);
-            var progress = new RecordingProgress<RemoteTreeScanProgress>();
+            RemoteTreeCrawler crawler = new RemoteTreeCrawler(client);
+            RecordingProgress<RemoteTreeScanProgress> progress = new RecordingProgress<RemoteTreeScanProgress>();
 
             await crawler.CrawlAsync(rootId, progress);
 
@@ -231,7 +231,7 @@ namespace Cotton.Sync.Tests.Remote
             Guid rootId = Guid.NewGuid();
             Guid docsId = Guid.NewGuid();
             Guid videosId = Guid.NewGuid();
-            var client = new FakeNodeClient();
+            FakeNodeClient client = new FakeNodeClient();
             client.Nodes[rootId] = Node(rootId, null, "root");
             client.Nodes[docsId] = Node(docsId, rootId, "Docs");
             client.Nodes[videosId] = Node(videosId, rootId, "Videos");
@@ -240,8 +240,8 @@ namespace Cotton.Sync.Tests.Remote
                 TotalCount = 2,
                 Nodes = [client.Nodes[docsId], client.Nodes[videosId]],
             };
-            var crawler = new RemoteTreeCrawler(client);
-            var progress = new RecordingProgress<RemoteTreeScanProgress>();
+            RemoteTreeCrawler crawler = new RemoteTreeCrawler(client);
+            RecordingProgress<RemoteTreeScanProgress> progress = new RecordingProgress<RemoteTreeScanProgress>();
 
             await crawler.CrawlAsync(rootId, progress);
 
@@ -262,7 +262,7 @@ namespace Cotton.Sync.Tests.Remote
             Guid docsId = Guid.NewGuid();
             Guid photosId = Guid.NewGuid();
             Guid videosId = Guid.NewGuid();
-            var client = new FakeNodeClient
+            FakeNodeClient client = new FakeNodeClient
             {
                 GetChildrenDelay = TimeSpan.FromMilliseconds(50),
             };
@@ -290,9 +290,9 @@ namespace Cotton.Sync.Tests.Remote
                 TotalCount = 1,
                 Files = [File(videosId, "clip.mp4")],
             };
-            var crawler = new RemoteTreeCrawler(client, pageSize: 1, streamingConcurrency: 3);
-            var sink = new RecordingStreamSink();
-            var progress = new RecordingProgress<RemoteTreeScanProgress>();
+            RemoteTreeCrawler crawler = new RemoteTreeCrawler(client, pageSize: 1, streamingConcurrency: 3);
+            RecordingStreamSink sink = new RecordingStreamSink();
+            RecordingProgress<RemoteTreeScanProgress> progress = new RecordingProgress<RemoteTreeScanProgress>();
 
             await crawler.CrawlStreamingAsync(rootId, sink, progress);
 

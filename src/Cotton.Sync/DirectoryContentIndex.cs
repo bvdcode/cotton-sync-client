@@ -19,7 +19,7 @@ namespace Cotton.Sync
 
         public static DirectoryContentIndex Create(IEnumerable<string> directoryKeys, IEnumerable<string> fileKeys)
         {
-            var directoryKeysWithChildren = new HashSet<string>(PathComparer);
+            HashSet<string> directoryKeysWithChildren = new HashSet<string>(PathComparer);
             AddAncestorDirectoryKeys(directoryKeysWithChildren, directoryKeys);
             AddAncestorDirectoryKeys(directoryKeysWithChildren, fileKeys);
             return new DirectoryContentIndex(directoryKeysWithChildren);

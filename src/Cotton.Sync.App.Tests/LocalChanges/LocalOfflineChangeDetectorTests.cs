@@ -15,7 +15,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task DetectAsync_OfflineFileRenameReturnsSourceAndTargetScope()
         {
             SyncPairSettings syncPair = CreatePair();
-            var scanner = new FakeMetadataScanner();
+            FakeMetadataScanner scanner = new FakeMetadataScanner();
             AddDirectory(scanner.Snapshot, "Docs");
             AddFile(scanner.Snapshot, "Docs/renamed.txt", 27, Utc(12));
 
@@ -27,7 +27,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                     DirectoryState(syncPair, "Docs"),
                     FileState(syncPair, "Docs/source.txt", 21, Utc(10)),
                 ]);
-                var detector = new LocalOfflineChangeDetector(scanner, store);
+                LocalOfflineChangeDetector detector = new LocalOfflineChangeDetector(scanner, store);
 
                 SyncRunRequest? request = await detector.DetectAsync(syncPair);
 
@@ -50,7 +50,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task DetectAsync_MetadataEditReturnsOnlyEditedFile()
         {
             SyncPairSettings syncPair = CreatePair();
-            var scanner = new FakeMetadataScanner();
+            FakeMetadataScanner scanner = new FakeMetadataScanner();
             AddDirectory(scanner.Snapshot, "Docs");
             AddFile(scanner.Snapshot, "Docs/edited.txt", 25, Utc(11));
             AddFile(scanner.Snapshot, "Docs/unchanged.txt", 20, Utc(10));
@@ -64,7 +64,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                     FileState(syncPair, "Docs/edited.txt", 20, Utc(10)),
                     FileState(syncPair, "Docs/unchanged.txt", 20, Utc(10)),
                 ]);
-                var detector = new LocalOfflineChangeDetector(scanner, store);
+                LocalOfflineChangeDetector detector = new LocalOfflineChangeDetector(scanner, store);
 
                 SyncRunRequest? request = await detector.DetectAsync(syncPair);
 
@@ -80,7 +80,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task DetectAsync_OnlineOnlyPlaceholderWithoutLocalBaselineIsUnchanged()
         {
             SyncPairSettings syncPair = CreatePair();
-            var scanner = new FakeMetadataScanner();
+            FakeMetadataScanner scanner = new FakeMetadataScanner();
             AddDirectory(scanner.Snapshot, "Docs");
             AddFile(
                 scanner.Snapshot,
@@ -105,7 +105,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                         PlaceholderHydrationState = SyncPlaceholderHydrationState.RemoteOnly,
                     },
                 ]);
-                var detector = new LocalOfflineChangeDetector(scanner, store);
+                LocalOfflineChangeDetector detector = new LocalOfflineChangeDetector(scanner, store);
 
                 SyncRunRequest? request = await detector.DetectAsync(syncPair);
 
@@ -117,14 +117,14 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task DetectAsync_UnchangedProviderCreatedUntrackedFileIsSkipped()
         {
             SyncPairSettings syncPair = CreatePair();
-            var scanner = new FakeMetadataScanner();
+            FakeMetadataScanner scanner = new FakeMetadataScanner();
             AddFile(scanner.Snapshot, "Docs/report (Cotton conflict 20260804T060000Z).txt", 24, Utc(10));
-            var marker = new FakeProviderFileMarker(isUnchanged: true);
+            FakeProviderFileMarker marker = new FakeProviderFileMarker(isUnchanged: true);
 
             await WithStateStoreAsync(async store =>
             {
                 await AddCompletedCursorAsync(store, syncPair);
-                var detector = new LocalOfflineChangeDetector(scanner, store, marker);
+                LocalOfflineChangeDetector detector = new LocalOfflineChangeDetector(scanner, store, marker);
 
                 SyncRunRequest? request = await detector.DetectAsync(syncPair);
 
@@ -143,14 +143,14 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task DetectAsync_ChangedProviderCreatedUntrackedFileIsReturned()
         {
             SyncPairSettings syncPair = CreatePair();
-            var scanner = new FakeMetadataScanner();
+            FakeMetadataScanner scanner = new FakeMetadataScanner();
             AddFile(scanner.Snapshot, "Docs/recovery.txt", 31, Utc(11));
-            var marker = new FakeProviderFileMarker(isUnchanged: false);
+            FakeProviderFileMarker marker = new FakeProviderFileMarker(isUnchanged: false);
 
             await WithStateStoreAsync(async store =>
             {
                 await AddCompletedCursorAsync(store, syncPair);
-                var detector = new LocalOfflineChangeDetector(scanner, store, marker);
+                LocalOfflineChangeDetector detector = new LocalOfflineChangeDetector(scanner, store, marker);
 
                 SyncRunRequest? request = await detector.DetectAsync(syncPair);
 
@@ -162,7 +162,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task DetectAsync_NewAndDeletedDirectoriesCollapseDescendants()
         {
             SyncPairSettings syncPair = CreatePair();
-            var scanner = new FakeMetadataScanner();
+            FakeMetadataScanner scanner = new FakeMetadataScanner();
             AddDirectory(scanner.Snapshot, "New");
             AddDirectory(scanner.Snapshot, "New/Nested");
             AddFile(scanner.Snapshot, "New/Nested/file.txt", 10, Utc(10));
@@ -176,7 +176,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                     DirectoryState(syncPair, "Old/Nested"),
                     FileState(syncPair, "Old/Nested/file.txt", 10, Utc(10)),
                 ]);
-                var detector = new LocalOfflineChangeDetector(scanner, store);
+                LocalOfflineChangeDetector detector = new LocalOfflineChangeDetector(scanner, store);
 
                 SyncRunRequest? request = await detector.DetectAsync(syncPair);
 
@@ -192,10 +192,10 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task DetectAsync_IncompleteInitialPopulationSkipsLocalSnapshot()
         {
             SyncPairSettings syncPair = CreatePair();
-            var scanner = new FakeMetadataScanner();
+            FakeMetadataScanner scanner = new FakeMetadataScanner();
             await WithStateStoreAsync(async store =>
             {
-                var detector = new LocalOfflineChangeDetector(scanner, store);
+                LocalOfflineChangeDetector detector = new LocalOfflineChangeDetector(scanner, store);
 
                 SyncRunRequest? request = await detector.DetectAsync(syncPair);
 
@@ -306,7 +306,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 "cotton-offline-change-" + Guid.NewGuid().ToString("N") + ".db");
             try
             {
-                var store = new SqliteSyncStateStore(databasePath);
+                SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
                 await store.InitializeAsync();
                 await test(store);
             }
@@ -337,7 +337,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 CancellationToken cancellationToken = default)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var tree = new LocalTreeSnapshot();
+                LocalTreeSnapshot tree = new LocalTreeSnapshot();
                 tree.Directories.AddRange(Snapshot.DirectoriesByPath.Values);
                 tree.Files.AddRange(Snapshot.FilesByPath.Values);
                 return Task.FromResult(tree);

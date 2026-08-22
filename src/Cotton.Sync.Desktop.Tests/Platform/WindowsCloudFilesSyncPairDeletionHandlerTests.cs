@@ -36,8 +36,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task BeforeDeleteAsync_UnregistersWindowsVirtualFilesSyncRoot()
         {
-            var adapter = new FakeCloudFilesAdapter();
-            var handler = new WindowsCloudFilesSyncPairDeletionHandler(adapter);
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter();
+            WindowsCloudFilesSyncPairDeletionHandler handler = new WindowsCloudFilesSyncPairDeletionHandler(adapter);
             SyncPairSettings syncPair = CreatePair(SyncPairMode.WindowsVirtualFiles);
 
             await handler.BeforeDeleteAsync(syncPair);
@@ -48,10 +48,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task BeforeDeleteAsync_CleansSafeLocalRootAfterUnregister()
         {
-            var operations = new List<string>();
-            var adapter = new FakeCloudFilesAdapter(operations);
-            var cleaner = new FakeRootCleaner(operations, shouldRemoveRoot: true);
-            var handler = new WindowsCloudFilesSyncPairDeletionHandler(adapter, rootCleaner: cleaner);
+            List<string> operations = new List<string>();
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter(operations);
+            FakeRootCleaner cleaner = new FakeRootCleaner(operations, shouldRemoveRoot: true);
+            WindowsCloudFilesSyncPairDeletionHandler handler = new WindowsCloudFilesSyncPairDeletionHandler(adapter, rootCleaner: cleaner);
             SyncPairSettings syncPair = CreatePair(SyncPairMode.WindowsVirtualFiles);
 
             await handler.BeforeDeleteAsync(syncPair);
@@ -67,10 +67,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task BeforeDeleteAsync_PreservesLocalRootWhenCleanerDeclines()
         {
-            var operations = new List<string>();
-            var adapter = new FakeCloudFilesAdapter(operations);
-            var cleaner = new FakeRootCleaner(operations, shouldRemoveRoot: false);
-            var handler = new WindowsCloudFilesSyncPairDeletionHandler(adapter, rootCleaner: cleaner);
+            List<string> operations = new List<string>();
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter(operations);
+            FakeRootCleaner cleaner = new FakeRootCleaner(operations, shouldRemoveRoot: false);
+            WindowsCloudFilesSyncPairDeletionHandler handler = new WindowsCloudFilesSyncPairDeletionHandler(adapter, rootCleaner: cleaner);
             SyncPairSettings syncPair = CreatePair(SyncPairMode.WindowsVirtualFiles);
 
             await handler.BeforeDeleteAsync(syncPair);
@@ -85,9 +85,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task BeforeDeleteAsync_SkipsFullMirrorSyncPair()
         {
-            var adapter = new FakeCloudFilesAdapter();
-            var cleaner = new FakeRootCleaner([], shouldRemoveRoot: true);
-            var handler = new WindowsCloudFilesSyncPairDeletionHandler(adapter, rootCleaner: cleaner);
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter();
+            FakeRootCleaner cleaner = new FakeRootCleaner([], shouldRemoveRoot: true);
+            WindowsCloudFilesSyncPairDeletionHandler handler = new WindowsCloudFilesSyncPairDeletionHandler(adapter, rootCleaner: cleaner);
 
             await handler.BeforeDeleteAsync(CreatePair(SyncPairMode.FullMirror));
 
@@ -102,9 +102,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void BeforeDeleteAsync_HonorsCancellationBeforeNativeCleanup()
         {
-            var adapter = new FakeCloudFilesAdapter();
-            var handler = new WindowsCloudFilesSyncPairDeletionHandler(adapter);
-            using var cancellation = new CancellationTokenSource();
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter();
+            WindowsCloudFilesSyncPairDeletionHandler handler = new WindowsCloudFilesSyncPairDeletionHandler(adapter);
+            using CancellationTokenSource cancellation = new CancellationTokenSource();
             cancellation.Cancel();
 
             Assert.That(
@@ -119,7 +119,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             string rootPath = Path.Combine(_tempDirectory, "root");
             Directory.CreateDirectory(rootPath);
             File.WriteAllText(Path.Combine(rootPath, "local-only.txt"), "local");
-            var cleaner = new WindowsVirtualFilesRootCleaner();
+            WindowsVirtualFilesRootCleaner cleaner = new WindowsVirtualFilesRootCleaner();
 
             WindowsVirtualFilesRootCleanupDecision decision =
                 cleaner.EvaluateBeforeUnregister(CreatePair(SyncPairMode.WindowsVirtualFiles, rootPath));
@@ -219,7 +219,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             string rootPath = Path.Combine(_tempDirectory, "empty-root");
             Directory.CreateDirectory(Path.Combine(rootPath, "top-level"));
-            var cleaner = new WindowsVirtualFilesRootCleaner();
+            WindowsVirtualFilesRootCleaner cleaner = new WindowsVirtualFilesRootCleaner();
             WindowsVirtualFilesRootCleanupDecision decision =
                 cleaner.EvaluateBeforeUnregister(CreatePair(SyncPairMode.WindowsVirtualFiles, rootPath));
 
@@ -239,7 +239,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             string rootPath = Path.Combine(_tempDirectory, "changed-root");
             Directory.CreateDirectory(rootPath);
-            var cleaner = new WindowsVirtualFilesRootCleaner();
+            WindowsVirtualFilesRootCleaner cleaner = new WindowsVirtualFilesRootCleaner();
             WindowsVirtualFilesRootCleanupDecision decision =
                 cleaner.EvaluateBeforeUnregister(CreatePair(SyncPairMode.WindowsVirtualFiles, rootPath));
             File.WriteAllText(Path.Combine(rootPath, "local-after-evaluate.txt"), "local");
@@ -370,7 +370,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 _operations.Add("cleanup");
                 CleanupDecisions.Add(decision);
-                var result = new WindowsVirtualFilesRootCleanupResult(
+                WindowsVirtualFilesRootCleanupResult result = new WindowsVirtualFilesRootCleanupResult(
                     decision.ShouldRemoveRoot,
                     decision.ShouldRemoveRoot ? "removed" : "preserved");
                 CleanupResults.Add(result);

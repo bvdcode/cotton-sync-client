@@ -76,8 +76,8 @@ namespace Cotton.Sync.Desktop.Tests.Auth
         [Test]
         public async Task CreateVerifiedSnapshotAsync_VerifiesLinuxSecretServiceRoundtrip()
         {
-            var runner = new RoundtripSecretToolProcessRunner();
-            var protector = new LinuxSecretServiceTokenPayloadProtector("/usr/bin/secret-tool", runner);
+            RoundtripSecretToolProcessRunner runner = new RoundtripSecretToolProcessRunner();
+            LinuxSecretServiceTokenPayloadProtector protector = new LinuxSecretServiceTokenPayloadProtector("/usr/bin/secret-tool", runner);
 
             DesktopTokenStorageCapabilitySnapshot snapshot = await DesktopTokenStorageCapabilities
                 .CreateVerifiedSnapshotAsync(protector, CancellationToken.None);
@@ -93,7 +93,7 @@ namespace Cotton.Sync.Desktop.Tests.Auth
         [Test]
         public async Task CreateVerifiedSnapshotAsync_FailsWhenReleaseSecureProtectorIsUnavailable()
         {
-            var protector = new LinuxSecretServiceTokenPayloadProtector(
+            LinuxSecretServiceTokenPayloadProtector protector = new LinuxSecretServiceTokenPayloadProtector(
                 "/usr/bin/secret-tool",
                 new FailingSecretToolProcessRunner());
 

@@ -37,12 +37,12 @@ namespace Cotton.Sync.App.Runners
 
             RemoteChangeStateIndex stateIndex =
                 await LoadStateIndexAsync(syncPair, snapshot, cancellationToken).ConfigureAwait(false);
-            var remoteChangedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var expandedSubtreePathKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> remoteChangedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> expandedSubtreePathKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             bool hasUnresolvedChanges = false;
             foreach (RemoteChangeImpact change in snapshot.Changes)
             {
-                var changePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                HashSet<string> changePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 RemoteChangePathDisposition disposition = RemoteChangePathResolver.Resolve(
                     syncPair,
                     stateIndex,

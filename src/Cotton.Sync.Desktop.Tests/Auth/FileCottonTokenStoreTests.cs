@@ -25,7 +25,7 @@ namespace Cotton.Sync.Desktop.Tests.Auth
             string directory = CreateTempDirectory();
             try
             {
-                var store = CreateStore(Path.Combine(directory, "tokens.json"));
+                FileCottonTokenStore store = CreateStore(Path.Combine(directory, "tokens.json"));
 
                 TokenPairDto? tokens = await store.GetAsync();
 
@@ -44,8 +44,8 @@ namespace Cotton.Sync.Desktop.Tests.Auth
             try
             {
                 string path = Path.Combine(directory, "tokens.json");
-                var store = CreateStore(path);
-                var tokens = new TokenPairDto
+                FileCottonTokenStore store = CreateStore(path);
+                TokenPairDto tokens = new TokenPairDto
                 {
                     AccessToken = "access-token",
                     RefreshToken = "refresh-token",
@@ -76,8 +76,8 @@ namespace Cotton.Sync.Desktop.Tests.Auth
             try
             {
                 string path = Path.Combine(directory, "tokens.json");
-                var protector = new ReversingTokenPayloadProtector("test-protector-v1");
-                var store = new FileCottonTokenStore(path, protector);
+                ReversingTokenPayloadProtector protector = new ReversingTokenPayloadProtector("test-protector-v1");
+                FileCottonTokenStore store = new FileCottonTokenStore(path, protector);
 
                 await store.SaveAsync(new TokenPairDto
                 {
@@ -165,7 +165,7 @@ namespace Cotton.Sync.Desktop.Tests.Auth
             try
             {
                 string path = Path.Combine(directory, "tokens.json");
-                var store = CreateStore(path);
+                FileCottonTokenStore store = CreateStore(path);
                 await store.SaveAsync(new TokenPairDto
                 {
                     AccessToken = "access-token",
@@ -194,8 +194,8 @@ namespace Cotton.Sync.Desktop.Tests.Auth
             try
             {
                 string path = Path.Combine(directory, "tokens.json");
-                var protector = new RecordingDeletableTokenPayloadProtector("external-scheme");
-                var store = new FileCottonTokenStore(path, protector);
+                RecordingDeletableTokenPayloadProtector protector = new RecordingDeletableTokenPayloadProtector("external-scheme");
+                FileCottonTokenStore store = new FileCottonTokenStore(path, protector);
 
                 await store.SaveAsync(new TokenPairDto
                 {
@@ -226,8 +226,8 @@ namespace Cotton.Sync.Desktop.Tests.Auth
             try
             {
                 string path = Path.Combine(directory, "tokens.json");
-                var protector = new RecordingDeletableTokenPayloadProtector("external-scheme");
-                var store = new FileCottonTokenStore(path, protector);
+                RecordingDeletableTokenPayloadProtector protector = new RecordingDeletableTokenPayloadProtector("external-scheme");
+                FileCottonTokenStore store = new FileCottonTokenStore(path, protector);
 
                 await store.SaveAsync(new TokenPairDto
                 {
@@ -267,7 +267,7 @@ namespace Cotton.Sync.Desktop.Tests.Auth
             try
             {
                 string path = Path.Combine(directory, "tokens.json");
-                var store = CreateStore(path);
+                FileCottonTokenStore store = CreateStore(path);
                 await store.SaveAsync(new TokenPairDto
                 {
                     AccessToken = "first-access-token",
@@ -303,8 +303,8 @@ namespace Cotton.Sync.Desktop.Tests.Auth
             string directory = CreateTempDirectory();
             try
             {
-                var protector = new RecordingDeletableTokenPayloadProtector("external-scheme");
-                var store = new FileCottonTokenStore(directory, protector);
+                RecordingDeletableTokenPayloadProtector protector = new RecordingDeletableTokenPayloadProtector("external-scheme");
+                FileCottonTokenStore store = new FileCottonTokenStore(directory, protector);
 
                 Exception? exception = Assert.CatchAsync(async () => await store.SaveAsync(new TokenPairDto
                 {
@@ -333,7 +333,7 @@ namespace Cotton.Sync.Desktop.Tests.Auth
             {
                 string path = Path.Combine(directory, "tokens.json");
                 File.WriteAllText(path, """{"accessToken":"access-token"}""");
-                var store = CreateStore(path);
+                FileCottonTokenStore store = CreateStore(path);
 
                 TokenPairDto? loaded = await store.GetAsync();
 
@@ -358,7 +358,7 @@ namespace Cotton.Sync.Desktop.Tests.Auth
             try
             {
                 string path = Path.Combine(directory, "tokens.json");
-                var store = CreateStore(path);
+                FileCottonTokenStore store = CreateStore(path);
 
                 await store.SaveAsync(new TokenPairDto
                 {
@@ -391,7 +391,7 @@ namespace Cotton.Sync.Desktop.Tests.Auth
                 return;
             }
 
-            var protector = new WindowsDpapiTokenPayloadProtector();
+            WindowsDpapiTokenPayloadProtector protector = new WindowsDpapiTokenPayloadProtector();
             byte[] plaintext = Encoding.UTF8.GetBytes("secret token payload");
 
             byte[] protectedPayload = await protector.ProtectAsync(plaintext);

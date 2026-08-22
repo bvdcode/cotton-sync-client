@@ -16,14 +16,14 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         public async Task CreateShareLinkAsync_ConvertsFileDownloadTokenToPublicShareUri()
         {
             Guid remoteFileId = Guid.NewGuid();
-            var handler = new RecordingHttpHandler(request =>
+            RecordingHttpHandler handler = new RecordingHttpHandler(request =>
             {
                 Assert.That(request.RequestUri?.AbsolutePath, Is.EqualTo($"/base/api/v1/files/{remoteFileId:D}/download-link"));
                 Assert.That(request.Headers.Authorization?.Parameter, Is.EqualTo("access-token"));
                 return JsonString("/api/v1/files/" + remoteFileId.ToString("D") + "/download?token=file-token");
             });
-            var tokenStore = new MemoryCottonTokenStore("access-token", "refresh-token");
-            var client = new DesktopShellShareLinkClient(
+            MemoryCottonTokenStore tokenStore = new MemoryCottonTokenStore("access-token", "refresh-token");
+            DesktopShellShareLinkClient client = new DesktopShellShareLinkClient(
                 new HttpClient(handler),
                 tokenStore,
                 new FakeAuthClient(tokenStore),
@@ -48,13 +48,13 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         public async Task CreateShareLinkAsync_UsesFolderShareLink()
         {
             Guid remoteNodeId = Guid.NewGuid();
-            var handler = new RecordingHttpHandler(request =>
+            RecordingHttpHandler handler = new RecordingHttpHandler(request =>
             {
                 Assert.That(request.RequestUri?.AbsolutePath, Is.EqualTo($"/api/v1/layouts/nodes/{remoteNodeId:D}/share-link"));
                 return JsonString("/s/folder-token");
             });
-            var tokenStore = new MemoryCottonTokenStore("access-token", "refresh-token");
-            var client = new DesktopShellShareLinkClient(
+            MemoryCottonTokenStore tokenStore = new MemoryCottonTokenStore("access-token", "refresh-token");
+            DesktopShellShareLinkClient client = new DesktopShellShareLinkClient(
                 new HttpClient(handler),
                 tokenStore,
                 new FakeAuthClient(tokenStore),
@@ -76,7 +76,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         public async Task CreateShareLinkAsync_RefreshesAndRetriesAfterUnauthorized()
         {
             Guid remoteFileId = Guid.NewGuid();
-            var handler = new RecordingHttpHandler(request =>
+            RecordingHttpHandler handler = new RecordingHttpHandler(request =>
             {
                 if (request.Headers.Authorization?.Parameter == "expired-token")
                 {
@@ -86,8 +86,8 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(request.Headers.Authorization?.Parameter, Is.EqualTo("fresh-token"));
                 return JsonString("/api/v1/files/" + remoteFileId.ToString("D") + "/download?token=fresh-file-token");
             });
-            var tokenStore = new MemoryCottonTokenStore("expired-token", "refresh-token");
-            var authClient = new FakeAuthClient(tokenStore)
+            MemoryCottonTokenStore tokenStore = new MemoryCottonTokenStore("expired-token", "refresh-token");
+            FakeAuthClient authClient = new FakeAuthClient(tokenStore)
             {
                 RefreshedTokens = new TokenPairDto
                 {
@@ -95,7 +95,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                     RefreshToken = "fresh-refresh-token",
                 },
             };
-            var client = new DesktopShellShareLinkClient(
+            DesktopShellShareLinkClient client = new DesktopShellShareLinkClient(
                 new HttpClient(handler),
                 tokenStore,
                 authClient,
@@ -144,7 +144,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
 
             private static HttpRequestMessage CloneRequest(HttpRequestMessage request)
             {
-                var clone = new HttpRequestMessage(request.Method, request.RequestUri);
+                HttpRequestMessage clone = new HttpRequestMessage(request.Method, request.RequestUri);
                 clone.Headers.Authorization = request.Headers.Authorization;
                 return clone;
             }

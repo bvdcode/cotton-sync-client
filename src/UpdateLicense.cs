@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -14,11 +15,11 @@ class Program
 
     static void Main(string[] args)
     {
-        var root = args.Length > 0 ? args[0] : Directory.GetCurrentDirectory();
+        string root = args.Length > 0 ? args[0] : Directory.GetCurrentDirectory();
 
         Console.WriteLine($"[cotton-license] scanning: {root}");
 
-        var files = Directory
+        List<string> files = Directory
             .GetFiles(root, "*.cs", SearchOption.AllDirectories)
             .Where(p =>
                 !p.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar)
@@ -32,7 +33,7 @@ class Program
 
         int updated = 0;
 
-        foreach (var file in files)
+        foreach (string file in files)
         {
             if (ProcessFile(file))
             {
@@ -46,17 +47,17 @@ class Program
 
     private static bool ProcessFile(string filePath)
     {
-        var currentYear = DateTime.UtcNow.Year;
+        int currentYear = DateTime.UtcNow.Year;
 
         string yearPart = currentYear <= StartYear ? $"{StartYear}" : $"{StartYear}–{currentYear}";
 
         string wantedLine1 = $"// SPDX-License-Identifier: {Spdx}";
         string wantedLine2 = $"// Copyright (c) {yearPart} {Author}";
 
-        var allLines = File.ReadAllLines(filePath, Encoding.UTF8).ToList();
+        List<string> allLines = File.ReadAllLines(filePath, Encoding.UTF8).ToList();
         if (allLines.Count == 0)
         {
-            var newLinesEmpty = new[] { wantedLine1, wantedLine2, "" };
+            string[] newLinesEmpty = new[] { wantedLine1, wantedLine2, "" };
             File.WriteAllLines(filePath, newLinesEmpty, Encoding.UTF8);
             return true;
         }
@@ -109,7 +110,7 @@ class Program
         }
         else
         {
-            var newContent = new[] { wantedLine1, wantedLine2, "" }.Concat(allLines);
+            IEnumerable<string> newContent = new[] { wantedLine1, wantedLine2, "" }.Concat(allLines);
 
             File.WriteAllLines(filePath, newContent, Encoding.UTF8);
             return true;

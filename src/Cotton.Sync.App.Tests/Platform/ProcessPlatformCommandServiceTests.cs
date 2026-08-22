@@ -10,7 +10,7 @@ namespace Cotton.Sync.App.Tests.Platform
         [Test]
         public void OpenFolderAsync_RejectsEmptyPath()
         {
-            var service = new ProcessPlatformCommandService();
+            ProcessPlatformCommandService service = new ProcessPlatformCommandService();
 
             ArgumentException? exception = Assert.ThrowsAsync<ArgumentException>(
                 async () => await service.OpenFolderAsync(" "));
@@ -21,7 +21,7 @@ namespace Cotton.Sync.App.Tests.Platform
         [Test]
         public void OpenWebAsync_RejectsRelativeUrl()
         {
-            var service = new ProcessPlatformCommandService();
+            ProcessPlatformCommandService service = new ProcessPlatformCommandService();
 
             ArgumentException? exception = Assert.ThrowsAsync<ArgumentException>(
                 async () => await service.OpenWebAsync(new Uri("/relative", UriKind.Relative)));

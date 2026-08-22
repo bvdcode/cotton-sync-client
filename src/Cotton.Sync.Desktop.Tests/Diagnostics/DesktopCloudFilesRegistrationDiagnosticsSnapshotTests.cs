@@ -14,7 +14,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         {
             Guid registeredPairId = Guid.NewGuid();
             Guid missingPairId = Guid.NewGuid();
-            var registrar = new FakeStorageProviderSyncRootRegistrar([registeredPairId]);
+            FakeStorageProviderSyncRootRegistrar registrar = new FakeStorageProviderSyncRootRegistrar([registeredPairId]);
             SyncPairSettings[] syncPairs =
             [
                 CreateSyncPair(registeredPairId, "Registered", SyncPairMode.WindowsVirtualFiles),

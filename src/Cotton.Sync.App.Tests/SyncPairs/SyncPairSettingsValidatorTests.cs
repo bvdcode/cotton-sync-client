@@ -21,7 +21,7 @@ namespace Cotton.Sync.App.Tests.SyncPairs
         [Test]
         public void Validate_RejectsMissingRequiredValues()
         {
-            var syncPair = new SyncPairSettings
+            SyncPairSettings syncPair = new SyncPairSettings
             {
                 Id = Guid.Empty,
                 DisplayName = " ",
@@ -65,7 +65,7 @@ namespace Cotton.Sync.App.Tests.SyncPairs
         [Test]
         public void Validate_AcceptsWindowsVirtualFilesModeWhenSupported()
         {
-            var validator = new SyncPairSettingsValidator(
+            SyncPairSettingsValidator validator = new SyncPairSettingsValidator(
                 new SyncPairModeCapabilitySnapshot(true, "Windows Cloud Files API is available."));
             SyncPairSettings syncPair = CreatePair(@"S:\CottonSyncVfsQa\root");
             syncPair.Mode = SyncPairMode.WindowsVirtualFiles;

@@ -12,7 +12,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         [Test]
         public void FormatUnhandledException_RedactsSecretsAndMarksTerminatingState()
         {
-            var exception = new InvalidOperationException(
+            InvalidOperationException exception = new InvalidOperationException(
                 "Failed with Authorization: Bearer secret-token and password=secret-password");
 
             string message = DesktopUnhandledExceptionReporter.FormatUnhandledException(exception, isTerminating: true);
@@ -32,7 +32,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         [Test]
         public void FormatUnobservedTaskException_RedactsSecretsAndKeepsExceptionContext()
         {
-            var exception = new AggregateException(
+            AggregateException exception = new AggregateException(
                 new InvalidOperationException("""{"accessToken":"secret-token","message":"failed"}"""));
 
             string message = DesktopUnhandledExceptionReporter.FormatUnobservedTaskException(exception);
@@ -49,10 +49,10 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         [Test]
         public void ReportUnobservedTaskException_LogsAndMarksExceptionObserved()
         {
-            var exception = new AggregateException(
+            AggregateException exception = new AggregateException(
                 new InvalidOperationException("""{"accessToken":"secret-token","message":"failed"}"""));
-            var args = new UnobservedTaskExceptionEventArgs(exception);
-            var listener = new CollectingTraceListener();
+            UnobservedTaskExceptionEventArgs args = new UnobservedTaskExceptionEventArgs(exception);
+            CollectingTraceListener listener = new CollectingTraceListener();
             Trace.Listeners.Add(listener);
 
             try
@@ -76,9 +76,9 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         [Test]
         public void ReportUnobservedTaskException_SuppressesExpectedSocketCleanupAbort()
         {
-            var exception = new AggregateException(new SocketException((int)SocketError.OperationAborted));
-            var args = new UnobservedTaskExceptionEventArgs(exception);
-            var listener = new CollectingTraceListener();
+            AggregateException exception = new AggregateException(new SocketException((int)SocketError.OperationAborted));
+            UnobservedTaskExceptionEventArgs args = new UnobservedTaskExceptionEventArgs(exception);
+            CollectingTraceListener listener = new CollectingTraceListener();
             Trace.Listeners.Add(listener);
 
             try
@@ -101,11 +101,11 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
         [Test]
         public void ReportUnobservedTaskException_LogsMixedSocketCleanupAggregate()
         {
-            var exception = new AggregateException(
+            AggregateException exception = new AggregateException(
                 new SocketException((int)SocketError.OperationAborted),
                 new InvalidOperationException("real failure"));
-            var args = new UnobservedTaskExceptionEventArgs(exception);
-            var listener = new CollectingTraceListener();
+            UnobservedTaskExceptionEventArgs args = new UnobservedTaskExceptionEventArgs(exception);
+            CollectingTraceListener listener = new CollectingTraceListener();
             Trace.Listeners.Add(listener);
 
             try

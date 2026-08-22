@@ -33,7 +33,7 @@ namespace Cotton.Sync.Tests.Local
         {
             WriteFile("alpha.txt", "alpha");
             WriteFile(Path.Combine("Docs", "Report.txt"), "report");
-            var scanner = new LocalFileScanner();
+            LocalFileScanner scanner = new LocalFileScanner();
 
             IReadOnlyList<LocalFileSnapshot> files = await scanner.ScanAsync(_root);
 
@@ -52,7 +52,7 @@ namespace Cotton.Sync.Tests.Local
             Directory.CreateDirectory(FullPath("empty"));
             Directory.CreateDirectory(FullPath(Path.Combine("nested", "child")));
             WriteFile(Path.Combine("nested", "child", "file.txt"), "content");
-            var scanner = new LocalFileScanner();
+            LocalFileScanner scanner = new LocalFileScanner();
 
             LocalTreeSnapshot tree = await scanner.ScanTreeAsync(_root);
 
@@ -89,7 +89,7 @@ namespace Cotton.Sync.Tests.Local
         public async Task ScanTreeMetadataAsync_ReturnsFilesWithoutContentHashes()
         {
             WriteFile("alpha.txt", "alpha");
-            var scanner = new LocalFileScanner();
+            LocalFileScanner scanner = new LocalFileScanner();
 
             LocalTreeSnapshot tree = await scanner.ScanTreeMetadataAsync(_root);
             string contentHash = await scanner.ComputeContentHashAsync(tree.Files.Single());
@@ -107,8 +107,8 @@ namespace Cotton.Sync.Tests.Local
         public async Task ComputeContentHashAsync_ReportsHashProgress()
         {
             WriteFile("alpha.txt", "alpha");
-            var scanner = new LocalFileScanner();
-            var progress = new RecordingProgress<SyncTransferProgress>();
+            LocalFileScanner scanner = new LocalFileScanner();
+            RecordingProgress<SyncTransferProgress> progress = new RecordingProgress<SyncTransferProgress>();
             LocalTreeSnapshot tree = await scanner.ScanTreeMetadataAsync(_root);
 
             string contentHash = await scanner.ComputeContentHashAsync(tree.Files.Single(), progress);
@@ -130,8 +130,8 @@ namespace Cotton.Sync.Tests.Local
         {
             Directory.CreateDirectory(FullPath("Docs"));
             WriteFile(Path.Combine("Docs", "Report.txt"), "report");
-            var scanner = new LocalFileScanner();
-            var progress = new RecordingProgress<LocalTreeScanProgress>();
+            LocalFileScanner scanner = new LocalFileScanner();
+            RecordingProgress<LocalTreeScanProgress> progress = new RecordingProgress<LocalTreeScanProgress>();
 
             LocalTreeLookupSnapshot tree = await scanner.ScanTreeMetadataLookupsAsync(_root, progress);
 
@@ -154,7 +154,7 @@ namespace Cotton.Sync.Tests.Local
         {
             Directory.CreateDirectory(FullPath(Path.Combine("LargeTree", "Child")));
             WriteFile(Path.Combine("LargeTree", "Child", "placeholder.txt"), "content");
-            var scanner = new LocalFileScanner();
+            LocalFileScanner scanner = new LocalFileScanner();
 
             LocalTreeLookupSnapshot tree = await scanner.ScanPathMetadataLookupsAsync(
                 _root,
@@ -174,7 +174,7 @@ namespace Cotton.Sync.Tests.Local
         {
             Directory.CreateDirectory(FullPath(Path.Combine("LargeTree", "Child")));
             WriteFile(Path.Combine("LargeTree", "Child", "file.txt"), "content");
-            var scanner = new LocalFileScanner();
+            LocalFileScanner scanner = new LocalFileScanner();
 
             LocalTreeLookupSnapshot tree = await scanner.ScanPathMetadataLookupsAsync(
                 _root,
@@ -196,8 +196,8 @@ namespace Cotton.Sync.Tests.Local
         {
             WriteFile("alpha.txt", "alpha");
             WriteFile(Path.Combine("Docs", "Report.txt"), "report");
-            var scanner = new LocalFileScanner();
-            var progress = new RecordingProgress<LocalTreeScanProgress>();
+            LocalFileScanner scanner = new LocalFileScanner();
+            RecordingProgress<LocalTreeScanProgress> progress = new RecordingProgress<LocalTreeScanProgress>();
 
             await scanner.ScanTreeMetadataAsync(_root, progress);
 
@@ -217,8 +217,8 @@ namespace Cotton.Sync.Tests.Local
         {
             Directory.CreateDirectory(FullPath("Docs"));
             Directory.CreateDirectory(FullPath(Path.Combine("Videos", "Clips")));
-            var scanner = new LocalFileScanner();
-            var progress = new RecordingProgress<LocalTreeScanProgress>();
+            LocalFileScanner scanner = new LocalFileScanner();
+            RecordingProgress<LocalTreeScanProgress> progress = new RecordingProgress<LocalTreeScanProgress>();
 
             await scanner.ScanTreeMetadataAsync(_root, progress);
 
@@ -258,7 +258,7 @@ namespace Cotton.Sync.Tests.Local
             WriteFile("desktop.ini", "windows");
             WriteFile(Path.Combine("Nested", "DESKTOP.INI"), "windows");
             WriteFile(Path.Combine(".cotton-sync", "state.tmp"), "state");
-            var scanner = new LocalFileScanner();
+            LocalFileScanner scanner = new LocalFileScanner();
 
             IReadOnlyList<LocalFileSnapshot> files = await scanner.ScanAsync(_root);
 
@@ -273,7 +273,7 @@ namespace Cotton.Sync.Tests.Local
             WriteFile(Path.Combine(".cotton-sync", "state.db"), "state");
             WriteFile(Path.Combine("partial.tmp", "ignored.txt"), "ignored");
             WriteFile(Path.Combine("download.partial", "ignored.txt"), "ignored");
-            var scanner = new LocalFileScanner();
+            LocalFileScanner scanner = new LocalFileScanner();
 
             LocalTreeSnapshot tree = await scanner.ScanTreeAsync(_root);
 
@@ -304,7 +304,7 @@ namespace Cotton.Sync.Tests.Local
 
             try
             {
-                var scanner = new LocalFileScanner();
+                LocalFileScanner scanner = new LocalFileScanner();
 
                 LocalTreeSnapshot tree = await scanner.ScanTreeAsync(_root);
 
@@ -332,7 +332,7 @@ namespace Cotton.Sync.Tests.Local
             string directoryLinkPath = Path.Combine(_root, "real-dir-link");
             TryCreateFileSymlink(fileLinkPath, Path.Combine(_root, "target.txt"));
             TryCreateDirectorySymlink(directoryLinkPath, Path.Combine(_root, "real-dir"));
-            var scanner = new LocalFileScanner();
+            LocalFileScanner scanner = new LocalFileScanner();
 
             IReadOnlyList<LocalFileSnapshot> files = await scanner.ScanAsync(_root);
 
@@ -421,7 +421,7 @@ namespace Cotton.Sync.Tests.Local
                 FileMode.Open,
                 FileAccess.ReadWrite,
                 FileShare.None);
-            var scanner = new LocalFileScanner();
+            LocalFileScanner scanner = new LocalFileScanner();
 
             LocalFileUnavailableException? exception = Assert.ThrowsAsync<LocalFileUnavailableException>(() => scanner.ScanAsync(_root));
 
@@ -439,8 +439,8 @@ namespace Cotton.Sync.Tests.Local
         {
             Directory.CreateDirectory(FullPath("moving"));
             WriteFile(Path.Combine("moving", "child.txt"), "child");
-            var scanner = new LocalFileScanner();
-            var progress = new RecordingProgress<LocalTreeScanProgress>(item =>
+            LocalFileScanner scanner = new LocalFileScanner();
+            RecordingProgress<LocalTreeScanProgress> progress = new RecordingProgress<LocalTreeScanProgress>(item =>
             {
                 if (item.CurrentPath == "moving" && Directory.Exists(FullPath("moving")))
                 {
@@ -472,7 +472,7 @@ namespace Cotton.Sync.Tests.Local
             WriteFile("unreadable.txt", "secret");
             string path = FullPath("unreadable.txt");
             UnixFileMode originalMode = File.GetUnixFileMode(path);
-            var scanner = new LocalFileScanner();
+            LocalFileScanner scanner = new LocalFileScanner();
 
             try
             {
@@ -497,7 +497,7 @@ namespace Cotton.Sync.Tests.Local
         [Test]
         public void ScanAsync_RejectsMissingRoot()
         {
-            var scanner = new LocalFileScanner();
+            LocalFileScanner scanner = new LocalFileScanner();
             string missing = Path.Combine(_root, "missing");
 
             Assert.ThrowsAsync<DirectoryNotFoundException>(() => scanner.ScanAsync(missing));

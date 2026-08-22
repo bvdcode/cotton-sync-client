@@ -9,6 +9,7 @@ using Cotton.Sync;
 using Cotton.Sync.Local;
 using Cotton.Sync.Remote;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 
 namespace Cotton.Sync.App.Tests.Runners
 {
@@ -70,7 +71,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task SyncNowAsync_RunsWorkAndReturnsIdle()
         {
-            var work = new FakeSyncPairWork();
+            FakeSyncPairWork work = new FakeSyncPairWork();
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
             SyncPairRunner runner = CreateRunner(syncPair, work);
 
@@ -101,7 +102,7 @@ namespace Cotton.Sync.App.Tests.Runners
         public async Task SyncNowAsync_LogsCompletionForSuccessfulScopedRequest()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var logger = new RecordingLogger<SyncPairRunner>();
+            RecordingLogger<SyncPairRunner> logger = new RecordingLogger<SyncPairRunner>();
             SyncPairRunner runner = CreateRunner(syncPair, logger: logger);
             SyncRunRequest request = SyncRunRequest.ForLocalChangedPaths([
                 "Docs/report.txt",
@@ -130,7 +131,7 @@ namespace Cotton.Sync.App.Tests.Runners
             SyncPairSettings syncPair = CreatePair(
                 isEnabled: true,
                 mode: SyncPairMode.WindowsVirtualFiles);
-            var logger = new RecordingLogger<SyncPairRunner>();
+            RecordingLogger<SyncPairRunner> logger = new RecordingLogger<SyncPairRunner>();
             SyncPairRunner runner = CreateRunner(syncPair, logger: logger);
 
             await runner.SyncNowAsync(SyncRunRequest.ForFull(SyncRunCause.RealtimeRemoteChange));
@@ -154,7 +155,7 @@ namespace Cotton.Sync.App.Tests.Runners
             SyncPairSettings syncPair = CreatePair(
                 isEnabled: true,
                 mode: SyncPairMode.WindowsVirtualFiles);
-            var logger = new RecordingLogger<SyncPairRunner>();
+            RecordingLogger<SyncPairRunner> logger = new RecordingLogger<SyncPairRunner>();
             SyncPairRunner runner = CreateRunner(syncPair, logger: logger);
 
             await runner.SyncNowAsync(SyncRunRequest.ForFull(SyncRunCause.Manual));
@@ -183,7 +184,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task SyncNowAsync_ExposesCurrentOperationWhileWorkRuns()
         {
-            var work = new BlockingSyncPairWork();
+            BlockingSyncPairWork work = new BlockingSyncPairWork();
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
 
             Task syncTask = runner.SyncNowAsync();
@@ -205,7 +206,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task SyncNowAsync_DoesNotRunWhenPaused()
         {
-            var work = new FakeSyncPairWork();
+            FakeSyncPairWork work = new FakeSyncPairWork();
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
             await runner.PauseAsync();
 
@@ -221,7 +222,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task PauseAsync_ClearsQueuedSyncRequest()
         {
-            var work = new BlockingFirstRunSyncPairWork();
+            BlockingFirstRunSyncPairWork work = new BlockingFirstRunSyncPairWork();
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
 
             Task firstSync = runner.SyncNowAsync();
@@ -242,7 +243,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task SyncNowAsync_QueuesLocalChangeWhilePausedAndRunsItAfterResume()
         {
-            var work = new FakeSyncPairWork();
+            FakeSyncPairWork work = new FakeSyncPairWork();
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
             SyncRunRequest localChange = SyncRunRequest.ForLocalChangedPaths(["Docs/paused.txt"]);
 
@@ -301,7 +302,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task PauseAsync_PreservesLocalChangeArrivingWhileActiveWorkCancels()
         {
-            var work = new BlockingFirstRunSyncPairWork();
+            BlockingFirstRunSyncPairWork work = new BlockingFirstRunSyncPairWork();
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
             SyncRunRequest localChange = SyncRunRequest.ForLocalChangedPaths(["Docs/during-pause.txt"]);
 
@@ -329,7 +330,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task PauseAsync_CancelsRunningSyncWorkAndPausesRunner()
         {
-            var work = new CancellationObservingSyncPairWork();
+            CancellationObservingSyncPairWork work = new CancellationObservingSyncPairWork();
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
 
             Task sync = runner.SyncNowAsync();
@@ -350,8 +351,8 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task PauseAsync_TreatsCancellationIOExceptionAsPaused()
         {
-            var work = new CancellationSideEffectSyncPairWork(new IOException("Transport was canceled."));
-            var logger = new RecordingLogger<SyncPairRunner>();
+            CancellationSideEffectSyncPairWork work = new CancellationSideEffectSyncPairWork(new IOException("Transport was canceled."));
+            RecordingLogger<SyncPairRunner> logger = new RecordingLogger<SyncPairRunner>();
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work, logger: logger);
 
             Task sync = runner.SyncNowAsync();
@@ -376,7 +377,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task StopAsync_ClearsQueuedSyncRequest()
         {
-            var work = new BlockingFirstRunSyncPairWork();
+            BlockingFirstRunSyncPairWork work = new BlockingFirstRunSyncPairWork();
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
 
             Task firstSync = runner.SyncNowAsync();
@@ -400,7 +401,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task StopAsync_CancelsRunningSyncWorkAndDisablesRunner()
         {
-            var work = new CancellationObservingSyncPairWork();
+            CancellationObservingSyncPairWork work = new CancellationObservingSyncPairWork();
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
 
             Task sync = runner.SyncNowAsync();
@@ -423,8 +424,8 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task StopAsync_TreatsCancellationIOExceptionAsCancellationAndDisablesRunner()
         {
-            var work = new CancellationSideEffectSyncPairWork(new IOException("Transport was canceled."));
-            var logger = new RecordingLogger<SyncPairRunner>();
+            CancellationSideEffectSyncPairWork work = new CancellationSideEffectSyncPairWork(new IOException("Transport was canceled."));
+            RecordingLogger<SyncPairRunner> logger = new RecordingLogger<SyncPairRunner>();
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work, logger: logger);
 
             Task sync = runner.SyncNowAsync();
@@ -452,9 +453,9 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task PauseAsync_WhenCanceledBeforeStateChange_DoesNotBlockFutureSyncRequests()
         {
-            var work = new BlockingFirstRunSyncPairWork();
+            BlockingFirstRunSyncPairWork work = new BlockingFirstRunSyncPairWork();
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
-            using var cancellation = new CancellationTokenSource();
+            using CancellationTokenSource cancellation = new CancellationTokenSource();
 
             Task firstSync = runner.SyncNowAsync();
             await work.WaitForRunAsync(TimeSpan.FromSeconds(2));
@@ -477,9 +478,9 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task StopAsync_WhenCanceledBeforeStateChange_DoesNotBlockFutureSyncRequests()
         {
-            var work = new BlockingFirstRunSyncPairWork();
+            BlockingFirstRunSyncPairWork work = new BlockingFirstRunSyncPairWork();
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
-            using var cancellation = new CancellationTokenSource();
+            using CancellationTokenSource cancellation = new CancellationTokenSource();
 
             Task firstSync = runner.SyncNowAsync();
             await work.WaitForRunAsync(TimeSpan.FromSeconds(2));
@@ -502,7 +503,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public void SyncNowAsync_SetsErrorAndRethrowsOnFailure()
         {
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failure = new InvalidOperationException("sync failed"),
             };
@@ -522,7 +523,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public void SyncNowAsync_ReportsRemoteQuotaAsActionRequiredMessage()
         {
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failure = new CottonApiException(
                     (System.Net.HttpStatusCode)507,
@@ -547,7 +548,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public void SyncNowAsync_ReportsLocalPermissionDeniedAsActionRequiredMessage()
         {
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failure = new UnauthorizedAccessException("Access to the path was denied."),
             };
@@ -569,7 +570,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public void SyncNowAsync_ReportsLocalDiskFullAsActionRequiredMessage()
         {
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failure = new TestIOException(unchecked((int)0x80070070)),
             };
@@ -591,7 +592,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public void SyncNowAsync_ReportsPreflightLocalDiskFullAsActionRequiredMessage()
         {
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failure = new LocalInsufficientDiskSpaceException("Videos/big.bin", requiredBytes: 200, availableBytes: 100),
             };
@@ -615,7 +616,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [TestCase(System.Net.HttpStatusCode.Locked)]
         public async Task SyncNowAsync_RetriesTransientServerFailureAndReturnsIdleOnRecovery(System.Net.HttpStatusCode statusCode)
         {
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failures =
                 [
@@ -636,7 +637,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task SyncNowAsync_RetriesRateLimitAndReturnsIdleOnRecovery()
         {
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failures =
                 [
@@ -670,7 +671,7 @@ namespace Cotton.Sync.App.Tests.Runners
             System.Net.HttpStatusCode statusCode,
             string expected)
         {
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failure = new CottonApiException(
                     statusCode,
@@ -695,7 +696,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task SyncNowAsync_RetriesHttpTimeoutAndReturnsIdleOnRecovery()
         {
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failures =
                 [
@@ -717,7 +718,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task SyncNowAsync_RetriesUnavailableLocalFileAndReturnsIdleOnRecovery()
         {
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failures =
                 [
@@ -773,22 +774,22 @@ namespace Cotton.Sync.App.Tests.Runners
             string filePath = Path.Combine(root, "locked.txt");
             File.WriteAllText(filePath, "locked");
             FileStream? locked = new(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-            var unavailable = new LocalFileUnavailableException(
+            LocalFileUnavailableException unavailable = new LocalFileUnavailableException(
                 "locked.txt",
                 filePath,
                 new IOException("The file is being used by another process."),
                 requiresExclusiveAccess: true);
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failures = [unavailable, unavailable],
             };
-            var retryOptions = new SyncPairRunnerRetryOptions
+            SyncPairRunnerRetryOptions retryOptions = new SyncPairRunnerRetryOptions
             {
                 MaxAttempts = 2,
                 InitialDelay = TimeSpan.FromMilliseconds(1),
                 MaxDelay = TimeSpan.FromMilliseconds(10),
             };
-            var logger = new RecordingLogger<SyncPairRunner>();
+            RecordingLogger<SyncPairRunner> logger = new RecordingLogger<SyncPairRunner>();
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true, root), work, retryOptions, logger);
 
             try
@@ -897,16 +898,16 @@ namespace Cotton.Sync.App.Tests.Runners
             string filePath = Path.Combine(root, "locked.txt");
             File.WriteAllText(filePath, "locked");
             FileStream? locked = new(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-            var unavailable = new LocalFileUnavailableException(
+            LocalFileUnavailableException unavailable = new LocalFileUnavailableException(
                 "locked.txt",
                 filePath,
                 new IOException("The file is being used by another process."),
                 requiresExclusiveAccess: true);
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failures = [unavailable],
             };
-            var retryOptions = new SyncPairRunnerRetryOptions
+            SyncPairRunnerRetryOptions retryOptions = new SyncPairRunnerRetryOptions
             {
                 MaxAttempts = 1,
                 InitialDelay = TimeSpan.FromSeconds(1),
@@ -949,7 +950,7 @@ namespace Cotton.Sync.App.Tests.Runners
             string filePath = Path.Combine(root, "locked.txt");
             File.WriteAllText(filePath, "locked");
             FileStream? locked = new(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-            var work = new ReleasingLockedFileSyncPairWork(() =>
+            ReleasingLockedFileSyncPairWork work = new ReleasingLockedFileSyncPairWork(() =>
             {
                 locked?.Dispose();
                 locked = null;
@@ -978,7 +979,7 @@ namespace Cotton.Sync.App.Tests.Runners
         public async Task SyncNowAsync_RetriesMissingLocalRootAndReturnsIdleOnRecovery()
         {
             string root = Path.Combine(Path.GetTempPath(), "cotton-sync-runner-tests", Guid.NewGuid().ToString("N"));
-            var work = new RestoringMissingRootSyncPairWork(root, () =>
+            RestoringMissingRootSyncPairWork work = new RestoringMissingRootSyncPairWork(root, () =>
             {
                 Directory.CreateDirectory(root);
                 File.WriteAllText(Path.Combine(root, "restored.txt"), "restored");
@@ -1009,7 +1010,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public void SyncNowAsync_ReportsMissingLocalRootAsActionRequiredMessageWhenRestoreDoesNotHappen()
         {
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failures =
                 [
@@ -1036,7 +1037,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public void SyncNowAsync_SetsOfflineAndRethrowsWhenTransientNetworkFailurePersists()
         {
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failures =
                 [
@@ -1063,7 +1064,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task SyncNowAsync_UsesCappedExponentialBackoffForNetworkTimeouts()
         {
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failures =
                 [
@@ -1072,8 +1073,8 @@ namespace Cotton.Sync.App.Tests.Runners
                     new HttpRequestException("request timed out", new TimeoutException()),
                 ],
             };
-            var logger = new RecordingLogger<SyncPairRunner>();
-            var retryOptions = new SyncPairRunnerRetryOptions
+            RecordingLogger<SyncPairRunner> logger = new RecordingLogger<SyncPairRunner>();
+            SyncPairRunnerRetryOptions retryOptions = new SyncPairRunnerRetryOptions
             {
                 MaxAttempts = 4,
                 InitialDelay = TimeSpan.FromMilliseconds(1),
@@ -1101,14 +1102,14 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task PauseAsync_CancelsNetworkRetryBackoffPromptly()
         {
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failures =
                 [
                     new HttpRequestException("request timed out", new TimeoutException()),
                 ],
             };
-            var retryOptions = new SyncPairRunnerRetryOptions
+            SyncPairRunnerRetryOptions retryOptions = new SyncPairRunnerRetryOptions
             {
                 MaxAttempts = 3,
                 InitialDelay = TimeSpan.FromSeconds(30),
@@ -1123,7 +1124,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Offline));
             });
 
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            Stopwatch stopwatch = System.Diagnostics.Stopwatch.StartNew();
             await runner.PauseAsync().WaitAsync(TimeSpan.FromSeconds(2));
             await activeSync.WaitAsync(TimeSpan.FromSeconds(2));
             stopwatch.Stop();
@@ -1144,7 +1145,7 @@ namespace Cotton.Sync.App.Tests.Runners
         public async Task SyncNowAsync_RetriesTransientApiFailureAndReturnsIdleOnRecovery(
             System.Net.HttpStatusCode statusCode)
         {
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failures =
                 [
@@ -1166,12 +1167,12 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public void SyncNowAsync_TreatsMissingChangeFeedRouteAsTemporaryOfflineState()
         {
-            var failure = new RemoteChangeFeedUnavailableException(
+            RemoteChangeFeedUnavailableException failure = new RemoteChangeFeedUnavailableException(
                 new CottonApiException(
                     System.Net.HttpStatusCode.NotFound,
                     "404 page not found",
                     "Cotton API request GET /api/v1/sync/changes failed with status 404."));
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failures = [failure, failure],
             };
@@ -1195,11 +1196,11 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public void SyncNowAsync_TreatsPersistentBadGatewayAsTemporaryOfflineState()
         {
-            var failure = new CottonApiException(
+            CottonApiException failure = new CottonApiException(
                 System.Net.HttpStatusCode.BadGateway,
                 "502 Bad Gateway",
                 "Cotton API request failed with status 502.");
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failures = [failure, failure],
             };
@@ -1223,11 +1224,11 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public void SyncNowAsync_TreatsGenericProxyNotFoundAsTemporaryOfflineState()
         {
-            var failure = new CottonApiException(
+            CottonApiException failure = new CottonApiException(
                 System.Net.HttpStatusCode.NotFound,
                 "404 page not found",
                 "Cotton API request failed with status 404.");
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failures = [failure, failure],
             };
@@ -1248,11 +1249,11 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public void SyncNowAsync_KeepsStructuredNotFoundAsActionRequiredState()
         {
-            var failure = new CottonApiException(
+            CottonApiException failure = new CottonApiException(
                 System.Net.HttpStatusCode.NotFound,
                 "{\"error\":\"node not found\"}",
                 "Cotton API request failed with status 404.");
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failure = failure,
             };
@@ -1270,7 +1271,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task SyncNowAsync_ReturnsFromOfflineToIdleWhenNetworkRecovers()
         {
-            var work = new FakeSyncPairWork
+            FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failures =
                 [
@@ -1298,7 +1299,7 @@ namespace Cotton.Sync.App.Tests.Runners
         public void SyncNowAsync_FailureLogIncludesSyncPairId()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true);
-            var logger = new RecordingLogger<SyncPairRunner>();
+            RecordingLogger<SyncPairRunner> logger = new RecordingLogger<SyncPairRunner>();
             SyncPairRunner runner = CreateRunner(
                 syncPair,
                 new FakeSyncPairWork { Failure = new InvalidOperationException("sync failed") },
@@ -1315,7 +1316,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task SyncNowAsync_CoalescesOverlappingRequestsIntoOneQueuedRun()
         {
-            var work = new BlockingSyncPairWork();
+            BlockingSyncPairWork work = new BlockingSyncPairWork();
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
 
             Task first = runner.SyncNowAsync();
@@ -1460,7 +1461,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task SyncNowAsync_MergesQueuedScopedRequestsIntoLaterFullCheck()
         {
-            var work = new BlockingFirstFailureSyncPairWork();
+            BlockingFirstFailureSyncPairWork work = new BlockingFirstFailureSyncPairWork();
             SyncPairRunner runner = CreateRunner(
                 CreatePair(isEnabled: true),
                 work,

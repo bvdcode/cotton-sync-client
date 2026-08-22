@@ -38,7 +38,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         {
             Guid syncPairId = Guid.NewGuid();
             string changedPath = Path.Combine(_root, "file.txt");
-            var watcher = new FileSystemLocalSyncRootWatcher(syncPairId, _root);
+            FileSystemLocalSyncRootWatcher watcher = new FileSystemLocalSyncRootWatcher(syncPairId, _root);
             LocalSyncRootChange? observed = null;
             watcher.Changed += (_, change) => observed = change;
 
@@ -57,7 +57,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task StartAsync_RejectsMissingRoot()
         {
             string missingRoot = Path.Combine(_root, "missing");
-            var watcher = new FileSystemLocalSyncRootWatcher(Guid.NewGuid(), missingRoot);
+            FileSystemLocalSyncRootWatcher watcher = new FileSystemLocalSyncRootWatcher(Guid.NewGuid(), missingRoot);
 
             DirectoryNotFoundException? exception = Assert.ThrowsAsync<DirectoryNotFoundException>(() => watcher.StartAsync());
 
@@ -69,8 +69,8 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task StartAsync_PublishesFileEvents()
         {
             Guid syncPairId = Guid.NewGuid();
-            var watcher = new FileSystemLocalSyncRootWatcher(syncPairId, _root);
-            var observed = new TaskCompletionSource<LocalSyncRootChange>(TaskCreationOptions.RunContinuationsAsynchronously);
+            FileSystemLocalSyncRootWatcher watcher = new FileSystemLocalSyncRootWatcher(syncPairId, _root);
+            TaskCompletionSource<LocalSyncRootChange> observed = new TaskCompletionSource<LocalSyncRootChange>(TaskCreationOptions.RunContinuationsAsynchronously);
             watcher.Changed += (_, change) => observed.TrySetResult(change);
 
             await watcher.StartAsync();
@@ -92,8 +92,8 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public async Task StartAsync_IgnoresCottonTemporaryDownloadEvents()
         {
             Guid syncPairId = Guid.NewGuid();
-            var watcher = new FileSystemLocalSyncRootWatcher(syncPairId, _root);
-            var observed = new TaskCompletionSource<LocalSyncRootChange>(TaskCreationOptions.RunContinuationsAsynchronously);
+            FileSystemLocalSyncRootWatcher watcher = new FileSystemLocalSyncRootWatcher(syncPairId, _root);
+            TaskCompletionSource<LocalSyncRootChange> observed = new TaskCompletionSource<LocalSyncRootChange>(TaskCreationOptions.RunContinuationsAsynchronously);
             watcher.Changed += (_, change) => observed.TrySetResult(change);
 
             await watcher.StartAsync();
@@ -114,8 +114,8 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             string oldPath = Path.Combine(_root, "old-name.txt");
             string newPath = Path.Combine(_root, "new-name.txt");
             File.WriteAllText(oldPath, "content");
-            var watcher = new FileSystemLocalSyncRootWatcher(syncPairId, _root);
-            var observed = new TaskCompletionSource<LocalSyncRootChange>(TaskCreationOptions.RunContinuationsAsynchronously);
+            FileSystemLocalSyncRootWatcher watcher = new FileSystemLocalSyncRootWatcher(syncPairId, _root);
+            TaskCompletionSource<LocalSyncRootChange> observed = new TaskCompletionSource<LocalSyncRootChange>(TaskCreationOptions.RunContinuationsAsynchronously);
             watcher.Changed += (_, change) =>
             {
                 if (change.Kind == LocalSyncRootChangeKind.Renamed)
@@ -154,9 +154,9 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             string temporaryPath = targetPath + ".111111.tmp";
             string lockPath = Path.Combine(directoryPath, "~$Budget.xlsx");
             File.WriteAllText(targetPath, "initial");
-            var watcher = new FileSystemLocalSyncRootWatcher(syncPairId, _root);
+            FileSystemLocalSyncRootWatcher watcher = new FileSystemLocalSyncRootWatcher(syncPairId, _root);
             List<LocalSyncRootChange> observed = [];
-            var targetObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource targetObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             watcher.Changed += (_, change) =>
             {
                 lock (observed)
@@ -226,9 +226,9 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             string oldPath = Path.Combine(sourceDirectory, "old-name.txt");
             string newPath = Path.Combine(targetDirectory, "new-name.txt");
             File.WriteAllText(oldPath, "content");
-            var watcher = new FileSystemLocalSyncRootWatcher(syncPairId, _root);
+            FileSystemLocalSyncRootWatcher watcher = new FileSystemLocalSyncRootWatcher(syncPairId, _root);
             List<LocalSyncRootChange> observed = [];
-            var targetObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource targetObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             watcher.Changed += (_, change) =>
             {
                 lock (observed)

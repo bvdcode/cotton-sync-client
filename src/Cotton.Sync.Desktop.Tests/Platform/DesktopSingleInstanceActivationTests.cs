@@ -45,7 +45,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task TryRequestShowAsync_NotifiesRunningServer()
         {
-            using var activated = new ManualResetEventSlim(initialState: false);
+            using ManualResetEventSlim activated = new ManualResetEventSlim(initialState: false);
             using DesktopSingleInstanceActivationServer server = DesktopSingleInstanceActivation.StartServer(
                 LockFilePath(),
                 () => activated.Set());

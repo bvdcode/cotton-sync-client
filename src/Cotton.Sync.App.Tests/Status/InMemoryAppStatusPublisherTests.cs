@@ -11,8 +11,8 @@ namespace Cotton.Sync.App.Tests.Status
         public void Subscribe_ReplaysCurrentStatus()
         {
             SyncAppStatus initialStatus = CreateStatus(isAuthenticated: true);
-            var publisher = new InMemoryAppStatusPublisher(initialStatus);
-            var observer = new RecordingStatusObserver();
+            InMemoryAppStatusPublisher publisher = new InMemoryAppStatusPublisher(initialStatus);
+            RecordingStatusObserver observer = new RecordingStatusObserver();
 
             using IDisposable subscription = publisher.Subscribe(observer);
 
@@ -22,8 +22,8 @@ namespace Cotton.Sync.App.Tests.Status
         [Test]
         public void Publish_UpdatesCurrentAndNotifiesSubscribers()
         {
-            var publisher = new InMemoryAppStatusPublisher();
-            var observer = new RecordingStatusObserver();
+            InMemoryAppStatusPublisher publisher = new InMemoryAppStatusPublisher();
+            RecordingStatusObserver observer = new RecordingStatusObserver();
             using IDisposable subscription = publisher.Subscribe(observer);
             SyncAppStatus nextStatus = CreateStatus(isAuthenticated: true);
 
@@ -40,8 +40,8 @@ namespace Cotton.Sync.App.Tests.Status
         [Test]
         public void Dispose_RemovesSubscriber()
         {
-            var publisher = new InMemoryAppStatusPublisher();
-            var observer = new RecordingStatusObserver();
+            InMemoryAppStatusPublisher publisher = new InMemoryAppStatusPublisher();
+            RecordingStatusObserver observer = new RecordingStatusObserver();
             IDisposable subscription = publisher.Subscribe(observer);
             subscription.Dispose();
 
@@ -55,7 +55,7 @@ namespace Cotton.Sync.App.Tests.Status
         {
             DateTime localTime = new DateTime(2026, 6, 3, 12, 0, 0, DateTimeKind.Local);
 
-            var status = new SyncPairStatus(
+            SyncPairStatus status = new SyncPairStatus(
                 Guid.NewGuid(),
                 "Documents",
                 SyncPairRunState.Idle,
@@ -84,7 +84,7 @@ namespace Cotton.Sync.App.Tests.Status
         {
             DateTime localTime = new DateTime(2026, 6, 3, 12, 0, 0, DateTimeKind.Local);
 
-            var status = new SyncPairStatus(
+            SyncPairStatus status = new SyncPairStatus(
                 Guid.NewGuid(),
                 "Documents",
                 SyncPairRunState.Idle,

@@ -18,18 +18,18 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task RunOnceAsync_WithWindowsVirtualFilesFullRunRepairsDirectoryPlaceholdersFromState()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new RecordingSyncPairWork();
-            var stateStore = new FakeSyncStateStore();
+            RecordingSyncPairWork inner = new RecordingSyncPairWork();
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
             Guid docsNodeId = Guid.Parse("33333333-3333-3333-3333-333333333333");
             Guid reportsNodeId = Guid.Parse("44444444-4444-4444-4444-444444444444");
             stateStore.UpsertDirectory(syncPair, "Docs", docsNodeId);
             stateStore.UpsertDirectory(syncPair, "Docs/Reports", reportsNodeId);
             stateStore.UpsertFile(syncPair, "Docs/Reports/report.txt", reportsNodeId);
-            var cloudFiles = new RecordingCloudFilesAdapter();
-            var suppression = new RecordingLocalChangeSuppression();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var progressPublisher = new RecordingRunProgressPublisher();
-            var work = new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
+            RecordingCloudFilesAdapter cloudFiles = new RecordingCloudFilesAdapter();
+            RecordingLocalChangeSuppression suppression = new RecordingLocalChangeSuppression();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            RecordingRunProgressPublisher progressPublisher = new RecordingRunProgressPublisher();
+            WindowsVirtualFilesDirectoryPlaceholderRepairPairWork work = new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -89,8 +89,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesRequestDoesNotRepairAllDirectories()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new RecordingSyncPairWork();
-            var stateStore = new FakeSyncStateStore();
+            RecordingSyncPairWork inner = new RecordingSyncPairWork();
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
             Guid docsNodeId = Guid.Parse("33333333-3333-3333-3333-333333333333");
             Guid reportsNodeId = Guid.Parse("44444444-4444-4444-4444-444444444444");
             Guid mediaNodeId = Guid.Parse("55555555-5555-5555-5555-555555555555");
@@ -100,8 +100,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             stateStore.UpsertDirectory(syncPair, "Media", mediaNodeId);
             stateStore.UpsertDirectory(syncPair, "Media/Raw", rawNodeId);
             stateStore.UpsertDirectory(syncPair, "Unrelated", Guid.Parse("77777777-7777-7777-7777-777777777777"));
-            var cloudFiles = new RecordingCloudFilesAdapter();
-            var work = new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
+            RecordingCloudFilesAdapter cloudFiles = new RecordingCloudFilesAdapter();
+            WindowsVirtualFilesDirectoryPlaceholderRepairPairWork work = new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
                 inner,
                 stateStore,
                 cloudFiles);
@@ -127,12 +127,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task RunOnceAsync_WithWindowsVirtualFilesRootOnlyRepairPublishesFinalizingProgress()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new RecordingSyncPairWork();
-            var stateStore = new FakeSyncStateStore();
-            var cloudFiles = new RecordingCloudFilesAdapter();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var progressPublisher = new RecordingRunProgressPublisher();
-            var work = new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
+            RecordingSyncPairWork inner = new RecordingSyncPairWork();
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
+            RecordingCloudFilesAdapter cloudFiles = new RecordingCloudFilesAdapter();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            RecordingRunProgressPublisher progressPublisher = new RecordingRunProgressPublisher();
+            WindowsVirtualFilesDirectoryPlaceholderRepairPairWork work = new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -197,21 +197,21 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task SyncPairRunner_WhenDirectoryRepairFailsDoesNotReportIdleSuccess()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var stateStore = new FakeSyncStateStore();
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
             stateStore.UpsertDirectory(syncPair, "Docs", Guid.Parse("33333333-3333-3333-3333-333333333333"));
-            var cloudFiles = new RecordingCloudFilesAdapter
+            RecordingCloudFilesAdapter cloudFiles = new RecordingCloudFilesAdapter
             {
                 DirectoryException = new InvalidOperationException("Cloud Files directory repair failed."),
             };
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var progressPublisher = new RecordingRunProgressPublisher();
-            var work = new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            RecordingRunProgressPublisher progressPublisher = new RecordingRunProgressPublisher();
+            WindowsVirtualFilesDirectoryPlaceholderRepairPairWork work = new WindowsVirtualFilesDirectoryPlaceholderRepairPairWork(
                 new RecordingSyncPairWork(),
                 stateStore,
                 cloudFiles,
                 diagnostics: diagnostics,
                 runProgressPublisher: progressPublisher);
-            var runner = new SyncPairRunner(
+            SyncPairRunner runner = new SyncPairRunner(
                 syncPair,
                 work,
                 new SyncPairRunnerRetryOptions

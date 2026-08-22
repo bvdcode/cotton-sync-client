@@ -48,10 +48,10 @@ namespace Cotton.Sync.Tests.Remote
         {
             byte[] bytes = Encoding.UTF8.GetBytes("abcdefghij");
             LocalFileSnapshot local = WriteLocalFile("Docs/Reports/file.txt", bytes);
-            var client = new FakeCottonCloudClient(chunkSizeBytes: 4);
+            FakeCottonCloudClient client = new FakeCottonCloudClient(chunkSizeBytes: 4);
             string firstChunkHash = Hash(Encoding.UTF8.GetBytes("abcd"));
             client.ChunksClient.ExistingHashes.Add(firstChunkHash);
-            var synchronizer = new SdkRemoteFileSynchronizer(client);
+            SdkRemoteFileSynchronizer synchronizer = new SdkRemoteFileSynchronizer(client);
 
             NodeFileManifestDto created = await synchronizer.UploadFileAsync(_rootNodeId, local.RelativePath, local);
 
@@ -78,8 +78,8 @@ namespace Cotton.Sync.Tests.Remote
             byte[] bytes = Encoding.UTF8.GetBytes("abcdefghij");
             LocalFileSnapshot local = WriteLocalFile("Docs/file.txt", bytes);
             local.ContentHash = string.Empty;
-            var client = new FakeCottonCloudClient(chunkSizeBytes: 4);
-            var synchronizer = new SdkRemoteFileSynchronizer(client);
+            FakeCottonCloudClient client = new FakeCottonCloudClient(chunkSizeBytes: 4);
+            SdkRemoteFileSynchronizer synchronizer = new SdkRemoteFileSynchronizer(client);
 
             NodeFileManifestDto created = await synchronizer.UploadFileAsync(_rootNodeId, local.RelativePath, local);
 
@@ -161,10 +161,10 @@ namespace Cotton.Sync.Tests.Remote
             Guid docsId = Guid.NewGuid();
             byte[] bytes = Encoding.UTF8.GetBytes("updated");
             LocalFileSnapshot local = WriteLocalFile("Docs/file.bin", bytes);
-            var client = new FakeCottonCloudClient(chunkSizeBytes: 1024);
+            FakeCottonCloudClient client = new FakeCottonCloudClient(chunkSizeBytes: 1024);
             client.NodesClient.Children[_rootNodeId] = [Node(docsId, _rootNodeId, "Docs")];
             NodeFileManifestDto existing = RemoteFile("file.bin", HashText("old"));
-            var synchronizer = new SdkRemoteFileSynchronizer(client);
+            SdkRemoteFileSynchronizer synchronizer = new SdkRemoteFileSynchronizer(client);
 
             NodeFileManifestDto updated = await synchronizer.UploadFileAsync(_rootNodeId, local.RelativePath, local, existing);
 
@@ -187,11 +187,11 @@ namespace Cotton.Sync.Tests.Remote
         {
             byte[] bytes = Encoding.UTF8.GetBytes("updated after retry");
             LocalFileSnapshot local = WriteLocalFile("file.bin", bytes);
-            var client = new FakeCottonCloudClient(chunkSizeBytes: 1024);
+            FakeCottonCloudClient client = new FakeCottonCloudClient(chunkSizeBytes: 1024);
             NodeFileManifestDto existing = RemoteFile("file.bin", HashText("remote-before-server-error"));
             client.FilesClient.Files[existing.Id] = existing;
             client.FilesClient.UpdateContentFailuresRemaining = 1;
-            var synchronizer = new SdkRemoteFileSynchronizer(client);
+            SdkRemoteFileSynchronizer synchronizer = new SdkRemoteFileSynchronizer(client);
 
             Assert.ThrowsAsync<CottonApiException>(
                 async () => await synchronizer.UploadFileAsync(_rootNodeId, local.RelativePath, local, existing));
@@ -225,14 +225,14 @@ namespace Cotton.Sync.Tests.Remote
         {
             Guid docsId = Guid.NewGuid();
             Guid reportsId = Guid.NewGuid();
-            var client = new FakeCottonCloudClient(chunkSizeBytes: 1024);
+            FakeCottonCloudClient client = new FakeCottonCloudClient(chunkSizeBytes: 1024);
             client.NodesClient.Children[_rootNodeId] = [Node(docsId, _rootNodeId, "Docs")];
             client.NodesClient.Children[docsId] = [Node(reportsId, docsId, "Reports")];
             NodeFileManifestDto existing = RemoteFile("old.txt", HashText("same"));
             existing.NodeId = _rootNodeId;
             existing.ETag = "sha256-original";
             client.FilesClient.Files[existing.Id] = existing;
-            var synchronizer = new SdkRemoteFileSynchronizer(client);
+            SdkRemoteFileSynchronizer synchronizer = new SdkRemoteFileSynchronizer(client);
 
             NodeFileManifestDto moved = await synchronizer.MoveFileAsync(_rootNodeId, "Docs/Reports/new.txt", existing);
 
@@ -252,8 +252,8 @@ namespace Cotton.Sync.Tests.Remote
         public async Task UploadFileAsync_UploadsEmptyFileAsEmptyChunk()
         {
             LocalFileSnapshot local = WriteLocalFile("empty.bin", []);
-            var client = new FakeCottonCloudClient(chunkSizeBytes: 8);
-            var synchronizer = new SdkRemoteFileSynchronizer(client);
+            FakeCottonCloudClient client = new FakeCottonCloudClient(chunkSizeBytes: 8);
+            SdkRemoteFileSynchronizer synchronizer = new SdkRemoteFileSynchronizer(client);
 
             await synchronizer.UploadFileAsync(_rootNodeId, local.RelativePath, local);
 
@@ -272,11 +272,11 @@ namespace Cotton.Sync.Tests.Remote
         {
             byte[] bytes = Encoding.UTF8.GetBytes("abcdefghij");
             LocalFileSnapshot local = WriteLocalFile("Docs/file.txt", bytes);
-            var client = new FakeCottonCloudClient(chunkSizeBytes: 4);
-            var synchronizer = new SdkRemoteFileSynchronizer(
+            FakeCottonCloudClient client = new FakeCottonCloudClient(chunkSizeBytes: 4);
+            SdkRemoteFileSynchronizer synchronizer = new SdkRemoteFileSynchronizer(
                 client,
                 new SdkRemoteFileSynchronizerOptions { MaxConcurrentChunkUploads = 1 });
-            var progress = new RecordingProgress<SyncTransferProgress>();
+            RecordingProgress<SyncTransferProgress> progress = new RecordingProgress<SyncTransferProgress>();
 
             await synchronizer.UploadFileAsync(
                 _rootNodeId,
@@ -300,13 +300,13 @@ namespace Cotton.Sync.Tests.Remote
         {
             byte[] bytes = Encoding.UTF8.GetBytes("abcdefghijkl");
             LocalFileSnapshot local = WriteLocalFile("Docs/file.txt", bytes);
-            var client = new FakeCottonCloudClient(chunkSizeBytes: 4);
+            FakeCottonCloudClient client = new FakeCottonCloudClient(chunkSizeBytes: 4);
             string firstChunkHash = Hash(Encoding.UTF8.GetBytes("abcd"));
             client.ChunksClient.BlockUpload(firstChunkHash);
-            var synchronizer = new SdkRemoteFileSynchronizer(
+            SdkRemoteFileSynchronizer synchronizer = new SdkRemoteFileSynchronizer(
                 client,
                 new SdkRemoteFileSynchronizerOptions { MaxConcurrentChunkUploads = 2 });
-            var progress = new SignalingProgress<SyncTransferProgress>(
+            SignalingProgress<SyncTransferProgress> progress = new SignalingProgress<SyncTransferProgress>(
                 value => value.TransferredBytes > 0);
 
             Task upload = synchronizer.UploadFileAsync(
@@ -333,9 +333,9 @@ namespace Cotton.Sync.Tests.Remote
         {
             byte[] bytes = Encoding.UTF8.GetBytes("abcdefghijklmnop");
             LocalFileSnapshot local = WriteLocalFile("Docs/file.txt", bytes);
-            var client = new FakeCottonCloudClient(chunkSizeBytes: 4);
+            FakeCottonCloudClient client = new FakeCottonCloudClient(chunkSizeBytes: 4);
             client.ChunksClient.OperationDelay = TimeSpan.FromMilliseconds(25);
-            var synchronizer = new SdkRemoteFileSynchronizer(
+            SdkRemoteFileSynchronizer synchronizer = new SdkRemoteFileSynchronizer(
                 client,
                 new SdkRemoteFileSynchronizerOptions { MaxConcurrentChunkUploads = 2 });
             string[] expectedChunkHashes =
@@ -363,8 +363,8 @@ namespace Cotton.Sync.Tests.Remote
         {
             byte[] bytes = Encoding.UTF8.GetBytes("abcdabcdabcd");
             LocalFileSnapshot local = WriteLocalFile("Docs/repeated.bin", bytes);
-            var client = new FakeCottonCloudClient(chunkSizeBytes: 4);
-            var synchronizer = new SdkRemoteFileSynchronizer(
+            FakeCottonCloudClient client = new FakeCottonCloudClient(chunkSizeBytes: 4);
+            SdkRemoteFileSynchronizer synchronizer = new SdkRemoteFileSynchronizer(
                 client,
                 new SdkRemoteFileSynchronizerOptions { MaxConcurrentChunkUploads = 3 });
             string repeatedChunkHash = Hash(Encoding.UTF8.GetBytes("abcd"));
@@ -387,10 +387,10 @@ namespace Cotton.Sync.Tests.Remote
             byte[] bytes = Encoding.UTF8.GetBytes("abcdefgh");
             LocalFileSnapshot local = WriteLocalFile("Docs/concurrent.txt", bytes);
             local.ContentHash = string.Empty;
-            var client = new FakeCottonCloudClient(chunkSizeBytes: 4);
+            FakeCottonCloudClient client = new FakeCottonCloudClient(chunkSizeBytes: 4);
             string firstChunkHash = Hash(Encoding.UTF8.GetBytes("abcd"));
             client.ChunksClient.BlockUpload(firstChunkHash);
-            var synchronizer = new SdkRemoteFileSynchronizer(
+            SdkRemoteFileSynchronizer synchronizer = new SdkRemoteFileSynchronizer(
                 client,
                 new SdkRemoteFileSynchronizerOptions { MaxConcurrentChunkUploads = 1 });
 
@@ -416,7 +416,7 @@ namespace Cotton.Sync.Tests.Remote
         [Test]
         public void Constructor_RejectsInvalidChunkUploadConcurrency()
         {
-            var client = new FakeCottonCloudClient(chunkSizeBytes: 4);
+            FakeCottonCloudClient client = new FakeCottonCloudClient(chunkSizeBytes: 4);
 
             Assert.Throws<ArgumentOutOfRangeException>(
                 () => new SdkRemoteFileSynchronizer(
@@ -428,10 +428,10 @@ namespace Cotton.Sync.Tests.Remote
         public async Task DownloadFileAsync_And_DeleteFileAsync_DelegateToSdkFileClient()
         {
             Guid fileId = Guid.NewGuid();
-            var client = new FakeCottonCloudClient(chunkSizeBytes: 8);
+            FakeCottonCloudClient client = new FakeCottonCloudClient(chunkSizeBytes: 8);
             client.FilesClient.Downloads[fileId] = Encoding.UTF8.GetBytes("downloaded");
-            var synchronizer = new SdkRemoteFileSynchronizer(client);
-            await using var destination = new MemoryStream();
+            SdkRemoteFileSynchronizer synchronizer = new SdkRemoteFileSynchronizer(client);
+            await using MemoryStream destination = new MemoryStream();
 
             await synchronizer.DownloadFileAsync(fileId, destination);
             await synchronizer.DeleteFileAsync(fileId, skipTrash: true, expectedETag: "sha256-current");
@@ -447,11 +447,11 @@ namespace Cotton.Sync.Tests.Remote
         public async Task DownloadFileAsync_ReportsSdkDownloadProgress()
         {
             Guid fileId = Guid.NewGuid();
-            var client = new FakeCottonCloudClient(chunkSizeBytes: 8);
+            FakeCottonCloudClient client = new FakeCottonCloudClient(chunkSizeBytes: 8);
             client.FilesClient.Downloads[fileId] = Encoding.UTF8.GetBytes("downloaded");
-            var synchronizer = new SdkRemoteFileSynchronizer(client);
-            await using var destination = new MemoryStream();
-            var progress = new RecordingProgress<SyncTransferProgress>();
+            SdkRemoteFileSynchronizer synchronizer = new SdkRemoteFileSynchronizer(client);
+            await using MemoryStream destination = new MemoryStream();
+            RecordingProgress<SyncTransferProgress> progress = new RecordingProgress<SyncTransferProgress>();
 
             await synchronizer.DownloadFileAsync(
                 fileId,
@@ -474,11 +474,11 @@ namespace Cotton.Sync.Tests.Remote
         public async Task DownloadFileRangeAsync_DelegatesToSdkRangeApiWithETagAndProgress()
         {
             Guid fileId = Guid.NewGuid();
-            var client = new FakeCottonCloudClient(chunkSizeBytes: 8);
+            FakeCottonCloudClient client = new FakeCottonCloudClient(chunkSizeBytes: 8);
             client.FilesClient.Downloads[fileId] = Encoding.UTF8.GetBytes("0123456789abcdef");
-            var synchronizer = new SdkRemoteFileSynchronizer(client);
-            await using var destination = new MemoryStream();
-            var progress = new RecordingProgress<SyncTransferProgress>();
+            SdkRemoteFileSynchronizer synchronizer = new SdkRemoteFileSynchronizer(client);
+            await using MemoryStream destination = new MemoryStream();
+            RecordingProgress<SyncTransferProgress> progress = new RecordingProgress<SyncTransferProgress>();
 
             await synchronizer.DownloadFileRangeAsync(
                 fileId,
@@ -726,7 +726,7 @@ namespace Cotton.Sync.Tests.Remote
                 {
                     await WaitForUploadReleaseAsync(hash, cancellationToken).ConfigureAwait(false);
                     await DelayOperationAsync(cancellationToken).ConfigureAwait(false);
-                    await using var copy = new MemoryStream();
+                    await using MemoryStream copy = new MemoryStream();
                     await content.CopyToAsync(copy, cancellationToken);
                     lock (_gate)
                     {

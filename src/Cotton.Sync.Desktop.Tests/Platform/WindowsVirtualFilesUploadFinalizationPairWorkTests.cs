@@ -19,15 +19,15 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task RunOnceAsync_WithWindowsVirtualFilesUploadedActivityMarksCloudFilesPathInSync()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var activityPublisher = new InMemoryAppActivityPublisher();
-            var inner = new PublishingSyncPairWork(activityPublisher, "Docs/Reports/report.txt");
-            var stateStore = new FakeSyncStateStore();
+            InMemoryAppActivityPublisher activityPublisher = new InMemoryAppActivityPublisher();
+            PublishingSyncPairWork inner = new PublishingSyncPairWork(activityPublisher, "Docs/Reports/report.txt");
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
             stateStore.UpsertFile(syncPair, "Docs/Reports/report.txt");
             stateStore.UpsertDirectory(syncPair, "Docs", Guid.Parse("33333333-3333-3333-3333-333333333333"));
             stateStore.UpsertDirectory(syncPair, "Docs/Reports", Guid.Parse("44444444-4444-4444-4444-444444444444"));
-            var cloudFiles = new RecordingCloudFilesAdapter();
-            var suppression = new RecordingLocalChangeSuppression();
-            var work = new WindowsVirtualFilesUploadFinalizationPairWork(
+            RecordingCloudFilesAdapter cloudFiles = new RecordingCloudFilesAdapter();
+            RecordingLocalChangeSuppression suppression = new RecordingLocalChangeSuppression();
+            WindowsVirtualFilesUploadFinalizationPairWork work = new WindowsVirtualFilesUploadFinalizationPairWork(
                 inner,
                 activityPublisher,
                 stateStore,
@@ -140,14 +140,14 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task RunOnceAsync_WithWindowsVirtualFilesUploadedDirectoryActivityFinalizesDirectoryPlaceholder()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var activityPublisher = new InMemoryAppActivityPublisher();
-            var inner = new PublishingSyncPairWork(activityPublisher, "Docs");
-            var stateStore = new FakeSyncStateStore();
+            InMemoryAppActivityPublisher activityPublisher = new InMemoryAppActivityPublisher();
+            PublishingSyncPairWork inner = new PublishingSyncPairWork(activityPublisher, "Docs");
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
             Guid remoteNodeId = Guid.Parse("33333333-3333-3333-3333-333333333333");
             stateStore.UpsertDirectory(syncPair, "Docs", remoteNodeId);
-            var cloudFiles = new RecordingCloudFilesAdapter();
-            var suppression = new RecordingLocalChangeSuppression();
-            var work = new WindowsVirtualFilesUploadFinalizationPairWork(
+            RecordingCloudFilesAdapter cloudFiles = new RecordingCloudFilesAdapter();
+            RecordingLocalChangeSuppression suppression = new RecordingLocalChangeSuppression();
+            WindowsVirtualFilesUploadFinalizationPairWork work = new WindowsVirtualFilesUploadFinalizationPairWork(
                 inner,
                 activityPublisher,
                 stateStore,
@@ -181,14 +181,14 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task RunOnceAsync_WithWindowsVirtualFilesUploadedActivityPublishesFinalizingProgress()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var activityPublisher = new InMemoryAppActivityPublisher();
-            var inner = new PublishingSyncPairWork(activityPublisher, "Docs/Reports/report.txt");
-            var stateStore = new FakeSyncStateStore();
+            InMemoryAppActivityPublisher activityPublisher = new InMemoryAppActivityPublisher();
+            PublishingSyncPairWork inner = new PublishingSyncPairWork(activityPublisher, "Docs/Reports/report.txt");
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
             stateStore.UpsertFile(syncPair, "Docs/Reports/report.txt");
             stateStore.UpsertDirectory(syncPair, "Docs", Guid.Parse("33333333-3333-3333-3333-333333333333"));
             stateStore.UpsertDirectory(syncPair, "Docs/Reports", Guid.Parse("44444444-4444-4444-4444-444444444444"));
-            var progressPublisher = new RecordingRunProgressPublisher();
-            var work = new WindowsVirtualFilesUploadFinalizationPairWork(
+            RecordingRunProgressPublisher progressPublisher = new RecordingRunProgressPublisher();
+            WindowsVirtualFilesUploadFinalizationPairWork work = new WindowsVirtualFilesUploadFinalizationPairWork(
                 inner,
                 activityPublisher,
                 stateStore,
@@ -249,10 +249,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task RunOnceAsync_WithFullMirrorUploadedActivityDoesNotTouchCloudFiles()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.FullMirror);
-            var activityPublisher = new InMemoryAppActivityPublisher();
-            var inner = new PublishingSyncPairWork(activityPublisher, "Docs/report.txt");
-            var cloudFiles = new RecordingCloudFilesAdapter();
-            var work = new WindowsVirtualFilesUploadFinalizationPairWork(
+            InMemoryAppActivityPublisher activityPublisher = new InMemoryAppActivityPublisher();
+            PublishingSyncPairWork inner = new PublishingSyncPairWork(activityPublisher, "Docs/report.txt");
+            RecordingCloudFilesAdapter cloudFiles = new RecordingCloudFilesAdapter();
+            WindowsVirtualFilesUploadFinalizationPairWork work = new WindowsVirtualFilesUploadFinalizationPairWork(
                 inner,
                 activityPublisher,
                 new FakeSyncStateStore(),
@@ -271,22 +271,22 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task SyncPairRunner_WhenCloudFilesFinalizationFailsDoesNotReportIdleSuccess()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var activityPublisher = new InMemoryAppActivityPublisher();
-            var inner = new PublishingSyncPairWork(activityPublisher, "Docs/report.txt");
-            var cloudFiles = new RecordingCloudFilesAdapter
+            InMemoryAppActivityPublisher activityPublisher = new InMemoryAppActivityPublisher();
+            PublishingSyncPairWork inner = new PublishingSyncPairWork(activityPublisher, "Docs/report.txt");
+            RecordingCloudFilesAdapter cloudFiles = new RecordingCloudFilesAdapter
             {
                 Exception = new InvalidOperationException("Cloud Files status was not finalized."),
             };
-            var stateStore = new FakeSyncStateStore();
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
             stateStore.UpsertFile(syncPair, "Docs/report.txt");
-            var progressPublisher = new RecordingRunProgressPublisher();
-            var work = new WindowsVirtualFilesUploadFinalizationPairWork(
+            RecordingRunProgressPublisher progressPublisher = new RecordingRunProgressPublisher();
+            WindowsVirtualFilesUploadFinalizationPairWork work = new WindowsVirtualFilesUploadFinalizationPairWork(
                 inner,
                 activityPublisher,
                 stateStore,
                 cloudFiles,
                 runProgressPublisher: progressPublisher);
-            var runner = new SyncPairRunner(
+            SyncPairRunner runner = new SyncPairRunner(
                 syncPair,
                 work,
                 new SyncPairRunnerRetryOptions
@@ -311,21 +311,21 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public async Task SyncPairRunner_WhenCloudFilesDirectoryRepairFailsDoesNotReportIdleSuccess()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var activityPublisher = new InMemoryAppActivityPublisher();
-            var inner = new PublishingSyncPairWork(activityPublisher, "Docs/report.txt");
-            var stateStore = new FakeSyncStateStore();
+            InMemoryAppActivityPublisher activityPublisher = new InMemoryAppActivityPublisher();
+            PublishingSyncPairWork inner = new PublishingSyncPairWork(activityPublisher, "Docs/report.txt");
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
             stateStore.UpsertFile(syncPair, "Docs/report.txt");
             stateStore.UpsertDirectory(syncPair, "Docs", Guid.Parse("33333333-3333-3333-3333-333333333333"));
-            var cloudFiles = new RecordingCloudFilesAdapter
+            RecordingCloudFilesAdapter cloudFiles = new RecordingCloudFilesAdapter
             {
                 DirectoryException = new InvalidOperationException("Cloud Files directory status was not finalized."),
             };
-            var work = new WindowsVirtualFilesUploadFinalizationPairWork(
+            WindowsVirtualFilesUploadFinalizationPairWork work = new WindowsVirtualFilesUploadFinalizationPairWork(
                 inner,
                 activityPublisher,
                 stateStore,
                 cloudFiles);
-            var runner = new SyncPairRunner(
+            SyncPairRunner runner = new SyncPairRunner(
                 syncPair,
                 work,
                 new SyncPairRunnerRetryOptions

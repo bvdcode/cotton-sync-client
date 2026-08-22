@@ -26,7 +26,7 @@ namespace Cotton.Sync.App.SyncPairs
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(syncPair);
-            var errors = new List<SyncPairValidationError>();
+            List<SyncPairValidationError> errors = new List<SyncPairValidationError>();
             if (!await _localRoots.CanUseAsync(syncPair.LocalRootPath, cancellationToken).ConfigureAwait(false))
             {
                 errors.Add(new SyncPairValidationError(

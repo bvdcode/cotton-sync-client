@@ -13,7 +13,7 @@ namespace Cotton.Sync.App.Tests.Auth
         public async Task SignInAsync_MapsRequestAndReturnsSession()
         {
             Guid userId = Guid.NewGuid();
-            var authClient = new FakeCottonAuthClient
+            FakeCottonAuthClient authClient = new FakeCottonAuthClient
             {
                 CurrentUser = new UserDto
                 {
@@ -23,7 +23,7 @@ namespace Cotton.Sync.App.Tests.Auth
                     IsTotpEnabled = true,
                 },
             };
-            var flow = new PasswordAuthFlow(authClient);
+            PasswordAuthFlow flow = new PasswordAuthFlow(authClient);
 
             AuthSession session = await flow.SignInAsync(new PasswordSignInRequest
             {
@@ -55,8 +55,8 @@ namespace Cotton.Sync.App.Tests.Auth
         [Test]
         public async Task SignInAsync_RejectsMissingUsernameBeforeSdkCall()
         {
-            var authClient = new FakeCottonAuthClient();
-            var flow = new PasswordAuthFlow(authClient);
+            FakeCottonAuthClient authClient = new FakeCottonAuthClient();
+            PasswordAuthFlow flow = new PasswordAuthFlow(authClient);
 
             ArgumentException? exception = Assert.ThrowsAsync<ArgumentException>(
                 async () => await flow.SignInAsync(new PasswordSignInRequest
@@ -76,8 +76,8 @@ namespace Cotton.Sync.App.Tests.Auth
         [Test]
         public async Task SignInAsync_RejectsMissingPasswordBeforeSdkCall()
         {
-            var authClient = new FakeCottonAuthClient();
-            var flow = new PasswordAuthFlow(authClient);
+            FakeCottonAuthClient authClient = new FakeCottonAuthClient();
+            PasswordAuthFlow flow = new PasswordAuthFlow(authClient);
 
             ArgumentException? exception = Assert.ThrowsAsync<ArgumentException>(
                 async () => await flow.SignInAsync(new PasswordSignInRequest
@@ -97,8 +97,8 @@ namespace Cotton.Sync.App.Tests.Auth
         [Test]
         public async Task SignOutAsync_DelegatesToSdkLogout()
         {
-            var authClient = new FakeCottonAuthClient();
-            var flow = new PasswordAuthFlow(authClient);
+            FakeCottonAuthClient authClient = new FakeCottonAuthClient();
+            PasswordAuthFlow flow = new PasswordAuthFlow(authClient);
 
             await flow.SignOutAsync();
 
@@ -113,7 +113,7 @@ namespace Cotton.Sync.App.Tests.Auth
         public async Task RestoreSessionAsync_ReturnsCurrentSdkUser()
         {
             Guid userId = Guid.NewGuid();
-            var authClient = new FakeCottonAuthClient
+            FakeCottonAuthClient authClient = new FakeCottonAuthClient
             {
                 CurrentUser = new UserDto
                 {
@@ -123,7 +123,7 @@ namespace Cotton.Sync.App.Tests.Auth
                     IsTotpEnabled = false,
                 },
             };
-            var flow = new PasswordAuthFlow(authClient);
+            PasswordAuthFlow flow = new PasswordAuthFlow(authClient);
 
             AuthSession session = await flow.RestoreSessionAsync();
 

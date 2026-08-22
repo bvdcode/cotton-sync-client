@@ -133,7 +133,7 @@ namespace Cotton.Sync.Tests
             const string changedPath = "Docs/9999/file-999999.txt";
             string oldHash = Hash(Encoding.UTF8.GetBytes("old-content"));
             string newHash = Hash(Encoding.UTF8.GetBytes("new-content"));
-            var localScanner = new ScopedPathOnlyLocalScanner(
+            ScopedPathOnlyLocalScanner localScanner = new ScopedPathOnlyLocalScanner(
                 changedPath,
                 new LocalFileSnapshot
                 {
@@ -144,7 +144,7 @@ namespace Cotton.Sync.Tests
                     LastWriteUtc = new DateTime(2026, 6, 3, 13, 0, 0, DateTimeKind.Utc),
                 });
             NodeFileManifestDto remoteFile = RemoteFile(changedPath, oldHash, sizeBytes: 11);
-            var remoteCrawler = new StaticRemoteTreeCrawler(
+            StaticRemoteTreeCrawler remoteCrawler = new StaticRemoteTreeCrawler(
             [
                 new RemoteFileSnapshot
                 {
@@ -152,8 +152,8 @@ namespace Cotton.Sync.Tests
                     File = remoteFile,
                 },
             ]);
-            var remoteFilesClient = new RecordingRemoteFileSynchronizer();
-            var stateStore = new CountingScopedStateStore(
+            RecordingRemoteFileSynchronizer remoteFilesClient = new RecordingRemoteFileSynchronizer();
+            CountingScopedStateStore stateStore = new CountingScopedStateStore(
                 logicalEntryCount,
                 new SyncStateEntry
                 {
@@ -169,7 +169,7 @@ namespace Cotton.Sync.Tests
                     RemoteETag = remoteFile.ETag,
                     SyncedAtUtc = new DateTime(2026, 6, 3, 12, 5, 0, DateTimeKind.Utc),
                 });
-            var engine = new SyncEngine(localScanner, remoteCrawler, remoteFilesClient, stateStore);
+            SyncEngine engine = new SyncEngine(localScanner, remoteCrawler, remoteFilesClient, stateStore);
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             remoteFilesClient.MeasurementStopwatch = stopwatch;
@@ -357,13 +357,13 @@ namespace Cotton.Sync.Tests
                 });
             }
 
-            var remoteCrawler = new StaticRemoteTreeCrawler(remoteFiles);
-            var stateStore = new CountingVirtualPlaceholderStateStore();
-            var placeholderWriter = new CountingRemoteFilePlaceholderWriter
+            StaticRemoteTreeCrawler remoteCrawler = new StaticRemoteTreeCrawler(remoteFiles);
+            CountingVirtualPlaceholderStateStore stateStore = new CountingVirtualPlaceholderStateStore();
+            CountingRemoteFilePlaceholderWriter placeholderWriter = new CountingRemoteFilePlaceholderWriter
             {
                 OperationDelay = TimeSpan.FromMilliseconds(25),
             };
-            var engine = new SyncEngine(
+            SyncEngine engine = new SyncEngine(
                 new EmptyLocalFileScanner(),
                 remoteCrawler,
                 new GuardedRemoteFileSynchronizer(),
@@ -414,10 +414,10 @@ namespace Cotton.Sync.Tests
                     };
                 })
                 .ToList();
-            var remoteCrawler = new StaticRemoteTreeCrawler([], remoteDirectories);
-            var stateStore = new CountingVirtualPlaceholderStateStore();
-            var placeholderWriter = new CountingRemoteFilePlaceholderWriter();
-            var engine = new SyncEngine(
+            StaticRemoteTreeCrawler remoteCrawler = new StaticRemoteTreeCrawler([], remoteDirectories);
+            CountingVirtualPlaceholderStateStore stateStore = new CountingVirtualPlaceholderStateStore();
+            CountingRemoteFilePlaceholderWriter placeholderWriter = new CountingRemoteFilePlaceholderWriter();
+            SyncEngine engine = new SyncEngine(
                 new EmptyLocalFileScanner(),
                 remoteCrawler,
                 new GuardedRemoteFileSynchronizer(),
@@ -502,9 +502,9 @@ namespace Cotton.Sync.Tests
             string expectedHash = Hash(content);
             WriteFile(relativePath, content);
             SqliteSyncStateStore stateStore = new(_databasePath);
-            var remoteFilesClient = new RecordingRemoteFileSynchronizer();
-            var runProgress = new RecordingProgress<SyncRunProgress>();
-            var engine = new SyncEngine(
+            RecordingRemoteFileSynchronizer remoteFilesClient = new RecordingRemoteFileSynchronizer();
+            RecordingProgress<SyncRunProgress> runProgress = new RecordingProgress<SyncRunProgress>();
+            SyncEngine engine = new SyncEngine(
                 new LocalFileScanner(),
                 new StaticRemoteTreeCrawler([]),
                 remoteFilesClient,
@@ -606,9 +606,9 @@ namespace Cotton.Sync.Tests
 
             await stateStore.ReplacePairAsync(syncPairId, baselineEntries);
 
-            var remoteFilesClient = new GuardedRemoteFileSynchronizer();
-            var runProgress = new RecordingProgress<SyncRunProgress>();
-            var engine = new SyncEngine(
+            GuardedRemoteFileSynchronizer remoteFilesClient = new GuardedRemoteFileSynchronizer();
+            RecordingProgress<SyncRunProgress> runProgress = new RecordingProgress<SyncRunProgress>();
+            SyncEngine engine = new SyncEngine(
                 new LocalFileScanner(),
                 new StaticRemoteTreeCrawler(remoteFiles),
                 remoteFilesClient,
@@ -709,10 +709,10 @@ namespace Cotton.Sync.Tests
             await stateStore.ReplacePairAsync(syncPairId, baselineEntries);
             WriteFile(changedPath, Encoding.UTF8.GetBytes("changed-content"));
 
-            var remoteFilesClient = new RecordingRemoteFileSynchronizer();
-            var remoteCrawler = new StaticRemoteTreeCrawler(remoteFiles);
-            var runProgress = new RecordingProgress<SyncRunProgress>();
-            var engine = new SyncEngine(
+            RecordingRemoteFileSynchronizer remoteFilesClient = new RecordingRemoteFileSynchronizer();
+            StaticRemoteTreeCrawler remoteCrawler = new StaticRemoteTreeCrawler(remoteFiles);
+            RecordingProgress<SyncRunProgress> runProgress = new RecordingProgress<SyncRunProgress>();
+            SyncEngine engine = new SyncEngine(
                 new LocalFileScanner(),
                 remoteCrawler,
                 remoteFilesClient,
@@ -768,10 +768,10 @@ namespace Cotton.Sync.Tests
             }
 
             SqliteSyncStateStore stateStore = new(_databasePath);
-            var remoteFilesClient = new RecordingRemoteFileSynchronizer();
-            var activityProgress = new RecordingProgress<SyncActivity>();
+            RecordingRemoteFileSynchronizer remoteFilesClient = new RecordingRemoteFileSynchronizer();
+            RecordingProgress<SyncActivity> activityProgress = new RecordingProgress<SyncActivity>();
             const int retainedActivityLimit = 100;
-            var engine = new SyncEngine(
+            SyncEngine engine = new SyncEngine(
                 new LocalFileScanner(),
                 new StaticRemoteTreeCrawler([]),
                 remoteFilesClient,
@@ -848,13 +848,13 @@ namespace Cotton.Sync.Tests
                 });
             }
 
-            var remoteCrawler = new StaticRemoteTreeCrawler(remoteFiles);
-            var remoteFilesClient = new GuardedRemoteFileSynchronizer();
-            var stateStore = new CountingVirtualPlaceholderStateStore();
-            var placeholderWriter = new CountingRemoteFilePlaceholderWriter();
-            var runProgress = new RecordingProgress<SyncRunProgress>();
-            var cooperativeYieldCompletedCounts = new List<int>();
-            var engine = new SyncEngine(
+            StaticRemoteTreeCrawler remoteCrawler = new StaticRemoteTreeCrawler(remoteFiles);
+            GuardedRemoteFileSynchronizer remoteFilesClient = new GuardedRemoteFileSynchronizer();
+            CountingVirtualPlaceholderStateStore stateStore = new CountingVirtualPlaceholderStateStore();
+            CountingRemoteFilePlaceholderWriter placeholderWriter = new CountingRemoteFilePlaceholderWriter();
+            RecordingProgress<SyncRunProgress> runProgress = new RecordingProgress<SyncRunProgress>();
+            List<int> cooperativeYieldCompletedCounts = new List<int>();
+            SyncEngine engine = new SyncEngine(
                 new EmptyLocalFileScanner(),
                 remoteCrawler,
                 remoteFilesClient,
@@ -966,12 +966,12 @@ namespace Cotton.Sync.Tests
             }
 
             FailOnFullScanLocalFileScanner localScanner = new(baselineEntries);
-            var remoteCrawler = new StaticRemoteTreeCrawler(remoteFiles);
-            var remoteFilesClient = new GuardedRemoteFileSynchronizer();
-            var stateStore = new CountingVirtualPlaceholderStateStore(baselineEntries);
-            var placeholderWriter = new CountingRemoteFilePlaceholderWriter();
-            var runProgress = new RecordingProgress<SyncRunProgress>();
-            var engine = new SyncEngine(
+            StaticRemoteTreeCrawler remoteCrawler = new StaticRemoteTreeCrawler(remoteFiles);
+            GuardedRemoteFileSynchronizer remoteFilesClient = new GuardedRemoteFileSynchronizer();
+            CountingVirtualPlaceholderStateStore stateStore = new CountingVirtualPlaceholderStateStore(baselineEntries);
+            CountingRemoteFilePlaceholderWriter placeholderWriter = new CountingRemoteFilePlaceholderWriter();
+            RecordingProgress<SyncRunProgress> runProgress = new RecordingProgress<SyncRunProgress>();
+            SyncEngine engine = new SyncEngine(
                 localScanner,
                 remoteCrawler,
                 remoteFilesClient,
@@ -1195,7 +1195,7 @@ namespace Cotton.Sync.Tests
                 CancellationToken cancellationToken = default)
             {
                 StreamingCrawlCalls++;
-                var root = new NodeDto
+                NodeDto root = new NodeDto
                 {
                     Id = rootNodeId,
                     Name = "root",
@@ -1234,7 +1234,7 @@ namespace Cotton.Sync.Tests
                 CancellationToken cancellationToken = default)
             {
                 PathCrawlCalls++;
-                var snapshot = new RemoteTreeLookupSnapshot
+                RemoteTreeLookupSnapshot snapshot = new RemoteTreeLookupSnapshot
                 {
                     RootNode = new NodeDto
                     {
@@ -1242,7 +1242,7 @@ namespace Cotton.Sync.Tests
                         Name = "root",
                     },
                 };
-                var requested = new HashSet<string>(relativePaths.Select(SyncPath.ToKey), StringComparer.OrdinalIgnoreCase);
+                HashSet<string> requested = new HashSet<string>(relativePaths.Select(SyncPath.ToKey), StringComparer.OrdinalIgnoreCase);
                 foreach (RemoteDirectorySnapshot directory in _directories)
                 {
                     if (requested.Contains(SyncPath.ToKey(directory.RelativePath)))
@@ -1372,7 +1372,7 @@ namespace Cotton.Sync.Tests
                 CancellationToken cancellationToken = default)
             {
                 PathLookupCalls++;
-                var snapshot = new LocalTreeLookupSnapshot();
+                LocalTreeLookupSnapshot snapshot = new LocalTreeLookupSnapshot();
                 if (relativePaths.Select(SyncPath.ToKey).Contains(_relativePathKey, StringComparer.OrdinalIgnoreCase))
                 {
                     snapshot.FilesByPath[_relativePathKey] = _file;

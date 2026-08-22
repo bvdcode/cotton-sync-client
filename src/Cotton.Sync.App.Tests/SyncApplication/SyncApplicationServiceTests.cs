@@ -21,9 +21,9 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SignInAsync_DelegatesToAuthFlow()
         {
-            var authFlow = new FakeAuthFlow();
+            FakeAuthFlow authFlow = new FakeAuthFlow();
             SyncApplicationService service = CreateService(new InMemorySyncPairSettingsStore(), authFlow: authFlow);
-            var request = new PasswordSignInRequest
+            PasswordSignInRequest request = new PasswordSignInRequest
             {
                 Username = "vadim",
                 Password = "password",
@@ -42,11 +42,11 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SignInWithBrowserAsync_DelegatesToAppCodeBrowserAuthFlow()
         {
-            var appCodeBrowserAuthFlow = new FakeAppCodeBrowserAuthFlow();
+            FakeAppCodeBrowserAuthFlow appCodeBrowserAuthFlow = new FakeAppCodeBrowserAuthFlow();
             SyncApplicationService service = CreateService(
                 new InMemorySyncPairSettingsStore(),
                 appCodeBrowserAuthFlow: appCodeBrowserAuthFlow);
-            var request = new AppCodeBrowserSignInRequest
+            AppCodeBrowserSignInRequest request = new AppCodeBrowserSignInRequest
             {
                 ApplicationName = "Cotton Sync Desktop",
                 ApplicationVersion = "1.2.3",
@@ -66,11 +66,11 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SignOutAsync_SignsOutAndStopsSupervisor()
         {
-            var authFlow = new FakeAuthFlow();
-            var supervisor = new FakeSyncSupervisor();
-            var localChanges = new FakeLocalChangeSyncCoordinator();
-            var remoteChanges = new FakeRemoteChangeSyncCoordinator();
-            var periodicSync = new FakePeriodicSyncCoordinator();
+            FakeAuthFlow authFlow = new FakeAuthFlow();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator();
+            FakeRemoteChangeSyncCoordinator remoteChanges = new FakeRemoteChangeSyncCoordinator();
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator();
             SyncApplicationService service = CreateService(
                 new InMemorySyncPairSettingsStore(),
                 authFlow: authFlow,
@@ -94,11 +94,11 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task RestoreSessionAsync_RestoresAuthOnly()
         {
-            var authFlow = new FakeAuthFlow();
-            var supervisor = new FakeSyncSupervisor();
-            var localChanges = new FakeLocalChangeSyncCoordinator();
-            var remoteChanges = new FakeRemoteChangeSyncCoordinator();
-            var periodicSync = new FakePeriodicSyncCoordinator();
+            FakeAuthFlow authFlow = new FakeAuthFlow();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator();
+            FakeRemoteChangeSyncCoordinator remoteChanges = new FakeRemoteChangeSyncCoordinator();
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator();
             SyncApplicationService service = CreateService(
                 new InMemorySyncPairSettingsStore(),
                 authFlow: authFlow,
@@ -123,10 +123,10 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task StartSyncAsync_StartsSupervisorAndLocalChanges()
         {
-            var supervisor = new FakeSyncSupervisor();
-            var localChanges = new FakeLocalChangeSyncCoordinator();
-            var remoteChanges = new FakeRemoteChangeSyncCoordinator();
-            var periodicSync = new FakePeriodicSyncCoordinator();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator();
+            FakeRemoteChangeSyncCoordinator remoteChanges = new FakeRemoteChangeSyncCoordinator();
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator();
             SyncApplicationService service = CreateService(
                 new InMemorySyncPairSettingsStore(),
                 supervisor: supervisor,
@@ -149,11 +149,11 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         public async Task StartSyncAsync_StartsLifecycleComponentsBeforeSyncRunners()
         {
             List<string> calls = [];
-            var lifecycle = new FakeSyncCoreLifecycleComponent("cloud-files", calls);
-            var supervisor = new FakeSyncSupervisor(calls);
-            var localChanges = new FakeLocalChangeSyncCoordinator(calls);
-            var remoteChanges = new FakeRemoteChangeSyncCoordinator(calls);
-            var periodicSync = new FakePeriodicSyncCoordinator(calls);
+            FakeSyncCoreLifecycleComponent lifecycle = new FakeSyncCoreLifecycleComponent("cloud-files", calls);
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor(calls);
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator(calls);
+            FakeRemoteChangeSyncCoordinator remoteChanges = new FakeRemoteChangeSyncCoordinator(calls);
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator(calls);
             SyncApplicationService service = CreateService(
                 new InMemorySyncPairSettingsStore(),
                 supervisor: supervisor,
@@ -178,12 +178,12 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         public void StartSyncAsync_RollsBackLifecycleComponentsWhenStartupFails()
         {
             List<string> calls = [];
-            var startupError = new InvalidOperationException("Cloud Files connect failed.");
-            var lifecycle = new FakeSyncCoreLifecycleComponent("cloud-files", calls)
+            InvalidOperationException startupError = new InvalidOperationException("Cloud Files connect failed.");
+            FakeSyncCoreLifecycleComponent lifecycle = new FakeSyncCoreLifecycleComponent("cloud-files", calls)
             {
                 StartException = startupError,
             };
-            var supervisor = new FakeSyncSupervisor(calls);
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor(calls);
             SyncApplicationService service = CreateService(
                 new InMemorySyncPairSettingsStore(),
                 supervisor: supervisor,
@@ -204,14 +204,14 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         public void StartSyncAsync_RollsBackStartedComponentsWhenRemoteStartupFails()
         {
             List<string> calls = [];
-            var startupError = new InvalidOperationException("Remote listener failed.");
-            var supervisor = new FakeSyncSupervisor(calls);
-            var localChanges = new FakeLocalChangeSyncCoordinator(calls);
-            var remoteChanges = new FakeRemoteChangeSyncCoordinator(calls)
+            InvalidOperationException startupError = new InvalidOperationException("Remote listener failed.");
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor(calls);
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator(calls);
+            FakeRemoteChangeSyncCoordinator remoteChanges = new FakeRemoteChangeSyncCoordinator(calls)
             {
                 StartException = startupError,
             };
-            var periodicSync = new FakePeriodicSyncCoordinator(calls);
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator(calls);
             SyncApplicationService service = CreateService(
                 new InMemorySyncPairSettingsStore(),
                 supervisor: supervisor,
@@ -245,12 +245,12 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         public void StartSyncAsync_RollsBackStartedComponentsWhenPeriodicStartupFails()
         {
             List<string> calls = [];
-            var startupError = new InvalidOperationException("Periodic sync failed.");
-            var authFlow = new FakeAuthFlow();
-            var supervisor = new FakeSyncSupervisor(calls);
-            var localChanges = new FakeLocalChangeSyncCoordinator(calls);
-            var remoteChanges = new FakeRemoteChangeSyncCoordinator(calls);
-            var periodicSync = new FakePeriodicSyncCoordinator(calls)
+            InvalidOperationException startupError = new InvalidOperationException("Periodic sync failed.");
+            FakeAuthFlow authFlow = new FakeAuthFlow();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor(calls);
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator(calls);
+            FakeRemoteChangeSyncCoordinator remoteChanges = new FakeRemoteChangeSyncCoordinator(calls);
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator(calls)
             {
                 StartException = startupError,
             };
@@ -289,10 +289,10 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task StopSyncAsync_StopsLocalChangesAndSupervisor()
         {
-            var supervisor = new FakeSyncSupervisor();
-            var localChanges = new FakeLocalChangeSyncCoordinator();
-            var remoteChanges = new FakeRemoteChangeSyncCoordinator();
-            var periodicSync = new FakePeriodicSyncCoordinator();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator();
+            FakeRemoteChangeSyncCoordinator remoteChanges = new FakeRemoteChangeSyncCoordinator();
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator();
             SyncApplicationService service = CreateService(
                 new InMemorySyncPairSettingsStore(),
                 supervisor: supervisor,
@@ -315,11 +315,11 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         public async Task StopSyncAsync_StopsLifecycleComponentsAfterSyncRunners()
         {
             List<string> calls = [];
-            var lifecycle = new FakeSyncCoreLifecycleComponent("cloud-files", calls);
-            var supervisor = new FakeSyncSupervisor(calls);
-            var localChanges = new FakeLocalChangeSyncCoordinator(calls);
-            var remoteChanges = new FakeRemoteChangeSyncCoordinator(calls);
-            var periodicSync = new FakePeriodicSyncCoordinator(calls);
+            FakeSyncCoreLifecycleComponent lifecycle = new FakeSyncCoreLifecycleComponent("cloud-files", calls);
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor(calls);
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator(calls);
+            FakeRemoteChangeSyncCoordinator remoteChanges = new FakeRemoteChangeSyncCoordinator(calls);
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator(calls);
             SyncApplicationService service = CreateService(
                 new InMemorySyncPairSettingsStore(),
                 supervisor: supervisor,
@@ -346,7 +346,7 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task GetPreferencesAsync_InitializesAndLoadsPreferences()
         {
-            var preferencesStore = new FakeAppPreferencesStore();
+            FakeAppPreferencesStore preferencesStore = new FakeAppPreferencesStore();
             SyncApplicationService service = CreateService(
                 new InMemorySyncPairSettingsStore(),
                 preferences: preferencesStore);
@@ -363,11 +363,11 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SavePreferencesAsync_InitializesAndSavesPreferences()
         {
-            var preferencesStore = new FakeAppPreferencesStore();
+            FakeAppPreferencesStore preferencesStore = new FakeAppPreferencesStore();
             SyncApplicationService service = CreateService(
                 new InMemorySyncPairSettingsStore(),
                 preferences: preferencesStore);
-            var preferences = new AppPreferences
+            AppPreferences preferences = new AppPreferences
             {
                 RememberedServerUrl = new Uri("https://cotton.example.test/"),
             };
@@ -385,7 +385,7 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SyncNowAsync_DelegatesToSupervisor()
         {
-            var supervisor = new FakeSyncSupervisor();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
             SyncApplicationService service = CreateService(
                 new InMemorySyncPairSettingsStore(),
                 supervisor: supervisor);
@@ -403,7 +403,7 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task OpenFolderAsync_DelegatesToPlatformCommands()
         {
-            var platformCommands = new FakePlatformCommandService();
+            FakePlatformCommandService platformCommands = new FakePlatformCommandService();
             SyncApplicationService service = CreateService(
                 new InMemorySyncPairSettingsStore(),
                 platformCommands: platformCommands);
@@ -420,11 +420,11 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task OpenWebAsync_DelegatesToPlatformCommands()
         {
-            var platformCommands = new FakePlatformCommandService();
+            FakePlatformCommandService platformCommands = new FakePlatformCommandService();
             SyncApplicationService service = CreateService(
                 new InMemorySyncPairSettingsStore(),
                 platformCommands: platformCommands);
-            var url = new Uri("https://cotton.example.test/");
+            Uri url = new Uri("https://cotton.example.test/");
 
             await service.OpenWebAsync(url);
 
@@ -438,11 +438,11 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SaveSyncPairAsync_PersistsValidPair()
         {
-            var store = new InMemorySyncPairSettingsStore();
-            var supervisor = new FakeSyncSupervisor();
-            var localChanges = new FakeLocalChangeSyncCoordinator();
-            var remoteChanges = new FakeRemoteChangeSyncCoordinator();
-            var periodicSync = new FakePeriodicSyncCoordinator();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator();
+            FakeRemoteChangeSyncCoordinator remoteChanges = new FakeRemoteChangeSyncCoordinator();
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator();
             SyncApplicationService service = CreateService(
                 store,
                 supervisor: supervisor,
@@ -470,11 +470,11 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SaveSyncPairAsync_RestartsSyncComponentsWhenSyncCoreIsRunning()
         {
-            var store = new InMemorySyncPairSettingsStore();
-            var supervisor = new FakeSyncSupervisor();
-            var localChanges = new FakeLocalChangeSyncCoordinator();
-            var remoteChanges = new FakeRemoteChangeSyncCoordinator();
-            var periodicSync = new FakePeriodicSyncCoordinator();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator();
+            FakeRemoteChangeSyncCoordinator remoteChanges = new FakeRemoteChangeSyncCoordinator();
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator();
             SyncApplicationService service = CreateService(
                 store,
                 supervisor: supervisor,
@@ -502,11 +502,11 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SaveSyncPairAsync_ReappliesGlobalPauseWhenSyncCoreRestarts()
         {
-            var store = new InMemorySyncPairSettingsStore();
-            var supervisor = new FakeSyncSupervisor();
-            var localChanges = new FakeLocalChangeSyncCoordinator();
-            var remoteChanges = new FakeRemoteChangeSyncCoordinator();
-            var periodicSync = new FakePeriodicSyncCoordinator();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator();
+            FakeRemoteChangeSyncCoordinator remoteChanges = new FakeRemoteChangeSyncCoordinator();
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator();
             SyncApplicationService service = CreateService(
                 store,
                 supervisor: supervisor,
@@ -534,16 +534,16 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task StartSyncAsync_RestoresPersistedGlobalPauseAfterAppRestart()
         {
-            var store = new InMemorySyncPairSettingsStore();
-            var preferences = new FakeAppPreferencesStore();
-            var firstSupervisor = new FakeSyncSupervisor();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
+            FakeAppPreferencesStore preferences = new FakeAppPreferencesStore();
+            FakeSyncSupervisor firstSupervisor = new FakeSyncSupervisor();
             SyncApplicationService first = CreateService(
                 store,
                 preferences: preferences,
                 supervisor: firstSupervisor);
             await first.StartSyncAsync();
             await first.PauseAllAsync();
-            var secondSupervisor = new FakeSyncSupervisor();
+            FakeSyncSupervisor secondSupervisor = new FakeSyncSupervisor();
             SyncApplicationService second = CreateService(
                 store,
                 preferences: preferences,
@@ -564,11 +564,11 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SaveSyncPairAsync_DoesNotRestartSyncComponentsWhenValidationFails()
         {
-            var store = new InMemorySyncPairSettingsStore();
-            var supervisor = new FakeSyncSupervisor();
-            var localChanges = new FakeLocalChangeSyncCoordinator();
-            var remoteChanges = new FakeRemoteChangeSyncCoordinator();
-            var periodicSync = new FakePeriodicSyncCoordinator();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator();
+            FakeRemoteChangeSyncCoordinator remoteChanges = new FakeRemoteChangeSyncCoordinator();
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator();
             SyncApplicationService service = CreateService(
                 store,
                 supervisor: supervisor,
@@ -598,7 +598,7 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SaveSyncPairAsync_RejectsOverlappingPairWithoutPersisting()
         {
-            var store = new InMemorySyncPairSettingsStore();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
             SyncApplicationService service = CreateService(store);
             SyncPairSettings existing = CreatePair("/home/user/Cotton");
             SyncPairSettings overlapping = CreatePair("/home/user/Cotton/Work");
@@ -621,7 +621,7 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SaveSyncPairAsync_UpdatesExistingPairWithoutSelfOverlap()
         {
-            var store = new InMemorySyncPairSettingsStore();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
             SyncApplicationService service = CreateService(store);
             SyncPairSettings existing = CreatePair("/home/user/Cotton");
             await service.SaveSyncPairAsync(existing);
@@ -645,9 +645,9 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SaveSyncPairAsync_RejectsPrerequisiteFailureWithoutPersisting()
         {
-            var store = new InMemorySyncPairSettingsStore();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
             SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
-            var prerequisites = new FakeSyncPairPrerequisiteValidator([
+            FakeSyncPairPrerequisiteValidator prerequisites = new FakeSyncPairPrerequisiteValidator([
                 new SyncPairValidationError(
                     SyncPairValidationIssue.LocalRootUnavailable,
                     syncPair.Id,
@@ -673,10 +673,10 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SaveSyncPairAsync_SkipsPrerequisitesForDisabledPair()
         {
-            var store = new InMemorySyncPairSettingsStore();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
             SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
             syncPair.IsEnabled = false;
-            var prerequisites = new FakeSyncPairPrerequisiteValidator([
+            FakeSyncPairPrerequisiteValidator prerequisites = new FakeSyncPairPrerequisiteValidator([
                 new SyncPairValidationError(
                     SyncPairValidationIssue.LocalRootUnavailable,
                     syncPair.Id,
@@ -700,10 +700,10 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SaveSyncPairAsync_SkipsPrerequisitesWhenOnlyDisplayNameChanges()
         {
-            var store = new InMemorySyncPairSettingsStore();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
             SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
             await store.UpsertAsync(syncPair);
-            var prerequisites = new FakeSyncPairPrerequisiteValidator([
+            FakeSyncPairPrerequisiteValidator prerequisites = new FakeSyncPairPrerequisiteValidator([
                 new SyncPairValidationError(
                     SyncPairValidationIssue.LocalRootUnavailable,
                     syncPair.Id,
@@ -730,8 +730,8 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SaveSyncPairAsync_DoesNotDeletePersistedSyncStateWhenOnlyDisplayNameChanges()
         {
-            var store = new InMemorySyncPairSettingsStore();
-            var syncStateStore = new FakeSyncStateStore();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
+            FakeSyncStateStore syncStateStore = new FakeSyncStateStore();
             SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
             await store.UpsertAsync(syncPair);
             SyncApplicationService service = CreateService(store, syncStateStore: syncStateStore);
@@ -752,8 +752,8 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SaveSyncPairAsync_RejectsLocalRootChangeWithoutDeletingSyncState()
         {
-            var store = new InMemorySyncPairSettingsStore();
-            var syncStateStore = new FakeSyncStateStore();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
+            FakeSyncStateStore syncStateStore = new FakeSyncStateStore();
             SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
             await store.UpsertAsync(syncPair);
             SyncApplicationService service = CreateService(store, syncStateStore: syncStateStore);
@@ -781,8 +781,8 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SaveSyncPairAsync_RejectsRemoteRootChangeWithoutDeletingSyncState()
         {
-            var store = new InMemorySyncPairSettingsStore();
-            var syncStateStore = new FakeSyncStateStore();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
+            FakeSyncStateStore syncStateStore = new FakeSyncStateStore();
             SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
             await store.UpsertAsync(syncPair);
             SyncApplicationService service = CreateService(store, syncStateStore: syncStateStore);
@@ -812,8 +812,8 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SaveSyncPairAsync_RejectsSyncModeChangeWithoutDeletingSyncState()
         {
-            var store = new InMemorySyncPairSettingsStore();
-            var syncStateStore = new FakeSyncStateStore();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
+            FakeSyncStateStore syncStateStore = new FakeSyncStateStore();
             SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
             await store.UpsertAsync(syncPair);
             SyncPairSettingsValidator validator = new(new SyncPairModeCapabilitySnapshot(true, "Available."));
@@ -845,11 +845,11 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SaveSyncPairAsync_ValidatesPrerequisitesWhenDisabledPairIsEnabled()
         {
-            var store = new InMemorySyncPairSettingsStore();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
             SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
             syncPair.IsEnabled = false;
             await store.UpsertAsync(syncPair);
-            var prerequisites = new FakeSyncPairPrerequisiteValidator([
+            FakeSyncPairPrerequisiteValidator prerequisites = new FakeSyncPairPrerequisiteValidator([
                 new SyncPairValidationError(
                     SyncPairValidationIssue.LocalRootUnavailable,
                     syncPair.Id,
@@ -875,15 +875,15 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SaveSyncPairAsync_EnablesDisabledPairAndRestartsSyncComponentsWhenCoreIsRunning()
         {
-            var store = new InMemorySyncPairSettingsStore();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
             SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
             syncPair.IsEnabled = false;
             await store.UpsertAsync(syncPair);
-            var prerequisites = new FakeSyncPairPrerequisiteValidator([]);
-            var supervisor = new FakeSyncSupervisor();
-            var localChanges = new FakeLocalChangeSyncCoordinator();
-            var remoteChanges = new FakeRemoteChangeSyncCoordinator();
-            var periodicSync = new FakePeriodicSyncCoordinator();
+            FakeSyncPairPrerequisiteValidator prerequisites = new FakeSyncPairPrerequisiteValidator([]);
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator();
+            FakeRemoteChangeSyncCoordinator remoteChanges = new FakeRemoteChangeSyncCoordinator();
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator();
             SyncApplicationService service = CreateService(
                 store,
                 prerequisites,
@@ -918,15 +918,15 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SaveSyncPairAsync_EnablesDisabledPairAndReappliesGlobalPauseWhenCoreIsRunning()
         {
-            var store = new InMemorySyncPairSettingsStore();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
             SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
             syncPair.IsEnabled = false;
             await store.UpsertAsync(syncPair);
-            var prerequisites = new FakeSyncPairPrerequisiteValidator([]);
-            var supervisor = new FakeSyncSupervisor();
-            var localChanges = new FakeLocalChangeSyncCoordinator();
-            var remoteChanges = new FakeRemoteChangeSyncCoordinator();
-            var periodicSync = new FakePeriodicSyncCoordinator();
+            FakeSyncPairPrerequisiteValidator prerequisites = new FakeSyncPairPrerequisiteValidator([]);
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator();
+            FakeRemoteChangeSyncCoordinator remoteChanges = new FakeRemoteChangeSyncCoordinator();
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator();
             SyncApplicationService service = CreateService(
                 store,
                 prerequisites,
@@ -961,8 +961,8 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SaveSyncPairAsync_SkipsPrerequisitesWhenStructuralValidationFails()
         {
-            var store = new InMemorySyncPairSettingsStore();
-            var prerequisites = new FakeSyncPairPrerequisiteValidator([]);
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
+            FakeSyncPairPrerequisiteValidator prerequisites = new FakeSyncPairPrerequisiteValidator([]);
             SyncApplicationService service = CreateService(store, prerequisites);
             SyncPairSettings existing = CreatePair("/home/user/Cotton");
             SyncPairSettings overlapping = CreatePair("/home/user/Cotton/Work");
@@ -976,7 +976,7 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task DeleteSyncPairAsync_RemovesPair()
         {
-            var store = new InMemorySyncPairSettingsStore();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
             SyncApplicationService service = CreateService(store);
             SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
             await service.SaveSyncPairAsync(syncPair);
@@ -990,11 +990,11 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task DeleteSyncPairAsync_KeepsSyncCoreStoppedAfterDeletingLastPair()
         {
-            var store = new InMemorySyncPairSettingsStore();
-            var supervisor = new FakeSyncSupervisor();
-            var localChanges = new FakeLocalChangeSyncCoordinator();
-            var remoteChanges = new FakeRemoteChangeSyncCoordinator();
-            var periodicSync = new FakePeriodicSyncCoordinator();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator();
+            FakeRemoteChangeSyncCoordinator remoteChanges = new FakeRemoteChangeSyncCoordinator();
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator();
             SyncApplicationService service = CreateService(
                 store,
                 supervisor: supervisor,
@@ -1023,11 +1023,11 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task DeleteSyncPairAsync_RestartsSyncComponentsWhenOtherPairsRemain()
         {
-            var store = new InMemorySyncPairSettingsStore();
-            var supervisor = new FakeSyncSupervisor();
-            var localChanges = new FakeLocalChangeSyncCoordinator();
-            var remoteChanges = new FakeRemoteChangeSyncCoordinator();
-            var periodicSync = new FakePeriodicSyncCoordinator();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator();
+            FakeRemoteChangeSyncCoordinator remoteChanges = new FakeRemoteChangeSyncCoordinator();
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator();
             SyncApplicationService service = CreateService(
                 store,
                 supervisor: supervisor,
@@ -1058,11 +1058,11 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task SaveSyncPairAsync_RestartsSyncCoreAfterLastPairDeletionWhenNewPairIsAdded()
         {
-            var store = new InMemorySyncPairSettingsStore();
-            var supervisor = new FakeSyncSupervisor();
-            var localChanges = new FakeLocalChangeSyncCoordinator();
-            var remoteChanges = new FakeRemoteChangeSyncCoordinator();
-            var periodicSync = new FakePeriodicSyncCoordinator();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator();
+            FakeRemoteChangeSyncCoordinator remoteChanges = new FakeRemoteChangeSyncCoordinator();
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator();
             SyncApplicationService service = CreateService(
                 store,
                 supervisor: supervisor,
@@ -1095,15 +1095,15 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         {
             List<string> calls = [];
             InvalidOperationException startupError = new("Cloud Files connect failed.");
-            var store = new InMemorySyncPairSettingsStore();
-            var lifecycle = new FakeSyncCoreLifecycleComponent("cloud-files", calls)
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
+            FakeSyncCoreLifecycleComponent lifecycle = new FakeSyncCoreLifecycleComponent("cloud-files", calls)
             {
                 StartException = startupError,
             };
-            var supervisor = new FakeSyncSupervisor(calls);
-            var localChanges = new FakeLocalChangeSyncCoordinator(calls);
-            var remoteChanges = new FakeRemoteChangeSyncCoordinator(calls);
-            var periodicSync = new FakePeriodicSyncCoordinator(calls);
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor(calls);
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator(calls);
+            FakeRemoteChangeSyncCoordinator remoteChanges = new FakeRemoteChangeSyncCoordinator(calls);
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator(calls);
             SyncApplicationService service = CreateService(
                 store,
                 supervisor: supervisor,
@@ -1135,14 +1135,14 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task DeleteSyncPairAsync_RunsDeletionHandlerAfterStoppingSyncCore()
         {
-            var calls = new List<string>();
-            var store = new InMemorySyncPairSettingsStore();
-            var supervisor = new FakeSyncSupervisor(calls);
-            var localChanges = new FakeLocalChangeSyncCoordinator(calls);
-            var remoteChanges = new FakeRemoteChangeSyncCoordinator(calls);
-            var periodicSync = new FakePeriodicSyncCoordinator(calls);
-            var lifecycle = new FakeSyncCoreLifecycleComponent("cloud-files", calls);
-            var deletionHandler = new FakeSyncPairDeletionHandler(calls);
+            List<string> calls = new List<string>();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
+            FakeSyncSupervisor supervisor = new FakeSyncSupervisor(calls);
+            FakeLocalChangeSyncCoordinator localChanges = new FakeLocalChangeSyncCoordinator(calls);
+            FakeRemoteChangeSyncCoordinator remoteChanges = new FakeRemoteChangeSyncCoordinator(calls);
+            FakePeriodicSyncCoordinator periodicSync = new FakePeriodicSyncCoordinator(calls);
+            FakeSyncCoreLifecycleComponent lifecycle = new FakeSyncCoreLifecycleComponent("cloud-files", calls);
+            FakeSyncPairDeletionHandler deletionHandler = new FakeSyncPairDeletionHandler(calls);
             SyncApplicationService service = CreateService(
                 store,
                 supervisor: supervisor,
@@ -1169,8 +1169,8 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task DeleteSyncPairAsync_DoesNotDeleteSettingsWhenDeletionHandlerFails()
         {
-            var store = new InMemorySyncPairSettingsStore();
-            var deletionHandler = new FakeSyncPairDeletionHandler([])
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
+            FakeSyncPairDeletionHandler deletionHandler = new FakeSyncPairDeletionHandler([])
             {
                 Exception = new InvalidOperationException("Cloud Files unregister failed."),
             };
@@ -1192,8 +1192,8 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task DeleteSyncPairAsync_DeletesPersistedSyncState()
         {
-            var store = new InMemorySyncPairSettingsStore();
-            var syncStateStore = new FakeSyncStateStore();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
+            FakeSyncStateStore syncStateStore = new FakeSyncStateStore();
             SyncApplicationService service = CreateService(store, syncStateStore: syncStateStore);
             SyncPairSettings syncPair = CreatePair("/home/user/Cotton");
             await service.SaveSyncPairAsync(syncPair);
@@ -1210,7 +1210,7 @@ namespace Cotton.Sync.App.Tests.SyncApplication
         [Test]
         public async Task ListSyncPairsAsync_InitializesStore()
         {
-            var store = new InMemorySyncPairSettingsStore();
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
             SyncApplicationService service = CreateService(store);
 
             await service.ListSyncPairsAsync();

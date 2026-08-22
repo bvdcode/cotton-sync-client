@@ -11,7 +11,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public void StatusIndicator_UsesBrandDotForEnabledIdleAndClassifiesVisibleStates()
         {
-            var row = new SyncPairRowViewModel
+            SyncPairRowViewModel row = new SyncPairRowViewModel
             {
                 DisplayName = "Videos",
                 Status = " idle ",
@@ -86,7 +86,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public void ModeLabel_DescribesMaterializationMode()
         {
-            var row = new SyncPairRowViewModel();
+            SyncPairRowViewModel row = new SyncPairRowViewModel();
 
             Assert.Multiple(() =>
             {
@@ -108,7 +108,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
         [Test]
         public void RemotePathLabel_HidesRootPathNoise()
         {
-            var row = new SyncPairRowViewModel
+            SyncPairRowViewModel row = new SyncPairRowViewModel
             {
                 RemotePath = "/",
             };

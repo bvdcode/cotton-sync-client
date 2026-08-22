@@ -29,7 +29,7 @@ namespace Cotton.Sync.App.Tests.SyncPairs
         public async Task ValidateAsync_ReturnsLocalAndRemotePrerequisiteErrors()
         {
             SyncPairSettings syncPair = CreatePair(LocalPath("Cotton"));
-            var validator = new SyncPairPrerequisiteValidator(
+            SyncPairPrerequisiteValidator validator = new SyncPairPrerequisiteValidator(
                 new FakeLocalSyncRootProbe(canUse: false),
                 new FakeRemoteSyncRootProbe(exists: false));
 
@@ -46,7 +46,7 @@ namespace Cotton.Sync.App.Tests.SyncPairs
         public async Task FileSystemLocalSyncRootProbe_CreatesMissingDirectory()
         {
             string localRoot = LocalPath("NewRoot");
-            var probe = new FileSystemLocalSyncRootProbe();
+            FileSystemLocalSyncRootProbe probe = new FileSystemLocalSyncRootProbe();
 
             bool canUse = await probe.CanUseAsync(localRoot);
 
@@ -62,7 +62,7 @@ namespace Cotton.Sync.App.Tests.SyncPairs
         {
             string filePath = LocalPath("not-a-directory");
             File.WriteAllText(filePath, "content");
-            var probe = new FileSystemLocalSyncRootProbe();
+            FileSystemLocalSyncRootProbe probe = new FileSystemLocalSyncRootProbe();
 
             bool canUse = await probe.CanUseAsync(filePath);
 

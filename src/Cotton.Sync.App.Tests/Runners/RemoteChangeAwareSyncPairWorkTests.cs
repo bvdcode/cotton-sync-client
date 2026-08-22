@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync;
@@ -15,9 +15,9 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_AcknowledgesRemoteBatchAfterInnerWorkSucceeds()
         {
-            var syncPair = CreateSyncPair();
-            var inner = new FakeSyncPairWork();
-            var remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
+            SyncPairSettings syncPair = CreateSyncPair();
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -25,7 +25,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 cursorExpired: false,
                 earliestAvailableCursor: 5,
                 changes: Array.Empty<SyncChangeDto>()));
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
 
             await work.RunOnceAsync(syncPair);
 
@@ -42,9 +42,9 @@ namespace Cotton.Sync.App.Tests.Runners
         [TestCase(SyncRunCause.Resume)]
         public async Task RunOnceAsync_WithWindowsVirtualFilesSkipsFullPassWhenFeedIsEmpty(SyncRunCause cause)
         {
-            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
-            var remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -52,7 +52,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 cursorExpired: false,
                 earliestAvailableCursor: 5,
                 changes: Array.Empty<SyncChangeDto>()));
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
 
             await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(cause));
 
@@ -100,11 +100,11 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesRunsManualFullForMappedRemoteFileCreate()
         {
-            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
-            var stateStore = new FakeSyncStateStore();
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
             Guid remoteFileId = Guid.NewGuid();
-            var batch = new RemoteChangeFeedBatch(
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -124,8 +124,8 @@ namespace Cotton.Sync.App.Tests.Runners
                         CreatedAt = DateTime.UtcNow,
                     },
                 ]);
-            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
             await work.RunOnceAsync(syncPair);
 
@@ -326,10 +326,10 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesScopesRemoteRenameToOldAndNewPaths()
         {
-            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new FakeSyncPairWork();
             Guid remoteFileId = Guid.NewGuid();
-            var stateStore = new FakeSyncStateStore(
+            FakeSyncStateStore stateStore = new FakeSyncStateStore(
                 new SyncStateEntry
                 {
                     SyncPairId = syncPair.Id.ToString("D"),
@@ -338,7 +338,7 @@ namespace Cotton.Sync.App.Tests.Runners
                     RemoteNodeId = syncPair.RemoteRootNodeId,
                     RemoteFileId = remoteFileId,
                 });
-            var batch = new RemoteChangeFeedBatch(
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -358,8 +358,8 @@ namespace Cotton.Sync.App.Tests.Runners
                         CreatedAt = DateTime.UtcNow,
                     },
                 ]);
-            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
             await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
 
@@ -377,13 +377,13 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesScopesNestedCreatesFromSameRemoteBatch()
         {
-            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
-            var stateStore = new FakeSyncStateStore();
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
             Guid parentFolderId = Guid.NewGuid();
             Guid childFolderId = Guid.NewGuid();
             Guid fileId = Guid.NewGuid();
-            var batch = new RemoteChangeFeedBatch(
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 14,
@@ -423,8 +423,8 @@ namespace Cotton.Sync.App.Tests.Runners
                         CreatedAt = DateTime.UtcNow,
                     },
                 ]);
-            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
             await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
 
@@ -506,11 +506,11 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesScopesRemoteFileDeleteWithoutExistingState()
         {
-            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new FakeSyncPairWork();
             Guid remoteFileId = Guid.NewGuid();
-            var stateStore = new FakeSyncStateStore();
-            var batch = new RemoteChangeFeedBatch(
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -530,8 +530,8 @@ namespace Cotton.Sync.App.Tests.Runners
                         CreatedAt = DateTime.UtcNow,
                     },
                 ]);
-            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
             await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
 
@@ -549,10 +549,10 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesScopesRemoteFolderDeleteWithoutExistingState()
         {
-            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
-            var stateStore = new FakeSyncStateStore();
-            var batch = new RemoteChangeFeedBatch(
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -572,8 +572,8 @@ namespace Cotton.Sync.App.Tests.Runners
                         CreatedAt = DateTime.UtcNow,
                     },
                 ]);
-            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
             await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
 
@@ -596,8 +596,8 @@ namespace Cotton.Sync.App.Tests.Runners
             Guid subFolderId = Guid.NewGuid();
             Guid rootFileId = Guid.NewGuid();
             Guid childFileId = Guid.NewGuid();
-            var inner = new FakeSyncPairWork();
-            var stateStore = new FakeSyncStateStore(
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            FakeSyncStateStore stateStore = new FakeSyncStateStore(
                 new SyncStateEntry
                 {
                     SyncPairId = syncPair.Id.ToString("D"),
@@ -628,7 +628,7 @@ namespace Cotton.Sync.App.Tests.Runners
                     RemoteNodeId = subFolderId,
                     RemoteFileId = childFileId,
                 });
-            var batch = new RemoteChangeFeedBatch(
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -648,8 +648,8 @@ namespace Cotton.Sync.App.Tests.Runners
                         CreatedAt = DateTime.UtcNow,
                     },
                 ]);
-            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
             await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
 
@@ -675,10 +675,10 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesScopesRemoteFileRenameWithoutExistingState()
         {
-            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
-            var stateStore = new FakeSyncStateStore();
-            var batch = new RemoteChangeFeedBatch(
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -698,8 +698,8 @@ namespace Cotton.Sync.App.Tests.Runners
                         CreatedAt = DateTime.UtcNow,
                     },
                 ]);
-            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
             await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
 
@@ -717,10 +717,10 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesScopesRemoteFolderMoveWithoutExistingState()
         {
-            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
-            var stateStore = new FakeSyncStateStore();
-            var batch = new RemoteChangeFeedBatch(
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -740,8 +740,8 @@ namespace Cotton.Sync.App.Tests.Runners
                         CreatedAt = DateTime.UtcNow,
                     },
                 ]);
-            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
             await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
 
@@ -759,10 +759,10 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesRunsManualFullForChangeOutsideSyncPair()
         {
-            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
-            var stateStore = new FakeSyncStateStore();
-            var batch = new RemoteChangeFeedBatch(
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -782,8 +782,8 @@ namespace Cotton.Sync.App.Tests.Runners
                         CreatedAt = DateTime.UtcNow,
                     },
                 ]);
-            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
             await work.RunOnceAsync(syncPair);
 
@@ -900,10 +900,10 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesMergesScopedLocalAndRemoteRequests()
         {
-            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
-            var stateStore = new FakeSyncStateStore();
-            var batch = new RemoteChangeFeedBatch(
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -923,8 +923,8 @@ namespace Cotton.Sync.App.Tests.Runners
                         CreatedAt = DateTime.UtcNow,
                     },
                 ]);
-            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
             SyncRunRequest request = SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]);
 
             await work.RunOnceAsync(syncPair, request);
@@ -947,9 +947,9 @@ namespace Cotton.Sync.App.Tests.Runners
         public async Task RunOnceAsync_WithCompletedVfsReconcileSkipsPeriodicFullSyncOnEmptyFeed()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
-            var stateStore = new FakeSyncStateStore();
-            var batch = new RemoteChangeFeedBatch(
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 9_828,
                 nextCursor: 9_828,
@@ -957,8 +957,8 @@ namespace Cotton.Sync.App.Tests.Runners
                 cursorExpired: false,
                 earliestAvailableCursor: 5,
                 changes: Array.Empty<SyncChangeDto>());
-            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
             await work.RunOnceAsync(
                 syncPair,
@@ -1053,8 +1053,8 @@ namespace Cotton.Sync.App.Tests.Runners
         public async Task RunOnceAsync_WithIncompleteVfsReconcileForcesFullRunOnEmptyFeed()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
-            var stateStore = new FakeSyncStateStore();
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
             stateStore.Cursor = new SyncChangeCursor
             {
                 SyncPairId = syncPair.Id.ToString("D"),
@@ -1062,7 +1062,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 HasCompletedFullReconcile = false,
                 UpdatedAtUtc = DateTime.UtcNow,
             };
-            var batch = new RemoteChangeFeedBatch(
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 9_828,
                 nextCursor: 9_828,
@@ -1070,8 +1070,8 @@ namespace Cotton.Sync.App.Tests.Runners
                 cursorExpired: false,
                 earliestAvailableCursor: 5,
                 changes: Array.Empty<SyncChangeDto>());
-            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
             await work.RunOnceAsync(
                 syncPair,
@@ -1094,8 +1094,8 @@ namespace Cotton.Sync.App.Tests.Runners
         public async Task RunOnceAsync_WithIncompleteVfsReconcileAndRemoteChangesKeepsFullRun()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
-            var stateStore = new FakeSyncStateStore();
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
             stateStore.Cursor = new SyncChangeCursor
             {
                 SyncPairId = syncPair.Id.ToString("D"),
@@ -1103,7 +1103,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 HasCompletedFullReconcile = false,
                 UpdatedAtUtc = DateTime.UtcNow,
             };
-            var batch = new RemoteChangeFeedBatch(
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 9_828,
                 nextCursor: 9_829,
@@ -1123,8 +1123,8 @@ namespace Cotton.Sync.App.Tests.Runners
                         CreatedAt = DateTime.UtcNow,
                     },
                 ]);
-            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
             await work.RunOnceAsync(
                 syncPair,
@@ -1147,11 +1147,11 @@ namespace Cotton.Sync.App.Tests.Runners
         public void RunOnceAsync_WhenIncompleteVfsReconcileFailsKeepsRecoveryPending()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork
+            FakeSyncPairWork inner = new FakeSyncPairWork
             {
                 ThrowOnRun = true,
             };
-            var stateStore = new FakeSyncStateStore();
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
             stateStore.Cursor = new SyncChangeCursor
             {
                 SyncPairId = syncPair.Id.ToString("D"),
@@ -1159,7 +1159,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 HasCompletedFullReconcile = false,
                 UpdatedAtUtc = DateTime.UtcNow,
             };
-            var batch = new RemoteChangeFeedBatch(
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 9_828,
                 nextCursor: 9_828,
@@ -1167,8 +1167,8 @@ namespace Cotton.Sync.App.Tests.Runners
                 cursorExpired: false,
                 earliestAvailableCursor: 5,
                 changes: Array.Empty<SyncChangeDto>());
-            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
             Assert.ThrowsAsync<InvalidOperationException>(
                 async () => await work.RunOnceAsync(
@@ -1186,8 +1186,8 @@ namespace Cotton.Sync.App.Tests.Runners
         public async Task RunOnceAsync_WithEmptyVfsFeedSkipsRealtimeFullSync()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
-            var batch = new RemoteChangeFeedBatch(
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 9_828,
                 nextCursor: 9_828,
@@ -1195,8 +1195,8 @@ namespace Cotton.Sync.App.Tests.Runners
                 cursorExpired: false,
                 earliestAvailableCursor: 5,
                 changes: Array.Empty<SyncChangeDto>());
-            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
 
             await work.RunOnceAsync(
                 syncPair,
@@ -1213,8 +1213,8 @@ namespace Cotton.Sync.App.Tests.Runners
         public async Task RunOnceAsync_AfterTemporaryFeedFailureRunsManualVfsRecovery()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
-            var batch = new RemoteChangeFeedBatch(
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 9_828,
                 nextCursor: 9_828,
@@ -1222,10 +1222,10 @@ namespace Cotton.Sync.App.Tests.Runners
                 cursorExpired: false,
                 earliestAvailableCursor: 5,
                 changes: Array.Empty<SyncChangeDto>());
-            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(batch);
             remoteChanges.ReadFailures.Enqueue(
                 new RemoteChangeFeedUnavailableException(new HttpRequestException("404 page not found")));
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
 
             Assert.ThrowsAsync<RemoteChangeFeedUnavailableException>(
                 async () => await work.RunOnceAsync(
@@ -1250,8 +1250,8 @@ namespace Cotton.Sync.App.Tests.Runners
         public async Task RunOnceAsync_WithEmptyVfsFeedRunsLocalWatcherRecovery()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
-            var batch = new RemoteChangeFeedBatch(
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            RemoteChangeFeedBatch batch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 9_828,
                 nextCursor: 9_828,
@@ -1259,8 +1259,8 @@ namespace Cotton.Sync.App.Tests.Runners
                 cursorExpired: false,
                 earliestAvailableCursor: 5,
                 changes: Array.Empty<SyncChangeDto>());
-            var remoteChanges = new FakeRemoteChangeFeedReader(batch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(batch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
 
             await work.RunOnceAsync(
                 syncPair,
@@ -1388,9 +1388,9 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesProcessesDelayedChangeAfterSkippedEmptyBatch()
         {
-            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
-            var emptyBatch = new RemoteChangeFeedBatch(
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            RemoteChangeFeedBatch emptyBatch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -1398,7 +1398,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 cursorExpired: false,
                 earliestAvailableCursor: 5,
                 changes: Array.Empty<SyncChangeDto>());
-            var delayedBatch = new RemoteChangeFeedBatch(
+            RemoteChangeFeedBatch delayedBatch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -1417,8 +1417,8 @@ namespace Cotton.Sync.App.Tests.Runners
                         Name = "remote-origin.txt",
                     },
                 ]);
-            var remoteChanges = new FakeRemoteChangeFeedReader(emptyBatch, delayedBatch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, new FakeSyncStateStore());
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(emptyBatch, delayedBatch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, new FakeSyncStateStore());
 
             await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
             await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
@@ -1434,9 +1434,9 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesRunsInitialFullWhenRemoteCursorIsZero()
         {
-            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
-            var remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 0,
                 nextCursor: 0,
@@ -1444,7 +1444,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 cursorExpired: false,
                 earliestAvailableCursor: 0,
                 changes: Array.Empty<SyncChangeDto>()));
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
 
             await work.RunOnceAsync(syncPair);
 
@@ -1458,9 +1458,9 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesPreservesScopedLocalRequestForEmptyRemoteBatch()
         {
-            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
-            var remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -1468,7 +1468,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 cursorExpired: false,
                 earliestAvailableCursor: 5,
                 changes: Array.Empty<SyncChangeDto>()));
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
             SyncRunRequest request = SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]);
 
             await work.RunOnceAsync(syncPair, request);
@@ -1484,9 +1484,9 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesRunsWhenDrainedRemotePageHadChanges()
         {
-            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
-            var firstBatch = new RemoteChangeFeedBatch(
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            RemoteChangeFeedBatch firstBatch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -1505,7 +1505,7 @@ namespace Cotton.Sync.App.Tests.Runners
                         Name = "report.txt",
                     },
                 ]);
-            var secondBatch = new RemoteChangeFeedBatch(
+            RemoteChangeFeedBatch secondBatch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 12,
                 nextCursor: 12,
@@ -1513,8 +1513,8 @@ namespace Cotton.Sync.App.Tests.Runners
                 cursorExpired: false,
                 earliestAvailableCursor: 5,
                 changes: Array.Empty<SyncChangeDto>());
-            var remoteChanges = new FakeRemoteChangeFeedReader(firstBatch, secondBatch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, new FakeSyncStateStore());
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(firstBatch, secondBatch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, new FakeSyncStateStore());
 
             await work.RunOnceAsync(syncPair);
 
@@ -1580,10 +1580,10 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesScopesChangesObservedBeforeFinalDrainedPage()
         {
-            var syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
-            var inner = new FakeSyncPairWork();
-            var stateStore = new FakeSyncStateStore();
-            var firstBatch = new RemoteChangeFeedBatch(
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            FakeSyncStateStore stateStore = new FakeSyncStateStore();
+            RemoteChangeFeedBatch firstBatch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -1603,7 +1603,7 @@ namespace Cotton.Sync.App.Tests.Runners
                         CreatedAt = DateTime.UtcNow,
                     },
                 ]);
-            var secondBatch = new RemoteChangeFeedBatch(
+            RemoteChangeFeedBatch secondBatch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 12,
                 nextCursor: 12,
@@ -1611,8 +1611,8 @@ namespace Cotton.Sync.App.Tests.Runners
                 cursorExpired: false,
                 earliestAvailableCursor: 5,
                 changes: Array.Empty<SyncChangeDto>());
-            var remoteChanges = new FakeRemoteChangeFeedReader(firstBatch, secondBatch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(firstBatch, secondBatch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges, stateStore);
 
             await work.RunOnceAsync(syncPair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
 
@@ -1628,9 +1628,9 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_PreservesRequestedSyncSurface()
         {
-            var syncPair = CreateSyncPair();
-            var inner = new FakeSyncPairWork();
-            var remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
+            SyncPairSettings syncPair = CreateSyncPair();
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -1638,7 +1638,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 cursorExpired: false,
                 earliestAvailableCursor: 5,
                 changes: Array.Empty<SyncChangeDto>()));
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
             SyncRunRequest request = SyncRunRequest.ForLocalChangedPaths(["Docs/report.txt"]);
 
             await work.RunOnceAsync(syncPair, request);
@@ -1654,9 +1654,9 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_DrainsRemotePagesBeforeSingleInnerWorkPass()
         {
-            var syncPair = CreateSyncPair();
-            var inner = new FakeSyncPairWork();
-            var firstBatch = new RemoteChangeFeedBatch(
+            SyncPairSettings syncPair = CreateSyncPair();
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            RemoteChangeFeedBatch firstBatch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -1675,7 +1675,7 @@ namespace Cotton.Sync.App.Tests.Runners
                         Name = "report.txt",
                     },
                 ]);
-            var secondBatch = new RemoteChangeFeedBatch(
+            RemoteChangeFeedBatch secondBatch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 12,
                 nextCursor: 14,
@@ -1694,8 +1694,8 @@ namespace Cotton.Sync.App.Tests.Runners
                         Name = "Archive",
                     },
                 ]);
-            var remoteChanges = new FakeRemoteChangeFeedReader(firstBatch, secondBatch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(firstBatch, secondBatch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
 
             await work.RunOnceAsync(syncPair);
 
@@ -1760,9 +1760,9 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public void RunOnceAsync_FailsWithoutAcknowledgementWhenRemoteFeedDoesNotAdvance()
         {
-            var syncPair = CreateSyncPair();
-            var inner = new FakeSyncPairWork();
-            var remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
+            SyncPairSettings syncPair = CreateSyncPair();
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 10,
@@ -1770,7 +1770,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 cursorExpired: false,
                 earliestAvailableCursor: null,
                 changes: Array.Empty<SyncChangeDto>()));
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
 
             Assert.ThrowsAsync<InvalidOperationException>(() => work.RunOnceAsync(syncPair));
             Assert.Multiple(() =>
@@ -1784,9 +1784,9 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public async Task RunOnceAsync_AcknowledgesFullResyncWhenRemoteCursorExpired()
         {
-            var syncPair = CreateSyncPair();
-            var inner = new FakeSyncPairWork();
-            var expiredBatch = new RemoteChangeFeedBatch(
+            SyncPairSettings syncPair = CreateSyncPair();
+            FakeSyncPairWork inner = new FakeSyncPairWork();
+            RemoteChangeFeedBatch expiredBatch = new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 10,
@@ -1794,8 +1794,8 @@ namespace Cotton.Sync.App.Tests.Runners
                 cursorExpired: true,
                 earliestAvailableCursor: 15,
                 changes: Array.Empty<SyncChangeDto>());
-            var remoteChanges = new FakeRemoteChangeFeedReader(expiredBatch);
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(expiredBatch);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
 
             SyncRunRequest scopedRequest = SyncRunRequest.ForLocalChangedPaths(["local-change.txt"]);
             await work.RunOnceAsync(syncPair, scopedRequest);
@@ -1815,12 +1815,12 @@ namespace Cotton.Sync.App.Tests.Runners
         [Test]
         public void RunOnceAsync_DoesNotAcknowledgeWhenInnerWorkFails()
         {
-            var syncPair = CreateSyncPair();
-            var inner = new FakeSyncPairWork
+            SyncPairSettings syncPair = CreateSyncPair();
+            FakeSyncPairWork inner = new FakeSyncPairWork
             {
                 ThrowOnRun = true,
             };
-            var remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
+            FakeRemoteChangeFeedReader remoteChanges = new FakeRemoteChangeFeedReader(new RemoteChangeFeedBatch(
                 syncPair.Id.ToString("D"),
                 sinceCursor: 10,
                 nextCursor: 12,
@@ -1828,7 +1828,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 cursorExpired: false,
                 earliestAvailableCursor: null,
                 changes: Array.Empty<SyncChangeDto>()));
-            var work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
+            RemoteChangeAwareSyncPairWork work = new RemoteChangeAwareSyncPairWork(inner, remoteChanges);
 
             Assert.ThrowsAsync<InvalidOperationException>(() => work.RunOnceAsync(syncPair));
             Assert.Multiple(() =>

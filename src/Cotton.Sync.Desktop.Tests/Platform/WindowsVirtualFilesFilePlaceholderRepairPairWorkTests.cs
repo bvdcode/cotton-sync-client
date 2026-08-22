@@ -39,20 +39,20 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             WriteFile("Music/stale.mp3");
             WriteFile("Music/current.mp3");
             WriteFile("Music/local.mp3");
-            var stateStore = new FakeSyncStateStore(
+            FakeSyncStateStore stateStore = new FakeSyncStateStore(
                 CreateFileState(syncPair, "Music/stale.mp3", trackedPlaceholder: true),
                 CreateFileState(syncPair, "Music/current.mp3", trackedPlaceholder: true),
                 CreateFileState(syncPair, "Music/missing.mp3", trackedPlaceholder: true),
                 CreateFileState(syncPair, "Music/local.mp3", trackedPlaceholder: false));
-            var cloudFiles = new RecordingCloudFilesAdapter();
+            RecordingCloudFilesAdapter cloudFiles = new RecordingCloudFilesAdapter();
             cloudFiles.States["Music/stale.mp3"] = WindowsCloudFilesPlaceholderState.Placeholder;
             cloudFiles.States["Music/current.mp3"] =
                 WindowsCloudFilesPlaceholderState.Placeholder | WindowsCloudFilesPlaceholderState.InSync;
             cloudFiles.Identities["Music/current.mp3"] = [9, 8, 7];
-            var inner = new RecordingSyncPairWork();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var progress = new RecordingRunProgressPublisher();
-            var work = new WindowsVirtualFilesFilePlaceholderRepairPairWork(
+            RecordingSyncPairWork inner = new RecordingSyncPairWork();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            RecordingRunProgressPublisher progress = new RecordingRunProgressPublisher();
+            WindowsVirtualFilesFilePlaceholderRepairPairWork work = new WindowsVirtualFilesFilePlaceholderRepairPairWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -91,12 +91,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
             WriteFile("Music/stale.mp3");
-            var stateStore = new FakeSyncStateStore(
+            FakeSyncStateStore stateStore = new FakeSyncStateStore(
                 CreateFileState(syncPair, "Music/stale.mp3", trackedPlaceholder: true));
-            var cloudFiles = new RecordingCloudFilesAdapter();
-            var inner = new RecordingSyncPairWork();
-            var diagnostics = new WindowsCloudFilesDiagnostics();
-            var work = new WindowsVirtualFilesFilePlaceholderRepairPairWork(
+            RecordingCloudFilesAdapter cloudFiles = new RecordingCloudFilesAdapter();
+            RecordingSyncPairWork inner = new RecordingSyncPairWork();
+            WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
+            WindowsVirtualFilesFilePlaceholderRepairPairWork work = new WindowsVirtualFilesFilePlaceholderRepairPairWork(
                 inner,
                 stateStore,
                 cloudFiles,

@@ -28,7 +28,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task SetEnabledAsync_WritesDesktopEntry()
         {
-            var service = new XdgAutostartService(
+            XdgAutostartService service = new XdgAutostartService(
                 _tempDirectory,
                 new AutostartLaunchCommand(
                     "/opt/Cotton Sync/Cotton.Sync.Desktop",
@@ -57,7 +57,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void LaunchCommand_ToString_UsesDesktopEntryExecEscaping()
         {
-            var command = new AutostartLaunchCommand(
+            AutostartLaunchCommand command = new AutostartLaunchCommand(
                 "/opt/Cotton Sync/Cotton.Sync.Desktop",
                 ["--data-dir", "/home/qa/Cotton $Sync"]);
 
@@ -69,7 +69,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task SetEnabledAsync_Disabled_RemovesDesktopEntry()
         {
-            var service = new XdgAutostartService(
+            XdgAutostartService service = new XdgAutostartService(
                 _tempDirectory,
                 new AutostartLaunchCommand("/opt/cotton/Cotton.Sync.Desktop", ["--start-minimized"]));
             await service.SetEnabledAsync(true);

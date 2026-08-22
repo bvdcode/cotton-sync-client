@@ -11,7 +11,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public void ShouldPublish_AllowsNormalFileUnderSyncRoot()
         {
             string root = CreateRootPath();
-            var filter = new LocalSyncRootChangeFilter(root);
+            LocalSyncRootChangeFilter filter = new LocalSyncRootChangeFilter(root);
 
             bool shouldPublish = filter.ShouldPublish(Path.Combine(root, "Documents", "report.txt"));
 
@@ -22,7 +22,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public void ShouldPublish_IgnoresSyncMetadataDirectory()
         {
             string root = CreateRootPath();
-            var filter = new LocalSyncRootChangeFilter(root);
+            LocalSyncRootChangeFilter filter = new LocalSyncRootChangeFilter(root);
 
             bool shouldPublish = filter.ShouldPublish(Path.Combine(root, ".cotton-sync", "tmp", "downloaded.download"));
 
@@ -33,7 +33,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public void ShouldPublish_IgnoresTemporaryFiles()
         {
             string root = CreateRootPath();
-            var filter = new LocalSyncRootChangeFilter(root);
+            LocalSyncRootChangeFilter filter = new LocalSyncRootChangeFilter(root);
 
             bool shouldPublish = filter.ShouldPublish(Path.Combine(root, "Documents", "report.tmp"));
 
@@ -44,7 +44,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public void ShouldPublish_RejectsPathOutsideSyncRoot()
         {
             string root = CreateRootPath();
-            var filter = new LocalSyncRootChangeFilter(root);
+            LocalSyncRootChangeFilter filter = new LocalSyncRootChangeFilter(root);
 
             bool shouldPublish = filter.ShouldPublish(Path.Combine(Path.GetTempPath(), "outside.txt"));
 
@@ -55,7 +55,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public void ShouldPublishRename_AllowsNormalFileRenamedToIgnoredTemporaryFile()
         {
             string root = CreateRootPath();
-            var filter = new LocalSyncRootChangeFilter(root);
+            LocalSyncRootChangeFilter filter = new LocalSyncRootChangeFilter(root);
 
             bool shouldPublish = filter.ShouldPublishRename(
                 Path.Combine(root, "Documents", "report.txt"),
@@ -68,7 +68,7 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         public void ShouldPublishRename_IgnoresTemporaryFileRenamedInsideTemporarySet()
         {
             string root = CreateRootPath();
-            var filter = new LocalSyncRootChangeFilter(root);
+            LocalSyncRootChangeFilter filter = new LocalSyncRootChangeFilter(root);
 
             bool shouldPublish = filter.ShouldPublishRename(
                 Path.Combine(root, "Documents", "report.tmp"),

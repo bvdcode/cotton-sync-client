@@ -11,9 +11,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task QueueFetchData_RejectsRequestsWhenBoundedQueueIsFull()
         {
-            var handler = new BlockingCallbackHandler();
-            var transfers = new List<WindowsCloudFilesTransferData>();
-            using var dispatcher = new WindowsCloudFilesCallbackDispatcher(
+            BlockingCallbackHandler handler = new BlockingCallbackHandler();
+            List<WindowsCloudFilesTransferData> transfers = new List<WindowsCloudFilesTransferData>();
+            using WindowsCloudFilesCallbackDispatcher dispatcher = new WindowsCloudFilesCallbackDispatcher(
                 handler,
                 transfers.Add,
                 new WindowsCloudFilesCallbackDispatcherOptions(MaxConcurrentFetches: 1, QueueCapacity: 1));
@@ -41,13 +41,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task CancelFetchData_CancelsPendingRequestAndForwardsCancelCallback()
         {
-            var handler = new BlockingCallbackHandler();
-            using var dispatcher = new WindowsCloudFilesCallbackDispatcher(
+            BlockingCallbackHandler handler = new BlockingCallbackHandler();
+            using WindowsCloudFilesCallbackDispatcher dispatcher = new WindowsCloudFilesCallbackDispatcher(
                 handler,
                 _ => { },
                 new WindowsCloudFilesCallbackDispatcherOptions(MaxConcurrentFetches: 1, QueueCapacity: 4));
             WindowsCloudFilesFetchDataRequest fetch = CreateRequest(10);
-            var cancel = new WindowsCloudFilesCancelFetchDataRequest(
+            WindowsCloudFilesCancelFetchDataRequest cancel = new WindowsCloudFilesCancelFetchDataRequest(
                 fetch.ConnectionKey,
                 fetch.TransferKey,
                 fetch.RequestKey,
@@ -70,8 +70,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task CancelFetchData_DrainsRepeatedRequestsWithoutPendingTasks()
         {
-            var handler = new BlockingCallbackHandler();
-            using var dispatcher = new WindowsCloudFilesCallbackDispatcher(
+            BlockingCallbackHandler handler = new BlockingCallbackHandler();
+            using WindowsCloudFilesCallbackDispatcher dispatcher = new WindowsCloudFilesCallbackDispatcher(
                 handler,
                 _ => { },
                 new WindowsCloudFilesCallbackDispatcherOptions(MaxConcurrentFetches: 4, QueueCapacity: 32));
@@ -110,8 +110,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task QueueFetchData_ReturnsWithoutWaitingForSlowHandler()
         {
-            var handler = new BlockingCallbackHandler();
-            using var dispatcher = new WindowsCloudFilesCallbackDispatcher(
+            BlockingCallbackHandler handler = new BlockingCallbackHandler();
+            using WindowsCloudFilesCallbackDispatcher dispatcher = new WindowsCloudFilesCallbackDispatcher(
                 handler,
                 _ => { },
                 new WindowsCloudFilesCallbackDispatcherOptions(MaxConcurrentFetches: 1, QueueCapacity: 4));
@@ -134,9 +134,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task QueueFetchData_TransfersFailureWhenHandlerThrows()
         {
-            var handler = new ThrowingCallbackHandler(new InvalidOperationException("download failed"));
-            var transfers = new List<WindowsCloudFilesTransferData>();
-            using var dispatcher = new WindowsCloudFilesCallbackDispatcher(
+            ThrowingCallbackHandler handler = new ThrowingCallbackHandler(new InvalidOperationException("download failed"));
+            List<WindowsCloudFilesTransferData> transfers = new List<WindowsCloudFilesTransferData>();
+            using WindowsCloudFilesCallbackDispatcher dispatcher = new WindowsCloudFilesCallbackDispatcher(
                 handler,
                 transfers.Add,
                 new WindowsCloudFilesCallbackDispatcherOptions(MaxConcurrentFetches: 1, QueueCapacity: 4));
@@ -156,8 +156,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task QueueDehydrate_ReturnsWithoutWaitingForSlowHandler()
         {
-            var handler = new BlockingCallbackHandler();
-            using var dispatcher = new WindowsCloudFilesCallbackDispatcher(
+            BlockingCallbackHandler handler = new BlockingCallbackHandler();
+            using WindowsCloudFilesCallbackDispatcher dispatcher = new WindowsCloudFilesCallbackDispatcher(
                 handler,
                 _ => { },
                 _ => { },
@@ -181,9 +181,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task QueueDehydrate_RejectsRequestsWhenBoundedQueueIsFull()
         {
-            var handler = new BlockingCallbackHandler();
-            var acknowledgements = new List<WindowsCloudFilesAckDehydrateData>();
-            using var dispatcher = new WindowsCloudFilesCallbackDispatcher(
+            BlockingCallbackHandler handler = new BlockingCallbackHandler();
+            List<WindowsCloudFilesAckDehydrateData> acknowledgements = new List<WindowsCloudFilesAckDehydrateData>();
+            using WindowsCloudFilesCallbackDispatcher dispatcher = new WindowsCloudFilesCallbackDispatcher(
                 handler,
                 _ => { },
                 acknowledgements.Add,
@@ -295,7 +295,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
         private static async Task WaitUntilAsync(Func<bool> condition)
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using CancellationTokenSource timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             while (!condition())
             {
                 await Task.Delay(10, timeout.Token).ConfigureAwait(false);

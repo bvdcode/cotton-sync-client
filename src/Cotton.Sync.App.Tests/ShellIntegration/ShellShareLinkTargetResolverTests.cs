@@ -15,7 +15,7 @@ namespace Cotton.Sync.App.Tests.ShellIntegration
         {
             SyncPairSettings syncPair = CreatePair(@"C:\Cloud");
             Guid remoteFileId = Guid.NewGuid();
-            var stateStore = new FakeSyncStateStore([
+            FakeSyncStateStore stateStore = new FakeSyncStateStore([
                 new SyncStateEntry
                 {
                     SyncPairId = syncPair.Id.ToString("D"),
@@ -24,7 +24,7 @@ namespace Cotton.Sync.App.Tests.ShellIntegration
                     RemoteFileId = remoteFileId,
                 },
             ]);
-            var resolver = new ShellShareLinkTargetResolver(
+            ShellShareLinkTargetResolver resolver = new ShellShareLinkTargetResolver(
                 new FakeSyncPairSettingsStore([syncPair]),
                 stateStore);
 
@@ -50,7 +50,7 @@ namespace Cotton.Sync.App.Tests.ShellIntegration
             Guid rootNodeId = Guid.NewGuid();
             Guid childNodeId = Guid.NewGuid();
             SyncPairSettings syncPair = CreatePair(@"C:\Cloud", remoteRootNodeId: rootNodeId);
-            var stateStore = new FakeSyncStateStore([
+            FakeSyncStateStore stateStore = new FakeSyncStateStore([
                 new SyncStateEntry
                 {
                     SyncPairId = syncPair.Id.ToString("D"),
@@ -59,7 +59,7 @@ namespace Cotton.Sync.App.Tests.ShellIntegration
                     RemoteNodeId = childNodeId,
                 },
             ]);
-            var resolver = new ShellShareLinkTargetResolver(
+            ShellShareLinkTargetResolver resolver = new ShellShareLinkTargetResolver(
                 new FakeSyncPairSettingsStore([syncPair]),
                 stateStore);
 
@@ -86,7 +86,7 @@ namespace Cotton.Sync.App.Tests.ShellIntegration
             SyncPairSettings parent = CreatePair(@"C:\Cloud");
             SyncPairSettings child = CreatePair(@"C:\Cloud\Shared");
             Guid childFileId = Guid.NewGuid();
-            var stateStore = new FakeSyncStateStore([
+            FakeSyncStateStore stateStore = new FakeSyncStateStore([
                 new SyncStateEntry
                 {
                     SyncPairId = child.Id.ToString("D"),
@@ -95,7 +95,7 @@ namespace Cotton.Sync.App.Tests.ShellIntegration
                     RemoteFileId = childFileId,
                 },
             ]);
-            var resolver = new ShellShareLinkTargetResolver(
+            ShellShareLinkTargetResolver resolver = new ShellShareLinkTargetResolver(
                 new FakeSyncPairSettingsStore([parent, child]),
                 stateStore);
 
@@ -115,7 +115,7 @@ namespace Cotton.Sync.App.Tests.ShellIntegration
         {
             SyncPairSettings disabled = CreatePair(@"C:\Disabled", isEnabled: false);
             SyncPairSettings enabled = CreatePair(@"C:\Cloud");
-            var resolver = new ShellShareLinkTargetResolver(
+            ShellShareLinkTargetResolver resolver = new ShellShareLinkTargetResolver(
                 new FakeSyncPairSettingsStore([disabled, enabled]),
                 new FakeSyncStateStore([]));
 
@@ -141,7 +141,7 @@ namespace Cotton.Sync.App.Tests.ShellIntegration
         public async Task ResolveAsync_ReturnsMissingIdentityForStateWithoutRemoteId()
         {
             SyncPairSettings syncPair = CreatePair(@"C:\Cloud");
-            var resolver = new ShellShareLinkTargetResolver(
+            ShellShareLinkTargetResolver resolver = new ShellShareLinkTargetResolver(
                 new FakeSyncPairSettingsStore([syncPair]),
                 new FakeSyncStateStore([
                     new SyncStateEntry

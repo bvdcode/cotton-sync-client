@@ -42,7 +42,7 @@ namespace Cotton.Sync.App.Tests.SyncPairs
         public async Task InitializeAsync_CreatesParentDirectory()
         {
             string databasePath = Path.Combine(_tempDirectory, "nested", "settings.sqlite");
-            var store = new SqliteSyncPairSettingsStore(databasePath);
+            SqliteSyncPairSettingsStore store = new SqliteSyncPairSettingsStore(databasePath);
 
             await store.InitializeAsync();
 
@@ -53,13 +53,13 @@ namespace Cotton.Sync.App.Tests.SyncPairs
         public async Task UpsertAsync_RoundtripsAfterReopen()
         {
             string databasePath = DatabasePath();
-            var firstStore = new SqliteSyncPairSettingsStore(databasePath);
+            SqliteSyncPairSettingsStore firstStore = new SqliteSyncPairSettingsStore(databasePath);
             await firstStore.InitializeAsync();
             SyncPairSettings expected = CreatePair("Documents", "/home/user/Documents", "/Documents");
 
             await firstStore.UpsertAsync(expected);
 
-            var secondStore = new SqliteSyncPairSettingsStore(databasePath);
+            SqliteSyncPairSettingsStore secondStore = new SqliteSyncPairSettingsStore(databasePath);
             await secondStore.InitializeAsync();
             SyncPairSettings? actual = await secondStore.GetAsync(expected.Id);
 
@@ -83,7 +83,7 @@ namespace Cotton.Sync.App.Tests.SyncPairs
         {
             string databasePath = DatabasePath();
             Guid syncPairId = Guid.NewGuid();
-            var contextFactory = new SqliteSyncAppDbContextFactory(databasePath);
+            SqliteSyncAppDbContextFactory contextFactory = new SqliteSyncAppDbContextFactory(databasePath);
             await contextFactory.MigrateAsync(CancellationToken.None);
             await using (SyncAppDbContext context = contextFactory.Create())
             {
@@ -102,7 +102,7 @@ namespace Cotton.Sync.App.Tests.SyncPairs
                 await context.SaveChangesAsync();
             }
 
-            var store = new SqliteSyncPairSettingsStore(databasePath);
+            SqliteSyncPairSettingsStore store = new SqliteSyncPairSettingsStore(databasePath);
             SyncPairSettings? actual = await store.GetAsync(syncPairId);
 
             Assert.That(actual?.Mode, Is.EqualTo(SyncPairMode.FullMirror));
@@ -114,7 +114,7 @@ namespace Cotton.Sync.App.Tests.SyncPairs
             string databasePath = DatabasePath();
             Guid syncPairId = Guid.NewGuid();
             await CreateLegacyDatabaseBeforeVirtualFilesMigrationAsync(databasePath, syncPairId);
-            var store = new SqliteSyncPairSettingsStore(databasePath);
+            SqliteSyncPairSettingsStore store = new SqliteSyncPairSettingsStore(databasePath);
 
             await store.InitializeAsync();
             SyncPairSettings? actual = await store.GetAsync(syncPairId);
@@ -217,7 +217,7 @@ namespace Cotton.Sync.App.Tests.SyncPairs
                 Directory.CreateDirectory(directory);
             }
 
-            await using var connection = new SqliteConnection("Data Source=" + databasePath + ";Pooling=False");
+            await using SqliteConnection connection = new SqliteConnection("Data Source=" + databasePath + ";Pooling=False");
             await connection.OpenAsync();
             await ExecuteAsync(
                 connection,

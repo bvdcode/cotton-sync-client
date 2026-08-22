@@ -27,7 +27,7 @@ namespace Cotton.Sync.App.Tests.Activities
         {
             DateTime unspecifiedTime = new DateTime(2026, 6, 3, 10, 0, 0, DateTimeKind.Unspecified);
 
-            var activity = new AppSyncActivity(
+            AppSyncActivity activity = new AppSyncActivity(
                 Guid.NewGuid(),
                 Guid.NewGuid(),
                 AppSyncActivityKind.Uploaded,
@@ -41,9 +41,9 @@ namespace Cotton.Sync.App.Tests.Activities
         [Test]
         public void InMemoryPublisher_PublishesActivitiesToSubscribers()
         {
-            var publisher = new InMemoryAppActivityPublisher();
-            var observer = new RecordingObserver<AppSyncActivity>();
-            var activity = new AppSyncActivity(
+            InMemoryAppActivityPublisher publisher = new InMemoryAppActivityPublisher();
+            RecordingObserver<AppSyncActivity> observer = new RecordingObserver<AppSyncActivity>();
+            AppSyncActivity activity = new AppSyncActivity(
                 Guid.NewGuid(),
                 Guid.NewGuid(),
                 AppSyncActivityKind.Downloaded,
@@ -60,9 +60,9 @@ namespace Cotton.Sync.App.Tests.Activities
         [Test]
         public void InMemoryPublisher_StopsPublishingAfterUnsubscribe()
         {
-            var publisher = new InMemoryAppActivityPublisher();
-            var observer = new RecordingObserver<AppSyncActivity>();
-            var activity = new AppSyncActivity(
+            InMemoryAppActivityPublisher publisher = new InMemoryAppActivityPublisher();
+            RecordingObserver<AppSyncActivity> observer = new RecordingObserver<AppSyncActivity>();
+            AppSyncActivity activity = new AppSyncActivity(
                 Guid.NewGuid(),
                 Guid.NewGuid(),
                 AppSyncActivityKind.Uploaded,

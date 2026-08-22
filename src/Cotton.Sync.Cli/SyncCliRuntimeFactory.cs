@@ -55,7 +55,7 @@ namespace Cotton.Sync.Cli
             bool clientOwnedByRuntime = false;
             try
             {
-                var authFlow = new AppCodeBrowserAuthFlow(client.Auth, platformCommands);
+                AppCodeBrowserAuthFlow authFlow = new AppCodeBrowserAuthFlow(client.Auth, platformCommands);
                 await authFlow
                     .SignInAsync(
                         new AppCodeBrowserSignInRequest
@@ -100,14 +100,14 @@ namespace Cotton.Sync.Cli
         {
             Guid remoteRootNodeId = await ResolveRemoteRootNodeIdAsync(options, client, cancellationToken)
                 .ConfigureAwait(false);
-            var stateStore = new SqliteSyncStateStore(options.DatabasePath);
-            var engine = new SyncEngine(
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(options.DatabasePath);
+            SyncEngine engine = new SyncEngine(
                 new LocalFileScanner(),
                 new RemoteTreeCrawler(client.Nodes),
                 new SdkRemoteFileSynchronizer(client),
                 stateStore,
                 remoteDirectories: new SdkRemoteDirectorySynchronizer(client.Nodes));
-            var syncPair = new SyncPair
+            SyncPair syncPair = new SyncPair
             {
                 SyncPairId = options.SyncPairId,
                 LocalRootPath = options.LocalRoot,
@@ -126,8 +126,8 @@ namespace Cotton.Sync.Cli
                 return options.RemoteRootNodeId.Value;
             }
 
-            var resolver = new RemoteRootResolver(client.Nodes);
-            var remoteRoot = await resolver
+            RemoteRootResolver resolver = new RemoteRootResolver(client.Nodes);
+            NodeDto remoteRoot = await resolver
                 .EnsureAsync(options.RemoteRootPath, cancellationToken)
                 .ConfigureAwait(false);
             return remoteRoot.Id;

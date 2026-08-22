@@ -83,7 +83,7 @@ namespace Cotton.Sync
             IDictionary<string, RemoteFileSnapshot> remoteByPath,
             IDictionary<string, SyncStateEntry> stateByPath)
         {
-            var result = new List<KeyValuePair<string, SyncStateEntry>>();
+            List<KeyValuePair<string, SyncStateEntry>> result = new List<KeyValuePair<string, SyncStateEntry>>();
             foreach (KeyValuePair<string, SyncStateEntry> state in stateByPath)
             {
                 if (state.Value.Kind != SyncEntryKind.File
@@ -110,7 +110,7 @@ namespace Cotton.Sync
             SyncRunResult result,
             CancellationToken cancellationToken)
         {
-            var candidates = new Dictionary<MoveCandidateKey, Queue<LocalFileSnapshot>>();
+            Dictionary<MoveCandidateKey, Queue<LocalFileSnapshot>> candidates = new Dictionary<MoveCandidateKey, Queue<LocalFileSnapshot>>();
             foreach (KeyValuePair<string, LocalFileSnapshot> local in localByPath)
             {
                 cancellationToken.ThrowIfCancellationRequested();

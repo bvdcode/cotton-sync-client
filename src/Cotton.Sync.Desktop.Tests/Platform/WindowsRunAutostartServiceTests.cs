@@ -85,7 +85,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void ToWindowsRunCommandLine_UsesWindowsQuotingWithoutEscapingPathBackslashes()
         {
-            var command = new AutostartLaunchCommand(
+            AutostartLaunchCommand command = new AutostartLaunchCommand(
                 @"C:\Program Files\Cotton Sync\Cotton.Sync.Desktop.exe",
                 ["--data-dir", @"C:\Users\qa\AppData\Local\Cotton Sync"]);
 
@@ -97,7 +97,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public void ToWindowsRunCommandLine_AlwaysQuotesExecutablePath()
         {
-            var command = new AutostartLaunchCommand(
+            AutostartLaunchCommand command = new AutostartLaunchCommand(
                 @"C:\Cotton\Cotton.Sync.Desktop.exe",
                 ["--start-minimized"]);
 
@@ -109,11 +109,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task SetEnabledAsync_WritesLaunchCommandToRunRegistry()
         {
-            var registry = new FakeWindowsRunRegistry();
-            var command = new AutostartLaunchCommand(
+            FakeWindowsRunRegistry registry = new FakeWindowsRunRegistry();
+            AutostartLaunchCommand command = new AutostartLaunchCommand(
                 @"C:\Program Files\Cotton\Cotton.Sync.Desktop.exe",
                 ["--start-minimized"]);
-            var service = new WindowsRunAutostartService(command, registry);
+            WindowsRunAutostartService service = new WindowsRunAutostartService(command, registry);
 
             await service.SetEnabledAsync(true);
 
@@ -128,17 +128,17 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task IsEnabledAsync_ReturnsTrueOnlyForMatchingLaunchCommand()
         {
-            var command = new AutostartLaunchCommand(
+            AutostartLaunchCommand command = new AutostartLaunchCommand(
                 @"C:\Cotton\Cotton.Sync.Desktop.exe",
                 ["--start-minimized"]);
-            var registry = new FakeWindowsRunRegistry
+            FakeWindowsRunRegistry registry = new FakeWindowsRunRegistry
             {
                 Values =
                 {
                     ["Cotton Sync"] = command.ToWindowsRunCommandLine(),
                 },
             };
-            var service = new WindowsRunAutostartService(command, registry);
+            WindowsRunAutostartService service = new WindowsRunAutostartService(command, registry);
 
             bool isEnabled = await service.IsEnabledAsync();
 
@@ -155,17 +155,17 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         [Test]
         public async Task SetEnabledAsync_RemovesRunRegistryValueWhenDisabled()
         {
-            var command = new AutostartLaunchCommand(
+            AutostartLaunchCommand command = new AutostartLaunchCommand(
                 @"C:\Cotton\Cotton.Sync.Desktop.exe",
                 ["--start-minimized"]);
-            var registry = new FakeWindowsRunRegistry
+            FakeWindowsRunRegistry registry = new FakeWindowsRunRegistry
             {
                 Values =
                 {
                     ["Cotton Sync"] = command.ToString(),
                 },
             };
-            var service = new WindowsRunAutostartService(command, registry);
+            WindowsRunAutostartService service = new WindowsRunAutostartService(command, registry);
 
             await service.SetEnabledAsync(false);
 

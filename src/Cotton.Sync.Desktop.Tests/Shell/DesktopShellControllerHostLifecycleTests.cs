@@ -56,7 +56,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
             {
@@ -86,14 +86,14 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
             {
                 RememberedServerUrl = serverUrl,
             });
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             DesktopShellController controller = CreateController(paths, factory);
 
             await controller.LoadAsync();
@@ -112,13 +112,13 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var tokenStore = new FakeCottonTokenStore(hasStoredTokens: false);
+            FakeCottonTokenStore tokenStore = new FakeCottonTokenStore(hasStoredTokens: false);
             FakeDesktopApplicationHost signedInHost = FakeDesktopApplicationHost.Create(serverUrl, tokenStore);
             FakeDesktopApplicationHost restoredHost = FakeDesktopApplicationHost.Create(serverUrl, tokenStore);
             signedInHost.App.StartSyncStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             restoredHost.App.StartSyncStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             signedInHost.App.PreferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
-            var factory = new QueueingDesktopSyncApplicationFactory(signedInHost.Host, restoredHost.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(signedInHost.Host, restoredHost.Host);
 
             await using (DesktopShellController signedInController = CreateController(paths, factory))
             {
@@ -209,14 +209,14 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
             {
                 RememberedServerUrl = serverUrl,
             });
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             DesktopShellController controller = CreateController(paths, factory);
 
             await controller.LoadAsync();
@@ -234,7 +234,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public async Task SignInAsync_RejectsInsecureTokenStorageBeforeCreatingHost()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var factory = new QueueingDesktopSyncApplicationFactory();
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory();
             using DesktopShellController controller = CreateController(
                 paths,
                 factory,
@@ -264,7 +264,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
             host.App.StartSyncStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             host.App.StartSyncRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory);
 
             try
@@ -296,7 +296,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
             host.App.SyncNowStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             host.App.SyncNowRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory);
 
             try
@@ -335,7 +335,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
             host.App.StartSyncStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             host.App.StartSyncRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory);
 
             try
@@ -410,7 +410,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory);
             Guid syncPairId = Guid.NewGuid();
             DateTime startedAtUtc = new(2026, 7, 17, 6, 30, 0, DateTimeKind.Utc);
@@ -521,14 +521,14 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            SqliteSyncPairSettingsStore syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
             await syncPairStore.InitializeAsync();
             SyncPairSettings syncPair = CreateSyncPair(isEnabled: true);
             syncPair.LocalRootPath = Path.Combine(_tempDirectory, "Cloud");
             Directory.CreateDirectory(syncPair.LocalRootPath);
             await syncPairStore.UpsertAsync(syncPair);
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(
                 paths,
                 factory,
@@ -570,13 +570,13 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            SqliteSyncPairSettingsStore syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
             await syncPairStore.InitializeAsync();
             SyncPairSettings syncPair = CreateSyncPair(isEnabled: true);
             await syncPairStore.UpsertAsync(syncPair);
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
             host.App.SyncPairStore = syncPairStore;
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory, syncPairStore: syncPairStore);
             await controller.SignInWithBrowserAsync(serverUrl.AbsoluteUri);
 
@@ -603,13 +603,13 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
             {
                 RememberedServerUrl = serverUrl,
             });
-            var factory = new QueueingDesktopSyncApplicationFactory();
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory();
             using DesktopShellController controller = CreateController(
                 paths,
                 factory,
@@ -630,7 +630,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
             {
@@ -641,7 +641,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 HttpStatusCode.Unauthorized,
                 null,
                 "Unauthorized");
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory);
 
             DesktopShellSnapshot snapshot = await controller.LoadAsync();
@@ -660,7 +660,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
             {
@@ -671,7 +671,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 HttpStatusCode.Locked,
                 "{\"locked\":true,\"message\":\"Cotton is locked until the master key is provided.\"}",
                 "Cotton API request GET /api/v1/auth/me failed with status 423 (Locked).");
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(
                 paths,
                 factory,
@@ -697,20 +697,20 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
             {
                 RememberedServerUrl = serverUrl,
             });
-            var tokenStore = new FakeCottonTokenStore();
+            FakeCottonTokenStore tokenStore = new FakeCottonTokenStore();
             FakeDesktopApplicationHost lockedHost = FakeDesktopApplicationHost.Create(serverUrl, tokenStore);
             lockedHost.App.RestoreSessionException = new CottonApiException(
                 HttpStatusCode.Locked,
                 "{\"locked\":true}",
                 "Cotton API request GET /api/v1/auth/me failed with status 423 (Locked).");
             FakeDesktopApplicationHost restoredHost = FakeDesktopApplicationHost.Create(serverUrl, tokenStore);
-            var factory = new QueueingDesktopSyncApplicationFactory(lockedHost.Host, restoredHost.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(lockedHost.Host, restoredHost.Host);
             await using DesktopShellController controller = CreateController(
                 paths,
                 factory,
@@ -737,7 +737,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
             {
@@ -748,7 +748,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 HttpStatusCode.Unauthorized,
                 null,
                 "Cotton API request GET /api/v1/me failed with status 401 (Unauthorized).");
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory);
 
             await controller.LoadAsync();
@@ -769,7 +769,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
             {
@@ -780,7 +780,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 HttpStatusCode.InternalServerError,
                 null,
                 "Internal Server Error");
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory);
 
             DesktopShellSnapshot snapshot = await controller.LoadAsync();
@@ -800,7 +800,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
             {
@@ -810,7 +810,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             host.App.RestoreSessionExceptions.Enqueue(new HttpRequestException(
                 "Firewall blocked first restore request.",
                 new System.Net.Sockets.SocketException(10013)));
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(
                 paths,
                 factory,
@@ -833,15 +833,15 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var verificationCancelled = new TaskCompletionSource<bool>(
+            TaskCompletionSource<bool> verificationCancelled = new TaskCompletionSource<bool>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
             {
                 RememberedServerUrl = serverUrl,
             });
-            var factory = new QueueingDesktopSyncApplicationFactory(
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(
                 FakeDesktopApplicationHost.Create(serverUrl).Host);
             using DesktopShellController controller = CreateController(
                 paths,
@@ -872,8 +872,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public async Task LoadAsync_AppliesDefaultAutostartBeforeSessionExists()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var factory = new QueueingDesktopSyncApplicationFactory();
-            var autostartService = new FakeAutostartService();
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory();
+            FakeAutostartService autostartService = new FakeAutostartService();
             using DesktopShellController controller = CreateController(
                 paths,
                 factory,
@@ -894,15 +894,15 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public async Task LoadAsync_DoesNotReenableAutostartWhenPreferenceIsDisabled()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
             {
                 StartWithOperatingSystem = false,
             });
 
-            var factory = new QueueingDesktopSyncApplicationFactory();
-            var autostartService = new FakeAutostartService();
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory();
+            FakeAutostartService autostartService = new FakeAutostartService();
             using DesktopShellController controller = CreateController(
                 paths,
                 factory,
@@ -924,8 +924,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
-            var autostartService = new FakeAutostartService();
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            FakeAutostartService autostartService = new FakeAutostartService();
             using DesktopShellController controller = CreateController(
                 paths,
                 factory,
@@ -951,11 +951,11 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             Uri serverUrl = new("https://cotton.example.test/");
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
             host.App.SyncNowException = new InvalidOperationException("Sync changes API is unavailable.");
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory);
             string localPath = Path.Combine(_tempDirectory, "Downloads");
             Directory.CreateDirectory(localPath);
-            var activityReported = new TaskCompletionSource<DesktopActivitySnapshot>(
+            TaskCompletionSource<DesktopActivitySnapshot> activityReported = new TaskCompletionSource<DesktopActivitySnapshot>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             controller.ActivityReported += (_, activity) =>
             {
@@ -993,7 +993,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory);
             string localPath = Path.Combine(_tempDirectory, "Desktop");
             Directory.CreateDirectory(localPath);
@@ -1020,12 +1020,12 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            SqliteSyncPairSettingsStore syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
             await syncPairStore.InitializeAsync();
             SyncPairSettings syncPair = CreateSyncPair(isEnabled: true);
             await syncPairStore.UpsertAsync(syncPair);
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory, syncPairStore: syncPairStore);
             await controller.SignInAsync(new DesktopSignInRequest(
                 serverUrl.AbsoluteUri,
@@ -1051,12 +1051,12 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            SqliteSyncPairSettingsStore syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
             await syncPairStore.InitializeAsync();
             SyncPairSettings syncPair = CreateSyncPair(isEnabled: true);
             await syncPairStore.UpsertAsync(syncPair);
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory, syncPairStore: syncPairStore);
             await controller.SignInAsync(new DesktopSignInRequest(
                 serverUrl.AbsoluteUri,
@@ -1082,13 +1082,13 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            SqliteSyncPairSettingsStore syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
             await syncPairStore.InitializeAsync();
             SyncPairSettings syncPair = CreateSyncPair(isEnabled: true);
             await syncPairStore.UpsertAsync(syncPair);
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
             host.App.StartSyncStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory, syncPairStore: syncPairStore);
             await controller.SignInAsync(new DesktopSignInRequest(
                 serverUrl.AbsoluteUri,
@@ -1113,16 +1113,16 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
             {
                 RememberedServerUrl = serverUrl,
             });
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory);
-            var statusEvents = new List<DesktopSyncStatusSnapshot>();
+            List<DesktopSyncStatusSnapshot> statusEvents = new List<DesktopSyncStatusSnapshot>();
             controller.StatusChanged += (_, status) => statusEvents.Add(status);
             Guid syncPairId = Guid.NewGuid();
             DateTime completedAtUtc = new(2026, 6, 4, 9, 0, 0, DateTimeKind.Utc);
@@ -1185,16 +1185,16 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
             {
                 RememberedServerUrl = serverUrl,
             });
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory);
-            var statusEvents = new List<DesktopSyncStatusSnapshot>();
+            List<DesktopSyncStatusSnapshot> statusEvents = new List<DesktopSyncStatusSnapshot>();
             controller.StatusChanged += (_, status) => statusEvents.Add(status);
             Guid syncPairId = Guid.NewGuid();
             const string message = "Local file is not ready yet: Drafts/report.docx. Sync will retry.";
@@ -1317,16 +1317,16 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
             {
                 RememberedServerUrl = serverUrl,
             });
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory);
-            var sessionRevocations = new List<DesktopSessionRevocationSnapshot>();
+            List<DesktopSessionRevocationSnapshot> sessionRevocations = new List<DesktopSessionRevocationSnapshot>();
             DateTime occurredAtUtc = new(2026, 6, 6, 12, 0, 0, DateTimeKind.Utc);
             controller.SessionRevoked += (_, sessionRevocation) => sessionRevocations.Add(sessionRevocation);
 
@@ -1345,14 +1345,14 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
             {
                 RememberedServerUrl = serverUrl,
             });
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory);
             DateTime occurredAtUtc = new(2026, 6, 6, 12, 0, 0, DateTimeKind.Utc);
 
@@ -1370,14 +1370,14 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
             {
                 RememberedServerUrl = serverUrl,
             });
             Guid syncPairId = Guid.NewGuid();
-            var syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            SqliteSyncPairSettingsStore syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
             await syncPairStore.InitializeAsync();
             await syncPairStore.UpsertAsync(new SyncPairSettings
             {
@@ -1406,7 +1406,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                         completedAtUtc),
                 ],
                 DateTime.UtcNow));
-            var factory = new QueueingDesktopSyncApplicationFactory(host.Host);
+            QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory);
 
             DesktopShellSnapshot snapshot = await controller.LoadAsync();
@@ -1465,7 +1465,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             ZipArchiveEntry entry = archive.GetEntry(entryName) ?? throw new InvalidOperationException(
                 "Diagnostics archive entry is missing: " + entryName);
             using Stream stream = entry.Open();
-            using var reader = new StreamReader(stream);
+            using StreamReader reader = new StreamReader(stream);
             return reader.ReadToEnd();
         }
 

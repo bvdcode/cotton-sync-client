@@ -202,7 +202,7 @@ namespace Cotton.Sync.State
                 return;
             }
 
-            var normalizedEntries = new List<(SyncStateEntry Entry, string Key)>(entries.Count);
+            List<(SyncStateEntry Entry, string Key)> normalizedEntries = new List<(SyncStateEntry Entry, string Key)>(entries.Count);
             foreach (SyncStateEntry entry in entries)
             {
                 ArgumentNullException.ThrowIfNull(entry);

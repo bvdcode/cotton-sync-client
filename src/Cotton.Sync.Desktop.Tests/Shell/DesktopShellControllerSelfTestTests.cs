@@ -133,7 +133,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public async Task RunSelfTestAsync_FailsTokenStorageWhenProtectorIsNotReleaseSecure()
         {
-            var tokenStorage = new DesktopTokenStorageCapabilitySnapshot(
+            DesktopTokenStorageCapabilitySnapshot tokenStorage = new DesktopTokenStorageCapabilitySnapshot(
                 "restricted-file-v1",
                 IsReleaseSecure: false,
                 "Development fallback");
@@ -153,7 +153,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public async Task RunSelfTestAsync_PassesTokenStorageWhenProtectorIsReleaseSecure()
         {
-            var tokenStorage = new DesktopTokenStorageCapabilitySnapshot(
+            DesktopTokenStorageCapabilitySnapshot tokenStorage = new DesktopTokenStorageCapabilitySnapshot(
                 "linux-secret-service-v1",
                 IsReleaseSecure: true,
                 "Linux Secret Service through secret-tool");
@@ -211,7 +211,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             DesktopSelfTestSnapshot result = await controller.RunSelfTestAsync();
 
             DesktopSelfTestItemSnapshot item = result.Items.Single(static selfTestItem => selfTestItem.Name == "Sync state database");
-            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
             SyncChangeCursor cursor = await stateStore.GetChangeCursorAsync("pair-a");
 
             Assert.Multiple(() =>
@@ -232,7 +232,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public async Task RunSelfTestAsync_FailsWhenSyncStateDatabaseIsEmptyButMostlyFreelist()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
             await stateStore.InitializeAsync();
             await stateStore.UpsertManyAsync(CreateLargePlaceholderStateEntries("pair-a"));
             await stateStore.ReplacePairAsync("pair-a", Array.Empty<SyncStateEntry>());
@@ -278,8 +278,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public async Task ExportDiagnosticsAsync_DoesNotRunSelfTestServerProbe()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            await using var server = new SlowServerInfoEndpoint(TimeSpan.FromSeconds(5));
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            await using SlowServerInfoEndpoint server = new SlowServerInfoEndpoint(TimeSpan.FromSeconds(5));
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
             {
@@ -328,7 +328,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             string localRoot = Path.Combine(_tempDirectory, "Documents");
             Directory.CreateDirectory(localRoot);
-            var syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            SqliteSyncPairSettingsStore syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
             await syncPairStore.InitializeAsync();
             await syncPairStore.UpsertAsync(new SyncPairSettings
             {
@@ -363,7 +363,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             string missingLocalRoot = Path.Combine(_tempDirectory, "DeletedDocuments");
-            var syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            SqliteSyncPairSettingsStore syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
             await syncPairStore.InitializeAsync();
             await syncPairStore.UpsertAsync(new SyncPairSettings
             {
@@ -398,7 +398,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             Guid syncPairId = Guid.NewGuid();
             Guid remoteRootNodeId = Guid.NewGuid();
             DateTime lastSyncedAtUtc = new(2026, 6, 3, 12, 30, 0, DateTimeKind.Utc);
-            var syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            SqliteSyncPairSettingsStore syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
             await syncPairStore.InitializeAsync();
             Directory.CreateDirectory(Path.Combine(_tempDirectory, "Documents"));
             await syncPairStore.UpsertAsync(new SyncPairSettings
@@ -413,7 +413,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 CreatedAtUtc = DateTime.UtcNow,
                 UpdatedAtUtc = DateTime.UtcNow,
             });
-            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
             await stateStore.InitializeAsync();
             await stateStore.UpsertAsync(new SyncStateEntry
             {
@@ -446,7 +446,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public async Task LoadAsync_IncludesNotificationPreference()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             AppPreferences preferences = await preferencesStore.GetAsync();
             preferences.EnableNotifications = false;
@@ -483,7 +483,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             await controller.LoadAsync();
 
-            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
             SyncChangeCursor cursor = await stateStore.GetChangeCursorAsync("new-profile");
             Assert.Multiple(() =>
             {
@@ -511,7 +511,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public async Task LoadAsync_ReturnsRememberedSignInHintsWithoutStoredSession()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             await preferencesStore.SaveAsync(new AppPreferences
             {
@@ -535,7 +535,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public async Task LoadAsync_IncludesThemePreference()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             AppPreferences preferences = await preferencesStore.GetAsync();
             preferences.ThemeMode = AppThemeMode.Dark;
@@ -551,7 +551,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public async Task SetNotificationsEnabledAsync_PersistsPreference()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             using DesktopShellController controller = CreateController(paths, new SqliteSyncPairSettingsStore(paths.AppDatabasePath));
 
@@ -565,7 +565,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public async Task SetThemeModeAsync_PersistsPreference()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
+            SqliteAppPreferencesStore preferencesStore = new SqliteAppPreferencesStore(paths.AppDatabasePath);
             await preferencesStore.InitializeAsync();
             using DesktopShellController controller = CreateController(paths, new SqliteSyncPairSettingsStore(paths.AppDatabasePath));
 
@@ -579,7 +579,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public async Task SetSyncPairEnabledAsync_PersistsEnabledState()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            SqliteSyncPairSettingsStore syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
             await syncPairStore.InitializeAsync();
             SyncPairSettings syncPair = CreateSyncPair(isEnabled: true);
             await syncPairStore.UpsertAsync(syncPair);
@@ -600,7 +600,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public async Task RenameSyncPairAsync_PersistsDisplayName()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            SqliteSyncPairSettingsStore syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
             await syncPairStore.InitializeAsync();
             SyncPairSettings syncPair = CreateSyncPair(isEnabled: true);
             await syncPairStore.UpsertAsync(syncPair);
@@ -621,14 +621,14 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public async Task RemoveSyncPairAsync_DeletesConfiguredPair()
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            SqliteSyncPairSettingsStore syncPairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
             await syncPairStore.InitializeAsync();
             SyncPairSettings syncPair = CreateSyncPair(isEnabled: true);
             Directory.CreateDirectory(syncPair.LocalRootPath);
             string localFilePath = Path.Combine(syncPair.LocalRootPath, "keep-local-file.txt");
             await File.WriteAllTextAsync(localFilePath, "keep me local");
             await syncPairStore.UpsertAsync(syncPair);
-            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
             await stateStore.InitializeAsync();
             await stateStore.UpsertAsync(new SyncStateEntry
             {
@@ -702,7 +702,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public async Task CheckForUpdateAsync_ReturnsAvailableUpdateDetails()
         {
-            var updateService = new FakeUpdateService(CreateUpdateCheckResult(isUpdateAvailable: true));
+            FakeUpdateService updateService = new FakeUpdateService(CreateUpdateCheckResult(isUpdateAvailable: true));
             using DesktopShellController controller = CreateController(updateService: updateService);
 
             DesktopUpdateStatusSnapshot result = await controller.CheckForUpdateAsync();
@@ -721,7 +721,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public async Task ExportDiagnosticsAsync_ReportsLastManualUpdateCheckOutcome()
         {
-            var updateService = new FakeUpdateService(CreateUpdateCheckResult(isUpdateAvailable: true));
+            FakeUpdateService updateService = new FakeUpdateService(CreateUpdateCheckResult(isUpdateAvailable: true));
             using DesktopShellController controller = CreateController(updateService: updateService);
 
             await controller.CheckForUpdateAsync();
@@ -749,7 +749,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public async Task ExportDiagnosticsAsync_ReportsLastPeriodicUpdateCheckOutcome()
         {
-            var updateService = new FakeUpdateService(CreateUpdateCheckResult(isUpdateAvailable: true));
+            FakeUpdateService updateService = new FakeUpdateService(CreateUpdateCheckResult(isUpdateAvailable: true));
             using DesktopShellController controller = CreateController(updateService: updateService);
 
             await controller.CheckForUpdateAsync(DesktopUpdateCheckSource.Periodic);
@@ -774,7 +774,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             string installerPath = Path.Combine(_tempDirectory, "CottonSync-Windows-Setup.exe");
-            var updateService = new FakeUpdateService(
+            FakeUpdateService updateService = new FakeUpdateService(
                 CreateUpdateCheckResult(isUpdateAvailable: true),
                 CreateUpdateDownloadResult(installerPath));
             using DesktopShellController controller = CreateController(
@@ -805,7 +805,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             string installerPath = Path.Combine(_tempDirectory, "CottonSync-Windows-Setup.exe");
-            var updateService = new FakeUpdateService(
+            FakeUpdateService updateService = new FakeUpdateService(
                 CreateUpdateCheckResult(isUpdateAvailable: true),
                 CreateUpdateDownloadResult(installerPath));
             using DesktopShellController controller = CreateController(
@@ -836,7 +836,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             string installerPath = Path.Combine(_tempDirectory, "CottonSync-Windows-Setup.exe");
-            var updateService = new FakeUpdateService(
+            FakeUpdateService updateService = new FakeUpdateService(
                 CreateUpdateCheckResult(isUpdateAvailable: true),
                 CreateUpdateDownloadResult(installerPath));
             using DesktopShellController controller = CreateController(
@@ -867,7 +867,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public async Task ExportDiagnosticsAsync_ReportsFailedUpdateCheckOutcome()
         {
-            var updateService = new FakeUpdateService(
+            FakeUpdateService updateService = new FakeUpdateService(
                 CreateUpdateCheckResult(isUpdateAvailable: false),
                 checkException: new HttpRequestException("release manifest unavailable"));
             using DesktopShellController controller = CreateController(updateService: updateService);
@@ -892,7 +892,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public async Task InstallDownloadedUpdateAsync_StartsSilentInstallerWithRelaunch()
         {
-            var updateInstaller = new FakeUpdateInstaller();
+            FakeUpdateInstaller updateInstaller = new FakeUpdateInstaller();
             using DesktopShellController controller = CreateController(updateInstaller: updateInstaller);
             string installerPath = Path.Combine(_tempDirectory, "CottonSync-Windows-Setup.exe");
 
@@ -908,7 +908,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public async Task ExportDiagnosticsAsync_ReportsUpdateInstallerLaunchOutcomeWithoutInstallerPath()
         {
-            var updateInstaller = new FakeUpdateInstaller
+            FakeUpdateInstaller updateInstaller = new FakeUpdateInstaller
             {
                 Result = new DesktopUpdateInstallResult(1234, ExitedDuringStartupProbe: false, ExitCode: null),
             };
@@ -938,7 +938,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public async Task ExportDiagnosticsAsync_ReportsUpdateInstallerLaunchFailureWithoutInstallerPath()
         {
             string installerPath = Path.Combine(_tempDirectory, "CottonSync-Windows-Setup.exe");
-            var updateInstaller = new FakeUpdateInstaller
+            FakeUpdateInstaller updateInstaller = new FakeUpdateInstaller
             {
                 Exception = new InvalidOperationException("Installer failed at " + installerPath),
             };
@@ -985,7 +985,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             IDesktopUpdateService? updateService = null,
             IDesktopUpdateInstaller? updateInstaller = null)
         {
-            var loggerFactory = new DesktopTraceLoggerFactory();
+            DesktopTraceLoggerFactory loggerFactory = new DesktopTraceLoggerFactory();
             return new DesktopShellController(
                 paths,
                 new DesktopSyncApplicationFactory(paths, loggerFactory),
@@ -1084,7 +1084,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             ZipArchiveEntry entry = archive.GetEntry(name) ?? throw new InvalidOperationException(name + " was not found.");
             using Stream stream = entry.Open();
-            using var reader = new StreamReader(stream);
+            using StreamReader reader = new StreamReader(stream);
             return reader.ReadToEnd();
         }
 
@@ -1138,7 +1138,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             private static int GetFreePort()
             {
-                using var listener = new TcpListener(IPAddress.Loopback, 0);
+                using TcpListener listener = new TcpListener(IPAddress.Loopback, 0);
                 listener.Start();
                 return ((IPEndPoint)listener.LocalEndpoint).Port;
             }

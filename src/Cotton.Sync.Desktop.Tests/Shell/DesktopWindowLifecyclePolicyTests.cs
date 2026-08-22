@@ -10,7 +10,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void ResolveCloseAction_HidesToTrayWhenTrayLifecycleIsAvailable()
         {
-            var policy = new DesktopWindowLifecyclePolicy(
+            DesktopWindowLifecyclePolicy policy = new DesktopWindowLifecyclePolicy(
                 startMinimizedToTray: false,
                 canHideToTray: true);
 
@@ -22,7 +22,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void ResolveCloseAction_ClosesWhenTrayLifecycleIsUnavailable()
         {
-            var policy = new DesktopWindowLifecyclePolicy(
+            DesktopWindowLifecyclePolicy policy = new DesktopWindowLifecyclePolicy(
                 startMinimizedToTray: false,
                 canHideToTray: false);
 
@@ -34,7 +34,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void ResolveCloseAction_ClosesAfterExplicitQuitRequest()
         {
-            var policy = new DesktopWindowLifecyclePolicy(
+            DesktopWindowLifecyclePolicy policy = new DesktopWindowLifecyclePolicy(
                 startMinimizedToTray: false,
                 canHideToTray: true);
 
@@ -47,13 +47,13 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void ShouldHideAfterStartup_RequiresTrayLifecycleOnly()
         {
-            var supportedPolicy = new DesktopWindowLifecyclePolicy(
+            DesktopWindowLifecyclePolicy supportedPolicy = new DesktopWindowLifecyclePolicy(
                 startMinimizedToTray: true,
                 canHideToTray: true);
-            var unsupportedPolicy = new DesktopWindowLifecyclePolicy(
+            DesktopWindowLifecyclePolicy unsupportedPolicy = new DesktopWindowLifecyclePolicy(
                 startMinimizedToTray: true,
                 canHideToTray: false);
-            var normalPolicy = new DesktopWindowLifecyclePolicy(
+            DesktopWindowLifecyclePolicy normalPolicy = new DesktopWindowLifecyclePolicy(
                 startMinimizedToTray: false,
                 canHideToTray: true);
 
@@ -68,7 +68,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         [Test]
         public void ShouldHideAfterStartup_DoesNotHideAfterExplicitShowRequest()
         {
-            var policy = new DesktopWindowLifecyclePolicy(
+            DesktopWindowLifecyclePolicy policy = new DesktopWindowLifecyclePolicy(
                 startMinimizedToTray: true,
                 canHideToTray: true);
 

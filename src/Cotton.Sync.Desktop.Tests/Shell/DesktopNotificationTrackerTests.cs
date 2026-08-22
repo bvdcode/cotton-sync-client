@@ -39,7 +39,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public void Apply_EmitsInitialSyncCompleteWhenPairBecomesIdleAfterSync()
         {
             Guid syncPairId = Guid.NewGuid();
-            var tracker = new DesktopNotificationTracker();
+            DesktopNotificationTracker tracker = new DesktopNotificationTracker();
             _ = tracker.Apply(CreateStatus(syncPairId, "Syncing"), DisplayNames(syncPairId));
 
             IReadOnlyList<DesktopNotificationRequest> notifications = tracker.Apply(
@@ -58,7 +58,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public void Apply_DoesNotEmitInitialSyncCompleteWithoutSuccessfulSyncTimestamp()
         {
             Guid syncPairId = Guid.NewGuid();
-            var tracker = new DesktopNotificationTracker();
+            DesktopNotificationTracker tracker = new DesktopNotificationTracker();
             _ = tracker.Apply(CreateStatus(syncPairId, "Syncing"), DisplayNames(syncPairId));
 
             IReadOnlyList<DesktopNotificationRequest> notifications = tracker.Apply(
@@ -72,7 +72,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public void Apply_EmitsConflictNotification()
         {
             Guid syncPairId = Guid.NewGuid();
-            var tracker = new DesktopNotificationTracker();
+            DesktopNotificationTracker tracker = new DesktopNotificationTracker();
 
             IReadOnlyList<DesktopNotificationRequest> notifications = tracker.Apply(
                 CreateStatus(syncPairId, "Conflict"),
@@ -85,7 +85,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public void Apply_EmitsActionRequiredErrorNotification()
         {
             Guid syncPairId = Guid.NewGuid();
-            var tracker = new DesktopNotificationTracker();
+            DesktopNotificationTracker tracker = new DesktopNotificationTracker();
 
             IReadOnlyList<DesktopNotificationRequest> notifications = tracker.Apply(
                 CreateStatus(syncPairId, "Error", "Local folder is unavailable."),
@@ -102,7 +102,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public void Apply_NormalizesActionRequiredErrorNotification()
         {
             Guid syncPairId = Guid.NewGuid();
-            var tracker = new DesktopNotificationTracker();
+            DesktopNotificationTracker tracker = new DesktopNotificationTracker();
             const string rawError = "Cotton API request GET /api/v1/sync/changes?since=0&limit=500 returned invalid JSON "
                 + "with content type 'text/html' and status 200 (OK). Response: <!doctype html><html>App</html>";
 
@@ -126,7 +126,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public void Apply_NormalizesDiskFullActionRequiredErrorNotification()
         {
             Guid syncPairId = Guid.NewGuid();
-            var tracker = new DesktopNotificationTracker();
+            DesktopNotificationTracker tracker = new DesktopNotificationTracker();
 
             IReadOnlyList<DesktopNotificationRequest> notifications = tracker.Apply(
                 CreateStatus(syncPairId, "Error", "No space left on device"),
@@ -146,7 +146,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public void Apply_NormalizesEmbeddedProblemDetailsActionRequiredNotification()
         {
             Guid syncPairId = Guid.NewGuid();
-            var tracker = new DesktopNotificationTracker();
+            DesktopNotificationTracker tracker = new DesktopNotificationTracker();
             const string rawError =
                 "Cotton API request POST /api/v1/files/from-chunks failed with status 400 (BadRequest). "
                 + "Response: {\"type\":\"https://tools.ietf.org/html/rfc7231#section-6.5.1\","
@@ -173,7 +173,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public void Apply_EmitsGenericActionRequiredErrorNotificationWhenDetailsAreMissing()
         {
             Guid syncPairId = Guid.NewGuid();
-            var tracker = new DesktopNotificationTracker();
+            DesktopNotificationTracker tracker = new DesktopNotificationTracker();
 
             IReadOnlyList<DesktopNotificationRequest> notifications = tracker.Apply(
                 CreateStatus(syncPairId, "Error"),
@@ -192,7 +192,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public void Reset_AllowsInitialSyncCompleteNotificationAgain()
         {
             Guid syncPairId = Guid.NewGuid();
-            var tracker = new DesktopNotificationTracker();
+            DesktopNotificationTracker tracker = new DesktopNotificationTracker();
             _ = tracker.Apply(CreateStatus(syncPairId, "Syncing"), DisplayNames(syncPairId));
             _ = tracker.Apply(CreateStatus(syncPairId, "Idle", lastSyncedAtUtc: DateTime.UtcNow), DisplayNames(syncPairId));
 
@@ -209,7 +209,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public void Apply_DoesNotRepeatSameErrorNotification()
         {
             Guid syncPairId = Guid.NewGuid();
-            var tracker = new DesktopNotificationTracker();
+            DesktopNotificationTracker tracker = new DesktopNotificationTracker();
             _ = tracker.Apply(
                 CreateStatus(syncPairId, "Error", "Local folder is unavailable."),
                 DisplayNames(syncPairId));
@@ -225,8 +225,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         public void Apply_DoesNotFloodChangingErrorsUntilPairRecovers()
         {
             Guid syncPairId = Guid.NewGuid();
-            var tracker = new DesktopNotificationTracker();
-            var notifications = new List<DesktopNotificationRequest>();
+            DesktopNotificationTracker tracker = new DesktopNotificationTracker();
+            List<DesktopNotificationRequest> notifications = new List<DesktopNotificationRequest>();
 
             for (int index = 1; index <= 100; index++)
             {

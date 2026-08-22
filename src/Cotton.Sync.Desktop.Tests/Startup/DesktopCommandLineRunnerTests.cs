@@ -38,7 +38,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         public async Task RunSelfTestAsync_PrintsReportAndReturnsPlatformSecurityResult()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(["--data-dir", _tempDirectory]);
-            using var output = new StringWriter();
+            using StringWriter output = new StringWriter();
             bool tokenStorageIsReleaseSecure = DesktopTokenStorageCapabilities.CreateSnapshot().IsReleaseSecure;
 
             int exitCode = await DesktopCommandLineRunner.RunSelfTestAsync(options, output);
@@ -59,7 +59,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         public async Task RunExportDiagnosticsAsync_PrintsBundlePathAndCreatesArchive()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(["--data-dir", _tempDirectory]);
-            using var output = new StringWriter();
+            using StringWriter output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunExportDiagnosticsAsync(options, output);
 
@@ -82,7 +82,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         public async Task RunExportDiagnosticsAsync_UsesPrivateSupportModeOnlyWhenExplicitlyRequested()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(["--data-dir", _tempDirectory, "--export-diagnostics-private"]);
-            using var output = new StringWriter();
+            using StringWriter output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunExportDiagnosticsAsync(options, output);
 
@@ -128,13 +128,13 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(["--data-dir", _tempDirectory, "--cleanup-cloud-files"]);
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
-            var store = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            SqliteSyncPairSettingsStore store = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
             await store.InitializeAsync();
             SyncPairSettings fullMirror = CreateSyncPair("Full", SyncPairMode.FullMirror, Path.Combine(_tempDirectory, "full"));
             SyncPairSettings virtualFiles = CreateSyncPair("Virtual", SyncPairMode.WindowsVirtualFiles, Path.Combine(_tempDirectory, "virtual"));
             await store.UpsertAsync(fullMirror);
             await store.UpsertAsync(virtualFiles);
-            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
             await stateStore.InitializeAsync();
             await stateStore.SaveChangeCursorAsync(new SyncChangeCursor
             {
@@ -142,9 +142,9 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 LastCursor = 42,
                 HasCompletedFullReconcile = true,
             });
-            var adapter = new FakeCloudFilesAdapter();
-            var storageProvider = new FakeStorageProviderSyncRootRegistrar();
-            using var output = new StringWriter();
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter();
+            FakeStorageProviderSyncRootRegistrar storageProvider = new FakeStorageProviderSyncRootRegistrar();
+            using StringWriter output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunCloudFilesCleanupAsync(
                 paths,
@@ -174,16 +174,16 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         public async Task RunCloudFilesCleanupAsync_ReturnsFailureWhenUnregisterFails()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(["--data-dir", _tempDirectory, "--cleanup-cloud-files"]);
-            var store = new SqliteSyncPairSettingsStore(DesktopAppPaths.CreateForDataDirectory(_tempDirectory).AppDatabasePath);
+            SqliteSyncPairSettingsStore store = new SqliteSyncPairSettingsStore(DesktopAppPaths.CreateForDataDirectory(_tempDirectory).AppDatabasePath);
             await store.InitializeAsync();
             SyncPairSettings virtualFiles = CreateSyncPair("Virtual", SyncPairMode.WindowsVirtualFiles, Path.Combine(_tempDirectory, "virtual"));
             await store.UpsertAsync(virtualFiles);
-            var adapter = new FakeCloudFilesAdapter
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter
             {
                 Exception = new InvalidOperationException("unregister failed"),
             };
-            var storageProvider = new FakeStorageProviderSyncRootRegistrar();
-            using var output = new StringWriter();
+            FakeStorageProviderSyncRootRegistrar storageProvider = new FakeStorageProviderSyncRootRegistrar();
+            using StringWriter output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunCloudFilesCleanupAsync(
                 DesktopAppPaths.CreateForDataDirectory(_tempDirectory),
@@ -206,14 +206,14 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         public async Task RunCloudFilesCleanupAsync_ReturnsFailureWhenOrphanedStorageProviderCleanupFails()
         {
             DesktopStartupOptions options = DesktopStartupOptions.Parse(["--data-dir", _tempDirectory, "--cleanup-cloud-files"]);
-            var store = new SqliteSyncPairSettingsStore(DesktopAppPaths.CreateForDataDirectory(_tempDirectory).AppDatabasePath);
+            SqliteSyncPairSettingsStore store = new SqliteSyncPairSettingsStore(DesktopAppPaths.CreateForDataDirectory(_tempDirectory).AppDatabasePath);
             await store.InitializeAsync();
-            var adapter = new FakeCloudFilesAdapter();
-            var storageProvider = new FakeStorageProviderSyncRootRegistrar
+            FakeCloudFilesAdapter adapter = new FakeCloudFilesAdapter();
+            FakeStorageProviderSyncRootRegistrar storageProvider = new FakeStorageProviderSyncRootRegistrar
             {
                 Exception = new InvalidOperationException("orphan cleanup failed"),
             };
-            using var output = new StringWriter();
+            using StringWriter output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunCloudFilesCleanupAsync(
                 DesktopAppPaths.CreateForDataDirectory(_tempDirectory),
@@ -238,12 +238,12 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(Path.Combine(_tempDirectory, "state"));
             string localRoot = Path.Combine(_tempDirectory, "cloud");
             string selectedPath = Path.Combine(localRoot, "Docs", "report.pdf");
-            var shareLink = new Uri("https://cloud.example/s/generated-token");
-            var pairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            Uri shareLink = new Uri("https://cloud.example/s/generated-token");
+            SqliteSyncPairSettingsStore pairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
             await pairStore.InitializeAsync();
             SyncPairSettings syncPair = CreateSyncPair("Cloud", SyncPairMode.WindowsVirtualFiles, localRoot);
             await pairStore.UpsertAsync(syncPair);
-            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
             await stateStore.InitializeAsync();
             await stateStore.UpsertAsync(new SyncStateEntry
             {
@@ -256,7 +256,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             });
             DesktopStartupOptions options = DesktopStartupOptions.Parse(
                 ["--data-dir", paths.DataDirectory, "--resolve-shell-share-link-target", selectedPath]);
-            using var output = new StringWriter();
+            using StringWriter output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunShellShareLinkTargetAsync(
                 paths,
@@ -567,12 +567,12 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(Path.Combine(_tempDirectory, "state"));
             string localRoot = Path.Combine(_tempDirectory, "cloud");
             string selectedPath = Path.Combine(localRoot, "local-only.txt");
-            var pairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            SqliteSyncPairSettingsStore pairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
             await pairStore.InitializeAsync();
             await pairStore.UpsertAsync(CreateSyncPair("Cloud", SyncPairMode.WindowsVirtualFiles, localRoot));
             DesktopStartupOptions options = DesktopStartupOptions.Parse(
                 ["--data-dir", paths.DataDirectory, "--resolve-shell-share-link-target", selectedPath]);
-            using var output = new StringWriter();
+            using StringWriter output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunShellShareLinkTargetAsync(paths, options, output);
 
@@ -599,11 +599,11 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(Path.Combine(_tempDirectory, "state"));
             string localRoot = Path.Combine(_tempDirectory, "cloud");
             string selectedPath = Path.Combine(localRoot, "Docs", "report.pdf");
-            var pairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
+            SqliteSyncPairSettingsStore pairStore = new SqliteSyncPairSettingsStore(paths.AppDatabasePath);
             await pairStore.InitializeAsync();
             SyncPairSettings syncPair = CreateSyncPair("Cloud", SyncPairMode.WindowsVirtualFiles, localRoot);
             await pairStore.UpsertAsync(syncPair);
-            var stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(paths.SyncStateDatabasePath);
             await stateStore.InitializeAsync();
             await stateStore.UpsertAsync(new SyncStateEntry
             {
@@ -615,7 +615,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
             });
             DesktopStartupOptions options = DesktopStartupOptions.Parse(
                 ["--data-dir", paths.DataDirectory, "--resolve-shell-share-link-target", selectedPath]);
-            using var output = new StringWriter();
+            using StringWriter output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunShellShareLinkTargetAsync(paths, options, output);
 
@@ -648,7 +648,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                     "--local-root",
                     unsafeRoot,
                 ]);
-            using var output = new StringWriter();
+            using StringWriter output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunWindowsVirtualFilesSmokeAsync(
                 DesktopAppPaths.CreateForDataDirectory(Path.Combine(_tempDirectory, "state")),
@@ -679,7 +679,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                     "--remote-path",
                     "/CottonSyncQa/DesktopSmoke",
                 ]);
-            using var output = new StringWriter();
+            using StringWriter output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunLiveSyncSmokeAsync(options, output);
 
@@ -714,7 +714,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                     "--remote-path",
                     "/CottonSyncQa/DesktopSmoke",
                 ]);
-            using var output = new StringWriter();
+            using StringWriter output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunLiveSyncSmokeAsync(options, output);
 
@@ -749,7 +749,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                     "/CottonSyncQa/DesktopSmoke",
                     "--live-sync-smoke-preserve-existing-local-files",
                 ]);
-            using var output = new StringWriter();
+            using StringWriter output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunLiveSyncSmokeAsync(options, output);
 
@@ -817,7 +817,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                     "--sync-mode",
                     "placeholder",
                 ]);
-            using var output = new StringWriter();
+            using StringWriter output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunLiveSyncSmokeAsync(options, output);
 
@@ -839,8 +839,8 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                     "--update-manifest-url",
                     "https://updates.example/release-manifest.json",
                 ]);
-            var updateService = new FakeDesktopUpdateService(DesktopAppPaths.CreateForDataDirectory(_tempDirectory));
-            using var output = new StringWriter();
+            FakeDesktopUpdateService updateService = new FakeDesktopUpdateService(DesktopAppPaths.CreateForDataDirectory(_tempDirectory));
+            using StringWriter output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunUpdateDiscoverySmokeAsync(
                 DesktopAppPaths.CreateForDataDirectory(_tempDirectory),
@@ -872,8 +872,8 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                     "--expected-update-version",
                     "0.1.1",
                 ]);
-            var updateService = new FakeDesktopUpdateService(paths);
-            using var output = new StringWriter();
+            FakeDesktopUpdateService updateService = new FakeDesktopUpdateService(paths);
+            using StringWriter output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunUpdateDiscoverySmokeAsync(
                 paths,
@@ -915,8 +915,8 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                     "--update-installer-path",
                     installerPath,
                 ]);
-            var installer = new FakeDesktopUpdateInstaller();
-            using var output = new StringWriter();
+            FakeDesktopUpdateInstaller installer = new FakeDesktopUpdateInstaller();
+            using StringWriter output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunUpdateInstallSmokeAsync(
                 DesktopAppPaths.CreateForDataDirectory(_tempDirectory),
@@ -947,8 +947,8 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                     "--update-installer-path",
                     installerPath,
                 ]);
-            var installer = new FakeDesktopUpdateInstaller();
-            using var output = new StringWriter();
+            FakeDesktopUpdateInstaller installer = new FakeDesktopUpdateInstaller();
+            using StringWriter output = new StringWriter();
 
             int exitCode = await DesktopCommandLineRunner.RunUpdateInstallSmokeAsync(
                 paths,
