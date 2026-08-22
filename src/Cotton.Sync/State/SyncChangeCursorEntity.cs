@@ -3,6 +3,8 @@
 
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using EasyExtensions.EntityFrameworkCore.Abstractions;
+using Microsoft.EntityFrameworkCore;
 
 namespace Cotton.Sync.State
 {
@@ -10,15 +12,19 @@ namespace Cotton.Sync.State
     /// Represents one persisted remote change-feed checkpoint row.
     /// </summary>
     [Table("sync_change_cursors")]
-    public class SyncChangeCursorEntity
+    [Index(nameof(SyncPairId), IsUnique = true)]
+    public class SyncChangeCursorEntity : BaseEntity<long>
     {
+        public SyncChangeCursorEntity()
+        {
+        }
+
         /// <summary>
         /// Gets or sets the sync pair identifier.
         /// </summary>
-        [Key]
         [MaxLength(256)]
         [Column("sync_pair_id")]
-        public string SyncPairId { get; set; } = string.Empty;
+        public string SyncPairId { get; set; } = null!;
 
         /// <summary>
         /// Gets or sets the last remote change cursor that was accepted by the client.
@@ -48,6 +54,6 @@ namespace Cotton.Sync.State
         /// Gets or sets the timestamp when the cursor was updated.
         /// </summary>
         [Column("updated_at_utc")]
-        public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
+        public DateTime CursorUpdatedAt { get; set; }
     }
 }

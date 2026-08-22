@@ -23,6 +23,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="../TestSupport/HistoricalMigrationDataWriter.cs" Link="TestSupport/HistoricalMigrationDataWriter.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="NUnit.Framework" />
   </ItemGroup>
 

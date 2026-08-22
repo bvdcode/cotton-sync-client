@@ -21,7 +21,7 @@ namespace Cotton.Sync.Tests.State
 
         private static async Task CreateMigratedStateDatabaseAsync(string databasePath, string migration)
         {
-            DbConnectionStringBuilder connectionString = new DbConnectionStringBuilder
+            string connectionString = new DbConnectionStringBuilder
             {
                 ["Data Source"] = databasePath,
                 ["Pooling"] = false,
@@ -35,7 +35,7 @@ namespace Cotton.Sync.Tests.State
 
         private static string ReadDirectoryRepairIndexColumns(string databasePath)
         {
-            DbConnectionStringBuilder connectionString = new DbConnectionStringBuilder
+            string connectionString = new DbConnectionStringBuilder
             {
                 ["Data Source"] = databasePath,
                 ["Pooling"] = false,

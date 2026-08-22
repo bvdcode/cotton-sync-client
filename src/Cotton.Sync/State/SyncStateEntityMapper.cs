@@ -22,7 +22,7 @@ namespace Cotton.Sync.State
             entity.RelativePath = SyncPath.Normalize(entry.RelativePath);
             entity.Kind = entry.Kind;
             entity.LocalContentHash = NormalizeNullable(entry.LocalContentHash);
-            entity.LocalLastWriteUtc = ToUtc(entry.LocalLastWriteUtc);
+            entity.LocalLastWriteAt = ToUtc(entry.LocalLastWriteUtc);
             entity.LocalSizeBytes = entry.LocalSizeBytes;
             entity.RemoteSizeBytes = entry.RemoteSizeBytes;
             entity.RemoteNodeId = entry.RemoteNodeId;
@@ -33,7 +33,7 @@ namespace Cotton.Sync.State
             entity.RemoteETag = NormalizeNullable(entry.RemoteETag);
             entity.PlaceholderIdentity = Clone(entry.PlaceholderIdentity);
             entity.PlaceholderHydrationState = entry.PlaceholderHydrationState;
-            entity.SyncedAtUtc = ToUtc(entry.SyncedAtUtc) ?? DateTime.UtcNow;
+            entity.SyncedAt = ToUtc(entry.SyncedAtUtc) ?? DateTime.UtcNow;
         }
 
         public static SyncStateEntry ToModel(SyncStateEntity entity)
@@ -44,7 +44,7 @@ namespace Cotton.Sync.State
                 RelativePath = entity.RelativePath,
                 Kind = entity.Kind,
                 LocalContentHash = entity.LocalContentHash,
-                LocalLastWriteUtc = ToUtc(entity.LocalLastWriteUtc),
+                LocalLastWriteUtc = ToUtc(entity.LocalLastWriteAt),
                 LocalSizeBytes = entity.LocalSizeBytes,
                 RemoteSizeBytes = entity.RemoteSizeBytes,
                 RemoteNodeId = entity.RemoteNodeId,
@@ -55,7 +55,7 @@ namespace Cotton.Sync.State
                 RemoteETag = entity.RemoteETag,
                 PlaceholderIdentity = Clone(entity.PlaceholderIdentity),
                 PlaceholderHydrationState = entity.PlaceholderHydrationState,
-                SyncedAtUtc = ToUtc(entity.SyncedAtUtc) ?? DateTime.UtcNow,
+                SyncedAtUtc = ToUtc(entity.SyncedAt) ?? DateTime.UtcNow,
             };
         }
 
@@ -76,7 +76,7 @@ namespace Cotton.Sync.State
             entity.CursorExpired = cursor.CursorExpired;
             entity.EarliestAvailableCursor = cursor.EarliestAvailableCursor;
             entity.HasCompletedFullReconcile = cursor.HasCompletedFullReconcile;
-            entity.UpdatedAtUtc = ToUtc(cursor.UpdatedAtUtc) ?? DateTime.UtcNow;
+            entity.CursorUpdatedAt = ToUtc(cursor.UpdatedAtUtc) ?? DateTime.UtcNow;
         }
 
         public static SyncChangeCursor ToModel(SyncChangeCursorEntity entity)
@@ -88,7 +88,7 @@ namespace Cotton.Sync.State
                 CursorExpired = entity.CursorExpired,
                 EarliestAvailableCursor = entity.EarliestAvailableCursor,
                 HasCompletedFullReconcile = entity.HasCompletedFullReconcile,
-                UpdatedAtUtc = ToUtc(entity.UpdatedAtUtc) ?? DateTime.UtcNow,
+                UpdatedAtUtc = ToUtc(entity.CursorUpdatedAt) ?? DateTime.UtcNow,
             };
         }
 

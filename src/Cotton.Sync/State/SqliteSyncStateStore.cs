@@ -20,6 +20,7 @@ namespace Cotton.Sync.State
         private readonly SyncStateStoreReader _reader;
         private readonly SyncStateLookupReader _lookupReader;
         private readonly SqliteSyncStateDiagnosticsReader _diagnosticsReader;
+        private readonly SqliteSyncStateCompactor _compactor;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SqliteSyncStateStore" /> class.
@@ -31,6 +32,7 @@ namespace Cotton.Sync.State
             _reader = new SyncStateStoreReader(_contextFactory, _initializer);
             _lookupReader = new SyncStateLookupReader(_contextFactory, _initializer);
             _diagnosticsReader = new SqliteSyncStateDiagnosticsReader(_contextFactory, _initializer);
+            _compactor = new SqliteSyncStateCompactor(_contextFactory);
         }
 
         /// <inheritdoc />
@@ -153,7 +155,7 @@ namespace Cotton.Sync.State
                     .ConfigureAwait(false);
                 if (entity is null)
                 {
-                    entity = new SyncStateEntity
+                    entity = new SyncStateEntity(Guid.CreateVersion7())
                     {
                         SyncPairId = entry.SyncPairId,
                         RelativePathKey = key,
@@ -240,7 +242,7 @@ namespace Cotton.Sync.State
                     {
                         if (!existingByKey.TryGetValue(key, out SyncStateEntity? entity))
                         {
-                            entity = new SyncStateEntity
+                            entity = new SyncStateEntity(Guid.CreateVersion7())
                             {
                                 SyncPairId = syncPairId,
                                 RelativePathKey = key,
@@ -342,6 +344,8 @@ namespace Cotton.Sync.State
                         .ConfigureAwait(false);
                     await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
                 }
+
+                await _compactor.TryCompactAsync(cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -374,7 +378,7 @@ namespace Cotton.Sync.State
                     entry.SyncPairId = syncPairId;
                     entry.RelativePath = SyncPath.Normalize(entry.RelativePath);
                     string key = SyncPath.ToKey(entry.RelativePath);
-                    SyncStateEntity entity = new SyncStateEntity
+                    SyncStateEntity entity = new SyncStateEntity(Guid.CreateVersion7())
                     {
                         SyncPairId = syncPairId,
                         RelativePathKey = key,

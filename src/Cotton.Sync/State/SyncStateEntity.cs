@@ -3,6 +3,7 @@
 
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using EasyExtensions.EntityFrameworkCore.Abstractions;
 using Microsoft.EntityFrameworkCore;
 
 namespace Cotton.Sync.State
@@ -15,14 +16,16 @@ namespace Cotton.Sync.State
     [Index(nameof(SyncPairId), nameof(Kind), nameof(RelativePathKey))]
     [Index(nameof(RemoteFileId))]
     [Index(nameof(RemoteNodeId))]
-    public class SyncStateEntity
+    public class SyncStateEntity : BaseEntity<Guid>
     {
-        /// <summary>
-        /// Gets or sets the database row identifier.
-        /// </summary>
-        [Key]
-        [Column("id")]
-        public Guid Id { get; set; } = Guid.NewGuid();
+        public SyncStateEntity()
+        {
+        }
+
+        public SyncStateEntity(Guid id)
+        {
+            Id = id;
+        }
 
         /// <summary>
         /// Gets or sets the sync pair identifier.
@@ -30,7 +33,7 @@ namespace Cotton.Sync.State
         [Required]
         [MaxLength(256)]
         [Column("sync_pair_id")]
-        public string SyncPairId { get; set; } = string.Empty;
+        public string SyncPairId { get; set; } = null!;
 
         /// <summary>
         /// Gets or sets the case-insensitive normalized relative path key.
@@ -38,7 +41,7 @@ namespace Cotton.Sync.State
         [Required]
         [MaxLength(1024)]
         [Column("relative_path_key")]
-        public string RelativePathKey { get; set; } = string.Empty;
+        public string RelativePathKey { get; set; } = null!;
 
         /// <summary>
         /// Gets or sets the display relative path.
@@ -46,7 +49,7 @@ namespace Cotton.Sync.State
         [Required]
         [MaxLength(1024)]
         [Column("relative_path")]
-        public string RelativePath { get; set; } = string.Empty;
+        public string RelativePath { get; set; } = null!;
 
         /// <summary>
         /// Gets or sets the entry kind.
@@ -65,7 +68,7 @@ namespace Cotton.Sync.State
         /// Gets or sets the last synced local write timestamp.
         /// </summary>
         [Column("local_last_write_utc")]
-        public DateTime? LocalLastWriteUtc { get; set; }
+        public DateTime? LocalLastWriteAt { get; set; }
 
         /// <summary>
         /// Gets or sets the last synced local file size.
@@ -133,6 +136,6 @@ namespace Cotton.Sync.State
         /// Gets or sets the timestamp when this baseline was recorded.
         /// </summary>
         [Column("synced_at_utc")]
-        public DateTime SyncedAtUtc { get; set; } = DateTime.UtcNow;
+        public DateTime SyncedAt { get; set; }
     }
 }

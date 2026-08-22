@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -9,9 +8,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Cotton.Sync.State.Migrations
 {
     /// <inheritdoc />
-    [DbContext(typeof(SyncStateDbContext))]
-    [Migration("20260726070000_AddFullReconcileCompletionState")]
-    public sealed class AddFullReconcileCompletionState : Migration
+    public partial class AddFullReconcileCompletionState : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

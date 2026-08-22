@@ -3,6 +3,7 @@
 
 using System.Data.Common;
 using Cotton.Sync.State;
+using Cotton.Sync.TestSupport;
 using Microsoft.EntityFrameworkCore;
 
 namespace Cotton.Sync.Tests.State
@@ -181,13 +182,13 @@ namespace Cotton.Sync.Tests.State
         }
 
         [Test]
-        public async Task InitializeAsync_MigratesExistingCursorAsIncompleteFullReconcile()
+        public async Task InitializeAsync_MigratesExistingCursorsAsIncompleteFullReconcile()
         {
             string databasePath = DatabasePath();
             await CreateMigratedStateDatabaseAsync(
                 databasePath,
                 "20260622002311_AddRemoteFileIdentityMetadata");
-            DbConnectionStringBuilder connectionString = new DbConnectionStringBuilder
+            string connectionString = new DbConnectionStringBuilder
             {
                 ["Data Source"] = databasePath,
                 ["Pooling"] = false,
@@ -197,23 +198,31 @@ namespace Cotton.Sync.Tests.State
                 .Options;
             await using (SyncStateDbContext context = new SyncStateDbContext(options))
             {
-                context.SyncChangeCursors.Add(new SyncChangeCursorEntity
-                {
-                    SyncPairId = "pair-a",
-                    LastCursor = 11944,
-                    UpdatedAtUtc = new DateTime(2026, 7, 26, 6, 13, 1, DateTimeKind.Utc),
-                });
-                await context.SaveChangesAsync();
+                await HistoricalMigrationDataWriter.InsertAsync(
+                    context,
+                    "sync_change_cursors",
+                    ["sync_pair_id", "last_cursor", "cursor_expired", "earliest_available_cursor", "updated_at_utc"],
+                    ["TEXT", "INTEGER", "INTEGER", "INTEGER", "TEXT"],
+                    ["pair-a", 11944L, false, null, new DateTime(2026, 7, 26, 6, 13, 1, DateTimeKind.Utc)]);
+                await HistoricalMigrationDataWriter.InsertAsync(
+                    context,
+                    "sync_change_cursors",
+                    ["sync_pair_id", "last_cursor", "cursor_expired", "earliest_available_cursor", "updated_at_utc"],
+                    ["TEXT", "INTEGER", "INTEGER", "INTEGER", "TEXT"],
+                    ["pair-b", 22000L, false, null, new DateTime(2026, 7, 26, 6, 14, 1, DateTimeKind.Utc)]);
             }
 
             SqliteSyncStateStore store = new SqliteSyncStateStore(databasePath);
             await store.InitializeAsync();
-            SyncChangeCursor cursor = await store.GetChangeCursorAsync("pair-a");
+            SyncChangeCursor pairA = await store.GetChangeCursorAsync("pair-a");
+            SyncChangeCursor pairB = await store.GetChangeCursorAsync("pair-b");
 
             Assert.Multiple(() =>
             {
-                Assert.That(cursor.LastCursor, Is.EqualTo(11944));
-                Assert.That(cursor.HasCompletedFullReconcile, Is.False);
+                Assert.That(pairA.LastCursor, Is.EqualTo(11944));
+                Assert.That(pairA.HasCompletedFullReconcile, Is.False);
+                Assert.That(pairB.LastCursor, Is.EqualTo(22000));
+                Assert.That(pairB.HasCompletedFullReconcile, Is.False);
             });
         }
 

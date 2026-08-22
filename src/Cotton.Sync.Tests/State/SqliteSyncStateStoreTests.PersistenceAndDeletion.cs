@@ -282,13 +282,16 @@ namespace Cotton.Sync.Tests.State
                 .ToArray();
 
             await store.UpsertManyAsync(largePairEntries);
-            await store.UpsertAsync(new SyncStateEntry
-            {
-                SyncPairId = "pair-b",
-                RelativePath = "keep.txt",
-                Kind = SyncEntryKind.File,
-                RemoteContentHash = "keep",
-            });
+            SyncStateEntry[] retainedEntries = Enumerable.Range(0, 501)
+                .Select(index => new SyncStateEntry
+                {
+                    SyncPairId = "pair-b",
+                    RelativePath = "Retained/file-" + index.ToString("D4", System.Globalization.CultureInfo.InvariantCulture) + ".txt",
+                    Kind = SyncEntryKind.File,
+                    RemoteContentHash = "keep-" + index.ToString("D4", System.Globalization.CultureInfo.InvariantCulture),
+                })
+                .ToArray();
+            await store.UpsertManyAsync(retainedEntries);
             await store.SaveChangeCursorAsync(new SyncChangeCursor
             {
                 SyncPairId = "pair-a",
@@ -310,7 +313,8 @@ namespace Cotton.Sync.Tests.State
             {
                 Assert.That(beforeUsage.FileSizeBytes, Is.GreaterThan(4L * 1024 * 1024));
                 Assert.That(pairA, Is.Empty);
-                Assert.That(pairB.Select(entry => entry.RelativePath), Is.EqualTo(new[] { "keep.txt" }));
+                Assert.That(pairB, Has.Count.EqualTo(retainedEntries.Length));
+                Assert.That(pairB.Select(entry => entry.RelativePath), Is.EquivalentTo(retainedEntries.Select(entry => entry.RelativePath)));
                 Assert.That(pairACursor.LastCursor, Is.Zero);
                 Assert.That(afterUsage.FreelistBytes, Is.LessThan(1024 * 1024));
                 Assert.That(afterLength, Is.LessThan(beforeLength / 2));

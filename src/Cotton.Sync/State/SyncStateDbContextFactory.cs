@@ -23,16 +23,21 @@ namespace Cotton.Sync.State
 
         public SyncStateDbContext Create()
         {
-            string connectionString = new DbConnectionStringBuilder
-            {
-                ["Data Source"] = _databasePath,
-                ["Pooling"] = false,
-                ["Default Timeout"] = _commandTimeoutSeconds,
-            }.ToString();
+            string connectionString = CreateConnectionString();
             DbContextOptions<SyncStateDbContext> options = new DbContextOptionsBuilder<SyncStateDbContext>()
                 .UseSqlite(connectionString)
                 .Options;
             return new SyncStateDbContext(options);
+        }
+
+        public SyncStateMaintenanceDbContext CreateMaintenance()
+        {
+            string connectionString = CreateConnectionString();
+            DbContextOptions<SyncStateMaintenanceDbContext> options =
+                new DbContextOptionsBuilder<SyncStateMaintenanceDbContext>()
+                    .UseSqlite(connectionString)
+                    .Options;
+            return new SyncStateMaintenanceDbContext(options);
         }
 
         public void EnsureDirectoryExists()
@@ -42,6 +47,16 @@ namespace Cotton.Sync.State
             {
                 Directory.CreateDirectory(directory);
             }
+        }
+
+        private string CreateConnectionString()
+        {
+            return new DbConnectionStringBuilder
+            {
+                ["Data Source"] = _databasePath,
+                ["Pooling"] = false,
+                ["Default Timeout"] = _commandTimeoutSeconds,
+            }.ToString();
         }
     }
 }

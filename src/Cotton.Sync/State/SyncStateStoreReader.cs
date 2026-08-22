@@ -146,7 +146,7 @@ namespace Cotton.Sync.State
             DateTime? lastSyncedAtUtc = await context.SyncEntries
                 .AsNoTracking()
                 .Where(entry => entry.SyncPairId == syncPairId)
-                .Select(entry => (DateTime?)entry.SyncedAtUtc)
+                .Select(entry => (DateTime?)entry.SyncedAt)
                 .MaxAsync(cancellationToken)
                 .ConfigureAwait(false);
             return SyncStateEntityMapper.ToUtc(lastSyncedAtUtc);

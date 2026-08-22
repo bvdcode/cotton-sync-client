@@ -1,6 +1,7 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using EasyExtensions.EntityFrameworkCore.Database;
 using Microsoft.EntityFrameworkCore;
 
 namespace Cotton.Sync.State
@@ -8,7 +9,7 @@ namespace Cotton.Sync.State
     /// <summary>
     /// Entity Framework context for local synchronization state.
     /// </summary>
-    public class SyncStateDbContext : DbContext
+    public class SyncStateDbContext : AuditedDbContext
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="SyncStateDbContext" /> class.
