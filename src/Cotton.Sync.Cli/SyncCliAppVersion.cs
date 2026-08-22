@@ -1,23 +1,35 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
-using System.Reflection;
+using System.Diagnostics;
 
 namespace Cotton.Sync.Cli
 {
     internal static class SyncCliAppVersion
     {
-        public static string Current => Resolve(typeof(SyncCliAppVersion).Assembly);
+        private const string AssemblyFileName = "Cotton.Sync.Cli.dll";
 
-        internal static string Resolve(Assembly assembly)
+        public static string Current => Resolve(Path.Combine(AppContext.BaseDirectory, AssemblyFileName));
+
+        internal static string Resolve(string assemblyPath)
         {
-            ArgumentNullException.ThrowIfNull(assembly);
-            string? informationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-            string resolved = string.IsNullOrWhiteSpace(informationalVersion)
-                ? assembly.GetName().Version?.ToString() ?? "unknown"
-                : informationalVersion;
-            int metadataStart = resolved.IndexOf('+', StringComparison.Ordinal);
-            return metadataStart > 0 ? resolved[..metadataStart] : resolved;
+            ArgumentException.ThrowIfNullOrWhiteSpace(assemblyPath);
+            if (!File.Exists(assemblyPath))
+            {
+                return "unknown";
+            }
+
+            FileVersionInfo versionInfo = FileVersionInfo.GetVersionInfo(assemblyPath);
+            string? version = string.IsNullOrWhiteSpace(versionInfo.ProductVersion)
+                ? versionInfo.FileVersion
+                : versionInfo.ProductVersion;
+            if (string.IsNullOrWhiteSpace(version))
+            {
+                return "unknown";
+            }
+
+            int metadataStart = version.IndexOf('+', StringComparison.Ordinal);
+            return metadataStart > 0 ? version[..metadataStart] : version;
         }
     }
 }
