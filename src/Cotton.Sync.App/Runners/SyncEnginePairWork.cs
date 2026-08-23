@@ -174,15 +174,29 @@ namespace Cotton.Sync.App.Runners
 
         private static bool CanUseInitialVirtualFilesStreaming(SyncRunRequest request)
         {
-            const SyncRunCause fullReconciliationCauses = SyncRunCause.RealtimeRemoteChange
-                | SyncRunCause.Periodic
-                | SyncRunCause.Resume
-                | SyncRunCause.LocalWatcherError
+            if (request.LocalChangedPaths.Count != 0)
+            {
+                return false;
+            }
+
+            const SyncRunCause recoveryReconciliationCauses = SyncRunCause.LocalWatcherError
                 | SyncRunCause.LocalChangeOverflow
                 | SyncRunCause.LocalRenameRecovery
                 | SyncRunCause.RemoteCursorExpired;
-            return request.LocalChangedPaths.Count == 0
-                && (request.Causes & fullReconciliationCauses) == SyncRunCause.None;
+            if ((request.Causes & recoveryReconciliationCauses) != SyncRunCause.None)
+            {
+                return false;
+            }
+
+            if ((request.Causes & SyncRunCause.InitialPopulation) != SyncRunCause.None)
+            {
+                return true;
+            }
+
+            const SyncRunCause backgroundFullReconciliationCauses = SyncRunCause.RealtimeRemoteChange
+                | SyncRunCause.Periodic
+                | SyncRunCause.Resume;
+            return (request.Causes & backgroundFullReconciliationCauses) == SyncRunCause.None;
         }
 
         private static CoreSyncPair ToCorePair(SyncPairSettings syncPair)

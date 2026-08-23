@@ -83,6 +83,7 @@ namespace Cotton.Sync
                 placeholderBatchSize,
                 context.Options.InitialVirtualFilesPlaceholderConcurrency,
                 directoryTreePopulationObserver is not null,
+                context.StreamingPlan.CurrentPlaceholderBaselineByPath.Count > 0,
                 PathComparer);
 
             try
@@ -183,8 +184,8 @@ namespace Cotton.Sync
             InitialVirtualFilesConsumerState state,
             RemoteFileSnapshot file)
         {
-            string fileKey = RecordInitialVirtualFilesRemotePath(state, file.RelativePath);
-            state.StreamedRemoteFileKeys.Add(fileKey);
+            string normalizedPath = RecordInitialVirtualFilesRemotePath(state, file.RelativePath);
+            state.StreamedRemoteFilePaths?.Add(normalizedPath);
             InitialVirtualFilesFileWorkResult? currentPlaceholderWorkResult =
                 fileBatchProcessor.TryCreateCurrentInitialVirtualFilesFileWorkResult(context.SyncPair, file, context.StreamingPlan);
             if (currentPlaceholderWorkResult is not null)
@@ -227,14 +228,13 @@ namespace Cotton.Sync
             string relativePath)
         {
             string normalizedPath = SyncPath.Normalize(relativePath);
-            string pathKey = SyncPath.ToKey(normalizedPath);
-            if (state.StreamedRemotePathByKey.TryGetValue(pathKey, out string? existingPath))
+            if (state.StreamedRemotePaths.TryGetValue(normalizedPath, out string? existingPath))
             {
                 throw new SyncPathCollisionException(existingPath, normalizedPath);
             }
 
-            state.StreamedRemotePathByKey.Add(pathKey, normalizedPath);
-            return pathKey;
+            state.StreamedRemotePaths.Add(normalizedPath);
+            return normalizedPath;
         }
 
         private async Task FinalizeInitialVirtualFilesPopulationAsync(
@@ -262,7 +262,7 @@ namespace Cotton.Sync
                     context.Options,
                     context.Result,
                     context.StreamingPlan,
-                    state.StreamedRemoteFileKeys,
+                    state.StreamedRemoteFilePaths,
                     context.CancellationToken)
                 .ConfigureAwait(false);
             await FlushInitialVirtualFilesPopulationStateAsync(context, state).ConfigureAwait(false);
@@ -321,7 +321,7 @@ namespace Cotton.Sync
             SyncRunOptions options,
             SyncRunResult result,
             InitialVirtualFilesStreamingPlan streamingPlan,
-            IReadOnlySet<string> streamedRemoteFileKeys,
+            IReadOnlySet<string>? streamedRemoteFilePaths,
             CancellationToken cancellationToken)
         {
             if (streamingPlan.CurrentPlaceholderBaselineByPath.Count == 0)
@@ -329,10 +329,15 @@ namespace Cotton.Sync
                 return;
             }
 
-            List<InitialVirtualFilesPlaceholderBaseline> missingBaselines = [];
-            foreach ((string pathKey, InitialVirtualFilesPlaceholderBaseline baseline) in streamingPlan.CurrentPlaceholderBaselineByPath)
+            if (streamedRemoteFilePaths is null)
             {
-                if (!streamedRemoteFileKeys.Contains(pathKey))
+                throw new InvalidOperationException("Remote file paths were not tracked for resume finalization.");
+            }
+
+            List<InitialVirtualFilesPlaceholderBaseline> missingBaselines = [];
+            foreach (InitialVirtualFilesPlaceholderBaseline baseline in streamingPlan.CurrentPlaceholderBaselineByPath.Values)
+            {
+                if (!streamedRemoteFilePaths.Contains(baseline.RelativePath))
                 {
                     missingBaselines.Add(baseline);
                 }

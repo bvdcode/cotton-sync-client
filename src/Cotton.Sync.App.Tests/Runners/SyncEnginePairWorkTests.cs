@@ -167,6 +167,27 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task RunOnceAsync_UsesStreamingFastPathForInitialPopulationResume()
+        {
+            FakeSyncEngine engine = new();
+            SyncEnginePairWork work = new(engine);
+            SyncPairSettings syncPair = CreateSyncPair(Guid.NewGuid());
+            syncPair.Mode = SyncPairMode.WindowsVirtualFiles;
+
+            await work.RunOnceAsync(
+                syncPair,
+                SyncRunRequest.ForFull(SyncRunCause.InitialPopulation | SyncRunCause.Resume));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(engine.LastOptions, Is.Not.Null);
+                Assert.That(engine.LastOptions!.Scope.IsFull, Is.True);
+                Assert.That(engine.LastOptions.AllowInitialVirtualFilesStreaming, Is.True);
+                Assert.That(engine.LastOptions.RestoreMissingRemoteOnlyPlaceholders, Is.True);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_PublishesCoreSyncActivities()
         {
             Guid syncPairId = Guid.NewGuid();

@@ -12,6 +12,7 @@ namespace Cotton.Sync
         int placeholderBatchSize,
         int placeholderConcurrency,
         bool trackDirectoryFinalization,
+        bool trackMissingRemoteFiles,
         StringComparer pathComparer)
     {
         public List<SyncStateEntry> PendingFileStates { get; } = new(stateBatchSize);
@@ -28,8 +29,10 @@ namespace Cotton.Sync
                 ? new Dictionary<string, RemoteDirectoryMaterializationRequest>(pathComparer)
                 : null;
 
-        public HashSet<string> StreamedRemoteFileKeys { get; } = new(pathComparer);
+        public HashSet<string>? StreamedRemoteFilePaths { get; } = trackMissingRemoteFiles
+            ? new HashSet<string>(pathComparer)
+            : null;
 
-        public Dictionary<string, string> StreamedRemotePathByKey { get; } = new(pathComparer);
+        public HashSet<string> StreamedRemotePaths { get; } = new(pathComparer);
     }
 }
