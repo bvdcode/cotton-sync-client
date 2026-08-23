@@ -103,11 +103,32 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(trayController, Does.Contain("DetachTrayCommandHandlers(_viewModel)"));
                 Assert.That(
                     trayController,
-                    Does.Contain("viewModel.PauseResumeCommand.CanExecuteChanged += OnTrayCommandCanExecuteChanged"));
+                    Does.Contain("viewModel.PauseCommand.CanExecuteChanged += OnTrayCommandCanExecuteChanged"));
                 Assert.That(
                     trayController,
-                    Does.Contain("viewModel.PauseResumeCommand.CanExecuteChanged -= OnTrayCommandCanExecuteChanged"));
+                    Does.Contain("viewModel.ResumeCommand.CanExecuteChanged += OnTrayCommandCanExecuteChanged"));
+                Assert.That(
+                    trayController,
+                    Does.Contain("viewModel.PauseCommand.CanExecuteChanged -= OnTrayCommandCanExecuteChanged"));
+                Assert.That(
+                    trayController,
+                    Does.Contain("viewModel.ResumeCommand.CanExecuteChanged -= OnTrayCommandCanExecuteChanged"));
                 Assert.That(trayController, Does.Contain("RunOnUiThread(UpdateTrayActions)"));
+            });
+        }
+
+        [Test]
+        public void TrayStatus_UpdatesWindowsTaskbarOverlay()
+        {
+            string trayController = File.ReadAllText(GetDesktopShellFilePath("DesktopTrayController.cs"));
+            string taskbarOverlay = File.ReadAllText(GetDesktopShellFilePath("WindowsTaskbarStatusOverlay.cs"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(trayController, Does.Contain("_taskbarStatusOverlay?.Update(status.Kind)"));
+                Assert.That(trayController, Does.Contain("_taskbarStatusOverlay?.Dispose()"));
+                Assert.That(taskbarOverlay, Does.Contain("taskbar.SetOverlayIcon("));
+                Assert.That(taskbarOverlay, Does.Contain("DesktopTaskbarOverlayIconAssetResolver.Resolve(kind)"));
             });
         }
 

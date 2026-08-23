@@ -15,6 +15,7 @@ namespace Cotton.Sync.Desktop.Shell
     {
         private readonly IClassicDesktopStyleApplicationLifetime _lifetime;
         private readonly MainWindow _window;
+        private readonly WindowsTaskbarStatusOverlay? _taskbarStatusOverlay;
         private readonly TrayIcon _trayIcon;
         private NativeMenuItem? _showMenuItem;
         private NativeMenuItem? _openFolderMenuItem;
@@ -31,6 +32,9 @@ namespace Cotton.Sync.Desktop.Shell
         {
             _window = window ?? throw new ArgumentNullException(nameof(window));
             _lifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
+            _taskbarStatusOverlay = OperatingSystem.IsWindows()
+                ? new WindowsTaskbarStatusOverlay(_window)
+                : null;
             _trayIcon = CreateTrayIcon();
             AttachViewModel(_window.DataContext as ShellViewModel);
         }
@@ -45,6 +49,11 @@ namespace Cotton.Sync.Desktop.Shell
             }
 
             AttachViewModel(null);
+            if (OperatingSystem.IsWindows())
+            {
+                _taskbarStatusOverlay?.Dispose();
+            }
+
             _trayIcon.Dispose();
             _disposed = true;
         }
@@ -117,7 +126,8 @@ namespace Cotton.Sync.Desktop.Shell
             viewModel.OpenTrayFolderCommand.CanExecuteChanged += OnTrayCommandCanExecuteChanged;
             viewModel.OpenWebCommand.CanExecuteChanged += OnTrayCommandCanExecuteChanged;
             viewModel.SyncNowCommand.CanExecuteChanged += OnTrayCommandCanExecuteChanged;
-            viewModel.PauseResumeCommand.CanExecuteChanged += OnTrayCommandCanExecuteChanged;
+            viewModel.PauseCommand.CanExecuteChanged += OnTrayCommandCanExecuteChanged;
+            viewModel.ResumeCommand.CanExecuteChanged += OnTrayCommandCanExecuteChanged;
             viewModel.ShowSettingsCommand.CanExecuteChanged += OnTrayCommandCanExecuteChanged;
         }
 
@@ -126,7 +136,8 @@ namespace Cotton.Sync.Desktop.Shell
             viewModel.OpenTrayFolderCommand.CanExecuteChanged -= OnTrayCommandCanExecuteChanged;
             viewModel.OpenWebCommand.CanExecuteChanged -= OnTrayCommandCanExecuteChanged;
             viewModel.SyncNowCommand.CanExecuteChanged -= OnTrayCommandCanExecuteChanged;
-            viewModel.PauseResumeCommand.CanExecuteChanged -= OnTrayCommandCanExecuteChanged;
+            viewModel.PauseCommand.CanExecuteChanged -= OnTrayCommandCanExecuteChanged;
+            viewModel.ResumeCommand.CanExecuteChanged -= OnTrayCommandCanExecuteChanged;
             viewModel.ShowSettingsCommand.CanExecuteChanged -= OnTrayCommandCanExecuteChanged;
         }
 
@@ -150,6 +161,7 @@ namespace Cotton.Sync.Desktop.Shell
             }
 
             if (e.PropertyName is nameof(ShellViewModel.PauseResumeTrayLabel)
+                or nameof(ShellViewModel.PauseResumeCommand)
                 or nameof(ShellViewModel.CanSyncNow)
                 or nameof(ShellViewModel.CanTogglePauseResumeSync)
                 or nameof(ShellViewModel.CanShowPauseResumeTrayAction)
@@ -185,6 +197,11 @@ namespace Cotton.Sync.Desktop.Shell
                 _viewModel.CurrentWorkProgressHeaderDetails,
                 _viewModel.CurrentTrayActivityKind);
             _trayIcon.ToolTipText = status.ToolTipText;
+            if (OperatingSystem.IsWindows())
+            {
+                _taskbarStatusOverlay?.Update(status.Kind);
+            }
+
             if (_currentIconUri != status.IconUri)
             {
                 _trayIcon.Icon = LoadIcon(status.IconUri);

@@ -38,6 +38,9 @@
     <AvaloniaResource Include="Assets/icon-192.png" />
     <AvaloniaResource Include="Assets/favicon.ico" />
     <AvaloniaResource Include="Assets/tray-*.png" />
+    <Content Include="Assets/taskbar-*.ico"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets/icon-192.png"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />

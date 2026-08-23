@@ -249,5 +249,44 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             Assert.Throws<ArgumentOutOfRangeException>(
                 () => DesktopTrayIconAssetResolver.Resolve(DesktopTrayStatusKind.Unknown));
         }
+
+        [Test]
+        public void TaskbarOverlayResolve_ClearsIdleAndSignedOutStates()
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(DesktopTaskbarOverlayIconAssetResolver.Resolve(DesktopTrayStatusKind.Idle), Is.Null);
+                Assert.That(DesktopTaskbarOverlayIconAssetResolver.Resolve(DesktopTrayStatusKind.SignedOut), Is.Null);
+            });
+        }
+
+        [Test]
+        public void TaskbarOverlayResolve_ReturnsDedicatedActivityAssets()
+        {
+            (DesktopTrayStatusKind Kind, string AssetName)[] cases =
+            [
+                (DesktopTrayStatusKind.Syncing, "taskbar-syncing.ico"),
+                (DesktopTrayStatusKind.Paused, "taskbar-paused.ico"),
+                (DesktopTrayStatusKind.Offline, "taskbar-offline.ico"),
+                (DesktopTrayStatusKind.Error, "taskbar-error.ico"),
+                (DesktopTrayStatusKind.Uploading, "taskbar-uploading.ico"),
+                (DesktopTrayStatusKind.Downloading, "taskbar-downloading.ico"),
+                (DesktopTrayStatusKind.FreeingSpace, "taskbar-freeing-space.ico"),
+            ];
+
+            foreach ((DesktopTrayStatusKind kind, string assetName) in cases)
+            {
+                string? iconPath = DesktopTaskbarOverlayIconAssetResolver.Resolve(kind);
+
+                Assert.That(iconPath, Does.EndWith(Path.Combine("Assets", assetName)));
+            }
+        }
+
+        [Test]
+        public void TaskbarOverlayResolve_RejectsUnknownState()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => DesktopTaskbarOverlayIconAssetResolver.Resolve(DesktopTrayStatusKind.Unknown));
+        }
     }
 }
