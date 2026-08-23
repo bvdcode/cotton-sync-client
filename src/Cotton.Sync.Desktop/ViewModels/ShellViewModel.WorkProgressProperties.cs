@@ -334,7 +334,6 @@ namespace Cotton.Sync.Desktop.ViewModels
             {
                 if (SetProperty(ref _isAddingSyncPair, value))
                 {
-                    OnPropertyChanged(nameof(IsAddSyncPairSetupProgressVisible));
                     OnPropertyChanged(nameof(AddSyncPairSetupProgressMessage));
                     OnPropertyChanged(nameof(RemoteFolderWizardPrimaryActionText));
                     OnPropertyChanged(nameof(RemoteFolderWizardPrimaryActionToolTip));
@@ -343,11 +342,9 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
         }
 
-        public bool IsAddSyncPairSetupProgressVisible => IsAddingSyncPair && IsAddSyncPairWizardVisible;
-
         public string AddSyncPairSetupProgressMessage => SelectedSyncMode == SyncPairMode.WindowsVirtualFiles
-            ? "Registering virtual files and starting sync"
-            : "Saving sync folder and starting sync";
+            ? "Connecting virtual files"
+            : "Saving sync folder";
 
         public bool IsBrowserSignInPending
         {

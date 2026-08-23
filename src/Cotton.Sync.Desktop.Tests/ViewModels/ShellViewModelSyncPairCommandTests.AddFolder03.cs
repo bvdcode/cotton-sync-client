@@ -86,7 +86,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
 
         [Test]
-        public async Task UseRemoteFolderCommand_ShowsSetupProgressWithoutGlobalBusyWhileAddPairIsPending()
+        public async Task UseRemoteFolderCommand_ClosesWizardAndShowsGlobalSetupProgressWhileAddPairIsPending()
         {
             Guid existingPairId = Guid.NewGuid();
             TaskCompletionSource<SyncPairSettings> addPairCompletion = new TaskCompletionSource<SyncPairSettings>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -109,14 +109,12 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Assert.Multiple(() =>
             {
                 Assert.That(viewModel.IsBusy, Is.False);
-                Assert.That(viewModel.IsAddSyncPairSetupProgressVisible, Is.True);
+                Assert.That(viewModel.IsAddSyncPairWizardVisible, Is.False);
                 Assert.That(
                     viewModel.AddSyncPairSetupProgressMessage,
-                    Is.EqualTo("Registering virtual files and starting sync"));
-                Assert.That(
-                    viewModel.RemoteFolderWizardPrimaryActionText,
-                    Is.EqualTo("Registering virtual files and starting sync"));
-                Assert.That(viewModel.RemoteFolderWizardPrimaryActionToolTip, Is.EqualTo("Setting up this sync folder"));
+                    Is.EqualTo("Connecting virtual files"));
+                Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Connecting virtual files"));
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Adding sync folder"));
                 Assert.That(viewModel.UseRemoteFolderCommand.CanExecute(null), Is.False);
                 Assert.That(viewModel.SyncNowCommand.CanExecute(null), Is.True);
             });
@@ -138,9 +136,42 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Assert.Multiple(() =>
             {
                 Assert.That(viewModel.IsAddingSyncPair, Is.False);
-                Assert.That(viewModel.IsAddSyncPairSetupProgressVisible, Is.False);
                 Assert.That(viewModel.IsAddSyncPairWizardVisible, Is.False);
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Sync requested"));
+            });
+        }
+
+        [Test]
+        public async Task UseRemoteFolderCommand_ReopensWizardWithSelectionWhenSetupFails()
+        {
+            TaskCompletionSource<SyncPairSettings> addPairCompletion =
+                new TaskCompletionSource<SyncPairSettings>(TaskCreationOptions.RunContinuationsAsynchronously);
+            FakeDesktopShellController controller = new FakeDesktopShellController(CreateSignedInSnapshot(
+                platformCapabilities: CreatePlatformCapabilities(windowsVirtualFilesSupported: true)))
+            {
+                AddSyncPairCompletion = addPairCompletion,
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            viewModel.LocalFolderPath = @"C:\Users\QA\Cloud";
+            await ExecuteAsync(viewModel.ShowAddSyncPairCommand);
+            viewModel.RemoteFolderPath = "/Documents";
+            viewModel.IsWindowsVirtualFilesSyncModeSelected = true;
+
+            Task commandTask = ExecuteAsync(viewModel.UseRemoteFolderCommand);
+            await WaitForAsync(() => controller.AddedSyncPairRequest is not null && !viewModel.IsAddSyncPairWizardVisible);
+            addPairCompletion.SetException(new InvalidOperationException("Registration failed."));
+            await commandTask;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.IsAddingSyncPair, Is.False);
+                Assert.That(viewModel.IsAddSyncPairWizardVisible, Is.True);
+                Assert.That(viewModel.LocalFolderPath, Is.EqualTo(@"C:\Users\QA\Cloud"));
+                Assert.That(viewModel.RemoteFolderPath, Is.EqualTo("/Documents"));
+                Assert.That(viewModel.IsWindowsVirtualFilesSyncModeSelected, Is.True);
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Action required"));
+                Assert.That(viewModel.ActionRequiredMessage, Does.Contain("Registration failed"));
             });
         }
     }

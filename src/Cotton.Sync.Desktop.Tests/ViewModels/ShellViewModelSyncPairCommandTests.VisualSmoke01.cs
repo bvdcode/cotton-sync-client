@@ -104,6 +104,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsAddSyncPairWizardVisible, Is.True);
                 Assert.That(viewModel.IsAddSyncPairLocalStepVisible, Is.False);
                 Assert.That(viewModel.IsAddSyncPairCloudStepVisible, Is.True);
+                Assert.That(viewModel.IsWindowsVirtualFilesSupported, Is.True);
+                Assert.That(viewModel.IsFutureSyncModesVisible, Is.True);
                 Assert.That(viewModel.LocalFolderPath, Is.Not.Empty);
                 Assert.That(viewModel.RemoteBrowserPath, Is.EqualTo("/"));
                 Assert.That(viewModel.RemoteFolderPath, Is.EqualTo("/"));

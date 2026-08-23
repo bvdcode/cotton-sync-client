@@ -77,6 +77,20 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(cloudStep, Does.Contain("Content=\"Virtual\""));
                 Assert.That(cloudStep, Does.Contain("Content=\"{Binding RemoteFolderWizardPrimaryActionText}\""));
                 Assert.That(cloudStep, Does.Contain("<Grid Grid.Row=\"3\""));
+                Assert.That(cloudStep, Does.Contain("RowDefinitions=\"Auto,Auto,Auto\""));
+                Assert.That(cloudStep, Does.Contain("<Button Grid.Row=\"1\""));
+                Assert.That(cloudStep, Does.Contain("HorizontalAlignment=\"Stretch\""));
+                Assert.That(cloudStep, Does.Contain("<StackPanel Grid.Row=\"2\""));
+                Assert.That(cloudStep, Does.Contain("Spacing=\"5\""));
+                Assert.That(cloudStep, Does.Contain("TextWrapping=\"Wrap\""));
+                Assert.That(cloudStep, Does.Not.Contain("IsAddSyncPairSetupProgressVisible"));
+                Assert.That(cloudStep, Does.Not.Contain("AddSyncPairSetupProgressMessage"));
+                Assert.That(
+                    cloudStep,
+                    Does.Not.Contain(
+                        "<Grid Grid.Row=\"3\"" + Environment.NewLine
+                        + "                  RowDefinitions=\"Auto,Auto\"" + Environment.NewLine
+                        + "                  ColumnDefinitions=\"*,Auto\""));
                 Assert.That(cloudStep.IndexOf("</ScrollViewer>", StringComparison.Ordinal), Is.LessThan(
                     cloudStep.IndexOf("Content=\"{Binding RemoteFolderWizardPrimaryActionText}\"", StringComparison.Ordinal)));
                 Assert.That(cloudStep.IndexOf("Content=\"Virtual\"", StringComparison.Ordinal), Is.LessThan(

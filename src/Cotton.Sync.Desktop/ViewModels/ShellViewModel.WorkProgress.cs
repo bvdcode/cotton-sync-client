@@ -41,7 +41,6 @@ namespace Cotton.Sync.Desktop.ViewModels
             OnPropertyChanged(nameof(IsAddSyncPairCloudStepVisible));
             OnPropertyChanged(nameof(IsCreateRemoteFolderVisible));
             OnPropertyChanged(nameof(IsRemoteFolderLoadingVisible));
-            OnPropertyChanged(nameof(IsAddSyncPairSetupProgressVisible));
             OnPropertyChanged(nameof(AddSyncPairWizardTitle));
             OnPropertyChanged(nameof(AddSyncPairWizardSubtitle));
             OnPropertyChanged(nameof(IsAddSyncPairLocalSummaryVisible));
@@ -88,6 +87,11 @@ namespace Cotton.Sync.Desktop.ViewModels
             if (IsExportingDiagnostics)
             {
                 return DiagnosticsExportProgressMessage;
+            }
+
+            if (IsAddingSyncPair)
+            {
+                return AddSyncPairSetupProgressMessage;
             }
 
             if (SyncPairs.Count == 0)

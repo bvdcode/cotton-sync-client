@@ -24,20 +24,20 @@ namespace Cotton.Sync.Desktop.ViewModels
     {
         private async Task AddSyncPairAsync()
         {
+            DesktopSyncPairRequest request = new(LocalFolderPath, RemoteFolderPath, SelectedSyncMode);
             IsAddingSyncPair = true;
             GlobalStatus = "Adding sync folder";
             RefreshCurrentProgressText();
+            IsAddSyncPairWizardVisible = false;
             try
             {
-                SyncPairSettings syncPair = await _controller.AddSyncPairAsync(
-                    new DesktopSyncPairRequest(LocalFolderPath, RemoteFolderPath, SelectedSyncMode)).ConfigureAwait(true);
+                SyncPairSettings syncPair = await _controller.AddSyncPairAsync(request).ConfigureAwait(true);
                 SyncPairRowViewModel row = ToRow(syncPair);
                 SyncPairs.Add(row);
                 SelectedSyncPair = row;
                 LocalFolderPath = string.Empty;
                 RemoteFolderPath = string.Empty;
                 SelectedSyncMode = SyncPairMode.FullMirror;
-                IsAddSyncPairWizardVisible = false;
                 ActionRequiredMessage = string.Empty;
                 RemoteFolders.Clear();
                 IsSelectedSyncPairEditorVisible = false;
@@ -46,6 +46,11 @@ namespace Cotton.Sync.Desktop.ViewModels
                 AddActivity("Pair", syncPair.LocalRootPath, "Folder added and initial sync requested");
                 RefreshDiagnosticsItems();
                 RaiseCommandStates();
+            }
+            catch
+            {
+                IsAddSyncPairWizardVisible = true;
+                throw;
             }
             finally
             {

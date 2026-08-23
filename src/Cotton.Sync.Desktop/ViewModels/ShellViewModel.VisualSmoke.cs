@@ -64,6 +64,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 case DesktopVisualSmokeScenario.AddFolder:
                 case DesktopVisualSmokeScenario.AddFolderManyRemoteFolders:
                     LocalFolderPath = CreateVisualSmokeLocalRootPath();
+                    IsWindowsVirtualFilesSupported = true;
                     IsAddSyncPairWizardVisible = true;
                     await LoadRemoteFoldersAsync("/").ConfigureAwait(true);
                     return true;
