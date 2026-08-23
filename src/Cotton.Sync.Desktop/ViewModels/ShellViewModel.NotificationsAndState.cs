@@ -302,6 +302,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             OnPropertyChanged(nameof(CanShowPauseResumeTrayAction));
             OnPropertyChanged(nameof(PauseResumeSyncLabel));
             OnPropertyChanged(nameof(PauseResumeTrayLabel));
+            OnPropertyChanged(nameof(PauseResumeCommand));
             OnPropertyChanged(nameof(IsSyncPaused));
             OnPropertyChanged(nameof(HasStatusAttention));
             OnPropertyChanged(nameof(HasOfflineStatus));

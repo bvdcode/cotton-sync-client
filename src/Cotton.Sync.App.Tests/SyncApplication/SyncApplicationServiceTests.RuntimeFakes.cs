@@ -39,6 +39,12 @@ namespace Cotton.Sync.App.Tests.SyncApplication
 
             public int PauseAllCallCount { get; private set; }
 
+            public int ResumeAllCallCount { get; private set; }
+
+            public TaskCompletionSource<bool>? PauseAllCompletion { get; set; }
+
+            public TaskCompletionSource<bool>? ResumeAllCompletion { get; set; }
+
             public bool LastStartPaused { get; private set; }
 
             public Task StartAsync(CancellationToken cancellationToken = default)
@@ -81,10 +87,13 @@ namespace Cotton.Sync.App.Tests.SyncApplication
                 return SyncNowAsync(syncPairId, cancellationToken);
             }
 
-            public Task PauseAllAsync(CancellationToken cancellationToken = default)
+            public async Task PauseAllAsync(CancellationToken cancellationToken = default)
             {
                 PauseAllCallCount++;
-                return Task.CompletedTask;
+                if (PauseAllCompletion is not null)
+                {
+                    await PauseAllCompletion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                }
             }
 
             public Task PauseAsync(Guid syncPairId, CancellationToken cancellationToken = default)
@@ -92,9 +101,13 @@ namespace Cotton.Sync.App.Tests.SyncApplication
                 return Task.CompletedTask;
             }
 
-            public Task ResumeAllAsync(CancellationToken cancellationToken = default)
+            public async Task ResumeAllAsync(CancellationToken cancellationToken = default)
             {
-                return Task.CompletedTask;
+                ResumeAllCallCount++;
+                if (ResumeAllCompletion is not null)
+                {
+                    await ResumeAllCompletion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                }
             }
 
             public Task ResumeAsync(Guid syncPairId, CancellationToken cancellationToken = default)

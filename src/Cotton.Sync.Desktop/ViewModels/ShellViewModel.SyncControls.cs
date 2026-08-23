@@ -44,17 +44,19 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
         }
 
-        private Task PauseResumeAsync()
-        {
-            return IsSyncPaused ? ResumeAsync() : PauseAsync();
-        }
-
         private async Task ResumeAsync()
         {
-            await _controller.ResumeAllAsync().ConfigureAwait(true);
-            GlobalStatus = "Ready";
+            GlobalStatus = "Resuming";
             ActionRequiredMessage = string.Empty;
             SetAllPairStatuses("Idle", enabledOnly: true);
+            RefreshCurrentProgressText();
+            await _controller.ResumeAllAsync().ConfigureAwait(true);
+            if (IsSyncPaused || IsSyncPausePending)
+            {
+                return;
+            }
+
+            GlobalStatus = "Ready";
             RefreshCurrentProgressText();
             AddActivity("Sync", string.Empty, "Synchronization resumed");
         }

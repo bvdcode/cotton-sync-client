@@ -137,11 +137,14 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             }
 
 
-            public Task ResumeAllAsync(CancellationToken cancellationToken = default)
+            public async Task ResumeAllAsync(CancellationToken cancellationToken = default)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 ResumeAllCalls++;
-                return Task.CompletedTask;
+                if (ResumeAllCompletion is not null)
+                {
+                    await ResumeAllCompletion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                }
             }
 
 

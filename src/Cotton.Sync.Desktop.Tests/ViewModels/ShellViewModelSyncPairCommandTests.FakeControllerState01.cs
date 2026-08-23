@@ -192,6 +192,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             public TaskCompletionSource<bool>? PauseAllCompletion { get; set; }
 
+            public TaskCompletionSource<bool>? ResumeAllCompletion { get; set; }
+
 
             public int ExportDiagnosticsCalls { get; private set; }
 

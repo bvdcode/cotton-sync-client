@@ -144,7 +144,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public AsyncRelayCommand PauseCommand { get; }
 
-        public AsyncRelayCommand PauseResumeCommand { get; }
+        public AsyncRelayCommand PauseResumeCommand => IsSyncPaused ? ResumeCommand : PauseCommand;
 
         public AsyncRelayCommand ResumeCommand { get; }
 

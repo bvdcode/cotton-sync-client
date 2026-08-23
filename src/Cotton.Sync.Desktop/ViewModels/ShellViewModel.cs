@@ -275,7 +275,6 @@ namespace Cotton.Sync.Desktop.ViewModels
                 HandleCommandError);
             PauseCommand = new AsyncRelayCommand(PauseAsync, () => CanPauseSync, HandleCommandError);
             ResumeCommand = new AsyncRelayCommand(ResumeAsync, () => CanResumeSync, HandleCommandError);
-            PauseResumeCommand = new AsyncRelayCommand(PauseResumeAsync, () => CanTogglePauseResumeSync, HandleCommandError);
             SignOutCommand = new AsyncRelayCommand(SignOutAsync, () => IsSignedIn, HandleCommandError);
             OpenFolderCommand = new AsyncRelayCommand(
                 OpenFolderAsync,

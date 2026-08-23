@@ -190,6 +190,51 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
 
         [Test]
+        public async Task PauseResumeCommand_OffersPauseWhileResumedSyncIsStillRunning()
+        {
+            TaskCompletionSource<bool> resumeAllCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Guid syncPairId = Guid.NewGuid();
+            FakeDesktopShellController controller = new(
+                CreateSignedInSnapshot(CreatePair(syncPairId, "Cloud", "Paused")))
+            {
+                ResumeAllCompletion = resumeAllCompletion,
+            };
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+
+            AsyncRelayCommand resumeCommand = viewModel.PauseResumeCommand;
+            resumeCommand.Execute(null);
+            await WaitForAsync(() => resumeCommand.IsRunning && controller.ResumeAllCalls == 1);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.PauseResumeCommand, Is.SameAs(viewModel.PauseCommand));
+                Assert.That(viewModel.PauseResumeCommand.CanExecute(null), Is.True);
+                Assert.That(viewModel.PauseResumeSyncLabel, Is.EqualTo("Pause sync"));
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Resuming"));
+            });
+
+            await ExecuteAsync(viewModel.PauseResumeCommand);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(controller.PauseAllCalls, Is.EqualTo(1));
+                Assert.That(viewModel.IsSyncPaused, Is.True);
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Paused"));
+            });
+
+            resumeAllCompletion.SetResult(true);
+            await WaitForAsync(() => !resumeCommand.IsRunning);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(viewModel.IsSyncPaused, Is.True);
+                Assert.That(viewModel.GlobalStatus, Is.EqualTo("Paused"));
+            });
+        }
+
+
+        [Test]
         public async Task GlobalSyncCommands_DoNotChangeDisabledPairRows()
         {
             Guid enabledPairId = Guid.NewGuid();

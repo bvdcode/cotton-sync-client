@@ -26,14 +26,14 @@ namespace Cotton.Sync.App.SyncApplication
 
         public async Task PauseAllAsync(CancellationToken cancellationToken)
         {
-            await _supervisor.PauseAllAsync(cancellationToken).ConfigureAwait(false);
             await SaveAsync(isPaused: true, cancellationToken).ConfigureAwait(false);
+            await _supervisor.PauseAllAsync(cancellationToken).ConfigureAwait(false);
         }
 
         public async Task ResumeAllAsync(CancellationToken cancellationToken)
         {
-            await _supervisor.ResumeAllAsync(cancellationToken).ConfigureAwait(false);
             await SaveAsync(isPaused: false, cancellationToken).ConfigureAwait(false);
+            await _supervisor.ResumeAllAsync(cancellationToken).ConfigureAwait(false);
         }
 
         public Task ResetAsync(CancellationToken cancellationToken)
