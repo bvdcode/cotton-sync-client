@@ -246,7 +246,8 @@ namespace Cotton.Sync.Desktop.Startup
             DesktopTraceLogging.Install(paths);
             try
             {
-                IDesktopUpdateInstaller effectiveInstaller = updateInstaller ?? CreateUpdateInstallSmokeInstaller();
+                IDesktopUpdateInstaller effectiveInstaller = updateInstaller
+                    ?? CreateUpdateInstallSmokeInstaller(paths.DataDirectory);
                 return await RunUpdateInstallWorkflowAsync(
                         paths,
                         startupOptions,
@@ -357,9 +358,11 @@ namespace Cotton.Sync.Desktop.Startup
                 });
         }
 
-        private static DesktopUpdateInstaller CreateUpdateInstallSmokeInstaller()
+        private static DesktopUpdateInstaller CreateUpdateInstallSmokeInstaller(string dataDirectory)
         {
-            return new DesktopUpdateInstaller(new DesktopUpdateInstallerProcessLauncher(TimeSpan.FromSeconds(2)));
+            return new DesktopUpdateInstaller(
+                new DesktopUpdateInstallerProcessLauncher(TimeSpan.FromSeconds(2)),
+                dataDirectory);
         }
 
         private static string? ValidateUpdateDiscoverySmokeOptions(DesktopStartupOptions startupOptions)

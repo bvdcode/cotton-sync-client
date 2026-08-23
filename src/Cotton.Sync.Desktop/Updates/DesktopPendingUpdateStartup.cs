@@ -47,7 +47,7 @@ namespace Cotton.Sync.Desktop.Updates
                 }
 
                 store.Save(update with { AttemptCount = update.AttemptCount + 1 });
-                (installer ?? new DesktopUpdateInstaller()).StartSilentInstall(
+                (installer ?? new DesktopUpdateInstaller(paths.DataDirectory)).StartSilentInstall(
                     update.InstallerPath,
                     launchAfterUpdate: true);
                 return true;

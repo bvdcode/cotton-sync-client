@@ -7,16 +7,21 @@ namespace Cotton.Sync.Desktop.Updates
     {
         private static readonly TimeSpan EarlyFailureProbeTimeout = TimeSpan.FromSeconds(2);
 
+        private readonly string _launchDataDirectory;
         private readonly IDesktopUpdateInstallerProcessLauncher _processLauncher;
 
-        public DesktopUpdateInstaller()
-            : this(new DesktopUpdateInstallerProcessLauncher(EarlyFailureProbeTimeout))
+        public DesktopUpdateInstaller(string launchDataDirectory)
+            : this(new DesktopUpdateInstallerProcessLauncher(EarlyFailureProbeTimeout), launchDataDirectory)
         {
         }
 
-        internal DesktopUpdateInstaller(IDesktopUpdateInstallerProcessLauncher processLauncher)
+        internal DesktopUpdateInstaller(
+            IDesktopUpdateInstallerProcessLauncher processLauncher,
+            string launchDataDirectory)
         {
             _processLauncher = processLauncher ?? throw new ArgumentNullException(nameof(processLauncher));
+            ArgumentException.ThrowIfNullOrWhiteSpace(launchDataDirectory);
+            _launchDataDirectory = Path.GetFullPath(launchDataDirectory);
         }
 
         public DesktopUpdateInstallResult StartSilentInstall(
@@ -32,15 +37,18 @@ namespace Cotton.Sync.Desktop.Updates
             return _processLauncher.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = installerPath,
-                Arguments = BuildSilentInstallArguments(launchAfterUpdate),
+                Arguments = BuildSilentInstallArguments(launchAfterUpdate, _launchDataDirectory),
                 UseShellExecute = true,
                 ErrorDialog = false,
                 WorkingDirectory = Path.GetDirectoryName(installerPath) ?? AppContext.BaseDirectory,
             });
         }
 
-        internal static string BuildSilentInstallArguments(bool launchAfterUpdate)
+        internal static string BuildSilentInstallArguments(
+            bool launchAfterUpdate,
+            string launchDataDirectory)
         {
+            ArgumentException.ThrowIfNullOrWhiteSpace(launchDataDirectory);
             string[] switches = launchAfterUpdate
                 ?
                 [
@@ -50,6 +58,7 @@ namespace Cotton.Sync.Desktop.Updates
                     "/CLOSEAPPLICATIONS",
                     "/FORCECLOSEAPPLICATIONS",
                     "/LaunchAfterUpdate=1",
+                    "/LaunchAfterUpdateDataDir=\"" + Path.GetFullPath(launchDataDirectory) + "\"",
                 ]
                 :
                 [

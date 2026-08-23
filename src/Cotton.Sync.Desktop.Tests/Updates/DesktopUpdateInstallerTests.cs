@@ -11,7 +11,10 @@ namespace Cotton.Sync.Desktop.Tests.Updates
         [Test]
         public void BuildSilentInstallArguments_RunsInstallerWithoutShowingWizard()
         {
-            string arguments = DesktopUpdateInstaller.BuildSilentInstallArguments(launchAfterUpdate: true);
+            string dataDirectory = Path.Combine(Path.GetTempPath(), "Cotton profile");
+            string arguments = DesktopUpdateInstaller.BuildSilentInstallArguments(
+                launchAfterUpdate: true,
+                dataDirectory);
 
             Assert.Multiple(() =>
             {
@@ -21,13 +24,16 @@ namespace Cotton.Sync.Desktop.Tests.Updates
                 Assert.That(arguments, Does.Contain("/CLOSEAPPLICATIONS"));
                 Assert.That(arguments, Does.Contain("/FORCECLOSEAPPLICATIONS"));
                 Assert.That(arguments, Does.Contain("/LaunchAfterUpdate=1"));
+                Assert.That(arguments, Does.Contain("/LaunchAfterUpdateDataDir=\"" + dataDirectory + "\""));
             });
         }
 
         [Test]
         public void BuildSilentInstallArguments_CanStageInstallWithoutRelaunch()
         {
-            string arguments = DesktopUpdateInstaller.BuildSilentInstallArguments(launchAfterUpdate: false);
+            string arguments = DesktopUpdateInstaller.BuildSilentInstallArguments(
+                launchAfterUpdate: false,
+                Path.GetTempPath());
 
             Assert.Multiple(() =>
             {
@@ -37,6 +43,7 @@ namespace Cotton.Sync.Desktop.Tests.Updates
                 Assert.That(arguments, Does.Contain("/CLOSEAPPLICATIONS"));
                 Assert.That(arguments, Does.Contain("/FORCECLOSEAPPLICATIONS"));
                 Assert.That(arguments, Does.Not.Contain("/LaunchAfterUpdate=1"));
+                Assert.That(arguments, Does.Not.Contain("/LaunchAfterUpdateDataDir="));
             });
         }
 
@@ -47,7 +54,8 @@ namespace Cotton.Sync.Desktop.Tests.Updates
             try
             {
                 FakeInstallerProcessLauncher launcher = new(new DesktopUpdateInstallResult(1234, false, null));
-                DesktopUpdateInstaller installer = new(launcher);
+                string dataDirectory = Path.Combine(Path.GetTempPath(), "Cotton profile");
+                DesktopUpdateInstaller installer = new(launcher, dataDirectory);
 
                 DesktopUpdateInstallResult result = installer.StartSilentInstall(installerPath, launchAfterUpdate: true);
 
@@ -58,6 +66,9 @@ namespace Cotton.Sync.Desktop.Tests.Updates
                     Assert.That(launcher.LastStartInfo?.UseShellExecute, Is.True);
                     Assert.That(launcher.LastStartInfo?.Arguments, Does.Contain("/VERYSILENT"));
                     Assert.That(launcher.LastStartInfo?.Arguments, Does.Contain("/LaunchAfterUpdate=1"));
+                    Assert.That(
+                        launcher.LastStartInfo?.Arguments,
+                        Does.Contain("/LaunchAfterUpdateDataDir=\"" + dataDirectory + "\""));
                     Assert.That(result.ProcessId, Is.EqualTo(1234));
                 });
             }
