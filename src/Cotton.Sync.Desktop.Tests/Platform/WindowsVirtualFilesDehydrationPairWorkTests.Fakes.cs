@@ -71,6 +71,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 SuppressedPinnedWrites.Add(new SuppressedWrite(syncPairId, localRootPath, relativePath));
             }
 
+            public void SuppressProviderDirectoryWrite(Guid syncPairId, string localRootPath, string relativePath)
+            {
+                SuppressedWrites.Add(new SuppressedWrite(syncPairId, localRootPath, relativePath));
+            }
+
             public void SuppressProviderFileCreation(Guid syncPairId, string localRootPath, string relativePath)
             {
             }

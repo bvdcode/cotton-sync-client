@@ -286,7 +286,7 @@ namespace Cotton.Sync.Desktop.Platform
 
             try
             {
-                SuppressProviderWrite(request.SyncPairId, request.LocalRootPath, request.RelativePath);
+                SuppressProviderDirectoryWrite(request.SyncPairId, request.LocalRootPath, request.RelativePath);
                 _cloudFilesAdapter.CreateDirectoryPlaceholder(request);
             }
             catch (Exception exception) when (IsRecoverablePlaceholderFailure(exception))
@@ -386,6 +386,27 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             _localChangeSuppression.SuppressProviderOnlineOnlyWrite(syncPairId, localRootPath, relativePath);
+        }
+
+        private void SuppressProviderDirectoryWrite(
+            string syncPairIdValue,
+            string localRootPath,
+            string relativePath)
+        {
+            if (_localChangeSuppression is null)
+            {
+                return;
+            }
+
+            if (!Guid.TryParse(syncPairIdValue, out Guid syncPairId))
+            {
+                _logger.LogDebug(
+                    "Skipping local watcher suppression for provider directory {RelativePath} because sync pair id is not a GUID.",
+                    relativePath);
+                return;
+            }
+
+            _localChangeSuppression.SuppressProviderDirectoryWrite(syncPairId, localRootPath, relativePath);
         }
 
         private class NoopDisposable : IDisposable

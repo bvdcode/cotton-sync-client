@@ -262,6 +262,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 throw new InvalidOperationException("Placeholder creation must not use pinned watcher suppression.");
             }
 
+            public void SuppressProviderDirectoryWrite(Guid syncPairId, string localRootPath, string relativePath)
+            {
+                SuppressedWrites.Add(new SuppressedWrite(syncPairId, localRootPath, relativePath));
+            }
+
             public void SuppressProviderFileCreation(Guid syncPairId, string localRootPath, string relativePath)
             {
                 SuppressedFileCreations.Add(new SuppressedWrite(syncPairId, localRootPath, relativePath));

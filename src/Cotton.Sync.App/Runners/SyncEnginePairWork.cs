@@ -179,6 +179,11 @@ namespace Cotton.Sync.App.Runners
                 return false;
             }
 
+            if ((request.Causes & SyncRunCause.InitialPopulation) != SyncRunCause.None)
+            {
+                return true;
+            }
+
             const SyncRunCause recoveryReconciliationCauses = SyncRunCause.LocalWatcherError
                 | SyncRunCause.LocalChangeOverflow
                 | SyncRunCause.LocalRenameRecovery
@@ -186,11 +191,6 @@ namespace Cotton.Sync.App.Runners
             if ((request.Causes & recoveryReconciliationCauses) != SyncRunCause.None)
             {
                 return false;
-            }
-
-            if ((request.Causes & SyncRunCause.InitialPopulation) != SyncRunCause.None)
-            {
-                return true;
             }
 
             const SyncRunCause backgroundFullReconciliationCauses = SyncRunCause.RealtimeRemoteChange

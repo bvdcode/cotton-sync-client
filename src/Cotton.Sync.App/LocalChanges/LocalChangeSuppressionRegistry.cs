@@ -66,8 +66,7 @@ namespace Cotton.Sync.App.LocalChanges
             Dictionary<string, LocalChangeSuppressionEntry> entries,
             string fullPath,
             DateTimeOffset expiresAt,
-            bool onlyWhileOnlineOnly,
-            bool onlyWhilePinned,
+            LocalChangeSuppressionAvailabilityCondition availabilityCondition,
             bool suppressDeleteEvents,
             bool metadataOnly,
             bool creationOnly,
@@ -85,8 +84,7 @@ namespace Cotton.Sync.App.LocalChanges
             {
                 entry.ExpiresAt = expiresAt;
                 entry.RemainingEvents = Math.Min(entry.RemainingEvents + _eventBudget, _eventBudget * 16);
-                entry.OnlyWhileOnlineOnly = onlyWhileOnlineOnly;
-                entry.OnlyWhilePinned = onlyWhilePinned;
+                entry.AvailabilityCondition = availabilityCondition;
                 entry.SuppressDeleteEvents = suppressDeleteEvents;
                 entry.MetadataOnly = metadataOnly;
                 entry.CreationOnly = creationOnly;
@@ -98,8 +96,7 @@ namespace Cotton.Sync.App.LocalChanges
             entries.Add(key, new LocalChangeSuppressionEntry(
                 expiresAt,
                 _eventBudget,
-                onlyWhileOnlineOnly,
-                onlyWhilePinned,
+                availabilityCondition,
                 suppressDeleteEvents,
                 metadataOnly,
                 creationOnly,
@@ -257,7 +254,14 @@ namespace Cotton.Sync.App.LocalChanges
                 return false;
             }
 
-            return TryConsume(syncPairId, entries, fullPath, now);
+            return true;
+        }
+
+        public bool IsActiveBurstPath(Guid syncPairId, string fullPath)
+        {
+            return _providerWriteBurstsByPair.TryGetValue(syncPairId, out ProviderWriteBurstScope? scope)
+                && scope.ActiveCount > 0
+                && LocalChangeSuppressionPath.IsInsideRoot(scope.RootPath, fullPath);
         }
 
         public bool ShouldSuppressBurst(

@@ -9,13 +9,14 @@ namespace Cotton.Sync.App.LocalChanges
     /// <summary>
     /// Suppresses short-lived filesystem watcher echoes produced by provider-side virtual file work.
     /// </summary>
-    public class LocalChangeSuppression : ILocalChangeSuppression
+    public partial class LocalChangeSuppression : ILocalChangeSuppression
     {
         private static readonly TimeSpan DefaultEntryLifetime = TimeSpan.FromMinutes(2);
 
         private readonly object _gate = new();
         private readonly Func<string, bool> _onlineOnlyCloudFilesPlaceholderProbe;
         private readonly Func<string, bool> _pinnedCloudFilesPlaceholderProbe;
+        private readonly Func<string, bool> _unpinnedCloudFilesPlaceholderProbe;
         private readonly LocalChangeSuppressionRegistry _registry;
 
         /// <summary>
@@ -32,7 +33,8 @@ namespace Cotton.Sync.App.LocalChanges
                 eventBudget,
                 maxEntriesPerPair,
                 timeProvider,
-                LocalChangeSuppressionPath.IsPinnedPlaceholder)
+                LocalChangeSuppressionPath.IsPinnedPlaceholder,
+                LocalChangeSuppressionPath.IsUnpinnedPlaceholder)
         {
         }
 
@@ -42,7 +44,8 @@ namespace Cotton.Sync.App.LocalChanges
             int eventBudget = 8,
             int maxEntriesPerPair = 100_000,
             TimeProvider? timeProvider = null,
-            Func<string, bool>? pinnedCloudFilesPlaceholderProbe = null)
+            Func<string, bool>? pinnedCloudFilesPlaceholderProbe = null,
+            Func<string, bool>? unpinnedCloudFilesPlaceholderProbe = null)
         {
             ArgumentNullException.ThrowIfNull(onlineOnlyCloudFilesPlaceholderProbe);
             TimeSpan normalizedEntryLifetime = entryLifetime ?? DefaultEntryLifetime;
@@ -64,6 +67,8 @@ namespace Cotton.Sync.App.LocalChanges
             _onlineOnlyCloudFilesPlaceholderProbe = onlineOnlyCloudFilesPlaceholderProbe;
             _pinnedCloudFilesPlaceholderProbe = pinnedCloudFilesPlaceholderProbe
                 ?? LocalChangeSuppressionPath.IsPinnedPlaceholder;
+            _unpinnedCloudFilesPlaceholderProbe = unpinnedCloudFilesPlaceholderProbe
+                ?? LocalChangeSuppressionPath.IsUnpinnedPlaceholder;
             _registry = new LocalChangeSuppressionRegistry(
                 normalizedEntryLifetime,
                 eventBudget,
@@ -78,8 +83,7 @@ namespace Cotton.Sync.App.LocalChanges
                 syncPairId,
                 localRootPath,
                 relativePath,
-                onlyWhileOnlineOnly: false,
-                onlyWhilePinned: false,
+                LocalChangeSuppressionAvailabilityCondition.None,
                 suppressDeleteEvents: true,
                 metadataOnly: false,
                 creationOnly: false,
@@ -94,8 +98,22 @@ namespace Cotton.Sync.App.LocalChanges
                 syncPairId,
                 localRootPath,
                 relativePath,
-                onlyWhileOnlineOnly: false,
-                onlyWhilePinned: true,
+                LocalChangeSuppressionAvailabilityCondition.Pinned,
+                suppressDeleteEvents: false,
+                metadataOnly: false,
+                creationOnly: false,
+                expectedSizeBytes: null,
+                expectedLastWriteUtc: null);
+        }
+
+        /// <inheritdoc />
+        public void SuppressProviderDirectoryWrite(Guid syncPairId, string localRootPath, string relativePath)
+        {
+            SuppressProviderWrite(
+                syncPairId,
+                localRootPath,
+                relativePath,
+                LocalChangeSuppressionAvailabilityCondition.Unpinned,
                 suppressDeleteEvents: false,
                 metadataOnly: false,
                 creationOnly: false,
@@ -110,8 +128,7 @@ namespace Cotton.Sync.App.LocalChanges
                 syncPairId,
                 localRootPath,
                 relativePath,
-                onlyWhileOnlineOnly: false,
-                onlyWhilePinned: false,
+                LocalChangeSuppressionAvailabilityCondition.None,
                 suppressDeleteEvents: false,
                 metadataOnly: false,
                 creationOnly: true,
@@ -132,8 +149,7 @@ namespace Cotton.Sync.App.LocalChanges
                 syncPairId,
                 localRootPath,
                 relativePath,
-                onlyWhileOnlineOnly: false,
-                onlyWhilePinned: false,
+                LocalChangeSuppressionAvailabilityCondition.None,
                 suppressDeleteEvents: false,
                 metadataOnly: false,
                 creationOnly: true,
@@ -148,8 +164,7 @@ namespace Cotton.Sync.App.LocalChanges
                 syncPairId,
                 localRootPath,
                 relativePath,
-                onlyWhileOnlineOnly: false,
-                onlyWhilePinned: false,
+                LocalChangeSuppressionAvailabilityCondition.None,
                 suppressDeleteEvents: false,
                 metadataOnly: true,
                 creationOnly: false,
@@ -164,8 +179,7 @@ namespace Cotton.Sync.App.LocalChanges
                 syncPairId,
                 localRootPath,
                 relativePath,
-                onlyWhileOnlineOnly: true,
-                onlyWhilePinned: false,
+                LocalChangeSuppressionAvailabilityCondition.OnlineOnly,
                 suppressDeleteEvents: true,
                 metadataOnly: false,
                 creationOnly: false,
@@ -177,8 +191,7 @@ namespace Cotton.Sync.App.LocalChanges
             Guid syncPairId,
             string localRootPath,
             string relativePath,
-            bool onlyWhileOnlineOnly,
-            bool onlyWhilePinned,
+            LocalChangeSuppressionAvailabilityCondition availabilityCondition,
             bool suppressDeleteEvents,
             bool metadataOnly,
             bool creationOnly,
@@ -207,8 +220,7 @@ namespace Cotton.Sync.App.LocalChanges
                     entries,
                     fullPath,
                     expiresAt,
-                    onlyWhileOnlineOnly,
-                    onlyWhilePinned,
+                    availabilityCondition,
                     suppressDeleteEvents,
                     metadataOnly,
                     creationOnly,
@@ -227,8 +239,7 @@ namespace Cotton.Sync.App.LocalChanges
                             entries,
                             currentPath,
                             expiresAt,
-                            onlyWhileOnlineOnly,
-                            onlyWhilePinned,
+                            availabilityCondition,
                             suppressDeleteEvents,
                             metadataOnly,
                             creationOnly: false,
@@ -332,7 +343,7 @@ namespace Cotton.Sync.App.LocalChanges
                     return false;
                 }
 
-                if (HasSuppressionEnded(fullPath, changeKind, entry))
+                if (HasSuppressionEnded(syncPairId, fullPath, changeKind, entry))
                 {
                     _registry.Remove(syncPairId, key, entries);
                     return false;
@@ -349,13 +360,13 @@ namespace Cotton.Sync.App.LocalChanges
         }
 
         private bool HasSuppressionEnded(
+            Guid syncPairId,
             string fullPath,
             LocalSyncRootChangeKind changeKind,
             SuppressionEntry entry)
         {
             return MustPreserveUserRemoval(changeKind, entry)
-                || HasOnlineOnlyConditionEnded(fullPath, entry)
-                || HasPinnedConditionEnded(fullPath, entry)
+                || HasAvailabilityConditionEnded(syncPairId, fullPath, entry)
                 || MustPreserveContentChange(changeKind, entry)
                 || MustPreserveNonCreationChange(changeKind, entry)
                 || HasProviderMaterializationChanged(fullPath, entry);
@@ -367,16 +378,6 @@ namespace Cotton.Sync.App.LocalChanges
         {
             return !entry.SuppressDeleteEvents
                 && changeKind is LocalSyncRootChangeKind.Deleted or LocalSyncRootChangeKind.Renamed;
-        }
-
-        private bool HasOnlineOnlyConditionEnded(string fullPath, SuppressionEntry entry)
-        {
-            return entry.OnlyWhileOnlineOnly && !_onlineOnlyCloudFilesPlaceholderProbe(fullPath);
-        }
-
-        private bool HasPinnedConditionEnded(string fullPath, SuppressionEntry entry)
-        {
-            return entry.OnlyWhilePinned && !_pinnedCloudFilesPlaceholderProbe(fullPath);
         }
 
         private static bool MustPreserveContentChange(

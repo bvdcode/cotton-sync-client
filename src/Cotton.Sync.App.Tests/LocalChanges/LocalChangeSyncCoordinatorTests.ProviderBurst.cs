@@ -228,7 +228,9 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
             FakeWatcherFactory watcherFactory = new FakeWatcherFactory();
             FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
-            LocalChangeSuppression suppression = new LocalChangeSuppression(_ => false);
+            LocalChangeSuppression suppression = new LocalChangeSuppression(
+                _ => false,
+                pinnedCloudFilesPlaceholderProbe: _ => true);
             using IDisposable burst = suppression.SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath);
             suppression.SuppressProviderOnlineOnlyWrite(syncPair.Id, syncPair.LocalRootPath, "Music");
             LocalChangeSyncCoordinator coordinator = new LocalChangeSyncCoordinator(
@@ -253,14 +255,14 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
-        public void ProviderWriteBurst_RegisteredPathsRespectCapacityAndEventBudget()
+        public void ProviderWriteBurst_RegisteredPathsRespectCapacityAndPostBurstEventBudget()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
             LocalChangeSuppression suppression = new(
                 _ => false,
                 eventBudget: 2,
                 maxEntriesPerPair: 4);
-            using IDisposable burst = suppression.SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath);
+            IDisposable burst = suppression.SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath);
             for (int index = 0; index < 5; index++)
             {
                 suppression.SuppressProviderWrite(
@@ -281,6 +283,14 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             Assert.Multiple(() =>
             {
                 Assert.That(suppression.ShouldSuppress(evictedChange), Is.False);
+                Assert.That(suppression.ShouldSuppress(retainedChange), Is.True);
+                Assert.That(suppression.ShouldSuppress(retainedChange), Is.True);
+            });
+
+            burst.Dispose();
+
+            Assert.Multiple(() =>
+            {
                 Assert.That(suppression.ShouldSuppress(retainedChange), Is.True);
                 Assert.That(suppression.ShouldSuppress(retainedChange), Is.True);
                 Assert.That(suppression.ShouldSuppress(retainedChange), Is.False);

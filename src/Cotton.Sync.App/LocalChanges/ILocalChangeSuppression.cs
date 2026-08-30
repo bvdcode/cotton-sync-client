@@ -19,6 +19,11 @@ namespace Cotton.Sync.App.LocalChanges
         void SuppressProviderPinnedWrite(Guid syncPairId, string localRootPath, string relativePath);
 
         /// <summary>
+        /// Suppresses provider-created directory echoes only while the directory remains unpinned.
+        /// </summary>
+        void SuppressProviderDirectoryWrite(Guid syncPairId, string localRootPath, string relativePath);
+
+        /// <summary>
         /// Suppresses only the watcher event that exposes a newly materialized provider file.
         /// </summary>
         void SuppressProviderFileCreation(Guid syncPairId, string localRootPath, string relativePath);

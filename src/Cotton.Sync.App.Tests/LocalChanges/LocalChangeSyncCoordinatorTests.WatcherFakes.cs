@@ -42,6 +42,10 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             {
             }
 
+            public void SuppressProviderDirectoryWrite(Guid syncPairId, string localRootPath, string relativePath)
+            {
+            }
+
             public void SuppressProviderFileCreation(Guid syncPairId, string localRootPath, string relativePath)
             {
             }

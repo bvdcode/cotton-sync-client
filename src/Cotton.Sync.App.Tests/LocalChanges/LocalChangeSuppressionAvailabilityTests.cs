@@ -58,5 +58,63 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 Assert.That(userPinSuppressed, Is.False);
             });
         }
+
+        [Test]
+        public void ProviderDirectoryWriteSuppression_EndsImmediatelyWhenUserPinsDirectory()
+        {
+            bool unpinned = true;
+            Guid syncPairId = Guid.NewGuid();
+            string rootPath = Path.Combine(Path.GetTempPath(), "cotton-unpinned-directory-suppression");
+            string fullPath = Path.Combine(rootPath, "Music");
+            LocalChangeSuppression suppression = new LocalChangeSuppression(
+                _ => false,
+                unpinnedCloudFilesPlaceholderProbe: _ => unpinned);
+            suppression.SuppressProviderDirectoryWrite(syncPairId, rootPath, "Music");
+            LocalSyncRootChange change = new LocalSyncRootChange(
+                syncPairId,
+                fullPath,
+                LocalSyncRootChangeKind.AttributesChanged);
+
+            bool providerEchoSuppressed = suppression.ShouldSuppress(change);
+            unpinned = false;
+            bool userPinSuppressed = suppression.ShouldSuppress(change);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(providerEchoSuppressed, Is.True);
+                Assert.That(userPinSuppressed, Is.False);
+            });
+        }
+
+        [Test]
+        public void ProviderDirectoryWriteSuppression_ToleratesTransientNeutralStateDuringBurst()
+        {
+            bool pinned = false;
+            bool unpinned = true;
+            Guid syncPairId = Guid.NewGuid();
+            string rootPath = Path.Combine(Path.GetTempPath(), "cotton-directory-burst-suppression");
+            string fullPath = Path.Combine(rootPath, "Music");
+            LocalChangeSuppression suppression = new LocalChangeSuppression(
+                _ => false,
+                pinnedCloudFilesPlaceholderProbe: _ => pinned,
+                unpinnedCloudFilesPlaceholderProbe: _ => unpinned);
+            using IDisposable burst = suppression.SuppressProviderWriteBurst(syncPairId, rootPath);
+            suppression.SuppressProviderDirectoryWrite(syncPairId, rootPath, "Music");
+            LocalSyncRootChange change = new LocalSyncRootChange(
+                syncPairId,
+                fullPath,
+                LocalSyncRootChangeKind.AttributesChanged);
+
+            unpinned = false;
+            bool transientNeutralSuppressed = suppression.ShouldSuppress(change);
+            pinned = true;
+            bool userPinSuppressed = suppression.ShouldSuppress(change);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(transientNeutralSuppressed, Is.True);
+                Assert.That(userPinSuppressed, Is.False);
+            });
+        }
     }
 }

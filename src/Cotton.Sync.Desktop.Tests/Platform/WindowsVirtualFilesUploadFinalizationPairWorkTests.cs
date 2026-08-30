@@ -417,7 +417,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private class RecordingLocalChangeSuppression : ILocalChangeSuppression
+        private partial class RecordingLocalChangeSuppression : ILocalChangeSuppression
         {
             public List<SuppressedWrite> SuppressedWrites { get; } = [];
 

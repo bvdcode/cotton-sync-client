@@ -8,6 +8,7 @@ namespace Cotton.Sync.App.LocalChanges
     internal static class LocalChangeSuppressionPath
     {
         private const int FileAttributePinned = 0x00080000;
+        private const int FileAttributeUnpinned = 0x00100000;
         private const int FileAttributeRecallOnDataAccess = 0x00400000;
         private const int FileAttributeRecallOnOpen = 0x00040000;
         private static readonly char[] DirectorySeparators =
@@ -33,6 +34,21 @@ namespace Cotton.Sync.App.LocalChanges
             try
             {
                 return HasRawAttribute(File.GetAttributes(fullPath), FileAttributePinned);
+            }
+            catch (Exception exception) when (exception is IOException
+                or UnauthorizedAccessException
+                or ArgumentException
+                or NotSupportedException)
+            {
+                return false;
+            }
+        }
+
+        public static bool IsUnpinnedPlaceholder(string fullPath)
+        {
+            try
+            {
+                return HasRawAttribute(File.GetAttributes(fullPath), FileAttributeUnpinned);
             }
             catch (Exception exception) when (exception is IOException
                 or UnauthorizedAccessException
