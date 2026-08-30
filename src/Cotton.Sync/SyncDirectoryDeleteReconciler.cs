@@ -112,6 +112,18 @@ namespace Cotton.Sync
 
             if (local is null && remote is not null)
             {
+                if (IsUnconfirmedScopedVirtualFilesDirectoryDelete(context, key))
+                {
+                    SyncActivityReporter.Record(
+                        context.Result,
+                        context.Options,
+                        SyncActivityKind.Skipped,
+                        relativePath,
+                        "Remote folder delete could not be confirmed because its tracked subtree was not fully resolved.",
+                        requiresUserAction: true);
+                    return;
+                }
+
                 await DeleteRemoteDirectoryAsync(
                         context.SyncPair,
                         context.Options,
@@ -129,6 +141,16 @@ namespace Cotton.Sync
             {
                 await ReconcileRemoteDeletedDirectoryAsync(context, key, relativePath, local).ConfigureAwait(false);
             }
+        }
+
+        private static bool IsUnconfirmedScopedVirtualFilesDirectoryDelete(
+            DirectoryDeleteContext context,
+            string directoryKey)
+        {
+            return context.SyncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
+                && !context.Options.Scope.IsFull
+                && context.ScopedLocalDeletedKeys.Contains(directoryKey)
+                && context.PlannedScopedDeleteKeys?.Contains(directoryKey, PathComparer) != true;
         }
 
         private async Task ReconcileRemoteDeletedDirectoryAsync(

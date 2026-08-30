@@ -216,6 +216,47 @@ namespace Cotton.Sync.Tests
             });
         }
 
+        [Test]
+        public async Task RunOnceAsync_WithScopedWindowsVirtualFilesDoesNotDeleteUnresolvedTrackedSubtree()
+        {
+            const string rootPath = "Library";
+            const string filePath = "Library/tracked.bin";
+            RemoteDirectorySnapshot root = RemoteDirectory(rootPath);
+            NodeFileManifestDto remoteFile = RemoteFile(filePath, HashText("tracked-content"), sizeBytes: 1024);
+            RemoteTreeSnapshot remoteTree = RemoteTree(remoteFile);
+            remoteTree.Directories.Add(root);
+            FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
+            FakeRemoteDirectorySynchronizer remoteDirectories = new FakeRemoteDirectorySynchronizer();
+            SqliteSyncStateStore stateStore = new SqliteSyncStateStore(_databasePath);
+            SyncEngine engine = new SyncEngine(
+                new FakeLocalFileScanner(),
+                new PathOnlyRemoteTreeCrawler(remoteTree),
+                remoteFiles,
+                stateStore,
+                remoteDirectories: remoteDirectories);
+            await InsertDirectoryBaselineAsync(stateStore, rootPath, root.Node);
+            await InsertPlaceholderBaselineAsync(stateStore, filePath, remoteFile);
+
+            SyncRunResult result = await engine.RunOnceAsync(
+                Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                new SyncRunOptions
+                {
+                    Scope = SyncRunScope.ForLocalChangedPaths([rootPath], [rootPath]),
+                });
+
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(remoteDirectories.Deletes, Is.Empty);
+                Assert.That(state, Has.Count.EqualTo(2));
+                Assert.That(result.RequiresUserAction, Is.True);
+                Assert.That(result.Activities, Has.Count.EqualTo(1));
+                Assert.That(result.Activities[0].Kind, Is.EqualTo(SyncActivityKind.Skipped));
+                Assert.That(result.Activities[0].Details, Does.Contain("tracked subtree was not fully resolved"));
+            });
+        }
+
 
         [Test]
         public async Task RunOnceAsync_DoesNotCascadeRemoteDirectoryDeletesInsideOneRun()

@@ -22,6 +22,7 @@ namespace Cotton.Sync
         DirectoryContentIndex LocalContentIndex,
         DirectoryContentIndex RemoteContentIndex,
         IReadOnlySet<string>? ScopedDeleteKeys,
+        IReadOnlySet<string> ScopedLocalDeletedKeys,
         IReadOnlyList<string>? PlannedScopedDeleteKeys,
         CancellationToken CancellationToken);
 }

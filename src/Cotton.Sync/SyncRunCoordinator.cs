@@ -263,6 +263,7 @@ namespace Cotton.Sync
                     deletePlan.LocalDirectoryContentIndex,
                     deletePlan.RemoteDirectoryContentIndex,
                     deletePlan.ScopedDirectoryDeleteKeys,
+                    deletePlan.ScopedLocalDeletedFileKeys,
                     deletePlan.ScopedDirectoryDelete?.DirectoryKeys,
                     context.CancellationToken);
             await directoryDeleteReconciler.ReconcileAsync(directoryDeletes).ConfigureAwait(false);

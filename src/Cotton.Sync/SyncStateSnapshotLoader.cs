@@ -27,7 +27,48 @@ namespace Cotton.Sync
                 treeLookups.LocalFilesByPath.Keys,
                 treeLookups.RemoteFilesByPath.Keys,
                 BuildScopedPathKeys(options.Scope.LocalChangedPaths));
-            return await LoadStateByPathAsync(syncPairId, keys, cancellationToken).ConfigureAwait(false);
+            (Dictionary<string, SyncStateEntry> directoryStateByPath, Dictionary<string, SyncStateEntry> fileStateByPath) =
+                await LoadStateByPathAsync(syncPairId, keys, cancellationToken).ConfigureAwait(false);
+            foreach (string deletedPath in BuildMinimalPathPrefixes(options.Scope.LocalDeletedPaths))
+            {
+                await foreach (SyncStateEntry entry in stateStore
+                                   .LoadEntriesByPathPrefixAsync(syncPairId, deletedPath, cancellationToken)
+                                   .WithCancellation(cancellationToken)
+                                   .ConfigureAwait(false))
+                {
+                    await AddEntryAsync(
+                            syncPairId,
+                            entry,
+                            directoryStateByPath,
+                            fileStateByPath,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+            }
+
+            return (directoryStateByPath, fileStateByPath);
+        }
+
+        private static IReadOnlyList<string> BuildMinimalPathPrefixes(IEnumerable<string> relativePaths)
+        {
+            List<string> prefixes = new List<string>();
+            foreach (string path in relativePaths
+                         .Select(SyncPath.Normalize)
+                         .Where(static path => !string.IsNullOrWhiteSpace(path))
+                         .Distinct(PathComparer)
+                         .OrderBy(static path => path.Count(static character => character == '/'))
+                         .ThenBy(static path => path, PathComparer))
+            {
+                string key = SyncPath.ToKey(path);
+                if (prefixes.Any(prefix => IsSameOrDescendantPathKey(key, SyncPath.ToKey(prefix))))
+                {
+                    continue;
+                }
+
+                prefixes.Add(path);
+            }
+
+            return prefixes;
         }
 
         private async Task<(Dictionary<string, SyncStateEntry> DirectoryStateByPath, Dictionary<string, SyncStateEntry> FileStateByPath)> LoadStateByPathAsync(
@@ -41,25 +82,13 @@ namespace Cotton.Sync
                                .WithCancellation(cancellationToken)
                                .ConfigureAwait(false))
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (SyncPathIgnoreRules.ShouldIgnore(entry.RelativePath))
-                {
-                    await stateStore.DeleteAsync(syncPairId, entry.RelativePath, cancellationToken).ConfigureAwait(false);
-                    continue;
-                }
-
-                string stateKey = SyncPath.ToKey(entry.RelativePath);
-                switch (entry.Kind)
-                {
-                    case SyncEntryKind.Directory:
-                        directoryStateByPath[stateKey] = entry;
-                        break;
-                    case SyncEntryKind.File:
-                        fileStateByPath[stateKey] = entry;
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(entry), entry.Kind, "Unknown sync state entry kind.");
-                }
+                await AddEntryAsync(
+                        syncPairId,
+                        entry,
+                        directoryStateByPath,
+                        fileStateByPath,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             return (directoryStateByPath, fileStateByPath);
@@ -75,27 +104,44 @@ namespace Cotton.Sync
                                .WithCancellation(cancellationToken)
                                .ConfigureAwait(false))
             {
-                if (SyncPathIgnoreRules.ShouldIgnore(entry.RelativePath))
-                {
-                    await stateStore.DeleteAsync(syncPairId, entry.RelativePath, cancellationToken).ConfigureAwait(false);
-                    continue;
-                }
-
-                string key = SyncPath.ToKey(entry.RelativePath);
-                switch (entry.Kind)
-                {
-                    case SyncEntryKind.Directory:
-                        directoryStateByPath.Add(key, entry);
-                        break;
-                    case SyncEntryKind.File:
-                        fileStateByPath.Add(key, entry);
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(entry), entry.Kind, "Unknown sync state entry kind.");
-                }
+                await AddEntryAsync(
+                        syncPairId,
+                        entry,
+                        directoryStateByPath,
+                        fileStateByPath,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             return (directoryStateByPath, fileStateByPath);
+        }
+
+        private async Task AddEntryAsync(
+            string syncPairId,
+            SyncStateEntry entry,
+            IDictionary<string, SyncStateEntry> directoryStateByPath,
+            IDictionary<string, SyncStateEntry> fileStateByPath,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (SyncPathIgnoreRules.ShouldIgnore(entry.RelativePath))
+            {
+                await stateStore.DeleteAsync(syncPairId, entry.RelativePath, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            string key = SyncPath.ToKey(entry.RelativePath);
+            switch (entry.Kind)
+            {
+                case SyncEntryKind.Directory:
+                    directoryStateByPath[key] = entry;
+                    break;
+                case SyncEntryKind.File:
+                    fileStateByPath[key] = entry;
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(entry), entry.Kind, "Unknown sync state entry kind.");
+            }
         }
     }
 }
