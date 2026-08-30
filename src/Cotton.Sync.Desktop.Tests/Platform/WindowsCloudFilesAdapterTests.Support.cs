@@ -48,6 +48,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public int UnregisterAllCalls { get; private set; }
 
+            public bool KeepRegistrationAfterUnregister { get; set; }
+
             public bool IsSupported()
             {
                 return true;
@@ -69,6 +71,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 _operationLog.Add("storage-provider-unregister");
                 UnregisteredSyncPairIds.Add(syncPairId);
                 UnregisteredLocalRootPaths.Add(localRootPath);
+                if (!KeepRegistrationAfterUnregister)
+                {
+                    Registrations.RemoveAll(registration => registration.SyncPairId == syncPairId);
+                }
             }
 
             public void UnregisterAllForCurrentUser()

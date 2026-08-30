@@ -13,6 +13,7 @@ namespace Cotton.Sync.Desktop.Platform
     {
         private const int HResultFileNotFound = unchecked((int)0x80070002);
         private const int HResultPathNotFound = unchecked((int)0x80070003);
+        private const int HResultCloudFileInvalidOperation = unchecked((int)0x8007017C);
         private readonly object _registrationGate = new();
         private readonly HashSet<string> _registeredRootPaths = new(StringComparer.OrdinalIgnoreCase);
 
@@ -99,6 +100,18 @@ namespace Cotton.Sync.Desktop.Platform
             try
             {
                 storageProviderRegistrar?.Unregister(syncPair.Id, registration.LocalRootPath);
+                if (CanConfirmRecoveredUnregisterFailure(failure, syncPair.Id))
+                {
+                    diagnostics.Record(
+                        "unregister-sync-root",
+                        "recovered",
+                        syncPair.Id.ToString(),
+                        registration.LocalRootPath,
+                        null,
+                        "Windows StorageProvider unregister confirmed that the sync root is absent after the native unregister returned an invalid-operation state.",
+                        HResultCloudFileInvalidOperation);
+                    failure = null;
+                }
             }
             catch (Exception exception)
             {
@@ -126,6 +139,17 @@ namespace Cotton.Sync.Desktop.Platform
             {
                 _registeredRootPaths.Remove(registration.LocalRootPath);
             }
+        }
+
+        private bool CanConfirmRecoveredUnregisterFailure(Exception? failure, Guid syncPairId)
+        {
+            return storageProviderRegistrar is not null
+                && failure is WindowsCloudFilesNativeException
+                {
+                    Operation: "CfUnregisterSyncRoot",
+                    HResult: HResultCloudFileInvalidOperation,
+                }
+                && !storageProviderRegistrar.IsRegistered(syncPairId);
         }
 
         public WindowsCloudFilesConnection Connect(
