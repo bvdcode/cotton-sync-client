@@ -161,6 +161,38 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task SyncNowAsync_RemoteDeleteApprovalReplaysExactActionRequiredScope()
+        {
+            RemoteDeletePlanApproval approval = new RemoteDeletePlanApproval(102, new string('a', 64));
+            FakeSyncPairWork work = new FakeSyncPairWork
+            {
+                Failures = [new SyncActionRequiredException(
+                    "Remote delete blocked by mass-delete guard. 102 pending deletes exceed limit 100.")],
+            };
+            SyncPairRunner runner = CreateRunner(
+                CreatePair(isEnabled: true),
+                work,
+                NoDelayRetryOptions(maxAttempts: 1));
+            SyncRunRequest blockedRequest = SyncRunRequest.ForLocalChangedPaths(
+                ["MassDelete", "MassDelete/file.txt"],
+                ["MassDelete", "MassDelete/file.txt"]);
+
+            Assert.ThrowsAsync<SyncActionRequiredException>(
+                async () => await runner.SyncNowAsync(blockedRequest));
+            await runner.SyncNowAsync(SyncRunRequest.ForFull(SyncRunCause.Manual, approval));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(work.Requests, Has.Count.EqualTo(2));
+                Assert.That(work.Requests[1].IsFull, Is.False);
+                Assert.That(work.Requests[1].LocalChangedPaths, Is.EqualTo(blockedRequest.LocalChangedPaths));
+                Assert.That(work.Requests[1].LocalDeletedPaths, Is.EqualTo(blockedRequest.LocalDeletedPaths));
+                Assert.That(work.Requests[1].Causes, Is.EqualTo(blockedRequest.Causes));
+                Assert.That(work.Requests[1].ApprovedRemoteDeletePlan, Is.EqualTo(approval));
+            });
+        }
+
+        [Test]
         public async Task SyncNowAsync_MergesQueuedScopedRequestsIntoLaterFullCheck()
         {
             BlockingFirstFailureSyncPairWork work = new BlockingFirstFailureSyncPairWork();

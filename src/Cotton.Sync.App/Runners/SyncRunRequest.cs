@@ -138,6 +138,17 @@ namespace Cotton.Sync.App.Runners
                 Causes | other.Causes);
         }
 
+        internal SyncRunRequest WithApprovedRemoteDeletePlan(RemoteDeletePlanApproval approval)
+        {
+            ArgumentNullException.ThrowIfNull(approval);
+            return new SyncRunRequest(
+                IsFull,
+                LocalChangedPaths,
+                LocalDeletedPaths,
+                Causes,
+                approval);
+        }
+
         private static IReadOnlyList<string> NormalizeLocalChangedPaths(IEnumerable<string> relativePaths)
         {
             return relativePaths

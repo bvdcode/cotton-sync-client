@@ -11,6 +11,7 @@ namespace Cotton.Sync.App.Runners
         private readonly object _gate = new();
         private CancellationTokenSource? _activeCancellation;
         private ActiveSyncCancellationReason _activeCancellationReason;
+        private SyncRunRequest? _actionRequiredRequest;
         private SyncRunRequest? _activeRequest;
         private SyncRunRequest? _failedRequest;
         private bool _isBlocked;
@@ -57,6 +58,15 @@ namespace Cotton.Sync.App.Runners
                 }
 
                 _isSyncInProgress = true;
+                if (request.ApprovedRemoteDeletePlan is not null && _actionRequiredRequest is not null)
+                {
+                    _activeRequest = _actionRequiredRequest.WithApprovedRemoteDeletePlan(
+                        request.ApprovedRemoteDeletePlan);
+                    _actionRequiredRequest = null;
+                    _failedRequest = null;
+                    return true;
+                }
+
                 if (_failedRequest is null)
                 {
                     _activeRequest = request;
@@ -88,6 +98,7 @@ namespace Cotton.Sync.App.Runners
         {
             lock (_gate)
             {
+                _actionRequiredRequest = null;
                 if (_isBlocked)
                 {
                     FinishLoop();
@@ -110,6 +121,9 @@ namespace Cotton.Sync.App.Runners
         {
             lock (_gate)
             {
+                _actionRequiredRequest = exception is SyncActionRequiredException
+                    ? _activeRequest
+                    : null;
                 _failedRequest = SyncFailureClassifier.IsTransientConnectionFailure(exception)
                     ? _activeRequest
                     : null;
@@ -171,6 +185,7 @@ namespace Cotton.Sync.App.Runners
                 _queueWhileBlocked = isBlocked && queueIncomingRequests;
                 if (isBlocked)
                 {
+                    _actionRequiredRequest = null;
                     _failedRequest = null;
                     _pendingFullRequest = null;
                     _pendingScopedRequest = null;
