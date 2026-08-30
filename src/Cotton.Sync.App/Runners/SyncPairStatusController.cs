@@ -62,7 +62,8 @@ namespace Cotton.Sync.App.Runners
             lock (_gate)
             {
                 _lastSuccessfulSyncAtUtc = DateTime.UtcNow;
-                if (request.IsFull && (request.Causes & SyncRunCause.Manual) != SyncRunCause.None)
+                if (request.ApprovedRemoteDeletePlan is not null
+                    || (request.IsFull && (request.Causes & SyncRunCause.Manual) != SyncRunCause.None))
                 {
                     _retainedActionRequiredError = null;
                 }

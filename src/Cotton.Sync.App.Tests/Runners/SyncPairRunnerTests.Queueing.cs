@@ -179,16 +179,20 @@ namespace Cotton.Sync.App.Tests.Runners
 
             Assert.ThrowsAsync<SyncActionRequiredException>(
                 async () => await runner.SyncNowAsync(blockedRequest));
+            await runner.SyncNowAsync(SyncRunRequest.ForFull(SyncRunCause.Periodic));
+            SyncPairStatus statusAfterBackgroundSuccess = runner.Status;
             await runner.SyncNowAsync(SyncRunRequest.ForFull(SyncRunCause.Manual, approval));
 
             Assert.Multiple(() =>
             {
-                Assert.That(work.Requests, Has.Count.EqualTo(2));
-                Assert.That(work.Requests[1].IsFull, Is.False);
-                Assert.That(work.Requests[1].LocalChangedPaths, Is.EqualTo(blockedRequest.LocalChangedPaths));
-                Assert.That(work.Requests[1].LocalDeletedPaths, Is.EqualTo(blockedRequest.LocalDeletedPaths));
-                Assert.That(work.Requests[1].Causes, Is.EqualTo(blockedRequest.Causes));
-                Assert.That(work.Requests[1].ApprovedRemoteDeletePlan, Is.EqualTo(approval));
+                Assert.That(work.Requests, Has.Count.EqualTo(3));
+                Assert.That(statusAfterBackgroundSuccess.State, Is.EqualTo(SyncPairRunState.Error));
+                Assert.That(work.Requests[2].IsFull, Is.False);
+                Assert.That(work.Requests[2].LocalChangedPaths, Is.EqualTo(blockedRequest.LocalChangedPaths));
+                Assert.That(work.Requests[2].LocalDeletedPaths, Is.EqualTo(blockedRequest.LocalDeletedPaths));
+                Assert.That(work.Requests[2].Causes, Is.EqualTo(blockedRequest.Causes));
+                Assert.That(work.Requests[2].ApprovedRemoteDeletePlan, Is.EqualTo(approval));
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Idle));
             });
         }
 

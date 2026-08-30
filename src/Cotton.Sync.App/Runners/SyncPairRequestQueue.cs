@@ -98,7 +98,11 @@ namespace Cotton.Sync.App.Runners
         {
             lock (_gate)
             {
-                _actionRequiredRequest = null;
+                if (ShouldClearActionRequiredRequest(_activeRequest))
+                {
+                    _actionRequiredRequest = null;
+                }
+
                 if (_isBlocked)
                 {
                     FinishLoop();
@@ -269,6 +273,13 @@ namespace Cotton.Sync.App.Runners
         {
             _isSyncInProgress = false;
             _activeRequest = null;
+        }
+
+        private static bool ShouldClearActionRequiredRequest(SyncRunRequest? request)
+        {
+            return request is not null
+                && (request.ApprovedRemoteDeletePlan is not null
+                    || (request.IsFull && (request.Causes & SyncRunCause.Manual) != SyncRunCause.None));
         }
 
         private static SyncRunRequest MergePendingFullRequests(
