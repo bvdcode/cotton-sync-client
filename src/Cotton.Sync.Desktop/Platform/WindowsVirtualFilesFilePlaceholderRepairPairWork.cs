@@ -52,18 +52,59 @@ namespace Cotton.Sync.Desktop.Platform
         {
             ArgumentNullException.ThrowIfNull(syncPair);
             ArgumentNullException.ThrowIfNull(request);
+            IReadOnlyCollection<string>? initialPopulationRepairPaths =
+                await CaptureInitialPopulationRepairPathsAsync(syncPair, request, cancellationToken)
+                    .ConfigureAwait(false);
             await _inner.RunOnceAsync(syncPair, request, cancellationToken).ConfigureAwait(false);
             if (syncPair.Mode != SyncPairMode.WindowsVirtualFiles || !request.IsFull)
             {
                 return;
             }
 
-            await RepairTrackedFilePlaceholdersAsync(syncPair, request, cancellationToken).ConfigureAwait(false);
+            if (initialPopulationRepairPaths is { Count: 0 })
+            {
+                return;
+            }
+
+            await RepairTrackedFilePlaceholdersAsync(
+                    syncPair,
+                    request,
+                    initialPopulationRepairPaths,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        private async Task<IReadOnlyCollection<string>?> CaptureInitialPopulationRepairPathsAsync(
+            SyncPairSettings syncPair,
+            SyncRunRequest request,
+            CancellationToken cancellationToken)
+        {
+            if (syncPair.Mode != SyncPairMode.WindowsVirtualFiles
+                || !request.IsFull
+                || (request.Causes & SyncRunCause.InitialPopulation) == SyncRunCause.None)
+            {
+                return null;
+            }
+
+            List<string> paths = new List<string>();
+            await foreach (SyncStateEntry entry in _stateStore
+                               .LoadPairEntriesAsync(syncPair.Id.ToString("D"), cancellationToken)
+                               .WithCancellation(cancellationToken)
+                               .ConfigureAwait(false))
+            {
+                if (IsTrackedPlaceholderFile(entry))
+                {
+                    paths.Add(entry.RelativePath);
+                }
+            }
+
+            return paths;
         }
 
         private async Task RepairTrackedFilePlaceholdersAsync(
             SyncPairSettings syncPair,
             SyncRunRequest request,
+            IReadOnlyCollection<string>? repairPaths,
             CancellationToken cancellationToken)
         {
             FilePlaceholderRepairStatistics statistics = new();
@@ -74,7 +115,13 @@ namespace Cotton.Sync.Desktop.Platform
                 using IDisposable? burst = _localChangeSuppression?.SuppressProviderWriteBurst(
                     syncPair.Id,
                     syncPair.LocalRootPath);
-                await RepairTrackedEntriesAsync(syncPair, request, statistics, cancellationToken).ConfigureAwait(false);
+                await RepairTrackedEntriesAsync(
+                        syncPair,
+                        request,
+                        statistics,
+                        repairPaths,
+                        cancellationToken)
+                    .ConfigureAwait(false);
 
                 if (statistics.RepairedCount > 0)
                 {
@@ -94,10 +141,16 @@ namespace Cotton.Sync.Desktop.Platform
             SyncPairSettings syncPair,
             SyncRunRequest request,
             FilePlaceholderRepairStatistics statistics,
+            IReadOnlyCollection<string>? repairPaths,
             CancellationToken cancellationToken)
         {
-            await foreach (SyncStateEntry entry in _stateStore
-                               .LoadPairEntriesAsync(syncPair.Id.ToString("D"), cancellationToken)
+            IAsyncEnumerable<SyncStateEntry> entries = repairPaths is null
+                ? _stateStore.LoadPairEntriesAsync(syncPair.Id.ToString("D"), cancellationToken)
+                : _stateStore.LoadEntriesByPathKeysAsync(
+                    syncPair.Id.ToString("D"),
+                    repairPaths,
+                    cancellationToken);
+            await foreach (SyncStateEntry entry in entries
                                .WithCancellation(cancellationToken)
                                .ConfigureAwait(false))
             {

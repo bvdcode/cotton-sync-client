@@ -10,7 +10,7 @@ using Cotton.Sync.VirtualFiles;
 
 namespace Cotton.Sync.Desktop.Tests.Platform
 {
-    public class WindowsVirtualFilesFilePlaceholderRepairPairWorkTests
+    public partial class WindowsVirtualFilesFilePlaceholderRepairPairWorkTests
     {
         private string _localRootPath = null!;
 
@@ -159,18 +159,23 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             public List<SyncRunRequest> Requests { get; } = [];
 
+            public Func<Task>? OnRunAsync { get; set; }
+
             public Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
             {
                 return RunOnceAsync(syncPair, SyncRunRequest.Full, cancellationToken);
             }
 
-            public Task RunOnceAsync(
+            public async Task RunOnceAsync(
                 SyncPairSettings syncPair,
                 SyncRunRequest request,
                 CancellationToken cancellationToken = default)
             {
                 Requests.Add(request);
-                return Task.CompletedTask;
+                if (OnRunAsync is not null)
+                {
+                    await OnRunAsync().ConfigureAwait(false);
+                }
             }
         }
 
