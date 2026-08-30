@@ -14,6 +14,11 @@ namespace Cotton.Sync.App.LocalChanges
         void SuppressProviderWrite(Guid syncPairId, string localRootPath, string relativePath);
 
         /// <summary>
+        /// Suppresses hydration echoes only while the provider-backed path remains pinned.
+        /// </summary>
+        void SuppressProviderPinnedWrite(Guid syncPairId, string localRootPath, string relativePath);
+
+        /// <summary>
         /// Suppresses only the watcher event that exposes a newly materialized provider file.
         /// </summary>
         void SuppressProviderFileCreation(Guid syncPairId, string localRootPath, string relativePath);

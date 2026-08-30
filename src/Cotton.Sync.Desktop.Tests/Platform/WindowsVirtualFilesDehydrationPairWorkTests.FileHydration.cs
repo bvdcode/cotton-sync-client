@@ -44,7 +44,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(inner.Requests, Is.Empty);
                 Assert.That(cloudFiles.HydratedPaths, Is.EqualTo(new[] { "Docs/report.txt" }));
                 Assert.That(
-                    suppression.SuppressedWrites,
+                    suppression.SuppressedPinnedWrites,
                     Is.EqualTo(new[] { new SuppressedWrite(syncPair.Id, syncPair.LocalRootPath, "Docs/report.txt") }));
                 Assert.That(updated.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
                 Assert.That(updated.LocalContentHash, Is.EqualTo("remote-hash"));
@@ -89,6 +89,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(inner.Requests[0].LocalChangedPaths, Is.EqualTo(new[] { "Docs/report.txt" }));
                 Assert.That(cloudFiles.HydratedPaths, Is.Empty);
                 Assert.That(suppression.SuppressedWrites, Is.Empty);
+                Assert.That(suppression.SuppressedPinnedWrites, Is.Empty);
                 Assert.That(updated.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Hydrated));
                 Assert.That(updated.LocalContentHash, Is.EqualTo("remote-hash"));
                 Assert.That(updated.LocalSizeBytes, Is.EqualTo(12));

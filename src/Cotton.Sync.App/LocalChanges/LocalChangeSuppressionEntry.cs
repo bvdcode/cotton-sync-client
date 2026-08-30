@@ -9,6 +9,7 @@ namespace Cotton.Sync.App.LocalChanges
             DateTimeOffset expiresAt,
             int remainingEvents,
             bool onlyWhileOnlineOnly,
+            bool onlyWhilePinned,
             bool suppressDeleteEvents,
             bool metadataOnly,
             bool creationOnly,
@@ -18,6 +19,7 @@ namespace Cotton.Sync.App.LocalChanges
             ExpiresAt = expiresAt;
             RemainingEvents = remainingEvents;
             OnlyWhileOnlineOnly = onlyWhileOnlineOnly;
+            OnlyWhilePinned = onlyWhilePinned;
             SuppressDeleteEvents = suppressDeleteEvents;
             MetadataOnly = metadataOnly;
             CreationOnly = creationOnly;
@@ -30,6 +32,8 @@ namespace Cotton.Sync.App.LocalChanges
         public int RemainingEvents { get; set; }
 
         public bool OnlyWhileOnlineOnly { get; set; }
+
+        public bool OnlyWhilePinned { get; set; }
 
         public bool SuppressDeleteEvents { get; set; }
 

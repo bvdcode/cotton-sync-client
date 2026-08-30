@@ -67,6 +67,7 @@ namespace Cotton.Sync.App.LocalChanges
             string fullPath,
             DateTimeOffset expiresAt,
             bool onlyWhileOnlineOnly,
+            bool onlyWhilePinned,
             bool suppressDeleteEvents,
             bool metadataOnly,
             bool creationOnly,
@@ -85,6 +86,7 @@ namespace Cotton.Sync.App.LocalChanges
                 entry.ExpiresAt = expiresAt;
                 entry.RemainingEvents = Math.Min(entry.RemainingEvents + _eventBudget, _eventBudget * 16);
                 entry.OnlyWhileOnlineOnly = onlyWhileOnlineOnly;
+                entry.OnlyWhilePinned = onlyWhilePinned;
                 entry.SuppressDeleteEvents = suppressDeleteEvents;
                 entry.MetadataOnly = metadataOnly;
                 entry.CreationOnly = creationOnly;
@@ -97,6 +99,7 @@ namespace Cotton.Sync.App.LocalChanges
                 expiresAt,
                 _eventBudget,
                 onlyWhileOnlineOnly,
+                onlyWhilePinned,
                 suppressDeleteEvents,
                 metadataOnly,
                 creationOnly,

@@ -142,7 +142,7 @@ namespace Cotton.Sync.Desktop.Platform
                 initialDiskStates[SyncPath.ToKey(entry.RelativePath)] = fileState;
                 if (fileState is null || !IsHydrationComplete(fileState.Attributes, entry.PlaceholderHydrationState))
                 {
-                    _localChangeSuppression?.SuppressProviderWrite(
+                    _localChangeSuppression?.SuppressProviderPinnedWrite(
                         syncPair.Id,
                         syncPair.LocalRootPath,
                         entry.RelativePath);
@@ -314,7 +314,10 @@ namespace Cotton.Sync.Desktop.Platform
         {
             if (suppressProviderWrite)
             {
-                _localChangeSuppression?.SuppressProviderWrite(syncPair.Id, syncPair.LocalRootPath, normalizedPath);
+                _localChangeSuppression?.SuppressProviderPinnedWrite(
+                    syncPair.Id,
+                    syncPair.LocalRootPath,
+                    normalizedPath);
             }
             try
             {

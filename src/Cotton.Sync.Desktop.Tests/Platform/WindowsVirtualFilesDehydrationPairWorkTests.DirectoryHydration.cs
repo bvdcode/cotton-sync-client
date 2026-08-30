@@ -71,7 +71,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(
                     diagnostics.Snapshot().Last().Operation,
                     Is.EqualTo("manual-always-keep-directory"));
-                Assert.That(suppression.SuppressedWrites, Has.Count.EqualTo(3));
+                Assert.That(suppression.SuppressedPinnedWrites, Has.Count.EqualTo(3));
                 Assert.That(suppression.ProviderWriteBurstCount, Is.EqualTo(1));
                 Assert.That(stateStore.UpsertManyCallCount, Is.EqualTo(1));
             });
@@ -117,7 +117,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     diagnostics.Snapshot().Select(static item => (item.Operation, item.Status)),
                     Does.Contain(("manual-always-keep-placeholder-repair", "completed")));
                 Assert.That(diagnostics.Snapshot().Any(static item => item.Status == "failed"), Is.False);
-                Assert.That(suppression.SuppressedWrites, Has.Count.EqualTo(1));
+                Assert.That(suppression.SuppressedPinnedWrites, Has.Count.EqualTo(1));
             });
         }
 
@@ -153,6 +153,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(inner.Requests[0].LocalChangedPaths, Is.EqualTo(new[] { "Music/track.mp3" }));
                 Assert.That(cloudFiles.HydratedPaths, Is.Empty);
                 Assert.That(suppression.SuppressedWrites, Is.Empty);
+                Assert.That(suppression.SuppressedPinnedWrites, Is.Empty);
                 Assert.That(suppression.ProviderWriteBurstCount, Is.EqualTo(1));
             });
         }

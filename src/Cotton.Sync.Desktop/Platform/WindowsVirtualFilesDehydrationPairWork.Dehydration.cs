@@ -164,7 +164,7 @@ namespace Cotton.Sync.Desktop.Platform
                     () =>
                     {
                         dehydrationStarting?.Invoke(normalizedPath);
-                        _localChangeSuppression?.SuppressProviderWrite(
+                        _localChangeSuppression?.SuppressProviderOnlineOnlyWrite(
                             syncPair.Id,
                             syncPair.LocalRootPath,
                             normalizedPath);

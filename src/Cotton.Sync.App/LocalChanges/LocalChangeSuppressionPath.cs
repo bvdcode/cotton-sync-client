@@ -28,6 +28,21 @@ namespace Cotton.Sync.App.LocalChanges
             }
         }
 
+        public static bool IsPinnedPlaceholder(string fullPath)
+        {
+            try
+            {
+                return HasRawAttribute(File.GetAttributes(fullPath), FileAttributePinned);
+            }
+            catch (Exception exception) when (exception is IOException
+                or UnauthorizedAccessException
+                or ArgumentException
+                or NotSupportedException)
+            {
+                return false;
+            }
+        }
+
         public static bool IsOnlineOnlyAttributes(FileAttributes attributes)
         {
             return !HasRawAttribute(attributes, FileAttributePinned)

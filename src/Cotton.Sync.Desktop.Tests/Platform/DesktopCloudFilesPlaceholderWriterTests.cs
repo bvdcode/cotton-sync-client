@@ -257,6 +257,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 throw new InvalidOperationException("Placeholder creation must use online-only watcher suppression.");
             }
 
+            public void SuppressProviderPinnedWrite(Guid syncPairId, string localRootPath, string relativePath)
+            {
+                throw new InvalidOperationException("Placeholder creation must not use pinned watcher suppression.");
+            }
+
             public void SuppressProviderFileCreation(Guid syncPairId, string localRootPath, string relativePath)
             {
                 SuppressedFileCreations.Add(new SuppressedWrite(syncPairId, localRootPath, relativePath));

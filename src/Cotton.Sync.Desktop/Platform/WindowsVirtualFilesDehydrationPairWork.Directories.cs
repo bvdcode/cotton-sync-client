@@ -220,7 +220,7 @@ namespace Cotton.Sync.Desktop.Platform
                 return;
             }
 
-            _localChangeSuppression?.SuppressProviderWrite(
+            _localChangeSuppression?.SuppressProviderPinnedWrite(
                 syncPair.Id,
                 syncPair.LocalRootPath,
                 relativePath);

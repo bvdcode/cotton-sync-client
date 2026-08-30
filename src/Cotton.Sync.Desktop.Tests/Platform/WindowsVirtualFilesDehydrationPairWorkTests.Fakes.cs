@@ -57,11 +57,18 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             public List<SuppressedWrite> SuppressedWrites { get; } = [];
 
+            public List<SuppressedWrite> SuppressedPinnedWrites { get; } = [];
+
             public int ProviderWriteBurstCount { get; private set; }
 
             public void SuppressProviderWrite(Guid syncPairId, string localRootPath, string relativePath)
             {
                 SuppressedWrites.Add(new SuppressedWrite(syncPairId, localRootPath, relativePath));
+            }
+
+            public void SuppressProviderPinnedWrite(Guid syncPairId, string localRootPath, string relativePath)
+            {
+                SuppressedPinnedWrites.Add(new SuppressedWrite(syncPairId, localRootPath, relativePath));
             }
 
             public void SuppressProviderFileCreation(Guid syncPairId, string localRootPath, string relativePath)
