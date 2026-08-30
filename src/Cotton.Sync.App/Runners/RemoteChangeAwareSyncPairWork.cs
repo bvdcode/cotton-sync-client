@@ -258,7 +258,7 @@ namespace Cotton.Sync.App.Runners
                 return new InnerRequestPlan(request, RemoteChangesCovered: true);
             }
 
-            if (remoteRead.Batch.HasMore)
+            if (remoteRead.Batch.HasMore && syncPair.Mode != SyncPairMode.WindowsVirtualFiles)
             {
                 return new InnerRequestPlan(
                     request.Merge(SyncRunRequest.ForFull(request.Causes)),
