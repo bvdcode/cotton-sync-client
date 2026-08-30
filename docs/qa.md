@@ -2,7 +2,7 @@
 
 This document records the release, packaging, sync, virtual-files, diagnostics, update, tray, uninstall, and installed-artifact verification performed for the standalone Cotton Sync client.
 
-**QA snapshot:** 204 verified checkbox rows / 0 unresolved checkbox rows in completed-evidence sections.
+**QA snapshot:** 222 verified checkbox rows / 0 unresolved checkbox rows in completed-evidence sections.
 
 ### Included Evidence Areas
 
@@ -11,6 +11,31 @@ This document records the release, packaging, sync, virtual-files, diagnostics, 
 - Supplemental virtual-files installed-artifact and high-scale evidence.
 - CLI and desktop live smoke evidence.
 - Diagnostics, update, autostart, tray, uninstall, and packaging checks.
+
+## v0.1.91 Installed Baseline And Current Source Acceptance
+
+This section records the 2026-08-30 installed-release baseline and the subsequent current-source acceptance run against an ordinary account on `<server profile>`. Every remote and local mutation stayed under a run-specific QA namespace.
+
+- [x] The published `v0.1.91` Windows installer was verified against `release-artifact-checksums.sha256`, upgraded the existing installation, preserved the selected data profile, and installed product version `0.1.91+10beb64ba5cb2cb70ad4a8fe5e207941d36a7eff`.
+- [x] The installed app displayed Windows taskbar badges for active sync, paused, offline, and action-required states; captured taskbar images show blue, amber, gray, and red states respectively.
+- [x] Three repeated uninstall cycles removed an actively registered Cloud Files root, logged cleanup exit code `0`, left no provider registration, and reinstalled `v0.1.91` successfully.
+- [x] All nine explicit release-scale performance tests passed, including 30,000 uploads and the 100,000-path scoped hot path.
+- [x] A remote backlog above 1,000 changes in another root reproduced unnecessary full VFS scans every five seconds. Current source filters bounded VFS pages by root before deciding whether inner sync work is necessary; a two-hour live soak received continuous remote events with zero sync-engine passes, warnings, or errors for the unaffected pair.
+- [x] Immediate alternating Explorer `Free up space` and `Always keep on this device` reproduced stale watcher suppression in `v0.1.91`: five of ten dehydrates and four of ten hydrates were swallowed. Current source completed ten of ten alternating cycles in both directions, normally in 2.4-3.1 seconds, while preserving remote and placeholder identity.
+- [x] A real Excel workbook was saved three times while open. The client used bounded sharing-violation retries, resumed after Excel released the file, removed temporary workbook files from the sync surface, and produced a server download with the final local SHA-256.
+- [x] Concurrent offline-local and second-client remote edits preserved both byte sequences: the canonical file retained the local edit and one timestamped conflict copy retained the remote edit. The resulting action-required state represented an explicit conflict rather than silent data loss.
+- [x] A per-process network outage produced an `Offline` taskbar state and retained a local upload request. Restoring connectivity without restarting the client uploaded the file with matching local and remote SHA-256 values and a valid placeholder identity.
+- [x] Offline hydration refused an unavailable placeholder read instead of returning empty or partial bytes. Restoring connectivity without restarting the client hydrated the same 1 MiB placeholder and returned the expected SHA-256.
+- [x] A 102-item remote delete plan was blocked at the configured limit of 100 and exposed a stable fingerprint. Current source retains the exact blocked scope across background feed checks and applies approval only to the matching plan; a second client's local mass-delete guard independently preserved all 101 local files.
+- [x] Root-only scoped VFS deletion reproduced a recursive remote-folder delete when exact-key state loading omitted tracked descendants. Current source expands exact deleted roots through durable prefix state and blocks any subtree whose tracked remote snapshot is incomplete.
+- [x] A run-specific remote tree was populated with 500,000 files in 1,000 directories. The final current-source cold run created 500,000 online-only placeholders and 1,000 directories, stored 501,000 state rows, advanced the durable cursor, and transferred zero file-content bytes.
+- [x] The final fresh cold run completed durable population in 10 minutes 19 seconds. Core streaming sustained approximately 843 placeholders per second with zero user-action skips; process peak was approximately 489 MB working set and 394 MB private memory.
+- [x] Pause during population stopped state growth within the observed subsecond interval and held exactly 6,747 rows for 20 seconds. Resume loaded 6,144 current files through state-first recovery, skipped them without recreation, and completed the remaining population.
+- [x] Three real process restarts preserved partial state. A separate post-completion restart reported `HasCompletedFullReconcile=true`, retained exactly 501,000 state rows, and did not start population again.
+- [x] A two-hour idle soak sampled one unchanged pair 25 times under continuous unrelated remote mutations. Steady working set stayed between 263 MB and 270 MB, private memory between 151 MB and 157 MB, handles between 1,008 and 1,038, and threads between 56 and 60.
+- [x] Public diagnostics were exported before and after the workflow and large-tree runs. The post-run large profile reports one registered VFS pair, a durable completed cursor, 501,000 state entries, and no retained transfer.
+
+The acceptance evidence above applies to the current source tree after the listed findings were fixed. `v0.1.91` remains the installed baseline and must not be described as containing those later source fixes. Historical partial and blocked rows below remain attached to the exact older artifacts they describe.
 
 ## Windows Full-Mirror Release QA
 
@@ -33,7 +58,7 @@ The first public Windows release is a normal full-mirror sync client. Windows vi
 - Verification source: release workflow artifacts and manifest checksums.
 - Record the release commit and version from `release-manifest.json`.
 - Release versioning is GitVersion-driven from `MajorMinorPatch`; do not hard-code an expected version in the checklist. Compare the installed UI, diagnostics bundle, installer smoke, and `release-manifest.json` version for the same published release.
-  - Current verified release: GitHub Actions run `27652173622` completed successfully, published `Cotton Sync Client 0.0.4` from commit `01683a08c37f975073beb38ba1d82d2c5276b76e`, and exposed `CottonSync-Windows-Setup.exe`, `CottonSync-Windows.zip`, `CottonSync-Windows.tar.gz`, `CottonSync-CLI-Windows.zip`, `CottonSync-Linux.deb`, `CottonSync-Linux.tar.gz`, `release-manifest.json`, and `release-artifact-checksums.sha256`. The downloaded manifest reports `version=0.0.4`, `tag=v0.0.4`, `branch=feature/windows-virtual-files`, and the same commit.
+  - Current verified release: GitHub Actions run `32635158998` completed successfully and published `Cotton Sync Client 0.1.91` from commit `10beb64ba5cb2cb70ad4a8fe5e207941d36a7eff`. The release exposes the Windows installer and archives, Windows CLI archive, Linux packages, `release-manifest.json`, and `release-artifact-checksums.sha256`. The published Windows installer SHA-256 is `669fcc0e4f4947471cff0915e63c0351e15789a464b5420d3ecc1e1f818595f9`; the installed executable reports product version `0.1.91+10beb64ba5cb2cb70ad4a8fe5e207941d36a7eff`.
   - Previous verified baseline after the version reset: GitHub Actions run `27596280226`, job `Publish Sync Client Release`, completed successfully; published `sync-client-latest` version `0.0.1` at commit `43b46f04d5e6a6042775e9580b343fbc031f5f39` and exposed `CottonSync-Windows-Setup.exe`, `CottonSync-Windows.zip`, `CottonSync-CLI-Windows.zip`, `release-manifest.json`, and checksums.
 
 ### Install
@@ -753,12 +778,12 @@ This matrix records passed and failed artifact-specific runs in chronological or
 
 ### Current Release Gate Status
 
-Current VFS checklist status: one unresolved checkbox row remains in this QA document: the installed demo-account ancestor-folder action during a real large initial sync. The exact `v0.1.69` release artifact closes the deterministic installed hydration UI transition, isolated Explorer, inherited-descendant, and screenshot gates, but not the real-server stale-transfer display gate. Rows in the evidence matrix marked `PARTIAL`, `BLOCKED`, `NOT PASSED`, or `NEEDS INSTALLED` preserve artifact-specific findings rather than silently treating source coverage as installed proof.
+Current VFS acceptance status: the 2026-08-30 current-source section has zero unresolved checkbox rows. It closes the real large initial-sync, ancestor-folder availability, pause/resume/restart, taskbar, offline, conflict, mass-delete, and long-run resource gates against a run-specific 500,000-file server tree. Rows in the historical evidence matrix marked `PARTIAL`, `BLOCKED`, `NOT PASSED`, or `NEEDS INSTALLED` continue to describe their exact older artifacts rather than the current source acceptance result.
 
 Current publication gate:
 
-- Commit `935e622a93685e9f0fc850f3637270a595f26f82` passed GitHub Actions run `30177260018`; all solution, CLI, Linux, Windows installer, checksum, publication, and GitHub-release upgrade jobs completed successfully. Release `v0.1.69` is published against that exact commit with eight assets, and the published installer digest matches the locally installed CI artifact.
-- The Windows workflow for the current head must pass before a published Windows release is accepted. The blocking installed-package evidence includes Cloud Files self-test truthfulness, base VFS smoke, startup/session restore, shell share-link targets, replacement-upload Explorer status finalization, update discovery, version metadata, notification identity, autostart-to-tray, diagnostics public safety, and release-evidence verification.
+- Commit `10beb64ba5cb2cb70ad4a8fe5e207941d36a7eff` passed GitHub Actions run `32635158998`; release `v0.1.91` is published with eight assets and the published Windows installer digest matches the installed baseline.
+- The repository release workflow for the current acceptance commit must still pass before the later source fixes are accepted as a published Windows release. Required jobs include solution tests, CLI/Linux packaging, Windows installer and Cloud Files smokes, checksums, publication, and the GitHub-release upgrade smoke.
 
 Scope notes:
 
