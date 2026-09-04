@@ -9,13 +9,15 @@ namespace Cotton.Sync.Local
     public interface ILocalFileSyncWriter
     {
         /// <summary>
-        /// Writes a file through a temporary path and atomically replaces the target.
+        /// Writes a file through a temporary path. A null expected hash requires an absent target;
+        /// replacement preserves the displaced version when its content differs from the expected hash.
         /// </summary>
-        Task WriteFileAsync(
+        Task<LocalFileWriteResult> WriteFileAsync(
             string rootPath,
             string relativePath,
             Func<Stream, CancellationToken, Task> writeContentAsync,
             DateTime? lastWriteUtc = null,
+            string? expectedLocalContentHash = null,
             CancellationToken cancellationToken = default);
 
         /// <summary>

@@ -180,6 +180,7 @@ namespace Cotton.Sync.Tests
         public async Task RunOnceAsync_ReusesSharedStateAcrossSequentialClientSurfaces()
         {
             const string relativePath = "sequential-surface.txt";
+            WriteFile(relativePath, "desktop-local");
             LocalFileSnapshot local = LocalFile(relativePath, "desktop-local");
             FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             SqliteSyncStateStore desktopStateStore = new SqliteSyncStateStore(_databasePath);

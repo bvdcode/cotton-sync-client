@@ -16,11 +16,12 @@ namespace Cotton.Sync.Local
         private const string TemporaryDirectoryName = "tmp";
 
         /// <inheritdoc />
-        public async Task WriteFileAsync(
+        public async Task<LocalFileWriteResult> WriteFileAsync(
             string rootPath,
             string relativePath,
             Func<Stream, CancellationToken, Task> writeContentAsync,
             DateTime? lastWriteUtc = null,
+            string? expectedLocalContentHash = null,
             CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
@@ -40,6 +41,8 @@ namespace Cotton.Sync.Local
             Directory.CreateDirectory(temporaryDirectory);
             CleanupTemporaryDownloads(temporaryDirectory);
             string temporaryPath = Path.Combine(temporaryDirectory, Guid.NewGuid().ToString("N") + ".download");
+            string? previousPath = null;
+            string? preservationRoot = null;
             bool moved = false;
             try
             {
@@ -61,14 +64,82 @@ namespace Cotton.Sync.Local
                     File.SetLastWriteTimeUtc(temporaryPath, lastWriteUtc.Value.ToUniversalTime());
                 }
 
-                File.Move(temporaryPath, targetPath, overwrite: true);
+                if (expectedLocalContentHash is null)
+                {
+                    try
+                    {
+                        if (OperatingSystem.IsLinux())
+                        {
+                            LinuxAtomicFileCommit.MoveNoReplace(temporaryPath, targetPath);
+                        }
+                        else
+                        {
+                            File.Move(temporaryPath, targetPath, overwrite: false);
+                        }
+                    }
+                    catch (IOException exception) when (File.Exists(targetPath) || Directory.Exists(targetPath))
+                    {
+                        Trace.TraceWarning("Local download target '{0}' appeared before commit: {1}", normalizedPath, exception.Message);
+                        throw new LocalFileUnavailableException(
+                            normalizedPath,
+                            targetPath,
+                            "a local item appeared while its remote version was downloading.");
+                    }
+                    catch (IOException exception) when (OperatingSystem.IsLinux())
+                    {
+                        Trace.TraceWarning("Could not commit local download target '{0}': {1}", normalizedPath, exception.Message);
+                        throw new LocalFileUnavailableException(normalizedPath, targetPath, exception);
+                    }
+
+                    moved = true;
+                    return new LocalFileWriteResult();
+                }
+
+                previousPath = CreateDeletedPath(fullRoot, normalizedPath, out preservationRoot);
+                Directory.CreateDirectory(Path.GetDirectoryName(previousPath)!);
+                try
+                {
+                    if (OperatingSystem.IsLinux())
+                    {
+                        if (Directory.Exists(targetPath))
+                        {
+                            throw new IOException("The local download target is a directory.");
+                        }
+
+                        LinuxAtomicFileCommit.MoveNoReplace(temporaryPath, previousPath);
+                        LinuxAtomicFileCommit.Exchange(previousPath, targetPath);
+                    }
+                    else
+                    {
+                        File.Replace(temporaryPath, targetPath, previousPath);
+                    }
+                }
+                catch (IOException exception)
+                {
+                    Trace.TraceWarning("Could not replace local download target '{0}': {1}", normalizedPath, exception.Message);
+                    throw new LocalFileUnavailableException(normalizedPath, targetPath, exception);
+                }
+
                 moved = true;
+                return await LocalFileReplacementFinalizer.CompleteAsync(
+                        fullRoot,
+                        normalizedPath,
+                        previousPath,
+                        expectedLocalContentHash,
+                        () => CreateConflictRelativePath(fullRoot, normalizedPath, DateTime.UtcNow),
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
             finally
             {
                 if (!moved && File.Exists(temporaryPath))
                 {
                     File.Delete(temporaryPath);
+                }
+
+                if (previousPath is not null && preservationRoot is not null && !File.Exists(previousPath))
+                {
+                    CleanupEmptyPreservationDirectories(previousPath, preservationRoot);
                 }
             }
         }
@@ -91,7 +162,7 @@ namespace Cotton.Sync.Local
                 throw new IOException("Local file delete target is a directory: " + normalizedPath);
             }
 
-            string preservedPath = CreateDeletedPath(fullRoot, normalizedPath);
+            string preservedPath = CreateDeletedPath(fullRoot, normalizedPath, out _);
             string? preservedDirectory = Path.GetDirectoryName(preservedPath);
             if (!string.IsNullOrWhiteSpace(preservedDirectory))
             {
@@ -205,7 +276,7 @@ namespace Cotton.Sync.Local
                 throw new IOException("Local directory delete target is a file: " + normalizedPath);
             }
 
-            string preservedPath = CreateDeletedPath(fullRoot, normalizedPath);
+            string preservedPath = CreateDeletedPath(fullRoot, normalizedPath, out _);
             string? preservedParentDirectory = Path.GetDirectoryName(preservedPath);
             if (!string.IsNullOrWhiteSpace(preservedParentDirectory))
             {
@@ -295,17 +366,45 @@ namespace Cotton.Sync.Local
             }
         }
 
-        private static string CreateDeletedPath(string fullRoot, string normalizedPath)
+        private static void CleanupEmptyPreservationDirectories(string preservedPath, string preservationRoot)
+        {
+            string boundary = Path.GetFullPath(preservationRoot);
+            string prefix = boundary + Path.DirectorySeparatorChar;
+            string? directory = Path.GetDirectoryName(Path.GetFullPath(preservedPath));
+            while (directory is not null
+                && (string.Equals(directory, boundary, StringComparison.Ordinal)
+                    || directory.StartsWith(prefix, StringComparison.Ordinal)))
+            {
+                try
+                {
+                    Directory.Delete(directory);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    Trace.TraceWarning("Could not remove empty local preservation directory '{0}': {1}", directory, exception.Message);
+                    return;
+                }
+
+                if (string.Equals(directory, boundary, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                directory = Path.GetDirectoryName(directory);
+            }
+        }
+
+        private static string CreateDeletedPath(string fullRoot, string normalizedPath, out string preservationRoot)
         {
             string quarantineName = DateTime.UtcNow.ToString("yyyyMMddTHHmmssfffZ", CultureInfo.InvariantCulture)
                 + "-"
                 + Guid.NewGuid().ToString("N");
-            return Path.Combine(
+            preservationRoot = Path.Combine(
                 fullRoot,
                 SyncMetadataDirectory.Name,
                 DeletedDirectoryName,
-                quarantineName,
-                normalizedPath.Replace('/', Path.DirectorySeparatorChar));
+                quarantineName);
+            return Path.Combine(preservationRoot, normalizedPath.Replace('/', Path.DirectorySeparatorChar));
         }
     }
 }

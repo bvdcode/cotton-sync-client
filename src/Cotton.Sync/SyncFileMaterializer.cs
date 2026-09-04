@@ -22,17 +22,30 @@ namespace Cotton.Sync
             SyncRunResult result,
             string relativePath,
             NodeFileManifestDto remoteFile,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            string? expectedLocalContentHash = null)
         {
             EnsureEnoughLocalFreeSpace(syncPair.LocalRootPath, relativePath, remoteFile.SizeBytes);
-            await localWriter.WriteFileAsync(
+            LocalFileWriteResult writeResult = await localWriter.WriteFileAsync(
                 syncPair.LocalRootPath,
                 relativePath,
                 (stream, token) => fileTransfer.DownloadAndVerifyFileAsync(remoteFile, relativePath, options, stream, token),
                 remoteFile.UpdatedAt == default ? null : remoteFile.UpdatedAt,
+                expectedLocalContentHash,
                 cancellationToken).ConfigureAwait(false);
             await stateStore.UpsertAsync(BuildBaseline(syncPair, relativePath, remoteFile.ContentHash, remoteFile.UpdatedAt, remoteFile.SizeBytes, remoteFile), cancellationToken)
                 .ConfigureAwait(false);
+            if (writeResult.ConflictRelativePath is not null)
+            {
+                SyncActivityReporter.ReportActivity(
+                    result,
+                    options,
+                    SyncActivityKind.Conflict,
+                    relativePath,
+                    "Local version changed during download and was saved as " + writeResult.ConflictRelativePath);
+                return;
+            }
+
             SyncActivityReporter.ReportActivity(result, options, SyncActivityKind.Downloaded, relativePath, null);
         }
 

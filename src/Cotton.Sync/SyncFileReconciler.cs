@@ -332,7 +332,8 @@ namespace Cotton.Sync
                             context.Result,
                             context.RelativePath,
                             context.Remote!.File,
-                            context.CancellationToken)
+                            context.CancellationToken,
+                            context.Local?.ContentHash)
                         .ConfigureAwait(false);
                     return;
                 case SyncFileChangeKind.Conflict:

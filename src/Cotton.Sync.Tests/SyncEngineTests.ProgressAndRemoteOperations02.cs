@@ -60,6 +60,8 @@ namespace Cotton.Sync.Tests
 
             public string? EmptyLocalHashUploadContentHash { get; set; }
 
+            public Action<Guid>? BeforeDownload { get; set; }
+
             public Task<NodeFileManifestDto> UploadFileAsync(
                 Guid rootNodeId,
                 string relativePath,
@@ -195,6 +197,7 @@ namespace Cotton.Sync.Tests
             public Task DownloadFileAsync(Guid nodeFileId, Stream destination, CancellationToken cancellationToken = default)
             {
                 DownloadCalls.Add(nodeFileId);
+                BeforeDownload?.Invoke(nodeFileId);
                 if (DownloadFailureIds.Contains(nodeFileId))
                 {
                     throw new InvalidOperationException("Remote download failed.");

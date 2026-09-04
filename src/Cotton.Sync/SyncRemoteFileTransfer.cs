@@ -100,7 +100,7 @@ namespace Cotton.Sync
                     targetRelativePath,
                     (stream, token) => DownloadAndVerifyFileAsync(remoteFile, remoteRelativePath, options, stream, token),
                     remoteFile.UpdatedAt == default ? null : remoteFile.UpdatedAt,
-                    cancellationToken)
+                    cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
         }
 
