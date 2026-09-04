@@ -1,6 +1,10 @@
 name: Desktop Sync
 
 on:
+  pull_request:
+    branches:
+      - main
+      - develop
   push:
     tags:
       - "v*"
