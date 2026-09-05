@@ -12,6 +12,34 @@ namespace Cotton.Sync.Tests.Remote
 {
     public class RemoteRootResolverTests
     {
+        [TestCase(500, 500)]
+        [TestCase(500, 501)]
+        [TestCase(499, 501)]
+        public void EnsureAsync_RejectsChangedOrIncompleteListing(int firstPageCount, int nextTotalCount)
+        {
+            Guid rootId = Guid.NewGuid();
+            FakeNodeClient client = new() { Root = Node(rootId, null, "root") };
+            client.Children[(rootId, 1)] = new FakeNodePage
+            {
+                TotalCount = 501,
+                Files = Enumerable.Range(0, firstPageCount)
+                    .Select(index => File(rootId, "file-" + index.ToString("D3") + ".txt"))
+                    .ToList(),
+            };
+            client.Children[(rootId, 2)] = new FakeNodePage { TotalCount = nextTotalCount };
+            RemoteRootResolver resolver = new(client, pageSize: 500);
+
+            IOException? exception = Assert.ThrowsAsync<IOException>(() => resolver.EnsureAsync("Missing"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception, Is.Not.Null);
+                Assert.That(exception!.Message, Does.Contain("listing").And.Contain(rootId.ToString("D")));
+                Assert.That(client.CreatedNodes, Is.Empty);
+                Assert.That(client.GetChildrenCalls, Has.Count.EqualTo(firstPageCount == 500 ? 2 : 1));
+            });
+        }
+
         [Test]
         public async Task EnsureAsync_ReturnsAccountRootForEmptyPath()
         {

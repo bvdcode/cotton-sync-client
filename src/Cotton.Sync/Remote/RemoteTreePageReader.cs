@@ -20,18 +20,44 @@ namespace Cotton.Sync.Remote
             _pageSize = pageSize;
         }
 
-        public async Task<RemoteTreePageReadResult> ReadAsync(
+        public Task<RemoteTreePageReadResult> ReadAsync(
             RemoteCrawlFrame frame,
+            CancellationToken cancellationToken)
+        {
+            return ReadAsync(frame.Node.Id, frame.Page, frame.Loaded, frame.ExpectedTotalCount, cancellationToken);
+        }
+
+        public async Task<RemoteTreePageReadResult> ReadAsync(
+            Guid nodeId,
+            int page,
+            int loaded,
+            int? expectedTotalCount,
             CancellationToken cancellationToken)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
             CottonPagedResult<NodeContentDto> result = await _nodes.GetChildrenAsync(
-                frame.Node.Id,
-                frame.Page,
+                nodeId,
+                page,
                 _pageSize,
                 depth: 0,
                 cancellationToken).ConfigureAwait(false);
             stopwatch.Stop();
+            if (expectedTotalCount.HasValue && result.TotalCount != expectedTotalCount.Value)
+            {
+                throw new IOException(
+                    $"Remote directory listing for node {nodeId:D} changed on page {page}: "
+                    + $"expected total {expectedTotalCount.Value}, received {result.TotalCount}.");
+            }
+
+            int count = result.Payload.Nodes.Count + result.Payload.Files.Count;
+            int expectedPageCount = Math.Min(_pageSize, Math.Max(0, result.TotalCount - loaded));
+            if (result.TotalCount < loaded || count != expectedPageCount)
+            {
+                throw new IOException(
+                    $"Remote directory listing for node {nodeId:D} is incomplete or inconsistent on page {page}: "
+                    + $"expected {expectedPageCount} entries, received {count}.");
+            }
+
             return new RemoteTreePageReadResult(result.Payload, result.TotalCount, stopwatch.Elapsed);
         }
 
@@ -42,15 +68,16 @@ namespace Cotton.Sync.Remote
         {
             int page = 1;
             int loaded = 0;
+            int? expectedTotalCount = null;
             while (true)
             {
-                CottonPagedResult<NodeContentDto> result = await _nodes.GetChildrenAsync(
+                RemoteTreePageReadResult result = await ReadAsync(
                     parentNodeId,
                     page,
-                    _pageSize,
-                    depth: 0,
+                    loaded,
+                    expectedTotalCount,
                     cancellationToken).ConfigureAwait(false);
-                NodeContentDto children = result.Payload;
+                NodeContentDto children = result.Children;
                 if (children.Nodes.Any(node => string.Equals(node.Name, name, StringComparison.OrdinalIgnoreCase))
                     || children.Files.Any(file => string.Equals(file.Name, name, StringComparison.OrdinalIgnoreCase)))
                 {
@@ -59,11 +86,12 @@ namespace Cotton.Sync.Remote
 
                 int count = children.Nodes.Count + children.Files.Count;
                 loaded += count;
-                if (count == 0 || loaded >= result.TotalCount)
+                if (loaded == result.TotalCount)
                 {
                     return children;
                 }
 
+                expectedTotalCount = result.TotalCount;
                 page++;
             }
         }

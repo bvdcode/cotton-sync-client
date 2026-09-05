@@ -42,7 +42,7 @@ namespace Cotton.Sync.Tests.Remote
                 TotalCount = 1,
                 Files = [File(videosId, "clip.mp4")],
             };
-            RemoteTreeCrawler crawler = new RemoteTreeCrawler(client, pageSize: 1, streamingConcurrency: 3);
+            RemoteTreeCrawler crawler = new RemoteTreeCrawler(client, pageSize: 3, streamingConcurrency: 3);
             RecordingStreamSink sink = new RecordingStreamSink();
             RecordingProgress<RemoteTreeScanProgress> progress = new RecordingProgress<RemoteTreeScanProgress>();
 

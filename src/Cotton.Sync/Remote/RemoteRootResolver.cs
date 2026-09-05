@@ -15,7 +15,7 @@ namespace Cotton.Sync.Remote
     {
         private const int DefaultPageSize = 100;
         private readonly ICottonNodeClient _nodes;
-        private readonly int _pageSize;
+        private readonly RemoteTreePageReader _pages;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="RemoteRootResolver" /> class.
@@ -24,7 +24,7 @@ namespace Cotton.Sync.Remote
         {
             _nodes = nodes ?? throw new ArgumentNullException(nameof(nodes));
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(pageSize);
-            _pageSize = pageSize;
+            _pages = new RemoteTreePageReader(nodes, pageSize);
         }
 
         /// <inheritdoc />
@@ -74,15 +74,16 @@ namespace Cotton.Sync.Remote
             string nameKey = RemoteNameKey.Create(name);
             int page = 1;
             int loaded = 0;
+            int? expectedTotalCount = null;
             while (true)
             {
-                CottonPagedResult<NodeContentDto> pageResult = await _nodes.GetChildrenAsync(
+                RemoteTreePageReadResult pageResult = await _pages.ReadAsync(
                     parentNodeId,
                     page,
-                    _pageSize,
-                    depth: 0,
+                    loaded,
+                    expectedTotalCount,
                     cancellationToken).ConfigureAwait(false);
-                NodeContentDto content = pageResult.Payload;
+                NodeContentDto content = pageResult.Children;
                 NodeDto? match = content.Nodes.FirstOrDefault(node =>
                     string.Equals(RemoteNameKey.Create(node.Name), nameKey, StringComparison.Ordinal));
                 if (match is not null)
@@ -92,11 +93,12 @@ namespace Cotton.Sync.Remote
 
                 int count = content.Nodes.Count + content.Files.Count;
                 loaded += count;
-                if (count == 0 || loaded >= pageResult.TotalCount)
+                if (loaded == pageResult.TotalCount)
                 {
                     return null;
                 }
 
+                expectedTotalCount = pageResult.TotalCount;
                 page++;
             }
         }

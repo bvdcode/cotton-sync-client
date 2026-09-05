@@ -5,5 +5,10 @@ using Cotton.Nodes;
 
 namespace Cotton.Sync.Remote
 {
-    internal record struct RemoteCrawlFrame(NodeDto Node, string ParentPath, int Page, int Loaded);
+    internal record struct RemoteCrawlFrame(
+        NodeDto Node,
+        string ParentPath,
+        int Page,
+        int Loaded,
+        int? ExpectedTotalCount = null);
 }

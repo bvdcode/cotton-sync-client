@@ -317,9 +317,14 @@ namespace Cotton.Sync.Remote
 
                     int count = children.Nodes.Count + children.Files.Count;
                     int loaded = frame.Loaded + count;
-                    if (count != 0 && loaded < pageRead.TotalCount)
+                    if (loaded < pageRead.TotalCount)
                     {
-                        await enqueueFrameAsync(frame with { Page = frame.Page + 1, Loaded = loaded }).ConfigureAwait(false);
+                        await enqueueFrameAsync(frame with
+                        {
+                            Page = frame.Page + 1,
+                            Loaded = loaded,
+                            ExpectedTotalCount = pageRead.TotalCount,
+                        }).ConfigureAwait(false);
                     }
 
                     for (int index = childDirectories.Count - 1; index >= 0; index--)
