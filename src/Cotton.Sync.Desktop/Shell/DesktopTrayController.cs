@@ -15,7 +15,6 @@ namespace Cotton.Sync.Desktop.Shell
     {
         private readonly IClassicDesktopStyleApplicationLifetime _lifetime;
         private readonly MainWindow _window;
-        private readonly WindowsTaskbarStatusOverlay? _taskbarStatusOverlay;
         private readonly TrayIcon _trayIcon;
         private NativeMenuItem? _showMenuItem;
         private NativeMenuItem? _openFolderMenuItem;
@@ -32,9 +31,6 @@ namespace Cotton.Sync.Desktop.Shell
         {
             _window = window ?? throw new ArgumentNullException(nameof(window));
             _lifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
-            _taskbarStatusOverlay = OperatingSystem.IsWindows()
-                ? new WindowsTaskbarStatusOverlay(_window)
-                : null;
             _trayIcon = CreateTrayIcon();
             AttachViewModel(_window.DataContext as ShellViewModel);
         }
@@ -48,14 +44,9 @@ namespace Cotton.Sync.Desktop.Shell
                 return;
             }
 
-            AttachViewModel(null);
-            if (OperatingSystem.IsWindows())
-            {
-                _taskbarStatusOverlay?.Dispose();
-            }
-
-            _trayIcon.Dispose();
             _disposed = true;
+            AttachViewModel(null);
+            _trayIcon.Dispose();
         }
 
         private static WindowIcon LoadIcon(Uri iconUri)
@@ -64,22 +55,35 @@ namespace Cotton.Sync.Desktop.Shell
             return new WindowIcon(stream);
         }
 
-        private static NativeMenuItem CreateMenuItem(string header, Action action)
+        private NativeMenuItem CreateMenuItem(string header, Action action)
         {
             NativeMenuItem item = new(header);
             item.Click += (_, _) => RunOnUiThread(action);
             return item;
         }
 
-        private static void RunOnUiThread(Action action)
+        private void RunOnUiThread(Action action)
         {
-            if (Dispatcher.UIThread.CheckAccess())
+            if (_disposed)
             {
-                action();
                 return;
             }
 
-            Dispatcher.UIThread.Post(action);
+            void ExecuteIfActive()
+            {
+                if (!_disposed)
+                {
+                    action();
+                }
+            }
+
+            if (Dispatcher.UIThread.CheckAccess())
+            {
+                ExecuteIfActive();
+                return;
+            }
+
+            Dispatcher.UIThread.Post(ExecuteIfActive);
         }
 
         private TrayIcon CreateTrayIcon()
@@ -157,7 +161,7 @@ namespace Cotton.Sync.Desktop.Shell
                 or nameof(ShellViewModel.CurrentWorkProgressHeaderDetails)
                 or nameof(ShellViewModel.CurrentTrayActivityKind))
             {
-                UpdateTrayStatus();
+                RunOnUiThread(UpdateTrayStatus);
             }
 
             if (e.PropertyName is nameof(ShellViewModel.PauseResumeTrayLabel)
@@ -168,19 +172,24 @@ namespace Cotton.Sync.Desktop.Shell
                 or nameof(ShellViewModel.CanOpenTrayFolder)
                 or nameof(ShellViewModel.TrayOpenFolderLabel))
             {
-                UpdateTrayActions();
+                RunOnUiThread(UpdateTrayActions);
                 return;
             }
 
             if (e.PropertyName is nameof(ShellViewModel.IsSignedIn)
                 or nameof(ShellViewModel.IsBusy))
             {
-                UpdateTrayActions();
+                RunOnUiThread(UpdateTrayActions);
             }
         }
 
         private void UpdateTrayStatus()
         {
+            if (_disposed)
+            {
+                return;
+            }
+
             if (_viewModel is null)
             {
                 _trayIcon.ToolTipText = "Cotton Sync";
@@ -197,11 +206,6 @@ namespace Cotton.Sync.Desktop.Shell
                 _viewModel.CurrentWorkProgressHeaderDetails,
                 _viewModel.CurrentTrayActivityKind);
             _trayIcon.ToolTipText = status.ToolTipText;
-            if (OperatingSystem.IsWindows())
-            {
-                _taskbarStatusOverlay?.Update(status.Kind);
-            }
-
             if (_currentIconUri != status.IconUri)
             {
                 _trayIcon.Icon = LoadIcon(status.IconUri);
@@ -211,6 +215,11 @@ namespace Cotton.Sync.Desktop.Shell
 
         private void UpdateTrayActions()
         {
+            if (_disposed)
+            {
+                return;
+            }
+
             if (_viewModel is null)
             {
                 RebuildTrayMenu(

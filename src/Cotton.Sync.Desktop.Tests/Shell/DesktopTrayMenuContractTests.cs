@@ -88,7 +88,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(trayController, Does.Contain("RunOnUiThread(action)"));
                 Assert.That(trayController, Does.Contain("RunOnUiThread(ShowWindow)"));
                 Assert.That(trayController, Does.Contain("Dispatcher.UIThread.CheckAccess()"));
-                Assert.That(trayController, Does.Contain("Dispatcher.UIThread.Post(action)"));
+                Assert.That(trayController, Does.Contain("Dispatcher.UIThread.Post(ExecuteIfActive)"));
+                Assert.That(trayController, Does.Contain("if (!_disposed)"));
             });
         }
 
@@ -118,17 +119,18 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
-        public void TrayStatus_UpdatesWindowsTaskbarOverlay()
+        public void TrayStatus_UpdatesNotificationAreaIconWithoutChangingTaskbarIcon()
         {
             string trayController = File.ReadAllText(GetDesktopShellFilePath("DesktopTrayController.cs"));
-            string taskbarOverlay = File.ReadAllText(GetDesktopShellFilePath("WindowsTaskbarStatusOverlay.cs"));
 
             Assert.Multiple(() =>
             {
-                Assert.That(trayController, Does.Contain("_taskbarStatusOverlay?.Update(status.Kind)"));
-                Assert.That(trayController, Does.Contain("_taskbarStatusOverlay?.Dispose()"));
-                Assert.That(taskbarOverlay, Does.Contain("taskbar.SetOverlayIcon("));
-                Assert.That(taskbarOverlay, Does.Contain("DesktopTaskbarOverlayIconAssetResolver.Resolve(kind)"));
+                Assert.That(trayController, Does.Contain("_trayIcon.Icon = LoadIcon(status.IconUri)"));
+                Assert.That(trayController, Does.Contain("_trayIcon.ToolTipText = status.ToolTipText"));
+                Assert.That(trayController, Does.Contain("RunOnUiThread(UpdateTrayStatus)"));
+                Assert.That(trayController, Does.Not.Contain("TaskbarStatusOverlay"));
+                Assert.That(trayController, Does.Not.Contain("SetOverlayIcon"));
+                Assert.That(trayController, Does.Not.Contain("_window.Icon ="));
             });
         }
 

@@ -35,7 +35,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             {
                 Assert.That(status.Kind, Is.EqualTo(DesktopTrayStatusKind.Error));
                 Assert.That(status.ToolTipText, Is.EqualTo("Cotton Sync - Action required"));
-                Assert.That(status.IconUri.ToString(), Does.EndWith("/Assets/tray-error.png"));
+                Assert.That(status.IconUri.ToString(), Does.EndWith("/Assets/tray-error.ico"));
             });
         }
 
@@ -51,7 +51,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             {
                 Assert.That(status.Kind, Is.EqualTo(DesktopTrayStatusKind.Error));
                 Assert.That(status.ToolTipText, Is.EqualTo("Cotton Sync - Conflicts need review"));
-                Assert.That(status.IconUri.ToString(), Does.EndWith("/Assets/tray-error.png"));
+                Assert.That(status.IconUri.ToString(), Does.EndWith("/Assets/tray-error.ico"));
             });
         }
 
@@ -105,7 +105,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             {
                 Assert.That(status.Kind, Is.EqualTo(DesktopTrayStatusKind.Syncing));
                 Assert.That(status.ToolTipText, Is.EqualTo("Cotton Sync - Syncing"));
-                Assert.That(status.IconUri.ToString(), Does.EndWith("/Assets/tray-syncing.png"));
+                Assert.That(status.IconUri.ToString(), Does.EndWith("/Assets/tray-syncing.ico"));
             });
         }
 
@@ -130,7 +130,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                     Is.EqualTo(
                         "Cotton Sync - Syncing 2 folders - 10 of 40 files across 2 folders - "
                         + "6.0 MB / 24 MB · 3.0 MB/s · 6s left"));
-                Assert.That(status.IconUri.ToString(), Does.EndWith("/Assets/tray-uploading.png"));
+                Assert.That(status.IconUri.ToString(), Does.EndWith("/Assets/tray-uploading.ico"));
             });
         }
 
@@ -153,9 +153,9 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             (DesktopTrayActivityKind ActivityKind, DesktopTrayStatusKind StatusKind, string AssetName)[] cases =
             [
-                (DesktopTrayActivityKind.Downloading, DesktopTrayStatusKind.Downloading, "tray-downloading.png"),
-                (DesktopTrayActivityKind.MakingAvailable, DesktopTrayStatusKind.Downloading, "tray-downloading.png"),
-                (DesktopTrayActivityKind.FreeingSpace, DesktopTrayStatusKind.FreeingSpace, "tray-freeing-space.png"),
+                (DesktopTrayActivityKind.Downloading, DesktopTrayStatusKind.Downloading, "tray-downloading.ico"),
+                (DesktopTrayActivityKind.MakingAvailable, DesktopTrayStatusKind.Downloading, "tray-downloading.ico"),
+                (DesktopTrayActivityKind.FreeingSpace, DesktopTrayStatusKind.FreeingSpace, "tray-freeing-space.ico"),
             ];
             foreach ((DesktopTrayActivityKind activityKind, DesktopTrayStatusKind statusKind, string assetName) in cases)
             {
@@ -226,13 +226,13 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             (DesktopTrayStatusKind Kind, string AssetName)[] cases =
             [
                 (DesktopTrayStatusKind.SignedOut, "tray-signed-out.png"),
-                (DesktopTrayStatusKind.Syncing, "tray-syncing.png"),
-                (DesktopTrayStatusKind.Paused, "tray-paused.png"),
-                (DesktopTrayStatusKind.Offline, "tray-offline.png"),
-                (DesktopTrayStatusKind.Error, "tray-error.png"),
-                (DesktopTrayStatusKind.Uploading, "tray-uploading.png"),
-                (DesktopTrayStatusKind.Downloading, "tray-downloading.png"),
-                (DesktopTrayStatusKind.FreeingSpace, "tray-freeing-space.png"),
+                (DesktopTrayStatusKind.Syncing, "tray-syncing.ico"),
+                (DesktopTrayStatusKind.Paused, "tray-paused.ico"),
+                (DesktopTrayStatusKind.Offline, "tray-offline.ico"),
+                (DesktopTrayStatusKind.Error, "tray-error.ico"),
+                (DesktopTrayStatusKind.Uploading, "tray-uploading.ico"),
+                (DesktopTrayStatusKind.Downloading, "tray-downloading.ico"),
+                (DesktopTrayStatusKind.FreeingSpace, "tray-freeing-space.ico"),
             ];
 
             foreach ((DesktopTrayStatusKind kind, string assetName) in cases)
@@ -250,43 +250,5 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 () => DesktopTrayIconAssetResolver.Resolve(DesktopTrayStatusKind.Unknown));
         }
 
-        [Test]
-        public void TaskbarOverlayResolve_ClearsIdleAndSignedOutStates()
-        {
-            Assert.Multiple(() =>
-            {
-                Assert.That(DesktopTaskbarOverlayIconAssetResolver.Resolve(DesktopTrayStatusKind.Idle), Is.Null);
-                Assert.That(DesktopTaskbarOverlayIconAssetResolver.Resolve(DesktopTrayStatusKind.SignedOut), Is.Null);
-            });
-        }
-
-        [Test]
-        public void TaskbarOverlayResolve_ReturnsDedicatedActivityAssets()
-        {
-            (DesktopTrayStatusKind Kind, string AssetName)[] cases =
-            [
-                (DesktopTrayStatusKind.Syncing, "taskbar-syncing.ico"),
-                (DesktopTrayStatusKind.Paused, "taskbar-paused.ico"),
-                (DesktopTrayStatusKind.Offline, "taskbar-offline.ico"),
-                (DesktopTrayStatusKind.Error, "taskbar-error.ico"),
-                (DesktopTrayStatusKind.Uploading, "taskbar-uploading.ico"),
-                (DesktopTrayStatusKind.Downloading, "taskbar-downloading.ico"),
-                (DesktopTrayStatusKind.FreeingSpace, "taskbar-freeing-space.ico"),
-            ];
-
-            foreach ((DesktopTrayStatusKind kind, string assetName) in cases)
-            {
-                string? iconPath = DesktopTaskbarOverlayIconAssetResolver.Resolve(kind);
-
-                Assert.That(iconPath, Does.EndWith(Path.Combine("Assets", assetName)));
-            }
-        }
-
-        [Test]
-        public void TaskbarOverlayResolve_RejectsUnknownState()
-        {
-            Assert.Throws<ArgumentOutOfRangeException>(
-                () => DesktopTaskbarOverlayIconAssetResolver.Resolve(DesktopTrayStatusKind.Unknown));
-        }
     }
 }
