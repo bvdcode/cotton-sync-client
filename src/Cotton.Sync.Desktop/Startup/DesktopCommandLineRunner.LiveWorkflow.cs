@@ -161,13 +161,14 @@ namespace Cotton.Sync.Desktop.Startup
             return finalStateEntries == expectedFinalStateEntries ? failures : failures + 1;
         }
 
-        private static async Task CleanupLiveSyncSmokeAsync(
+        private static async Task<int> CleanupLiveSyncSmokeAsync(
             DesktopLiveSyncSmokeSession session,
             TextWriter output)
         {
+            int failures = 0;
             if (session.FirstPair is not null)
             {
-                await TryRemoveLiveSmokeSyncPairAsync(
+                failures += await TryRemoveLiveSmokeSyncPairAsync(
                     session.FirstController,
                     session.FirstPair,
                     output,
@@ -176,7 +177,7 @@ namespace Cotton.Sync.Desktop.Startup
 
             if (session.SecondPair is not null)
             {
-                await TryRemoveLiveSmokeSyncPairAsync(
+                failures += await TryRemoveLiveSmokeSyncPairAsync(
                     session.SecondController,
                     session.SecondPair,
                     output,
@@ -185,13 +186,15 @@ namespace Cotton.Sync.Desktop.Startup
 
             if (session.FirstSignedIn)
             {
-                await TrySignOutAsync(session.FirstController, output, "first").ConfigureAwait(false);
+                failures += await TrySignOutAsync(session.FirstController, output, "first").ConfigureAwait(false);
             }
 
             if (session.SecondSignedIn)
             {
-                await TrySignOutAsync(session.SecondController, output, "second").ConfigureAwait(false);
+                failures += await TrySignOutAsync(session.SecondController, output, "second").ConfigureAwait(false);
             }
+
+            return failures;
         }
     }
 }

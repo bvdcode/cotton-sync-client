@@ -120,6 +120,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             public int DeleteSyncPairCalls { get; private set; }
 
+            public int SignOutCalls { get; private set; }
+
             public int SyncNowCalls { get; private set; }
 
             public SyncRunRequest? LastSyncNowRequest { get; private set; }
@@ -131,6 +133,10 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             public Guid? DeletedSyncPairId { get; private set; }
 
             public Exception? SyncNowException { get; set; }
+
+            public Exception? DeleteSyncPairException { get; set; }
+
+            public Exception? SignOutException { get; set; }
 
             public Exception? RestoreSessionException { get; set; }
 
@@ -183,6 +189,12 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             public Task SignOutAsync(CancellationToken cancellationToken = default)
             {
+                SignOutCalls++;
+                if (SignOutException is not null)
+                {
+                    throw SignOutException;
+                }
+
                 return Task.CompletedTask;
             }
 
@@ -243,6 +255,11 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             {
                 DeleteSyncPairCalls++;
                 DeletedSyncPairId = syncPairId;
+                if (DeleteSyncPairException is not null)
+                {
+                    throw DeleteSyncPairException;
+                }
+
                 if (SyncPairStore is not null)
                 {
                     await SyncPairStore.InitializeAsync(cancellationToken);

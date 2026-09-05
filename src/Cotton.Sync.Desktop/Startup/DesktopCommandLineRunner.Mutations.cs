@@ -349,7 +349,7 @@ namespace Cotton.Sync.Desktop.Startup
             return 1;
         }
 
-        private static async Task TryRemoveLiveSmokeSyncPairAsync(
+        private static async Task<int> TryRemoveLiveSmokeSyncPairAsync(
             DesktopShellController controller,
             SyncPairSettings syncPair,
             TextWriter output,
@@ -363,20 +363,24 @@ namespace Cotton.Sync.Desktop.Startup
                     + label
                     + " live-smoke sync pair: "
                     + syncPair.LocalRootPath).ConfigureAwait(false);
+                return 0;
             }
             catch (Exception exception)
             {
                 await output.WriteLineAsync(
-                    "Warning: failed to remove "
+                    "Error: failed to remove "
                     + label
                     + " live-smoke sync pair "
                     + syncPair.Id
                     + ": "
+                    + exception.GetType().Name
+                    + ": "
                     + CleanSingleLine(exception.Message)).ConfigureAwait(false);
+                return 1;
             }
         }
 
-        private static async Task TrySignOutAsync(
+        private static async Task<int> TrySignOutAsync(
             DesktopShellController controller,
             TextWriter output,
             string label)
@@ -385,14 +389,18 @@ namespace Cotton.Sync.Desktop.Startup
             {
                 await controller.SignOutAsync(CancellationToken.None).ConfigureAwait(false);
                 await output.WriteLineAsync("Signed out " + label + " desktop client.").ConfigureAwait(false);
+                return 0;
             }
             catch (Exception exception)
             {
                 await output.WriteLineAsync(
-                    "Warning: failed to sign out "
+                    "Error: failed to sign out "
                     + label
                     + " desktop client: "
+                    + exception.GetType().Name
+                    + ": "
                     + CleanSingleLine(exception.Message)).ConfigureAwait(false);
+                return 1;
             }
         }
     }

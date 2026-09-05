@@ -81,28 +81,45 @@ namespace Cotton.Sync.Desktop.Startup
                 secondPaths,
                 firstController,
                 secondController);
+            return await RunLiveSyncSmokeSessionAsync(
+                session,
+                () => RunLiveSyncWorkflowAsync(
+                    paths,
+                    startupOptions,
+                    seededLocalFiles,
+                    session,
+                    output,
+                    cancellationToken),
+                output,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        internal static async Task<int> RunLiveSyncSmokeSessionAsync(
+            DesktopLiveSyncSmokeSession session,
+            Func<Task<int>> runWorkflowAsync,
+            TextWriter output,
+            CancellationToken cancellationToken = default)
+        {
+            int failures = 0;
             try
             {
-                return await RunLiveSyncWorkflowAsync(
-                        paths,
-                        startupOptions,
-                        seededLocalFiles,
-                        session,
-                        output,
-                        cancellationToken)
-                    .ConfigureAwait(false);
+                failures = await runWorkflowAsync().ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
-                await output.WriteLineAsync("Result: failed").ConfigureAwait(false);
+                failures++;
                 await output.WriteLineAsync("Error: " + exception.GetType().Name + ": " + CleanSingleLine(exception.Message))
                     .ConfigureAwait(false);
-                return 1;
             }
             finally
             {
-                await CleanupLiveSyncSmokeAsync(session, output).ConfigureAwait(false);
+                failures += await CleanupLiveSyncSmokeAsync(session, output).ConfigureAwait(false);
             }
+
+            await output.WriteLineAsync("Failures: " + failures.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .ConfigureAwait(false);
+            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
+            return failures == 0 ? 0 : 1;
         }
 
         private static async Task<IReadOnlyList<LiveSyncSmokeSeededLocalFile>> PrepareLiveSmokeSeedFilesAsync(
@@ -150,10 +167,7 @@ namespace Cotton.Sync.Desktop.Startup
                     cancellationToken)
                 .ConfigureAwait(false);
             await output.WriteLineAsync("Converged: " + (failures == 0 ? "yes" : "no")).ConfigureAwait(false);
-            await output.WriteLineAsync("Failures: " + failures.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                .ConfigureAwait(false);
-            await output.WriteLineAsync(failures == 0 ? "Result: passed" : "Result: failed").ConfigureAwait(false);
-            return failures == 0 ? 0 : 1;
+            return failures;
         }
 
         private static async Task WriteLiveSyncSmokeHeaderAsync(
