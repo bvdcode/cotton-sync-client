@@ -190,8 +190,6 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             lock (_progressDispatchGate)
             {
-                _pendingCoalescedTransferProgress = null;
-                _isCoalescedTransferProgressDispatchScheduled = false;
                 _lastVisibleTransferProgressAtUtc = null;
                 _visibleTransferSyncPairId = null;
                 _visibleTransferDirection = SyncTransferDirection.Unknown;
@@ -217,8 +215,6 @@ namespace Cotton.Sync.Desktop.ViewModels
             ClearRunTransferMetrics();
             lock (_progressDispatchGate)
             {
-                _pendingCoalescedRunProgress = null;
-                _isCoalescedRunProgressDispatchScheduled = false;
                 _lastVisibleRunProgressAtUtc = null;
                 _visibleRunProgressSyncPairId = null;
                 _visibleRunProgressStage = SyncRunProgressStage.Unknown;

@@ -63,10 +63,19 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private async Task SyncNowAsync()
         {
+            int sessionRevision = Volatile.Read(ref _sessionEventRevision);
             IsBusy = true;
             try
             {
                 await _controller.SyncAllAsync().ConfigureAwait(true);
+                if (!IsCurrentSessionRevision(sessionRevision)
+                    || !CanApplySessionEvents
+                    || IsSyncPaused
+                    || IsSyncPausePending)
+                {
+                    return;
+                }
+
                 string actionRequiredMessage = ResolveCurrentSyncPairActionRequiredMessage();
                 if (!string.IsNullOrWhiteSpace(actionRequiredMessage))
                 {
@@ -81,9 +90,16 @@ namespace Cotton.Sync.Desktop.ViewModels
                 RefreshCurrentProgressText();
                 AddActivity("Sync", string.Empty, "Manual sync completed");
             }
+            catch (Exception exception) when (!IsCurrentSessionRevision(sessionRevision))
+            {
+                Trace.TraceError(exception.ToString());
+            }
             finally
             {
-                IsBusy = false;
+                if (IsCurrentSessionRevision(sessionRevision))
+                {
+                    IsBusy = false;
+                }
             }
         }
 
@@ -96,12 +112,21 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return;
             }
 
+            int sessionRevision = Volatile.Read(ref _sessionEventRevision);
             IsBusy = true;
             try
             {
                 await _controller
                     .SyncAllAsync(syncPairId: syncPairId, approvedRemoteDeletePlan: approval)
                     .ConfigureAwait(true);
+                if (!IsCurrentSessionRevision(sessionRevision)
+                    || !CanApplySessionEvents
+                    || IsSyncPaused
+                    || IsSyncPausePending)
+                {
+                    return;
+                }
+
                 string actionRequiredMessage = ResolveCurrentSyncPairActionRequiredMessage();
                 if (!string.IsNullOrWhiteSpace(actionRequiredMessage))
                 {
@@ -116,9 +141,16 @@ namespace Cotton.Sync.Desktop.ViewModels
                 RefreshCurrentProgressText();
                 AddActivity("Sync", string.Empty, "Approved remote delete plan completed");
             }
+            catch (Exception exception) when (!IsCurrentSessionRevision(sessionRevision))
+            {
+                Trace.TraceError(exception.ToString());
+            }
             finally
             {
-                IsBusy = false;
+                if (IsCurrentSessionRevision(sessionRevision))
+                {
+                    IsBusy = false;
+                }
             }
         }
 

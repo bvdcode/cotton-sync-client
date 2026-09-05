@@ -191,6 +191,8 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private void DisposeViewModelResources()
         {
+            _isDisposed = true;
+            InvalidatePendingSessionEvents();
             _controller.StatusChanged -= OnStatusChanged;
             _controller.ActivityReported -= OnActivityReported;
             _controller.SessionRevoked -= OnSessionRevoked;

@@ -182,6 +182,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private void ApplySignedOutState(string globalStatus)
         {
+            InvalidatePendingSessionEvents();
             CancelStoredSessionRetry();
             HasStoredSession = false;
             StoredSessionRestoreMessage = string.Empty;
@@ -207,6 +208,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             SetAllPairStatuses("Idle");
             RefreshCurrentProgressText();
             RefreshDiagnosticsItems();
+            IsBusy = false;
         }
     }
 }

@@ -25,11 +25,22 @@ namespace Cotton.Sync.Desktop.ViewModels
         private void ApplyRunProgress(DesktopRunProgressSnapshot progress)
         {
             SyncPairRowViewModel? syncPair = SyncPairs.FirstOrDefault(pair => pair.Id == progress.SyncPairId);
-            if (syncPair is null || progress.Stage == SyncRunProgressStage.Unknown)
+            if (syncPair is null || !CanApplySyncProgress(syncPair) || progress.Stage == SyncRunProgressStage.Unknown)
             {
                 return;
             }
 
+            if (_latestRunProgressByPair.TryGetValue(progress.SyncPairId, out DesktopRunProgressSnapshot? latest)
+                && (progress.OccurredAtUtc < latest.OccurredAtUtc
+                    || (progress.OccurredAtUtc == latest.OccurredAtUtc
+                        && progress.StartedAtUtc == latest.StartedAtUtc
+                        && progress.Stage == latest.Stage
+                        && latest.IsCompleted && !progress.IsCompleted)))
+            {
+                return;
+            }
+
+            _latestRunProgressByPair[progress.SyncPairId] = progress;
             if (progress.IsCompleted)
             {
                 _runProgressByPair.Remove(progress.SyncPairId);
@@ -62,6 +73,11 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private void ApplyStatus(DesktopSyncStatusSnapshot status)
         {
+            if (!CanApplySessionEvents)
+            {
+                return;
+            }
+
             HashSet<Guid> suppressedInitialSyncCompletePairIds = GetInitialSyncCompleteNotificationSuppressionIds();
             bool hasActiveSyncStatus = false;
             bool runProgressChanged = false;
@@ -102,7 +118,8 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             bool isActiveStatus = IsActiveSyncStatus(pairStatus);
             bool hasFreshDetailedProgress = HasFreshDetailedProgress(pairStatus.Id);
-            bool keepProgress = suppressedInitialSyncCompletePairIds.Contains(pairStatus.Id)
+            bool keepProgress = string.Equals(pairStatus.Status, "Idle", StringComparison.Ordinal)
+                && suppressedInitialSyncCompletePairIds.Contains(pairStatus.Id)
                 && hasFreshDetailedProgress;
             ApplySyncPairStatusValues(row, pairStatus, isActiveStatus, keepProgress, hasFreshDetailedProgress);
             (bool RunProgressChanged, bool TransferProgressChanged) progressChanges =
@@ -144,6 +161,11 @@ namespace Cotton.Sync.Desktop.ViewModels
             }
 
             ClearSyncPairProgress(row);
+            if (!string.Equals(pairStatus.Status, "Idle", StringComparison.Ordinal))
+            {
+                _suppressedInitialSyncCompleteUntilRunProgressCompleted.Remove(pairStatus.Id);
+            }
+
             if (string.Equals(pairStatus.Status, "Waiting", StringComparison.Ordinal))
             {
                 row.CurrentOperation = pairStatus.CurrentOperation ?? string.Empty;

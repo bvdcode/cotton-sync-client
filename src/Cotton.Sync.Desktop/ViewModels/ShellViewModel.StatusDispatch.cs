@@ -26,6 +26,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             if (_uiDispatcher.CheckAccess())
             {
+                ApplyPendingSyncEvents();
                 ApplyStatus(status);
                 return;
             }
@@ -35,33 +36,16 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private void PostCoalescedStatus(DesktopSyncStatusSnapshot status)
         {
-            lock (_statusDispatchGate)
+            bool schedule;
+            lock (_progressDispatchGate)
             {
-                _pendingStatus = status;
-                if (_isStatusDispatchQueued)
-                {
-                    return;
-                }
-
-                _isStatusDispatchQueued = true;
+                _pendingStatusEvent = QueueSyncEventUnsafe(() => ApplyStatus(status), _pendingStatusEvent);
+                schedule = ScheduleSyncEventDispatchUnsafe();
             }
 
-            _uiDispatcher.Post(ApplyPendingStatus);
-        }
-
-        private void ApplyPendingStatus()
-        {
-            DesktopSyncStatusSnapshot? status;
-            lock (_statusDispatchGate)
+            if (schedule)
             {
-                status = _pendingStatus;
-                _pendingStatus = null;
-                _isStatusDispatchQueued = false;
-            }
-
-            if (status is not null)
-            {
-                ApplyStatus(status);
+                _uiDispatcher.Post(ApplyPendingSyncEvents);
             }
         }
 
@@ -78,7 +62,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return;
             }
 
-            _uiDispatcher.Post(() => ApplyActivity(activity));
+            _uiDispatcher.Post(CreateSessionEventAction(() => ApplyActivity(activity)));
         }
 
         private bool TryPostCoalescedActivity(DesktopActivitySnapshot activity)
@@ -106,7 +90,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 _isCoalescedActivityDispatchScheduled = true;
             }
 
-            _uiDispatcher.Post(ApplyPendingCoalescedActivity);
+            _uiDispatcher.Post(CreateSessionEventAction(ApplyPendingCoalescedActivity));
             return true;
         }
 
@@ -149,12 +133,12 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return;
             }
 
-            _uiDispatcher.Post(() => ApplySessionRevocation(sessionRevocation));
+            _uiDispatcher.Post(CreateSessionEventAction(() => ApplySessionRevocation(sessionRevocation)));
         }
 
         private void ApplySessionRevocation(DesktopSessionRevocationSnapshot sessionRevocation)
         {
-            if (!IsSignedIn)
+            if (!CanApplySessionEvents)
             {
                 return;
             }
@@ -168,6 +152,11 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private void ApplyActivity(DesktopActivitySnapshot activity)
         {
+            if (_isDisposed)
+            {
+                return;
+            }
+
             DateTimeOffset occurredAt = new DateTimeOffset(DateTime.SpecifyKind(activity.OccurredAtUtc, DateTimeKind.Utc))
                 .ToLocalTime();
             AddActivity(

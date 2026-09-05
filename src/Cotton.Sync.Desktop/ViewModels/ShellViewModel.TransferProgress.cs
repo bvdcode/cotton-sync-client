@@ -25,7 +25,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private void ApplyTransferProgress(DesktopTransferProgressSnapshot progress)
         {
             SyncPairRowViewModel? syncPair = SyncPairs.FirstOrDefault(pair => pair.Id == progress.SyncPairId);
-            if (syncPair is null || progress.Direction == SyncTransferDirection.Unknown)
+            if (syncPair is null || !CanApplySyncProgress(syncPair) || progress.Direction == SyncTransferDirection.Unknown)
             {
                 return;
             }

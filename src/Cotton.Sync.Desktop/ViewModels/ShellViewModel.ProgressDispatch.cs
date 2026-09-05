@@ -26,6 +26,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             if (_uiDispatcher.CheckAccess())
             {
+                ApplyPendingSyncEvents();
                 if (ShouldQueueVisibleTransferProgress(progress))
                 {
                     ApplyTransferProgress(progress);
@@ -34,21 +35,14 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return;
             }
 
-            if (TryPostCoalescedTransferProgress(progress))
-            {
-                return;
-            }
-
-            if (ShouldQueueVisibleTransferProgress(progress))
-            {
-                _uiDispatcher.Post(() => ApplyTransferProgress(progress));
-            }
+            PostCoalescedTransferProgress(progress);
         }
 
         private void OnRunProgressChanged(object? sender, DesktopRunProgressSnapshot progress)
         {
             if (_uiDispatcher.CheckAccess())
             {
+                ApplyPendingSyncEvents();
                 if (ShouldQueueVisibleRunProgress(progress))
                 {
                     ApplyRunProgress(progress);
@@ -57,106 +51,64 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return;
             }
 
-            if (TryPostCoalescedRunProgress(progress))
-            {
-                return;
-            }
-
-            if (ShouldQueueVisibleRunProgress(progress))
-            {
-                _uiDispatcher.Post(() => ApplyRunProgress(progress));
-            }
+            PostCoalescedRunProgress(progress);
         }
 
-        private bool TryPostCoalescedTransferProgress(DesktopTransferProgressSnapshot progress)
+        private void PostCoalescedTransferProgress(DesktopTransferProgressSnapshot progress)
         {
+            bool schedule;
             lock (_progressDispatchGate)
             {
-                if (_pendingCoalescedTransferProgress is not null
-                    && CanReplacePendingTransferProgress(_pendingCoalescedTransferProgress, progress))
+                bool replace = _pendingCoalescedTransferProgress is not null
+                    && CanReplacePendingTransferProgress(_pendingCoalescedTransferProgress, progress);
+                if (replace)
                 {
-                    _pendingCoalescedTransferProgress = progress;
                     TrackVisibleTransferProgressUnsafe(progress);
-                    return true;
                 }
-
-                if (_isCoalescedTransferProgressDispatchScheduled)
+                else if (!ShouldQueueVisibleTransferProgressUnsafe(progress))
                 {
-                    return false;
-                }
-
-                if (!ShouldQueueVisibleTransferProgressUnsafe(progress))
-                {
-                    return true;
+                    return;
                 }
 
                 _pendingCoalescedTransferProgress = progress;
-                _isCoalescedTransferProgressDispatchScheduled = true;
+                _pendingTransferEvent = QueueSyncEventUnsafe(
+                    () => ApplyTransferProgress(progress),
+                    replace ? _pendingTransferEvent : null);
+                schedule = ScheduleSyncEventDispatchUnsafe();
             }
 
-            _uiDispatcher.Post(ApplyPendingCoalescedTransferProgress);
-            return true;
+            if (schedule)
+            {
+                _uiDispatcher.Post(ApplyPendingSyncEvents);
+            }
         }
 
-        private bool TryPostCoalescedRunProgress(DesktopRunProgressSnapshot progress)
+        private void PostCoalescedRunProgress(DesktopRunProgressSnapshot progress)
         {
+            bool schedule;
             lock (_progressDispatchGate)
             {
-                if (_pendingCoalescedRunProgress is not null
-                    && CanReplacePendingRunProgress(_pendingCoalescedRunProgress, progress))
+                bool replace = _pendingCoalescedRunProgress is not null
+                    && CanReplacePendingRunProgress(_pendingCoalescedRunProgress, progress);
+                if (replace)
                 {
-                    _pendingCoalescedRunProgress = progress;
                     TrackVisibleRunProgressUnsafe(progress);
-                    return true;
                 }
-
-                if (_isCoalescedRunProgressDispatchScheduled)
+                else if (!ShouldQueueVisibleRunProgressUnsafe(progress))
                 {
-                    return false;
-                }
-
-                if (!ShouldQueueVisibleRunProgressUnsafe(progress))
-                {
-                    return true;
+                    return;
                 }
 
                 _pendingCoalescedRunProgress = progress;
-                _isCoalescedRunProgressDispatchScheduled = true;
+                _pendingRunEvent = QueueSyncEventUnsafe(
+                    () => ApplyRunProgress(progress),
+                    replace ? _pendingRunEvent : null);
+                schedule = ScheduleSyncEventDispatchUnsafe();
             }
 
-            _uiDispatcher.Post(ApplyPendingCoalescedRunProgress);
-            return true;
-        }
-
-        private void ApplyPendingCoalescedTransferProgress()
-        {
-            DesktopTransferProgressSnapshot? progress;
-            lock (_progressDispatchGate)
+            if (schedule)
             {
-                progress = _pendingCoalescedTransferProgress;
-                _pendingCoalescedTransferProgress = null;
-                _isCoalescedTransferProgressDispatchScheduled = false;
-            }
-
-            if (progress is not null)
-            {
-                ApplyTransferProgress(progress);
-            }
-        }
-
-        private void ApplyPendingCoalescedRunProgress()
-        {
-            DesktopRunProgressSnapshot? progress;
-            lock (_progressDispatchGate)
-            {
-                progress = _pendingCoalescedRunProgress;
-                _pendingCoalescedRunProgress = null;
-                _isCoalescedRunProgressDispatchScheduled = false;
-            }
-
-            if (progress is not null)
-            {
-                ApplyRunProgress(progress);
+                _uiDispatcher.Post(ApplyPendingSyncEvents);
             }
         }
 
@@ -167,6 +119,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             return pending.SyncPairId == next.SyncPairId
                 && pending.Direction == next.Direction
                 && string.Equals(pending.RelativePath, next.RelativePath, StringComparison.Ordinal)
+                && (!pending.IsCompleted || next.IsCompleted)
                 && next.OccurredAtUtc >= pending.OccurredAtUtc;
         }
 
@@ -212,6 +165,8 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             return pending.SyncPairId == next.SyncPairId
                 && pending.Stage == next.Stage
+                && next.StartedAtUtc == pending.StartedAtUtc
+                && (!pending.IsCompleted || next.IsCompleted)
                 && next.OccurredAtUtc >= pending.OccurredAtUtc;
         }
 
