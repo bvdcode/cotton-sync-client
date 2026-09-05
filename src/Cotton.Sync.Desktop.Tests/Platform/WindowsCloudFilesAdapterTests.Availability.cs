@@ -121,7 +121,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             Assert.Multiple(() =>
             {
-                Assert.That(exception?.Reason, Does.Contain("changed after upload"));
+                Assert.That(exception?.Reason, Does.Contain("changed before Cloud Files finalization"));
                 Assert.That(nativeApi.ConvertedPlaceholders, Is.Empty);
                 Assert.That(nativeApi.UpdatedPlaceholders, Is.Empty);
                 Assert.That(nativeApi.InSyncPaths, Is.Empty);

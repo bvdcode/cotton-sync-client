@@ -73,7 +73,8 @@ namespace Cotton.Sync.Desktop.Platform
             await runInnerAsync().ConfigureAwait(false);
 
             HashSet<string> finalizedPaths = new(StringComparer.OrdinalIgnoreCase);
-            IReadOnlyList<string> finalizationPaths = collector.GetPaths();
+            IReadOnlyList<string> finalizationPaths = await GetFinalizationPathsAsync(syncPair, collector, cancellationToken)
+                .ConfigureAwait(false);
             if (finalizationPaths.Count == 0)
             {
                 return;
@@ -142,6 +143,34 @@ namespace Cotton.Sync.Desktop.Platform
                     recordFinalizedPath,
                     cancellationToken)
                 .ConfigureAwait(false);
+        }
+
+        private async Task<IReadOnlyList<string>> GetFinalizationPathsAsync(
+            SyncPairSettings syncPair,
+            CloudFilesFinalizationActivityCollector collector,
+            CancellationToken cancellationToken)
+        {
+            List<string> paths = [];
+            foreach ((string path, SyncActivityKind kind) in collector.GetActivities())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (kind == SyncActivityKind.Conflict)
+                {
+                    SyncStateEntry? state = await _stateStore
+                        .GetAsync(syncPair.Id.ToString("D"), path, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (state is not { Kind: SyncEntryKind.File }
+                        || string.IsNullOrWhiteSpace(state.LocalContentHash)
+                        || !string.Equals(state.LocalContentHash, state.RemoteContentHash, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+                }
+
+                paths.Add(path);
+            }
+
+            return paths;
         }
 
         private async Task FinalizeTrackedPathAsync(
@@ -320,7 +349,7 @@ namespace Cotton.Sync.Desktop.Platform
         {
             private readonly Guid _syncPairId;
             private readonly object _gate = new();
-            private readonly HashSet<string> _uploadedPaths = new(StringComparer.OrdinalIgnoreCase);
+            private readonly Dictionary<string, SyncActivityKind> _activities = new(StringComparer.OrdinalIgnoreCase);
 
             public CloudFilesFinalizationActivityCollector(Guid syncPairId)
             {
@@ -339,7 +368,8 @@ namespace Cotton.Sync.Desktop.Platform
             {
                 ArgumentNullException.ThrowIfNull(value);
                 if (value.SyncPairId != _syncPairId
-                    || value.Type is not (SyncActivityKind.Uploaded or SyncActivityKind.Converged)
+                    || value.Type is not (SyncActivityKind.Uploaded or SyncActivityKind.Converged
+                        or SyncActivityKind.Downloaded or SyncActivityKind.Conflict)
                     || string.IsNullOrWhiteSpace(value.ItemPath))
                 {
                     return;
@@ -357,15 +387,15 @@ namespace Cotton.Sync.Desktop.Platform
 
                 lock (_gate)
                 {
-                    _uploadedPaths.Add(normalizedPath);
+                    _activities[normalizedPath] = value.Type;
                 }
             }
 
-            public IReadOnlyList<string> GetPaths()
+            public IReadOnlyList<KeyValuePair<string, SyncActivityKind>> GetActivities()
             {
                 lock (_gate)
                 {
-                    return [.. _uploadedPaths.OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)];
+                    return [.. _activities.OrderBy(static activity => activity.Key, StringComparer.OrdinalIgnoreCase)];
                 }
             }
         }

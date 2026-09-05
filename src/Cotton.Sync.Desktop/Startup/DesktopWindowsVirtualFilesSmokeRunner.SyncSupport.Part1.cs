@@ -338,7 +338,7 @@ namespace Cotton.Sync.Desktop.Startup
                 return Task.FromResult(returned);
             }
 
-            public Task DownloadFileAsync(
+            public virtual Task DownloadFileAsync(
                 Guid nodeFileId,
                 Stream destination,
                 CancellationToken cancellationToken = default)

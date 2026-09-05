@@ -25,6 +25,7 @@ namespace Cotton.Sync.Desktop.Startup
                 ["explorer-always-keep-during-population"] =
                     WindowsVirtualFilesSmokePhase.ExplorerAlwaysKeepDuringPopulation,
                 ["remote-update-after-dehydrate"] = WindowsVirtualFilesSmokePhase.RemoteUpdateAfterDehydrate,
+                ["remote-update-hydrated"] = WindowsVirtualFilesSmokePhase.RemoteUpdateHydrated,
                 ["replace-cloud-only-upload"] = WindowsVirtualFilesSmokePhase.ReplaceCloudOnlyUpload,
                 ["excel-atomic-save"] = WindowsVirtualFilesSmokePhase.ExcelAtomicSave,
                 ["provider-metadata-user-edit"] = WindowsVirtualFilesSmokePhase.ProviderMetadataUserEdit,

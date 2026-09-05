@@ -224,6 +224,25 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         }
 
         [Test]
+        public void RunAsync_RemoteUpdateHydratedPhaseUsesEngineAndChecksProviderIdentity()
+        {
+            string runner = ReadSmokeRunnerSources();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(WindowsVirtualFilesSmokePhaseCatalog.TryParse("remote-update-hydrated", out WindowsVirtualFilesSmokePhase phase), Is.True);
+                Assert.That(phase, Is.EqualTo(WindowsVirtualFilesSmokePhase.RemoteUpdateHydrated));
+                Assert.That(runner, Does.Contain("[WindowsVirtualFilesSmokePhase.RemoteUpdateHydrated] = RunRemoteUpdateHydratedAsync"));
+                Assert.That(runner, Does.Contain("Remote-update baseline was hydrated through the native provider."));
+                Assert.That(runner, Does.Contain("Hydrated remote update used the sync engine download path."));
+                Assert.That(runner, Does.Contain("identity.FileManifestId == expectedRemote.FileManifestId"));
+                Assert.That(runner, Does.Contain("identity.ContentHash == expectedRemote.ContentHash"));
+                Assert.That(runner, Does.Contain("Concurrent hydrated edit was preserved in the existing conflict-copy format."));
+                Assert.That(runner, Does.Contain("Hydrated replacement and subsequent local edit converged without duplicate transfers."));
+            });
+        }
+
+        [Test]
         public void RunAsync_LocalRenameAfterProviderWriteUsesRealWatcherAndPreservesBothPaths()
         {
             string runner = ReadSmokeRunnerSources();

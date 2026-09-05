@@ -239,7 +239,7 @@ namespace Cotton.Sync.Desktop.Platform
                     throw new LocalFileUnavailableException(
                         normalizedPath,
                         fullPlaceholderPath,
-                        "the file changed after upload and before Cloud Files finalization.");
+                        "the file changed before Cloud Files finalization.");
                 }
 
                 _inSyncManager.VerifyInSyncState(fullPlaceholderPath);
