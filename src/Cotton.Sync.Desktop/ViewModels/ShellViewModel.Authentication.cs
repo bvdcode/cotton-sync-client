@@ -187,6 +187,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             HasStoredSession = false;
             StoredSessionRestoreMessage = string.Empty;
             IsSignedIn = false;
+            IsSyncPausePending = false;
             AccountName = "Signed out";
             GlobalStatus = globalStatus;
             Password = string.Empty;

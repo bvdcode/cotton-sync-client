@@ -24,6 +24,7 @@ namespace Cotton.Sync.Desktop.ViewModels
     {
         private async Task PauseAsync()
         {
+            int sessionRevision = Volatile.Read(ref _sessionEventRevision);
             IsSyncPausePending = true;
             GlobalStatus = "Pausing";
             ActionRequiredMessage = string.Empty;
@@ -33,32 +34,62 @@ namespace Cotton.Sync.Desktop.ViewModels
             try
             {
                 await _controller.PauseAllAsync().ConfigureAwait(true);
+                if (!IsCurrentSessionRevision(sessionRevision) || !CanApplySessionEvents)
+                {
+                    return;
+                }
+
                 GlobalStatus = "Paused";
                 SetAllPairStatuses("Paused", enabledOnly: true);
+                ClearTransferProgress();
+                ClearRunProgress();
+                foreach (SyncPairRowViewModel syncPair in SyncPairs)
+                {
+                    ClearSyncPairProgress(syncPair);
+                }
+
                 RefreshCurrentProgressText();
                 AddActivity("Sync", string.Empty, "Synchronization paused");
             }
+            catch (Exception exception) when (!IsCurrentSessionRevision(sessionRevision))
+            {
+                Trace.TraceError(exception.ToString());
+            }
             finally
             {
-                IsSyncPausePending = false;
+                if (IsCurrentSessionRevision(sessionRevision))
+                {
+                    IsSyncPausePending = false;
+                }
             }
         }
 
         private async Task ResumeAsync()
         {
+            int sessionRevision = Volatile.Read(ref _sessionEventRevision);
             GlobalStatus = "Resuming";
             ActionRequiredMessage = string.Empty;
             SetAllPairStatuses("Idle", enabledOnly: true);
             RefreshCurrentProgressText();
-            await _controller.ResumeAllAsync().ConfigureAwait(true);
-            if (IsSyncPaused || IsSyncPausePending)
+            try
             {
-                return;
-            }
+                await _controller.ResumeAllAsync().ConfigureAwait(true);
+                if (!IsCurrentSessionRevision(sessionRevision)
+                    || !CanApplySessionEvents
+                    || IsSyncPaused
+                    || IsSyncPausePending)
+                {
+                    return;
+                }
 
-            GlobalStatus = "Ready";
-            RefreshCurrentProgressText();
-            AddActivity("Sync", string.Empty, "Synchronization resumed");
+                GlobalStatus = "Ready";
+                RefreshCurrentProgressText();
+                AddActivity("Sync", string.Empty, "Synchronization resumed");
+            }
+            catch (Exception exception) when (!IsCurrentSessionRevision(sessionRevision))
+            {
+                Trace.TraceError(exception.ToString());
+            }
         }
 
         private async Task SyncNowAsync()
