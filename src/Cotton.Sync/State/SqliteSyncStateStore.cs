@@ -148,6 +148,7 @@ namespace Cotton.Sync.State
             try
             {
                 await using SyncStateDbContext context = _contextFactory.Create();
+                await context.Database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
                 SyncStateEntity? entity = await context.SyncEntries
                     .SingleOrDefaultAsync(
                         existing => existing.SyncPairId == entry.SyncPairId && existing.RelativePathKey == key,
