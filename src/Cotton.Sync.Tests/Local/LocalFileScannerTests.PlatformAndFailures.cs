@@ -5,11 +5,29 @@ using System.Security.Cryptography;
 using System.Text;
 using Cotton.Sync;
 using Cotton.Sync.Local;
+using Cotton.Sync.State;
 
 namespace Cotton.Sync.Tests.Local
 {
     public partial class LocalFileScannerTests
     {
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ScanPathMetadataLookupsAsync_RejectsInvalidPathBeforeReportingProgress(bool includeDirectoryDescendants)
+        {
+            WriteFile("valid.txt", "valid");
+            LocalFileScanner scanner = new();
+            RecordingProgress<LocalTreeScanProgress> progress = new();
+
+            Assert.ThrowsAsync<SyncPathValidationException>(() => scanner.ScanPathMetadataLookupsAsync(
+                _root,
+                ["valid.txt", "../outside.txt"],
+                progress,
+                includeDirectoryDescendants));
+
+            Assert.That(progress.Values, Is.Empty);
+        }
+
         [Test]
         public void ScanPathMetadataLookupsAsync_RejectsUnsupportedFileReparsePoint()
         {

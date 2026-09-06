@@ -108,9 +108,19 @@ namespace Cotton.Sync.Local
             }
 
             LocalTreeLookupSnapshot tree = new LocalTreeLookupSnapshot();
-            HashSet<string> targetKeys = new HashSet<string>(
-                relativePaths.Select(path => SyncPath.ToKey(SyncPath.Normalize(path))),
-                StringComparer.OrdinalIgnoreCase);
+            HashSet<string> targetKeys = new(StringComparer.OrdinalIgnoreCase);
+            foreach (string relativePath in relativePaths)
+            {
+                if (includeDirectoryDescendants)
+                {
+                    targetKeys.Add(SyncPath.ToKey(relativePath));
+                }
+                else
+                {
+                    SyncPath.Normalize(relativePath);
+                }
+            }
+
             int filesScanned = 0;
             int directoriesScanned = 0;
             progress?.Report(new LocalTreeScanProgress(filesScanned, directoriesScanned, currentPath: null));
