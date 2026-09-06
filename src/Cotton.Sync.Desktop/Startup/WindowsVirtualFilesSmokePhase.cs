@@ -22,6 +22,7 @@ namespace Cotton.Sync.Desktop.Startup
         ExplorerAlwaysKeepDuringPopulation,
         RemoteUpdateAfterDehydrate,
         RemoteUpdateHydrated,
+        RemoteDeleteLateEdit,
         ReplaceCloudOnlyUpload,
         ExcelAtomicSave,
         ProviderMetadataUserEdit,

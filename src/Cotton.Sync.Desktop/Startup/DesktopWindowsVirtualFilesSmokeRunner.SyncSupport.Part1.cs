@@ -247,11 +247,18 @@ namespace Cotton.Sync.Desktop.Startup
 
             public int PathLookupCalls { get; private set; }
 
-            public Task<RemoteTreeSnapshot> CrawlAsync(Guid rootNodeId, CancellationToken cancellationToken = default)
+            public Func<CancellationToken, Task>? BeforeCrawlReturnsAsync { get; set; }
+
+            public async Task<RemoteTreeSnapshot> CrawlAsync(Guid rootNodeId, CancellationToken cancellationToken = default)
             {
                 FullCrawlCalls++;
                 cancellationToken.ThrowIfCancellationRequested();
-                return Task.FromResult(_tree);
+                if (BeforeCrawlReturnsAsync is not null)
+                {
+                    await BeforeCrawlReturnsAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                return _tree;
             }
 
             public Task<RemoteTreeLookupSnapshot> CrawlPathLookupsAsync(

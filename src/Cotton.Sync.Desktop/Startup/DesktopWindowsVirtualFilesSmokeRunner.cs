@@ -94,6 +94,7 @@ namespace Cotton.Sync.Desktop.Startup
                 [WindowsVirtualFilesSmokePhase.ReconnectExisting] = RunDefaultWindowsVirtualFilesSmokeAsync,
                 [WindowsVirtualFilesSmokePhase.RemoteUpdateAfterDehydrate] = RunDefaultWindowsVirtualFilesSmokeAsync,
                 [WindowsVirtualFilesSmokePhase.RemoteUpdateHydrated] = RunRemoteUpdateHydratedAsync,
+                [WindowsVirtualFilesSmokePhase.RemoteDeleteLateEdit] = RunRemoteDeleteLateEditAsync,
                 [WindowsVirtualFilesSmokePhase.ExcelAtomicSave] = context => RunExcelAtomicSaveAsync(
                     context.Output,
                     context.CloudFiles,
