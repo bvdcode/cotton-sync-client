@@ -1,14 +1,14 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
-using System.Text.RegularExpressions;
+using System.Diagnostics;
 
 namespace Cotton.Sync.App.SyncPairs
 {
     /// <summary>
     /// Validates sync-pair settings before they are persisted or used by the sync supervisor.
     /// </summary>
-    public partial class SyncPairSettingsValidator
+    public class SyncPairSettingsValidator
     {
         private readonly SyncPairModeCapabilitySnapshot _modeCapabilities;
 
@@ -76,10 +76,25 @@ namespace Cotton.Sync.App.SyncPairs
             IReadOnlyCollection<SyncPairSettings> syncPairs,
             ICollection<SyncPairValidationError> errors)
         {
-            List<NormalizedLocalRoot> roots = syncPairs
-                .Where(static syncPair => !string.IsNullOrWhiteSpace(syncPair.LocalRootPath))
-                .Select(static syncPair => new NormalizedLocalRoot(syncPair.Id, NormalizeLocalRoot(syncPair.LocalRootPath)))
-                .ToList();
+            List<NormalizedLocalRoot> roots = new List<NormalizedLocalRoot>();
+            foreach (SyncPairSettings syncPair in syncPairs)
+            {
+                if (string.IsNullOrWhiteSpace(syncPair.LocalRootPath))
+                {
+                    continue;
+                }
+
+                NormalizedPath? path = NormalizeLocalRoot(syncPair.LocalRootPath);
+                if (path is null)
+                {
+                    Add(errors, SyncPairValidationIssue.LocalRootUnavailable, syncPair.Id, null,
+                        "The local sync root does not exist and cannot be created or accessed.");
+                    continue;
+                }
+
+                roots.Add(new NormalizedLocalRoot(syncPair.Id, path));
+            }
+
             for (int leftIndex = 0; leftIndex < roots.Count; leftIndex++)
             {
                 for (int rightIndex = leftIndex + 1; rightIndex < roots.Count; rightIndex++)
@@ -103,57 +118,27 @@ namespace Cotton.Sync.App.SyncPairs
             }
         }
 
-        private static NormalizedPath NormalizeLocalRoot(string localRootPath)
+        private static NormalizedPath? NormalizeLocalRoot(string localRootPath)
         {
-            string trimmed = localRootPath.Trim();
-            bool windowsStyle = DriveRootRegex().IsMatch(trimmed) || trimmed.Contains('\\', StringComparison.Ordinal);
-            char separator = windowsStyle ? '\\' : '/';
-            string normalized = windowsStyle
-                ? trimmed.Replace('/', '\\')
-                : trimmed.Replace('\\', '/');
-            normalized = CollapseSeparators(normalized, separator, windowsStyle);
-            normalized = TrimTrailingSeparators(normalized, separator, windowsStyle);
-            if (windowsStyle && normalized.Length >= 2 && normalized[1] == ':')
+            try
             {
-                normalized = char.ToUpperInvariant(normalized[0]) + normalized[1..];
+                string fullPath = Path.GetFullPath(localRootPath.Trim());
+                return new NormalizedPath(Path.TrimEndingDirectorySeparator(fullPath), OperatingSystem.IsWindows());
             }
-
-            return new NormalizedPath(normalized, windowsStyle);
+            catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                Trace.TraceWarning("Cannot normalize a local sync root: {0}", exception.Message);
+                return null;
+            }
         }
 
         internal static bool AreSameLocalRoot(string left, string right)
         {
-            NormalizedPath normalizedLeft = NormalizeLocalRoot(left);
-            NormalizedPath normalizedRight = NormalizeLocalRoot(right);
-            return normalizedLeft.IsSameStyle(normalizedRight)
+            NormalizedPath? normalizedLeft = NormalizeLocalRoot(left);
+            NormalizedPath? normalizedRight = NormalizeLocalRoot(right);
+            return normalizedLeft is not null && normalizedRight is not null
+                && normalizedLeft.IsSameStyle(normalizedRight)
                 && normalizedLeft.IsSamePath(normalizedRight);
-        }
-
-        private static string CollapseSeparators(string path, char separator, bool windowsStyle)
-        {
-            if (windowsStyle && path.StartsWith(@"\\", StringComparison.Ordinal))
-            {
-                string collapsedUncTail = SeparatorRunRegex(separator).Replace(path[2..], separator.ToString());
-                return @"\\" + collapsedUncTail;
-            }
-
-            return SeparatorRunRegex(separator).Replace(path, separator.ToString());
-        }
-
-        private static string TrimTrailingSeparators(string path, char separator, bool windowsStyle)
-        {
-            int minimumLength = 1;
-            if (windowsStyle && DriveRootRegex().IsMatch(path))
-            {
-                minimumLength = 3;
-            }
-
-            while (path.Length > minimumLength && path[^1] == separator)
-            {
-                path = path[..^1];
-            }
-
-            return path;
         }
 
         private static void Add(
@@ -166,18 +151,5 @@ namespace Cotton.Sync.App.SyncPairs
             errors.Add(new SyncPairValidationError(issue, syncPairId, otherSyncPairId, message));
         }
 
-        [GeneratedRegex(@"^[a-zA-Z]:([\\/]|$)", RegexOptions.CultureInvariant)]
-        private static partial Regex DriveRootRegex();
-
-        private static Regex SeparatorRunRegex(char separator)
-        {
-            return separator == '\\' ? BackslashRunRegex() : SlashRunRegex();
-        }
-
-        [GeneratedRegex(@"\\+", RegexOptions.CultureInvariant)]
-        private static partial Regex BackslashRunRegex();
-
-        [GeneratedRegex(@"/+", RegexOptions.CultureInvariant)]
-        private static partial Regex SlashRunRegex();
     }
 }

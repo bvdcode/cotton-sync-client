@@ -19,6 +19,42 @@ namespace Cotton.Sync.App.Tests.SyncApplication
     public partial class SyncApplicationServiceTests
     {
         [Test]
+        public Task SaveSyncPairAsync_AcceptsNativeRootAliasWithoutChangingScope()
+        {
+            return AssertRootAliasSaveAsync(Path.Combine("cotton-root-validation", "root"));
+        }
+
+        [Test]
+        [Platform("Win")]
+        public Task SaveSyncPairAsync_AcceptsWindowsRootRelativeAliasWithoutChangingScope()
+        {
+            return AssertRootAliasSaveAsync("/cotton-root-validation/root");
+        }
+
+        private static async Task AssertRootAliasSaveAsync(string localRootPath)
+        {
+            InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();
+            FakeSyncStateStore syncStateStore = new FakeSyncStateStore();
+            SyncPairSettings syncPair = CreatePair(localRootPath);
+            await store.UpsertAsync(syncPair);
+            SyncApplicationService service = CreateService(store, syncStateStore: syncStateStore);
+            SyncPairSettings updated = CopySyncPair(syncPair);
+            updated.LocalRootPath = Path.GetFullPath(syncPair.LocalRootPath);
+
+            SyncPairSaveResult result = await service.SaveSyncPairAsync(updated);
+
+            SyncPairSettings? saved = await store.GetAsync(syncPair.Id);
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.IsSaved, Is.True);
+                Assert.That(result.Validation.Errors, Is.Empty);
+                Assert.That(saved!.LocalRootPath, Is.EqualTo(updated.LocalRootPath));
+                Assert.That(syncStateStore.InitializeCallCount, Is.Zero);
+                Assert.That(syncStateStore.DeletedSyncPairIds, Is.Empty);
+            });
+        }
+
+        [Test]
         public async Task SaveSyncPairAsync_RejectsLocalRootChangeWithoutDeletingSyncState()
         {
             InMemorySyncPairSettingsStore store = new InMemorySyncPairSettingsStore();

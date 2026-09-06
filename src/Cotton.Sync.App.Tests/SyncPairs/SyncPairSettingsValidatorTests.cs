@@ -95,6 +95,7 @@ namespace Cotton.Sync.App.Tests.SyncPairs
         }
 
         [Test]
+        [Platform("Win")]
         public void Validate_RejectsNestedWindowsRootsIgnoringCase()
         {
             SyncPairSettings first = CreatePair(@"C:\Users\Example\Cotton");
@@ -113,6 +114,7 @@ namespace Cotton.Sync.App.Tests.SyncPairs
         }
 
         [Test]
+        [Platform("Win")]
         public void Validate_RejectsEqualWindowsRootsIgnoringTrailingSeparators()
         {
             SyncPairSettings first = CreatePair(@"D:\Sync\Cotton\");
@@ -129,6 +131,7 @@ namespace Cotton.Sync.App.Tests.SyncPairs
         }
 
         [Test]
+        [Platform("Win")]
         public void Validate_RejectsNestedUncRootsIgnoringCase()
         {
             SyncPairSettings first = CreatePair(@"\\Server\Share\Cotton");
@@ -144,6 +147,7 @@ namespace Cotton.Sync.App.Tests.SyncPairs
         }
 
         [Test]
+        [Platform(Exclude = "Win")]
         public void Validate_RejectsNestedUnixRoots()
         {
             SyncPairSettings first = CreatePair("/home/user/cotton");
@@ -159,6 +163,7 @@ namespace Cotton.Sync.App.Tests.SyncPairs
         }
 
         [Test]
+        [Platform(Exclude = "Win")]
         public void Validate_AllowsUnixRootsThatDifferOnlyByCase()
         {
             SyncPairSettings first = CreatePair("/home/user/Cotton");
@@ -178,6 +183,103 @@ namespace Cotton.Sync.App.Tests.SyncPairs
             SyncPairValidationResult result = _validator.Validate([first, second]);
 
             Assert.That(result.IsValid, Is.True);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Validate_RejectsNativeRootAliasesContainingParentSegments(bool nested)
+        {
+            string parent = Path.Combine(Path.GetTempPath(), "cotton-root-validation");
+            string localRoot = Path.Combine(parent, "root");
+            string alias = Path.Combine(parent, "other", "..", "root");
+            string expectedPath = localRoot;
+            if (nested)
+            {
+                alias = Path.Combine(alias, "nested");
+                expectedPath = Path.Combine(expectedPath, "nested");
+            }
+
+            Assert.That(Path.GetFullPath(alias), Is.EqualTo(Path.GetFullPath(expectedPath)));
+            SyncPairSettings first = CreatePair(localRoot);
+            SyncPairSettings second = CreatePair(alias);
+
+            SyncPairValidationResult result = _validator.Validate([first, second]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.IsValid, Is.False);
+                Assert.That(result.Errors.Single().Issue, Is.EqualTo(SyncPairValidationIssue.OverlappingLocalRoots));
+                Assert.That(result.Errors.Single().SyncPairId, Is.EqualTo(first.Id));
+                Assert.That(result.Errors.Single().OtherSyncPairId, Is.EqualTo(second.Id));
+            });
+        }
+
+        [Test]
+        public void Validate_ReportsInvalidNativeRootAsUnavailable()
+        {
+            string invalidRoot = Path.Combine(Path.GetTempPath(), "cotton-root-validation", "invalid\0root");
+
+            SyncPairValidationResult result = _validator.Validate([CreatePair(invalidRoot)]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.IsValid, Is.False);
+                Assert.That(result.Errors.Single().Issue, Is.EqualTo(SyncPairValidationIssue.LocalRootUnavailable));
+            });
+        }
+
+        [TestCase("cotton-root-validation/root")]
+        [TestCase(@"cotton-root-validation\root")]
+        public void Validate_RejectsRelativeAndAbsoluteAliases(string relativeRoot)
+        {
+            SyncPairSettings relative = CreatePair(relativeRoot);
+            SyncPairSettings absolute = CreatePair(Path.GetFullPath(relativeRoot));
+
+            SyncPairValidationResult result = _validator.Validate([relative, absolute]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.IsValid, Is.False);
+                Assert.That(result.Errors.Select(error => error.Issue),
+                    Is.EqualTo(new[] { SyncPairValidationIssue.OverlappingLocalRoots }));
+            });
+        }
+
+        [Test]
+        public void AreSameLocalRoot_RecognizesNativeParentSegmentAlias()
+        {
+            string parent = Path.Combine(Path.GetTempPath(), "cotton-root-validation");
+            string localRoot = Path.Combine(parent, "root");
+            string alias = Path.Combine(parent, "other", "..", "root");
+
+            Assert.That(SyncPairSettingsValidator.AreSameLocalRoot(localRoot, alias), Is.True);
+        }
+
+        [TestCase("/cotton-root-validation/root")]
+        [TestCase(@"\cotton-root-validation\root")]
+        [Platform("Win")]
+        public void Validate_RejectsWindowsRootRelativeAliases(string rootRelativePath)
+        {
+            Assert.That(Path.IsPathFullyQualified(rootRelativePath), Is.False);
+            SyncPairSettings relative = CreatePair(rootRelativePath);
+            SyncPairSettings absolute = CreatePair(Path.GetFullPath(rootRelativePath));
+
+            SyncPairValidationResult result = _validator.Validate([relative, absolute]);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.IsValid, Is.False);
+                Assert.That(result.Errors.Select(error => error.Issue),
+                    Is.EqualTo(new[] { SyncPairValidationIssue.OverlappingLocalRoots }));
+            });
+        }
+
+        [Test]
+        public void AreSameLocalRoot_RejectsInvalidNativeRoot()
+        {
+            string invalidRoot = Path.Combine(Path.GetTempPath(), "cotton-root-validation", "invalid\0root");
+
+            Assert.That(SyncPairSettingsValidator.AreSameLocalRoot(invalidRoot, invalidRoot), Is.False);
         }
 
         private static SyncPairSettings CreatePair(string localRootPath)
