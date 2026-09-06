@@ -14,20 +14,24 @@ namespace Cotton.Sync.Local
             CancellationToken cancellationToken)
         {
             LocalFilePlatformProbe.ValidatePermissions(file, relativePath);
-            LocalFileMetadata before = LocalFileContentHasher.ReadMetadata(file, relativePath);
-            string contentHash = computeHash && !isCloudFilesOnlineOnlyPlaceholder
-                ? await LocalFileContentHasher.ComputeAsync(
-                    file.FullName,
-                    relativePath,
-                    progress: null,
-                    before.Length,
-                    cancellationToken)
-                    .ConfigureAwait(false)
-                : string.Empty;
-            LocalFileMetadata after = LocalFileContentHasher.ReadMetadata(file, relativePath);
-            if (before.Length != after.Length || before.LastWriteUtc != after.LastWriteUtc)
+            LocalFileMetadata metadata = LocalFileContentHasher.ReadMetadata(file, relativePath);
+            string contentHash = string.Empty;
+            if (computeHash && !isCloudFilesOnlineOnlyPlaceholder)
             {
-                throw new LocalFileUnavailableException(relativePath, file.FullName, "the file changed during scanning.");
+                contentHash = await LocalFileContentHasher.ComputeAsync(
+                        file.FullName,
+                        relativePath,
+                        progress: null,
+                        metadata.Length,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                LocalFileMetadata after = LocalFileContentHasher.ReadMetadata(file, relativePath);
+                if (metadata.Length != after.Length || metadata.LastWriteUtc != after.LastWriteUtc)
+                {
+                    throw new LocalFileUnavailableException(relativePath, file.FullName, "the file changed during scanning.");
+                }
+
+                metadata = after;
             }
 
             return new LocalFileSnapshot
@@ -35,8 +39,8 @@ namespace Cotton.Sync.Local
                 RelativePath = relativePath,
                 FullPath = file.FullName,
                 ContentHash = contentHash,
-                SizeBytes = after.Length,
-                LastWriteUtc = after.LastWriteUtc,
+                SizeBytes = metadata.Length,
+                LastWriteUtc = metadata.LastWriteUtc,
                 IsCloudFilesPlaceholder = isCloudFilesPlaceholder,
                 IsCloudFilesOnlineOnlyPlaceholder = isCloudFilesOnlineOnlyPlaceholder,
             };

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
@@ -131,23 +132,30 @@ namespace Cotton.Sync.Local
                 return false;
             }
 
-            byte[] buffer = new byte[ReparseDataBufferSize];
-            if (!DeviceIoControl(
-                    handle,
-                    FsctlGetReparsePoint,
-                    IntPtr.Zero,
-                    0,
-                    buffer,
-                    buffer.Length,
-                    out int bytesReturned,
-                    IntPtr.Zero)
-                || bytesReturned < sizeof(uint))
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(ReparseDataBufferSize);
+            try
             {
-                return false;
-            }
+                if (!DeviceIoControl(
+                        handle,
+                        FsctlGetReparsePoint,
+                        IntPtr.Zero,
+                        0,
+                        buffer,
+                        ReparseDataBufferSize,
+                        out int bytesReturned,
+                        IntPtr.Zero)
+                    || bytesReturned < sizeof(uint))
+                {
+                    return false;
+                }
 
-            reparseTag = BinaryPrimitives.ReadUInt32LittleEndian(buffer);
-            return true;
+                reparseTag = BinaryPrimitives.ReadUInt32LittleEndian(buffer);
+                return true;
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
 
         private static bool HasRawAttribute(FileAttributes attributes, int rawAttribute)
