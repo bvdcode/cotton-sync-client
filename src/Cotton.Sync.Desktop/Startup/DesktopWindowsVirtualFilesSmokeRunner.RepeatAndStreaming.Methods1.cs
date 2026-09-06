@@ -131,12 +131,14 @@ namespace Cotton.Sync.Desktop.Startup
                 LargeStateFirstRemoteCrawler crawler = new(syncPair.RemoteRootNodeId, remoteFiles);
                 NoTransferRemoteFileSynchronizer noTransfers = new();
                 GuardRemoteFilePlaceholderWriter placeholderWriter = new();
+                using DesktopTraceLoggerFactory loggerFactory = new();
                 SyncEngine engine = new(
                     scanner,
                     crawler,
                     noTransfers,
                     stateStore,
-                    remoteFilePlaceholderWriter: placeholderWriter);
+                    remoteFilePlaceholderWriter: placeholderWriter,
+                    logger: loggerFactory.CreateLogger<SyncEngine>());
                 SyncPair syncPairCore = new()
                 {
                     SyncPairId = syncPair.Id.ToString("D"),
@@ -144,11 +146,17 @@ namespace Cotton.Sync.Desktop.Startup
                     RemoteRootNodeId = syncPair.RemoteRootNodeId,
                     MaterializationMode = SyncPairMaterializationMode.WindowsVirtualFiles,
                 };
+                long allocatedBytesBefore = GC.GetTotalAllocatedBytes(precise: true);
                 Stopwatch syncTimer = Stopwatch.StartNew();
                 SyncRunResult result = await engine
                     .RunOnceAsync(syncPairCore, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
                 syncTimer.Stop();
+                long allocatedBytes = GC.GetTotalAllocatedBytes(precise: true) - allocatedBytesBefore;
+                await output.WriteLineAsync(
+                        "Diagnostic: steady-state repeat allocatedBytes="
+                        + allocatedBytes.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                    .ConfigureAwait(false);
 
                 bool passed = DidSteadyStateFastPathPass(
                     result,
@@ -237,7 +245,11 @@ namespace Cotton.Sync.Desktop.Startup
                 + ", placeholderWrites="
                 + placeholderWriter.PlaceholderWriteCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
                 + ", presenceProbes="
-                + scanner.PresenceProbeCalls.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                + scanner.PresenceProbeCalls.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", pathLookupElapsedMs="
+                + scanner.PathLookupElapsed.TotalMilliseconds.ToString("F3", System.Globalization.CultureInfo.InvariantCulture)
+                + ", presenceProbeElapsedMs="
+                + scanner.PresenceProbeElapsed.TotalMilliseconds.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
         }
     }
 }

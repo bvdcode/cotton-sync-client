@@ -117,6 +117,10 @@ namespace Cotton.Sync.Desktop.Startup
 
             public int PresenceProbeCalls { get; private set; }
 
+            public TimeSpan PathLookupElapsed { get; private set; }
+
+            public TimeSpan PresenceProbeElapsed { get; private set; }
+
             public Task<IReadOnlyList<LocalFileSnapshot>> ScanAsync(
                 string rootPath,
                 CancellationToken cancellationToken = default)
@@ -150,7 +154,7 @@ namespace Cotton.Sync.Desktop.Startup
                 throw new InvalidOperationException("Steady-state repeat smoke must not build local tree lookups.");
             }
 
-            public Task<LocalTreeLookupSnapshot> ScanPathMetadataLookupsAsync(
+            public async Task<LocalTreeLookupSnapshot> ScanPathMetadataLookupsAsync(
                 string rootPath,
                 IReadOnlyCollection<string> relativePaths,
                 IProgress<LocalTreeScanProgress>? progress,
@@ -158,18 +162,35 @@ namespace Cotton.Sync.Desktop.Startup
                 CancellationToken cancellationToken = default)
             {
                 PathLookupCalls++;
-                return _scanner.ScanPathMetadataLookupsAsync(
-                    rootPath,
-                    relativePaths,
-                    progress,
-                    includeDirectoryDescendants,
-                    cancellationToken);
+                long startedAt = Stopwatch.GetTimestamp();
+                try
+                {
+                    return await _scanner.ScanPathMetadataLookupsAsync(
+                            rootPath,
+                            relativePaths,
+                            progress,
+                            includeDirectoryDescendants,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                finally
+                {
+                    PathLookupElapsed += Stopwatch.GetElapsedTime(startedAt);
+                }
             }
 
             public bool FileExists(string rootPath, string relativePath)
             {
                 PresenceProbeCalls++;
-                return _scanner.FileExists(rootPath, relativePath);
+                long startedAt = Stopwatch.GetTimestamp();
+                try
+                {
+                    return _scanner.FileExists(rootPath, relativePath);
+                }
+                finally
+                {
+                    PresenceProbeElapsed += Stopwatch.GetElapsedTime(startedAt);
+                }
             }
 
             public Task<string> ComputeContentHashAsync(
