@@ -37,9 +37,18 @@ namespace Cotton.Sync.Local
                 Directory.CreateDirectory(targetDirectory);
             }
 
-            string temporaryDirectory = Path.Combine(SyncMetadataDirectory.Ensure(fullRoot), TemporaryDirectoryName);
+            string metadataDirectory = SyncMetadataDirectory.Ensure(fullRoot);
+            string temporaryDirectory = Path.Combine(metadataDirectory, TemporaryDirectoryName);
             Directory.CreateDirectory(temporaryDirectory);
-            CleanupTemporaryDownloads(temporaryDirectory);
+            using (FileStream? cleanupLease = LocalDownloadLease.TryAcquireCleanup(metadataDirectory))
+            {
+                if (cleanupLease is not null)
+                {
+                    CleanupTemporaryDownloads(temporaryDirectory);
+                }
+            }
+
+            using FileStream downloadLease = LocalDownloadLease.Acquire(metadataDirectory, normalizedPath, targetPath);
             string temporaryPath = Path.Combine(temporaryDirectory, Guid.NewGuid().ToString("N") + ".download");
             string? previousPath = null;
             string? preservationRoot = null;
