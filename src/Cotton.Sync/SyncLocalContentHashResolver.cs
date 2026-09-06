@@ -54,7 +54,7 @@ namespace Cotton.Sync
                 return;
             }
 
-            if (CanReuseBaselineHash(local, state))
+            if (options.Scope.IsFull && CanReuseBaselineHash(local, state))
             {
                 local.ContentHash = state.LocalContentHash!;
                 return;

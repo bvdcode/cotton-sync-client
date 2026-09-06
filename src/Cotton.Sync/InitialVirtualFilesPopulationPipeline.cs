@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Threading.Channels;
+using Cotton.Sync.Local;
 using Cotton.Sync.Remote;
 using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
@@ -351,14 +352,28 @@ namespace Cotton.Sync
             SyncDeleteGuard deleteGuard = new(options, plannedLocalDeletes: missingBaselines.Count, []);
             foreach (InitialVirtualFilesPlaceholderBaseline baseline in missingBaselines)
             {
-                await fileDeleteExecutor.DeleteLocalAsync(
-                        syncPair,
-                        options,
-                        result,
-                        deleteGuard,
-                        baseline.RelativePath,
-                        cancellationToken)
-                    .ConfigureAwait(false);
+                streamingPlan.CurrentLocalFilesByPath.TryGetValue(SyncPath.ToKey(baseline.RelativePath), out LocalFileSnapshot? expected);
+                if (expected is not null && !expected.IsCloudFilesOnlineOnlyPlaceholder)
+                {
+                    expected.ContentHash = baseline.LocalContentHash ?? string.Empty;
+                }
+
+                try
+                {
+                    await fileDeleteExecutor.DeleteLocalAsync(
+                            syncPair,
+                            options,
+                            result,
+                            deleteGuard,
+                            baseline.RelativePath,
+                            expected,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (LocalFileUnavailableException exception)
+                {
+                    LocalUploadPolicy.ReportUnavailable(result, options, baseline.RelativePath, exception);
+                }
             }
         }
 

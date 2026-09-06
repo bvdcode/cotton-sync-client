@@ -28,6 +28,8 @@ namespace Cotton.Sync.Tests
 
             public int PathCrawlCalls { get; private set; }
 
+            public Action? BeforeCrawlReturns { get; init; }
+
             public FakeRemoteTreeCrawler(params RemoteTreeSnapshot[] snapshots)
             {
                 if (snapshots.Length == 0)
@@ -42,6 +44,7 @@ namespace Cotton.Sync.Tests
             public Task<RemoteTreeSnapshot> CrawlAsync(Guid rootNodeId, CancellationToken cancellationToken = default)
             {
                 CrawlCalls++;
+                BeforeCrawlReturns?.Invoke();
                 return Task.FromResult(TakeNextSnapshot());
             }
 
@@ -166,6 +169,8 @@ namespace Cotton.Sync.Tests
 
             public bool StreamingCompleted { get; private set; }
 
+            public Action? BeforeStreamingCompletes { get; init; }
+
             public Task<RemoteTreeSnapshot> CrawlAsync(Guid rootNodeId, CancellationToken cancellationToken = default)
             {
                 SnapshotCrawlCalls++;
@@ -226,6 +231,7 @@ namespace Cotton.Sync.Tests
                     }
                 }
 
+                BeforeStreamingCompletes?.Invoke();
                 StreamingCompleted = true;
                 progress?.Report(new RemoteTreeScanProgress(
                     _files.Count,

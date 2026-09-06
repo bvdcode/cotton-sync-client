@@ -270,7 +270,7 @@ namespace Cotton.Sync.Tests
 
 
         [Test]
-        public async Task RunOnceAsync_WithWindowsVirtualFilesStreamingRemovesTrackedPlaceholderWhenRemoteDeleted()
+        public async Task RunOnceAsync_WithWindowsVirtualFilesStreamingPreservesFileThatReplacedDeletedRemotePlaceholder()
         {
             string relativePath = "Desktop/deleted-online-only.txt";
             NodeFileManifestDto oldRemote = RemoteFile(
@@ -307,9 +307,10 @@ namespace Cotton.Sync.Tests
                 Assert.That(remoteFileSynchronizer.DownloadCalls, Is.Empty);
                 Assert.That(remoteFileSynchronizer.Deletes, Is.Empty);
                 Assert.That(result.RequiresUserAction, Is.False);
-                Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.DeletedLocal }));
-                Assert.That(state, Is.Null);
-                Assert.That(File.Exists(fullPath), Is.False);
+                Assert.That(result.DeferredLocalPaths, Is.EqualTo(new[] { relativePath }));
+                Assert.That(result.Activities.Select(activity => activity.Kind), Does.Not.Contain(SyncActivityKind.DeletedLocal));
+                Assert.That(state, Is.Not.Null);
+                Assert.That(File.ReadAllText(fullPath), Is.EqualTo("local placeholder"));
             });
         }
     }

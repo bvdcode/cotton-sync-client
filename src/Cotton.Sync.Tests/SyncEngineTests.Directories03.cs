@@ -205,11 +205,14 @@ namespace Cotton.Sync.Tests
                     LocalDirectory(childPath),
                 },
             };
-            SyncEngine engine = CreateEngine(
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            PlaceholderLocalWriter localWriter = new(localFile);
+            SyncEngine engine = new(
                 scanner,
-                EmptyRemoteTree(),
+                new FakeRemoteTreeCrawler(EmptyRemoteTree()),
                 new FakeRemoteFileSynchronizer(),
-                out SqliteSyncStateStore stateStore);
+                stateStore,
+                localWriter);
             await InsertDirectoryBaselineAsync(stateStore, rootPath, remoteRoot.Node);
             await InsertDirectoryBaselineAsync(stateStore, childPath, remoteChild.Node);
             await InsertBaselineAsync(stateStore, filePath, localFile.ContentHash, baselineRemote, localFile.SizeBytes);
@@ -226,6 +229,7 @@ namespace Cotton.Sync.Tests
             {
                 Assert.That(Directory.Exists(Path.Combine(_root, rootPath)), Is.False);
                 Assert.That(state, Is.Empty);
+                Assert.That(localWriter.DeleteCalls, Is.EqualTo(1));
                 Assert.That(
                     result.Activities.Select(activity => (activity.Kind, activity.RelativePath)),
                     Is.EqualTo(new[]

@@ -76,6 +76,7 @@ namespace Cotton.Sync
             SyncRunResult result,
             SyncDeleteGuard deleteGuard,
             string relativePath,
+            LocalFileSnapshot? expectedLocalFile,
             CancellationToken cancellationToken)
         {
             if (!deleteGuard.CanDeleteLocal(out string? details))
@@ -90,7 +91,7 @@ namespace Cotton.Sync
                 return;
             }
 
-            await localWriter.DeleteFileAsync(syncPair.LocalRootPath, relativePath, cancellationToken)
+            await localWriter.DeleteFileAsync(syncPair.LocalRootPath, relativePath, expectedLocalFile, cancellationToken)
                 .ConfigureAwait(false);
             await stateStore.DeleteAsync(syncPair.SyncPairId, relativePath, cancellationToken).ConfigureAwait(false);
             SyncActivityReporter.ReportActivity(

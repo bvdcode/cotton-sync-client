@@ -21,9 +21,14 @@ namespace Cotton.Sync.Local
             CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Moves a local file out of the sync tree if it exists.
+        /// Moves the expected local file out of the sync tree, restoring changed content.
+        /// A null snapshot requires the target to remain absent.
         /// </summary>
-        Task DeleteFileAsync(string rootPath, string relativePath, CancellationToken cancellationToken = default);
+        Task DeleteFileAsync(
+            string rootPath,
+            string relativePath,
+            LocalFileSnapshot? expectedLocalFile,
+            CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Creates a local directory if it does not exist.

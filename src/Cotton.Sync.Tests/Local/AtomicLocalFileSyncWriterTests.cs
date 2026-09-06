@@ -86,7 +86,8 @@ namespace Cotton.Sync.Tests.Local
             WriteFile(relativePath, "deleted-content");
             AtomicLocalFileSyncWriter writer = new AtomicLocalFileSyncWriter();
 
-            await writer.DeleteFileAsync(_root, relativePath);
+            LocalFileSnapshot expected = (await new LocalFileScanner().ScanAsync(_root)).Single();
+            await writer.DeleteFileAsync(_root, relativePath, expected);
 
             string[] deletedFiles = Directory.GetFiles(
                 Path.Combine(_root, ".cotton-sync", "deleted"),
@@ -106,7 +107,7 @@ namespace Cotton.Sync.Tests.Local
         {
             AtomicLocalFileSyncWriter writer = new();
 
-            await writer.DeleteFileAsync(_root, "Docs/missing.txt");
+            await writer.DeleteFileAsync(_root, "Docs/missing.txt", expectedLocalFile: null);
 
             Assert.That(Directory.Exists(Path.Combine(_root, ".cotton-sync", "deleted")), Is.False);
         }
@@ -117,7 +118,7 @@ namespace Cotton.Sync.Tests.Local
             Directory.CreateDirectory(FullPath("Docs/Folder"));
             AtomicLocalFileSyncWriter writer = new();
 
-            Assert.ThrowsAsync<IOException>(() => writer.DeleteFileAsync(_root, "Docs/Folder"));
+            Assert.ThrowsAsync<IOException>(() => writer.DeleteFileAsync(_root, "Docs/Folder", expectedLocalFile: null));
             Assert.That(Directory.Exists(FullPath("Docs/Folder")), Is.True);
         }
 
@@ -264,7 +265,7 @@ namespace Cotton.Sync.Tests.Local
                             await stream.WriteAsync(Encoding.UTF8.GetBytes("payload"), cancellationToken)),
                     Throws.ArgumentException);
                 Assert.That(
-                    async () => await writer.DeleteFileAsync(_root, ignoredFilePath),
+                    async () => await writer.DeleteFileAsync(_root, ignoredFilePath, expectedLocalFile: null),
                     Throws.ArgumentException);
                 Assert.That(
                     async () => await writer.CreateDirectoryAsync(_root, ignoredDirectoryPath),

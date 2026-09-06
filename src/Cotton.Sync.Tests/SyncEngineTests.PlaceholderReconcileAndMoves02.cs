@@ -71,11 +71,14 @@ namespace Cotton.Sync.Tests
             LocalFileSnapshot oldLocalPlaceholder = CloudFilesPlaceholderLocal(oldPath, baselineRemote.SizeBytes);
             FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
             FakeRemoteFilePlaceholderWriter placeholderWriter = new FakeRemoteFilePlaceholderWriter();
-            SyncEngine engine = CreateEngine(
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            PlaceholderLocalWriter localWriter = new(oldLocalPlaceholder);
+            SyncEngine engine = new(
                 new FakeLocalFileScanner(oldLocalPlaceholder),
-                RemoteTree(movedRemote),
+                new FakeRemoteTreeCrawler(RemoteTree(movedRemote)),
                 remoteFiles,
-                out SqliteSyncStateStore stateStore,
+                stateStore,
+                localWriter,
                 remoteFilePlaceholderWriter: placeholderWriter);
             await InsertPlaceholderBaselineAsync(stateStore, oldPath, baselineRemote);
 
@@ -100,6 +103,7 @@ namespace Cotton.Sync.Tests
                 Assert.That(File.Exists(Path.Combine(_root, oldPath.Replace('/', Path.DirectorySeparatorChar))), Is.False);
                 Assert.That(File.Exists(Path.Combine(_root, newPath.Replace('/', Path.DirectorySeparatorChar))), Is.False);
                 Assert.That(oldEntry, Is.Null);
+                Assert.That(localWriter.DeleteCalls, Is.EqualTo(1));
                 Assert.That(newEntry, Is.Not.Null);
                 Assert.That(newEntry!.RemoteFileId, Is.EqualTo(remoteFileId));
                 Assert.That(newEntry.RemoteContentHash, Is.EqualTo(baselineRemote.ContentHash));

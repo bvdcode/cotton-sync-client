@@ -58,6 +58,7 @@ namespace Cotton.Sync
                     new InitialVirtualFilesStreamingPlan(
                         SkipCurrentPlaceholders: false,
                         CurrentPlaceholderBaselineByPath: new Dictionary<string, InitialVirtualFilesPlaceholderBaseline>(PathComparer),
+                        CurrentLocalFilesByPath: localFilesByPath,
                         AdoptableUntrackedPlaceholderByPath: new Dictionary<string, LocalFileSnapshot>(PathComparer)));
             }
 
@@ -112,6 +113,7 @@ namespace Cotton.Sync
                 new InitialVirtualFilesStreamingPlan(
                     SkipCurrentPlaceholders: true,
                     CurrentPlaceholderBaselineByPath: fileBaselineByPath,
+                    CurrentLocalFilesByPath: localFilesByPath,
                     AdoptableUntrackedPlaceholderByPath: adoptableUntrackedPlaceholderByPath));
         }
 
@@ -190,6 +192,7 @@ namespace Cotton.Sync
                 new InitialVirtualFilesStreamingPlan(
                     SkipCurrentPlaceholders: true,
                     CurrentPlaceholderBaselineByPath: inspection.FileBaselineByPath,
+                    CurrentLocalFilesByPath: localStateLookups.FilesByPath,
                     AdoptableUntrackedPlaceholderByPath: new Dictionary<string, LocalFileSnapshot>(PathComparer)));
         }
 

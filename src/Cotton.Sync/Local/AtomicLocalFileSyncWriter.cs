@@ -154,7 +154,11 @@ namespace Cotton.Sync.Local
         }
 
         /// <inheritdoc />
-        public Task DeleteFileAsync(string rootPath, string relativePath, CancellationToken cancellationToken = default)
+        public async Task DeleteFileAsync(
+            string rootPath,
+            string relativePath,
+            LocalFileSnapshot? expectedLocalFile,
+            CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
             cancellationToken.ThrowIfCancellationRequested();
@@ -163,7 +167,7 @@ namespace Cotton.Sync.Local
             string targetPath = Path.Combine(fullRoot, normalizedPath.Replace('/', Path.DirectorySeparatorChar));
             if (!TryGetExistingAttributes(targetPath, out FileAttributes attributes))
             {
-                return Task.CompletedTask;
+                return;
             }
 
             if ((attributes & FileAttributes.Directory) != 0)
@@ -171,7 +175,14 @@ namespace Cotton.Sync.Local
                 throw new IOException("Local file delete target is a directory: " + normalizedPath);
             }
 
-            string preservedPath = CreateDeletedPath(fullRoot, normalizedPath, out _);
+            if (expectedLocalFile is null)
+            {
+                throw new LocalFileUnavailableException(normalizedPath, targetPath, "a local file appeared before its remote deletion was applied.");
+            }
+
+            LocalFileDeletionFinalizer.ValidateMetadata(targetPath, normalizedPath, expectedLocalFile);
+
+            string preservedPath = CreateDeletedPath(fullRoot, normalizedPath, out string preservationRoot);
             string? preservedDirectory = Path.GetDirectoryName(preservedPath);
             if (!string.IsNullOrWhiteSpace(preservedDirectory))
             {
@@ -179,9 +190,24 @@ namespace Cotton.Sync.Local
                 Directory.CreateDirectory(preservedDirectory);
             }
 
-            File.Move(targetPath, preservedPath, overwrite: false);
-
-            return Task.CompletedTask;
+            try
+            {
+                File.Move(targetPath, preservedPath, overwrite: false);
+                await LocalFileDeletionFinalizer.CompleteAsync(
+                        targetPath,
+                        preservedPath,
+                        normalizedPath,
+                        expectedLocalFile,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                if (!File.Exists(preservedPath))
+                {
+                    CleanupEmptyPreservationDirectories(preservedPath, preservationRoot);
+                }
+            }
         }
 
         /// <inheritdoc />

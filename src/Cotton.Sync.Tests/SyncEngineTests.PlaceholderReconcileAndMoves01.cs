@@ -280,11 +280,14 @@ namespace Cotton.Sync.Tests
             LocalFileSnapshot local = CloudFilesPlaceholderLocal(relativePath, 1024);
             NodeFileManifestDto baselineRemote = RemoteFile(relativePath, HashText("remote-content"), sizeBytes: 1024);
             FakeRemoteFileSynchronizer remoteFiles = new FakeRemoteFileSynchronizer();
-            SyncEngine engine = CreateEngine(
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            PlaceholderLocalWriter localWriter = new(local);
+            SyncEngine engine = new(
                 new FakeLocalFileScanner(local),
-                EmptyRemoteTree(),
+                new FakeRemoteTreeCrawler(EmptyRemoteTree()),
                 remoteFiles,
-                out SqliteSyncStateStore stateStore);
+                stateStore,
+                localWriter);
             await InsertPlaceholderBaselineAsync(stateStore, relativePath, baselineRemote);
 
             SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
@@ -302,6 +305,7 @@ namespace Cotton.Sync.Tests
                 Assert.That(File.Exists(Path.Combine(_root, relativePath)), Is.False);
                 Assert.That(tombstones.Select(Path.GetFileName), Does.Contain(relativePath));
                 Assert.That(entry, Is.Null);
+                Assert.That(localWriter.DeleteCalls, Is.EqualTo(1));
             });
         }
     }

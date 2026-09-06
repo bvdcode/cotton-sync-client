@@ -8,5 +8,6 @@ namespace Cotton.Sync
     internal record InitialVirtualFilesStreamingPlan(
         bool SkipCurrentPlaceholders,
         IReadOnlyDictionary<string, InitialVirtualFilesPlaceholderBaseline> CurrentPlaceholderBaselineByPath,
+        IReadOnlyDictionary<string, LocalFileSnapshot> CurrentLocalFilesByPath,
         IReadOnlyDictionary<string, LocalFileSnapshot> AdoptableUntrackedPlaceholderByPath);
 }

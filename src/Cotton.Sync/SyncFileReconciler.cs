@@ -300,6 +300,7 @@ namespace Cotton.Sync
                             context.Result,
                             context.DeleteGuard,
                             context.RelativePath,
+                            context.Local,
                             context.CancellationToken)
                         .ConfigureAwait(false);
                     return;
