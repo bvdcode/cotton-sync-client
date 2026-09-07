@@ -88,7 +88,7 @@
     </AssignTargetPath>
     <ItemGroup>
       <CottonPublishedFileWithManifest Include="@(CottonPublishedFileWithTargetPath)">
-        <ManifestPath>%(TargetPath)</ManifestPath>
+        <ManifestPath>$([System.String]::Copy('%(TargetPath)').Replace('\', '/'))</ManifestPath>
       </CottonPublishedFileWithManifest>
     </ItemGroup>
     <GetFileHash Files="@(CottonPublishedFileWithManifest)"
