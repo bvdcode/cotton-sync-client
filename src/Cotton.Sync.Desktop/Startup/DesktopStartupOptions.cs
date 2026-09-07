@@ -69,6 +69,8 @@ namespace Cotton.Sync.Desktop.Startup
 
         public string? LiveSyncSmokePasswordEnvironmentVariable { get; private init; }
 
+        public TimeSpan LiveSyncSmokeSoakDuration { get; private init; }
+
         public bool LiveSyncSmokePreserveExistingLocalFiles { get; private init; }
 
         public int? LiveSyncSmokeSeedFileCount { get; private init; }
@@ -109,6 +111,7 @@ namespace Cotton.Sync.Desktop.Startup
                     "--live-sync-smoke-approval-hold-seconds",
                     "--desktop-live-sync-smoke-approval-hold-seconds")),
                 LiveSyncSmokePasswordEnvironmentVariable = ParseLiveSyncSmokePasswordEnvironmentVariable(args),
+                LiveSyncSmokeSoakDuration = ParseLiveSyncSmokeSoakDuration(args),
                 LiveSyncSmokePreserveExistingLocalFiles = HasFlag(
                     args,
                     "--live-sync-smoke-preserve-existing-local-files"),
@@ -168,6 +171,24 @@ namespace Cotton.Sync.Desktop.Startup
         private static bool HasAnyFlag(IReadOnlyList<string> args, params string[] names)
         {
             return names.Any(name => HasFlag(args, name));
+        }
+
+        private static TimeSpan ParseLiveSyncSmokeSoakDuration(IReadOnlyList<string> args)
+        {
+            const string option = "--live-sync-smoke-soak-seconds";
+            if (!args.Any(argument => argument == option || argument.StartsWith(option + "=", StringComparison.Ordinal)))
+            {
+                return TimeSpan.Zero;
+            }
+
+            if (!HasAnyFlag(args, "--live-sync-smoke", "--desktop-live-sync-smoke")
+                || !int.TryParse(ReadOption(args, option), out int seconds)
+                || seconds <= 0)
+            {
+                throw new ArgumentException(option + " requires a live sync smoke and a positive duration.", nameof(args));
+            }
+
+            return TimeSpan.FromSeconds(seconds);
         }
 
         private static string? ParseLiveSyncSmokePasswordEnvironmentVariable(IReadOnlyList<string> args)

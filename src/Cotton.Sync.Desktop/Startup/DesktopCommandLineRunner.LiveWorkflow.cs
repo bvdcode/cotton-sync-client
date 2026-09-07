@@ -100,6 +100,8 @@ namespace Cotton.Sync.Desktop.Startup
                 cancellationToken).ConfigureAwait(false);
             failures += await RunAutomaticLiveChangesAsync(
                 startupOptions, session, output, cancellationToken).ConfigureAwait(false);
+            failures += await RunLiveSyncSoakAsync(
+                startupOptions, session, output, cancellationToken).ConfigureAwait(false);
             failures += await RunClientARenameAsync(
                 startupOptions,
                 session.FirstController,
