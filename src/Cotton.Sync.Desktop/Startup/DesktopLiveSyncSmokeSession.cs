@@ -17,7 +17,13 @@ namespace Cotton.Sync.Desktop.Startup
 
         public DesktopAppPaths SecondPaths { get; } = secondPaths;
 
-        public DesktopShellController FirstController { get; } = firstController;
+        public DesktopShellController FirstController { get; private set; } = firstController;
+
+        public void ReplaceFirstController(DesktopShellController controller)
+        {
+            ArgumentNullException.ThrowIfNull(controller);
+            FirstController = controller;
+        }
 
         public DesktopShellController SecondController { get; } = secondController;
 

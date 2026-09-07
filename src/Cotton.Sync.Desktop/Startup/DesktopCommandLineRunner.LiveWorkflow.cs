@@ -102,6 +102,8 @@ namespace Cotton.Sync.Desktop.Startup
                 startupOptions, session, output, cancellationToken).ConfigureAwait(false);
             failures += await RunLiveSyncSoakAsync(
                 startupOptions, session, output, cancellationToken).ConfigureAwait(false);
+            failures += await RunLiveAvailabilityAndRestoreAsync(
+                startupOptions, session, output, cancellationToken).ConfigureAwait(false);
             failures += await RunClientARenameAsync(
                 startupOptions,
                 session.FirstController,
@@ -198,7 +200,28 @@ namespace Cotton.Sync.Desktop.Startup
                 failures += await TrySignOutAsync(session.SecondController, output, "second").ConfigureAwait(false);
             }
 
+            failures += await TryDisposeLiveSmokeControllerAsync(session.FirstController, output, "first").ConfigureAwait(false);
+            failures += await TryDisposeLiveSmokeControllerAsync(session.SecondController, output, "second").ConfigureAwait(false);
+
             return failures;
+        }
+
+        private static async Task<int> TryDisposeLiveSmokeControllerAsync(
+            DesktopShellController controller,
+            TextWriter output,
+            string label)
+        {
+            try
+            {
+                await controller.DisposeAsync().ConfigureAwait(false);
+                return 0;
+            }
+            catch (Exception exception)
+            {
+                await output.WriteLineAsync("Error: failed to dispose " + label + " live-smoke client: "
+                    + exception.GetType().Name + ": " + CleanSingleLine(exception.Message)).ConfigureAwait(false);
+                return 1;
+            }
         }
     }
 }
