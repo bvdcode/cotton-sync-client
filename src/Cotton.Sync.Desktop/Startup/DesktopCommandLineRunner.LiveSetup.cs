@@ -184,12 +184,31 @@ namespace Cotton.Sync.Desktop.Startup
             await output.WriteLineAsync("Data root: " + paths.DataDirectory).ConfigureAwait(false);
         }
 
-        private static async Task SignInLiveSmokeClientsAsync(
+        internal static async Task SignInLiveSmokeClientsAsync(
             DesktopStartupOptions startupOptions,
             DesktopLiveSyncSmokeSession session,
             TextWriter output,
             CancellationToken cancellationToken)
         {
+            if (startupOptions.LiveSyncSmokePasswordEnvironmentVariable is string variableName)
+            {
+                string? password = Environment.GetEnvironmentVariable(variableName);
+                if (string.IsNullOrWhiteSpace(password))
+                {
+                    throw new InvalidOperationException("The live sync smoke password environment variable is missing or empty.");
+                }
+
+                DesktopSignInRequest request = new(
+                    startupOptions.ServerUrl!.AbsoluteUri, startupOptions.Username!, password, TotpCode: null);
+                await output.WriteLineAsync("Signing in first desktop client with the password environment variable...").ConfigureAwait(false);
+                await session.FirstController.SignInAsync(request, cancellationToken).ConfigureAwait(false);
+                session.FirstSignedIn = true;
+                await output.WriteLineAsync("Signing in second desktop client with the password environment variable...").ConfigureAwait(false);
+                await session.SecondController.SignInAsync(request, cancellationToken).ConfigureAwait(false);
+                session.SecondSignedIn = true;
+                return;
+            }
+
             await output.WriteLineAsync("Approving first desktop client...").ConfigureAwait(false);
             await session.FirstController.SignInWithBrowserAsync(
                 startupOptions.ServerUrl!.AbsoluteUri,
@@ -253,6 +272,12 @@ namespace Cotton.Sync.Desktop.Startup
             if (startupOptions.ServerUrl is null)
             {
                 return "--live-sync-smoke requires --server or --server-url.";
+            }
+
+            if (startupOptions.LiveSyncSmokePasswordEnvironmentVariable is string variableName
+                && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(variableName)))
+            {
+                return "The live sync smoke password environment variable is missing or empty.";
             }
 
             if (startupOptions.DataDirectory is null)

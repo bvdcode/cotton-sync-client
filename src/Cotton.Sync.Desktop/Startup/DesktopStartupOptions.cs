@@ -67,6 +67,8 @@ namespace Cotton.Sync.Desktop.Startup
 
         public TimeSpan LiveSyncSmokeApprovalHold { get; private init; }
 
+        public string? LiveSyncSmokePasswordEnvironmentVariable { get; private init; }
+
         public bool LiveSyncSmokePreserveExistingLocalFiles { get; private init; }
 
         public int? LiveSyncSmokeSeedFileCount { get; private init; }
@@ -106,6 +108,7 @@ namespace Cotton.Sync.Desktop.Startup
                     args,
                     "--live-sync-smoke-approval-hold-seconds",
                     "--desktop-live-sync-smoke-approval-hold-seconds")),
+                LiveSyncSmokePasswordEnvironmentVariable = ParseLiveSyncSmokePasswordEnvironmentVariable(args),
                 LiveSyncSmokePreserveExistingLocalFiles = HasFlag(
                     args,
                     "--live-sync-smoke-preserve-existing-local-files"),
@@ -165,6 +168,33 @@ namespace Cotton.Sync.Desktop.Startup
         private static bool HasAnyFlag(IReadOnlyList<string> args, params string[] names)
         {
             return names.Any(name => HasFlag(args, name));
+        }
+
+        private static string? ParseLiveSyncSmokePasswordEnvironmentVariable(IReadOnlyList<string> args)
+        {
+            const string option = "--live-sync-smoke-password-env";
+            if (!args.Any(argument => argument == option || argument.StartsWith(option + "=", StringComparison.Ordinal)))
+            {
+                return null;
+            }
+
+            if (!HasAnyFlag(args, "--live-sync-smoke", "--desktop-live-sync-smoke"))
+            {
+                throw new ArgumentException(option + " requires --live-sync-smoke.", nameof(args));
+            }
+
+            if (NormalizeOptional(ReadFirstOption(args, "--username", "--user")) is null)
+            {
+                throw new ArgumentException(option + " requires --username.", nameof(args));
+            }
+
+            string? variableName = NormalizeOptional(ReadOption(args, option));
+            if (variableName is null || variableName.Contains('=') || variableName.Contains('\0'))
+            {
+                throw new ArgumentException(option + " requires a valid environment variable name.", nameof(args));
+            }
+
+            return variableName;
         }
 
         private static bool HasFlag(IReadOnlyList<string> args, string name)

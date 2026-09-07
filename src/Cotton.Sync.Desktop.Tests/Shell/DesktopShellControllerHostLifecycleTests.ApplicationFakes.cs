@@ -122,6 +122,14 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             public int SignOutCalls { get; private set; }
 
+            public int PasswordSignInCalls { get; private set; }
+
+            public int BrowserSignInCalls { get; private set; }
+
+            public PasswordSignInRequest? LastPasswordSignInRequest { get; private set; }
+
+            public Exception? PasswordSignInException { get; set; }
+
             public int SyncNowCalls { get; private set; }
 
             public SyncRunRequest? LastSyncNowRequest { get; private set; }
@@ -158,6 +166,13 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 PasswordSignInRequest request,
                 CancellationToken cancellationToken = default)
             {
+                PasswordSignInCalls++;
+                LastPasswordSignInRequest = request;
+                if (PasswordSignInException is not null)
+                {
+                    throw PasswordSignInException;
+                }
+
                 await _tokenStore.SaveAsync(CreateTokenPair(request.Username), cancellationToken);
                 return CreateSession(request.Username);
             }
@@ -166,6 +181,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 AppCodeBrowserSignInRequest request,
                 CancellationToken cancellationToken = default)
             {
+                BrowserSignInCalls++;
                 string username = request.DeviceName ?? "browser";
                 await _tokenStore.SaveAsync(CreateTokenPair(username), cancellationToken);
                 return CreateSession(username);
