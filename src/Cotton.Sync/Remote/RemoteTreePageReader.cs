@@ -60,40 +60,5 @@ namespace Cotton.Sync.Remote
 
             return new RemoteTreePageReadResult(result.Payload, result.TotalCount, stopwatch.Elapsed);
         }
-
-        public async Task<NodeContentDto> FindContainingAsync(
-            Guid parentNodeId,
-            string name,
-            CancellationToken cancellationToken)
-        {
-            int page = 1;
-            int loaded = 0;
-            int? expectedTotalCount = null;
-            while (true)
-            {
-                RemoteTreePageReadResult result = await ReadAsync(
-                    parentNodeId,
-                    page,
-                    loaded,
-                    expectedTotalCount,
-                    cancellationToken).ConfigureAwait(false);
-                NodeContentDto children = result.Children;
-                if (children.Nodes.Any(node => string.Equals(node.Name, name, StringComparison.OrdinalIgnoreCase))
-                    || children.Files.Any(file => string.Equals(file.Name, name, StringComparison.OrdinalIgnoreCase)))
-                {
-                    return children;
-                }
-
-                int count = children.Nodes.Count + children.Files.Count;
-                loaded += count;
-                if (loaded == result.TotalCount)
-                {
-                    return children;
-                }
-
-                expectedTotalCount = result.TotalCount;
-                page++;
-            }
-        }
     }
 }

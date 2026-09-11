@@ -38,7 +38,7 @@ namespace Cotton.Sync.Remote
             _streamingConcurrency = streamingConcurrency;
             _pages = new RemoteTreePageReader(nodes, pageSize);
             _depthFirst = new RemoteTreeDepthFirstCrawler(nodes, _pages);
-            _pathLookup = new RemoteTreePathLookupCrawler(nodes, _pages, _depthFirst);
+            _pathLookup = new RemoteTreePathLookupCrawler(nodes, _pages);
         }
 
         /// <inheritdoc />
