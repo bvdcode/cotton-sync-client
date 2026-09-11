@@ -46,9 +46,7 @@ namespace Cotton.Sync.App.Runners
                 {
                     throw;
                 }
-                catch (LocalFileUnavailableException exception) when (
-                    attempt >= _options.MaxAttempts
-                    && ShouldWaitForLocalFileAvailability(exception))
+                catch (LocalFileUnavailableException exception) when (ShouldWaitForLocalFileAvailability(exception))
                 {
                     await WaitForLocalFileAvailabilityAsync(exception, attempt, cancellationToken)
                         .ConfigureAwait(false);

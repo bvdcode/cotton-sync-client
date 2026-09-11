@@ -131,8 +131,9 @@ namespace Cotton.Sync.App.Tests.Runners
             }
         }
 
-        [Test]
-        public async Task SyncNowAsync_WaitsForExclusiveAccessRequiredByPlaceholderFinalization()
+        [TestCase(1)]
+        [TestCase(3)]
+        public async Task SyncNowAsync_WaitsForExclusiveAccessRequiredByPlaceholderFinalization(int maxAttempts)
         {
             string root = Path.Combine(Path.GetTempPath(), "cotton-sync-runner-tests", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);
@@ -150,7 +151,7 @@ namespace Cotton.Sync.App.Tests.Runners
             };
             SyncPairRunnerRetryOptions retryOptions = new()
             {
-                MaxAttempts = 1,
+                MaxAttempts = maxAttempts,
                 InitialDelay = TimeSpan.FromMilliseconds(1),
                 MaxDelay = TimeSpan.FromMilliseconds(10),
             };
@@ -164,12 +165,14 @@ namespace Cotton.Sync.App.Tests.Runners
                     await Task.Delay(5);
                 }
 
+                await Task.Delay(100);
                 Assert.Multiple(() =>
                 {
                     Assert.That(sync.IsCompleted, Is.False);
                     Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Waiting));
                     Assert.That(runner.Status.LastError, Does.Contain("open-in-excel.xlsx"));
                     Assert.That(runner.Status.CurrentOperation, Does.Not.StartWith("Action required"));
+                    Assert.That(work.RunCount, Is.EqualTo(1));
                 });
 
                 openWorkbook.Dispose();
