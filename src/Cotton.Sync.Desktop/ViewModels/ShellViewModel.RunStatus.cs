@@ -117,11 +117,12 @@ namespace Cotton.Sync.Desktop.ViewModels
             IReadOnlySet<Guid> suppressedInitialSyncCompletePairIds)
         {
             bool isActiveStatus = IsActiveSyncStatus(pairStatus);
-            bool hasFreshDetailedProgress = HasFreshDetailedProgress(pairStatus.Id);
+            bool hasDetailedProgress = HasFreshDetailedProgress(pairStatus.Id)
+                || (isActiveStatus && _runProgressByPair.ContainsKey(pairStatus.Id));
             bool keepProgress = string.Equals(pairStatus.Status, "Idle", StringComparison.Ordinal)
                 && suppressedInitialSyncCompletePairIds.Contains(pairStatus.Id)
-                && hasFreshDetailedProgress;
-            ApplySyncPairStatusValues(row, pairStatus, isActiveStatus, keepProgress, hasFreshDetailedProgress);
+                && hasDetailedProgress;
+            ApplySyncPairStatusValues(row, pairStatus, isActiveStatus, keepProgress, hasDetailedProgress);
             (bool RunProgressChanged, bool TransferProgressChanged) progressChanges =
                 ApplySyncPairStatusProgress(row, pairStatus, isActiveStatus || keepProgress);
             ApplySyncPairStatusActivity(row, pairStatus);
@@ -133,12 +134,12 @@ namespace Cotton.Sync.Desktop.ViewModels
             DesktopSyncPairStatusSnapshot pairStatus,
             bool isActiveStatus,
             bool keepProgress,
-            bool hasFreshDetailedProgress)
+            bool hasDetailedProgress)
         {
             row.Status = keepProgress ? "Syncing" : pairStatus.Status;
             row.IsEnabled = !string.Equals(pairStatus.Status, "Disabled", StringComparison.Ordinal);
             row.LastError = pairStatus.LastError;
-            if ((!isActiveStatus && !keepProgress) || !hasFreshDetailedProgress)
+            if ((!isActiveStatus && !keepProgress) || !hasDetailedProgress)
             {
                 row.CurrentOperation = pairStatus.CurrentOperation ?? string.Empty;
             }
@@ -291,9 +292,6 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return true;
             }
 
-            _runProgressByPair.Remove(syncPairId);
-            _runProgressAppliedAtUtcByPair.Remove(syncPairId);
-            RefreshRunProgressSummary();
             return false;
         }
     }
