@@ -19,8 +19,8 @@ namespace Cotton.Sync.Desktop.Platform
             await using FileStream stream = new(
                 filePath,
                 FileMode.Open,
-                FileAccess.ReadWrite,
-                FileShare.None,
+                FileAccess.Read,
+                FileShare.ReadWrite,
                 IntegrityHashBufferSize,
                 FileOptions.SequentialScan);
             long localSizeBytes = stream.Length;
@@ -37,12 +37,14 @@ namespace Cotton.Sync.Desktop.Platform
 
             byte[] hash = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
             string contentHash = Convert.ToHexStringLower(hash);
-            if (!string.Equals(contentHash, request.ExpectedContentHash, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(contentHash, request.ExpectedContentHash, StringComparison.OrdinalIgnoreCase)
+                || stream.Length != localSizeBytes
+                || File.GetLastWriteTimeUtc(filePath) != localLastWriteUtc)
             {
                 return new WindowsCloudFilesUploadedFileFinalizationResult(
                     IsFinalized: false,
-                    localSizeBytes,
-                    localLastWriteUtc);
+                    stream.Length,
+                    File.GetLastWriteTimeUtc(filePath));
             }
 
             switch (request.Mode)
