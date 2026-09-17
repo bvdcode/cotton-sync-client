@@ -575,10 +575,7 @@ jobs:
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-shell-share-link-copy.ps1" `
             -AppExecutable $installedExe `
             -DataDirectory (Join-Path $env:RUNNER_TEMP "cotton-sync-shell-share-link-data")
-          & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-shell-share-link-verb.ps1" `
-            -ExpectedExecutablePath $installedExe `
-            -InvocationDataDirectory (Join-Path $env:RUNNER_TEMP "cotton-sync-shell-share-link-data") `
-            -InvokeInstalledVerb
+          & "src/Cotton.Sync.Desktop/Packaging/windows/verify-shell-share-link-verbs-absent.ps1"
           & "src/Cotton.Sync.Desktop/Packaging/windows/capture-vfs-release-evidence.ps1" `
             -OutputDirectory $evidenceDir `
             -LocalRoot $vfsLocalRoot `
@@ -627,8 +624,7 @@ jobs:
           if ($runValue) {
             throw "Autostart registry value remained after uninstall."
           }
-          & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-shell-share-link-verb.ps1" `
-            -ExpectAbsent
+          & "src/Cotton.Sync.Desktop/Packaging/windows/verify-shell-share-link-verbs-absent.ps1"
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-cloud-files-cleanup.ps1" `
             -ReportPath $postUninstallCleanupReport
           $remainingInstallItems = @(Get-ChildItem -Path $installDir -Force -Recurse -ErrorAction SilentlyContinue)

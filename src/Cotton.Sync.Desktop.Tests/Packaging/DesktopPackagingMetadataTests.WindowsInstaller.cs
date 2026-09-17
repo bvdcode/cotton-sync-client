@@ -57,8 +57,9 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(installerScript, Does.Contain("Flags: uninsdeletevalue"));
                 Assert.That(installerScript, Does.Contain(@"Software\Classes\*\shell\CottonSyncCopyShareLink"));
                 Assert.That(installerScript, Does.Contain(@"Software\Classes\Directory\shell\CottonSyncCopyShareLink"));
-                Assert.That(installerScript, Does.Contain("Copy Cotton Cloud share link"));
-                Assert.That(installerScript, Does.Contain("--copy-shell-share-link"));
+                Assert.That(Regex.Matches(installerScript, "Flags: deletekey dontcreatekey").Count, Is.EqualTo(2));
+                Assert.That(installerScript, Does.Not.Contain("Copy Cotton Cloud share link"));
+                Assert.That(installerScript, Does.Not.Contain("--copy-shell-share-link"));
                 Assert.That(installerScript, Does.Contain("Flags: nowait postinstall; Check: ShouldOfferLaunchAfterInstall"));
                 Assert.That(installerScript, Does.Contain("Parameters: \"{code:GetHiddenUpdateLaunchParameters}\"; Flags: nowait; Check: ShouldLaunchHiddenAfterUpdate"));
                 Assert.That(installerScript, Does.Contain("function ShouldOfferLaunchAfterInstall(): Boolean;"));
@@ -182,10 +183,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("cotton-sync-update-install-data"));
                 Assert.That(workflow, Does.Contain("Packaging/windows/smoke-shell-share-link-copy.ps1"));
                 Assert.That(workflow, Does.Contain("cotton-sync-shell-share-link-data"));
-                Assert.That(workflow, Does.Contain("Packaging/windows/smoke-shell-share-link-verb.ps1"));
-                Assert.That(workflow, Does.Contain("-ExpectedExecutablePath $installedExe"));
-                Assert.That(workflow, Does.Contain("-InvocationDataDirectory (Join-Path $env:RUNNER_TEMP \"cotton-sync-shell-share-link-data\")"));
-                Assert.That(workflow, Does.Contain("-InvokeInstalledVerb"));
+                Assert.That(workflow, Does.Contain("Packaging/windows/verify-shell-share-link-verbs-absent.ps1"));
                 Assert.That(workflow, Does.Contain("Packaging/windows/capture-vfs-release-evidence.ps1"));
                 Assert.That(workflow, Does.Contain("-OutputDirectory $evidenceDir"));
                 Assert.That(workflow, Does.Not.Contain("\"S:\\CottonSyncVfsQa\\root\""));
@@ -193,7 +191,6 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("-VfsSmokeDataDirectory $vfsSmokeDataDir"));
                 Assert.That(workflow, Does.Contain("-RunSelfTest"));
                 Assert.That(workflow, Does.Contain("-RunDiagnosticsExport"));
-                Assert.That(workflow, Does.Contain("-ExpectAbsent"));
                 Assert.That(workflow, Does.Contain("unins000.exe"));
                 Assert.That(workflow, Does.Contain("HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"));
                 Assert.That(workflow, Does.Contain("Autostart registry value was not installed correctly."));

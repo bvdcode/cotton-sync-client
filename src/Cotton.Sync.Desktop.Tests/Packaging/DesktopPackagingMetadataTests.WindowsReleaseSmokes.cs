@@ -121,41 +121,18 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         }
 
         [Test]
-        public void WindowsShellShareLinkVerbSmokeScript_VerifiesInstallAndUninstallRegistryState()
+        public void WindowsShellShareLinkVerbVerificationScript_RejectsGlobalRegistration()
         {
-            string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/smoke-shell-share-link-verb.ps1"));
+            string script = File.ReadAllText(GetDesktopFilePath("Packaging/windows/verify-shell-share-link-verbs-absent.ps1"));
 
             Assert.Multiple(() =>
             {
-                Assert.That(script, Does.Contain("[string]$ExpectedExecutablePath = \"\""));
-                Assert.That(script, Does.Contain("[switch]$ExpectAbsent"));
                 Assert.That(script, Does.Contain(@"Software\Classes\*\shell\CottonSyncCopyShareLink"));
                 Assert.That(script, Does.Contain(@"Software\Classes\Directory\shell\CottonSyncCopyShareLink"));
-                Assert.That(script, Does.Contain("Copy Cotton Cloud share link"));
-                Assert.That(script, Does.Contain("--copy-shell-share-link"));
-                Assert.That(script, Does.Contain("Shell.Application"));
-                Assert.That(script, Does.Contain("[System.IO.Path]::GetDirectoryName($resolvedPath)"));
-                Assert.That(script, Does.Contain("[System.IO.Path]::GetFileName($resolvedPath)"));
-                Assert.That(script, Does.Not.Contain("Split-Path -LiteralPath"));
-                Assert.That(script, Does.Contain("Assert-ShellVerbVisibility"));
-                Assert.That(script, Does.Contain("Assert-InstalledShellVerbInvocation"));
-                Assert.That(script, Does.Contain("ConvertTo-PowerShellSingleQuotedString"));
-                Assert.That(script, Does.Contain("--shell-share-link-smoke\", \"--server-url\", $ServerUrl"));
-                Assert.That(script, Does.Contain(@"$arguments = @(""--server-url"""));
-                Assert.That(script, Does.Contain("Start-Process -FilePath {0} -ArgumentList $arguments"));
-                Assert.That(script, Does.Not.Contain("'$process = Start-Process -FilePath ' +"));
-                Assert.That(script, Does.Contain("shell-share-link-command.stdout.log"));
-                Assert.That(script, Does.Contain("Installed shell share-link verb command did not reference the smoke wrapper and target placeholder."));
-                Assert.That(script, Does.Contain("Installed shell share-link verb command wrapper exited with code"));
-                Assert.That(script, Does.Contain("shell-share-link-root\\synced-file.txt"));
-                Assert.That(script, Does.Contain("ProtectedData]::Protect"));
-                Assert.That(script, Does.Contain("shell-share-link-smoke-access"));
-                Assert.That(script, Does.Contain("ShareLinkCopied: true"));
-                Assert.That(script, Does.Contain("download-link"));
-                Assert.That(script, Does.Contain("Explorer shell did not expose"));
-                Assert.That(script, Does.Contain("Verified installed shell share-link verbs, Explorer visibility, and shell invocation."));
-                Assert.That(script, Does.Contain("Verified installed shell share-link verbs and Explorer visibility."));
-                Assert.That(script, Does.Contain("Verified installed shell share-link verbs were removed."));
+                Assert.That(script, Does.Contain("Global shell share-link verb is registered"));
+                Assert.That(script, Does.Contain("Verified global shell share-link verbs are absent."));
+                Assert.That(script, Does.Not.Contain("Shell.Application"));
+                Assert.That(script, Does.Not.Contain("--copy-shell-share-link"));
             });
         }
 
