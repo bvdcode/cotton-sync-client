@@ -26,7 +26,6 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             Assert.Multiple(() =>
             {
                 Assert.That(embeddedAssets, Does.Contain("Assets/tray-*.ico"));
-                Assert.That(embeddedAssets, Does.Contain("Assets/tray-signed-out.png"));
                 Assert.That(looseAssets.Any(static path => path.Contains("taskbar-", StringComparison.Ordinal)), Is.False);
                 foreach (DesktopTrayStatusKind kind in Enum.GetValues<DesktopTrayStatusKind>())
                 {

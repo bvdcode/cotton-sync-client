@@ -14,7 +14,7 @@ namespace Cotton.Sync.Desktop.Shell
                 DesktopTrayStatusKind.Paused => Create("tray-paused.ico"),
                 DesktopTrayStatusKind.Offline => Create("tray-offline.ico"),
                 DesktopTrayStatusKind.Error => Create("tray-error.ico"),
-                DesktopTrayStatusKind.SignedOut => Create("tray-signed-out.png"),
+                DesktopTrayStatusKind.SignedOut => Create("tray-signed-out.ico"),
                 DesktopTrayStatusKind.Uploading => Create("tray-uploading.ico"),
                 DesktopTrayStatusKind.Downloading => Create("tray-downloading.ico"),
                 DesktopTrayStatusKind.FreeingSpace => Create("tray-freeing-space.ico"),

@@ -37,7 +37,6 @@
     <AvaloniaResource Include="Assets/app.ico" />
     <AvaloniaResource Include="Assets/icon-192.png" />
     <AvaloniaResource Include="Assets/favicon.ico" />
-    <AvaloniaResource Include="Assets/tray-signed-out.png" />
     <AvaloniaResource Include="Assets/tray-*.ico" />
     <Content Include="Assets/icon-192.png"
              CopyToOutputDirectory="PreserveNewest"

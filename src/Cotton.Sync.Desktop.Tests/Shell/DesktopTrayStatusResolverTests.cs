@@ -19,7 +19,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             {
                 Assert.That(status.Kind, Is.EqualTo(DesktopTrayStatusKind.SignedOut));
                 Assert.That(status.ToolTipText, Is.EqualTo("Cotton Sync - Signed out"));
-                Assert.That(status.IconUri.ToString(), Does.EndWith("/Assets/tray-signed-out.png"));
+                Assert.That(status.IconUri.ToString(), Does.EndWith("/Assets/tray-signed-out.ico"));
             });
         }
 
@@ -225,7 +225,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         {
             (DesktopTrayStatusKind Kind, string AssetName)[] cases =
             [
-                (DesktopTrayStatusKind.SignedOut, "tray-signed-out.png"),
+                (DesktopTrayStatusKind.SignedOut, "tray-signed-out.ico"),
                 (DesktopTrayStatusKind.Syncing, "tray-syncing.ico"),
                 (DesktopTrayStatusKind.Paused, "tray-paused.ico"),
                 (DesktopTrayStatusKind.Offline, "tray-offline.ico"),
