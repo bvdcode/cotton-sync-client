@@ -69,7 +69,10 @@ namespace Cotton.Sync.App.Runners
 
                 if (_failedRequest is null)
                 {
-                    _activeRequest = request;
+                    _activeRequest = _actionRequiredRequest is not null
+                        && (request.Causes & SyncRunCause.CheckNow) != SyncRunCause.None
+                        ? request.Merge(SyncRunRequest.ForFull(SyncRunCause.Manual))
+                        : request;
                     return true;
                 }
 

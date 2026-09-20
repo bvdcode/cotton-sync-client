@@ -31,6 +31,8 @@ namespace Cotton.Sync.App.Tests.SyncApplication
 
             public Guid? LastSyncNowPairId { get; private set; }
 
+            public SyncRunRequest? LastSyncRequest { get; private set; }
+
             public int StartCallCount { get; private set; }
 
             public int StopCallCount { get; private set; }
@@ -69,6 +71,7 @@ namespace Cotton.Sync.App.Tests.SyncApplication
                 SyncRunRequest request,
                 CancellationToken cancellationToken = default)
             {
+                LastSyncRequest = request;
                 return SyncAllAsync(cancellationToken);
             }
 
@@ -84,6 +87,7 @@ namespace Cotton.Sync.App.Tests.SyncApplication
                 SyncRunRequest request,
                 CancellationToken cancellationToken = default)
             {
+                LastSyncRequest = request;
                 return SyncNowAsync(syncPairId, cancellationToken);
             }
 

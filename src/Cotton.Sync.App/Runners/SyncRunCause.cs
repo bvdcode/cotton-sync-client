@@ -21,5 +21,6 @@ namespace Cotton.Sync.App.Runners
         InitialPopulation = 256,
         InternalMaintenance = 512,
         Resume = 1024,
+        CheckNow = 2048,
     }
 }

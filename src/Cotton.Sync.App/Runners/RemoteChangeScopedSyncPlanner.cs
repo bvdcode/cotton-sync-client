@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.SyncPairs;
@@ -114,7 +114,8 @@ namespace Cotton.Sync.App.Runners
         {
             const SyncRunCause safeCauses = SyncRunCause.Periodic
                 | SyncRunCause.RealtimeRemoteChange
-                | SyncRunCause.Resume;
+                | SyncRunCause.Resume
+                | SyncRunCause.CheckNow;
             return (causes & ~safeCauses) == SyncRunCause.None;
         }
 
@@ -136,7 +137,8 @@ namespace Cotton.Sync.App.Runners
         {
             const SyncRunCause scopeEligibleFullCauses = SyncRunCause.Periodic
                 | SyncRunCause.RealtimeRemoteChange
-                | SyncRunCause.Resume;
+                | SyncRunCause.Resume
+                | SyncRunCause.CheckNow;
             SyncRunCause fullCauses = causes & ~SyncRunCause.LocalChange;
             return fullCauses != SyncRunCause.None
                 && (fullCauses & ~scopeEligibleFullCauses) == SyncRunCause.None;

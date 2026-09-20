@@ -318,13 +318,13 @@ namespace Cotton.Sync.App.SyncApplication
         /// <inheritdoc />
         public Task SyncAllAsync(CancellationToken cancellationToken = default)
         {
-            return _supervisor.SyncAllAsync(cancellationToken);
+            return _supervisor.SyncAllAsync(SyncRunRequest.ForFull(SyncRunCause.CheckNow), cancellationToken);
         }
 
         /// <inheritdoc />
         public Task SyncNowAsync(Guid syncPairId, CancellationToken cancellationToken = default)
         {
-            return _supervisor.SyncNowAsync(syncPairId, cancellationToken);
+            return _supervisor.SyncNowAsync(syncPairId, SyncRunRequest.ForFull(SyncRunCause.CheckNow), cancellationToken);
         }
 
         /// <inheritdoc />

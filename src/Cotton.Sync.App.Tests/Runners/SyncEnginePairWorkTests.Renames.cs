@@ -25,5 +25,18 @@ namespace Cotton.Sync.App.Tests.Runners
 
             Assert.That(engine.LastOptions!.Scope.LocalRenames, Is.EqualTo(new[] { rename }));
         }
+
+        [Test]
+        public async Task FullRunWithoutPublishers_PreservesObservedRenames()
+        {
+            FakeSyncEngine engine = new();
+            SyncEnginePairWork work = new(engine);
+            LocalPathRename rename = new("original.pdf", "final.pdf");
+
+            await work.RunOnceAsync(CreateSyncPair(Guid.NewGuid()),
+                SyncRunRequest.ForFull(SyncRunCause.Manual, localRenames: [rename]));
+
+            Assert.That(engine.LastOptions?.Scope.LocalRenames, Is.EqualTo(new[] { rename }));
+        }
     }
 }

@@ -46,6 +46,11 @@ namespace Cotton.Sync.Desktop.Shell
 
             if (syncPairId.HasValue)
             {
+                if (approvedRemoteDeletePlan is null)
+                {
+                    return RequireHost().App.SyncNowAsync(syncPairId.Value, cancellationToken);
+                }
+
                 SyncRunRequest request = SyncRunRequest.ForFull(
                     SyncRunCause.Manual,
                     approvedRemoteDeletePlan);

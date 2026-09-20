@@ -146,6 +146,7 @@ namespace Cotton.Sync.App.Runners
                 && _progressPublisher is null
                 && _runProgressPublisher is null
                 && request.IsFull
+                && request.LocalRenames.Count == 0
                 && allowInitialVirtualFilesStreaming
                 && (request.Causes & SyncRunCause.InitialPopulation) == SyncRunCause.None
                 && request.ApprovedRemoteDeletePlan is null;

@@ -359,7 +359,8 @@ namespace Cotton.Sync.App.Runners
 
             const SyncRunCause feedPlannedCauses = SyncRunCause.Periodic
                 | SyncRunCause.RealtimeRemoteChange
-                | SyncRunCause.Resume;
+                | SyncRunCause.Resume
+                | SyncRunCause.CheckNow;
             const SyncRunCause allowedCauses = feedPlannedCauses | SyncRunCause.LocalChange;
             return _syncPair.Mode == SyncPairMode.WindowsVirtualFiles
                 && (request.Causes & feedPlannedCauses) != SyncRunCause.None
