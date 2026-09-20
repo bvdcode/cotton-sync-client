@@ -325,7 +325,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             await _inner
-                .RunOnceAsync(syncPair, SyncRunRequest.ForFull(run.Request.Causes), cancellationToken)
+                .RunOnceAsync(syncPair, CreateFullRequestWithRemainingPaths(run.Request, []), cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -357,14 +357,16 @@ namespace Cotton.Sync.Desktop.Platform
             return SyncRunRequest.ForLocalChangedPaths(
                 remainingPaths,
                 FilterDeletedPaths(run.Request.LocalDeletedPaths, remainingPaths),
-                run.Request.Causes);
+                run.Request.Causes,
+                run.Request.LocalRenames);
         }
 
         private static SyncRunRequest CreateFullRequestWithRemainingPaths(
             SyncRunRequest request,
             IReadOnlyList<string> remainingPaths)
         {
-            SyncRunRequest fullRequest = SyncRunRequest.ForFull(request.Causes);
+            SyncRunRequest fullRequest = SyncRunRequest.ForFull(
+                request.Causes, request.ApprovedRemoteDeletePlan, request.LocalRenames);
             if (remainingPaths.Count == 0)
             {
                 return fullRequest;
