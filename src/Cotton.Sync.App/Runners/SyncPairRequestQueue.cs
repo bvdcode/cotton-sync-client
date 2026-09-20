@@ -209,7 +209,7 @@ namespace Cotton.Sync.App.Runners
             {
                 _pendingFullRequest = _pendingScopedRequest is null
                     ? ToPendingFullRequest(request)
-                    : MergePendingFullRequests(request, _pendingScopedRequest);
+                    : MergePendingFullRequests(_pendingScopedRequest, request);
                 _pendingScopedRequest = null;
                 return;
             }
@@ -220,7 +220,8 @@ namespace Cotton.Sync.App.Runners
             if (scopedRequest.LocalChangedPaths.Count > SyncRunRequest.MaximumQueuedScopedPaths)
             {
                 _pendingFullRequest = SyncRunRequest.ForFull(
-                    scopedRequest.Causes | SyncRunCause.LocalChangeOverflow);
+                    scopedRequest.Causes | SyncRunCause.LocalChangeOverflow,
+                    localRenames: scopedRequest.LocalRenames);
                 _pendingScopedRequest = null;
                 return;
             }
@@ -286,17 +287,17 @@ namespace Cotton.Sync.App.Runners
             SyncRunRequest fullRequest,
             SyncRunRequest other)
         {
-            RemoteDeletePlanApproval? approval = Equals(
-                fullRequest.ApprovedRemoteDeletePlan,
-                other.ApprovedRemoteDeletePlan)
-                    ? fullRequest.ApprovedRemoteDeletePlan
-                    : null;
-            return SyncRunRequest.ForFull(fullRequest.Causes | other.Causes, approval);
+            return ToPendingFullRequest(fullRequest.Merge(other));
         }
 
         private static SyncRunRequest ToPendingFullRequest(SyncRunRequest request)
         {
-            return SyncRunRequest.ForFull(request.Causes, request.ApprovedRemoteDeletePlan);
+            bool scopeOverflowed = request.LocalChangedPaths.Count > SyncRunRequest.MaximumQueuedScopedPaths
+                || (request.Causes & SyncRunCause.LocalChangeOverflow) != SyncRunCause.None;
+            return scopeOverflowed
+                ? SyncRunRequest.ForFull(request.Causes | SyncRunCause.LocalChangeOverflow,
+                    request.ApprovedRemoteDeletePlan, request.LocalRenames)
+                : request;
         }
     }
 }

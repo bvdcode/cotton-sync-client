@@ -13,17 +13,19 @@ namespace Cotton.Sync
         private SyncRunScope(
             bool isFull,
             IReadOnlyList<string> localChangedPaths,
-            IReadOnlyList<string> localDeletedPaths)
+            IReadOnlyList<string> localDeletedPaths,
+            IReadOnlyList<LocalPathRename> localRenames)
         {
             IsFull = isFull;
             LocalChangedPaths = localChangedPaths;
             LocalDeletedPaths = localDeletedPaths;
+            LocalRenames = localRenames;
         }
 
         /// <summary>
         /// Gets a scope that reconciles the whole sync pair.
         /// </summary>
-        public static SyncRunScope Full { get; } = new(true, Array.Empty<string>(), Array.Empty<string>());
+        public static SyncRunScope Full { get; } = new(true, Array.Empty<string>(), Array.Empty<string>(), []);
 
         /// <summary>
         /// Gets a value indicating whether the run must reconcile the whole sync pair.
@@ -41,6 +43,20 @@ namespace Cotton.Sync
         public IReadOnlyList<string> LocalDeletedPaths { get; }
 
         /// <summary>
+        /// Gets observed renames in filesystem event order.
+        /// </summary>
+        public IReadOnlyList<LocalPathRename> LocalRenames { get; }
+
+        /// <summary>
+        /// Creates a full reconcile that retains observed local renames.
+        /// </summary>
+        public static SyncRunScope ForFull(IEnumerable<LocalPathRename> localRenames)
+        {
+            ArgumentNullException.ThrowIfNull(localRenames);
+            return new SyncRunScope(true, [], [], localRenames.Distinct().ToArray());
+        }
+
+        /// <summary>
         /// Creates a scope for local changed paths.
         /// </summary>
         public static SyncRunScope ForLocalChangedPaths(IEnumerable<string> relativePaths)
@@ -53,7 +69,8 @@ namespace Cotton.Sync
         /// </summary>
         public static SyncRunScope ForLocalChangedPaths(
             IEnumerable<string> relativePaths,
-            IEnumerable<string> localDeletedPaths)
+            IEnumerable<string> localDeletedPaths,
+            IEnumerable<LocalPathRename>? localRenames = null)
         {
             ArgumentNullException.ThrowIfNull(relativePaths);
             ArgumentNullException.ThrowIfNull(localDeletedPaths);
@@ -64,7 +81,7 @@ namespace Cotton.Sync
                 throw new ArgumentException("At least one changed path is required for a scoped sync run.", nameof(relativePaths));
             }
 
-            return new SyncRunScope(false, paths, deletedPaths);
+            return new SyncRunScope(false, paths, deletedPaths, localRenames?.Distinct().ToArray() ?? []);
         }
 
         private static List<string> NormalizePaths(IEnumerable<string> relativePaths)

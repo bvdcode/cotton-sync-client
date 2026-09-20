@@ -33,6 +33,34 @@ namespace Cotton.Sync
                 return;
             }
 
+            IReadOnlyDictionary<string, string> knownTargets = LocalRenameTargetResolver.Resolve(
+                moveSources, options.Scope.LocalRenames);
+            foreach (KeyValuePair<string, SyncStateEntry> source in moveSources)
+            {
+                if (!knownTargets.TryGetValue(source.Key, out string? targetKey)
+                    || !localByPath.TryGetValue(targetKey, out LocalFileSnapshot? local)
+                    || local.IsCloudFilesOnlineOnlyPlaceholder
+                    || stateByPath.ContainsKey(targetKey)
+                    || remoteByPath.ContainsKey(targetKey))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    await contentHashResolver.EnsureAsync(local, options, cancellationToken).ConfigureAwait(false);
+                }
+                catch (LocalFileUnavailableException exception)
+                {
+                    ReportUnavailable(result, options, local.RelativePath, exception);
+                    result.RecordDeferredLocalPath(source.Value.RelativePath);
+                    continue;
+                }
+
+                await MoveRemoteFileAsync(syncPair, options, result, source.Key, source.Value, local,
+                    remoteByPath[source.Key], remoteByPath, stateByPath, cancellationToken).ConfigureAwait(false);
+            }
+
             Dictionary<MoveCandidateKey, Queue<LocalFileSnapshot>> candidates =
                 await BuildLocalMoveCandidateBucketsAsync(
                         localByPath,
@@ -50,7 +78,9 @@ namespace Cotton.Sync
             foreach (KeyValuePair<string, SyncStateEntry> source in moveSources)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!remoteByPath.TryGetValue(source.Key, out RemoteFileSnapshot? remote)
+                if (result.IsLocalPathDeferred(source.Key)
+                    || knownTargets.ContainsKey(source.Key)
+                    || !remoteByPath.TryGetValue(source.Key, out RemoteFileSnapshot? remote)
                     || string.IsNullOrWhiteSpace(source.Value.LocalContentHash)
                     || !source.Value.LocalSizeBytes.HasValue)
                 {
@@ -226,7 +256,12 @@ namespace Cotton.Sync
                 File = moved,
             };
             stateByPath.Remove(sourceKey);
-            SyncStateEntry targetState = BuildBaseline(syncPair, targetPath, local.ContentHash, local.LastWriteUtc, local.SizeBytes, moved);
+            bool contentUnchanged = ContentMatches(local.ContentHash, sourceState.LocalContentHash);
+            SyncStateEntry targetState = BuildBaseline(syncPair, targetPath,
+                sourceState.LocalContentHash,
+                contentUnchanged ? local.LastWriteUtc : sourceState.LocalLastWriteUtc,
+                contentUnchanged ? local.SizeBytes : sourceState.LocalSizeBytes,
+                moved);
             stateByPath[targetKey] = targetState;
             await stateStore.DeleteAsync(syncPair.SyncPairId, sourcePath, cancellationToken).ConfigureAwait(false);
             await stateStore.UpsertAsync(targetState, cancellationToken).ConfigureAwait(false);

@@ -16,7 +16,7 @@ namespace Cotton.Sync.App.LocalChanges
         {
             if (request.RequiresFullSync)
             {
-                return SyncRunRequest.ForFull(request.Causes);
+                return SyncRunRequest.ForFull(request.Causes, localRenames: request.Renames);
             }
 
             if (localRootPath is null)
@@ -38,7 +38,7 @@ namespace Cotton.Sync.App.LocalChanges
                 localRootPath,
                 request.DeletedPaths,
                 allowRootRelativePath);
-            return SyncRunRequest.ForLocalChangedPaths(relativePaths, deletedRelativePaths, request.Causes);
+            return SyncRunRequest.ForLocalChangedPaths(relativePaths, deletedRelativePaths, request.Causes, request.Renames);
         }
 
         public static bool Record(
@@ -65,6 +65,14 @@ namespace Cotton.Sync.App.LocalChanges
             if (localRootPath is null)
             {
                 return false;
+            }
+
+            if (change.Kind == LocalSyncRootChangeKind.Renamed
+                && !string.IsNullOrWhiteSpace(change.OldFullPath)
+                && TryGetRelativePath(localRootPath, change.OldFullPath, false, out string sourcePath)
+                && TryGetRelativePath(localRootPath, change.FullPath, false, out string targetPath))
+            {
+                pendingSync.Renames.Add(new LocalPathRename(sourcePath, targetPath));
             }
 
             bool recorded = TryRecordPath(

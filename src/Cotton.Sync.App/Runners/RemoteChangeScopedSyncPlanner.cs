@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.SyncPairs;
@@ -101,7 +101,8 @@ namespace Cotton.Sync.App.Runners
                 return SyncRunRequest.ForLocalChangedPaths(
                     request.LocalChangedPaths,
                     request.LocalDeletedPaths,
-                    request.Causes);
+                    request.Causes,
+                    request.LocalRenames);
             }
 
             return !hasUnresolvedChanges && !CanSkipFullRequestWithoutMappedRemoteChanges(request.Causes)
@@ -127,7 +128,8 @@ namespace Cotton.Sync.App.Runners
             return SyncRunRequest.ForLocalChangedPaths(
                 request.LocalChangedPaths.Concat(remoteRequest.LocalChangedPaths),
                 request.LocalDeletedPaths.Concat(remoteRequest.LocalDeletedPaths),
-                request.Causes | remoteRequest.Causes);
+                request.Causes | remoteRequest.Causes,
+                request.LocalRenames.Concat(remoteRequest.LocalRenames));
         }
 
         private static bool CanScopeFullRequest(SyncRunCause causes)

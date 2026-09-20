@@ -8,6 +8,21 @@ namespace Cotton.Sync.App.Tests.Runners
     public class SyncRunRequestTests
     {
         [Test]
+        public void Merge_PreservesRenameOrderWithoutReplayingTheSameObservation()
+        {
+            LocalPathRename firstRename = new("original.pdf", "rename.tmp");
+            LocalPathRename secondRename = new("rename.tmp", "final.pdf");
+            SyncRunRequest first = SyncRunRequest.ForLocalChangedPaths(["original.pdf"], [],
+                localRenames: [firstRename]);
+            SyncRunRequest second = SyncRunRequest.ForLocalChangedPaths(["final.pdf"], [],
+                localRenames: [secondRename]);
+
+            SyncRunRequest merged = first.Merge(second).Merge(first).Merge(SyncRunRequest.Full);
+
+            Assert.That(merged.LocalRenames, Is.EqualTo(new[] { firstRename, secondRename }));
+        }
+
+        [Test]
         public void ForLocalChangedPaths_RejectsEmptyScope()
         {
             Assert.Throws<ArgumentException>(() => SyncRunRequest.ForLocalChangedPaths(Array.Empty<string>()));

@@ -81,7 +81,9 @@ namespace Cotton.Sync.App.Runners
 
                 currentRequest = SyncRunRequest.ForLocalChangedPaths(
                     result.DeferredLocalPaths,
-                    request.Causes | SyncRunCause.LocalChange);
+                    [],
+                    request.Causes | SyncRunCause.LocalChange,
+                    currentRequest.LocalRenames);
                 deferredRetryCount++;
                 await _delayAsync(BackgroundMinimumLocalUploadAge, cancellationToken).ConfigureAwait(false);
             }
@@ -159,8 +161,8 @@ namespace Cotton.Sync.App.Runners
             return new CoreSyncRunOptions
             {
                 Scope = request.IsFull
-                    ? CoreSyncRunScope.Full
-                    : CoreSyncRunScope.ForLocalChangedPaths(request.LocalChangedPaths, request.LocalDeletedPaths),
+                    ? CoreSyncRunScope.ForFull(request.LocalRenames)
+                    : CoreSyncRunScope.ForLocalChangedPaths(request.LocalChangedPaths, request.LocalDeletedPaths, request.LocalRenames),
                 MinimumLocalUploadAge = BackgroundMinimumLocalUploadAge,
                 ApprovedRemoteDeletePlan = request.ApprovedRemoteDeletePlan,
                 AllowInitialVirtualFilesStreaming = allowInitialVirtualFilesStreaming,

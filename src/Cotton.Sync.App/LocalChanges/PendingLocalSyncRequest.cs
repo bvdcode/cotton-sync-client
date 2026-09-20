@@ -28,6 +28,8 @@ namespace Cotton.Sync.App.LocalChanges
 
         public HashSet<string> DeletedPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+        public List<LocalPathRename> Renames { get; } = [];
+
         public int ChangeVersion { get; private set; }
 
         public SyncRunCause Causes { get; private set; }
