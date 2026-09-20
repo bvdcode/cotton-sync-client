@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace Cotton.Sync.Desktop.Platform
 {
@@ -125,6 +126,26 @@ namespace Cotton.Sync.Desktop.Platform
         {
             ArgumentNullException.ThrowIfNull(placeholder);
             string filePath = Path.Combine(placeholder.BaseDirectoryPath, placeholder.RelativeFileName);
+            if (placeholder.IsDirectory)
+            {
+                using SafeFileHandle handle = CreateFile(
+                    WindowsNativePath.ToWin32FilePath(filePath),
+                    FileDesiredAccess.WriteData | FileDesiredAccess.WriteAttributes,
+                    FileShareMode.Read | FileShareMode.Write | FileShareMode.Delete,
+                    IntPtr.Zero,
+                    FileCreationDisposition.OpenExisting,
+                    FileFlagsAndAttributes.OpenReparsePoint | FileFlagsAndAttributes.BackupSemantics,
+                    IntPtr.Zero);
+                if (handle.IsInvalid)
+                {
+                    throw new WindowsCloudFilesNativeException(
+                        nameof(CreateFile), HResultFromWin32(Marshal.GetLastWin32Error()));
+                }
+
+                UpdatePlaceholderMetadata(handle.DangerousGetHandle(), placeholder);
+                return;
+            }
+
             int openResult = CfOpenFileWithOplock(
                 WindowsNativePath.ToWin32FilePath(filePath),
                 CfOpenFileFlags.Exclusive | CfOpenFileFlags.WriteAccess,
@@ -132,35 +153,40 @@ namespace Cotton.Sync.Desktop.Platform
             ThrowIfFailed(openResult, nameof(CfOpenFileWithOplock));
             try
             {
-                PinnedBuffer fileIdentity = PinnedBuffer.Pin(placeholder.FileIdentity);
-                try
-                {
-                    CfFsMetadata metadata = placeholder.IsDirectory
-                        ? CfFsMetadata.CreateDirectory(placeholder.CreatedAtUtc, placeholder.UpdatedAtUtc)
-                        : CfFsMetadata.CreateFile(
-                            placeholder.FileSizeBytes,
-                            placeholder.CreatedAtUtc,
-                            placeholder.UpdatedAtUtc);
-                    int result = CfUpdatePlaceholder(
-                        protectedHandle,
-                        ref metadata,
-                        fileIdentity.Pointer,
-                        fileIdentity.Length,
-                        IntPtr.Zero,
-                        0,
-                        CreateUpdateFlags(placeholder.IsDirectory),
-                        IntPtr.Zero,
-                        IntPtr.Zero);
-                    ThrowIfFailed(result, nameof(CfUpdatePlaceholder));
-                }
-                finally
-                {
-                    fileIdentity.Dispose();
-                }
+                UpdatePlaceholderMetadata(protectedHandle, placeholder);
             }
             finally
             {
                 CfCloseHandle(protectedHandle);
+            }
+        }
+
+        private static void UpdatePlaceholderMetadata(IntPtr handle, WindowsCloudFilesNativePlaceholder placeholder)
+        {
+            PinnedBuffer fileIdentity = PinnedBuffer.Pin(placeholder.FileIdentity);
+            try
+            {
+                CfFsMetadata metadata = placeholder.IsDirectory
+                    ? CfFsMetadata.CreateDirectory(placeholder.CreatedAtUtc, placeholder.UpdatedAtUtc)
+                    : CfFsMetadata.CreateFile(
+                        placeholder.FileSizeBytes,
+                        placeholder.CreatedAtUtc,
+                        placeholder.UpdatedAtUtc);
+                int result = CfUpdatePlaceholder(
+                    handle,
+                    ref metadata,
+                    fileIdentity.Pointer,
+                    fileIdentity.Length,
+                    IntPtr.Zero,
+                    0,
+                    CreateUpdateFlags(placeholder.IsDirectory),
+                    IntPtr.Zero,
+                    IntPtr.Zero);
+                ThrowIfFailed(result, nameof(CfUpdatePlaceholder));
+            }
+            finally
+            {
+                fileIdentity.Dispose();
             }
         }
     }
