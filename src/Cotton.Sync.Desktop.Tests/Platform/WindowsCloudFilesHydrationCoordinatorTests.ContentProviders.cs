@@ -74,10 +74,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 CancellationToken cancellationToken = default)
             {
                 RangeDownloads.Add((identity, offset, length));
+                transferProgress?.Report(new(SyncTransferDirection.Download, identity.RelativePath, 0, length));
                 int bytesToWrite = _rangeBytesToWrite ?? checked((int)length);
                 await destination
                     .WriteAsync(_content.AsMemory(checked((int)offset), bytesToWrite), cancellationToken)
                     .ConfigureAwait(false);
+                transferProgress?.Report(new(SyncTransferDirection.Download, identity.RelativePath, bytesToWrite, length, isCompleted: true));
             }
         }
 

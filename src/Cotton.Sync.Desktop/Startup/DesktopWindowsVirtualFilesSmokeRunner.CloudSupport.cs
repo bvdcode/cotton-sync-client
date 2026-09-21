@@ -43,6 +43,13 @@ namespace Cotton.Sync.Desktop.Startup
         {
             public List<WindowsCloudFilesTransferData> Transfers { get; } = [];
 
+            public List<WindowsCloudFilesProviderProgress> ProviderProgress { get; } = [];
+
+            public void ReportProviderProgress(WindowsCloudFilesProviderProgress progress)
+            {
+                ProviderProgress.Add(progress);
+            }
+
             public void RegisterSyncRoot(WindowsCloudFilesNativeSyncRootRegistration registration)
             {
                 throw new NotSupportedException();

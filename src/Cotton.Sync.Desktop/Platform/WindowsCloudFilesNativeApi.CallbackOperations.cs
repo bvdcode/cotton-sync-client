@@ -63,6 +63,16 @@ namespace Cotton.Sync.Desktop.Platform
             ThrowIfFailed(result, nameof(CfDisconnectSyncRoot));
         }
 
+        public void ReportProviderProgress(WindowsCloudFilesProviderProgress progress)
+        {
+            ArgumentNullException.ThrowIfNull(progress);
+            ArgumentOutOfRangeException.ThrowIfNegative(progress.CompletedBytes);
+            ArgumentOutOfRangeException.ThrowIfLessThan(progress.TotalBytes, progress.CompletedBytes);
+            int result = CfReportProviderProgress(
+                progress.ConnectionKey.Value, progress.TransferKey.Value, progress.TotalBytes, progress.CompletedBytes);
+            ThrowIfFailed(result, nameof(CfReportProviderProgress));
+        }
+
         public void TransferData(WindowsCloudFilesTransferData transfer)
         {
             ArgumentNullException.ThrowIfNull(transfer);

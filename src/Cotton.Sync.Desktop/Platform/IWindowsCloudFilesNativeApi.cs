@@ -58,6 +58,8 @@ namespace Cotton.Sync.Desktop.Platform
 
         void TransferData(WindowsCloudFilesTransferData transfer);
 
+        void ReportProviderProgress(WindowsCloudFilesProviderProgress progress);
+
         void AcknowledgeDehydrate(WindowsCloudFilesAckDehydrateData dehydrate);
 
         void DehydratePlaceholder(string filePath);

@@ -55,6 +55,13 @@ namespace Cotton.Sync.Desktop.Platform
         private static extern int CfDisconnectSyncRoot(long ConnectionKey);
 
         [DllImport("CldApi.dll", ExactSpelling = true)]
+        private static extern int CfReportProviderProgress(
+            long ConnectionKey,
+            long TransferKey,
+            long ProviderProgressTotal,
+            long ProviderProgressCompleted);
+
+        [DllImport("CldApi.dll", ExactSpelling = true)]
         private static extern int CfConvertToPlaceholder(
             IntPtr FileHandle,
             IntPtr FileIdentity,

@@ -235,6 +235,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 DisconnectedKeys.Add(connectionKey);
             }
 
+            public void ReportProviderProgress(WindowsCloudFilesProviderProgress progress)
+            {
+                throw new NotSupportedException();
+            }
+
             public void TransferData(WindowsCloudFilesTransferData transfer)
             {
                 Transfers.Add(transfer);

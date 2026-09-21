@@ -49,6 +49,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             public List<WindowsCloudFilesTransferData> Transfers { get; } = [];
 
+            public List<WindowsCloudFilesProviderProgress> ProviderProgress { get; } = [];
+
+            public void ReportProviderProgress(WindowsCloudFilesProviderProgress progress)
+            {
+                ProviderProgress.Add(progress);
+            }
+
             public List<WindowsCloudFilesAckDehydrateData> Dehydrates { get; } = [];
 
             public List<string> InSyncPaths { get; } = [];

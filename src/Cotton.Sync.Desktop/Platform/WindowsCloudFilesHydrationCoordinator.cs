@@ -6,7 +6,7 @@ using Cotton.Sync;
 
 namespace Cotton.Sync.Desktop.Platform
 {
-    internal class WindowsCloudFilesHydrationCoordinator : IWindowsCloudFilesCallbackHandler
+    internal partial class WindowsCloudFilesHydrationCoordinator : IWindowsCloudFilesCallbackHandler
     {
         private const int TransferBufferSize = 1024 * 1024;
 
@@ -61,8 +61,10 @@ namespace Cotton.Sync.Desktop.Platform
                     FileOptions.Asynchronous | FileOptions.SequentialScan | FileOptions.DeleteOnClose);
 
                 transferProgress = _transferProgressFactory(identity.SyncPairId);
+                WindowsCloudFilesProviderProgressReporter providerProgress = new(
+                    _nativeApi, request, transferProgress, cancellationToken);
                 await _contentProvider
-                    .DownloadAsync(identity, stream, transferProgress, cancellationToken)
+                    .DownloadAsync(identity, stream, providerProgress, cancellationToken)
                     .ConfigureAwait(false);
                 await ValidateDownloadedContentAsync(identity, stream, cancellationToken).ConfigureAwait(false);
                 await TransferRequestedRangeAsync(request, stream, cancellationToken).ConfigureAwait(false);
@@ -233,8 +235,10 @@ namespace Cotton.Sync.Desktop.Platform
                     FileOptions.Asynchronous | FileOptions.SequentialScan | FileOptions.DeleteOnClose);
 
                 transferProgress = _transferProgressFactory(identity.SyncPairId);
+                WindowsCloudFilesProviderProgressReporter providerProgress = new(
+                    _nativeApi, request, transferProgress, cancellationToken);
                 await rangeProvider
-                    .DownloadVerifiedRangeAsync(identity, stream, start, length, transferProgress, cancellationToken)
+                    .DownloadVerifiedRangeAsync(identity, stream, start, length, providerProgress, cancellationToken)
                     .ConfigureAwait(false);
                 if (stream.Length != length)
                 {
@@ -382,43 +386,6 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             return start + request.RequiredLength;
-        }
-
-        private static string FormatHydrationRequestDetails(WindowsCloudFilesFetchDataRequest request)
-        {
-            WindowsCloudFilesProcessInfo? process = request.ProcessInfo;
-            string requester = process is null
-                ? "unknown requester"
-                : "pid="
-                    + process.ProcessId
-                    + "; session="
-                    + process.SessionId
-                    + "; image="
-                    + NormalizeDiagnosticValue(process.ImagePath)
-                    + "; package="
-                    + NormalizeDiagnosticValue(process.PackageName)
-                    + "; app="
-                    + NormalizeDiagnosticValue(process.ApplicationId);
-            return "requiredOffset="
-                + request.RequiredOffset
-                + "; requiredLength="
-                + request.RequiredLength
-                + "; optionalOffset="
-                + request.OptionalOffset
-                + "; optionalLength="
-                + request.OptionalLength
-                + "; fileSize="
-                + request.FileSizeBytes
-                + "; priority="
-                + request.PriorityHint
-                + $"; transferKey={request.TransferKey.Value}; requestKey={request.RequestKey.Value}"
-                + "; requester="
-                + requester;
-        }
-
-        private static string NormalizeDiagnosticValue(string? value)
-        {
-            return string.IsNullOrWhiteSpace(value) ? "unknown" : value;
         }
 
         private string CreateTempPath()
