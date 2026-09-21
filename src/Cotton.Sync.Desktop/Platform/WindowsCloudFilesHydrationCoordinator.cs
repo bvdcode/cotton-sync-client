@@ -411,6 +411,7 @@ namespace Cotton.Sync.Desktop.Platform
                 + request.FileSizeBytes
                 + "; priority="
                 + request.PriorityHint
+                + $"; transferKey={request.TransferKey.Value}; requestKey={request.RequestKey.Value}"
                 + "; requester="
                 + requester;
         }

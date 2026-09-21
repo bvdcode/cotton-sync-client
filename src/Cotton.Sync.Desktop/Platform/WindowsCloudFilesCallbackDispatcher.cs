@@ -11,8 +11,8 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly IWindowsCloudFilesCallbackHandler _handler;
         private readonly Action<WindowsCloudFilesTransferData> _transferData;
         private readonly Action<WindowsCloudFilesAckDehydrateData> _ackDehydrate;
-        private readonly ConcurrentDictionary<long, PendingFetchData> _pendingFetches = [];
-        private readonly ConcurrentDictionary<long, PendingDehydrateData> _pendingDehydrates = [];
+        private readonly ConcurrentDictionary<WindowsCloudFilesOperationKey, PendingFetchData> _pendingFetches = [];
+        private readonly ConcurrentDictionary<WindowsCloudFilesOperationKey, PendingDehydrateData> _pendingDehydrates = [];
         private readonly Channel<PendingFetchData> _fetchQueue;
         private readonly Channel<PendingDehydrateData> _dehydrateQueue;
         private readonly CancellationTokenSource _lifetime = new();
@@ -93,7 +93,7 @@ namespace Cotton.Sync.Desktop.Platform
                 pending = new PendingFetchData(
                     request,
                     CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token));
-                if (!_pendingFetches.TryAdd(request.RequestKey.Value, pending))
+                if (!_pendingFetches.TryAdd(pending.Key, pending))
                 {
                     pending.Dispose();
                     transferFailure = true;
@@ -104,7 +104,7 @@ namespace Cotton.Sync.Desktop.Platform
                 }
                 else
                 {
-                    if (_pendingFetches.TryRemove(request.RequestKey.Value, out PendingFetchData? rejected))
+                    if (_pendingFetches.TryRemove(pending.Key, out PendingFetchData? rejected))
                     {
                         rejected.Dispose();
                     }
@@ -124,7 +124,8 @@ namespace Cotton.Sync.Desktop.Platform
         public void CancelFetchData(WindowsCloudFilesCancelFetchDataRequest request)
         {
             ArgumentNullException.ThrowIfNull(request);
-            if (_pendingFetches.TryGetValue(request.RequestKey.Value, out PendingFetchData? pending))
+            WindowsCloudFilesOperationKey key = new(request.ConnectionKey, request.TransferKey, request.RequestKey);
+            if (_pendingFetches.TryGetValue(key, out PendingFetchData? pending))
             {
                 pending.Cancel();
             }
@@ -153,7 +154,7 @@ namespace Cotton.Sync.Desktop.Platform
                 pending = new PendingDehydrateData(
                     request,
                     CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token));
-                if (!_pendingDehydrates.TryAdd(request.RequestKey.Value, pending))
+                if (!_pendingDehydrates.TryAdd(pending.Key, pending))
                 {
                     pending.Dispose();
                     ackFailure = true;
@@ -164,7 +165,7 @@ namespace Cotton.Sync.Desktop.Platform
                 }
                 else
                 {
-                    if (_pendingDehydrates.TryRemove(request.RequestKey.Value, out PendingDehydrateData? rejected))
+                    if (_pendingDehydrates.TryRemove(pending.Key, out PendingDehydrateData? rejected))
                     {
                         rejected.Dispose();
                     }
@@ -228,7 +229,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         private void DisposeRemainingFetches()
         {
-            foreach (KeyValuePair<long, PendingFetchData> pair in _pendingFetches.ToArray())
+            foreach (KeyValuePair<WindowsCloudFilesOperationKey, PendingFetchData> pair in _pendingFetches.ToArray())
             {
                 if (_pendingFetches.TryRemove(pair.Key, out PendingFetchData? pending))
                 {
@@ -239,7 +240,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         private void DisposeRemainingDehydrates()
         {
-            foreach (KeyValuePair<long, PendingDehydrateData> pair in _pendingDehydrates.ToArray())
+            foreach (KeyValuePair<WindowsCloudFilesOperationKey, PendingDehydrateData> pair in _pendingDehydrates.ToArray())
             {
                 if (_pendingDehydrates.TryRemove(pair.Key, out PendingDehydrateData? pending))
                 {
@@ -300,7 +301,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
             finally
             {
-                if (_pendingFetches.TryRemove(pending.Request.RequestKey.Value, out PendingFetchData? removed))
+                if (_pendingFetches.TryRemove(pending.Key, out PendingFetchData? removed))
                 {
                     removed.Dispose();
                 }
@@ -327,7 +328,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
             finally
             {
-                if (_pendingDehydrates.TryRemove(pending.Request.RequestKey.Value, out PendingDehydrateData? removed))
+                if (_pendingDehydrates.TryRemove(pending.Key, out PendingDehydrateData? removed))
                 {
                     removed.Dispose();
                 }
@@ -370,6 +371,8 @@ namespace Cotton.Sync.Desktop.Platform
 
             public WindowsCloudFilesFetchDataRequest Request { get; }
 
+            public WindowsCloudFilesOperationKey Key => new(Request.ConnectionKey, Request.TransferKey, Request.RequestKey);
+
             public CancellationToken Token => _cancellation.Token;
 
             public bool IsCancellationRequested => _cancellation.IsCancellationRequested;
@@ -404,6 +407,8 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             public WindowsCloudFilesDehydrateRequest Request { get; }
+
+            public WindowsCloudFilesOperationKey Key => new(Request.ConnectionKey, Request.TransferKey, Request.RequestKey);
 
             public CancellationToken Token => _cancellation.Token;
 

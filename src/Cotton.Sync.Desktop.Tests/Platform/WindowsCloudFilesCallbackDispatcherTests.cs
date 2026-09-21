@@ -6,7 +6,7 @@ using Cotton.Sync.Desktop.Platform;
 namespace Cotton.Sync.Desktop.Tests.Platform
 {
     [Platform(Include = "Win")]
-    public class WindowsCloudFilesCallbackDispatcherTests
+    public partial class WindowsCloudFilesCallbackDispatcherTests
     {
         [Test]
         public async Task QueueFetchData_RejectsRequestsWhenBoundedQueueIsFull()

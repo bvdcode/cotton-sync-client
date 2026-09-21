@@ -805,6 +805,13 @@ Scope notes:
 
 - An unavailable server event connection no longer rolls back local watchers, sync workers, periodic checks, or the Windows Cloud Files connection. Connection attempts validate the session through the SDK, have a timeout, and retry until stopped. A successful connection requests a change-feed catch-up.
 - Stopping a worker preserves the folder enabled setting. A startup failure is shown as an error, and Sync now, Resume, or enabling an already enabled folder retries startup.
+
 - Automated coverage checks authentication before connection, HTTP 401/503 recovery, timeout, cancellation, startup errors, and retry commands.
 - A demo-server check with an invalid stored access token passed: the SDK refreshed the token, connected to server events, and requested catch-up with the folder still enabled.
 - A native Windows check reproduced disappearing directory cloud status after disconnect, with cloud identities retained. Reconnection restored directory and file placeholder attributes and Explorer cloud status without recreating their content. This native check runs in the Windows release job.
+
+## Concurrent Cloud Files reads during offline pinning
+
+- Pending callbacks are identified by connection, file transfer, and request keys together. Windows can supply the same request key, including zero, for different files.
+- Native regression tests cover external reads of the same file and another file while explicit hydration runs, with either reader starting first. The different-file case failed before the correction; all four cases pass afterward.
+- A Chromium folder upload check passed for 32 files during pinning and the same 32 files after completion. All 64 received SHA-256 hashes matched, and the second upload caused no additional downloads. This checks browser file reads through a directory picker; native drag-and-drop interaction was not exercised.
