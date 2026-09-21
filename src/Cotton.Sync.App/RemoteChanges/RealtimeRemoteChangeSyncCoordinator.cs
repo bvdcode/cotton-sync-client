@@ -13,7 +13,7 @@ namespace Cotton.Sync.App.RemoteChanges
     /// <summary>
     /// Listens to remote realtime events and requests debounced sync passes.
     /// </summary>
-    public class RealtimeRemoteChangeSyncCoordinator : IRemoteChangeSyncCoordinator
+    public partial class RealtimeRemoteChangeSyncCoordinator : IRemoteChangeSyncCoordinator
     {
         private static readonly TimeSpan DefaultDebounceInterval = TimeSpan.FromMilliseconds(750);
         private static readonly TimeSpan DefaultMaxDebounceDelay = TimeSpan.FromSeconds(5);
@@ -50,14 +50,22 @@ namespace Cotton.Sync.App.RemoteChanges
         public RealtimeRemoteChangeSyncCoordinator(
             ICottonRealtimeClient realtime,
             ISyncSupervisor supervisor,
+            IAuthFlow authFlow,
             TimeSpan? debounceInterval = null,
             ISessionRevocationHandler? sessionRevocationHandler = null,
             ILogger<RealtimeRemoteChangeSyncCoordinator>? logger = null,
             TimeSpan? maxDebounceDelay = null,
-            TimeProvider? timeProvider = null)
+            TimeProvider? timeProvider = null,
+            TimeSpan? connectionRetryInterval = null,
+            TimeSpan? connectionAttemptTimeout = null)
         {
             _realtime = realtime ?? throw new ArgumentNullException(nameof(realtime));
             _supervisor = supervisor ?? throw new ArgumentNullException(nameof(supervisor));
+            _authFlow = authFlow ?? throw new ArgumentNullException(nameof(authFlow));
+            _connectionRetryInterval = connectionRetryInterval ?? TimeSpan.FromSeconds(15);
+            _connectionAttemptTimeout = connectionAttemptTimeout ?? TimeSpan.FromSeconds(30);
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_connectionRetryInterval, TimeSpan.Zero);
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(_connectionAttemptTimeout, TimeSpan.Zero);
             _sessionRevocationHandler = sessionRevocationHandler ?? NullSessionRevocationHandler.Instance;
             _debounceInterval = debounceInterval ?? DefaultDebounceInterval;
             if (_debounceInterval < TimeSpan.Zero)
@@ -89,7 +97,7 @@ namespace Cotton.Sync.App.RemoteChanges
                     _realtime.RemoteFileTreeChanged += OnRemoteFileTreeChanged;
                     _realtime.SessionRevoked += OnSessionRevoked;
                     _isSubscribed = true;
-                    await _realtime.StartAsync(cancellationToken).ConfigureAwait(false);
+                    _connectionTask = ConnectWithRetryAsync(_lifetime.Token);
                 }
                 catch
                 {
@@ -136,6 +144,12 @@ namespace Cotton.Sync.App.RemoteChanges
                 _pendingRequests.Clear();
             }
 
+            if (_connectionTask is not null)
+            {
+                await _connectionTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+                _connectionTask = null;
+            }
+
             await WaitForPendingSyncsAsync(pendingSyncs, cancellationToken).ConfigureAwait(false);
             lifetime?.Dispose();
 
@@ -150,6 +164,11 @@ namespace Cotton.Sync.App.RemoteChanges
 
         private void OnRemoteFileTreeChanged(object? sender, CottonRealtimeEvent change)
         {
+            QueueRemoteSync(change.MethodName);
+        }
+
+        private void QueueRemoteSync(string methodName)
+        {
             lock (_pendingGate)
             {
                 CancellationTokenSource? lifetime = _lifetime;
@@ -160,13 +179,13 @@ namespace Cotton.Sync.App.RemoteChanges
 
                 if (_pendingSync is not null)
                 {
-                    _pendingSync.RecordChange(change.MethodName);
+                    _pendingSync.RecordChange(methodName);
                     return;
                 }
 
                 PendingRemoteSyncRequest next = new PendingRemoteSyncRequest(
                     CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token),
-                    change.MethodName,
+                    methodName,
                     _timeProvider.GetUtcNow());
                 _pendingSync = next;
                 _pendingRequests.Add(next);

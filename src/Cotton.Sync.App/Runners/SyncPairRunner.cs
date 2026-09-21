@@ -386,7 +386,7 @@ namespace Cotton.Sync.App.Runners
 
             try
             {
-                _statusController.SetState(SyncPairRunState.Disabled);
+                _statusController.SetState(_syncPair.IsEnabled ? SyncPairRunState.Stopped : SyncPairRunState.Disabled);
             }
             finally
             {
@@ -422,7 +422,7 @@ namespace Cotton.Sync.App.Runners
             SyncPairRunState state = Status.State;
             bool isPaused = state == SyncPairRunState.Paused;
             _requestQueue.SetBlocked(
-                !_syncPair.IsEnabled || state == SyncPairRunState.Disabled || isPaused,
+                !_syncPair.IsEnabled || state is SyncPairRunState.Disabled or SyncPairRunState.Stopped || isPaused,
                 queueIncomingRequests: isPaused);
         }
 

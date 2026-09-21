@@ -19,7 +19,7 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
         {
             FakeCottonRealtimeClient realtime = new FakeCottonRealtimeClient();
             FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
-            RealtimeRemoteChangeSyncCoordinator coordinator = new RealtimeRemoteChangeSyncCoordinator(realtime, supervisor, DebounceInterval);
+            RealtimeRemoteChangeSyncCoordinator coordinator = new RealtimeRemoteChangeSyncCoordinator(realtime, supervisor, new RealtimeTestAuthFlow(), DebounceInterval);
             await coordinator.StartAsync();
 
             realtime.RaiseRemoteFileTreeChanged("FileCreated");
@@ -47,6 +47,7 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
             RealtimeRemoteChangeSyncCoordinator coordinator = new RealtimeRemoteChangeSyncCoordinator(
                 realtime,
                 supervisor,
+                new RealtimeTestAuthFlow(),
                 TimeSpan.FromSeconds(5));
             await coordinator.StartAsync();
 
@@ -76,6 +77,7 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
             RealtimeRemoteChangeSyncCoordinator coordinator = new(
                 realtime,
                 supervisor,
+                new RealtimeTestAuthFlow(),
                 TimeSpan.FromMilliseconds(50),
                 maxDebounceDelay: TimeSpan.FromMilliseconds(120));
             using CancellationTokenSource stormCancellation = new();
@@ -113,6 +115,7 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
             RealtimeRemoteChangeSyncCoordinator coordinator = new RealtimeRemoteChangeSyncCoordinator(
                 realtime,
                 supervisor,
+                new RealtimeTestAuthFlow(),
                 TimeSpan.FromMilliseconds(100));
             await coordinator.StartAsync();
 
@@ -133,6 +136,7 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
                 RealtimeRemoteChangeSyncCoordinator coordinator = new(
                     realtime,
                     supervisor,
+                    new RealtimeTestAuthFlow(),
                     TimeSpan.FromMilliseconds(100));
                 await coordinator.StartAsync();
 
@@ -154,10 +158,10 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
             RealtimeRemoteChangeSyncCoordinator coordinator = new RealtimeRemoteChangeSyncCoordinator(
                 realtime,
                 supervisor,
+                new RealtimeTestAuthFlow(),
                 TimeSpan.Zero);
             await coordinator.StartAsync();
 
-            realtime.RaiseRemoteFileTreeChanged("FileCreated");
             bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
             Task stopTask = coordinator.StopAsync();
             bool canceled = await supervisor.WaitForSyncCancellationAsync(TimeSpan.FromSeconds(2));
@@ -181,6 +185,7 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
             RealtimeRemoteChangeSyncCoordinator coordinator = new RealtimeRemoteChangeSyncCoordinator(
                 realtime,
                 supervisor,
+                new RealtimeTestAuthFlow(),
                 DebounceInterval,
                 sessionRevocationHandler);
             await coordinator.StartAsync();
@@ -192,39 +197,6 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
 
             Assert.Multiple(() =>
             {
-                Assert.That(supervisor.SyncAllCallCount, Is.Zero);
-                Assert.That(sessionRevocationHandler.CallCount, Is.Zero);
-            });
-        }
-
-        [Test]
-        public async Task StartAsync_UnsubscribesWhenRealtimeStartFails()
-        {
-            FakeCottonRealtimeClient realtime = new FakeCottonRealtimeClient
-            {
-                StartException = new InvalidOperationException("Realtime failed to start."),
-            };
-            FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
-            FakeSessionRevocationHandler sessionRevocationHandler = new FakeSessionRevocationHandler();
-            RealtimeRemoteChangeSyncCoordinator coordinator = new RealtimeRemoteChangeSyncCoordinator(
-                realtime,
-                supervisor,
-                DebounceInterval,
-                sessionRevocationHandler);
-
-            InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(
-                async () => await coordinator.StartAsync());
-
-            realtime.RaiseRemoteFileTreeChanged("FileCreated");
-            realtime.RaiseSessionRevoked();
-            await Task.Delay(DebounceInterval * 3);
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(exception, Is.Not.Null);
-                Assert.That(exception!.Message, Is.EqualTo("Realtime failed to start."));
-                Assert.That(realtime.StartCallCount, Is.EqualTo(1));
-                Assert.That(realtime.StopCallCount, Is.EqualTo(1));
                 Assert.That(supervisor.SyncAllCallCount, Is.Zero);
                 Assert.That(sessionRevocationHandler.CallCount, Is.Zero);
             });

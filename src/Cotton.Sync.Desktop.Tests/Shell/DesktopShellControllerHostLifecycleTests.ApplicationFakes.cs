@@ -115,6 +115,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             public int StopSyncCalls { get; private set; }
 
             public int StartSyncCalls { get; private set; }
+            public Exception? StartSyncException { get; set; }
 
             public int SaveSyncPairCalls { get; private set; }
 
@@ -287,6 +288,11 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             {
                 StartSyncCalls++;
                 StartSyncStarted?.TrySetResult();
+                if (StartSyncException is not null)
+                {
+                    throw StartSyncException;
+                }
+
                 return StartSyncRelease?.Task ?? Task.CompletedTask;
             }
 

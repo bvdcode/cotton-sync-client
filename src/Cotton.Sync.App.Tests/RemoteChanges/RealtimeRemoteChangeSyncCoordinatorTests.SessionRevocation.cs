@@ -21,6 +21,7 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
             RealtimeRemoteChangeSyncCoordinator coordinator = new RealtimeRemoteChangeSyncCoordinator(
                 realtime,
                 supervisor,
+                new RealtimeTestAuthFlow(),
                 DebounceInterval,
                 sessionRevocationHandler);
             await coordinator.StartAsync();
@@ -49,6 +50,7 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
             RealtimeRemoteChangeSyncCoordinator coordinator = new RealtimeRemoteChangeSyncCoordinator(
                 realtime,
                 supervisor,
+                new RealtimeTestAuthFlow(),
                 TimeSpan.FromMilliseconds(100),
                 sessionRevocationHandler);
             await coordinator.StartAsync();
@@ -81,11 +83,11 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
             RealtimeRemoteChangeSyncCoordinator coordinator = new RealtimeRemoteChangeSyncCoordinator(
                 realtime,
                 supervisor,
+                new RealtimeTestAuthFlow(),
                 TimeSpan.Zero,
                 sessionRevocationHandler);
             await coordinator.StartAsync();
 
-            realtime.RaiseRemoteFileTreeChanged("FileUpdated");
             bool observed = await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2));
             realtime.RaiseSessionRevoked();
             bool handled = await sessionRevocationHandler.WaitForCallAsync(TimeSpan.FromSeconds(2));

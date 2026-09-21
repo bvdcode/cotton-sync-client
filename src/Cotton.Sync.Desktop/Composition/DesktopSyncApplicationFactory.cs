@@ -164,6 +164,7 @@ namespace Cotton.Sync.Desktop.Composition
             RealtimeRemoteChangeSyncCoordinator remoteChanges = new(
                 cottonClient.Realtime,
                 supervisor,
+                authFlow,
                 sessionRevocationHandler: sessionRevocationHandler,
                 logger: _loggerFactory.CreateLogger<RealtimeRemoteChangeSyncCoordinator>());
             ISyncPairPrerequisiteValidator prerequisites = new DesktopSyncPairPrerequisiteValidator(

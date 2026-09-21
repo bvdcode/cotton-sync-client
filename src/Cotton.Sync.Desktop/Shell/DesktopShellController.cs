@@ -76,6 +76,8 @@ namespace Cotton.Sync.Desktop.Shell
         private IDisposable? _runProgressSubscription;
         private IDisposable? _sessionRevocationSubscription;
         private string _syncCoreState = SyncCoreStateSignedOut;
+        private string? _syncCoreFailureMessage;
+        private readonly SemaphoreSlim _syncStartupGate = new(1, 1);
         private IDisposable? _statusSubscription;
         private IDisposable? _transferProgressSubscription;
 

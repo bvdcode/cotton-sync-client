@@ -57,5 +57,10 @@ namespace Cotton.Sync.App.Status
         /// The sync pair is waiting for a transient local resource to become available.
         /// </summary>
         Waiting = 9,
+
+        /// <summary>
+        /// The worker is stopped; the configured enabled state is unchanged.
+        /// </summary>
+        Stopped = 10,
     }
 }

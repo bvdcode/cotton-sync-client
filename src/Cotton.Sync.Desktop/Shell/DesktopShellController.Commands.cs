@@ -32,7 +32,7 @@ namespace Cotton.Sync.Desktop.Shell
 {
     internal partial class DesktopShellController
     {
-        public Task SyncAllAsync(
+        public async Task SyncAllAsync(
             CancellationToken cancellationToken = default,
             Guid? syncPairId = null,
             RemoteDeletePlanApproval? approvedRemoteDeletePlan = null)
@@ -44,20 +44,24 @@ namespace Cotton.Sync.Desktop.Shell
                     nameof(syncPairId));
             }
 
+            DesktopSyncApplicationHost host = RequireHost();
+            await EnsureSyncStartedAsync(host, cancellationToken).ConfigureAwait(false);
             if (syncPairId.HasValue)
             {
                 if (approvedRemoteDeletePlan is null)
                 {
-                    return RequireHost().App.SyncNowAsync(syncPairId.Value, cancellationToken);
+                    await host.App.SyncNowAsync(syncPairId.Value, cancellationToken).ConfigureAwait(false);
+                    return;
                 }
 
                 SyncRunRequest request = SyncRunRequest.ForFull(
                     SyncRunCause.Manual,
                     approvedRemoteDeletePlan);
-                return RequireHost().App.SyncNowAsync(syncPairId.Value, request, cancellationToken);
+                await host.App.SyncNowAsync(syncPairId.Value, request, cancellationToken).ConfigureAwait(false);
+                return;
             }
 
-            return RequireHost().App.SyncAllAsync(cancellationToken);
+            await host.App.SyncAllAsync(cancellationToken).ConfigureAwait(false);
         }
 
         public Task PauseAllAsync(CancellationToken cancellationToken = default)
@@ -65,9 +69,11 @@ namespace Cotton.Sync.Desktop.Shell
             return RequireHost().App.PauseAllAsync(cancellationToken);
         }
 
-        public Task ResumeAllAsync(CancellationToken cancellationToken = default)
+        public async Task ResumeAllAsync(CancellationToken cancellationToken = default)
         {
-            return RequireHost().App.ResumeAllAsync(cancellationToken);
+            DesktopSyncApplicationHost host = RequireHost();
+            await EnsureSyncStartedAsync(host, cancellationToken).ConfigureAwait(false);
+            await host.App.ResumeAllAsync(cancellationToken).ConfigureAwait(false);
         }
 
         public Task OpenFolderAsync(string localPath, CancellationToken cancellationToken = default)

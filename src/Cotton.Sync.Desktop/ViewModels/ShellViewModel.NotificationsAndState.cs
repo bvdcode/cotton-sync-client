@@ -116,6 +116,11 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return "Offline";
             }
 
+            if (status.SyncPairs.Any(static pair => string.Equals(pair.Status, "Stopped", StringComparison.Ordinal)))
+            {
+                return "Stopped";
+            }
+
             IEnumerable<DesktopSyncPairStatusSnapshot> enabledPairs = status.SyncPairs
                 .Where(static pair => !string.Equals(pair.Status, "Disabled", StringComparison.Ordinal));
             if (enabledPairs.Any()

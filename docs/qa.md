@@ -800,3 +800,11 @@ Scope notes:
 - Range/chunk hydration is implemented and source-verified through `Cotton.Sdk 0.4.32`; live installed range coverage is covered by the broader installed VFS gates, not a separate checklist item.
 - The secondary clean-machine diagnostics bundle is valid full-mirror clean-machine evidence; virtual-files release evidence is covered by the VFS-specific gates above.
 - General full-upload throughput warning from the accidental broad smoke remains a release-performance watch item outside the VFS checklist; it should be tracked separately if the first full-mirror release gate is reopened.
+
+## Startup event connection recovery
+
+- An unavailable server event connection no longer rolls back local watchers, sync workers, periodic checks, or the Windows Cloud Files connection. Connection attempts validate the session through the SDK, have a timeout, and retry until stopped. A successful connection requests a change-feed catch-up.
+- Stopping a worker preserves the folder enabled setting. A startup failure is shown as an error, and Sync now, Resume, or enabling an already enabled folder retries startup.
+- Automated coverage checks authentication before connection, HTTP 401/503 recovery, timeout, cancellation, startup errors, and retry commands.
+- A demo-server check with an invalid stored access token passed: the SDK refreshed the token, connected to server events, and requested catch-up with the folder still enabled.
+- A native Windows check reproduced disappearing directory cloud status after disconnect, with cloud identities retained. Reconnection restored directory and file placeholder attributes and Explorer cloud status without recreating their content. This native check runs in the Windows release job.

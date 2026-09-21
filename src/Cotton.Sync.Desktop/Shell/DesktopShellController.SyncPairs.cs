@@ -84,6 +84,11 @@ namespace Cotton.Sync.Desktop.Shell
 
             if (syncPair.IsEnabled == enabled)
             {
+                if (enabled && _host is { } host)
+                {
+                    await EnsureSyncStartedAsync(host, cancellationToken).ConfigureAwait(false);
+                }
+
                 return;
             }
 
@@ -199,7 +204,7 @@ namespace Cotton.Sync.Desktop.Shell
             return snapshots;
         }
 
-        private static DesktopSyncPairSnapshot ToSnapshot(
+        private DesktopSyncPairSnapshot ToSnapshot(
             SyncPairSettings settings,
             DateTime? persistedLastSyncedAtUtc = null,
             SyncChangeCursor? cursor = null,
@@ -209,16 +214,17 @@ namespace Cotton.Sync.Desktop.Shell
             lastSyncedAtUtc ??= persistedLastSyncedAtUtc;
             string? localRootError = GetLocalRootUnavailableError(settings);
             string statusText = ResolveSyncPairStatusText(settings, status, localRootError);
+            string? startupError = settings.IsEnabled ? _syncCoreFailureMessage : null;
             return new DesktopSyncPairSnapshot(
                 settings.Id,
                 settings.DisplayName,
                 settings.LocalRootPath,
                 settings.RemoteDisplayPath,
-                statusText,
+                startupError is null ? statusText : "Error",
                 settings.RemoteRootNodeId,
                 lastSyncedAtUtc,
                 cursor?.LastCursor,
-                localRootError ?? status?.LastError,
+                startupError ?? localRootError ?? status?.LastError,
                 settings.Mode,
                 cursor?.HasCompletedFullReconcile ?? false);
         }

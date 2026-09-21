@@ -43,12 +43,7 @@ namespace Cotton.Sync.Desktop.Shell
                         return;
                     }
 
-                    _syncCoreState = SyncCoreStateStarting;
-                    await host.App.StartSyncAsync(CancellationToken.None).ConfigureAwait(false);
-                    if (ReferenceEquals(_host, host))
-                    {
-                        _syncCoreState = SyncCoreStateRunning;
-                    }
+                    await EnsureSyncStartedAsync(host, CancellationToken.None).ConfigureAwait(false);
                 }
                 catch (Exception exception)
                 {
@@ -58,7 +53,6 @@ namespace Cotton.Sync.Desktop.Shell
                         return;
                     }
 
-                    _syncCoreState = SyncCoreStateStartFailed;
                     ActivityReported?.Invoke(
                         this,
                         new DesktopActivitySnapshot(

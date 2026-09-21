@@ -35,12 +35,12 @@ namespace Cotton.Sync.App.Tests.Runners
             {
                 Assert.That(exception, Is.Not.Null);
                 Assert.That(work.RunCount, Is.EqualTo(1));
-                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Disabled));
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Stopped));
             });
         }
 
         [Test]
-        public async Task StopAsync_CancelsRunningSyncWorkAndDisablesRunner()
+        public async Task StopAsync_CancelsRunningSyncWorkAndStopsRunner()
         {
             CancellationObservingSyncPairWork work = new CancellationObservingSyncPairWork();
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
@@ -58,12 +58,12 @@ namespace Cotton.Sync.App.Tests.Runners
                 Assert.That(cancellationObserved, Is.True);
                 Assert.That(exception, Is.Not.Null);
                 Assert.That(work.RunCount, Is.EqualTo(1));
-                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Disabled));
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Stopped));
             });
         }
 
         [Test]
-        public async Task StopAsync_TreatsCancellationIOExceptionAsCancellationAndDisablesRunner()
+        public async Task StopAsync_TreatsCancellationIOExceptionAsCancellationAndStopsRunner()
         {
             CancellationSideEffectSyncPairWork work = new CancellationSideEffectSyncPairWork(new IOException("Transport was canceled."));
             RecordingLogger<SyncPairRunner> logger = new RecordingLogger<SyncPairRunner>();
@@ -83,7 +83,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 Assert.That(exception, Is.Not.Null);
                 Assert.That(exception!.InnerException, Is.TypeOf<IOException>());
                 Assert.That(work.RunCount, Is.EqualTo(1));
-                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Disabled));
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Stopped));
                 Assert.That(logger.Entries.Select(entry => entry.Level), Does.Not.Contain(LogLevel.Error));
                 Assert.That(
                     logger.Entries.Select(entry => entry.Message),

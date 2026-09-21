@@ -43,6 +43,7 @@ namespace Cotton.Sync.Desktop.Shell
             _host = null;
             _activeSession = null;
             _syncCoreState = SyncCoreStateSignedOut;
+            _syncCoreFailureMessage = null;
             _activitySubscription?.Dispose();
             _activitySubscription = null;
             _sessionRevocationSubscription?.Dispose();
@@ -67,6 +68,7 @@ namespace Cotton.Sync.Desktop.Shell
             _host = host;
             _activeSession = session;
             _syncCoreState = SyncCoreStateStopped;
+            _syncCoreFailureMessage = null;
             _activitySubscription?.Dispose();
             _sessionRevocationSubscription?.Dispose();
             _statusSubscription?.Dispose();
@@ -106,7 +108,8 @@ namespace Cotton.Sync.Desktop.Shell
                 GetKnownSyncPairSettingsSnapshot();
             return new DesktopSyncStatusSnapshot(
                 status.SyncPairs
-                    .Select(syncPair => ToStatusSnapshot(syncPair, knownSyncPairSettings))
+                    .Select(syncPair => ApplySyncStartupFailure(
+                        ToStatusSnapshot(syncPair, knownSyncPairSettings)))
                     .ToList());
         }
 
@@ -143,6 +146,7 @@ namespace Cotton.Sync.Desktop.Shell
             return status.State switch
             {
                 SyncPairRunState.Disabled => "Disabled",
+                SyncPairRunState.Stopped => "Stopped",
                 SyncPairRunState.Idle => "Idle",
                 SyncPairRunState.Scanning => "Scanning",
                 SyncPairRunState.Syncing => "Syncing",
