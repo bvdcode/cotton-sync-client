@@ -308,8 +308,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentTransferProgressValue, Is.Zero);
                 Assert.That(viewModel.CurrentTransferTitle, Is.Empty);
                 Assert.That(viewModel.CurrentTransferDetails, Is.Empty);
-                Assert.That(row.CurrentOperation, Is.Empty);
-                Assert.That(row.HasCurrentProgress, Is.False);
+                Assert.That(row.CurrentOperation, Is.EqualTo("Syncing"));
+                Assert.That(row.HasCurrentProgress, Is.True);
             });
         }
     }

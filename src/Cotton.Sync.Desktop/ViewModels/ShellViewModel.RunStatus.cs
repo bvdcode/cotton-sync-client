@@ -48,7 +48,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 _suppressedInitialSyncCompleteUntilRunProgressCompleted.Remove(progress.SyncPairId);
                 if (!HasActiveTransferForPair(progress.SyncPairId))
                 {
-                    ClearSyncPairProgress(syncPair);
+                    RestoreRunningSyncPairProgress(syncPair);
                 }
 
                 RefreshRunProgressSummary();
@@ -157,6 +157,10 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             if (isActive)
             {
+                if (string.IsNullOrWhiteSpace(row.CurrentOperation))
+                {
+                    row.CurrentOperation = row.Status;
+                }
                 EnsureSyncPairProgress(row);
                 return (false, false);
             }

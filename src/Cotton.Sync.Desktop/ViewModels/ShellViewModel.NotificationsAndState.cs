@@ -292,6 +292,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private void RaiseSyncStateProperties()
         {
+            RaiseCurrentWorkProgressProperties();
             SyncNowCommand.RaiseCanExecuteChanged();
             ApproveRemoteMassDeleteCommand.RaiseCanExecuteChanged();
             PauseCommand.RaiseCanExecuteChanged();

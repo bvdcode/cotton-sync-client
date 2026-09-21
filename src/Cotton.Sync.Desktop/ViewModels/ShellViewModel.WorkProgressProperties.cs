@@ -124,7 +124,8 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public bool IsCurrentRunProgressDeterminate => HasCurrentRunProgress && !IsCurrentRunProgressIndeterminate;
 
-        public bool HasCurrentWorkProgress => HasCurrentTransfer || HasCurrentRunProgress;
+        public bool HasCurrentWorkProgress => HasCurrentTransfer || HasCurrentRunProgress
+            || (CanApplySessionEvents && SyncPairs.Any(IsRunningSyncPair));
 
         public DesktopTrayActivityKind CurrentTrayActivityKind
         {
@@ -170,7 +171,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             get => IsRunProgressPrimary
                 ? CurrentRunProgressTitle
-                : HasCurrentTransfer ? CreateActiveTransferTitle() : CurrentRunProgressTitle;
+                : HasCurrentTransfer ? CreateActiveTransferTitle() : CreateRunningSyncTitle();
         }
 
         public string CurrentWorkProgressHeaderDetails => IsRunProgressPrimary
@@ -227,7 +228,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             ? IsCurrentRunProgressIndeterminate
             : HasActiveTransferProgress
                 ? !TryCalculateAggregateTransferProgressValue(out _)
-                : HasCurrentTransfer ? IsCurrentTransferIndeterminate : IsCurrentRunProgressIndeterminate;
+                : HasCurrentTransfer ? IsCurrentTransferIndeterminate : HasCurrentWorkProgress;
 
         public string CurrentWorkProgressAutomationName =>
             HasOpenEndedCloudFileProgress

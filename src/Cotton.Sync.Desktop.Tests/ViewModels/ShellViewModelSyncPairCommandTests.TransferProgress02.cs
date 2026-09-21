@@ -54,8 +54,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 SyncPairRowViewModel row = viewModel.SyncPairs.Single();
                 Assert.That(viewModel.HasCurrentTransfer, Is.False);
                 Assert.That(viewModel.CurrentTransferTitle, Is.Empty);
-                Assert.That(row.CurrentOperation, Is.Empty);
-                Assert.That(row.HasCurrentProgress, Is.False);
+                Assert.That(row.CurrentOperation, Is.EqualTo("Syncing"));
+                Assert.That(row.HasCurrentProgress, Is.True);
             });
         }
 
@@ -103,8 +103,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentTransferTitle, Is.EqualTo("Documents: Uploading report.txt"));
                 Assert.That(documents.CurrentOperation, Is.EqualTo("Uploading report.txt"));
                 Assert.That(documents.HasCurrentProgress, Is.True);
-                Assert.That(videos.CurrentOperation, Is.Empty);
-                Assert.That(videos.HasCurrentProgress, Is.False);
+                Assert.That(videos.CurrentOperation, Is.EqualTo("Syncing"));
+                Assert.That(videos.HasCurrentProgress, Is.True);
             });
         }
     }

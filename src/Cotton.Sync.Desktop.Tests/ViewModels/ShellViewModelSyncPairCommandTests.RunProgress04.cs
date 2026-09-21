@@ -53,10 +53,10 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.HasCurrentRunProgress, Is.False);
                 Assert.That(viewModel.CurrentRunProgressTitle, Is.Empty);
                 Assert.That(viewModel.CurrentRunProgressDetails, Is.Empty);
-                Assert.That(row.CurrentOperation, Is.Empty);
-                Assert.That(row.HasCurrentOperation, Is.False);
-                Assert.That(row.HasCurrentProgress, Is.False);
-                Assert.That(row.IsCurrentProgressIndeterminate, Is.False);
+                Assert.That(row.CurrentOperation, Is.EqualTo("Syncing"));
+                Assert.That(row.HasCurrentOperation, Is.True);
+                Assert.That(row.HasCurrentProgress, Is.True);
+                Assert.That(row.IsCurrentProgressIndeterminate, Is.True);
                 Assert.That(row.CurrentProgressValue, Is.Zero);
             });
         }
@@ -109,8 +109,8 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressTitle, Is.EqualTo("Videos"));
                 Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Checking files · 5 of 20 files"));
                 Assert.That(viewModel.CurrentWorkProgressValue, Is.EqualTo(25).Within(0.01));
-                Assert.That(documentsRow.HasCurrentProgress, Is.False);
-                Assert.That(documentsRow.CurrentOperation, Is.Empty);
+                Assert.That(documentsRow.HasCurrentProgress, Is.True);
+                Assert.That(documentsRow.CurrentOperation, Is.EqualTo("Syncing"));
                 Assert.That(videosRow.HasCurrentProgress, Is.True);
                 Assert.That(videosRow.CurrentOperation, Is.EqualTo("Checking files 5 of 20"));
             });

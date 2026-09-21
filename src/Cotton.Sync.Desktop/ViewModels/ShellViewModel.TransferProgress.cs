@@ -136,7 +136,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return;
             }
 
-            ClearSyncPairProgress(syncPair);
+            RestoreRunningSyncPairProgress(syncPair);
         }
 
         private void RefreshCurrentTransferSummary()
