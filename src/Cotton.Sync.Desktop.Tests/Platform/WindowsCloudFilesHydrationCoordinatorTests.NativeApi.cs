@@ -84,9 +84,16 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
             }
 
-            public void SetInSyncState(string filePath)
+            public void SetInSyncState(string filePath, bool inSync = true)
             {
-                InSyncPaths.Add(filePath);
+                if (inSync)
+                {
+                    InSyncPaths.Add(filePath);
+                }
+                else
+                {
+                    InSyncPaths.Remove(filePath);
+                }
             }
 
             public WindowsCloudFilesPlaceholderState GetPlaceholderState(string filePath)

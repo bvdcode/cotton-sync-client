@@ -199,9 +199,9 @@ namespace Cotton.Sync.Desktop.Platform
             _availabilityManager.HydratePlaceholder(syncPair, relativePath);
         }
 
-        public void SetInSyncState(SyncPairSettings syncPair, string relativePath)
+        public void SetInSyncState(SyncPairSettings syncPair, string relativePath, bool inSync = true)
         {
-            _inSyncManager.SetInSyncState(syncPair, relativePath);
+            _inSyncManager.SetInSyncState(syncPair, relativePath, inSync);
         }
 
         public void PinPlaceholder(SyncPairSettings syncPair, string relativePath)

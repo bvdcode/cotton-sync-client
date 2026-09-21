@@ -192,7 +192,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 PinStates.Add(new PinStateCall(filePath, pinState));
             }
 
-            public void SetInSyncState(string filePath)
+            public void SetInSyncState(string filePath, bool inSync = true)
             {
                 CallLog.Add("native-set-in-sync-state");
                 if (SetInSyncException is not null)
@@ -200,8 +200,18 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     throw SetInSyncException;
                 }
 
-                InSyncPaths.Add(filePath);
+                if (inSync)
+                {
+                    InSyncPaths.Add(filePath);
+                }
+                else
+                {
+                    InSyncPaths.Remove(filePath);
+                    PendingPaths.Add(filePath);
+                }
             }
+
+            public List<string> PendingPaths { get; } = [];
 
             public WindowsCloudFilesPlaceholderState GetPlaceholderState(string filePath)
             {

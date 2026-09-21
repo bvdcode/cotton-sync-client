@@ -86,7 +86,7 @@ namespace Cotton.Sync.Desktop.Platform
             ThrowIfFailed(result, nameof(CfSetPinState));
         }
 
-        public void SetInSyncState(string filePath)
+        public void SetInSyncState(string filePath, bool inSync = true)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
             using SafeFileHandle handle = CreateFile(
@@ -106,7 +106,7 @@ namespace Cotton.Sync.Desktop.Platform
 
             int result = CfSetInSyncState(
                 handle.DangerousGetHandle(),
-                CfInSyncState.InSync,
+                inSync ? CfInSyncState.InSync : CfInSyncState.NotInSync,
                 CfSetInSyncFlags.None,
                 IntPtr.Zero);
             ThrowIfFailed(result, nameof(CfSetInSyncState));

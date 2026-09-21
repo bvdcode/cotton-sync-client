@@ -82,7 +82,7 @@ namespace Cotton.Sync.Desktop.Platform
             SetInSyncState(syncPair, relativePath);
         }
 
-        void SetInSyncState(SyncPairSettings syncPair, string relativePath);
+        void SetInSyncState(SyncPairSettings syncPair, string relativePath, bool inSync = true);
 
         Task<RemoteFilePlaceholderResult> FinalizeUploadedFilePlaceholderAsync(
             SyncPairSettings syncPair,

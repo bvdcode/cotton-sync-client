@@ -75,7 +75,7 @@ namespace Cotton.Sync.Desktop.Startup
                 throw new NotSupportedException();
             }
 
-            public void SetInSyncState(string filePath)
+            public void SetInSyncState(string filePath, bool inSync = true)
             {
                 throw new NotSupportedException();
             }

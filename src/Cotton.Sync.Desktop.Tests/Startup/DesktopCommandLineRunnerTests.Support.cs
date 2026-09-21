@@ -160,7 +160,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 throw new NotSupportedException();
             }
 
-            public void SetInSyncState(SyncPairSettings syncPair, string relativePath)
+            public void SetInSyncState(SyncPairSettings syncPair, string relativePath, bool inSync = true)
             {
                 throw new NotSupportedException();
             }

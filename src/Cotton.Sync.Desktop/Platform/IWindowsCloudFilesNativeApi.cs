@@ -36,7 +36,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         void SetPinState(string filePath, WindowsCloudFilesPinState pinState);
 
-        void SetInSyncState(string filePath);
+        void SetInSyncState(string filePath, bool inSync = true);
 
         WindowsCloudFilesPlaceholderState GetPlaceholderState(string filePath);
 

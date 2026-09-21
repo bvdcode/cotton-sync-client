@@ -222,7 +222,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Identities[path] = placeholderIdentity;
             }
 
-            public void SetInSyncState(SyncPairSettings syncPair, string relativePath)
+            public void SetInSyncState(SyncPairSettings syncPair, string relativePath, bool inSync = true)
             {
                 string path = SyncPath.Normalize(relativePath);
                 InSyncPaths.Add(path);

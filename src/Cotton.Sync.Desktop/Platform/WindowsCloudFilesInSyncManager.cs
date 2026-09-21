@@ -16,7 +16,7 @@ namespace Cotton.Sync.Desktop.Platform
         WindowsCloudFilesPathGuard pathGuard,
         WindowsCloudFilesNativeOperationExecutor operationExecutor)
     {
-        public void SetInSyncState(SyncPairSettings syncPair, string relativePath)
+        public void SetInSyncState(SyncPairSettings syncPair, string relativePath, bool inSync = true)
         {
             ArgumentNullException.ThrowIfNull(syncPair);
             ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
@@ -29,7 +29,7 @@ namespace Cotton.Sync.Desktop.Platform
             string fullPlaceholderPath = Path.Combine(
                 placeholderPath.BaseDirectoryPath,
                 placeholderPath.RelativeFileName);
-            const string operation = "set-in-sync-state";
+            string operation = inSync ? "set-in-sync-state" : "clear-in-sync-state";
             bool isFile = File.Exists(fullPlaceholderPath);
             bool isDirectory = Directory.Exists(fullPlaceholderPath);
             if (!isFile && !isDirectory)
@@ -59,7 +59,21 @@ namespace Cotton.Sync.Desktop.Platform
             try
             {
                 operationExecutor.ExecuteWithTransientPathRetry(
-                    () => SetAndVerifyInSyncState(fullPlaceholderPath),
+                    () =>
+                    {
+                        if (inSync)
+                        {
+                            SetAndVerifyInSyncState(fullPlaceholderPath);
+                        }
+                        else
+                        {
+                            nativeApi.SetInSyncState(fullPlaceholderPath, inSync: false);
+                            if (nativeApi.GetPlaceholderState(fullPlaceholderPath).HasFlag(WindowsCloudFilesPlaceholderState.InSync))
+                            {
+                                throw new InvalidOperationException("Windows Cloud Files placeholder still reports in-sync while availability is pending.");
+                            }
+                        }
+                    },
                     operation,
                     syncPair.Id.ToString(),
                     registration.LocalRootPath,
@@ -83,7 +97,9 @@ namespace Cotton.Sync.Desktop.Platform
                 syncPair.Id.ToString(),
                 registration.LocalRootPath,
                 normalizedPath,
-                "Windows Cloud Files placeholder was marked in sync.");
+                inSync
+                    ? "Windows Cloud Files placeholder was marked in sync."
+                    : "Windows Cloud Files placeholder has pending offline availability.");
         }
 
         public void SetSyncRootInSyncState(SyncPairSettings syncPair)

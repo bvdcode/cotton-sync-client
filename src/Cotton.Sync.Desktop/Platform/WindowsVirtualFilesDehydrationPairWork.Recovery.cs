@@ -23,6 +23,8 @@ namespace Cotton.Sync.Desktop.Platform
             List<SyncStateEntry> hydratedEntries = new(AvailabilityStateWriteBatchSize);
             Dictionary<string, SyncStateEntry> directoryEntries = new(StringComparer.OrdinalIgnoreCase);
             HashSet<string> completedDirectoryKeys = new(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> pendingDirectoryKeys = new(StringComparer.OrdinalIgnoreCase);
+            HashSet<string> failedDirectoryKeys = new(StringComparer.OrdinalIgnoreCase);
             int hydratedFiles = 0;
             int alreadyHydratedFiles = 0;
 
@@ -40,11 +42,13 @@ namespace Cotton.Sync.Desktop.Platform
                                 hydratedEntries,
                                 directoryEntries,
                                 completedDirectoryKeys,
+                                pendingDirectoryKeys,
                                 cancellationToken)
                             .ConfigureAwait(false);
                 }
                 catch (Exception exception) when (IsRecoverableAvailabilityFailure(exception))
                 {
+                    AddAncestorDirectoryKeys(entry.RelativePath, failedDirectoryKeys);
                     RecordAvailabilityRecoverySkipped(syncPair, entry.RelativePath, exception);
                     continue;
                 }
@@ -73,7 +77,7 @@ namespace Cotton.Sync.Desktop.Platform
             int completedDirectories = CompleteRecoveredDirectories(
                 syncPair,
                 directoryEntries,
-                completedDirectoryKeys,
+                completedDirectoryKeys.Except(failedDirectoryKeys, StringComparer.OrdinalIgnoreCase),
                 cancellationToken);
             RecordAvailabilityRecoveryCompleted(
                 syncPair,
@@ -88,6 +92,7 @@ namespace Cotton.Sync.Desktop.Platform
             ICollection<SyncStateEntry> hydratedEntries,
             IDictionary<string, SyncStateEntry> directoryEntries,
             ISet<string> completedDirectoryKeys,
+            ISet<string> pendingDirectoryKeys,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -126,6 +131,7 @@ namespace Cotton.Sync.Desktop.Platform
                 return WindowsVirtualFilesAvailabilityRecoveryOutcome.Ignored;
             }
 
+            MarkAncestorDirectoriesPending(syncPair, entry.RelativePath, pendingDirectoryKeys);
             await HydrateTrackedPlaceholderAsync(
                     syncPair,
                     entry.RelativePath,

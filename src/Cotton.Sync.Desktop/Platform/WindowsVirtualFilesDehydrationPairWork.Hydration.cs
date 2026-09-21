@@ -106,6 +106,7 @@ namespace Cotton.Sync.Desktop.Platform
                 .ToArray();
             IReadOnlyDictionary<string, WindowsVirtualFileDiskState?> initialDiskStates =
                 CaptureInitialHydrationStates(syncPair, trackedEntries);
+            MarkHydratingDirectoriesPending(syncPair, subtreeEntries, initialDiskStates);
             WindowsVirtualFilesHydrationRun run = new(request, initialDiskStates);
             PublishHydrationRunProgress(syncPair, run, string.Empty, isCompleted: false);
             try

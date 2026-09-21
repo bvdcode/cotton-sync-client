@@ -180,8 +180,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public void HydratePlaceholder(SyncPairSettings syncPair, string relativePath)
             {
+                Hydrating?.Invoke(relativePath);
                 HydratedPaths.Add(relativePath);
             }
+
+            public Action<string>? Hydrating { get; set; }
 
             public Task<RemoteFilePlaceholderResult> FinalizeUploadedFilePlaceholderAsync(
                 SyncPairSettings syncPair,
@@ -201,10 +204,19 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 PinnedPaths.Add(relativePath);
             }
 
-            public void SetInSyncState(SyncPairSettings syncPair, string relativePath)
+            public void SetInSyncState(SyncPairSettings syncPair, string relativePath, bool inSync = true)
             {
-                InSyncPaths.Add(relativePath);
+                if (inSync)
+                {
+                    InSyncPaths.Add(relativePath);
+                }
+                else
+                {
+                    PendingPaths.Add(relativePath);
+                }
             }
+
+            public List<string> PendingPaths { get; } = [];
 
             public WindowsCloudFilesPlaceholderState GetPlaceholderState(
                 SyncPairSettings syncPair,
