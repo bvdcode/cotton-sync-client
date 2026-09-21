@@ -5,6 +5,7 @@ using Cotton.Sync.Local;
 using Cotton.Sync.Remote;
 using Cotton.Sync.State;
 using static Cotton.Sync.SyncFileStateEvaluator;
+using static Cotton.Sync.SyncPathOperations;
 
 namespace Cotton.Sync
 {
@@ -37,7 +38,8 @@ namespace Cotton.Sync
                 localByPath,
                 remoteByPath,
                 scopedFileDeleteKeys,
-                scopedLocalDeletedFileKeys);
+                scopedLocalDeletedFileKeys,
+                scopedDirectoryDelete);
             (int LocalDeletes, IReadOnlyList<string> RemoteDeleteItems) directoryDeletes = CountPlannedDirectoryDeletes(
                 directoryStateByPath,
                 localDirectoriesByPath,
@@ -49,13 +51,19 @@ namespace Cotton.Sync
             List<string> remoteDeletePlanItems = [.. fileDeletes.RemoteDeleteItems, .. directoryDeletes.RemoteDeleteItems];
             if (scopedDirectoryDelete is not null)
             {
-                foreach (string key in scopedDirectoryDelete.DirectoryKeys)
+                foreach (string rootPath in scopedDirectoryDelete.RootPaths)
                 {
-                    remoteDirectoriesByPath.TryGetValue(key, out RemoteDirectorySnapshot? remote);
-                    directoryStateByPath.TryGetValue(key, out SyncStateEntry? state);
-                    remoteDeletePlanItems.Add(RemoteDeletePlanFingerprint.CreateDirectoryItem(
-                        key,
-                        remote?.Node.Id ?? state?.RemoteNodeId));
+                    string rootKey = SyncPath.ToKey(rootPath);
+                    IEnumerable<string> directoryItems = scopedDirectoryDelete.DirectoryKeys
+                        .Where(key => IsSameOrDescendantPathKey(key, rootKey))
+                        .Select(key => RemoteDeletePlanFingerprint.CreateDirectoryItem(
+                            key, remoteDirectoriesByPath[key].Node.Id));
+                    IEnumerable<string> fileItems = scopedDirectoryDelete.FileKeys
+                        .Where(key => IsSameOrDescendantPathKey(key, rootKey))
+                        .Select(key => RemoteDeletePlanFingerprint.CreateFileItem(key, remoteByPath[key].File.Id)
+                            + "\0" + remoteByPath[key].File.ContentHash
+                            + "\0" + remoteByPath[key].File.ETag);
+                    remoteDeletePlanItems.Add(RemoteDeletePlanFingerprint.Create(directoryItems.Concat(fileItems)));
                 }
             }
 
@@ -70,12 +78,18 @@ namespace Cotton.Sync
             IReadOnlyDictionary<string, LocalFileSnapshot> localByPath,
             IReadOnlyDictionary<string, RemoteFileSnapshot> remoteByPath,
             IReadOnlySet<string>? scopedFileDeleteKeys,
-            IReadOnlySet<string> scopedLocalDeletedFileKeys)
+            IReadOnlySet<string> scopedLocalDeletedFileKeys,
+            ScopedVirtualFilesDirectoryDeletePlan? scopedDirectoryDelete)
         {
             int localDeletes = 0;
             List<string> remoteDeleteItems = [];
             foreach (KeyValuePair<string, SyncStateEntry> state in stateByPath)
             {
+                if (scopedDirectoryDelete?.FileKeys.Contains(state.Key) == true)
+                {
+                    continue;
+                }
+
                 localByPath.TryGetValue(state.Key, out LocalFileSnapshot? local);
                 remoteByPath.TryGetValue(state.Key, out RemoteFileSnapshot? remote);
                 SyncDeleteDirection direction = GetPlannedDeleteDirection(
@@ -121,7 +135,7 @@ namespace Cotton.Sync
             List<string> remoteDeleteItems = [];
             foreach (KeyValuePair<string, SyncStateEntry> state in directoryStateByPath)
             {
-                if (scopedDirectoryDelete?.DirectoryKeys.Contains(state.Key, PathComparer) == true)
+                if (scopedDirectoryDelete?.DirectoryKeys.Contains(state.Key) == true)
                 {
                     continue;
                 }

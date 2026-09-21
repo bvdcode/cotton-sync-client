@@ -78,7 +78,7 @@ namespace Cotton.Sync
             string key,
             out SyncStateEntry? state)
         {
-            if (context.PlannedScopedDeleteKeys?.Contains(key, PathComparer) == true)
+            if (context.PlannedScopedDeleteKeys?.Contains(key) == true)
             {
                 state = null;
                 return false;
@@ -102,6 +102,21 @@ namespace Cotton.Sync
         {
             if (local is null && remote is null)
             {
+                if (context.ScopedLocalDeletedKeys.Contains(key)
+                    && !context.LocalByPath.Keys.Any(child => IsSameOrDescendantPathKey(child, key))
+                    && !context.RemoteByPath.Keys.Any(child => IsSameOrDescendantPathKey(child, key))
+                    && !context.LocalFilesByPath.Keys.Any(child => IsSameOrDescendantPathKey(child, key))
+                    && !context.RemoteFilesByPath.Keys.Any(child => IsSameOrDescendantPathKey(child, key))
+                    && !Path.Exists(ResolveLocalPath(context.SyncPair.LocalRootPath, relativePath)))
+                {
+                    await stateStore.DeleteByPathPrefixAsync(
+                            context.SyncPair.SyncPairId,
+                            relativePath,
+                            context.CancellationToken)
+                        .ConfigureAwait(false);
+                    return;
+                }
+
                 await stateStore.DeleteAsync(
                         context.SyncPair.SyncPairId,
                         relativePath,
@@ -150,7 +165,7 @@ namespace Cotton.Sync
             return context.SyncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
                 && !context.Options.Scope.IsFull
                 && context.ScopedLocalDeletedKeys.Contains(directoryKey)
-                && context.PlannedScopedDeleteKeys?.Contains(directoryKey, PathComparer) != true;
+                && context.PlannedScopedDeleteKeys?.Contains(directoryKey) != true;
         }
 
         private async Task ReconcileRemoteDeletedDirectoryAsync(

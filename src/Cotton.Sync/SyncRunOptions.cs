@@ -37,7 +37,8 @@ namespace Cotton.Sync
         public int MaximumLocalDeletesPerRun { get; set; } = DefaultMaximumDeletesPerRun;
 
         /// <summary>
-        /// Gets or sets the maximum number of remote files that can be removed in one sync pass.
+        /// Gets or sets the maximum number of remote delete operations in one sync pass.
+        /// A confirmed local folder deletion counts as one operation for its entire subtree.
         /// </summary>
         public int MaximumRemoteDeletesPerRun { get; set; } = DefaultMaximumDeletesPerRun;
 

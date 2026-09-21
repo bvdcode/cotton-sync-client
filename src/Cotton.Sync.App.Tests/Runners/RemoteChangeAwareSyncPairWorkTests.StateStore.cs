@@ -184,6 +184,17 @@ namespace Cotton.Sync.App.Tests.Runners
                 return Task.CompletedTask;
             }
 
+            public async Task DeleteByPathPrefixAsync(string syncPairId, string relativePathPrefix, CancellationToken cancellationToken = default)
+            {
+                string key = SyncPath.ToKey(relativePathPrefix);
+                IReadOnlyList<SyncStateEntry> entries = await LoadPairAsync(syncPairId, cancellationToken);
+                foreach (SyncStateEntry entry in entries.Where(entry =>
+                             SyncPath.ToKey(entry.RelativePath) == key
+                             || SyncPath.ToKey(entry.RelativePath).StartsWith(key + "/", StringComparison.Ordinal)))
+                {
+                    await DeleteAsync(syncPairId, entry.RelativePath, cancellationToken);
+                }
+            }
             public Task DeletePairAsync(string syncPairId, CancellationToken cancellationToken = default)
             {
                 _entries.RemoveAll(item => item.SyncPairId == syncPairId);

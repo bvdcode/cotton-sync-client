@@ -19,8 +19,9 @@ namespace Cotton.Sync.Tests
     public partial class SyncEngineTests
     {
 
-        [Test]
-        public async Task RunOnceAsync_WithScopedWindowsVirtualFilesDeletesLocalDirectorySubtreeInOnePass()
+        [TestCase(false)]
+        [TestCase(true)]
+        public async Task RunOnceAsync_WithScopedWindowsVirtualFilesDeletesLocalDirectorySubtreeInOnePass(bool includeDescendantEvents)
         {
             const string rootPath = "Library";
             const string nestedPath = "Library/Disc1";
@@ -59,26 +60,26 @@ namespace Cotton.Sync.Tests
                 Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
                 new SyncRunOptions
                 {
-                    Scope = SyncRunScope.ForLocalChangedPaths([rootPath], [rootPath]),
+                    Scope = SyncRunScope.ForLocalChangedPaths(
+                        [rootPath],
+                        includeDescendantEvents
+                            ? [rootPath, nestedPath, deepPath, emptyPath, rootFilePath, nestedFilePath]
+                            : [rootPath]),
                 });
 
             IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
             Assert.Multiple(() =>
             {
-                Assert.That(
-                    remoteFiles.Deletes.Select(call => call.NodeFileId),
-                    Is.EquivalentTo(new[] { rootFile.Id, nestedFile.Id }));
+                Assert.That(remoteFiles.Deletes, Is.Empty);
                 Assert.That(
                     remoteDirectories.Deletes,
                     Is.EqualTo(new[]
                     {
-                        (deep.Node.Id, false),
-                        (nested.Node.Id, false),
-                        (empty.Node.Id, false),
                         (root.Node.Id, false),
                     }));
                 Assert.That(state, Is.Empty);
                 Assert.That(result.RequiresUserAction, Is.False);
+                Assert.That(result.Activities, Has.Count.EqualTo(1));
                 Assert.That(result.Activities.Any(activity => activity.Kind == SyncActivityKind.Skipped), Is.False);
             });
         }
@@ -175,7 +176,7 @@ namespace Cotton.Sync.Tests
 
 
         [Test]
-        public async Task RunOnceAsync_WithScopedWindowsVirtualFilesCountsDeletedSubtreeDirectoriesInRemoteDeleteGuard()
+        public async Task RunOnceAsync_WithScopedWindowsVirtualFilesCountsSeparateDeletedRootsInRemoteDeleteGuard()
         {
             const string rootPath = "Library";
             const string filePath = "Library/tracked.bin";
@@ -183,6 +184,8 @@ namespace Cotton.Sync.Tests
             NodeFileManifestDto remoteFile = RemoteFile(filePath, HashText("tracked-content"), sizeBytes: 1024);
             RemoteTreeSnapshot remoteTree = RemoteTree(remoteFile);
             remoteTree.Directories.Add(root);
+            RemoteDirectorySnapshot otherRoot = RemoteDirectory("Other");
+            remoteTree.Directories.Add(otherRoot);
             FakeRemoteFileSynchronizer remoteFiles = new();
             FakeRemoteDirectorySynchronizer remoteDirectories = new();
             SqliteSyncStateStore stateStore = new(_databasePath);
@@ -194,12 +197,13 @@ namespace Cotton.Sync.Tests
                 remoteDirectories: remoteDirectories);
             await InsertDirectoryBaselineAsync(stateStore, rootPath, root.Node);
             await InsertPlaceholderBaselineAsync(stateStore, filePath, remoteFile);
+            await InsertDirectoryBaselineAsync(stateStore, "Other", otherRoot.Node);
 
             SyncRunResult result = await engine.RunOnceAsync(
                 Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
                 new SyncRunOptions
                 {
-                    Scope = SyncRunScope.ForLocalChangedPaths([rootPath], [rootPath]),
+                    Scope = SyncRunScope.ForLocalChangedPaths([rootPath, "Other"], [rootPath, "Other"]),
                     MaximumRemoteDeletesPerRun = 1,
                 });
 
@@ -208,9 +212,9 @@ namespace Cotton.Sync.Tests
             {
                 Assert.That(remoteFiles.Deletes, Is.Empty);
                 Assert.That(remoteDirectories.Deletes, Is.Empty);
-                Assert.That(state, Has.Count.EqualTo(2));
+                Assert.That(state, Has.Count.EqualTo(3));
                 Assert.That(result.RequiresUserAction, Is.True);
-                Assert.That(result.Activities, Has.Count.EqualTo(1));
+                Assert.That(result.Activities, Has.Count.EqualTo(2));
                 Assert.That(result.Activities[0].Kind, Is.EqualTo(SyncActivityKind.Skipped));
                 Assert.That(result.Activities[0].Details, Does.Contain("2 pending deletes exceed limit 1"));
             });

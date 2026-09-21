@@ -101,14 +101,6 @@ namespace Cotton.Sync
             IDictionary<string, SyncStateEntry> directoryStateByPath,
             CancellationToken cancellationToken)
         {
-            if (await HasRemainingScopedVirtualFilesAsync(
-                    syncPair.SyncPairId,
-                    plan.FilePaths,
-                    cancellationToken).ConfigureAwait(false))
-            {
-                return;
-            }
-
             IRemoteDirectorySynchronizer? synchronizer = remoteDirectories;
             if (synchronizer is null)
             {
@@ -116,7 +108,7 @@ namespace Cotton.Sync
                     result,
                     options,
                     plan.RootPaths,
-                    "Remote folder cleanup is not available after the confirmed local subtree delete.");
+                    "Remote folder deletion is not available for the confirmed local subtree delete.");
                 return;
             }
 
@@ -139,29 +131,10 @@ namespace Cotton.Sync
                 options,
                 result,
                 synchronizer,
-                plan.DirectoryKeys,
+                plan,
                 remoteDirectoriesByPath,
                 directoryStateByPath,
                 cancellationToken).ConfigureAwait(false);
-        }
-
-        private async Task<bool> HasRemainingScopedVirtualFilesAsync(
-            string syncPairId,
-            IEnumerable<string> relativePaths,
-            CancellationToken cancellationToken)
-        {
-            foreach (string relativePath in relativePaths)
-            {
-                SyncStateEntry? remaining = await stateStore
-                    .GetAsync(syncPairId, relativePath, cancellationToken)
-                    .ConfigureAwait(false);
-                if (remaining is not null)
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         private static bool AreScopedRemoteDirectoriesCurrent(
@@ -205,32 +178,43 @@ namespace Cotton.Sync
             SyncRunOptions options,
             SyncRunResult result,
             IRemoteDirectorySynchronizer remoteDirectories,
-            IEnumerable<string> directoryKeys,
+            ScopedVirtualFilesDirectoryDeletePlan plan,
             IDictionary<string, RemoteDirectorySnapshot> remoteDirectoriesByPath,
             IDictionary<string, SyncStateEntry> directoryStateByPath,
             CancellationToken cancellationToken)
         {
-            foreach (string key in directoryKeys
-                         .OrderByDescending(GetPathDepth)
-                         .ThenBy(static key => key, StringComparer.OrdinalIgnoreCase))
+            foreach (string rootPath in plan.RootPaths)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                string key = SyncPath.ToKey(rootPath);
                 SyncStateEntry state = directoryStateByPath[key];
                 RemoteDirectorySnapshot remote = remoteDirectoriesByPath[key];
+                string fullPath = ResolveLocalPath(syncPair.LocalRootPath, rootPath);
+                if (Directory.Exists(fullPath) || File.Exists(fullPath))
+                {
+                    ReportScopedDirectoryDeleteSkipped(result, options, [rootPath],
+                        "Remote folder delete stopped because the local path exists again.");
+                    continue;
+                }
+
                 await remoteDirectories
                     .DeleteDirectoryAsync(remote.Node.Id, options.DeleteRemotePermanently, cancellationToken)
                     .ConfigureAwait(false);
                 await stateStore
-                    .DeleteAsync(syncPair.SyncPairId, state.RelativePath, cancellationToken)
+                    .DeleteByPathPrefixAsync(syncPair.SyncPairId, state.RelativePath, cancellationToken)
                     .ConfigureAwait(false);
-                directoryStateByPath.Remove(key);
-                remoteDirectoriesByPath.Remove(key);
+                foreach (string directoryKey in plan.DirectoryKeys.Where(
+                             directoryKey => IsSameOrDescendantPathKey(directoryKey, key)))
+                {
+                    directoryStateByPath.Remove(directoryKey);
+                    remoteDirectoriesByPath.Remove(directoryKey);
+                }
                 SyncActivityReporter.ReportActivity(
                     result,
                     options,
                     SyncActivityKind.DeletedRemote,
                     state.RelativePath,
-                    "Deleted folder after confirmed local subtree delete.");
+                    "Deleted remote folder with its contents after confirmed local subtree delete.");
             }
         }
     }

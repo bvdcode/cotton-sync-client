@@ -59,12 +59,10 @@ namespace Cotton.Sync
                 fileKeys.UnionWith(root.FileKeys);
             }
 
-            string[] orderedFileKeys = fileKeys.OrderBy(static key => key, StringComparer.OrdinalIgnoreCase).ToArray();
             return new ScopedVirtualFilesDirectoryDeletePlan(
                 rootPaths,
-                directoryKeys.OrderBy(static key => key, StringComparer.OrdinalIgnoreCase).ToArray(),
-                orderedFileKeys,
-                orderedFileKeys.Select(key => context.FileStateByPath[key].RelativePath).ToArray());
+                directoryKeys,
+                fileKeys);
         }
 
         private static ScopedVirtualFilesDirectoryDeleteRoot? TryCreateConfirmedScopedDirectoryDeleteRoot(
@@ -128,7 +126,10 @@ namespace Cotton.Sync
             {
                 SyncStateEntry state = context.FileStateByPath[key];
                 RemoteFileSnapshot remote = context.RemoteFilesByPath[key];
-                if (state.RemoteFileId != remote.File.Id || !RemoteMatchesBaseline(remote.File, state))
+                if (state.RemoteFileId != remote.File.Id
+                    || !RemoteMatchesBaseline(remote.File, state)
+                    || (!string.IsNullOrWhiteSpace(state.LocalContentHash)
+                        && !ContentMatches(state.LocalContentHash, state.RemoteContentHash)))
                 {
                     return false;
                 }

@@ -244,6 +244,10 @@ namespace Cotton.Sync.Tests
 
         private class FakeRemoteDirectorySynchronizer : IRemoteDirectorySynchronizer
         {
+            public Exception? DeleteFailure { get; set; }
+
+            public Action? OnDeleted { get; set; }
+
             public List<CreateDirectoryCall> CreateAttempts { get; } = [];
 
             public List<CreateDirectoryCall> Creates { get; } = [];
@@ -296,7 +300,13 @@ namespace Cotton.Sync.Tests
 
             public Task DeleteDirectoryAsync(Guid nodeId, bool skipTrash = false, CancellationToken cancellationToken = default)
             {
+                if (DeleteFailure is not null)
+                {
+                    throw DeleteFailure;
+                }
+
                 Deletes.Add((nodeId, skipTrash));
+                OnDeleted?.Invoke();
                 return Task.CompletedTask;
             }
         }

@@ -22,6 +22,10 @@ namespace Cotton.Sync
                 context.LocalFilesByPath.Keys,
                 context.RemoteFilesByPath.Keys,
                 context.FileStateByPath.Keys);
+            if (deletePlan.ScopedDirectoryDelete is not null)
+            {
+                pathKeys = pathKeys.Where(key => !deletePlan.ScopedDirectoryDelete.FileKeys.Contains(key)).ToArray();
+            }
             EnsureEnoughLocalFreeSpaceForPlannedDownloads(
                 context.SyncPair,
                 pathKeys,

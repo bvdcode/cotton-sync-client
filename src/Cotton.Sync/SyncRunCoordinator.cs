@@ -199,13 +199,6 @@ namespace Cotton.Sync
                 : BuildExactScopedPathKeys(context.Options.Scope.LocalChangedPaths);
             IReadOnlySet<string> scopedLocalDeletedFileKeys =
                 BuildExactScopedPathKeys(context.Options.Scope.LocalDeletedPaths);
-            if (scopedDirectoryDelete is not null)
-            {
-                scopedFileDeleteKeys = AddScopedPathKeys(scopedFileDeleteKeys!, scopedDirectoryDelete.FileKeys);
-                scopedLocalDeletedFileKeys = AddScopedPathKeys(
-                    scopedLocalDeletedFileKeys,
-                    scopedDirectoryDelete.FileKeys);
-            }
             SyncDeleteGuard deleteGuard = BuildDeleteGuard(
                 context.Options,
                 context.LocalFilesByPath,
@@ -243,6 +236,20 @@ namespace Cotton.Sync
             SyncDeletePlan deletePlan,
             IReadOnlyList<string> directoryPathKeys)
         {
+            if (deletePlan.ScopedDirectoryDelete is not null)
+            {
+                await scopedDirectoryDeleteExecutor.DeleteConfirmedScopedVirtualFilesDirectorySubtreesAsync(
+                        context.SyncPair,
+                        context.Options,
+                        context.Result,
+                        deletePlan.DeleteGuard,
+                        deletePlan.ScopedDirectoryDelete,
+                        context.RemoteDirectoriesByPath,
+                        context.DirectoryStateByPath,
+                        context.CancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             if (!deletePlan.RequiresDirectoryReconciliation)
             {
                 return;
@@ -284,20 +291,6 @@ namespace Cotton.Sync
                         deletePlan.DeleteGuard,
                         directoryPathKeys,
                         context.LocalDirectoriesByPath,
-                        context.RemoteDirectoriesByPath,
-                        context.DirectoryStateByPath,
-                        context.CancellationToken)
-                    .ConfigureAwait(false);
-            }
-
-            if (deletePlan.ScopedDirectoryDelete is not null)
-            {
-                await scopedDirectoryDeleteExecutor.DeleteConfirmedScopedVirtualFilesDirectorySubtreesAsync(
-                        context.SyncPair,
-                        context.Options,
-                        context.Result,
-                        deletePlan.DeleteGuard,
-                        deletePlan.ScopedDirectoryDelete,
                         context.RemoteDirectoriesByPath,
                         context.DirectoryStateByPath,
                         context.CancellationToken)

@@ -210,6 +210,11 @@ namespace Cotton.Sync.State
         Task DeleteAsync(string syncPairId, string relativePath, CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Deletes the entry at a relative path and all its descendants in one durable write.
+        /// </summary>
+        Task DeleteByPathPrefixAsync(string syncPairId, string relativePathPrefix, CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Deletes all persisted state for a sync pair.
         /// </summary>
         Task DeletePairAsync(string syncPairId, CancellationToken cancellationToken = default);

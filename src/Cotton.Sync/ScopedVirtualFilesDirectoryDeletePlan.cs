@@ -5,7 +5,6 @@ namespace Cotton.Sync
 {
     internal record ScopedVirtualFilesDirectoryDeletePlan(
         IReadOnlyList<string> RootPaths,
-        IReadOnlyList<string> DirectoryKeys,
-        IReadOnlyList<string> FileKeys,
-        IReadOnlyList<string> FilePaths);
+        IReadOnlySet<string> DirectoryKeys,
+        IReadOnlySet<string> FileKeys);
 }

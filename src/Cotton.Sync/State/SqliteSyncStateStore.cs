@@ -324,6 +324,33 @@ namespace Cotton.Sync.State
         }
 
         /// <inheritdoc />
+        public async Task DeleteByPathPrefixAsync(
+            string syncPairId,
+            string relativePathPrefix,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
+            string key = SyncPath.ToKey(relativePathPrefix);
+            string childPrefix = key + "/";
+            await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+            SemaphoreSlim gate = GetWriteGate();
+            await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await using SyncStateDbContext context = _contextFactory.Create();
+                await context.SyncEntries
+                    .Where(entry => entry.SyncPairId == syncPairId
+                        && (entry.RelativePathKey == key || entry.RelativePathKey.StartsWith(childPrefix)))
+                    .ExecuteDeleteAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
+
+        /// <inheritdoc />
         public async Task DeletePairAsync(string syncPairId, CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);

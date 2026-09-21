@@ -101,6 +101,11 @@ namespace Cotton.Sync.Tests
                 return _inner.DeleteAsync(syncPairId, relativePath, cancellationToken);
             }
 
+            public virtual Task DeleteByPathPrefixAsync(string syncPairId, string relativePathPrefix, CancellationToken cancellationToken = default)
+            {
+                return _inner.DeleteByPathPrefixAsync(syncPairId, relativePathPrefix, cancellationToken);
+            }
+
             public virtual Task DeletePairAsync(string syncPairId, CancellationToken cancellationToken = default)
             {
                 return _inner.DeletePairAsync(syncPairId, cancellationToken);
@@ -137,6 +142,11 @@ namespace Cotton.Sync.Tests
             public override Task DeleteAsync(string syncPairId, string relativePath, CancellationToken cancellationToken = default)
             {
                 throw new InvalidOperationException("State delete failed.");
+            }
+
+            public override Task DeleteByPathPrefixAsync(string syncPairId, string relativePathPrefix, CancellationToken cancellationToken = default)
+            {
+                throw new InvalidOperationException("State subtree delete failed.");
             }
         }
 

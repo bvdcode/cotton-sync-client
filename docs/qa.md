@@ -12,6 +12,12 @@ This document records the release, packaging, sync, virtual-files, diagnostics, 
 - CLI and desktop live smoke evidence.
 - Diagnostics, update, autostart, tray, uninstall, and packaging checks.
 
+## Folder Deletion To Trash — 2026-09-20
+
+An observed local folder deletion in Windows virtual-files mode now sends one remote folder deletion request after its complete tracked subtree matches the remote snapshot. Descendant files are excluded from individual deletion and the mass-delete limit counts the folder as one operation. The approval fingerprint includes descendant identities and content versions. New remote files, changed remote content, diverged baselines, and reappearing local paths prevent subtree deletion.
+
+Core regression checks passed for a folder containing 238 files, nested folder events, separate deletion roots, exact approval, and retries after remote or state-write failure. State cleanup uses one durable subtree deletion and preserves neighboring paths, other sync pairs, and the change cursor. A live HTTP check on a demo server sent one folder-to-trash request, restored 12 files and three directories with one folder restore, and verified every original identifier and file content hash.
+
 ## v0.1.91 Installed Baseline And Current Source Acceptance
 
 This section records the 2026-08-30 installed-release baseline and the subsequent current-source acceptance run against an ordinary account on `<server profile>`. Every remote and local mutation stayed under a run-specific QA namespace.
