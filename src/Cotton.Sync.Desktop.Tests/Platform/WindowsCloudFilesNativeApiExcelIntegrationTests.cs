@@ -106,7 +106,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private static string GetShellHelperPath()
+        internal static string GetShellHelperPath()
         {
             return Path.GetFullPath(Path.Combine(
                 AppContext.BaseDirectory,

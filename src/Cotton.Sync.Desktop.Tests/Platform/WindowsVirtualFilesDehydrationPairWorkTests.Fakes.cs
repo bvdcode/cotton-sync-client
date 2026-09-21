@@ -124,6 +124,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<string> RestoredPaths { get; } = [];
 
+            public List<string> FinalizedPaths { get; } = [];
+
             public List<string> PinnedPaths { get; } = [];
 
             public List<string> InSyncPaths { get; } = [];
@@ -179,6 +181,19 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public void HydratePlaceholder(SyncPairSettings syncPair, string relativePath)
             {
                 HydratedPaths.Add(relativePath);
+            }
+
+            public Task<RemoteFilePlaceholderResult> FinalizeUploadedFilePlaceholderAsync(
+                SyncPairSettings syncPair,
+                SyncStateEntry fileState,
+                CancellationToken cancellationToken = default)
+            {
+                FinalizedPaths.Add(fileState.RelativePath);
+                return Task.FromResult(new RemoteFilePlaceholderResult(
+                    fileState.PlaceholderIdentity,
+                    SyncPlaceholderHydrationState.Hydrated,
+                    fileState.LocalSizeBytes,
+                    fileState.LocalLastWriteUtc));
             }
 
             public void PinPlaceholder(SyncPairSettings syncPair, string relativePath)

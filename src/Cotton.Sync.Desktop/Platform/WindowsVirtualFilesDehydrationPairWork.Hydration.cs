@@ -356,6 +356,17 @@ namespace Cotton.Sync.Desktop.Platform
             state.LocalContentHash = state.RemoteContentHash;
             state.LocalLastWriteUtc = hydratedState.LastWriteUtc;
             state.LocalSizeBytes = hydratedState.Length;
+            if ((hydratedState.Attributes & FileAttributes.ReparsePoint) == 0)
+            {
+                RemoteFilePlaceholderResult finalized = await _cloudFiles
+                    .FinalizeUploadedFilePlaceholderAsync(syncPair, state, cancellationToken)
+                    .ConfigureAwait(false);
+                state.PlaceholderIdentity = finalized.PlaceholderIdentity;
+                state.PlaceholderHydrationState = finalized.HydrationState;
+                state.LocalSizeBytes = finalized.LocalSizeBytes;
+                state.LocalLastWriteUtc = finalized.LocalLastWriteUtc;
+            }
+
             state.SyncedAtUtc = DateTime.UtcNow;
             if (persistState)
             {

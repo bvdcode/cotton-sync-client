@@ -340,6 +340,10 @@ jobs:
       - name: Publish desktop Windows x64
         run: dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --no-restore /p:PublishProfile=win-x64 -p:Version='${{ steps.gitversion.outputs.SemVer }}' -p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}' -p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}' -p:InformationalVersion='${{ steps.gitversion.outputs.SemVer }}'
 
+      - name: Verify pinned files regain Cloud Files identity
+        timeout-minutes: 4
+        run: dotnet test src/Cotton.Sync.Desktop.Tests/Cotton.Sync.Desktop.Tests.csproj -c Release -p:RestoreLockedMode=true --filter "FullyQualifiedName~RunOnceAsync_PinnedRegularFileRegainsCloudIdentity"
+
       - name: Smoke desktop Windows self-test
         timeout-minutes: 4
         shell: pwsh

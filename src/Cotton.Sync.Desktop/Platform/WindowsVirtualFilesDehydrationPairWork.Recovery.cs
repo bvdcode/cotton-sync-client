@@ -120,7 +120,8 @@ namespace Cotton.Sync.Desktop.Platform
                 return WindowsVirtualFilesAvailabilityRecoveryOutcome.AlreadyHydrated;
             }
 
-            if (!IsManualAlwaysKeepCandidate(fileState.Attributes, entry.PlaceholderHydrationState))
+            if (!IsManualAlwaysKeepCandidate(fileState.Attributes, entry.PlaceholderHydrationState)
+                && (fileState.Attributes & FileAttributes.ReparsePoint) != 0)
             {
                 return WindowsVirtualFilesAvailabilityRecoveryOutcome.Ignored;
             }
