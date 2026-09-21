@@ -11,7 +11,7 @@ namespace Cotton.Sync.Desktop.Platform
         private const int ShcneUpdatedir = 0x00001000;
         private const int ShcneUpdateitem = 0x00002000;
         private const uint ShcnfPathw = 0x0005;
-        private const uint ShcnfFlushnowait = 0x2000;
+        private const uint ShcnfFlushnowait = 0x3000;
 
         public void NotifyItemUpdated(string path)
         {
