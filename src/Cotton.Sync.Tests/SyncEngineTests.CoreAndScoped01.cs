@@ -87,7 +87,7 @@ namespace Cotton.Sync.Tests
 
             SyncRunResult result = await engine.RunOnceAsync(
                 Pair(),
-                new SyncRunOptions { ActivityProgress = new Progress<SyncActivity>(progress.Add) });
+                new SyncRunOptions { ActivityProgress = new RecordingProgress<SyncActivity>(progress.Add) });
 
             SyncStateEntry? entry = await stateStore.GetAsync("pair-a", "docs/LOCAL.txt");
             Assert.Multiple(() =>
