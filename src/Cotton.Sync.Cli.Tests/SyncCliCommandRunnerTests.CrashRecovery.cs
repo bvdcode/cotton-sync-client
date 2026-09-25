@@ -145,7 +145,7 @@ namespace Cotton.Sync.Cli.Tests
             SyncStateEntry? entryAfterRecovery = await store.GetAsync(syncPairId, relativePath);
             string[] remainingTemporaryFiles = ListTemporaryDownloads(temporaryDirectory);
             IReadOnlyList<HttpRequestSnapshot> requests = server.Requests;
-            string downloadPath = "/api/v1/files/" + server.RemoteFileId.ToString("D") + "/content?download=false";
+            string downloadPath = "/api/v1/files/" + server.RemoteFileId.ToString("D") + "/content?chunkNumber=";
             server.AssertNoFaults();
 
             Assert.Multiple(() =>
@@ -166,13 +166,11 @@ namespace Cotton.Sync.Cli.Tests
                 Assert.That(remainingTemporaryFiles, Is.Empty);
                 Assert.That(
                     requests.Count(request => request.Method == HttpMethod.Get
-                        && request.PathAndQuery == downloadPath
-                        && request.GetHeader("Range") == $"bytes=0-{content.Length / 2 - 1}"),
-                    Is.EqualTo(1));
+                        && request.PathAndQuery == downloadPath + "0"),
+                    Is.EqualTo(2));
                 Assert.That(
                     requests.Count(request => request.Method == HttpMethod.Get
-                        && request.PathAndQuery == downloadPath
-                        && request.GetHeader("Range") == $"bytes={content.Length / 2}-{content.Length - 1}"),
+                        && request.PathAndQuery == downloadPath + "1"),
                     Is.EqualTo(2));
                 Assert.That(Directory.EnumerateDirectories(cacheDirectory), Is.Empty);
             });

@@ -37,6 +37,11 @@ namespace Cotton.Sync.Remote
         public int MaxDownloadChunkAttempts { get; set; } = 3;
 
         /// <summary>
+        /// Gets or sets the maximum number of content chunks downloaded concurrently.
+        /// </summary>
+        public int MaxConcurrentChunkDownloads { get; set; } = 2;
+
+        /// <summary>
         /// Gets or sets an optional content type resolver for uploaded files.
         /// </summary>
         public Func<string, string>? ContentTypeResolver { get; set; }

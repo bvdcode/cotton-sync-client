@@ -8,6 +8,8 @@ namespace Cotton.Sync.Remote
         private readonly IProgress<SyncTransferProgress> _progress;
         private readonly string _relativePath;
         private readonly long? _totalBytes;
+        private readonly object _gate = new();
+        private long _lastTransferredBytes;
 
         public DownloadTransferProgress(
             IProgress<SyncTransferProgress> progress,
@@ -19,16 +21,28 @@ namespace Cotton.Sync.Remote
             _totalBytes = totalBytes;
         }
 
-        public long LastTransferredBytes { get; private set; }
+        public long LastTransferredBytes
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _lastTransferredBytes;
+                }
+            }
+        }
 
         public void Report(long transferredBytes)
         {
-            LastTransferredBytes = transferredBytes;
-            _progress.Report(new SyncTransferProgress(
-                SyncTransferDirection.Download,
-                _relativePath,
-                transferredBytes,
-                _totalBytes));
+            lock (_gate)
+            {
+                _lastTransferredBytes = Math.Max(_lastTransferredBytes, transferredBytes);
+                _progress.Report(new SyncTransferProgress(
+                    SyncTransferDirection.Download,
+                    _relativePath,
+                    _lastTransferredBytes,
+                    _totalBytes));
+            }
         }
     }
 }

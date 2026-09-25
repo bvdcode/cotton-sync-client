@@ -40,6 +40,7 @@ namespace Cotton.Sync.Remote
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(_options.MaxConcurrentChunkUploads);
             ArgumentException.ThrowIfNullOrWhiteSpace(_options.DownloadCacheDirectory);
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(_options.MaxDownloadChunkAttempts);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(_options.MaxConcurrentChunkDownloads);
             _directoryResolver = new RemoteDirectoryPathResolver(_client.Nodes, _options.DirectoryPageSize);
             _chunkUploader = new RemoteChunkUploader(_client.Chunks, _options.MaxConcurrentChunkUploads);
         }
@@ -129,8 +130,8 @@ namespace Cotton.Sync.Remote
         public Task DownloadFileAsync(Guid nodeFileId, Stream destination, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(destination);
-            return new ManifestChunkDownloader(_client.Files, _options).DownloadAsync(
-                nodeFileId, destination, progress: null, cancellationToken);
+            return _client.Files.DownloadContentAsync(
+                nodeFileId, destination, cancellationToken: cancellationToken);
         }
 
         /// <inheritdoc />
@@ -166,13 +167,13 @@ namespace Cotton.Sync.Remote
 
         /// <inheritdoc />
         public async Task DownloadFileAsync(
-            Guid nodeFileId,
+            RemoteFileDownloadIdentity file,
             string relativePath,
-            long? totalBytes,
             Stream destination,
             IProgress<SyncTransferProgress>? transferProgress,
             CancellationToken cancellationToken = default)
         {
+            ArgumentNullException.ThrowIfNull(file);
             ArgumentNullException.ThrowIfNull(destination);
             string normalizedPath = SyncPath.Normalize(relativePath);
             ReportTransfer(
@@ -180,20 +181,24 @@ namespace Cotton.Sync.Remote
                 SyncTransferDirection.Download,
                 normalizedPath,
                 transferredBytes: 0,
-                totalBytes);
+                file.SizeBytes);
             DownloadTransferProgress? progress = transferProgress is null
                 ? null
-                : new DownloadTransferProgress(transferProgress, normalizedPath, totalBytes);
-            await new ManifestChunkDownloader(_client.Files, _options)
-                .DownloadAsync(nodeFileId, destination, progress, cancellationToken)
+                : new DownloadTransferProgress(transferProgress, normalizedPath, file.SizeBytes);
+            await new ChunkContentDownloader(_client.Files, _options)
+                .DownloadAsync(
+                    file,
+                    destination,
+                    progress,
+                    cancellationToken)
                 .ConfigureAwait(false);
-            long completedBytes = totalBytes ?? progress?.LastTransferredBytes ?? 0;
+            long completedBytes = file.SizeBytes ?? progress?.LastTransferredBytes ?? 0;
             ReportTransfer(
                 transferProgress,
                 SyncTransferDirection.Download,
                 normalizedPath,
                 completedBytes,
-                totalBytes,
+                file.SizeBytes,
                 isCompleted: true);
         }
 
@@ -221,8 +226,8 @@ namespace Cotton.Sync.Remote
             DownloadTransferProgress? progress = transferProgress is null
                 ? null
                 : new DownloadTransferProgress(transferProgress, normalizedPath, length);
-            await new ManifestChunkDownloader(_client.Files, _options)
-                .DownloadRangeAsync(nodeFileId, destination, offset, length, expectedETag, progress, cancellationToken)
+            await _client.Files
+                .DownloadContentRangeAsync(nodeFileId, destination, offset, length, expectedETag, progress, cancellationToken)
                 .ConfigureAwait(false);
             ReportTransfer(
                 transferProgress,

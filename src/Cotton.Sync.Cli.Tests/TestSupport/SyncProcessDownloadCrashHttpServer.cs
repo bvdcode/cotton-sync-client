@@ -67,16 +67,9 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
             }
 
             if (request.Method == HttpMethod.Get
-                && request.PathAndQuery == "/api/v1/files/" + RemoteFileId.ToString("D") + "/content-manifest")
-            {
-                await WriteJsonAsync(response, HttpStatusCode.OK,
-                    SyncTestContentManifestFactory.Create(RemoteFileId, _content, _content.Length / 2),
-                    cancellationToken).ConfigureAwait(false);
-                return;
-            }
-
-            if (request.Method == HttpMethod.Get
-                && request.PathAndQuery == "/api/v1/files/" + RemoteFileId.ToString("D") + "/content?download=false")
+                && request.PathAndQuery.StartsWith(
+                    "/api/v1/files/" + RemoteFileId.ToString("D") + "/content?chunkNumber=",
+                    StringComparison.Ordinal))
             {
                 Assert.That(request.GetHeader("If-Match"), Is.EqualTo("\"sha256-" + _contentHash + "\""));
                 await WriteContentAsync(response, request, cancellationToken).ConfigureAwait(false);
@@ -101,18 +94,18 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
             CancellationToken cancellationToken)
         {
             int split = _content.Length / 2;
-            string? range = request.GetHeader("Range");
-            int offset = range switch
+            string chunk = request.PathAndQuery[(request.PathAndQuery.LastIndexOf('=') + 1)..];
+            int offset = chunk switch
             {
-                string first when first == $"bytes=0-{split - 1}" => 0,
-                string second when second == $"bytes={split}-{_content.Length - 1}" => split,
-                _ => throw new InvalidOperationException("Unexpected download range: " + range),
+                "0" => 0,
+                "1" => split,
+                _ => throw new InvalidOperationException("Unexpected download chunk: " + chunk),
             };
             int length = offset == 0 ? split : _content.Length - split;
-            response.StatusCode = (int)HttpStatusCode.PartialContent;
+            response.StatusCode = (int)HttpStatusCode.OK;
             response.ContentType = "text/plain";
             response.ContentLength64 = length;
-            response.Headers["Content-Range"] = $"bytes {offset}-{offset + length - 1}/{_content.Length}";
+            response.Headers["X-Cotton-Chunk-Count"] = "2";
             response.Headers["ETag"] = "\"sha256-" + _contentHash + "\"";
             if (offset == split && !_firstDownloadWasBlocked)
             {

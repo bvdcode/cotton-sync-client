@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
-using System.Security.Cryptography;
-using Cotton.Files;
-
 namespace Cotton.Sync.Remote
 {
     internal class DownloadChunkCache : IAsyncDisposable
@@ -27,13 +24,21 @@ namespace Cotton.Sync.Remote
 
         public static async Task<DownloadChunkCache> AcquireAsync(
             string rootDirectory,
-            FileContentManifestDto manifest,
+            Guid nodeFileId,
+            string expectedETag,
             CancellationToken cancellationToken)
         {
+            if (!expectedETag.StartsWith("sha256-", StringComparison.Ordinal)
+                || expectedETag.Length != 71
+                || !expectedETag[7..].All(Uri.IsHexDigit))
+            {
+                throw new InvalidDataException("Remote file has an invalid content ETag.");
+            }
+
             string fullRoot = Path.GetFullPath(rootDirectory);
             string directory = Path.Combine(
                 fullRoot,
-                manifest.FileManifestId.ToString("N") + "-" + manifest.ContentHash);
+                nodeFileId.ToString("N") + "-" + expectedETag[7..].ToLowerInvariant());
             DownloadChunkCache cache;
             lock (ActiveCaches)
             {
@@ -66,16 +71,17 @@ namespace Cotton.Sync.Remote
             }
         }
 
-        public async Task<string> GetVerifiedChunkAsync(
-            FileContentManifestChunkDto chunk,
+        public async Task<string> GetChunkAsync(
+            int chunkNumber,
             Func<Stream, CancellationToken, Task> download,
+            bool refresh,
             CancellationToken cancellationToken)
         {
             Directory.CreateDirectory(_directory);
-            string chunkPath = Path.Combine(_directory, chunk.Index.ToString("D8") + ".chunk");
+            string chunkPath = Path.Combine(_directory, chunkNumber.ToString("D8") + ".chunk");
             if (File.Exists(chunkPath))
             {
-                if (await IsValidAsync(chunkPath, chunk, cancellationToken).ConfigureAwait(false))
+                if (!refresh && new FileInfo(chunkPath).Length > 0)
                 {
                     return chunkPath;
                 }
@@ -92,17 +98,9 @@ namespace Cotton.Sync.Remote
                 {
                     await download(stream, cancellationToken).ConfigureAwait(false);
                     await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
-                    if (stream.Length != chunk.Length)
+                    if (stream.Length == 0)
                     {
-                        throw new InvalidDataException("Downloaded chunk length does not match the content manifest.");
-                    }
-
-                    stream.Position = 0;
-                    string actualHash = Convert.ToHexStringLower(
-                        await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false));
-                    if (!string.Equals(actualHash, chunk.Hash, StringComparison.OrdinalIgnoreCase))
-                    {
-                        throw new InvalidDataException("Downloaded chunk hash does not match the content manifest.");
+                        throw new InvalidDataException("Downloaded content chunk is empty.");
                     }
                 }
 
@@ -131,24 +129,6 @@ namespace Cotton.Sync.Remote
             _semaphore.Release();
             ReleaseReference();
             return ValueTask.CompletedTask;
-        }
-
-        private static async Task<bool> IsValidAsync(
-            string path,
-            FileContentManifestChunkDto chunk,
-            CancellationToken cancellationToken)
-        {
-            await using FileStream stream = new(
-                path, FileMode.Open, FileAccess.Read, FileShare.Read,
-                bufferSize: 1024 * 128, FileOptions.Asynchronous | FileOptions.SequentialScan);
-            if (stream.Length != chunk.Length)
-            {
-                return false;
-            }
-
-            string actualHash = Convert.ToHexStringLower(
-                await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false));
-            return string.Equals(actualHash, chunk.Hash, StringComparison.OrdinalIgnoreCase);
         }
 
         private void ReleaseReference()

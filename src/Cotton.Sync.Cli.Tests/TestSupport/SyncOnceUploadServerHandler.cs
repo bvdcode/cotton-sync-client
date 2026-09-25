@@ -259,23 +259,15 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
             }
 
             if (request.Method == HttpMethod.Get
-                && request.PathAndQuery == "/api/v1/files/" + CreatedFileId.ToString("D") + "/content-manifest")
+                && request.PathAndQuery == "/api/v1/files/" + CreatedFileId.ToString("D") + "/content?chunkNumber=0")
             {
-                return Json(HttpStatusCode.OK, SyncTestContentManifestFactory.Create(
-                    CreatedFileId, _expectedContent));
-            }
-
-            if (request.Method == HttpMethod.Get
-                && request.PathAndQuery == "/api/v1/files/" + CreatedFileId.ToString("D") + "/content?download=false")
-            {
-                Assert.That(request.GetHeader("Range"), Is.EqualTo($"bytes=0-{_expectedContent.Length - 1}"));
+                Assert.That(request.GetHeader("Range"), Is.Null);
                 Assert.That(request.GetHeader("If-Match"), Is.EqualTo("\"sha256-" + _expectedContentHash + "\""));
-                HttpResponseMessage response = new(HttpStatusCode.PartialContent)
+                HttpResponseMessage response = new(HttpStatusCode.OK)
                 {
                     Content = new ByteArrayContent(_expectedContent),
                 };
-                response.Content.Headers.ContentRange = new ContentRangeHeaderValue(
-                    0, _expectedContent.Length - 1, _expectedContent.Length);
+                response.Headers.Add("X-Cotton-Chunk-Count", "1");
                 response.Headers.ETag = new EntityTagHeaderValue("\"sha256-" + _expectedContentHash + "\"");
                 return response;
             }

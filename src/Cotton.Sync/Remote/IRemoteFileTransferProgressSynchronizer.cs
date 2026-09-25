@@ -26,9 +26,8 @@ namespace Cotton.Sync.Remote
         /// Downloads a remote file and reports byte-level download progress.
         /// </summary>
         Task DownloadFileAsync(
-            Guid nodeFileId,
+            RemoteFileDownloadIdentity file,
             string relativePath,
-            long? totalBytes,
             Stream destination,
             IProgress<SyncTransferProgress>? transferProgress,
             CancellationToken cancellationToken = default);

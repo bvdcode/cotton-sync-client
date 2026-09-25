@@ -174,9 +174,11 @@ namespace Cotton.Sync
             if (remoteFiles is IRemoteFileTransferProgressSynchronizer progressSynchronizer)
             {
                 await progressSynchronizer.DownloadFileAsync(
-                    remoteFile.Id,
+                    new RemoteFileDownloadIdentity(
+                        remoteFile.Id,
+                        remoteFile.SizeBytes,
+                        remoteFile.ETag ?? throw new InvalidDataException("Remote file has no content ETag.")),
                     relativePath,
-                    remoteFile.SizeBytes,
                     destination,
                     options.TransferProgress,
                     cancellationToken).ConfigureAwait(false);

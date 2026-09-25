@@ -26,6 +26,9 @@ namespace Cotton.Sync.Tests.Remote
     {
         private class FakeFileClient : ICottonFileClient
         {
+            private int _activeChunkDownloads;
+            private int _maxActiveChunkDownloads;
+
             public Dictionary<Guid, NodeFileManifestDto> Files { get; } = [];
 
             public List<CreateFileFromChunksRequestDto> CreateRequests { get; } = [];
@@ -42,15 +45,21 @@ namespace Cotton.Sync.Tests.Remote
 
             public List<(Guid NodeFileId, long Offset, long Length, string? ExpectedETag)> RangeDownloads { get; } = [];
 
-            public int ManifestChunkSizeBytes { get; set; } = int.MaxValue;
+            public List<(Guid NodeFileId, int ChunkNumber, string? ExpectedETag)> ChunkDownloads { get; } = [];
 
-            public long? InterruptedRangeOffset { get; set; }
+            public int DownloadChunkSizeBytes { get; set; } = int.MaxValue;
 
-            public int InterruptedRangeFailuresRemaining { get; set; }
+            public TimeSpan ChunkDownloadDelay { get; set; }
 
-            public long? CorruptedRangeOffset { get; set; }
+            public int MaxActiveChunkDownloads => Volatile.Read(ref _maxActiveChunkDownloads);
 
-            public int CorruptedRangeResponsesRemaining { get; set; }
+            public int? InterruptedChunkNumber { get; set; }
+
+            public int InterruptedChunkFailuresRemaining { get; set; }
+
+            public int? CorruptedChunkNumber { get; set; }
+
+            public int CorruptedChunkResponsesRemaining { get; set; }
 
             public int UpdateContentFailuresRemaining { get; set; }
 
@@ -167,62 +176,69 @@ namespace Cotton.Sync.Tests.Remote
             {
                 RangeDownloads.Add((nodeFileId, offset, length, expectedETag));
                 byte[] bytes = Downloads[nodeFileId];
-                if (InterruptedRangeOffset == offset && InterruptedRangeFailuresRemaining > 0)
-                {
-                    InterruptedRangeFailuresRemaining--;
-                    await destination.WriteAsync(
-                        bytes.AsMemory(checked((int)offset), checked((int)(length / 2))),
-                        cancellationToken);
-                    throw new HttpIOException(HttpRequestError.ResponseEnded, "Range response ended early.");
-                }
-
-                if (CorruptedRangeOffset == offset && CorruptedRangeResponsesRemaining > 0)
-                {
-                    CorruptedRangeResponsesRemaining--;
-                    byte[] corrupted = bytes.AsSpan(checked((int)offset), checked((int)length)).ToArray();
-                    corrupted[0] ^= 0xff;
-                    await destination.WriteAsync(corrupted, cancellationToken);
-                    progress?.Report(length);
-                    return;
-                }
-
                 await destination.WriteAsync(
                     bytes.AsMemory(checked((int)offset), checked((int)length)),
                     cancellationToken);
                 progress?.Report(length);
             }
 
-            public Task<FileContentManifestDto> GetContentManifestAsync(
+            public async Task<int> DownloadContentChunkAsync(
                 Guid nodeFileId,
+                int chunkNumber,
+                Stream destination,
                 string? expectedETag = null,
+                IProgress<long>? progress = null,
                 CancellationToken cancellationToken = default)
             {
-                byte[] bytes = Downloads[nodeFileId];
-                List<FileContentManifestChunkDto> chunks = [];
-                for (int offset = 0; offset < bytes.Length; offset += ManifestChunkSizeBytes)
+                int active = Interlocked.Increment(ref _activeChunkDownloads);
+                try
                 {
-                    int length = Math.Min(ManifestChunkSizeBytes, bytes.Length - offset);
-                    string hash = Convert.ToHexStringLower(SHA256.HashData(bytes.AsSpan(offset, length)));
-                    chunks.Add(new FileContentManifestChunkDto
+                    int previous;
+                    do
                     {
-                        Index = chunks.Count,
-                        Offset = offset,
-                        Length = length,
-                        Hash = hash,
-                        ChunkId = hash,
-                    });
-                }
+                        previous = Volatile.Read(ref _maxActiveChunkDownloads);
+                    }
+                    while (active > previous
+                        && Interlocked.CompareExchange(ref _maxActiveChunkDownloads, active, previous) != previous);
 
-                return Task.FromResult(new FileContentManifestDto
+                    lock (ChunkDownloads)
+                    {
+                        ChunkDownloads.Add((nodeFileId, chunkNumber, expectedETag));
+                    }
+
+                    if (ChunkDownloadDelay > TimeSpan.Zero)
+                    {
+                        await Task.Delay(ChunkDownloadDelay, cancellationToken);
+                    }
+
+                    byte[] bytes = Downloads[nodeFileId];
+                    int count = (int)((bytes.Length + (long)DownloadChunkSizeBytes - 1) / DownloadChunkSizeBytes);
+                    int offset = checked(chunkNumber * DownloadChunkSizeBytes);
+                    int length = Math.Min(DownloadChunkSizeBytes, bytes.Length - offset);
+                    if (InterruptedChunkNumber == chunkNumber && InterruptedChunkFailuresRemaining > 0)
+                    {
+                        InterruptedChunkFailuresRemaining--;
+                        await destination.WriteAsync(bytes.AsMemory(offset, Math.Max(1, length / 2)), cancellationToken);
+                        throw new HttpIOException(HttpRequestError.ResponseEnded, "Chunk response ended early.");
+                    }
+
+                    if (CorruptedChunkNumber == chunkNumber && CorruptedChunkResponsesRemaining > 0)
+                    {
+                        CorruptedChunkResponsesRemaining--;
+                        byte[] corrupted = bytes.AsSpan(offset, length).ToArray();
+                        corrupted[0] ^= 0xff;
+                        await destination.WriteAsync(corrupted, cancellationToken);
+                        return count;
+                    }
+
+                    await destination.WriteAsync(bytes.AsMemory(offset, length), cancellationToken);
+                    progress?.Report(length);
+                    return count;
+                }
+                finally
                 {
-                    NodeFileId = nodeFileId,
-                    FileManifestId = nodeFileId,
-                    SizeBytes = bytes.Length,
-                    ContentHash = Convert.ToHexStringLower(SHA256.HashData(bytes)),
-                    ETag = expectedETag ?? "sha256-current",
-                    ChunkSizeBytes = ManifestChunkSizeBytes,
-                    Chunks = chunks,
-                });
+                    Interlocked.Decrement(ref _activeChunkDownloads);
+                }
             }
 
             private static NodeFileManifestDto FileFromRequest(Guid id, CreateFileFromChunksRequestDto request)

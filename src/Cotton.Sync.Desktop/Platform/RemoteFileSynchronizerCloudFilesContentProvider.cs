@@ -27,9 +27,11 @@ namespace Cotton.Sync.Desktop.Platform
             {
                 long? totalBytes = identity.SizeBytes < 0 ? null : identity.SizeBytes;
                 return progressSynchronizer.DownloadFileAsync(
-                    identity.NodeFileId,
+                    new RemoteFileDownloadIdentity(
+                        identity.NodeFileId,
+                        totalBytes,
+                        identity.ETag ?? throw new InvalidDataException("Remote file has no content ETag.")),
                     identity.RelativePath,
-                    totalBytes,
                     destination,
                     transferProgress,
                     cancellationToken);

@@ -261,17 +261,17 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
 
             public Task DownloadFileAsync(
-                Guid nodeFileId,
+                RemoteFileDownloadIdentity file,
                 string relativePath,
-                long? totalBytes,
                 Stream destination,
                 IProgress<SyncTransferProgress>? transferProgress,
                 CancellationToken cancellationToken = default)
             {
                 ProgressAwareDownloads++;
-                LastNodeFileId = nodeFileId;
+                LastNodeFileId = file.NodeFileId;
                 LastRelativePath = relativePath;
-                LastTotalBytes = totalBytes;
+                LastTotalBytes = file.SizeBytes;
+                LastExpectedETag = file.ETag;
                 LastTransferProgress = transferProgress;
                 return Task.CompletedTask;
             }
