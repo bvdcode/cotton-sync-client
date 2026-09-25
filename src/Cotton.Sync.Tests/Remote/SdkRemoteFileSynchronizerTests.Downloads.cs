@@ -30,7 +30,7 @@ namespace Cotton.Sync.Tests.Remote
             Guid fileId = Guid.NewGuid();
             FakeCottonCloudClient client = new FakeCottonCloudClient(chunkSizeBytes: 8);
             client.FilesClient.Downloads[fileId] = Encoding.UTF8.GetBytes("downloaded");
-            SdkRemoteFileSynchronizer synchronizer = new SdkRemoteFileSynchronizer(client);
+            SdkRemoteFileSynchronizer synchronizer = CreateDownloader(client);
             await using MemoryStream destination = new MemoryStream();
 
             await synchronizer.DownloadFileAsync(fileId, destination);
@@ -49,7 +49,7 @@ namespace Cotton.Sync.Tests.Remote
             Guid fileId = Guid.NewGuid();
             FakeCottonCloudClient client = new FakeCottonCloudClient(chunkSizeBytes: 8);
             client.FilesClient.Downloads[fileId] = Encoding.UTF8.GetBytes("downloaded");
-            SdkRemoteFileSynchronizer synchronizer = new SdkRemoteFileSynchronizer(client);
+            SdkRemoteFileSynchronizer synchronizer = CreateDownloader(client);
             await using MemoryStream destination = new MemoryStream();
             RecordingProgress<SyncTransferProgress> progress = new RecordingProgress<SyncTransferProgress>();
 
@@ -62,7 +62,7 @@ namespace Cotton.Sync.Tests.Remote
 
             Assert.Multiple(() =>
             {
-                Assert.That(progress.Values.Select(value => value.TransferredBytes), Is.EqualTo(new long[] { 0, 10, 10 }));
+                Assert.That(progress.Values.Select(value => value.TransferredBytes), Is.EqualTo(new long[] { 0, 10, 10, 10 }));
                 Assert.That(progress.Values.Select(value => value.TotalBytes), Is.All.EqualTo(10));
                 Assert.That(progress.Values.Select(value => value.Direction), Is.All.EqualTo(SyncTransferDirection.Download));
                 Assert.That(progress.Values.Select(value => value.RelativePath), Is.All.EqualTo("Docs/file.txt"));
@@ -76,7 +76,7 @@ namespace Cotton.Sync.Tests.Remote
             Guid fileId = Guid.NewGuid();
             FakeCottonCloudClient client = new FakeCottonCloudClient(chunkSizeBytes: 8);
             client.FilesClient.Downloads[fileId] = Encoding.UTF8.GetBytes("0123456789abcdef");
-            SdkRemoteFileSynchronizer synchronizer = new SdkRemoteFileSynchronizer(client);
+            SdkRemoteFileSynchronizer synchronizer = CreateDownloader(client);
             await using MemoryStream destination = new MemoryStream();
             RecordingProgress<SyncTransferProgress> progress = new RecordingProgress<SyncTransferProgress>();
 
@@ -92,12 +92,198 @@ namespace Cotton.Sync.Tests.Remote
             Assert.Multiple(() =>
             {
                 Assert.That(Encoding.UTF8.GetString(destination.ToArray()), Is.EqualTo("456789"));
-                Assert.That(client.FilesClient.RangeDownloads, Is.EqualTo(new[] { (fileId, 4L, 6L, "sha256-current") }));
+                Assert.That(client.FilesClient.RangeDownloads, Is.EqualTo(new[] { (fileId, 0L, 16L, "sha256-current") }));
                 Assert.That(progress.Values.Select(value => value.TransferredBytes), Is.EqualTo(new long[] { 0, 6, 6 }));
                 Assert.That(progress.Values.Select(value => value.TotalBytes), Is.All.EqualTo(6));
                 Assert.That(progress.Values.Select(value => value.Direction), Is.All.EqualTo(SyncTransferDirection.Download));
                 Assert.That(progress.Values.Select(value => value.RelativePath), Is.All.EqualTo("Docs/file.txt"));
                 Assert.That(progress.Values[^1].IsCompleted, Is.True);
+            });
+        }
+
+        [Test]
+        public async Task DownloadFileAsync_AfterInterruption_ReusesVerifiedChunksAcrossInstances()
+        {
+            Guid fileId = Guid.NewGuid();
+            byte[] content = Encoding.UTF8.GetBytes("abcdefghijkl");
+            FakeCottonCloudClient client = new(chunkSizeBytes: 4);
+            client.FilesClient.Downloads[fileId] = content;
+            client.FilesClient.ManifestChunkSizeBytes = 4;
+            client.FilesClient.InterruptedRangeOffset = 4;
+            client.FilesClient.InterruptedRangeFailuresRemaining = 1;
+            SdkRemoteFileSynchronizerOptions options = new()
+            {
+                DownloadCacheDirectory = Path.Combine(_root, "cache"),
+                MaxDownloadChunkAttempts = 1,
+            };
+
+            await using (MemoryStream interrupted = new())
+            {
+                Assert.ThrowsAsync<HttpIOException>(async () =>
+                    await new SdkRemoteFileSynchronizer(client, options)
+                        .DownloadFileAsync(fileId, interrupted));
+            }
+
+            await using MemoryStream resumed = new();
+            await new SdkRemoteFileSynchronizer(client, options).DownloadFileAsync(fileId, resumed);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(resumed.ToArray(), Is.EqualTo(content));
+                Assert.That(
+                    client.FilesClient.RangeDownloads.Select(item => item.Offset),
+                    Is.EqualTo(new long[] { 0, 4, 4, 8 }));
+                Assert.That(Directory.EnumerateDirectories(options.DownloadCacheDirectory), Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task DownloadFileAsync_CorruptCachedChunk_IsRedownloadedBeforeResume()
+        {
+            Guid fileId = Guid.NewGuid();
+            byte[] content = Encoding.UTF8.GetBytes("abcdefgh");
+            FakeCottonCloudClient client = new(chunkSizeBytes: 4);
+            client.FilesClient.Downloads[fileId] = content;
+            client.FilesClient.ManifestChunkSizeBytes = 4;
+            client.FilesClient.InterruptedRangeOffset = 4;
+            client.FilesClient.InterruptedRangeFailuresRemaining = 1;
+            SdkRemoteFileSynchronizerOptions options = new()
+            {
+                DownloadCacheDirectory = Path.Combine(_root, "cache"),
+                MaxDownloadChunkAttempts = 1,
+            };
+
+            await using (MemoryStream interrupted = new())
+            {
+                Assert.ThrowsAsync<HttpIOException>(async () =>
+                    await new SdkRemoteFileSynchronizer(client, options)
+                        .DownloadFileAsync(fileId, interrupted));
+            }
+
+            string cachedChunk = Directory.EnumerateFiles(
+                options.DownloadCacheDirectory, "*.chunk", SearchOption.AllDirectories).Single();
+            await File.WriteAllBytesAsync(cachedChunk, Encoding.UTF8.GetBytes("xxxx"));
+            await using MemoryStream resumed = new();
+            await new SdkRemoteFileSynchronizer(client, options).DownloadFileAsync(fileId, resumed);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(resumed.ToArray(), Is.EqualTo(content));
+                Assert.That(client.FilesClient.RangeDownloads.Select(item => item.Offset),
+                    Is.EqualTo(new long[] { 0, 4, 0, 4 }));
+            });
+        }
+
+        [Test]
+        public async Task DownloadFileRangeAsync_UsesOnlyOverlappingVerifiedChunks()
+        {
+            Guid fileId = Guid.NewGuid();
+            FakeCottonCloudClient client = new(chunkSizeBytes: 4);
+            client.FilesClient.Downloads[fileId] = Encoding.UTF8.GetBytes("abcdefghijklmnop");
+            client.FilesClient.ManifestChunkSizeBytes = 4;
+            SdkRemoteFileSynchronizer synchronizer = CreateDownloader(client);
+            await using MemoryStream destination = new();
+
+            await synchronizer.DownloadFileRangeAsync(
+                fileId, "Docs/file.txt", offset: 5, length: 7,
+                expectedETag: "sha256-current", destination, transferProgress: null);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(Encoding.UTF8.GetString(destination.ToArray()), Is.EqualTo("fghijkl"));
+                Assert.That(client.FilesClient.RangeDownloads.Select(item => (item.Offset, item.Length)),
+                    Is.EqualTo(new[] { (4L, 4L), (8L, 4L) }));
+            });
+        }
+
+        [Test]
+        public async Task DownloadFileAsync_CorruptChunk_IsRetriedBeforeItReachesDestination()
+        {
+            Guid fileId = Guid.NewGuid();
+            FakeCottonCloudClient client = new(chunkSizeBytes: 4);
+            byte[] content = Encoding.UTF8.GetBytes("abcdefgh");
+            client.FilesClient.Downloads[fileId] = content;
+            client.FilesClient.ManifestChunkSizeBytes = 4;
+            client.FilesClient.CorruptedRangeOffset = 4;
+            client.FilesClient.CorruptedRangeResponsesRemaining = 1;
+            SdkRemoteFileSynchronizer synchronizer = CreateDownloader(client);
+            await using MemoryStream destination = new();
+
+            await synchronizer.DownloadFileAsync(fileId, destination);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(destination.ToArray(), Is.EqualTo(content));
+                Assert.That(client.FilesClient.RangeDownloads.Select(item => item.Offset),
+                    Is.EqualTo(new long[] { 0, 4, 4 }));
+            });
+        }
+
+        [Test]
+        public async Task DownloadFileAsync_LargeManifestChunk_UsesBoundedHttpRanges()
+        {
+            Guid fileId = Guid.NewGuid();
+            FakeCottonCloudClient client = new(chunkSizeBytes: 4);
+            byte[] content = new byte[10 * 1024 * 1024];
+            client.FilesClient.Downloads[fileId] = content;
+            SdkRemoteFileSynchronizer synchronizer = CreateDownloader(client);
+            await using MemoryStream destination = new();
+
+            await synchronizer.DownloadFileAsync(fileId, destination);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(destination.Length, Is.EqualTo(content.Length));
+                Assert.That(client.FilesClient.RangeDownloads.Select(item => item.Length),
+                    Is.EqualTo(new long[] { 4 * 1024 * 1024, 4 * 1024 * 1024, 2 * 1024 * 1024 }));
+            });
+        }
+
+        [Test]
+        public async Task DownloadFileAsync_EmptyManifest_CompletesWithoutContentRequest()
+        {
+            Guid fileId = Guid.NewGuid();
+            FakeCottonCloudClient client = new(chunkSizeBytes: 4);
+            client.FilesClient.Downloads[fileId] = [];
+            SdkRemoteFileSynchronizer synchronizer = CreateDownloader(client);
+            await using MemoryStream destination = new();
+
+            await synchronizer.DownloadFileAsync(fileId, destination);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(destination.Length, Is.Zero);
+                Assert.That(client.FilesClient.RangeDownloads, Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task DownloadFileAsync_InterruptedLargeChunk_RetriesOnlyCurrentRange()
+        {
+            Guid fileId = Guid.NewGuid();
+            FakeCottonCloudClient client = new(chunkSizeBytes: 4);
+            byte[] content = new byte[10 * 1024 * 1024];
+            client.FilesClient.Downloads[fileId] = content;
+            client.FilesClient.InterruptedRangeOffset = 4 * 1024 * 1024;
+            client.FilesClient.InterruptedRangeFailuresRemaining = 1;
+            SdkRemoteFileSynchronizer synchronizer = CreateDownloader(client);
+            await using MemoryStream destination = new();
+
+            await synchronizer.DownloadFileAsync(fileId, destination);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(destination.Length, Is.EqualTo(content.Length));
+                Assert.That(client.FilesClient.RangeDownloads.Select(item => item.Offset),
+                    Is.EqualTo(new long[] { 0, 4 * 1024 * 1024, 4 * 1024 * 1024, 8 * 1024 * 1024 }));
+            });
+        }
+
+        private SdkRemoteFileSynchronizer CreateDownloader(FakeCottonCloudClient client)
+        {
+            return new SdkRemoteFileSynchronizer(client, new SdkRemoteFileSynchronizerOptions
+            {
+                DownloadCacheDirectory = Path.Combine(_root, "cache"),
             });
         }
 

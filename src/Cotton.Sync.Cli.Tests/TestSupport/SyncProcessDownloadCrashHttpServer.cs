@@ -67,9 +67,19 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
             }
 
             if (request.Method == HttpMethod.Get
+                && request.PathAndQuery == "/api/v1/files/" + RemoteFileId.ToString("D") + "/content-manifest")
+            {
+                await WriteJsonAsync(response, HttpStatusCode.OK,
+                    SyncTestContentManifestFactory.Create(RemoteFileId, _content, _content.Length / 2),
+                    cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            if (request.Method == HttpMethod.Get
                 && request.PathAndQuery == "/api/v1/files/" + RemoteFileId.ToString("D") + "/content?download=false")
             {
-                await WriteContentAsync(response, cancellationToken).ConfigureAwait(false);
+                Assert.That(request.GetHeader("If-Match"), Is.EqualTo("\"sha256-" + _contentHash + "\""));
+                await WriteContentAsync(response, request, cancellationToken).ConfigureAwait(false);
                 return;
             }
 
@@ -85,26 +95,40 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
             };
         }
 
-        private async Task WriteContentAsync(HttpListenerResponse response, CancellationToken cancellationToken)
+        private async Task WriteContentAsync(
+            HttpListenerResponse response,
+            HttpRequestSnapshot request,
+            CancellationToken cancellationToken)
         {
-            response.StatusCode = (int)HttpStatusCode.OK;
+            int split = _content.Length / 2;
+            string? range = request.GetHeader("Range");
+            int offset = range switch
+            {
+                string first when first == $"bytes=0-{split - 1}" => 0,
+                string second when second == $"bytes={split}-{_content.Length - 1}" => split,
+                _ => throw new InvalidOperationException("Unexpected download range: " + range),
+            };
+            int length = offset == 0 ? split : _content.Length - split;
+            response.StatusCode = (int)HttpStatusCode.PartialContent;
             response.ContentType = "text/plain";
-            if (!_firstDownloadWasBlocked)
+            response.ContentLength64 = length;
+            response.Headers["Content-Range"] = $"bytes {offset}-{offset + length - 1}/{_content.Length}";
+            response.Headers["ETag"] = "\"sha256-" + _contentHash + "\"";
+            if (offset == split && !_firstDownloadWasBlocked)
             {
                 _firstDownloadWasBlocked = true;
-                int partialLength = Math.Max(1, _content.Length / 2);
-                await response.OutputStream.WriteAsync(_content.AsMemory(0, partialLength), cancellationToken).ConfigureAwait(false);
+                int partialLength = Math.Max(1, length / 2);
+                await response.OutputStream.WriteAsync(_content.AsMemory(offset, partialLength), cancellationToken).ConfigureAwait(false);
                 await response.OutputStream.FlushAsync(cancellationToken).ConfigureAwait(false);
                 _firstDownloadStarted.TrySetResult();
                 await _releaseFirstDownload.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
                 await response.OutputStream.WriteAsync(
-                    _content.AsMemory(partialLength, _content.Length - partialLength),
+                    _content.AsMemory(offset + partialLength, length - partialLength),
                     cancellationToken).ConfigureAwait(false);
                 return;
             }
 
-            response.ContentLength64 = _content.Length;
-            await response.OutputStream.WriteAsync(_content, cancellationToken).ConfigureAwait(false);
+            await response.OutputStream.WriteAsync(_content.AsMemory(offset, length), cancellationToken).ConfigureAwait(false);
         }
 
         private NodeFileManifestDto CreateManifest()

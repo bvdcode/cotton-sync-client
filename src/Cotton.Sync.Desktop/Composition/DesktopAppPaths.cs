@@ -8,9 +8,10 @@ namespace Cotton.Sync.Desktop.Composition
         private const string CompanyDirectoryName = "Cotton";
         private const string ProductDirectoryName = "Sync";
 
-        private DesktopAppPaths(string dataDirectory)
+        private DesktopAppPaths(string dataDirectory, string downloadCacheDirectory)
         {
             DataDirectory = dataDirectory;
+            DownloadCacheDirectory = downloadCacheDirectory;
             AppDatabasePath = Path.Combine(DataDirectory, "sync-app.db");
             SyncStateDatabasePath = Path.Combine(DataDirectory, "sync-state.db");
             TokenStorePath = Path.Combine(DataDirectory, "tokens.json");
@@ -20,6 +21,8 @@ namespace Cotton.Sync.Desktop.Composition
         }
 
         public string DataDirectory { get; }
+
+        public string DownloadCacheDirectory { get; }
 
         public string AppDatabasePath { get; }
 
@@ -46,13 +49,16 @@ namespace Cotton.Sync.Desktop.Composition
                 root = AppContext.BaseDirectory;
             }
 
-            return new DesktopAppPaths(Path.Combine(root, CompanyDirectoryName, ProductDirectoryName));
+            string localRoot = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            return new DesktopAppPaths(
+                Path.Combine(root, CompanyDirectoryName, ProductDirectoryName),
+                Path.Combine(localRoot, CompanyDirectoryName, ProductDirectoryName, "download-cache"));
         }
 
         internal static DesktopAppPaths CreateForDataDirectory(string dataDirectory)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
-            return new DesktopAppPaths(dataDirectory);
+            return new DesktopAppPaths(dataDirectory, Path.Combine(dataDirectory, "download-cache"));
         }
     }
 }

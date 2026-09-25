@@ -105,7 +105,11 @@ namespace Cotton.Sync.Cli
             SyncEngine engine = new SyncEngine(
                 new LocalFileScanner(),
                 new RemoteTreeCrawler(client.Nodes),
-                new SdkRemoteFileSynchronizer(client),
+                new SdkRemoteFileSynchronizer(client, new SdkRemoteFileSynchronizerOptions
+                {
+                    DownloadCacheDirectory = Path.Combine(
+                        Path.GetFullPath(options.LocalRoot), SyncMetadataDirectory.Name, "download-cache"),
+                }),
                 stateStore,
                 remoteDirectories: new SdkRemoteDirectorySynchronizer(client.Nodes));
             SyncPair syncPair = new SyncPair

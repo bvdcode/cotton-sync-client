@@ -66,7 +66,10 @@ namespace Cotton.Sync.Desktop.Composition
             SqliteSyncStateStore stateStore = new(_paths.SyncStateDatabasePath);
 
             RemoteTreeCrawler remoteTreeCrawler = new(cottonClient.Nodes);
-            SdkRemoteFileSynchronizer remoteFileSynchronizer = new(cottonClient);
+            SdkRemoteFileSynchronizer remoteFileSynchronizer = new(cottonClient, new SdkRemoteFileSynchronizerOptions
+            {
+                DownloadCacheDirectory = _paths.DownloadCacheDirectory,
+            });
             SdkRemoteDirectorySynchronizer remoteDirectorySynchronizer = new(cottonClient.Nodes);
             RemoteChangeFeedReader remoteChangeFeed = new(cottonClient.Sync, stateStore);
             InMemoryAppActivityPublisher activityPublisher = new();

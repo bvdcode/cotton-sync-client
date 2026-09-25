@@ -42,6 +42,16 @@ namespace Cotton.Sync.Tests.Remote
 
             public List<(Guid NodeFileId, long Offset, long Length, string? ExpectedETag)> RangeDownloads { get; } = [];
 
+            public int ManifestChunkSizeBytes { get; set; } = int.MaxValue;
+
+            public long? InterruptedRangeOffset { get; set; }
+
+            public int InterruptedRangeFailuresRemaining { get; set; }
+
+            public long? CorruptedRangeOffset { get; set; }
+
+            public int CorruptedRangeResponsesRemaining { get; set; }
+
             public int UpdateContentFailuresRemaining { get; set; }
 
             public Task<NodeFileManifestDto> CreateFromChunksAsync(
@@ -157,6 +167,25 @@ namespace Cotton.Sync.Tests.Remote
             {
                 RangeDownloads.Add((nodeFileId, offset, length, expectedETag));
                 byte[] bytes = Downloads[nodeFileId];
+                if (InterruptedRangeOffset == offset && InterruptedRangeFailuresRemaining > 0)
+                {
+                    InterruptedRangeFailuresRemaining--;
+                    await destination.WriteAsync(
+                        bytes.AsMemory(checked((int)offset), checked((int)(length / 2))),
+                        cancellationToken);
+                    throw new HttpIOException(HttpRequestError.ResponseEnded, "Range response ended early.");
+                }
+
+                if (CorruptedRangeOffset == offset && CorruptedRangeResponsesRemaining > 0)
+                {
+                    CorruptedRangeResponsesRemaining--;
+                    byte[] corrupted = bytes.AsSpan(checked((int)offset), checked((int)length)).ToArray();
+                    corrupted[0] ^= 0xff;
+                    await destination.WriteAsync(corrupted, cancellationToken);
+                    progress?.Report(length);
+                    return;
+                }
+
                 await destination.WriteAsync(
                     bytes.AsMemory(checked((int)offset), checked((int)length)),
                     cancellationToken);
@@ -168,7 +197,32 @@ namespace Cotton.Sync.Tests.Remote
                 string? expectedETag = null,
                 CancellationToken cancellationToken = default)
             {
-                throw new NotSupportedException();
+                byte[] bytes = Downloads[nodeFileId];
+                List<FileContentManifestChunkDto> chunks = [];
+                for (int offset = 0; offset < bytes.Length; offset += ManifestChunkSizeBytes)
+                {
+                    int length = Math.Min(ManifestChunkSizeBytes, bytes.Length - offset);
+                    string hash = Convert.ToHexStringLower(SHA256.HashData(bytes.AsSpan(offset, length)));
+                    chunks.Add(new FileContentManifestChunkDto
+                    {
+                        Index = chunks.Count,
+                        Offset = offset,
+                        Length = length,
+                        Hash = hash,
+                        ChunkId = hash,
+                    });
+                }
+
+                return Task.FromResult(new FileContentManifestDto
+                {
+                    NodeFileId = nodeFileId,
+                    FileManifestId = nodeFileId,
+                    SizeBytes = bytes.Length,
+                    ContentHash = Convert.ToHexStringLower(SHA256.HashData(bytes)),
+                    ETag = expectedETag ?? "sha256-current",
+                    ChunkSizeBytes = ManifestChunkSizeBytes,
+                    Chunks = chunks,
+                });
             }
 
             private static NodeFileManifestDto FileFromRequest(Guid id, CreateFileFromChunksRequestDto request)

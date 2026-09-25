@@ -38,6 +38,8 @@ namespace Cotton.Sync.Remote
             }
 
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(_options.MaxConcurrentChunkUploads);
+            ArgumentException.ThrowIfNullOrWhiteSpace(_options.DownloadCacheDirectory);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(_options.MaxDownloadChunkAttempts);
             _directoryResolver = new RemoteDirectoryPathResolver(_client.Nodes, _options.DirectoryPageSize);
             _chunkUploader = new RemoteChunkUploader(_client.Chunks, _options.MaxConcurrentChunkUploads);
         }
@@ -127,7 +129,8 @@ namespace Cotton.Sync.Remote
         public Task DownloadFileAsync(Guid nodeFileId, Stream destination, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(destination);
-            return _client.Files.DownloadContentAsync(nodeFileId, destination, cancellationToken: cancellationToken);
+            return new ManifestChunkDownloader(_client.Files, _options).DownloadAsync(
+                nodeFileId, destination, progress: null, cancellationToken);
         }
 
         /// <inheritdoc />
@@ -181,8 +184,8 @@ namespace Cotton.Sync.Remote
             DownloadTransferProgress? progress = transferProgress is null
                 ? null
                 : new DownloadTransferProgress(transferProgress, normalizedPath, totalBytes);
-            await _client.Files
-                .DownloadContentAsync(nodeFileId, destination, progress: progress, cancellationToken: cancellationToken)
+            await new ManifestChunkDownloader(_client.Files, _options)
+                .DownloadAsync(nodeFileId, destination, progress, cancellationToken)
                 .ConfigureAwait(false);
             long completedBytes = totalBytes ?? progress?.LastTransferredBytes ?? 0;
             ReportTransfer(
@@ -218,15 +221,8 @@ namespace Cotton.Sync.Remote
             DownloadTransferProgress? progress = transferProgress is null
                 ? null
                 : new DownloadTransferProgress(transferProgress, normalizedPath, length);
-            await _client.Files
-                .DownloadContentRangeAsync(
-                    nodeFileId,
-                    destination,
-                    offset,
-                    length,
-                    expectedETag,
-                    progress,
-                    cancellationToken)
+            await new ManifestChunkDownloader(_client.Files, _options)
+                .DownloadRangeAsync(nodeFileId, destination, offset, length, expectedETag, progress, cancellationToken)
                 .ConfigureAwait(false);
             ReportTransfer(
                 transferProgress,

@@ -25,6 +25,18 @@ namespace Cotton.Sync.Remote
         public int MaxConcurrentChunkUploads { get; set; } = 3;
 
         /// <summary>
+        /// Gets or sets the directory for verified chunks retained after interrupted downloads.
+        /// </summary>
+        public string DownloadCacheDirectory { get; set; } = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Cotton", "Sync", "download-cache");
+
+        /// <summary>
+        /// Gets or sets the number of attempts for one interrupted chunk request.
+        /// </summary>
+        public int MaxDownloadChunkAttempts { get; set; } = 3;
+
+        /// <summary>
         /// Gets or sets an optional content type resolver for uploaded files.
         /// </summary>
         public Func<string, string>? ContentTypeResolver { get; set; }

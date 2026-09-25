@@ -131,6 +131,9 @@ namespace Cotton.Sync.Cli.Tests
             SyncStateEntry? entryAfterCrash = await store.GetAsync(syncPairId, relativePath);
             string[] staleTemporaryFiles = ListTemporaryDownloads(temporaryDirectory);
             bool targetExistsAfterCrash = File.Exists(targetPath);
+            string cacheDirectory = Path.Combine(localRoot, ".cotton-sync", "download-cache");
+            string[] verifiedChunksAfterCrash = Directory.GetFiles(
+                cacheDirectory, "*.chunk", SearchOption.AllDirectories);
 
             using Process recoveryProcess = StartCliProcess(args);
             Task<string> recoveryOutputTask = recoveryProcess.StandardOutput.ReadToEndAsync();
@@ -151,6 +154,7 @@ namespace Cotton.Sync.Cli.Tests
                 Assert.That(targetExistsAfterCrash, Is.False);
                 Assert.That(entryAfterCrash, Is.Null);
                 Assert.That(staleTemporaryFiles, Is.Not.Empty);
+                Assert.That(verifiedChunksAfterCrash, Has.Length.EqualTo(1));
                 Assert.That(recoveryProcess.ExitCode, Is.EqualTo(0), recoveryError);
                 Assert.That(recoveryError, Is.Empty);
                 Assert.That(recoveryOutput, Does.Contain("Downloaded remote-download-crash.txt"));
@@ -161,8 +165,16 @@ namespace Cotton.Sync.Cli.Tests
                 Assert.That(entryAfterRecovery.RemoteContentHash, Is.EqualTo(contentHash));
                 Assert.That(remainingTemporaryFiles, Is.Empty);
                 Assert.That(
-                    requests.Count(request => request.Method == HttpMethod.Get && request.PathAndQuery == downloadPath),
+                    requests.Count(request => request.Method == HttpMethod.Get
+                        && request.PathAndQuery == downloadPath
+                        && request.GetHeader("Range") == $"bytes=0-{content.Length / 2 - 1}"),
+                    Is.EqualTo(1));
+                Assert.That(
+                    requests.Count(request => request.Method == HttpMethod.Get
+                        && request.PathAndQuery == downloadPath
+                        && request.GetHeader("Range") == $"bytes={content.Length / 2}-{content.Length - 1}"),
                     Is.EqualTo(2));
+                Assert.That(Directory.EnumerateDirectories(cacheDirectory), Is.Empty);
             });
         }
 

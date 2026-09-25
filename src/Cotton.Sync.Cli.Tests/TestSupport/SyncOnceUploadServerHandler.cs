@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Cotton.Auth;
@@ -62,7 +63,13 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
                 request.RequestUri?.PathAndQuery ?? string.Empty,
                 request.Headers.Authorization?.Parameter,
                 body,
-                rawBody);
+                rawBody)
+            {
+                Headers = request.Headers.ToDictionary(
+                    header => header.Key,
+                    header => string.Join(",", header.Value),
+                    StringComparer.OrdinalIgnoreCase),
+            };
             Requests.Add(snapshot);
             return CreateResponse(snapshot);
         }
@@ -252,12 +259,25 @@ namespace Cotton.Sync.Cli.Tests.TestSupport
             }
 
             if (request.Method == HttpMethod.Get
+                && request.PathAndQuery == "/api/v1/files/" + CreatedFileId.ToString("D") + "/content-manifest")
+            {
+                return Json(HttpStatusCode.OK, SyncTestContentManifestFactory.Create(
+                    CreatedFileId, _expectedContent));
+            }
+
+            if (request.Method == HttpMethod.Get
                 && request.PathAndQuery == "/api/v1/files/" + CreatedFileId.ToString("D") + "/content?download=false")
             {
-                return new HttpResponseMessage(HttpStatusCode.OK)
+                Assert.That(request.GetHeader("Range"), Is.EqualTo($"bytes=0-{_expectedContent.Length - 1}"));
+                Assert.That(request.GetHeader("If-Match"), Is.EqualTo("\"sha256-" + _expectedContentHash + "\""));
+                HttpResponseMessage response = new(HttpStatusCode.PartialContent)
                 {
                     Content = new ByteArrayContent(_expectedContent),
                 };
+                response.Content.Headers.ContentRange = new ContentRangeHeaderValue(
+                    0, _expectedContent.Length - 1, _expectedContent.Length);
+                response.Headers.ETag = new EntityTagHeaderValue("\"sha256-" + _expectedContentHash + "\"");
+                return response;
             }
 
             return null;
