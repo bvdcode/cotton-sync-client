@@ -25,6 +25,7 @@ namespace Cotton.Sync.App.Runners
                 RemoteChangeFeedUnavailableException => true,
                 CottonApiException apiException => IsTransientApiFailure(apiException),
                 HttpRequestException requestException => IsTransientStatusCode(requestException.StatusCode),
+                HttpIOException { HttpRequestError: HttpRequestError.ResponseEnded } => true,
                 TimeoutException => true,
                 TaskCanceledException => true,
                 _ => false,

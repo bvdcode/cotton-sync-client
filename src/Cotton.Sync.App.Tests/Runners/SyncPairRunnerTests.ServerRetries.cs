@@ -150,6 +150,29 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public async Task SyncNowAsync_RetriesTruncatedHttpResponseAndReturnsIdleOnRecovery()
+        {
+            FakeSyncPairWork work = new()
+            {
+                Failures =
+                [
+                    new HttpIOException(HttpRequestError.ResponseEnded, "The response ended prematurely."),
+                ],
+            };
+            SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work, NoDelayRetryOptions());
+
+            await runner.SyncNowAsync();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(work.RunCount, Is.EqualTo(2));
+                Assert.That(work.LastSyncPair?.Mode, Is.EqualTo(SyncPairMode.FullMirror));
+                Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Idle));
+                Assert.That(runner.Status.LastError, Is.Null);
+            });
+        }
+
+        [Test]
         public async Task SyncNowAsync_RetriesRateLimitAndReturnsIdleOnRecovery()
         {
             FakeSyncPairWork work = new FakeSyncPairWork

@@ -3,6 +3,7 @@
 
 using System.Security.Cryptography;
 using Cotton.Sync;
+using Cotton.Sync.App.Runners;
 
 namespace Cotton.Sync.Desktop.Platform
 {
@@ -15,18 +16,21 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly IWindowsCloudFilesDiagnostics _diagnostics;
         private readonly Func<Guid, IProgress<SyncTransferProgress>?> _transferProgressFactory;
         private readonly string _tempDirectory;
+        private readonly SyncPairRunnerRetryOptions _downloadRetryOptions;
 
         public WindowsCloudFilesHydrationCoordinator(
             IWindowsCloudFilesRemoteContentProvider contentProvider,
             IWindowsCloudFilesNativeApi nativeApi,
             string? tempDirectory = null,
             IWindowsCloudFilesDiagnostics? diagnostics = null,
-            Func<Guid, IProgress<SyncTransferProgress>?>? transferProgressFactory = null)
+            Func<Guid, IProgress<SyncTransferProgress>?>? transferProgressFactory = null,
+            SyncPairRunnerRetryOptions? downloadRetryOptions = null)
         {
             _contentProvider = contentProvider ?? throw new ArgumentNullException(nameof(contentProvider));
             _nativeApi = nativeApi ?? throw new ArgumentNullException(nameof(nativeApi));
             _diagnostics = diagnostics ?? WindowsCloudFilesDiagnostics.Shared;
             _transferProgressFactory = transferProgressFactory ?? (_ => null);
+            _downloadRetryOptions = (downloadRetryOptions ?? SyncPairRunnerRetryOptions.Default).Normalize();
             _tempDirectory = string.IsNullOrWhiteSpace(tempDirectory)
                 ? Path.Combine(Path.GetTempPath(), "CottonSyncCloudFiles")
                 : tempDirectory;
@@ -63,9 +67,10 @@ namespace Cotton.Sync.Desktop.Platform
                 transferProgress = _transferProgressFactory(identity.SyncPairId);
                 WindowsCloudFilesProviderProgressReporter providerProgress = new(
                     _nativeApi, request, transferProgress, cancellationToken);
-                await _contentProvider
-                    .DownloadAsync(identity, stream, providerProgress, cancellationToken)
-                    .ConfigureAwait(false);
+                await DownloadWithRetryAsync(
+                    identity, stream,
+                    () => _contentProvider.DownloadAsync(identity, stream, providerProgress, cancellationToken),
+                    cancellationToken).ConfigureAwait(false);
                 await ValidateDownloadedContentAsync(identity, stream, cancellationToken).ConfigureAwait(false);
                 await TransferRequestedRangeAsync(request, stream, cancellationToken).ConfigureAwait(false);
                 TryMarkInSync(request, identity, stream.Length);
@@ -237,9 +242,10 @@ namespace Cotton.Sync.Desktop.Platform
                 transferProgress = _transferProgressFactory(identity.SyncPairId);
                 WindowsCloudFilesProviderProgressReporter providerProgress = new(
                     _nativeApi, request, transferProgress, cancellationToken);
-                await rangeProvider
-                    .DownloadVerifiedRangeAsync(identity, stream, start, length, providerProgress, cancellationToken)
-                    .ConfigureAwait(false);
+                await DownloadWithRetryAsync(
+                    identity, stream,
+                    () => rangeProvider.DownloadVerifiedRangeAsync(identity, stream, start, length, providerProgress, cancellationToken),
+                    cancellationToken).ConfigureAwait(false);
                 if (stream.Length != length)
                 {
                     throw new InvalidOperationException("Downloaded cloud-file range size does not match the requested range.");
@@ -253,14 +259,6 @@ namespace Cotton.Sync.Desktop.Platform
             {
                 CompleteTransferProgress(transferProgress);
                 TryDeleteTempFile(tempPath);
-            }
-        }
-
-        private static void CompleteTransferProgress(IProgress<SyncTransferProgress>? transferProgress)
-        {
-            if (transferProgress is WindowsCloudFilesAppTransferProgressReporter appProgress)
-            {
-                appProgress.Complete();
             }
         }
 

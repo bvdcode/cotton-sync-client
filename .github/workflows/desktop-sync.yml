@@ -342,7 +342,7 @@ jobs:
 
       - name: Verify Cloud Files availability and downloads
         timeout-minutes: 4
-        run: dotnet test src/Cotton.Sync.Desktop.Tests/Cotton.Sync.Desktop.Tests.csproj -c Release -p:RestoreLockedMode=true --filter "FullyQualifiedName~RunOnceAsync_PinnedRegularFileRegainsCloudIdentity|FullyQualifiedName~ReconnectSyncRoot_PreservesDirectoryAndFileCloudIdentity|FullyQualifiedName~HydratePlaceholder_WhileExternalProcessReads|FullyQualifiedName~HydratePlaceholder_DownloadExceedsNativeTimeout|FullyQualifiedName~RunOnceAsync_LargePinnedFolderRemainsPending"
+        run: dotnet test src/Cotton.Sync.Desktop.Tests/Cotton.Sync.Desktop.Tests.csproj -c Release -p:RestoreLockedMode=true --filter "FullyQualifiedName~RunOnceAsync_PinnedRegularFileRegainsCloudIdentity|FullyQualifiedName~ReconnectSyncRoot_PreservesDirectoryAndFileCloudIdentity|FullyQualifiedName~HydratePlaceholder_WhileExternalProcessReads|FullyQualifiedName~HydratePlaceholder_DownloadExceedsNativeTimeout|FullyQualifiedName~RunOnceAsync_LargePinnedFolderRemainsPending|FullyQualifiedName~HydratePlaceholder_InterruptedResponseBody"
 
       - name: Smoke desktop Windows self-test
         timeout-minutes: 4
