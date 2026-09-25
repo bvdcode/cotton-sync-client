@@ -1,6 +1,9 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using System.Security.Cryptography;
+using System.Text;
+
 namespace Cotton.Sync.Desktop.Composition
 {
     internal class DesktopAppPaths
@@ -49,16 +52,20 @@ namespace Cotton.Sync.Desktop.Composition
                 root = AppContext.BaseDirectory;
             }
 
-            string localRoot = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             return new DesktopAppPaths(
                 Path.Combine(root, CompanyDirectoryName, ProductDirectoryName),
-                Path.Combine(localRoot, CompanyDirectoryName, ProductDirectoryName, "download-cache"));
+                Path.Combine(Path.GetTempPath(), CompanyDirectoryName, ProductDirectoryName, "download-cache"));
         }
 
         internal static DesktopAppPaths CreateForDataDirectory(string dataDirectory)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
-            return new DesktopAppPaths(dataDirectory, Path.Combine(dataDirectory, "download-cache"));
+            string key = Convert.ToHexStringLower(SHA256.HashData(
+                Encoding.UTF8.GetBytes(Path.GetFullPath(dataDirectory))));
+            return new DesktopAppPaths(
+                dataDirectory,
+                Path.Combine(Path.GetTempPath(), CompanyDirectoryName, ProductDirectoryName,
+                    "download-cache", "data", key));
         }
     }
 }

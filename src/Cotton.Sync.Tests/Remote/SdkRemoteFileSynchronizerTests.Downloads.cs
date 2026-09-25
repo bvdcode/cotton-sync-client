@@ -270,10 +270,10 @@ namespace Cotton.Sync.Tests.Remote
         }
 
         [Test]
-        public async Task DownloadFileAsync_DownloadsTwoRemainingChunksConcurrently()
+        public async Task DownloadFileAsync_DownloadsFourRemainingChunksConcurrently()
         {
             Guid fileId = Guid.NewGuid();
-            byte[] content = Encoding.UTF8.GetBytes("abcdefghijklmnop");
+            byte[] content = Encoding.UTF8.GetBytes("abcdefghijklmnopqrstuvwx");
             FakeCottonCloudClient client = new(chunkSizeBytes: 4);
             client.FilesClient.Downloads[fileId] = content;
             client.FilesClient.DownloadChunkSizeBytes = 4;
@@ -288,7 +288,35 @@ namespace Cotton.Sync.Tests.Remote
             Assert.Multiple(() =>
             {
                 Assert.That(destination.ToArray(), Is.EqualTo(content));
-                Assert.That(client.FilesClient.MaxActiveChunkDownloads, Is.EqualTo(2));
+                Assert.That(client.FilesClient.MaxActiveChunkDownloads, Is.EqualTo(4));
+            });
+        }
+
+        [Test]
+        public async Task DownloadFileAsync_RemovesExpiredInterruptedDownloadCache()
+        {
+            string cacheDirectory = Path.Combine(_root, "cache");
+            string expiredDirectory = Path.Combine(
+                cacheDirectory, Guid.NewGuid().ToString("N") + "-" + new string('a', 64));
+            Directory.CreateDirectory(expiredDirectory);
+            await File.WriteAllTextAsync(Path.Combine(expiredDirectory, "00000000.chunk"), "old");
+            Directory.SetLastWriteTimeUtc(expiredDirectory, DateTime.UtcNow.AddDays(-2));
+
+            Guid fileId = Guid.NewGuid();
+            byte[] content = Encoding.UTF8.GetBytes("current");
+            FakeCottonCloudClient client = new(chunkSizeBytes: 8);
+            client.FilesClient.Downloads[fileId] = content;
+            SdkRemoteFileSynchronizer synchronizer = CreateDownloader(client);
+            await using MemoryStream destination = new();
+
+            await synchronizer.DownloadFileAsync(
+                new RemoteFileDownloadIdentity(fileId, content.Length, ETag(content)),
+                "Docs/file.txt", destination, null);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(destination.ToArray(), Is.EqualTo(content));
+                Assert.That(Directory.Exists(expiredDirectory), Is.False);
             });
         }
 

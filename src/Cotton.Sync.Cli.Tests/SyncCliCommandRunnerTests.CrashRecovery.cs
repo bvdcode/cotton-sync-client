@@ -131,7 +131,7 @@ namespace Cotton.Sync.Cli.Tests
             SyncStateEntry? entryAfterCrash = await store.GetAsync(syncPairId, relativePath);
             string[] staleTemporaryFiles = ListTemporaryDownloads(temporaryDirectory);
             bool targetExistsAfterCrash = File.Exists(targetPath);
-            string cacheDirectory = Path.Combine(localRoot, ".cotton-sync", "download-cache");
+            string cacheDirectory = SyncCliRuntimeFactory.GetDownloadCacheDirectory(syncPairId);
             string[] verifiedChunksAfterCrash = Directory.GetFiles(
                 cacheDirectory, "*.chunk", SearchOption.AllDirectories);
 

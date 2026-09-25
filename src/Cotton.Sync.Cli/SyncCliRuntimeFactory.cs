@@ -1,6 +1,8 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using System.Security.Cryptography;
+using System.Text;
 using Cotton.Auth;
 using Cotton.Nodes;
 using Cotton.Sdk;
@@ -107,8 +109,7 @@ namespace Cotton.Sync.Cli
                 new RemoteTreeCrawler(client.Nodes),
                 new SdkRemoteFileSynchronizer(client, new SdkRemoteFileSynchronizerOptions
                 {
-                    DownloadCacheDirectory = Path.Combine(
-                        Path.GetFullPath(options.LocalRoot), SyncMetadataDirectory.Name, "download-cache"),
+                    DownloadCacheDirectory = GetDownloadCacheDirectory(options.SyncPairId),
                 }),
                 stateStore,
                 remoteDirectories: new SdkRemoteDirectorySynchronizer(client.Nodes));
@@ -119,6 +120,13 @@ namespace Cotton.Sync.Cli
                 RemoteRootNodeId = remoteRootNodeId,
             };
             return new SyncCliRuntime(syncPair, stateStore, engine, client);
+        }
+
+        internal static string GetDownloadCacheDirectory(string syncPairId)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
+            string key = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(syncPairId)));
+            return Path.Combine(Path.GetTempPath(), "Cotton", "Sync", "download-cache", "cli", key);
         }
 
         private static async Task<Guid> ResolveRemoteRootNodeIdAsync(

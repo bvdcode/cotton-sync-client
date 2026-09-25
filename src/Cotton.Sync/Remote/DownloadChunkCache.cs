@@ -10,8 +10,8 @@ namespace Cotton.Sync.Remote
             : StringComparer.Ordinal;
         private static readonly Dictionary<string, DownloadChunkCache> ActiveCaches = new(PathComparer);
         private static readonly Dictionary<string, DateTime> PrunedRoots = new(PathComparer);
-        private static readonly TimeSpan Retention = TimeSpan.FromDays(7);
-        private static readonly TimeSpan PruneInterval = TimeSpan.FromDays(1);
+        private static readonly TimeSpan Retention = TimeSpan.FromDays(1);
+        private static readonly TimeSpan PruneInterval = TimeSpan.FromHours(1);
 
         private readonly SemaphoreSlim _semaphore = new(1, 1);
         private readonly string _directory;
