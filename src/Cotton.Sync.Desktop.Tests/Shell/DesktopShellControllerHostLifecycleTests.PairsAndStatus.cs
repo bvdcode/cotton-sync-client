@@ -83,6 +83,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
             Uri serverUrl = new("https://cotton.example.test/");
             FakeDesktopApplicationHost host = FakeDesktopApplicationHost.Create(serverUrl);
+            host.App.SyncNowStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             QueueingDesktopSyncApplicationFactory factory = new QueueingDesktopSyncApplicationFactory(host.Host);
             using DesktopShellController controller = CreateController(paths, factory);
             string localPath = Path.Combine(_tempDirectory, "Desktop");
@@ -95,6 +96,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 null));
             SyncPairSettings syncPair = await controller.AddSyncPairAsync(
                 new DesktopSyncPairRequest(localPath, "/Desktop", SyncPairMode.WindowsVirtualFiles));
+            await host.App.SyncNowStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
             Assert.Multiple(() =>
             {
