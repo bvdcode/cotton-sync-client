@@ -152,12 +152,6 @@ namespace Cotton.Sync.Desktop.Platform
                     registration.LocalRootPath,
                     normalizedPath);
                 operationExecutor.ExecuteWithTransientPathRetry(
-                    () => nativeApi.SetPinState(fullPlaceholderPath, WindowsCloudFilesPinState.Pinned),
-                    "set-pin-state",
-                    syncPair.Id.ToString(),
-                    registration.LocalRootPath,
-                    normalizedPath);
-                operationExecutor.ExecuteWithTransientPathRetry(
                     () => inSyncManager.SetAndVerifyInSyncState(fullPlaceholderPath),
                     "set-in-sync-state",
                     syncPair.Id.ToString(),

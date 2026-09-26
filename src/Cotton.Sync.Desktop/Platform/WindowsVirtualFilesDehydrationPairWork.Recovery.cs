@@ -139,6 +139,7 @@ namespace Cotton.Sync.Desktop.Platform
                     entry,
                     persistState: false,
                     suppressProviderWrite: true,
+                    selectedDirectoryPath: null,
                     cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
             hydratedEntries.Add(entry);

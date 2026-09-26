@@ -43,9 +43,10 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             List<SyncStateEntry> hydratedEntries = new();
-            (int hydratedFiles, int alreadyHydratedFiles) = await HydrateTrackedAvailabilityFilesAsync(
+            (int hydratedFiles, int alreadyHydratedFiles, bool pinRemoved) = await HydrateTrackedAvailabilityFilesAsync(
                     syncPair,
                     request,
+                    fullPath,
                     subtreeEntries,
                     hydratedEntries,
                     handledAvailabilityPathKeys,
@@ -53,6 +54,18 @@ namespace Cotton.Sync.Desktop.Platform
                 .ConfigureAwait(false);
 
             await _stateStore.UpsertManyAsync(hydratedEntries, cancellationToken).ConfigureAwait(false);
+            if (pinRemoved)
+            {
+                _diagnostics.Record(
+                    "manual-always-keep-root",
+                    "canceled",
+                    syncPair.Id.ToString("D"),
+                    syncPair.LocalRootPath,
+                    ".",
+                    "Offline availability was removed before all files were downloaded.");
+                return true;
+            }
+
             SyncStateEntry[] directoryEntries = subtreeEntries
                 .Where(static entry => entry.Kind == SyncEntryKind.Directory)
                 .OrderByDescending(static entry => GetPathDepth(entry.RelativePath))
@@ -105,9 +118,10 @@ namespace Cotton.Sync.Desktop.Platform
                     cancellationToken)
                 .ConfigureAwait(false);
             List<SyncStateEntry> hydratedEntries = new();
-            (int hydratedFiles, int alreadyHydratedFiles) = await HydrateTrackedAvailabilityFilesAsync(
+            (int hydratedFiles, int alreadyHydratedFiles, bool pinRemoved) = await HydrateTrackedAvailabilityFilesAsync(
                     syncPair,
                     request,
+                    ResolveFullPath(syncPair.LocalRootPath, normalizedPath),
                     subtreeEntries,
                     hydratedEntries,
                     handledAvailabilityPathKeys,
@@ -115,6 +129,24 @@ namespace Cotton.Sync.Desktop.Platform
                 .ConfigureAwait(false);
 
             await _stateStore.UpsertManyAsync(hydratedEntries, cancellationToken).ConfigureAwait(false);
+            if (pinRemoved)
+            {
+                if (CanApplyDirectoryUnpin(syncPair, subtreeEntries, cancellationToken))
+                {
+                    CompleteUnpinnedDirectories(syncPair, subtreeEntries, cancellationToken);
+                }
+
+                handledAvailabilityPathKeys.Add(SyncPath.ToKey(normalizedPath));
+                _diagnostics.Record(
+                    "manual-always-keep-directory",
+                    "canceled",
+                    syncPair.Id.ToString("D"),
+                    syncPair.LocalRootPath,
+                    normalizedPath,
+                    "Offline availability was removed before all files were downloaded.");
+                return true;
+            }
+
             int completedDirectories = CompleteHydratedDirectories(syncPair, subtreeEntries, cancellationToken);
             handledAvailabilityPathKeys.Add(SyncPath.ToKey(normalizedPath));
             RecordDirectoryHydrationCompleted(
@@ -258,6 +290,8 @@ namespace Cotton.Sync.Desktop.Platform
                 handledAvailabilityPathKeys.Add(SyncPath.ToKey(entry.RelativePath));
             }
 
+            CompleteUnpinnedDirectories(syncPair, subtreeEntries, cancellationToken);
+
             _diagnostics.Record(
                 "manual-always-keep-directory",
                 "unpinned",
@@ -278,7 +312,7 @@ namespace Cotton.Sync.Desktop.Platform
                 cancellationToken.ThrowIfCancellationRequested();
                 string entryPath = ResolveFullPath(syncPair.LocalRootPath, entry.RelativePath);
                 WindowsVirtualFileDiskState? diskState = TryReadDiskState(entryPath);
-                if (!IsValidDirectoryUnpinEntry(entry, diskState))
+                if (!IsValidDirectoryUnpinEntry(syncPair, entry, diskState))
                 {
                     return false;
                 }
@@ -287,7 +321,8 @@ namespace Cotton.Sync.Desktop.Platform
             return true;
         }
 
-        private static bool IsValidDirectoryUnpinEntry(
+        private bool IsValidDirectoryUnpinEntry(
+            SyncPairSettings syncPair,
             SyncStateEntry entry,
             WindowsVirtualFileDiskState? diskState)
         {
@@ -301,9 +336,32 @@ namespace Cotton.Sync.Desktop.Platform
                 return IsManualPinRemovalDirectoryCandidate(diskState.Attributes);
             }
 
-            return IsTrackedVirtualFile(entry)
-                && IsManualPinRemovalFileCandidate(diskState.Attributes)
-                && MaterializedBaselineMatches(entry, diskState);
+            if (!IsTrackedVirtualFile(entry))
+            {
+                return false;
+            }
+
+            if (IsManualPinRemovalFileCandidate(diskState.Attributes)
+                && MaterializedBaselineMatches(entry, diskState))
+            {
+                return true;
+            }
+
+            return IsUnchangedOnlineOnlyPlaceholder(syncPair, entry, diskState);
+        }
+
+        private void CompleteUnpinnedDirectories(
+            SyncPairSettings syncPair,
+            IEnumerable<SyncStateEntry> subtreeEntries,
+            CancellationToken cancellationToken)
+        {
+            foreach (SyncStateEntry entry in subtreeEntries
+                         .Where(static item => item.Kind == SyncEntryKind.Directory)
+                         .OrderByDescending(static item => GetPathDepth(item.RelativePath)))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _cloudFiles.SetInSyncState(syncPair, entry.RelativePath);
+            }
         }
 
         private async Task<bool> TryHandleManualDirectoryDehydrationAsync(

@@ -66,6 +66,7 @@ namespace Cotton.Sync.Desktop.Platform
                         state,
                         persistState: true,
                         suppressProviderWrite: true,
+                        selectedDirectoryPath: null,
                         cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
                 hydrationCompleted = true;
@@ -93,9 +94,10 @@ namespace Cotton.Sync.Desktop.Platform
             return true;
         }
 
-        private async Task<(int HydratedFiles, int AlreadyHydratedFiles)> HydrateTrackedAvailabilityFilesAsync(
+        private async Task<(int HydratedFiles, int AlreadyHydratedFiles, bool PinRemoved)> HydrateTrackedAvailabilityFilesAsync(
             SyncPairSettings syncPair,
             SyncRunRequest request,
+            string selectedDirectoryPath,
             IReadOnlyList<SyncStateEntry> subtreeEntries,
             List<SyncStateEntry> hydratedEntries,
             HashSet<string>? handledAvailabilityPathKeys,
@@ -108,27 +110,60 @@ namespace Cotton.Sync.Desktop.Platform
                 CaptureInitialHydrationStates(syncPair, trackedEntries);
             MarkHydratingDirectoriesPending(syncPair, subtreeEntries, initialDiskStates);
             WindowsVirtualFilesHydrationRun run = new(request, initialDiskStates);
+            bool pinRemoved = false;
             PublishHydrationRunProgress(syncPair, run, string.Empty, isCompleted: false);
             try
             {
                 foreach (SyncStateEntry entry in subtreeEntries)
                 {
-                    await ProcessHydrationEntryAsync(
-                            syncPair,
-                            entry,
-                            run,
-                            hydratedEntries,
-                            handledAvailabilityPathKeys,
-                            cancellationToken)
-                        .ConfigureAwait(false);
+                    if (!IsSelectedDirectoryPinned(selectedDirectoryPath))
+                    {
+                        pinRemoved = true;
+                        break;
+                    }
+
+                    try
+                    {
+                        await ProcessHydrationEntryAsync(
+                                syncPair,
+                                entry,
+                                selectedDirectoryPath,
+                                run,
+                                hydratedEntries,
+                                handledAvailabilityPathKeys,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    catch (WindowsCloudFilesNativeException exception)
+                        when (!IsSelectedDirectoryPinned(selectedDirectoryPath))
+                    {
+                        _diagnostics.Record(
+                            "manual-always-keep",
+                            "canceled",
+                            syncPair.Id.ToString("D"),
+                            syncPair.LocalRootPath,
+                            entry.RelativePath,
+                            "Hydration stopped after offline availability was removed.",
+                            exception.HResult);
+                        pinRemoved = true;
+                        break;
+                    }
                 }
+
+                pinRemoved |= !IsSelectedDirectoryPinned(selectedDirectoryPath);
             }
             finally
             {
                 PublishHydrationRunProgress(syncPair, run, string.Empty, isCompleted: true);
             }
 
-            return (run.HydratedFiles, run.AlreadyHydratedFiles);
+            return (run.HydratedFiles, run.AlreadyHydratedFiles, pinRemoved);
+        }
+
+        private bool IsSelectedDirectoryPinned(string selectedDirectoryPath)
+        {
+            WindowsVirtualFileDiskState? diskState = TryReadDiskState(selectedDirectoryPath);
+            return diskState is not null && IsManualAlwaysKeepDirectoryCandidate(diskState.Attributes);
         }
 
         private IReadOnlyDictionary<string, WindowsVirtualFileDiskState?> CaptureInitialHydrationStates(
@@ -156,6 +191,7 @@ namespace Cotton.Sync.Desktop.Platform
         private async Task ProcessHydrationEntryAsync(
             SyncPairSettings syncPair,
             SyncStateEntry entry,
+            string selectedDirectoryPath,
             WindowsVirtualFilesHydrationRun run,
             ICollection<SyncStateEntry> hydratedEntries,
             ISet<string>? handledAvailabilityPathKeys,
@@ -194,6 +230,7 @@ namespace Cotton.Sync.Desktop.Platform
                     entry,
                     persistState: false,
                     suppressProviderWrite: false,
+                    selectedDirectoryPath: selectedDirectoryPath,
                     cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
             hydratedEntries.Add(entry);
@@ -311,6 +348,7 @@ namespace Cotton.Sync.Desktop.Platform
             SyncStateEntry state,
             bool persistState,
             bool suppressProviderWrite,
+            string? selectedDirectoryPath,
             CancellationToken cancellationToken)
         {
             if (suppressProviderWrite)
@@ -323,6 +361,11 @@ namespace Cotton.Sync.Desktop.Platform
             try
             {
                 _cloudFiles.HydratePlaceholder(syncPair, normalizedPath);
+            }
+            catch (WindowsCloudFilesNativeException)
+                when (selectedDirectoryPath is not null && !IsSelectedDirectoryPinned(selectedDirectoryPath))
+            {
+                throw;
             }
             catch (Exception exception)
             {

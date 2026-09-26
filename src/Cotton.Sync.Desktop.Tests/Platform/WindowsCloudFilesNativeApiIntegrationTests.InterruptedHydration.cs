@@ -47,6 +47,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     Assert.That(provider.InterruptedError, Is.EqualTo(HttpRequestError.ResponseEnded));
                     Assert.That(provider.RequestedPaths, Is.EqualTo(new[] { "photo.raw", "photo.raw" }));
                     Assert.That(actualContent, Is.EqualTo(content));
+                    Assert.That(((int)File.GetAttributes(path) & 0x00080000) != 0, Is.True);
                     Assert.That(nativeApi.GetPlaceholderState(path).HasFlag(WindowsCloudFilesPlaceholderState.InSync), Is.True);
                     Assert.That(diagnostics.Snapshot().Any(static item => item.Status == "failed"), Is.False);
                 });

@@ -52,6 +52,33 @@ namespace Cotton.Sync.Desktop.Platform
                     StringComparison.OrdinalIgnoreCase);
         }
 
+        private bool IsUnchangedOnlineOnlyPlaceholder(
+            SyncPairSettings syncPair,
+            SyncStateEntry state,
+            WindowsVirtualFileDiskState diskState)
+        {
+            FileAttributes attributes = diskState.Attributes;
+            if (state.PlaceholderHydrationState is not
+                    (SyncPlaceholderHydrationState.RemoteOnly or SyncPlaceholderHydrationState.Dehydrated)
+                || (attributes & FileAttributes.ReparsePoint) == 0
+                || (attributes & FileAttributes.Directory) != 0
+                || HasRawAttribute(attributes, FileAttributePinned)
+                || HasRawAttribute(attributes, FileAttributeUnpinned)
+                || (!HasRawAttribute(attributes, FileAttributeRecallOnDataAccess)
+                    && (attributes & FileAttributes.Offline) == 0)
+                || !SizeMatchesBaseline(state, diskState.Length))
+            {
+                return false;
+            }
+
+            WindowsCloudFilesPlaceholderState placeholderState = _cloudFiles.GetPlaceholderState(
+                syncPair, state.RelativePath);
+            return placeholderState.HasFlag(WindowsCloudFilesPlaceholderState.Placeholder)
+                && placeholderState.HasFlag(WindowsCloudFilesPlaceholderState.InSync)
+                && _cloudFiles.GetPlaceholderIdentity(syncPair, state.RelativePath)
+                    .AsSpan().SequenceEqual(state.PlaceholderIdentity);
+        }
+
         private bool IsUnchangedPinnedPlaceholder(
             SyncPairSettings syncPair,
             SyncStateEntry state,

@@ -260,6 +260,19 @@ namespace Cotton.Sync.Desktop.Platform
             string fullPlaceholderPath,
             byte[] directoryIdentity)
         {
+            WindowsCloudFilesPlaceholderState state = nativeApi.GetPlaceholderState(fullPlaceholderPath);
+            if (!state.HasFlag(WindowsCloudFilesPlaceholderState.InSync))
+            {
+                diagnostics.Record(
+                    "convert-directory-placeholder",
+                    "skipped-pending",
+                    request.SyncPairId,
+                    localRootPath,
+                    normalizedPath,
+                    "Directory availability is pending; metadata repair will wait until it is in sync.");
+                return;
+            }
+
             WindowsCloudFilesPinState? existingPinState = pinStateResolver.ReadExisting(fullPlaceholderPath);
             WindowsCloudFilesNativePlaceholder directoryPlaceholder = CreateDirectoryNativePlaceholder(
                 placeholderPath,

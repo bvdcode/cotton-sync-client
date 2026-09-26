@@ -225,6 +225,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 return PlaceholderState;
             }
 
+            public byte[] GetPlaceholderIdentity(SyncPairSettings syncPair, string relativePath)
+            {
+                return [1, 2, 3];
+            }
+
             public WindowsCloudFilesConnection ConnectSyncRoot(
                 SyncPairSettings syncPair,
                 IWindowsCloudFilesCallbackHandler callbackHandler)

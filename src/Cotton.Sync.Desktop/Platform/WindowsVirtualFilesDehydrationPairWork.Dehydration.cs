@@ -49,6 +49,18 @@ namespace Cotton.Sync.Desktop.Platform
                 return true;
             }
 
+            if (IsUnchangedOnlineOnlyPlaceholder(syncPair, state, diskState))
+            {
+                _diagnostics.Record(
+                    "manual-always-keep",
+                    "canceled",
+                    syncPair.Id.ToString("D"),
+                    syncPair.LocalRootPath,
+                    normalizedPath,
+                    "Offline availability was removed before the file was downloaded.");
+                return true;
+            }
+
             if (IsCompletedOnDemandHydrationCandidate(state, diskState.Attributes))
             {
                 return await CompleteOnDemandHydrationAsync(

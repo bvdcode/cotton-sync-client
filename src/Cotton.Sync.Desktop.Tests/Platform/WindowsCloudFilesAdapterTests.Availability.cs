@@ -65,7 +65,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
-        public void HydratePlaceholder_HydratesPinsMarksInSyncAndNotifiesShell()
+        public void HydratePlaceholder_HydratesMarksInSyncAndPreservesExplorerPinState()
         {
             FakeCloudFilesNativeApi nativeApi = new FakeCloudFilesNativeApi();
             RecordingShellChangeNotifier shellChanges = new RecordingShellChangeNotifier();
@@ -85,16 +85,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             Assert.Multiple(() =>
             {
                 Assert.That(nativeApi.HydratedPaths, Is.EqualTo(new[] { target }));
-                Assert.That(nativeApi.PinStates, Has.Count.EqualTo(1));
-                Assert.That(nativeApi.PinStates[0].FilePath, Is.EqualTo(target));
-                Assert.That(nativeApi.PinStates[0].PinState, Is.EqualTo(WindowsCloudFilesPinState.Pinned));
+                Assert.That(nativeApi.PinStates, Is.Empty);
                 Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { target }));
                 Assert.That(shellChanges.ItemUpdates, Is.EqualTo(new[] { target }));
                 Assert.That(shellChanges.DirectoryUpdates, Is.Empty);
                 Assert.That(nativeApi.CallLog, Is.EqualTo(new[]
                 {
                     "native-hydrate",
-                    "native-set-pin-state",
                     "native-set-in-sync-state",
                 }));
             });

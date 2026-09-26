@@ -379,6 +379,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             Directory.CreateDirectory(directoryPath);
             RemoteDirectoryMaterializationRequest request = CreateDirectoryRequest(root, "Projects");
             TrackExistingDirectoryPlaceholder(nativeApi, directoryPath, request);
+            nativeApi.InSyncPaths.Add(directoryPath);
             WindowsCloudFilesAdapter adapter = new WindowsCloudFilesAdapter(
                 CreatePolicy(),
                 nativeApi,
@@ -406,7 +407,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(nativeApi.PinStates, Has.Count.EqualTo(1));
                 Assert.That(nativeApi.PinStates[0].FilePath, Is.EqualTo(directoryPath));
                 Assert.That(nativeApi.PinStates[0].PinState, Is.EqualTo(WindowsCloudFilesPinState.Pinned));
-                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { directoryPath }));
+                Assert.That(nativeApi.InSyncPaths, Is.EqualTo(new[] { directoryPath, directoryPath }));
                 Assert.That(nativeApi.CallLog, Is.EqualTo(new[] { "native-update", "native-set-pin-state", "native-set-in-sync-state" }));
                 Assert.That(identity.RelativePath, Is.EqualTo("Projects"));
                 Assert.That(identity.NodeId, Is.EqualTo(Guid.Parse("88888888-8888-8888-8888-888888888888")));
