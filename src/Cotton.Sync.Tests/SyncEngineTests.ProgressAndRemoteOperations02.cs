@@ -268,7 +268,10 @@ namespace Cotton.Sync.Tests
                 FindChildDirectoryCalls.Add((parentNodeId, name));
                 NodeDto? match = ExistingDirectories.FirstOrDefault(node =>
                     node.ParentId == parentNodeId
-                    && string.Equals(node.Name, name, StringComparison.OrdinalIgnoreCase));
+                    && string.Equals(
+                        RemoteNameKey.Create(node.Name),
+                        RemoteNameKey.Create(name),
+                        StringComparison.Ordinal));
                 return Task.FromResult(match);
             }
 

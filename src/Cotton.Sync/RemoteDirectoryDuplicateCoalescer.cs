@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
-using System.Globalization;
-using System.Text;
 using Cotton.Sync.Local;
 using Cotton.Sync.Remote;
 using Cotton.Sync.State;
@@ -13,13 +11,14 @@ using static Cotton.Sync.SyncPathOperations;
 
 namespace Cotton.Sync
 {
-    internal class RemoteDirectoryDuplicateCoalescer(
+    internal partial class RemoteDirectoryDuplicateCoalescer(
         ILocalFileMetadataPathLookupScanner? localPathScanner,
         IRemotePathLookupCrawler? remotePathCrawler,
         ILocalFileSyncWriter localWriter,
         ISyncStateStore stateStore,
         SyncLocalContentHashResolver contentHashResolver,
-        ILogger logger)
+        ILogger logger,
+        IRemoteDirectorySynchronizer? remoteDirectories)
     {
         private static readonly StringComparer PathComparer = StringComparer.OrdinalIgnoreCase;
 
@@ -29,6 +28,8 @@ namespace Cotton.Sync
             {
                 return;
             }
+
+            await CoalesceUntrackedNameCollisionsAsync(context).ConfigureAwait(false);
 
             Dictionary<Guid, RemoteDirectorySnapshot> remoteById =
                 RemoteDirectoryMovePlanner.BuildUniqueRemoteDirectoriesById(context.RemoteDirectoriesByPath.Values);
@@ -47,7 +48,8 @@ namespace Cotton.Sync
                     continue;
                 }
 
-                if (await TryCoalesceAsync(context, source.RelativePath, target.RelativePath).ConfigureAwait(false))
+                if (await TryCoalesceAsync(context, source.RelativePath, target.RelativePath, archiveTarget: false)
+                        .ConfigureAwait(false))
                 {
                     logger.LogInformation(
                         "Coalesced identical local directory trees at {SourcePath} and {TargetPath}.",
@@ -57,7 +59,11 @@ namespace Cotton.Sync
             }
         }
 
-        private async Task<bool> TryCoalesceAsync(SyncRunContext context, string sourcePath, string targetPath)
+        private async Task<bool> TryCoalesceAsync(
+            SyncRunContext context,
+            string sourcePath,
+            string targetPath,
+            bool archiveTarget)
         {
             string sourceKey = SyncPath.ToKey(sourcePath);
             string targetKey = SyncPath.ToKey(targetPath);
@@ -68,6 +74,16 @@ namespace Cotton.Sync
                     .ConfigureAwait(false) is not null)
             {
                 return false;
+            }
+
+            if (archiveTarget)
+            {
+                await foreach (SyncStateEntry _ in stateStore.LoadEntriesByPathPrefixAsync(
+                                   context.SyncPair.SyncPairId, targetPath, context.CancellationToken)
+                                   .ConfigureAwait(false))
+                {
+                    return false;
+                }
             }
 
             List<SyncStateEntry> states = [];
@@ -92,7 +108,12 @@ namespace Cotton.Sync
                 context,
                 [targetPath],
                 includeDescendants: true).ConfigureAwait(false), targetKey);
-            RemoteTreeLookupSnapshot remoteTarget = await ScanRemoteAsync(context, targetPath).ConfigureAwait(false);
+            RemoteTreeLookupSnapshot remoteTarget = await ScanRemoteAsync(
+                context, archiveTarget ? sourcePath : targetPath).ConfigureAwait(false);
+            if (archiveTarget)
+            {
+                remoteTarget = RebaseRemote(remoteTarget, sourcePath, targetPath);
+            }
             if (!DirectoryShapeMatches(
                     context.SyncPair.LocalRootPath,
                     sourcePath,
@@ -142,6 +163,21 @@ namespace Cotton.Sync
             }
 
             context.CancellationToken.ThrowIfCancellationRequested();
+            if (archiveTarget)
+            {
+                await localWriter.DeleteDirectoryAsync(context.SyncPair.LocalRootPath, targetPath, context.CancellationToken)
+                    .ConfigureAwait(false);
+                RemoveSubtree(context.LocalDirectoriesByPath, targetKey);
+                RemoveSubtree(context.LocalFilesByPath, targetKey);
+                SyncActivityReporter.Record(
+                    context.Result,
+                    context.Options,
+                    SyncActivityKind.Converged,
+                    targetPath,
+                    "Archived an identical local folder with an equivalent cloud name.");
+                return true;
+            }
+
             await localWriter.DeleteDirectoryAsync(context.SyncPair.LocalRootPath, sourcePath, context.CancellationToken)
                 .ConfigureAwait(false);
             await stateStore.DeleteByPathPrefixAsync(context.SyncPair.SyncPairId, sourcePath, context.CancellationToken)
@@ -346,28 +382,9 @@ namespace Cotton.Sync
             }
 
             return string.Equals(
-                FoldName(normalizedSource[(sourceSeparator + 1)..]),
-                FoldName(normalizedTarget[(targetSeparator + 1)..]),
+                RemoteNameKey.Create(normalizedSource[(sourceSeparator + 1)..]),
+                RemoteNameKey.Create(normalizedTarget[(targetSeparator + 1)..]),
                 StringComparison.Ordinal);
-        }
-
-        private static string FoldName(string name)
-        {
-            StringBuilder folded = new();
-            foreach (Rune rune in name.Normalize(NormalizationForm.FormD).EnumerateRunes())
-            {
-                UnicodeCategory category = Rune.GetUnicodeCategory(rune);
-                if (category is UnicodeCategory.NonSpacingMark
-                    or UnicodeCategory.SpacingCombiningMark
-                    or UnicodeCategory.EnclosingMark)
-                {
-                    continue;
-                }
-
-                folded.Append(rune.ToString().ToLowerInvariant());
-            }
-
-            return folded.ToString().Normalize(NormalizationForm.FormC);
         }
 
         private static void RemoveSubtree<T>(IDictionary<string, T> entries, string sourceKey)

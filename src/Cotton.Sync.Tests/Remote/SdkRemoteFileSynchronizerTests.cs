@@ -137,7 +137,7 @@ namespace Cotton.Sync.Tests.Remote
         }
 
         [Test]
-        public async Task UploadFileAsync_CreatesCanonicallyDistinctParentDirectory()
+        public async Task UploadFileAsync_ReusesServerEquivalentParentDirectory()
         {
             Guid parentId = Guid.NewGuid();
             LocalFileSnapshot local = WriteLocalFile("Michaël Brun/file.txt", Encoding.UTF8.GetBytes("content"));
@@ -149,9 +149,9 @@ namespace Cotton.Sync.Tests.Remote
 
             Assert.Multiple(() =>
             {
-                Assert.That(client.NodesClient.CreatedNodes.Select(static node => node.Name), Is.EqualTo(new[] { "Michaël Brun" }));
+                Assert.That(client.NodesClient.CreatedNodes, Is.Empty);
                 Assert.That(client.FilesClient.CreateRequests, Has.Count.EqualTo(1));
-                Assert.That(client.FilesClient.CreateRequests[0].NodeId, Is.EqualTo(client.NodesClient.CreatedNodes[0].Id));
+                Assert.That(client.FilesClient.CreateRequests[0].NodeId, Is.EqualTo(parentId));
             });
         }
 

@@ -145,7 +145,8 @@ namespace Cotton.Sync
                 _localWriter,
                 _stateStore,
                 _contentHashResolver,
-                _logger);
+                _logger,
+                _remoteDirectories);
             _treeScanner = new SyncTreeScanner(
                 _localScanner,
                 _localContentHasher,

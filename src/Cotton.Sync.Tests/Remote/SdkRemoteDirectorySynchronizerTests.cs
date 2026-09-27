@@ -54,7 +54,7 @@ namespace Cotton.Sync.Tests.Remote
         }
 
         [Test]
-        public async Task FindChildDirectoryAsync_KeepsDiacriticDistinctDirectoryNames()
+        public async Task FindChildDirectoryAsync_FoldsDiacriticsLikeServer()
         {
             Guid parentId = Guid.NewGuid();
             NodeDto child = new()
@@ -69,7 +69,7 @@ namespace Cotton.Sync.Tests.Remote
 
             NodeDto? found = await synchronizer.FindChildDirectoryAsync(parentId, "Michaël Brun");
 
-            Assert.That(found, Is.Null);
+            Assert.That(found, Is.SameAs(child));
         }
 
         [Test]

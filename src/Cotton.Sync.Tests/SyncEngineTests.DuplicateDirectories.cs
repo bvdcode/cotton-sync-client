@@ -12,6 +12,138 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
+        [Test]
+        public async Task RunOnceAsync_DoesNotAdoptEquivalentCloudFolderWithoutBaseline()
+        {
+            const string cloudPath = "Music/Michael Brun";
+            const string localPath = "Music/Michaël Brun";
+            Directory.CreateDirectory(Path.Combine(_root, localPath));
+            RemoteDirectorySnapshot parent = RemoteDirectory("Music");
+            RemoteDirectorySnapshot cloud = RemoteDirectory(cloudPath, parent.Node.Id);
+            RemoteTreeSnapshot remoteTree = RemoteTree();
+            remoteTree.Directories.AddRange([parent, cloud]);
+            FakeLocalFileScanner scanner = new()
+            {
+                Directories = { LocalDirectory("Music"), LocalDirectory(localPath) },
+            };
+            FakeRemoteDirectorySynchronizer remoteDirectories = new();
+            SyncEngine engine = CreateEngine(
+                scanner,
+                remoteTree,
+                new FakeRemoteFileSynchronizer(),
+                out SqliteSyncStateStore stateStore,
+                remoteDirectories);
+
+            InvalidOperationException? error = Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            {
+                await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles));
+            });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(error?.Message, Does.Contain("no local sync baseline"));
+                Assert.That(Directory.Exists(Path.Combine(_root, localPath)), Is.True);
+                Assert.That(remoteDirectories.CreateAttempts, Is.Empty);
+                Assert.That(remoteDirectories.Deletes, Is.Empty);
+            });
+            Assert.That(await stateStore.LoadPairAsync("pair-a"), Is.Empty);
+        }
+
+        [TestCase(false, false)]
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        [TestCase(true, true)]
+        public async Task RunOnceAsync_HandlesServerEquivalentLocalFolder(bool scoped, bool differentContent)
+        {
+            const string parentPath = "Music";
+            const string sourcePath = "Music/Michael Brun";
+            const string sourceChildPath = "Music/Michael Brun/Album";
+            const string sourceFilePath = "Music/Michael Brun/Album/song.bin";
+            const string duplicatePath = "Music/Michaël Brun";
+            const string duplicateChildPath = "Music/Michaël Brun/Album";
+            const string duplicateFilePath = "Music/Michaël Brun/Album/song.bin";
+            const string content = "matching music";
+            WriteFile(sourceFilePath, content);
+            string duplicateContent = differentContent ? "different music" : content;
+            WriteFile(duplicateFilePath, duplicateContent);
+            LocalFileSnapshot sourceFile = LocalFile(sourceFilePath, content);
+            LocalFileSnapshot duplicateFile = LocalFile(duplicateFilePath, duplicateContent);
+            RemoteDirectorySnapshot parent = RemoteDirectory(parentPath);
+            RemoteDirectorySnapshot source = RemoteDirectory(sourcePath, parent.Node.Id);
+            RemoteDirectorySnapshot child = RemoteDirectory(sourceChildPath, source.Node.Id);
+            NodeFileManifestDto remoteFile = RemoteFile(sourceFilePath, sourceFile.ContentHash, sizeBytes: sourceFile.SizeBytes);
+            remoteFile.NodeId = child.Node.Id;
+            RemoteTreeSnapshot remoteTree = RemoteTree(remoteFile);
+            remoteTree.Directories.AddRange([parent, source, child]);
+            FakeLocalFileScanner scanner = new(sourceFile, duplicateFile)
+            {
+                Directories =
+                {
+                    LocalDirectory(parentPath),
+                    LocalDirectory(sourcePath),
+                    LocalDirectory(sourceChildPath),
+                    LocalDirectory(duplicatePath),
+                    LocalDirectory(duplicateChildPath),
+                },
+            };
+            FakeRemoteDirectorySynchronizer remoteDirectories = new();
+            remoteDirectories.ExistingDirectories.Add(source.Node);
+            remoteDirectories.ConflictCreates.Add((parent.Node.Id, "Michaël Brun"));
+            FakeRemoteFileSynchronizer remoteFiles = new();
+            SyncEngine engine = CreateEngine(
+                scanner,
+                remoteTree,
+                remoteFiles,
+                out SqliteSyncStateStore stateStore,
+                remoteDirectories);
+            await InsertDirectoryBaselineAsync(stateStore, parentPath, parent.Node);
+            await InsertDirectoryBaselineAsync(stateStore, sourcePath, source.Node);
+            await InsertDirectoryBaselineAsync(stateStore, sourceChildPath, child.Node);
+            await InsertBaselineAsync(stateStore, sourceFilePath, sourceFile.ContentHash, remoteFile, sourceFile.SizeBytes);
+
+            SyncRunOptions options = scoped
+                ? new SyncRunOptions { Scope = SyncRunScope.ForLocalChangedPaths([duplicatePath]) }
+                : new SyncRunOptions();
+            SyncRunResult? result = null;
+            InvalidOperationException? error = null;
+            if (differentContent)
+            {
+                error = Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                {
+                    await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles), options);
+                });
+            }
+            else
+            {
+                result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles), options);
+            }
+
+            IReadOnlyList<SyncStateEntry> states = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(File.ReadAllText(Path.Combine(_root, sourceFilePath)), Is.EqualTo(content));
+                Assert.That(Directory.Exists(Path.Combine(_root, duplicatePath)), Is.EqualTo(differentContent));
+                if (differentContent)
+                {
+                    Assert.That(File.ReadAllText(Path.Combine(_root, duplicateFilePath)), Is.EqualTo(duplicateContent));
+                    Assert.That(error?.Message, Does.Contain("Both folders were kept"));
+                }
+                else
+                {
+                    Assert.That(Directory.EnumerateFiles(Path.Combine(_root, ".cotton-sync", "deleted"),
+                        "song.bin", SearchOption.AllDirectories).Any(), Is.True);
+                    Assert.That(result?.RequiresUserAction, Is.False);
+                }
+                Assert.That(states.Select(state => state.RelativePath),
+                    Is.EqualTo(new[] { parentPath, sourcePath, sourceChildPath, sourceFilePath }));
+                Assert.That(states.Single(state => state.Kind == SyncEntryKind.File).RemoteFileId,
+                    Is.EqualTo(remoteFile.Id));
+                Assert.That(remoteDirectories.CreateAttempts, Is.Empty);
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+                Assert.That(remoteDirectories.Deletes, Is.Empty);
+            });
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public async Task RunOnceAsync_AdoptsIdenticalExportedFolderAfterRemoteNameChange(bool scoped)
@@ -206,7 +338,8 @@ namespace Cotton.Sync.Tests
                 new AtomicLocalFileSyncWriter(),
                 stateStore,
                 new SyncLocalContentHashResolver(scanner, null),
-                NullLogger.Instance);
+                NullLogger.Instance,
+                null);
 
             await coalescer.CoalesceAsync(context);
 
