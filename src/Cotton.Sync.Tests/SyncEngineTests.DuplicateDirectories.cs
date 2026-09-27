@@ -53,7 +53,7 @@ namespace Cotton.Sync.Tests
         [TestCase(true, false)]
         [TestCase(false, true)]
         [TestCase(true, true)]
-        public async Task RunOnceAsync_HandlesServerEquivalentLocalFolder(bool scoped, bool differentContent)
+        public async Task RunOnceAsync_KeepsServerEquivalentLocalFolders(bool scoped, bool differentContent)
         {
             const string parentPath = "Music";
             const string sourcePath = "Music/Michael Brun";
@@ -116,22 +116,22 @@ namespace Cotton.Sync.Tests
             else
             {
                 result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles), options);
+                await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles), options);
             }
 
             IReadOnlyList<SyncStateEntry> states = await stateStore.LoadPairAsync("pair-a");
             Assert.Multiple(() =>
             {
                 Assert.That(File.ReadAllText(Path.Combine(_root, sourceFilePath)), Is.EqualTo(content));
-                Assert.That(Directory.Exists(Path.Combine(_root, duplicatePath)), Is.EqualTo(differentContent));
+                Assert.That(Directory.Exists(Path.Combine(_root, duplicatePath)), Is.True);
+                Assert.That(File.ReadAllText(Path.Combine(_root, duplicateFilePath)), Is.EqualTo(duplicateContent));
+                Assert.That(Directory.Exists(Path.Combine(_root, ".cotton-sync", "deleted")), Is.False);
                 if (differentContent)
                 {
-                    Assert.That(File.ReadAllText(Path.Combine(_root, duplicateFilePath)), Is.EqualTo(duplicateContent));
                     Assert.That(error?.Message, Does.Contain("Both folders were kept"));
                 }
                 else
                 {
-                    Assert.That(Directory.EnumerateFiles(Path.Combine(_root, ".cotton-sync", "deleted"),
-                        "song.bin", SearchOption.AllDirectories).Any(), Is.True);
                     Assert.That(result?.RequiresUserAction, Is.False);
                 }
                 Assert.That(states.Select(state => state.RelativePath),
@@ -146,7 +146,7 @@ namespace Cotton.Sync.Tests
 
         [TestCase(false)]
         [TestCase(true)]
-        public async Task RunOnceAsync_AdoptsIdenticalExportedFolderAfterRemoteNameChange(bool scoped)
+        public async Task RunOnceAsync_KeepsIdenticalLocalFoldersAfterRemoteNameChange(bool scoped)
         {
             const string sourcePath = "Music/Cafe";
             const string sourceChildPath = "Music/Cafe/Album";
@@ -212,20 +212,21 @@ namespace Cotton.Sync.Tests
                 : new SyncRunOptions();
             SyncRunResult result = await engine.RunOnceAsync(
                 Pair(SyncPairMaterializationMode.WindowsVirtualFiles), options);
+            await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles), options);
 
             IReadOnlyList<SyncStateEntry> states = await stateStore.LoadPairAsync("pair-a");
             Assert.Multiple(() =>
             {
-                Assert.That(Directory.Exists(Path.Combine(_root, sourcePath)), Is.False);
+                Assert.That(File.ReadAllText(Path.Combine(_root, sourceFilePath)), Is.EqualTo(content));
                 Assert.That(File.ReadAllText(Path.Combine(_root, targetFilePath)), Is.EqualTo(content));
-                Assert.That(Directory.EnumerateFiles(Path.Combine(_root, ".cotton-sync", "deleted"),
-                    "song.bin", SearchOption.AllDirectories).Any(), Is.True);
+                Assert.That(Directory.Exists(Path.Combine(_root, ".cotton-sync", "deleted")), Is.False);
                 Assert.That(states.Single(state => state.RemoteNodeId == originalDirectory.Node.Id).RelativePath,
                     Is.EqualTo(targetPath));
                 Assert.That(states.Single(state => state.RemoteFileId == remoteFile.Id).RelativePath,
                     Is.EqualTo(targetFilePath));
                 Assert.That(remoteDirectories.Creates, Is.Empty);
                 Assert.That(remoteDirectories.Deletes, Is.Empty);
+                Assert.That(remoteFiles.Uploads, Is.Empty);
                 Assert.That(result.RequiresUserAction, Is.False);
             });
         }
@@ -335,7 +336,6 @@ namespace Cotton.Sync.Tests
             RemoteDirectoryDuplicateCoalescer coalescer = new(
                 scanner,
                 new FakeRemoteTreeCrawler(remoteTree),
-                new AtomicLocalFileSyncWriter(),
                 stateStore,
                 new SyncLocalContentHashResolver(scanner, null),
                 NullLogger.Instance,
@@ -347,7 +347,7 @@ namespace Cotton.Sync.Tests
             bool expectedAdoption = !differentContent && !extraFile && !extraSourceFile;
             Assert.Multiple(() =>
             {
-                Assert.That(Directory.Exists(Path.Combine(_root, sourcePath)), Is.EqualTo(!expectedAdoption));
+                Assert.That(Directory.Exists(Path.Combine(_root, sourcePath)), Is.True);
                 Assert.That(File.ReadAllText(Path.Combine(_root, targetFilePath)), Is.EqualTo(exportedContent));
                 Assert.That(actualStates.Single(state => state.Kind == SyncEntryKind.File).RemoteFileId,
                     Is.EqualTo(remoteFile.Id));

@@ -24,31 +24,25 @@ namespace Cotton.Sync
                 return;
             }
 
-            HashSet<Guid> parentIds = [context.TreeLookups.RemoteRootNode.Id];
-            HashSet<string> candidateNames = [];
+            HashSet<string> candidateParents = [];
             foreach (LocalDirectorySnapshot candidate in candidates)
             {
                 string candidateParentPath = GetParentPath(candidate.RelativePath);
-                if (!string.IsNullOrEmpty(candidateParentPath)
-                    && context.RemoteDirectoriesByPath.TryGetValue(
-                        SyncPath.ToKey(candidateParentPath), out RemoteDirectorySnapshot? parent))
-                {
-                    parentIds.Add(parent.Node.Id);
-                }
-
-                candidateNames.Add(RemoteNameKey.Create(GetFileName(candidate.RelativePath)));
+                candidateParents.Add(string.IsNullOrEmpty(candidateParentPath)
+                    ? string.Empty
+                    : SyncPath.ToKey(candidateParentPath));
             }
 
-            Dictionary<(Guid ParentId, string NameKey), RemoteDirectorySnapshot> remoteByName = new();
+            Dictionary<(string ParentKey, string NameKey), RemoteDirectorySnapshot> remoteByName = new();
             foreach (RemoteDirectorySnapshot remote in context.RemoteDirectoriesByPath.Values)
             {
-                if (remote.Node.ParentId is Guid remoteParentId && parentIds.Contains(remoteParentId))
+                string remoteParentPath = GetParentPath(remote.RelativePath);
+                string remoteParentKey = string.IsNullOrEmpty(remoteParentPath)
+                    ? string.Empty
+                    : SyncPath.ToKey(remoteParentPath);
+                if (candidateParents.Contains(remoteParentKey))
                 {
-                    string remoteNameKey = RemoteNameKey.Create(remote.Node.Name);
-                    if (candidateNames.Contains(remoteNameKey))
-                    {
-                        remoteByName.TryAdd((remoteParentId, remoteNameKey), remote);
-                    }
+                    remoteByName.TryAdd((remoteParentKey, RemoteNameKey.Create(remote.Node.Name)), remote);
                 }
             }
 
@@ -75,15 +69,13 @@ namespace Cotton.Sync
                         ? parent.Node.Id
                         : parentState?.RemoteNodeId ?? Guid.Empty;
                 }
-                if (parentId == Guid.Empty)
-                {
-                    continue;
-                }
-
                 string nameKey = RemoteNameKey.Create(GetFileName(targetPath));
-                remoteByName.TryGetValue((parentId, nameKey), out RemoteDirectorySnapshot? matched);
+                remoteByName.TryGetValue((parentKey, nameKey), out RemoteDirectorySnapshot? matched);
                 NodeDto? remoteNode = matched?.Node;
-                if (remoteNode is null && !context.Options.Scope.IsFull && remoteDirectories is not null)
+                if (remoteNode is null
+                    && parentId != Guid.Empty
+                    && !context.Options.Scope.IsFull
+                    && remoteDirectories is not null)
                 {
                     remoteNode = await remoteDirectories.FindChildDirectoryAsync(
                         parentId, GetFileName(targetPath), context.CancellationToken).ConfigureAwait(false);
@@ -123,7 +115,7 @@ namespace Cotton.Sync
                         + "but the original local folder could not be verified. The local folder was kept.");
                 }
 
-                if (!await TryCoalesceAsync(context, sourceState.RelativePath, targetPath, archiveTarget: true)
+                if (!await TryCoalesceAsync(context, sourceState.RelativePath, targetPath, remoteUsesSourcePath: true)
                         .ConfigureAwait(false))
                 {
                     throw new InvalidOperationException(
@@ -132,7 +124,7 @@ namespace Cotton.Sync
                 }
 
                 logger.LogInformation(
-                    "Archived identical local directory at {DuplicatePath}; cloud folder remains {SourcePath}.",
+                    "Kept identical local directory at {DuplicatePath}; cloud folder remains {SourcePath}.",
                     targetPath,
                     sourceState.RelativePath);
             }

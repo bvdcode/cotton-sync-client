@@ -142,7 +142,6 @@ namespace Cotton.Sync
             _remoteDirectoryDuplicateCoalescer = new RemoteDirectoryDuplicateCoalescer(
                 _localMetadataPathLookupScanner,
                 _remotePathLookupCrawler,
-                _localWriter,
                 _stateStore,
                 _contentHashResolver,
                 _logger,

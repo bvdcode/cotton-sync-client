@@ -14,7 +14,6 @@ namespace Cotton.Sync
     internal partial class RemoteDirectoryDuplicateCoalescer(
         ILocalFileMetadataPathLookupScanner? localPathScanner,
         IRemotePathLookupCrawler? remotePathCrawler,
-        ILocalFileSyncWriter localWriter,
         ISyncStateStore stateStore,
         SyncLocalContentHashResolver contentHashResolver,
         ILogger logger,
@@ -48,7 +47,7 @@ namespace Cotton.Sync
                     continue;
                 }
 
-                if (await TryCoalesceAsync(context, source.RelativePath, target.RelativePath, archiveTarget: false)
+                if (await TryCoalesceAsync(context, source.RelativePath, target.RelativePath, remoteUsesSourcePath: false)
                         .ConfigureAwait(false))
                 {
                     logger.LogInformation(
@@ -63,7 +62,7 @@ namespace Cotton.Sync
             SyncRunContext context,
             string sourcePath,
             string targetPath,
-            bool archiveTarget)
+            bool remoteUsesSourcePath)
         {
             string sourceKey = SyncPath.ToKey(sourcePath);
             string targetKey = SyncPath.ToKey(targetPath);
@@ -76,7 +75,7 @@ namespace Cotton.Sync
                 return false;
             }
 
-            if (archiveTarget)
+            if (remoteUsesSourcePath)
             {
                 await foreach (SyncStateEntry _ in stateStore.LoadEntriesByPathPrefixAsync(
                                    context.SyncPair.SyncPairId, targetPath, context.CancellationToken)
@@ -109,8 +108,8 @@ namespace Cotton.Sync
                 [targetPath],
                 includeDescendants: true).ConfigureAwait(false), targetKey);
             RemoteTreeLookupSnapshot remoteTarget = await ScanRemoteAsync(
-                context, archiveTarget ? sourcePath : targetPath).ConfigureAwait(false);
-            if (archiveTarget)
+                context, remoteUsesSourcePath ? sourcePath : targetPath).ConfigureAwait(false);
+            if (remoteUsesSourcePath)
             {
                 remoteTarget = RebaseRemote(remoteTarget, sourcePath, targetPath);
             }
@@ -163,10 +162,8 @@ namespace Cotton.Sync
             }
 
             context.CancellationToken.ThrowIfCancellationRequested();
-            if (archiveTarget)
+            if (remoteUsesSourcePath)
             {
-                await localWriter.DeleteDirectoryAsync(context.SyncPair.LocalRootPath, targetPath, context.CancellationToken)
-                    .ConfigureAwait(false);
                 RemoveSubtree(context.LocalDirectoriesByPath, targetKey);
                 RemoveSubtree(context.LocalFilesByPath, targetKey);
                 SyncActivityReporter.Record(
@@ -174,12 +171,10 @@ namespace Cotton.Sync
                     context.Options,
                     SyncActivityKind.Converged,
                     targetPath,
-                    "Archived an identical local folder with an equivalent cloud name.");
+                    "Kept an identical local folder without creating a duplicate cloud folder.");
                 return true;
             }
 
-            await localWriter.DeleteDirectoryAsync(context.SyncPair.LocalRootPath, sourcePath, context.CancellationToken)
-                .ConfigureAwait(false);
             await stateStore.DeleteByPathPrefixAsync(context.SyncPair.SyncPairId, sourcePath, context.CancellationToken)
                 .ConfigureAwait(false);
 
