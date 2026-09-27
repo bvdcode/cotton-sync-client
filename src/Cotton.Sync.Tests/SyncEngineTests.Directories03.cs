@@ -191,6 +191,8 @@ namespace Cotton.Sync.Tests
             const string targetChildPath = "Music/Michaël Brun/Album";
             Directory.CreateDirectory(Path.Combine(_root, sourceChildPath.Replace('/', Path.DirectorySeparatorChar)));
             Directory.CreateDirectory(Path.Combine(_root, targetChildPath.Replace('/', Path.DirectorySeparatorChar)));
+            const string targetExtraFilePath = "Music/Michaël Brun/Album/extra.bin";
+            WriteFile(targetExtraFilePath, "unique local content");
 
             RemoteDirectorySnapshot oldRoot = RemoteDirectory(sourcePath);
             RemoteDirectorySnapshot oldChild = RemoteDirectory(sourceChildPath, oldRoot.Node.Id);
@@ -226,6 +228,7 @@ namespace Cotton.Sync.Tests
                     LocalDirectory(targetChildPath),
                 },
             };
+            scanner.Files.Add(LocalFile(targetExtraFilePath, "unique local content"));
             FakeRemoteDirectorySynchronizer remoteDirectories = new();
             SyncEngine engine = CreateEngine(
                 scanner,

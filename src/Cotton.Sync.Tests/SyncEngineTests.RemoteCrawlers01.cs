@@ -62,7 +62,8 @@ namespace Cotton.Sync.Tests
                 };
                 foreach (RemoteDirectorySnapshot directory in source.Directories)
                 {
-                    if (relativePaths.Contains(directory.RelativePath, StringComparer.OrdinalIgnoreCase))
+                    if (relativePaths.Any(path => SyncPathOperations.IsSameOrDescendantPathKey(
+                            SyncPath.ToKey(directory.RelativePath), SyncPath.ToKey(path))))
                     {
                         result.DirectoriesByPath[SyncPath.ToKey(directory.RelativePath)] = directory;
                     }
@@ -70,7 +71,8 @@ namespace Cotton.Sync.Tests
 
                 foreach (RemoteFileSnapshot file in source.Files)
                 {
-                    if (relativePaths.Contains(file.RelativePath, StringComparer.OrdinalIgnoreCase))
+                    if (relativePaths.Any(path => SyncPathOperations.IsSameOrDescendantPathKey(
+                            SyncPath.ToKey(file.RelativePath), SyncPath.ToKey(path))))
                     {
                         result.FilesByPath[SyncPath.ToKey(file.RelativePath)] = file;
                     }

@@ -56,6 +56,7 @@ namespace Cotton.Sync
         private readonly SyncDirectoryDeleteReconciler _directoryDeleteReconciler;
         private readonly SyncLocalContentHashResolver _contentHashResolver;
         private readonly RemoteDirectoryMoveCoordinator _remoteDirectoryMoveCoordinator;
+        private readonly RemoteDirectoryDuplicateCoalescer _remoteDirectoryDuplicateCoalescer;
         private readonly SyncTreeScanner _treeScanner;
         private readonly SyncStateSnapshotLoader _stateSnapshotLoader;
         private readonly ScopedVirtualFilesDirectoryRenamePlanner _scopedDirectoryRenamePlanner;
@@ -138,6 +139,13 @@ namespace Cotton.Sync
                 _remoteDirectoryTreePopulationObserver,
                 _remoteFilePlaceholderWriter,
                 _contentHashResolver);
+            _remoteDirectoryDuplicateCoalescer = new RemoteDirectoryDuplicateCoalescer(
+                _localMetadataPathLookupScanner,
+                _remotePathLookupCrawler,
+                _localWriter,
+                _stateStore,
+                _contentHashResolver,
+                _logger);
             _treeScanner = new SyncTreeScanner(
                 _localScanner,
                 _localContentHasher,
@@ -239,6 +247,7 @@ namespace Cotton.Sync
                 _treeScanner,
                 _stateSnapshotLoader,
                 _scopedDirectoryRenamePlanner,
+                _remoteDirectoryDuplicateCoalescer,
                 _remoteDirectoryMoveCoordinator,
                 _directoryReconciler,
                 _stateFileHashLoader,
