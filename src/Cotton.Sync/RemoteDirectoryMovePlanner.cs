@@ -180,7 +180,7 @@ namespace Cotton.Sync
                 localFilesByPath);
             if (rejectionReason is not null)
             {
-                return false;
+                throw new SyncDirectoryMoveConflictException(candidate.SourcePath, candidate.TargetPath);
             }
 
             rejectionReason = ValidateTrackedRemoteDirectoryMoveDirectories(

@@ -182,6 +182,75 @@ namespace Cotton.Sync.Tests
             });
         }
 
+        [Test]
+        public async Task RunOnceAsync_RemoteDirectoryMoveIntoExistingLocalTreeKeepsBothTreesAndTheirBaselines()
+        {
+            const string sourcePath = "Music/Michael Brun";
+            const string sourceChildPath = "Music/Michael Brun/Album";
+            const string targetPath = "Music/Michaël Brun";
+            const string targetChildPath = "Music/Michaël Brun/Album";
+            Directory.CreateDirectory(Path.Combine(_root, sourceChildPath.Replace('/', Path.DirectorySeparatorChar)));
+            Directory.CreateDirectory(Path.Combine(_root, targetChildPath.Replace('/', Path.DirectorySeparatorChar)));
+
+            RemoteDirectorySnapshot oldRoot = RemoteDirectory(sourcePath);
+            RemoteDirectorySnapshot oldChild = RemoteDirectory(sourceChildPath, oldRoot.Node.Id);
+            RemoteDirectorySnapshot movedRoot = new()
+            {
+                RelativePath = targetPath,
+                Node = new NodeDto
+                {
+                    Id = oldRoot.Node.Id,
+                    ParentId = oldRoot.Node.ParentId,
+                    Name = "Michaël Brun",
+                },
+            };
+            RemoteDirectorySnapshot movedChild = new()
+            {
+                RelativePath = targetChildPath,
+                Node = new NodeDto
+                {
+                    Id = oldChild.Node.Id,
+                    ParentId = movedRoot.Node.Id,
+                    Name = "Album",
+                },
+            };
+            RemoteTreeSnapshot remoteTree = EmptyRemoteTree();
+            remoteTree.Directories.AddRange([movedRoot, movedChild]);
+            FakeLocalFileScanner scanner = new()
+            {
+                Directories =
+                {
+                    LocalDirectory(sourcePath),
+                    LocalDirectory(sourceChildPath),
+                    LocalDirectory(targetPath),
+                    LocalDirectory(targetChildPath),
+                },
+            };
+            FakeRemoteDirectorySynchronizer remoteDirectories = new();
+            SyncEngine engine = CreateEngine(
+                scanner,
+                remoteTree,
+                new FakeRemoteFileSynchronizer(),
+                out SqliteSyncStateStore stateStore,
+                remoteDirectories);
+            await InsertDirectoryBaselineAsync(stateStore, sourcePath, oldRoot.Node);
+            await InsertDirectoryBaselineAsync(stateStore, sourceChildPath, oldChild.Node);
+
+            SyncDirectoryMoveConflictException? exception = Assert.ThrowsAsync<SyncDirectoryMoveConflictException>(
+                () => engine.RunOnceAsync(Pair()));
+            IReadOnlyList<SyncStateEntry> state = await stateStore.LoadPairAsync("pair-a");
+            Assert.Multiple(() =>
+            {
+                Assert.That(exception?.SourcePath, Is.EqualTo(sourcePath));
+                Assert.That(exception?.TargetPath, Is.EqualTo(targetPath));
+                Assert.That(Directory.Exists(Path.Combine(_root, sourceChildPath.Replace('/', Path.DirectorySeparatorChar))), Is.True);
+                Assert.That(Directory.Exists(Path.Combine(_root, targetChildPath.Replace('/', Path.DirectorySeparatorChar))), Is.True);
+                Assert.That(state.Select(entry => entry.RelativePath), Is.EqualTo(new[] { sourcePath, sourceChildPath }));
+                Assert.That(remoteDirectories.Creates, Is.Empty);
+                Assert.That(remoteDirectories.Deletes, Is.Empty);
+            });
+        }
+
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesRemovesRemoteDeletedDirectorySubtreeInOnePass()
