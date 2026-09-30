@@ -135,12 +135,19 @@ var
   PowerShellPath: String;
   AppExecutablePath: String;
   Command: String;
+  OutputPath: String;
+  ErrorPath: String;
+  CleanupOutput: AnsiString;
 begin
   AppExecutablePath := ExpandConstant('{app}\Cotton.Sync.Desktop.exe');
   PowerShellPath := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
+  OutputPath := ExpandConstant('{tmp}\cotton-sync-cleanup.stdout.log');
+  ErrorPath := ExpandConstant('{tmp}\cotton-sync-cleanup.stderr.log');
   Command := '$target = ' + PowerShellSingleQuotedLiteral(AppExecutablePath) + '; ' +
+    '$stdout = ' + PowerShellSingleQuotedLiteral(OutputPath) + '; ' +
+    '$stderr = ' + PowerShellSingleQuotedLiteral(ErrorPath) + '; ' +
     'if (-not (Test-Path -LiteralPath $target)) { Write-Output ''Cloud Files cleanup skipped: executable missing.''; exit 0 }; ' +
-    '$process = Start-Process -FilePath $target -ArgumentList @(''--cleanup-cloud-files'') -WindowStyle Hidden -PassThru; ' +
+    '$process = Start-Process -FilePath $target -ArgumentList @(''--cleanup-cloud-files'') -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru; ' +
     '$deadline = (Get-Date).AddSeconds(60); ' +
     'while ((-not $process.HasExited) -and ((Get-Date) -lt $deadline)) { Start-Sleep -Milliseconds 250; $process.Refresh() }; ' +
     'if (-not $process.HasExited) { ' +
@@ -151,6 +158,14 @@ begin
   if Exec(PowerShellPath, '-NoProfile -ExecutionPolicy Bypass -Command ' + AddQuotes(Command), '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
     Log(Format('Cloud Files cleanup command exited with code %d.', [ResultCode]));
+    if LoadStringFromFile(OutputPath, CleanupOutput) then
+    begin
+      Log('Cloud Files cleanup output: ' + CleanupOutput);
+    end;
+    if LoadStringFromFile(ErrorPath, CleanupOutput) then
+    begin
+      Log('Cloud Files cleanup errors: ' + CleanupOutput);
+    end;
     if ResultCode <> 0 then
     begin
       Log('Cloud Files cleanup did not complete successfully; uninstall will continue so the app is not left installed.');

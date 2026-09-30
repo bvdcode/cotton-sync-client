@@ -104,15 +104,18 @@ namespace Cotton.Sync.Desktop.Startup
             ArgumentNullException.ThrowIfNull(output);
 
             DesktopTraceLogging.Install(paths);
+            await output.WriteLineAsync("Cotton Sync Desktop Cloud Files cleanup").ConfigureAwait(false);
+            await output.WriteLineAsync("Opening sync-pair settings.").ConfigureAwait(false);
             SqliteSyncPairSettingsStore syncPairs = new(paths.AppDatabasePath);
             await syncPairs.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            await output.WriteLineAsync("Opening sync-state storage.").ConfigureAwait(false);
             SqliteSyncStateStore syncState = new(paths.SyncStateDatabasePath);
             await syncState.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            await output.WriteLineAsync("Loading configured sync pairs.").ConfigureAwait(false);
             IReadOnlyList<SyncPairSettings> configuredPairs = await syncPairs
                 .ListAsync(cancellationToken)
                 .ConfigureAwait(false);
             IWindowsCloudFilesAdapter cloudFiles = cloudFilesAdapter ?? new WindowsCloudFilesAdapter();
-            await output.WriteLineAsync("Cotton Sync Desktop Cloud Files cleanup").ConfigureAwait(false);
             (int cleaned, int failures) = await CleanupConfiguredCloudFilesPairsAsync(
                 configuredPairs,
                 syncState,
@@ -121,6 +124,7 @@ namespace Cotton.Sync.Desktop.Startup
                 cancellationToken).ConfigureAwait(false);
             IWindowsStorageProviderSyncRootRegistrar? registrar =
                 storageProviderRegistrar ?? WindowsStorageProviderSyncRootRegistrar.TryCreateDefault();
+            await output.WriteLineAsync("Cleaning orphaned storage-provider roots.").ConfigureAwait(false);
             failures += await CleanupOrphanedStorageProviderRootsAsync(registrar, output).ConfigureAwait(false);
             return await WriteCloudFilesCleanupResultAsync(output, cleaned, failures).ConfigureAwait(false);
         }
@@ -172,6 +176,7 @@ namespace Cotton.Sync.Desktop.Startup
             cursor.HasCompletedFullReconcile = false;
             cursor.UpdatedAtUtc = DateTime.UtcNow;
             await syncState.SaveChangeCursorAsync(cursor, cancellationToken).ConfigureAwait(false);
+            await output.WriteLineAsync("Unregistering: " + syncPair.LocalRootPath).ConfigureAwait(false);
             cloudFiles.UnregisterSyncRoot(syncPair);
             await output.WriteLineAsync("Unregistered: " + syncPair.LocalRootPath).ConfigureAwait(false);
             await output.WriteLineAsync("Recovery queued: " + syncPair.LocalRootPath).ConfigureAwait(false);
