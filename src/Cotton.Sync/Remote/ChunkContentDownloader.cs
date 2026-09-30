@@ -20,6 +20,7 @@ namespace Cotton.Sync.Remote
         {
             ArgumentNullException.ThrowIfNull(file);
             ArgumentException.ThrowIfNullOrWhiteSpace(file.ETag);
+            cancellationToken.ThrowIfCancellationRequested();
             if (file.SizeBytes is < 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(file));
@@ -34,14 +35,29 @@ namespace Cotton.Sync.Remote
                 .AcquireAsync(_options.DownloadCacheDirectory, file.NodeFileId, file.ETag, cancellationToken)
                 .ConfigureAwait(false);
 
+            long transferred = 0;
+            object progressGate = new();
+            DownloadChunkProgress CreateChunkProgress()
+            {
+                return new DownloadChunkProgress(delta =>
+                {
+                    lock (progressGate)
+                    {
+                        transferred += delta;
+                        progress?.Report(transferred);
+                    }
+                });
+            }
+
             int chunkCount = 0;
+            DownloadChunkProgress firstProgress = CreateChunkProgress();
             string firstPath = await GetChunkWithRetryAsync(
                 cache,
                 0,
                 async (stream, token) =>
                 {
                     chunkCount = await _files.DownloadContentChunkAsync(
-                        file.NodeFileId, 0, stream, file.ETag, cancellationToken: token).ConfigureAwait(false);
+                        file.NodeFileId, 0, stream, file.ETag, firstProgress, token).ConfigureAwait(false);
                 },
                 refresh: true,
                 cancellationToken).ConfigureAwait(false);
@@ -53,7 +69,7 @@ namespace Cotton.Sync.Remote
             string[] paths = new string[chunkCount];
             paths[0] = firstPath;
             long completed = new FileInfo(firstPath).Length;
-            progress?.Report(completed);
+            firstProgress.Report(completed);
             await Parallel.ForEachAsync(
                 Enumerable.Range(1, chunkCount - 1),
                 new ParallelOptions
@@ -63,6 +79,7 @@ namespace Cotton.Sync.Remote
                 },
                 async (chunkNumber, token) =>
                 {
+                    DownloadChunkProgress chunkProgress = CreateChunkProgress();
                     string path = await GetChunkWithRetryAsync(
                         cache,
                         chunkNumber,
@@ -73,6 +90,7 @@ namespace Cotton.Sync.Remote
                                 chunkNumber,
                                 stream,
                                 file.ETag,
+                                chunkProgress,
                                 cancellationToken: downloadToken).ConfigureAwait(false);
                             if (receivedCount != chunkCount)
                             {
@@ -82,8 +100,9 @@ namespace Cotton.Sync.Remote
                         refresh: false,
                         token).ConfigureAwait(false);
                     paths[chunkNumber] = path;
-                    long transferred = Interlocked.Add(ref completed, new FileInfo(path).Length);
-                    progress?.Report(transferred);
+                    long length = new FileInfo(path).Length;
+                    Interlocked.Add(ref completed, length);
+                    chunkProgress.Report(length);
                 }).ConfigureAwait(false);
 
             if (file.SizeBytes.HasValue && completed != file.SizeBytes.Value)

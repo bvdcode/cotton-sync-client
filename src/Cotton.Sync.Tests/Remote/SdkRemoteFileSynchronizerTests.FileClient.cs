@@ -51,6 +51,8 @@ namespace Cotton.Sync.Tests.Remote
 
             public TimeSpan ChunkDownloadDelay { get; set; }
 
+            public Func<int, Stream, IProgress<long>?, CancellationToken, Task<int>>? OnChunkDownloadAsync { get; set; }
+
             public int MaxActiveChunkDownloads => Volatile.Read(ref _maxActiveChunkDownloads);
 
             public int? InterruptedChunkNumber { get; set; }
@@ -204,6 +206,12 @@ namespace Cotton.Sync.Tests.Remote
                     lock (ChunkDownloads)
                     {
                         ChunkDownloads.Add((nodeFileId, chunkNumber, expectedETag));
+                    }
+
+                    if (OnChunkDownloadAsync is not null)
+                    {
+                        return await OnChunkDownloadAsync(chunkNumber, destination, progress, cancellationToken)
+                            .ConfigureAwait(false);
                     }
 
                     if (ChunkDownloadDelay > TimeSpan.Zero)

@@ -16,6 +16,7 @@ namespace Cotton.Sync.Remote
         private readonly SemaphoreSlim _semaphore = new(1, 1);
         private readonly string _directory;
         private int _references;
+        private DownloadCacheLease? _lease;
 
         private DownloadChunkCache(string directory)
         {
@@ -62,7 +63,17 @@ namespace Cotton.Sync.Remote
             try
             {
                 await cache._semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-                return cache;
+                try
+                {
+                    cache._lease = await DownloadCacheLease.AcquireAsync(fullRoot, directory, cancellationToken)
+                        .ConfigureAwait(false);
+                    return cache;
+                }
+                catch
+                {
+                    cache._semaphore.Release();
+                    throw;
+                }
             }
             catch
             {
@@ -77,12 +88,14 @@ namespace Cotton.Sync.Remote
             bool refresh,
             CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             Directory.CreateDirectory(_directory);
             string chunkPath = Path.Combine(_directory, chunkNumber.ToString("D8") + ".chunk");
             if (File.Exists(chunkPath))
             {
                 if (!refresh && new FileInfo(chunkPath).Length > 0)
                 {
+                    Directory.SetLastWriteTimeUtc(_directory, DateTime.UtcNow);
                     return chunkPath;
                 }
 
@@ -104,6 +117,7 @@ namespace Cotton.Sync.Remote
                     }
                 }
 
+                cancellationToken.ThrowIfCancellationRequested();
                 File.Move(temporaryPath, chunkPath, overwrite: true);
                 return chunkPath;
             }
@@ -124,11 +138,21 @@ namespace Cotton.Sync.Remote
             }
         }
 
-        public ValueTask DisposeAsync()
+        public async ValueTask DisposeAsync()
         {
-            _semaphore.Release();
-            ReleaseReference();
-            return ValueTask.CompletedTask;
+            try
+            {
+                if (_lease is not null)
+                {
+                    await _lease.DisposeAsync().ConfigureAwait(false);
+                    _lease = null;
+                }
+            }
+            finally
+            {
+                _semaphore.Release();
+                ReleaseReference();
+            }
         }
 
         private void ReleaseReference()
@@ -147,6 +171,12 @@ namespace Cotton.Sync.Remote
         private static void PruneExpired(string rootDirectory, DateTime cutoff)
         {
             Directory.CreateDirectory(rootDirectory);
+            using FileStream? cleanup = DownloadCacheLease.TryAcquireCleanup(rootDirectory);
+            if (cleanup is null)
+            {
+                return;
+            }
+
             foreach (string directory in Directory.EnumerateDirectories(rootDirectory))
             {
                 string name = Path.GetFileName(directory);
@@ -161,6 +191,19 @@ namespace Cotton.Sync.Remote
                 }
 
                 Directory.Delete(directory, recursive: true);
+            }
+
+            foreach (string path in Directory.EnumerateFiles(rootDirectory, "*.lock"))
+            {
+                string name = Path.GetFileNameWithoutExtension(path);
+                if (name.Length == 97
+                    && name[32] == '-'
+                    && Guid.TryParseExact(name[..32], "N", out _)
+                    && name[33..].All(Uri.IsHexDigit)
+                    && File.GetLastWriteTimeUtc(path) < cutoff)
+                {
+                    File.Delete(path);
+                }
             }
         }
     }
