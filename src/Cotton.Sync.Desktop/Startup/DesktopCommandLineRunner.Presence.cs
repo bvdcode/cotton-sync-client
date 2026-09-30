@@ -141,6 +141,11 @@ namespace Cotton.Sync.Desktop.Startup
                 + ", secondRead=" + second.Read
                 + ", firstMatches=" + firstMatches
                 + ", secondMatches=" + secondMatches
+                + ", expectedLength=" + expectedContent.Length
+                + ", firstLength=" + first.Content?.Length
+                + ", secondLength=" + second.Content?.Length
+                + ", firstContentHash=" + (first.Content is null ? string.Empty : Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(first.Content))))
+                + ", secondContentHash=" + (second.Content is null ? string.Empty : Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(second.Content))))
                 + (first.Details.Length == 0 ? string.Empty : ", firstDetails=" + first.Details)
                 + (second.Details.Length == 0 ? string.Empty : ", secondDetails=" + second.Details));
         }

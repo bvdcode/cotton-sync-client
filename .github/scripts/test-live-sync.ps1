@@ -8,6 +8,7 @@ param(
     [Parameter(Mandatory)] [uri] $ServerUrl,
     [ValidateRange(1, 100)] [int] $SeedFileCount = 16,
     [ValidateRange(0, 3600)] [int] $SoakSeconds = 60,
+    [ValidateSet('full-mirror', 'windows-virtual-files')] [string[]] $Modes = @('full-mirror', 'windows-virtual-files'),
     [ValidateRange(60, 1800)] [int] $ModeTimeoutSeconds = 600
 )
 
@@ -82,9 +83,11 @@ function Invoke-LiveMode {
         '--second-local-root', (Join-Path $modeRuntime 'b'),
         '--data-dir', (Join-Path $modeRuntime 'state'),
         '--live-sync-smoke-preserve-existing-local-files',
-        '--live-sync-smoke-seed-file-count', $SeedFileCount.ToString(),
-        '--live-sync-smoke-soak-seconds', $SoakSeconds.ToString()
+        '--live-sync-smoke-seed-file-count', $SeedFileCount.ToString()
     )
+    if ($SoakSeconds -gt 0) {
+        $arguments += @('--live-sync-smoke-soak-seconds', $SoakSeconds.ToString())
+    }
     foreach ($argument in $arguments) {
         $startInfo.ArgumentList.Add($argument)
     }
@@ -167,7 +170,7 @@ try {
         parentId = $layoutRoot.id
         name = $namespace
     }
-    foreach ($mode in @('full-mirror', 'windows-virtual-files')) {
+    foreach ($mode in $Modes) {
         $modeRoot = Invoke-AcceptanceApi -Method Put -Path '/api/v1/layouts/nodes' -Body @{
             parentId = $remoteRoot.id
             name = $mode
@@ -226,4 +229,4 @@ finally {
 if ($null -ne $failure) {
     throw $failure
 }
-Write-Output 'Live acceptance passed in both modes; remote namespace and API session cleaned up.'
+Write-Output "Live acceptance passed in $($Modes.Count) selected mode(s); remote namespace and API session cleaned up."

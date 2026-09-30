@@ -62,6 +62,7 @@ namespace Cotton.Sync.Desktop.Startup
             string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedBytes));
             DateTime deadline = DateTime.UtcNow + PropagationTimeout;
             int stableObservations = 0;
+            string details = string.Empty;
             do
             {
                 PresenceSnapshot presence = await CapturePresenceAsync(
@@ -77,6 +78,14 @@ namespace Cotton.Sync.Desktop.Startup
                 bool idle = AreLiveSmokePairsIdle(
                     firstShell.SyncPairs.FirstOrDefault(item => item.Id == session.FirstPair.Id),
                     secondShell.SyncPairs.FirstOrDefault(item => item.Id == session.SecondPair.Id));
+                details = presence.Details + ", oldStateRemoved=" + oldStateRemoved + ", idle=" + idle
+                    + ", originalId=" + fileId + ", firstId=" + first?.RemoteFileId + ", secondId=" + second?.RemoteFileId
+                    + ", expectedHash=" + expectedHash + ", firstHash=" + first?.RemoteContentHash
+                    + ", secondHash=" + second?.RemoteContentHash
+                    + ", firstStatus=" + firstShell.SyncPairs.FirstOrDefault(item => item.Id == session.FirstPair.Id)?.Status
+                    + ", secondStatus=" + secondShell.SyncPairs.FirstOrDefault(item => item.Id == session.SecondPair.Id)?.Status
+                    + ", firstError=" + firstShell.SyncPairs.FirstOrDefault(item => item.Id == session.FirstPair.Id)?.LastError
+                    + ", secondError=" + secondShell.SyncPairs.FirstOrDefault(item => item.Id == session.SecondPair.Id)?.LastError;
                 bool correct = presence.Passed && oldStateRemoved && idle
                     && first is not null && second is not null
                     && first.RemoteFileId == fileId && second.RemoteFileId == fileId
@@ -97,7 +106,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
             while (DateTime.UtcNow < deadline);
             await output.WriteLineAsync(FormatCheck(false,
-                "Rename and immediate edit did not preserve identity, bytes and idle state: " + newPath))
+                "Rename and immediate edit did not preserve identity, bytes and idle state: " + newPath) + " " + details)
                 .ConfigureAwait(false);
             return 1;
         }
