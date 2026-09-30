@@ -23,7 +23,7 @@ namespace Cotton.Sync.Cli
                 return 2;
             }
 
-            using HttpClient? ownedHttpClient = injectedHttpClient is null ? new HttpClient() : null;
+            using HttpClient? ownedHttpClient = injectedHttpClient is null ? SyncCliHttpClientFactory.Create() : null;
             HttpClient httpClient = injectedHttpClient ?? ownedHttpClient!;
             try
             {

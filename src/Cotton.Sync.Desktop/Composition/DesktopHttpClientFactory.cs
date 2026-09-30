@@ -23,6 +23,7 @@ namespace Cotton.Sync.Desktop.Composition
         {
             return new SocketsHttpHandler
             {
+                AllowAutoRedirect = false,
                 ConnectCallback = ConnectAsync,
             };
         }

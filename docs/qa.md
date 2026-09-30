@@ -28,6 +28,10 @@ Download progress includes bytes received within an active chunk. Retries do not
 
 Core checks passed for empty files and chunk boundaries, out-of-order completion with four concurrent requests, shorter and longer chunk responses, an ETag change between requests, cancellation during a chunk and while waiting for a reservation, and an active cache owned by a separate Windows process. The full core suite passed 461 checks with three platform skips. These checks do not cover large-file process termination, a full physical volume or server-directed Retry-After delays.
 
+## HTTP Redirect Isolation — 2026-09-30
+
+Desktop and CLI HTTP clients return redirect responses to the SDK instead of following them automatically. A request carrying authentication headers, a cookie and a refresh body was sent to a controlled HTTP server for each of 302, 307 and 308. All three checks passed: the original redirect status was returned and the second server received no connection. The CLI suite passed 51 checks.
+
 ## Folder Deletion To Trash — 2026-09-20
 
 An observed local folder deletion in Windows virtual-files mode now sends one remote folder deletion request after its complete tracked subtree matches the remote snapshot. Descendant files are excluded from individual deletion and the mass-delete limit counts the folder as one operation. The approval fingerprint includes descendant identities and content versions. New remote files, changed remote content, diverged baselines, and reappearing local paths prevent subtree deletion.
