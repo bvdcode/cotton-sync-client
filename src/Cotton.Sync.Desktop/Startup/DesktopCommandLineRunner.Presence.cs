@@ -75,51 +75,6 @@ namespace Cotton.Sync.Desktop.Startup
             return 1;
         }
 
-        private static async Task<int> WaitForRenameAsync(
-            string firstLocalRoot,
-            string secondLocalRoot,
-            string oldPath,
-            string newPath,
-            string label,
-            DesktopShellController sourceController,
-            DesktopShellController targetController,
-            TextWriter output,
-            CancellationToken cancellationToken)
-        {
-            DateTime deadlineUtc = DateTime.UtcNow + PropagationTimeout;
-            int attempts = 0;
-            RenameSnapshot snapshot;
-            do
-            {
-                attempts++;
-                await RunSourceThenTargetAsync(sourceController, targetController, cancellationToken).ConfigureAwait(false);
-                snapshot = CaptureRename(firstLocalRoot, secondLocalRoot, oldPath, newPath);
-                if (snapshot.Passed)
-                {
-                    output.WriteLine(FormatCheck(true, label)
-                        + " oldPath=" + oldPath
-                        + ", newPath=" + newPath
-                        + ", attempts=" + attempts.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                    return 0;
-                }
-
-                if (DateTime.UtcNow >= deadlineUtc)
-                {
-                    break;
-                }
-
-                await Task.Delay(PropagationPollInterval, cancellationToken).ConfigureAwait(false);
-            }
-            while (true);
-
-            output.WriteLine(FormatCheck(false, label)
-                + " oldPath=" + oldPath
-                + ", newPath=" + newPath
-                + ", attempts=" + attempts.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                + ", " + snapshot.Details);
-            return 1;
-        }
-
         private static async Task<int> WaitForAbsentAsync(
             string firstLocalRoot,
             string secondLocalRoot,
@@ -197,25 +152,6 @@ namespace Cotton.Sync.Desktop.Startup
             await using FileStream stream = File.OpenRead(filePath);
             byte[] hash = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
             return Convert.ToHexStringLower(hash);
-        }
-
-        private static RenameSnapshot CaptureRename(
-            string firstLocalRoot,
-            string secondLocalRoot,
-            string oldPath,
-            string newPath)
-        {
-            bool firstOldExists = File.Exists(FullPath(firstLocalRoot, oldPath));
-            bool secondOldExists = File.Exists(FullPath(secondLocalRoot, oldPath));
-            bool firstNewExists = File.Exists(FullPath(firstLocalRoot, newPath));
-            bool secondNewExists = File.Exists(FullPath(secondLocalRoot, newPath));
-            bool passed = !firstOldExists && !secondOldExists && firstNewExists && secondNewExists;
-            return new RenameSnapshot(
-                passed,
-                "firstOldExists=" + firstOldExists
-                + ", secondOldExists=" + secondOldExists
-                + ", firstNewExists=" + firstNewExists
-                + ", secondNewExists=" + secondNewExists);
         }
 
         private static AbsentSnapshot CaptureAbsent(

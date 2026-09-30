@@ -16,11 +16,17 @@ This document records the release, packaging, sync, virtual-files, diagnostics, 
 
 Release-producing workflows require `Desktop Live Server Acceptance` before packaging and publication. The job uses a dedicated account on a public demo instance. Missing configuration, a failed assertion, a nonzero process exit, a timeout, or unsuccessful server cleanup blocks the release.
 
-Each run creates a new remote namespace and separate local roots and profiles for two desktop controllers. Both full-mirror and Windows virtual-files modes verify 16 pre-existing files, including an empty file; initial byte equality; bidirectional create, rename and delete; automatic overwrites without manual sync; pause/resume; a short active/idle soak; saved-session restoration; and final state convergence. The virtual-files run also verifies freeing space, hydration through an external file read, and pinning a hydrated file. The runtime includes the Windows shell helper.
+Each run creates a new remote namespace and separate local roots and profiles for two desktop controllers. Both full-mirror and Windows virtual-files modes verify 16 pre-existing files, including an empty file; initial byte equality; bidirectional create and delete; automatic overwrites without manual sync; pause/resume; a short active/idle soak; saved-session restoration; and final state convergence. Renaming with an immediate content change, including a temporary intermediate name, must preserve the original remote file identifier and deliver the changed bytes automatically to both clients. Eleven files are deleted through the server trash API and restored in batches of four and seven; every original identifier and byte sequence must return automatically on both clients. The virtual-files run also verifies freeing space, hydration through an external file read, and pinning a hydrated file. The runtime includes the Windows shell helper.
 
 The job records process outcomes, individual assertion logs and the candidate assembly hash. Cleanup removes the newly created remote namespace and signs out the verification session. The PowerShell entry point is `.github/scripts/test-live-sync.ps1`.
 
-This gate uses two controllers in one process. CRUD convergence includes manual sync calls; automatic overwrite and pause/resume assertions do not. Abrupt process termination, long-running soak, large datasets, restored-file bursts, simultaneous rename/content edits, folder pin cancellation and rendered UI remain separate acceptance scenarios.
+This gate uses two controllers in one process. Create/delete convergence includes manual sync calls; overwrite, pause/resume, rename/content edits and trash restoration assertions do not. Abrupt process termination, long-running soak, large datasets, restoration while the first batch is deliberately held, folder pin cancellation and rendered UI remain separate acceptance scenarios.
+
+## Chunk Download Reliability — 2026-09-30
+
+Download progress includes bytes received within an active chunk. Retries do not count retransmitted bytes twice. Shared cache ownership is reserved across processes, and expired-cache cleanup waits while another process holds a download reservation. Completed chunks remain available after cancellation; partial chunks are discarded. The completed file is reported only after assembly succeeds.
+
+Core checks passed for empty files and chunk boundaries, out-of-order completion with four concurrent requests, shorter and longer chunk responses, an ETag change between requests, cancellation during a chunk and while waiting for a reservation, and an active cache owned by a separate Windows process. The full core suite passed 461 checks with three platform skips. These checks do not cover large-file process termination, a full physical volume or server-directed Retry-After delays.
 
 ## Folder Deletion To Trash — 2026-09-20
 

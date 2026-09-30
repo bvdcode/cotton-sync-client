@@ -3,5 +3,5 @@
 
 namespace Cotton.Sync.Desktop.Startup
 {
-    internal readonly record struct RenameSnapshot(bool Passed, string Details);
+    internal record LiveSyncSmokeRestoreFile(string RelativePath, Guid RemoteFileId, string Sha256);
 }

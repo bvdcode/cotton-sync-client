@@ -104,18 +104,10 @@ namespace Cotton.Sync.Desktop.Startup
                 startupOptions, session, output, cancellationToken).ConfigureAwait(false);
             failures += await RunLiveAvailabilityAndRestoreAsync(
                 startupOptions, session, output, cancellationToken).ConfigureAwait(false);
-            failures += await RunClientARenameAsync(
-                startupOptions,
-                session.FirstController,
-                session.SecondController,
-                output,
-                cancellationToken).ConfigureAwait(false);
-            failures += await RunClientBRenameAsync(
-                startupOptions,
-                session.FirstController,
-                session.SecondController,
-                output,
-                cancellationToken).ConfigureAwait(false);
+            failures += await RunLiveRenameAndEditAsync(
+                startupOptions, session, fromSecondClient: false, output, cancellationToken).ConfigureAwait(false);
+            failures += await RunLiveRenameAndEditAsync(
+                startupOptions, session, fromSecondClient: true, output, cancellationToken).ConfigureAwait(false);
             failures += await RunClientADeleteAsync(
                 startupOptions,
                 session.FirstController,

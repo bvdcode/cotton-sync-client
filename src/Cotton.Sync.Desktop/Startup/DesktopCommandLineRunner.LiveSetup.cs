@@ -160,6 +160,8 @@ namespace Cotton.Sync.Desktop.Startup
                     output,
                     cancellationToken)
                 .ConfigureAwait(false);
+            failures += await RunLiveTrashRestoreBurstAsync(
+                startupOptions, seededLocalFiles, session, output, cancellationToken).ConfigureAwait(false);
             failures += await VerifyFinalLiveSyncStateAsync(
                     seededLocalFiles,
                     session,
