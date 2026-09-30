@@ -269,11 +269,26 @@ namespace Cotton.Sync
 
         private async Task<RemoteTreeLookupSnapshot> ScanRemoteAsync(SyncRunContext context, string targetPath)
         {
-            return await remotePathCrawler!.CrawlPathLookupsAsync(
+            RemoteTreeLookupSnapshot input = await remotePathCrawler!.CrawlPathLookupsAsync(
                 context.SyncPair.RemoteRootNodeId,
                 [targetPath],
                 progress: null,
                 context.CancellationToken).ConfigureAwait(false);
+            string rootKey = SyncPath.ToKey(targetPath);
+            RemoteTreeLookupSnapshot snapshot = new() { RootNode = input.RootNode };
+            foreach (KeyValuePair<string, RemoteDirectorySnapshot> entry in input.DirectoriesByPath
+                         .Where(entry => IsSameOrDescendantPathKey(entry.Key, rootKey)))
+            {
+                snapshot.DirectoriesByPath.Add(entry.Key, entry.Value);
+            }
+
+            foreach (KeyValuePair<string, RemoteFileSnapshot> entry in input.FilesByPath
+                         .Where(entry => IsSameOrDescendantPathKey(entry.Key, rootKey)))
+            {
+                snapshot.FilesByPath.Add(entry.Key, entry.Value);
+            }
+
+            return snapshot;
         }
 
         private static LocalTreeLookupSnapshot FilterLocal(LocalTreeLookupSnapshot input, string rootKey)

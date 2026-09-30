@@ -90,12 +90,13 @@ namespace Cotton.Sync.Tests
             remoteDirectories.ExistingDirectories.Add(source.Node);
             remoteDirectories.ConflictCreates.Add((parent.Node.Id, "Michaël Brun"));
             FakeRemoteFileSynchronizer remoteFiles = new();
-            SyncEngine engine = CreateEngine(
+            SqliteSyncStateStore stateStore = new(_databasePath);
+            SyncEngine engine = new(
                 scanner,
-                remoteTree,
+                new DescendantPathRemoteTreeCrawler(remoteTree),
                 remoteFiles,
-                out SqliteSyncStateStore stateStore,
-                remoteDirectories);
+                stateStore,
+                remoteDirectories: remoteDirectories);
             await InsertDirectoryBaselineAsync(stateStore, parentPath, parent.Node);
             await InsertDirectoryBaselineAsync(stateStore, sourcePath, source.Node);
             await InsertDirectoryBaselineAsync(stateStore, sourceChildPath, child.Node);
@@ -332,10 +333,10 @@ namespace Cotton.Sync.Tests
                 DateTime.UtcNow,
                 CancellationToken.None);
             RemoteTreeSnapshot remoteTree = RemoteTree(remoteFile);
-            remoteTree.Directories.AddRange([remoteDirectory, remoteChild]);
+            remoteTree.Directories.AddRange([RemoteDirectory("Music"), remoteDirectory, remoteChild]);
             RemoteDirectoryDuplicateCoalescer coalescer = new(
                 scanner,
-                new FakeRemoteTreeCrawler(remoteTree),
+                new DescendantPathRemoteTreeCrawler(remoteTree),
                 stateStore,
                 new SyncLocalContentHashResolver(scanner, null),
                 NullLogger.Instance,
