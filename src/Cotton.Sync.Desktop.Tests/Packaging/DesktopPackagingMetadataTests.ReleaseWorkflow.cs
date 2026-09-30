@@ -86,8 +86,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("Solution Tests"));
                 Assert.That(workflow, Does.Contain("dotnet restore src/Cotton.sln"));
                 Assert.That(workflow, Does.Contain("dotnet test src/Cotton.sln --no-restore -p:UseSharedCompilation=false"));
-                Assert.That(workflow, Does.Contain("needs:\n      - tests\n    outputs:"));
-                Assert.That(workflow, Does.Contain("needs:\n      - tests\n      - linux\n      - windows\n      - cli-windows"));
+                Assert.That(workflow, Does.Contain("needs:\n      - tests\n      - live-acceptance\n    outputs:"));
+                Assert.That(workflow, Does.Contain("needs:\n      - tests\n      - live-acceptance\n      - linux\n      - windows\n      - cli-windows"));
                 Assert.That(workflow, Does.Contain("Publish Sync Client Release"));
                 Assert.That(workflow, Does.Contain("contents: write"));
                 Assert.That(workflow, Does.Contain("branches:"));
@@ -143,6 +143,27 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("makeLatest: true"));
                 Assert.That(workflow, Does.Contain("prerelease: ${{ steps.release_metadata.outputs.prerelease }}"));
                 Assert.That(workflow, Does.Contain("Expected 7 release files before manifest"));
+            });
+        }
+
+        [TestCase("linux")]
+        [TestCase("windows")]
+        [TestCase("cli-windows")]
+        [TestCase("release-checksums")]
+        [TestCase("release")]
+        public void DesktopWorkflow_RequiresLiveAcceptanceBeforePublishing(string jobName)
+        {
+            string workflow = GetDesktopWorkflow().Replace("\r\n", "\n", StringComparison.Ordinal);
+            Match job = Regex.Match(workflow,
+                "^  " + Regex.Escape(jobName) + ":\\n(?:(?!^  [a-z])[\\s\\S])*",
+                RegexOptions.Multiline);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(job.Success, Is.True, "The release job must exist.");
+                Assert.That(job.Value, Does.Contain("      - live-acceptance\n"));
+                Assert.That(Regex.IsMatch(job.Value, "^    if:.*always\\(", RegexOptions.Multiline), Is.False,
+                    "A failed acceptance must block the release job.");
             });
         }
 

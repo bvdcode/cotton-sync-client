@@ -12,6 +12,16 @@ This document records the release, packaging, sync, virtual-files, diagnostics, 
 - CLI and desktop live smoke evidence.
 - Diagnostics, update, autostart, tray, uninstall, and packaging checks.
 
+## Required Live Release Acceptance
+
+Release-producing workflows require `Desktop Live Server Acceptance` before packaging and publication. The job uses a dedicated account on a public demo instance. Missing configuration, a failed assertion, a nonzero process exit, a timeout, or unsuccessful server cleanup blocks the release.
+
+Each run creates a new remote namespace and separate local roots and profiles for two desktop controllers. Both full-mirror and Windows virtual-files modes verify 16 pre-existing files, including an empty file; initial byte equality; bidirectional create, rename and delete; automatic overwrites without manual sync; pause/resume; a short active/idle soak; saved-session restoration; and final state convergence. The virtual-files run also verifies freeing space, hydration through an external file read, and pinning a hydrated file. The runtime includes the Windows shell helper.
+
+The job records process outcomes, individual assertion logs and the candidate assembly hash. Cleanup removes the newly created remote namespace and signs out the verification session. The PowerShell entry point is `.github/scripts/test-live-sync.ps1`.
+
+This gate uses two controllers in one process. CRUD convergence includes manual sync calls; automatic overwrite and pause/resume assertions do not. Abrupt process termination, long-running soak, large datasets, restored-file bursts, simultaneous rename/content edits, folder pin cancellation and rendered UI remain separate acceptance scenarios.
+
 ## Folder Deletion To Trash — 2026-09-20
 
 An observed local folder deletion in Windows virtual-files mode now sends one remote folder deletion request after its complete tracked subtree matches the remote snapshot. Descendant files are excluded from individual deletion and the mass-delete limit counts the folder as one operation. The approval fingerprint includes descendant identities and content versions. New remote files, changed remote content, diverged baselines, and reappearing local paths prevent subtree deletion.

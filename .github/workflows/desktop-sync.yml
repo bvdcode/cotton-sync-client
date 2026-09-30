@@ -79,12 +79,66 @@ jobs:
       - name: Test solution
         run: dotnet test src/Cotton.sln --no-restore -p:UseSharedCompilation=false
 
+  live-acceptance:
+    name: Desktop Live Server Acceptance
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && (inputs.publish_release || inputs.package_target != 'quick-checks')))
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: check repository
+        uses: actions/checkout@v5
+        with:
+          lfs: "true"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Restore desktop project
+        run: dotnet restore src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --locked-mode
+
+      - name: Build desktop release candidate
+        run: dotnet build src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --configuration Release --no-restore -p:UseSharedCompilation=false
+
+      - name: Restore Windows shell helper
+        run: dotnet restore src/Cotton.Sync.WindowsShell/Cotton.Sync.WindowsShell.csproj --locked-mode
+
+      - name: Publish Windows shell helper for live acceptance
+        run: dotnet publish src/Cotton.Sync.WindowsShell/Cotton.Sync.WindowsShell.csproj --configuration Release --no-restore -p:UseSharedCompilation=false --output src/Cotton.Sync.Desktop/bin/Release/net10.0/WindowsShell
+
+      - name: Verify full mirror and Cloud Files against demo server
+        shell: pwsh
+        run: |
+          ./.github/scripts/test-live-sync.ps1 `
+            -DesktopAssembly src/Cotton.Sync.Desktop/bin/Release/net10.0/Cotton.Sync.Desktop.dll `
+            -OutputDirectory live-sync-acceptance `
+            -ServerUrl $env:COTTON_SYNC_QA_SERVER
+        env:
+          COTTON_SYNC_QA_SERVER: ${{ vars.COTTON_SYNC_QA_SERVER }}
+          COTTON_SYNC_QA_USERNAME: ${{ secrets.COTTON_SYNC_QA_USERNAME }}
+          COTTON_SYNC_QA_PASSWORD: ${{ secrets.COTTON_SYNC_QA_PASSWORD }}
+
+      - name: Upload live acceptance results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: desktop-live-acceptance
+          path: |
+            live-sync-acceptance/summary.json
+            live-sync-acceptance/*/stdout.log
+            live-sync-acceptance/*/stderr.log
+          if-no-files-found: ignore
+
   linux:
     name: Desktop Linux Package Smoke
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && (inputs.publish_release || inputs.package_target == 'all' || inputs.package_target == 'desktop-linux'))
     runs-on: ubuntu-latest
     needs:
       - tests
+      - live-acceptance
     outputs:
       Version: ${{ steps.gitversion.outputs.SemVer }}
     permissions:
@@ -308,6 +362,7 @@ jobs:
     runs-on: windows-latest
     needs:
       - tests
+      - live-acceptance
     outputs:
       Version: ${{ steps.gitversion.outputs.SemVer }}
     permissions:
@@ -876,6 +931,7 @@ jobs:
     runs-on: windows-latest
     needs:
       - tests
+      - live-acceptance
     permissions:
       contents: read
     steps:
@@ -979,6 +1035,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - tests
+      - live-acceptance
       - linux
       - windows
       - cli-windows
@@ -1043,6 +1100,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - tests
+      - live-acceptance
       - linux
       - windows
       - cli-windows

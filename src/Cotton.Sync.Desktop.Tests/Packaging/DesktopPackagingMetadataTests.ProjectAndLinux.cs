@@ -71,7 +71,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(globalJson, Does.Contain("\"rollForward\": \"disable\""));
                 Assert.That(
                     Regex.Matches(workflow, Regex.Escape("global-json-file: global.json")).Count,
-                    Is.EqualTo(4));
+                    Is.EqualTo(5));
                 Assert.That(workflow, Does.Not.Contain("dotnet-version: 10.0.x"));
                 Assert.That(
                     GetProperty(propertyGroups[0], "RestorePackagesWithLockFile"),
@@ -85,7 +85,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     Regex.Matches(
                         workflow,
                         Regex.Escape("dotnet restore src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --locked-mode")).Count,
-                    Is.EqualTo(2));
+                    Is.EqualTo(3));
                 Assert.That(workflow, Does.Contain("dotnet restore src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj --locked-mode"));
                 Assert.That(workflow, Does.Contain("dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --no-restore /p:PublishProfile=linux-x64"));
                 Assert.That(workflow, Does.Contain("dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --no-restore /p:PublishProfile=win-x64"));
