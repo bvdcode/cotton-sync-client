@@ -93,7 +93,7 @@ namespace Cotton.Sync.Tests
             SqliteSyncStateStore stateStore = new(_databasePath);
             SyncEngine engine = new(
                 scanner,
-                new DescendantPathRemoteTreeCrawler(remoteTree),
+                new FakeRemoteTreeCrawler(remoteTree),
                 remoteFiles,
                 stateStore,
                 remoteDirectories: remoteDirectories);
@@ -336,7 +336,7 @@ namespace Cotton.Sync.Tests
             remoteTree.Directories.AddRange([RemoteDirectory("Music"), remoteDirectory, remoteChild]);
             RemoteDirectoryDuplicateCoalescer coalescer = new(
                 scanner,
-                new DescendantPathRemoteTreeCrawler(remoteTree),
+                new FakeRemoteTreeCrawler(remoteTree),
                 stateStore,
                 new SyncLocalContentHashResolver(scanner, null),
                 NullLogger.Instance,

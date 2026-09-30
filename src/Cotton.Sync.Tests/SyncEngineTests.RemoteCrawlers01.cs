@@ -19,7 +19,7 @@ namespace Cotton.Sync.Tests
     public partial class SyncEngineTests
     {
 
-        private class FakeRemoteTreeCrawler : IRemoteTreeCrawler, IRemotePathLookupCrawler
+        internal class FakeRemoteTreeCrawler : IRemoteTreeCrawler, IRemotePathLookupCrawler
         {
             private readonly Queue<RemoteTreeSnapshot> _snapshots;
             private RemoteTreeSnapshot _lastSnapshot;
@@ -62,8 +62,11 @@ namespace Cotton.Sync.Tests
                 };
                 foreach (RemoteDirectorySnapshot directory in source.Directories)
                 {
-                    if (relativePaths.Any(path => SyncPathOperations.IsSameOrDescendantPathKey(
-                            SyncPath.ToKey(directory.RelativePath), SyncPath.ToKey(path))))
+                    if (relativePaths.Any(path =>
+                        SyncPathOperations.IsSameOrDescendantPathKey(
+                            SyncPath.ToKey(directory.RelativePath), SyncPath.ToKey(path))
+                        || SyncPathOperations.IsSameOrDescendantPathKey(
+                            SyncPath.ToKey(path), SyncPath.ToKey(directory.RelativePath))))
                     {
                         result.DirectoriesByPath[SyncPath.ToKey(directory.RelativePath)] = directory;
                     }

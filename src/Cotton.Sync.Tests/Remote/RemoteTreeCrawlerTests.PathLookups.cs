@@ -47,6 +47,64 @@ namespace Cotton.Sync.Tests.Remote
             });
         }
 
+        [TestCase("Library/Album")]
+        [TestCase("LIBRARY/ALBUM/report.txt")]
+        [TestCase("Library/Album/missing.txt")]
+        [TestCase("Library/Album-extra")]
+        [TestCase("LibraryTwo")]
+        [TestCase("missing")]
+        public async Task CrawlPathLookupsAsync_MatchesEngineSnapshotCrawlerContract(string requestedPath)
+        {
+            Guid rootId = Guid.NewGuid();
+            Guid libraryId = Guid.NewGuid();
+            Guid albumId = Guid.NewGuid();
+            Guid otherId = Guid.NewGuid();
+            Guid siblingId = Guid.NewGuid();
+            FakeNodeClient client = new();
+            client.Nodes[rootId] = Node(rootId, null, "root");
+            client.Nodes[libraryId] = Node(libraryId, rootId, "Library");
+            client.Nodes[albumId] = Node(albumId, libraryId, "Album");
+            client.Nodes[otherId] = Node(otherId, libraryId, "Other");
+            client.Nodes[siblingId] = Node(siblingId, rootId, "LibraryTwo");
+            client.Children[(rootId, 1)] = new FakeNodePage
+            {
+                TotalCount = 3,
+                Nodes = [client.Nodes[libraryId], client.Nodes[siblingId]],
+                Files = [File(rootId, "root.txt")],
+            };
+            client.Children[(libraryId, 1)] = new FakeNodePage
+            {
+                TotalCount = 3,
+                Nodes = [client.Nodes[albumId], client.Nodes[otherId]],
+                Files = [File(libraryId, "parent.txt")],
+            };
+            client.Children[(albumId, 1)] = new FakeNodePage
+            {
+                TotalCount = 1,
+                Files = [File(albumId, "report.txt")],
+            };
+            client.Children[(otherId, 1)] = new FakeNodePage
+            {
+                TotalCount = 1,
+                Files = [File(otherId, "sibling.txt")],
+            };
+            RemoteTreeCrawler crawler = new(client);
+            RemoteTreeSnapshot tree = await crawler.CrawlAsync(rootId);
+            SyncEngineTests.FakeRemoteTreeCrawler snapshotCrawler = new(tree);
+
+            RemoteTreeLookupSnapshot expected = await crawler.CrawlPathLookupsAsync(rootId, [requestedPath], null);
+            RemoteTreeLookupSnapshot actual = await snapshotCrawler.CrawlPathLookupsAsync(rootId, [requestedPath], null);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(actual.RootNode.Id, Is.EqualTo(expected.RootNode.Id));
+                Assert.That(actual.DirectoriesByPath.Select(entry => (entry.Key, entry.Value.RelativePath, entry.Value.Node.Id)),
+                    Is.EquivalentTo(expected.DirectoriesByPath.Select(entry => (entry.Key, entry.Value.RelativePath, entry.Value.Node.Id))));
+                Assert.That(actual.FilesByPath.Select(entry => (entry.Key, entry.Value.RelativePath, entry.Value.File.Id)),
+                    Is.EquivalentTo(expected.FilesByPath.Select(entry => (entry.Key, entry.Value.RelativePath, entry.Value.File.Id))));
+            });
+        }
+
         private static FakeNodePage CreateFilePage(Guid nodeId, int firstIndex, int count, int totalCount)
         {
             List<NodeFileManifestDto> files = Enumerable.Range(firstIndex, count)
