@@ -146,6 +146,8 @@ namespace Cotton.Sync.App.Runners
                 && _progressPublisher is null
                 && _runProgressPublisher is null
                 && request.IsFull
+                && request.LocalChangedPaths.Count == 0
+                && request.LocalDeletedPaths.Count == 0
                 && request.LocalRenames.Count == 0
                 && allowInitialVirtualFilesStreaming
                 && (request.Causes & SyncRunCause.InitialPopulation) == SyncRunCause.None
@@ -162,7 +164,10 @@ namespace Cotton.Sync.App.Runners
             return new CoreSyncRunOptions
             {
                 Scope = request.IsFull
-                    ? CoreSyncRunScope.ForFull(request.LocalRenames)
+                    ? CoreSyncRunScope.ForFull(
+                        request.LocalChangedPaths.Where(static path => path != "."),
+                        request.LocalDeletedPaths,
+                        request.LocalRenames)
                     : CoreSyncRunScope.ForLocalChangedPaths(request.LocalChangedPaths, request.LocalDeletedPaths, request.LocalRenames),
                 MinimumLocalUploadAge = BackgroundMinimumLocalUploadAge,
                 ApprovedRemoteDeletePlan = request.ApprovedRemoteDeletePlan,
@@ -215,9 +220,12 @@ namespace Cotton.Sync.App.Runners
 
         private static CoreSyncPairMaterializationMode ToCoreMaterializationMode(SyncPairMode mode)
         {
-            return mode == SyncPairMode.WindowsVirtualFiles
-                ? CoreSyncPairMaterializationMode.WindowsVirtualFiles
-                : CoreSyncPairMaterializationMode.FullMirror;
+            return mode switch
+            {
+                SyncPairMode.WindowsVirtualFiles => CoreSyncPairMaterializationMode.WindowsVirtualFiles,
+                SyncPairMode.FullMirror => CoreSyncPairMaterializationMode.FullMirror,
+                _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unsupported synchronization mode."),
+            };
         }
 
         private static string CreateActionRequiredMessage(CoreSyncRunResult result)

@@ -54,7 +54,9 @@ namespace Cotton.Sync
                 return;
             }
 
-            if (options.Scope.IsFull && CanReuseBaselineHash(local, state))
+            if (options.Scope.IsFull
+                && !options.Scope.HasObservedLocalChange(local.RelativePath)
+                && CanReuseBaselineHash(local, state))
             {
                 local.ContentHash = state.LocalContentHash!;
                 return;

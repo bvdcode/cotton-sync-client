@@ -38,6 +38,12 @@ Regular downloads and replacements now use the same materialization lifecycle as
 
 Four focused core checks passed. Four native Windows checks passed for replacing hydrated placeholders, with and without pinning, and refreshing a placeholder with same-size or larger remote content. The isolated two-client virtual-files acceptance passed 23 checks, including automatic rename/content edits and trash restoration. An earlier release-gate run failed rename/content convergence; publication remains dependent on the updated mandatory gate.
 
+## Observed Local Changes During Full Reconciliation — 2026-09-30
+
+Full reconciliation retains the concrete local changes, deletions and renames that were merged into its request. Files affected by those changes are read again even when their size and modification time match the previous baseline. Unaffected files retain the metadata fast path. Explicit local deletion remains a deletion when missing-placeholder recovery is enabled.
+
+Core checks passed for same-size edits with restored timestamps in scoped and full passes, a changed parent directory, and an observed online-only file deletion during full reconciliation. Application checks passed for forwarding merged local events and handling a root metadata event. This does not establish detection when every filesystem notification is lost and the file metadata is unchanged.
+
 ## Folder Deletion To Trash — 2026-09-20
 
 An observed local folder deletion in Windows virtual-files mode now sends one remote folder deletion request after its complete tracked subtree matches the remote snapshot. Descendant files are excluded from individual deletion and the mass-delete limit counts the folder as one operation. The approval fingerprint includes descendant identities and content versions. New remote files, changed remote content, diverged baselines, and reappearing local paths prevent subtree deletion.

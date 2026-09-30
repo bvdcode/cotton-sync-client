@@ -10,6 +10,7 @@ namespace Cotton.Sync
     /// </summary>
     public class SyncRunScope
     {
+        private readonly HashSet<string> _localChangedPathKeys;
         private SyncRunScope(
             bool isFull,
             IReadOnlyList<string> localChangedPaths,
@@ -20,6 +21,7 @@ namespace Cotton.Sync
             LocalChangedPaths = localChangedPaths;
             LocalDeletedPaths = localDeletedPaths;
             LocalRenames = localRenames;
+            _localChangedPathKeys = new HashSet<string>(localChangedPaths, StringComparer.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -52,8 +54,41 @@ namespace Cotton.Sync
         /// </summary>
         public static SyncRunScope ForFull(IEnumerable<LocalPathRename> localRenames)
         {
+            return ForFull([], [], localRenames);
+        }
+
+        /// <summary>
+        /// Creates a full reconcile that retains observed local changes, deletions and renames.
+        /// </summary>
+        public static SyncRunScope ForFull(
+            IEnumerable<string> localChangedPaths,
+            IEnumerable<string> localDeletedPaths,
+            IEnumerable<LocalPathRename> localRenames)
+        {
+            ArgumentNullException.ThrowIfNull(localChangedPaths);
+            ArgumentNullException.ThrowIfNull(localDeletedPaths);
             ArgumentNullException.ThrowIfNull(localRenames);
-            return new SyncRunScope(true, [], [], localRenames.Distinct().ToArray());
+            List<string> deletedPaths = NormalizePaths(localDeletedPaths);
+            List<string> changedPaths = NormalizePaths(localChangedPaths.Concat(deletedPaths));
+            return new SyncRunScope(true, changedPaths, deletedPaths, localRenames.Distinct().ToArray());
+        }
+
+        internal bool HasObservedLocalChange(string relativePath)
+        {
+            string path = SyncPath.Normalize(relativePath);
+            while (true)
+            {
+                if (_localChangedPathKeys.Contains(path))
+                {
+                    return true;
+                }
+                int separator = path.LastIndexOf('/');
+                if (separator < 0)
+                {
+                    return false;
+                }
+                path = path[..separator];
+            }
         }
 
         /// <summary>
