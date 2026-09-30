@@ -11,7 +11,9 @@ namespace Cotton.Sync.Desktop.Startup
         DesktopAppPaths firstPaths,
         DesktopAppPaths secondPaths,
         DesktopShellController firstController,
-        DesktopShellController secondController)
+        DesktopShellController secondController,
+        LiveSyncManifestBarrier firstManifestBarrier,
+        LiveSyncManifestBarrier secondManifestBarrier)
     {
         public DesktopAppPaths FirstPaths { get; } = firstPaths;
 
@@ -26,6 +28,10 @@ namespace Cotton.Sync.Desktop.Startup
         }
 
         public DesktopShellController SecondController { get; } = secondController;
+
+        public LiveSyncManifestBarrier FirstManifestBarrier { get; } = firstManifestBarrier;
+
+        public LiveSyncManifestBarrier SecondManifestBarrier { get; } = secondManifestBarrier;
 
         public bool FirstSignedIn { get; set; }
 

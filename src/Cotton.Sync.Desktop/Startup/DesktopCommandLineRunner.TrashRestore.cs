@@ -14,6 +14,7 @@ namespace Cotton.Sync.Desktop.Startup
     {
         private const int RestoreBurstFileCount = 11;
         private const int RestoreBurstFirstBatchCount = 4;
+        private static readonly TimeSpan RestoreManifestHoldTimeout = TimeSpan.FromSeconds(15);
 
         private static async Task<int> RunLiveTrashRestoreBurstAsync(
             DesktopStartupOptions options,
@@ -62,18 +63,35 @@ namespace Cotton.Sync.Desktop.Startup
                     "Trashed files were not removed automatically from both clients.")).ConfigureAwait(false);
                 return 1;
             }
-            foreach (LiveSyncSmokeRestoreFile file in files.Take(RestoreBurstFirstBatchCount))
+            session.FirstManifestBarrier.Arm(session.FirstPair!.RemoteRootNodeId);
+            session.SecondManifestBarrier.Arm(session.SecondPair!.RemoteRootNodeId);
+            try
             {
-                await client.Files.RestoreAsync(file.RemoteFileId, cancellationToken: cancellationToken).ConfigureAwait(false);
+                foreach (LiveSyncSmokeRestoreFile file in files.Take(RestoreBurstFirstBatchCount))
+                {
+                    await client.Files.RestoreAsync(file.RemoteFileId, cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
+                await Task.WhenAll(
+                    session.FirstManifestBarrier.WaitUntilBlockedAsync(RestoreManifestHoldTimeout, cancellationToken),
+                    session.SecondManifestBarrier.WaitUntilBlockedAsync(RestoreManifestHoldTimeout, cancellationToken))
+                    .ConfigureAwait(false);
+                foreach (LiveSyncSmokeRestoreFile file in files.Skip(RestoreBurstFirstBatchCount))
+                {
+                    await client.Files.RestoreAsync(file.RemoteFileId, cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
+                await output.WriteLineAsync(FormatCheck(true,
+                    "Seven additional restores arrived while both clients held the first restore manifest."))
+                    .ConfigureAwait(false);
             }
-            foreach (LiveSyncSmokeRestoreFile file in files.Skip(RestoreBurstFirstBatchCount))
+            finally
             {
-                await client.Files.RestoreAsync(file.RemoteFileId, cancellationToken: cancellationToken).ConfigureAwait(false);
+                session.FirstManifestBarrier.Release();
+                session.SecondManifestBarrier.Release();
             }
             bool passed = await WaitForLiveRestoreFilesAsync(options, session, files, restored: true, cancellationToken)
                 .ConfigureAwait(false);
             await output.WriteLineAsync(FormatCheck(passed,
-                "Eleven trash restores in batches of four and seven preserved IDs and bytes automatically on both clients."))
+                "Eleven trash restores across a held manifest preserved IDs and bytes automatically on both clients."))
                 .ConfigureAwait(false);
             return passed ? 0 : 1;
         }

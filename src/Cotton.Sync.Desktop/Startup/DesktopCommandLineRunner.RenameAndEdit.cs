@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Security.Cryptography;
+using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.Desktop.Shell;
 using Cotton.Sync.State;
 
@@ -82,6 +83,10 @@ namespace Cotton.Sync.Desktop.Startup
                     + ", originalId=" + fileId + ", firstId=" + first?.RemoteFileId + ", secondId=" + second?.RemoteFileId
                     + ", expectedHash=" + expectedHash + ", firstHash=" + first?.RemoteContentHash
                     + ", secondHash=" + second?.RemoteContentHash
+                    + ", firstLocalHash=" + first?.LocalContentHash + ", secondLocalHash=" + second?.LocalContentHash
+                    + ", firstLocalSize=" + first?.LocalSizeBytes + ", secondLocalSize=" + second?.LocalSizeBytes
+                    + ", firstHydration=" + first?.PlaceholderHydrationState
+                    + ", secondHydration=" + second?.PlaceholderHydrationState
                     + ", firstStatus=" + firstShell.SyncPairs.FirstOrDefault(item => item.Id == session.FirstPair.Id)?.Status
                     + ", secondStatus=" + secondShell.SyncPairs.FirstOrDefault(item => item.Id == session.SecondPair.Id)?.Status
                     + ", firstError=" + firstShell.SyncPairs.FirstOrDefault(item => item.Id == session.FirstPair.Id)?.LastError
@@ -105,10 +110,38 @@ namespace Cotton.Sync.Desktop.Startup
                 await Task.Delay(PropagationPollInterval, cancellationToken).ConfigureAwait(false);
             }
             while (DateTime.UtcNow < deadline);
+            details += ", firstPlaceholder=" + ReadLivePlaceholderVersion(FullPath(options.LocalRoot!, newPath))
+                + ", secondPlaceholder=" + ReadLivePlaceholderVersion(FullPath(options.SecondLocalRoot!, newPath));
             await output.WriteLineAsync(FormatCheck(false,
                 "Rename and immediate edit did not preserve identity, bytes and idle state: " + newPath) + " " + details)
                 .ConfigureAwait(false);
             return 1;
+        }
+
+        private static string ReadLivePlaceholderVersion(string path)
+        {
+            if (!OperatingSystem.IsWindows() || !File.Exists(path))
+            {
+                return "unavailable";
+            }
+            FileAttributes attributes = File.GetAttributes(path);
+            if ((attributes & FileAttributes.ReparsePoint) == 0)
+            {
+                return "regular-file:" + attributes;
+            }
+            try
+            {
+                WindowsCloudFilesNativeApi nativeApi = new();
+                WindowsCloudFilesPlaceholderIdentity identity = WindowsCloudFilesPlaceholderIdentity.Parse(
+                    nativeApi.GetPlaceholderIdentity(path));
+                return identity.RelativePath + ":" + identity.ContentHash + ":" + identity.SizeBytes
+                    + ":" + attributes;
+            }
+            catch (WindowsCloudFilesNativeException exception)
+            {
+                return exception.Operation + ":" + exception.HResult.ToString("X8",
+                    System.Globalization.CultureInfo.InvariantCulture);
+            }
         }
     }
 }

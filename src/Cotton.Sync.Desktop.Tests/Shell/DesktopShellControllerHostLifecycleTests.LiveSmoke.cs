@@ -173,7 +173,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             await secondController.SignInWithBrowserAsync(serverUrl.AbsoluteUri);
             await firstHost.App.StartSyncStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
             await secondHost.App.StartSyncStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
-            DesktopLiveSyncSmokeSession session = new(firstPaths, secondPaths, firstController, secondController)
+            DesktopLiveSyncSmokeSession session = new(firstPaths, secondPaths, firstController, secondController, new(), new())
             {
                 FirstPair = CreateSyncPair(isEnabled: true),
                 SecondPair = CreateSyncPair(isEnabled: true),

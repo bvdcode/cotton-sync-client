@@ -103,7 +103,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             FakeDesktopApplicationHost secondHost = FakeDesktopApplicationHost.Create(serverUrl);
             DesktopLiveSyncSmokeSession session = new(firstPaths, secondPaths,
                 CreateController(firstPaths, new QueueingDesktopSyncApplicationFactory(firstHost.Host)),
-                CreateController(secondPaths, new QueueingDesktopSyncApplicationFactory(secondHost.Host)));
+                CreateController(secondPaths, new QueueingDesktopSyncApplicationFactory(secondHost.Host)), new(), new());
             return (session, firstHost, secondHost);
         }
     }

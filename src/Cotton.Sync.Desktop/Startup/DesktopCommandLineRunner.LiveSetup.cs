@@ -67,20 +67,26 @@ namespace Cotton.Sync.Desktop.Startup
                 Path.Combine(paths.DataDirectory, "client-a-state"));
             DesktopAppPaths secondPaths = DesktopAppPaths.CreateForDataDirectory(
                 Path.Combine(paths.DataDirectory, "client-b-state"));
+            LiveSyncManifestBarrier firstManifestBarrier = new();
+            LiveSyncManifestBarrier secondManifestBarrier = new();
             await using DesktopShellController firstController = CreateLiveSmokeController(
                 firstPaths,
                 startupOptions,
-                output);
+                output,
+                firstManifestBarrier);
             await using DesktopShellController secondController = CreateLiveSmokeController(
                 secondPaths,
                 startupOptions,
-                output);
+                output,
+                secondManifestBarrier);
 
             DesktopLiveSyncSmokeSession session = new(
                 firstPaths,
                 secondPaths,
                 firstController,
-                secondController);
+                secondController,
+                firstManifestBarrier,
+                secondManifestBarrier);
             return await RunLiveSyncSmokeSessionAsync(
                 session,
                 () => RunLiveSyncWorkflowAsync(
@@ -239,13 +245,19 @@ namespace Cotton.Sync.Desktop.Startup
         private static DesktopShellController CreateLiveSmokeController(
             DesktopAppPaths paths,
             DesktopStartupOptions startupOptions,
-            TextWriter output)
+            TextWriter output,
+            LiveSyncManifestBarrier manifestBarrier)
         {
             DesktopTraceLoggerFactory loggerFactory = new();
             LiveSmokePlatformCommandService platformCommands = new(output, startupOptions.LiveSyncSmokeApprovalHold);
             return new DesktopShellController(
                 paths,
-                new DesktopSyncApplicationFactory(paths, loggerFactory, platformCommands),
+                new DesktopSyncApplicationFactory(paths, loggerFactory, platformCommands,
+                    () => new HttpClient(new LiveSyncBarrierHttpMessageHandler(
+                        manifestBarrier, DesktopHttpClientFactory.CreateHandler()))
+                    {
+                        Timeout = TimeSpan.FromSeconds(30),
+                    }),
                 new SqliteAppPreferencesStore(paths.AppDatabasePath),
                 new SqliteSyncPairSettingsStore(paths.AppDatabasePath),
                 platformCommands,

@@ -19,7 +19,7 @@ namespace Cotton.Sync.Desktop.Composition
             };
         }
 
-        private static SocketsHttpHandler CreateHandler()
+        internal static SocketsHttpHandler CreateHandler()
         {
             return new SocketsHttpHandler
             {

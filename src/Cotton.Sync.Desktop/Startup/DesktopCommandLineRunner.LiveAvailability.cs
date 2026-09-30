@@ -60,7 +60,8 @@ namespace Cotton.Sync.Desktop.Startup
             }
 
             await session.FirstController.DisposeAsync().ConfigureAwait(false);
-            DesktopShellController restored = CreateLiveSmokeController(session.FirstPaths, options, output);
+            DesktopShellController restored = CreateLiveSmokeController(
+                session.FirstPaths, options, output, session.FirstManifestBarrier);
             session.ReplaceFirstController(restored);
             DesktopShellSnapshot snapshot = await restored.LoadAsync(cancellationToken).ConfigureAwait(false);
             bool signedIn = snapshot.IsSignedIn && snapshot.SyncPairs.Any(pair => pair.Id == session.FirstPair!.Id);
