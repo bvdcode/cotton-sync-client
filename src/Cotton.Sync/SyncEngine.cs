@@ -189,7 +189,6 @@ namespace Cotton.Sync
             _fileMaterializer = new SyncFileMaterializer(
                 _remoteFilePlaceholderWriter,
                 _stateStore,
-                _localWriter,
                 _fileTransfer);
             _fileDeleteExecutor = new SyncFileDeleteExecutor(
                 _remoteFiles,

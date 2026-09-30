@@ -15,13 +15,14 @@ namespace Cotton.Sync
         IRemoteFileMaterializationObserver? materializationObserver,
         IRemotePathLookupCrawler? remotePathLookupCrawler)
     {
-        public async Task WriteMaterializedRemoteFileAsync(
+        public async Task<LocalFileWriteResult> WriteMaterializedRemoteFileAsync(
             SyncPair syncPair,
             SyncRunOptions options,
             string targetRelativePath,
             string remoteRelativePath,
             NodeFileManifestDto remoteFile,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            string? expectedLocalContentHash = null)
         {
             RemoteFileMaterializationRequest? request = await PrepareRemoteFileMaterializationAsync(
                 syncPair,
@@ -29,19 +30,21 @@ namespace Cotton.Sync
                 remoteFile,
                 cancellationToken).ConfigureAwait(false);
 
-            await WriteRemoteFileContentAsync(
+            LocalFileWriteResult result = await WriteRemoteFileContentAsync(
                     syncPair,
                     options,
                     targetRelativePath,
                     remoteRelativePath,
                     remoteFile,
-                    cancellationToken)
+                    cancellationToken,
+                    expectedLocalContentHash)
                 .ConfigureAwait(false);
             if (request is not null)
             {
                 await materializationObserver!.AfterWriteFileAsync(request, cancellationToken)
                     .ConfigureAwait(false);
             }
+            return result;
         }
 
         public async Task WriteRemoteFileAfterLocalDeletionAsync(
@@ -87,21 +90,22 @@ namespace Cotton.Sync
             return request;
         }
 
-        private async Task WriteRemoteFileContentAsync(
+        private Task<LocalFileWriteResult> WriteRemoteFileContentAsync(
             SyncPair syncPair,
             SyncRunOptions options,
             string targetRelativePath,
             string remoteRelativePath,
             NodeFileManifestDto remoteFile,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            string? expectedLocalContentHash = null)
         {
-            await localWriter.WriteFileAsync(
+            return localWriter.WriteFileAsync(
                     syncPair.LocalRootPath,
                     targetRelativePath,
                     (stream, token) => DownloadAndVerifyFileAsync(remoteFile, remoteRelativePath, options, stream, token),
                     remoteFile.UpdatedAt == default ? null : remoteFile.UpdatedAt,
-                    cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
+                    expectedLocalContentHash,
+                    cancellationToken);
         }
 
         private RemoteFileMaterializationRequest? CreateRemoteFileMaterializationRequest(

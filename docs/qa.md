@@ -32,6 +32,12 @@ Core checks passed for empty files and chunk boundaries, out-of-order completion
 
 Desktop and CLI HTTP clients return redirect responses to the SDK instead of following them automatically. A request carrying authentication headers, a cookie and a refresh body was sent to a controlled HTTP server for each of 302, 307 and 308. All three checks passed: the original redirect status was returned and the second server received no connection. The CLI suite passed 51 checks.
 
+## Download Materialization — 2026-09-30
+
+Regular downloads and replacements now use the same materialization lifecycle as remote conflict copies. Windows virtual-files clients receive the before-write notification and durable provider-file marker after a successful write. Failed downloads retain the old baseline and do not issue the completion notification.
+
+Four focused core checks passed. Four native Windows checks passed for replacing hydrated placeholders, with and without pinning, and refreshing a placeholder with same-size or larger remote content. The isolated two-client virtual-files acceptance passed 23 checks, including automatic rename/content edits and trash restoration. An earlier release-gate run failed rename/content convergence; publication remains dependent on the updated mandatory gate.
+
 ## Folder Deletion To Trash — 2026-09-20
 
 An observed local folder deletion in Windows virtual-files mode now sends one remote folder deletion request after its complete tracked subtree matches the remote snapshot. Descendant files are excluded from individual deletion and the mass-delete limit counts the folder as one operation. The approval fingerprint includes descendant identities and content versions. New remote files, changed remote content, diverged baselines, and reappearing local paths prevent subtree deletion.

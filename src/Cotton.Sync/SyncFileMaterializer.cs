@@ -13,7 +13,6 @@ namespace Cotton.Sync
     internal class SyncFileMaterializer(
         IRemoteFilePlaceholderWriter? placeholderWriter,
         ISyncStateStore stateStore,
-        ILocalFileSyncWriter localWriter,
         SyncRemoteFileTransfer fileTransfer)
     {
         public async Task DownloadAsync(
@@ -26,13 +25,14 @@ namespace Cotton.Sync
             string? expectedLocalContentHash = null)
         {
             EnsureEnoughLocalFreeSpace(syncPair.LocalRootPath, relativePath, remoteFile.SizeBytes);
-            LocalFileWriteResult writeResult = await localWriter.WriteFileAsync(
-                syncPair.LocalRootPath,
+            LocalFileWriteResult writeResult = await fileTransfer.WriteMaterializedRemoteFileAsync(
+                syncPair,
+                options,
                 relativePath,
-                (stream, token) => fileTransfer.DownloadAndVerifyFileAsync(remoteFile, relativePath, options, stream, token),
-                remoteFile.UpdatedAt == default ? null : remoteFile.UpdatedAt,
-                expectedLocalContentHash,
-                cancellationToken).ConfigureAwait(false);
+                relativePath,
+                remoteFile,
+                cancellationToken,
+                expectedLocalContentHash).ConfigureAwait(false);
             await stateStore.UpsertAsync(BuildBaseline(syncPair, relativePath, remoteFile.ContentHash, remoteFile.UpdatedAt, remoteFile.SizeBytes, remoteFile), cancellationToken)
                 .ConfigureAwait(false);
             if (writeResult.ConflictRelativePath is not null)
