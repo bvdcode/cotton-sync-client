@@ -114,7 +114,7 @@ jobs:
         run: |
           ./.github/scripts/test-live-sync.ps1 `
             -DesktopAssembly src/Cotton.Sync.Desktop/bin/Release/net10.0/Cotton.Sync.Desktop.dll `
-            -OutputDirectory live-sync-acceptance `
+            -OutputDirectory "$env:RUNNER_TEMP/live-sync-acceptance" `
             -ServerUrl $env:COTTON_SYNC_QA_SERVER
         env:
           COTTON_SYNC_QA_SERVER: ${{ vars.COTTON_SYNC_QA_SERVER }}
@@ -127,9 +127,9 @@ jobs:
         with:
           name: desktop-live-acceptance
           path: |
-            live-sync-acceptance/summary.json
-            live-sync-acceptance/*/stdout.log
-            live-sync-acceptance/*/stderr.log
+            ${{ runner.temp }}/live-sync-acceptance/summary.json
+            ${{ runner.temp }}/live-sync-acceptance/*/stdout.log
+            ${{ runner.temp }}/live-sync-acceptance/*/stderr.log
           if-no-files-found: ignore
 
   linux:
