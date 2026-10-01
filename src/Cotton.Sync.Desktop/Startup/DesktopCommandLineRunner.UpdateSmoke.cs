@@ -106,7 +106,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
 
             DesktopUpdateService service = new(
-                DesktopHttpClientFactory.Create(TimeSpan.FromSeconds(30)),
+                DesktopHttpClientFactory.CreateForUpdates(TimeSpan.FromSeconds(30)),
                 DesktopAppVersion.Current,
                 paths.UpdateCacheDirectory,
                 startupOptions.UpdateManifestUri,

@@ -166,7 +166,7 @@ namespace Cotton.Sync.Desktop.Shell
             }
 
             DesktopUpdateService service = new(
-                DesktopHttpClientFactory.Create(TimeSpan.FromSeconds(30)),
+                DesktopHttpClientFactory.CreateForUpdates(TimeSpan.FromSeconds(30)),
                 DesktopAppVersion.Current,
                 paths.UpdateCacheDirectory,
                 disposeHttpClient: true);

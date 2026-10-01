@@ -12,8 +12,25 @@ namespace Cotton.Sync.Desktop.Composition
 
         public static HttpClient Create(TimeSpan timeout)
         {
+            return Create(timeout, forUpdates: false);
+        }
+
+        public static HttpClient CreateForUpdates(TimeSpan timeout)
+        {
+            return Create(timeout, forUpdates: true);
+        }
+
+        private static HttpClient Create(TimeSpan timeout, bool forUpdates)
+        {
             ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(timeout, TimeSpan.Zero);
-            return new HttpClient(CreateHandler(), disposeHandler: true)
+            SocketsHttpHandler handler = CreateHandler();
+            if (forUpdates)
+            {
+                handler.AllowAutoRedirect = true;
+                handler.UseCookies = false;
+            }
+
+            return new HttpClient(handler, disposeHandler: true)
             {
                 Timeout = timeout,
             };

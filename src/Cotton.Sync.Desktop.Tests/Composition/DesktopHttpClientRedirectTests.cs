@@ -13,6 +13,39 @@ namespace Cotton.Sync.Desktop.Tests.Composition
         [TestCase(302)]
         [TestCase(307)]
         [TestCase(308)]
+        public async Task PublicUpdateDownload_FollowsRedirectWithoutForwardingCookies(int statusCode)
+        {
+            using TcpListener source = new(IPAddress.Loopback, 0);
+            using TcpListener target = new(IPAddress.Loopback, 0);
+            source.Start();
+            target.Start();
+            int sourcePort = ((IPEndPoint)source.LocalEndpoint).Port;
+            int targetPort = ((IPEndPoint)target.LocalEndpoint).Port;
+            using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(5));
+            Task sourceResponse = RespondAsync(source,
+                $"HTTP/1.1 {statusCode} Redirect\r\nLocation: http://127.0.0.1:{targetPort}/download\r\n"
+                + "Set-Cookie: session=source-marker; Path=/\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                cancellation.Token);
+            List<string> targetHeaders = [];
+            Task targetResponse = RespondAsync(target,
+                "HTTP/1.1 200 OK\r\nContent-Length: 14\r\nConnection: close\r\n\r\ndownload-bytes",
+                cancellation.Token, targetHeaders);
+            using HttpClient client = DesktopHttpClientFactory.CreateForUpdates(TimeSpan.FromSeconds(5));
+
+            string content = await client.GetStringAsync($"http://127.0.0.1:{sourcePort}/release", cancellation.Token);
+            await Task.WhenAll(sourceResponse, targetResponse);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(content, Is.EqualTo("download-bytes"));
+                Assert.That(targetHeaders.Any(header => header.StartsWith("Cookie:", StringComparison.OrdinalIgnoreCase)), Is.False);
+                Assert.That(targetHeaders.Any(header => header.StartsWith("Authorization:", StringComparison.OrdinalIgnoreCase)), Is.False);
+            });
+        }
+
+        [TestCase(302)]
+        [TestCase(307)]
+        [TestCase(308)]
         public async Task AuthorizedPost_DoesNotFollowRedirectToAnotherServer(int statusCode)
         {
             using TcpListener source = new(IPAddress.Loopback, 0);
@@ -54,7 +87,11 @@ namespace Cotton.Sync.Desktop.Tests.Composition
             }
         }
 
-        private static async Task RespondAsync(TcpListener listener, string response, CancellationToken cancellationToken)
+        private static async Task RespondAsync(
+            TcpListener listener,
+            string response,
+            CancellationToken cancellationToken,
+            List<string>? receivedHeaders = null)
         {
             using TcpClient connection = await listener.AcceptTcpClientAsync(cancellationToken);
             await using NetworkStream stream = connection.GetStream();
@@ -63,6 +100,10 @@ namespace Cotton.Sync.Desktop.Tests.Composition
             do
             {
                 line = await reader.ReadLineAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(line))
+                {
+                    receivedHeaders?.Add(line);
+                }
             }
             while (!string.IsNullOrEmpty(line));
             await stream.WriteAsync(Encoding.ASCII.GetBytes(response), cancellationToken);
