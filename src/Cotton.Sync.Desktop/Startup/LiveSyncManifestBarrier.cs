@@ -3,7 +3,7 @@
 
 namespace Cotton.Sync.Desktop.Startup
 {
-    internal class LiveSyncManifestBarrier
+    internal partial class LiveSyncManifestBarrier
     {
         private readonly object _gate = new();
         private string? _path;
@@ -54,6 +54,7 @@ namespace Cotton.Sync.Desktop.Startup
             HttpResponseMessage response,
             CancellationToken cancellationToken)
         {
+            await ObserveFileResponseAsync(request, response, cancellationToken).ConfigureAwait(false);
             TaskCompletionSource blocked;
             Task released;
             lock (_gate)

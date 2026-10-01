@@ -61,6 +61,8 @@ namespace Cotton.Sync.Desktop.Startup
                 receiverPairId = session.FirstPair.Id;
                 receiverStore = firstStore;
             }
+            session.FirstManifestBarrier.ObserveFile(fileId);
+            session.SecondManifestBarrier.ObserveFile(fileId);
             sourceBarrier.ArmRename(fileId);
             string expectedHash;
             try
@@ -146,6 +148,13 @@ namespace Cotton.Sync.Desktop.Startup
             while (DateTime.UtcNow < deadline);
             details += ", firstPlaceholder=" + ReadLivePlaceholderVersion(FullPath(options.LocalRoot!, newPath))
                 + ", secondPlaceholder=" + ReadLivePlaceholderVersion(FullPath(options.SecondLocalRoot!, newPath));
+            SyncChangeCursor firstCursor = await firstStore.GetChangeCursorAsync(firstPairId, cancellationToken)
+                .ConfigureAwait(false);
+            SyncChangeCursor secondCursor = await secondStore.GetChangeCursorAsync(secondPairId, cancellationToken)
+                .ConfigureAwait(false);
+            details += ", firstCursor=" + firstCursor.LastCursor + ", secondCursor=" + secondCursor.LastCursor
+                + ", firstResponses=" + session.FirstManifestBarrier.ReadFileResponses(fileId)
+                + ", secondResponses=" + session.SecondManifestBarrier.ReadFileResponses(fileId);
             await output.WriteLineAsync(FormatCheck(false,
                 "Rename and immediate edit did not preserve identity, bytes and idle state: " + newPath) + " " + details)
                 .ConfigureAwait(false);
