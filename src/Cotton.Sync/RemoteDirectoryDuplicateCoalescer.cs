@@ -169,7 +169,7 @@ namespace Cotton.Sync
                 SyncActivityReporter.Record(
                     context.Result,
                     context.Options,
-                    SyncActivityKind.Converged,
+                    SyncActivityKind.Skipped,
                     targetPath,
                     "Kept an identical local folder without creating a duplicate cloud folder.");
                 return true;

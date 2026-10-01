@@ -134,6 +134,8 @@ namespace Cotton.Sync.Tests
                 else
                 {
                     Assert.That(result?.RequiresUserAction, Is.False);
+                    Assert.That(result!.Activities.Single(activity => activity.RelativePath == duplicatePath).Kind,
+                        Is.EqualTo(SyncActivityKind.Skipped));
                 }
                 Assert.That(states.Select(state => state.RelativePath),
                     Is.EqualTo(new[] { parentPath, sourcePath, sourceChildPath, sourceFilePath }));

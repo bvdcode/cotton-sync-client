@@ -103,6 +103,30 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_WithPreservedDuplicateDirectoryDoesNotFinalizeUntrackedPath()
+        {
+            const string duplicatePath = "Music/YM/Michaël Brun";
+            SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
+            InMemoryAppActivityPublisher activityPublisher = new();
+            PublishingSyncPairWork inner = new(activityPublisher, duplicatePath, SyncActivityKind.Skipped);
+            FakeSyncStateStore stateStore = new();
+            stateStore.UpsertDirectory(syncPair, "Music/YM/Michael Brun", Guid.NewGuid());
+            RecordingCloudFilesAdapter cloudFiles = new();
+            WindowsVirtualFilesUploadFinalizationPairWork work = new(
+                inner, activityPublisher, stateStore, cloudFiles);
+
+            await work.RunOnceAsync(syncPair, SyncRunRequest.ForLocalChangedPaths([duplicatePath]));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(cloudFiles.DirectoryPlaceholders, Is.Empty);
+                Assert.That(cloudFiles.InSyncPaths, Is.Empty);
+                Assert.That(cloudFiles.SyncRootInSyncPairs, Is.Empty);
+            });
+            Assert.That(await stateStore.GetAsync(syncPair.Id.ToString("D"), duplicatePath), Is.Null);
+        }
+
+        [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesConflictActivityDoesNotFinalizePath()
         {
             SyncPairSettings syncPair = CreateSyncPair(SyncPairMode.WindowsVirtualFiles);
