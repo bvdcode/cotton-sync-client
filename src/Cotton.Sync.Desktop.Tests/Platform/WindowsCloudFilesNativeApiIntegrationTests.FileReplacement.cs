@@ -10,18 +10,25 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 {
     public partial class WindowsCloudFilesNativeApiIntegrationTests
     {
-        [TestCase(false)]
-        [TestCase(true)]
+        [TestCase("Replacement file contents", true, false)]
+        [TestCase("Replacement content with a different length", true, false)]
+        [TestCase("Short replacement", true, false)]
+        [TestCase("", true, false)]
+        [TestCase("", false, false)]
+        [TestCase("", true, true)]
         [Explicit("Registers a temporary Windows Cloud Files sync root.")]
-        public async Task UpdateHydratedPlaceholder_ExternalReaderSeesOnlyNewVersion(bool grow)
+        public async Task UpdatePlaceholder_ExternalReaderSeesOnlyNewVersion(
+            string updatedContent, bool hydrateOriginal, bool userEdited)
         {
             string root = Path.Combine(Path.GetTempPath(), "cotton-cloud-files-version-" + Guid.NewGuid().ToString("N"));
             Guid pairId = Guid.NewGuid();
             string path = Path.Combine(root, "example.txt");
             byte[] original = Encoding.UTF8.GetBytes("Original hydrated content");
-            byte[] updated = Encoding.UTF8.GetBytes(grow ? "Replacement content with a different length" : "Replacement file contents");
+            byte[] updated = Encoding.UTF8.GetBytes(updatedContent);
+            byte[] repopulated = Encoding.UTF8.GetBytes("Content following an empty version");
             string originalHash = Convert.ToHexStringLower(SHA256.HashData(original));
             string updatedHash = Convert.ToHexStringLower(SHA256.HashData(updated));
+            string repopulatedHash = Convert.ToHexStringLower(SHA256.HashData(repopulated));
             WindowsCloudFilesNativeApi nativeApi = new();
             WindowsStorageProviderSyncRootRegistrar registrar = new(GetShellHelperPath());
             Directory.CreateDirectory(root);
@@ -35,6 +42,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 [originalHash] = original,
                 [updatedHash] = updated,
+                [repopulatedHash] = repopulated,
             });
             WindowsCloudFilesHydrationCoordinator handler = new(provider, nativeApi);
             try
@@ -45,7 +53,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     1, WindowsCloudFilesAdapter.ProviderId, pairId, remoteRoot, "example.txt",
                     Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), null, original.Length, originalHash, null, timestamp);
                 nativeApi.CreatePlaceholder(new(root, "example.txt", identity.ToBytes(), original.Length, timestamp, timestamp));
-                Assert.That((await ReadExternallyAsync(path)).Trim().ToLowerInvariant(), Is.EqualTo(originalHash));
+                if (hydrateOriginal)
+                {
+                    Assert.That((await ReadExternallyAsync(path)).Trim().ToLowerInvariant(), Is.EqualTo(originalHash));
+                }
                 nativeApi.SetInSyncState(path);
                 WindowsCloudFilesPlaceholderIdentity nextIdentity = identity with
                 {
@@ -53,11 +64,39 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     SizeBytes = updated.Length,
                     FileManifestId = Guid.NewGuid(),
                 };
+                if (userEdited)
+                {
+                    const string editedContent = "Content edited by the user";
+                    await using (FileStream stream = new(path, FileMode.Open, FileAccess.Write, FileShare.Read))
+                    {
+                        await stream.WriteAsync(Encoding.UTF8.GetBytes(editedContent));
+                    }
+                    Assert.Throws<WindowsCloudFilesNativeException>(() => nativeApi.UpdatePlaceholder(
+                        new(root, "example.txt", nextIdentity.ToBytes(), updated.Length, timestamp, DateTime.UtcNow)));
+                    Assert.That(await File.ReadAllTextAsync(path), Is.EqualTo(editedContent));
+                    Assert.That(nativeApi.GetPlaceholderIdentity(path), Is.EqualTo(identity.ToBytes()));
+                    return;
+                }
 
                 nativeApi.UpdatePlaceholder(new(root, "example.txt", nextIdentity.ToBytes(), updated.Length, timestamp, DateTime.UtcNow));
 
+                Assert.That(new FileInfo(path).Length, Is.EqualTo(updated.Length));
                 Assert.That((await ReadExternallyAsync(path)).Trim().ToLowerInvariant(), Is.EqualTo(updatedHash));
                 Assert.That(nativeApi.GetPlaceholderIdentity(path), Is.EqualTo(nextIdentity.ToBytes()));
+                if (updated.Length == 0)
+                {
+                    WindowsCloudFilesPlaceholderIdentity repopulatedIdentity = nextIdentity with
+                    {
+                        ContentHash = repopulatedHash,
+                        SizeBytes = repopulated.Length,
+                        FileManifestId = Guid.NewGuid(),
+                    };
+                    nativeApi.UpdatePlaceholder(new(root, "example.txt", repopulatedIdentity.ToBytes(),
+                        repopulated.Length, timestamp, DateTime.UtcNow));
+                    Assert.That(new FileInfo(path).Length, Is.EqualTo(repopulated.Length));
+                    Assert.That((await ReadExternallyAsync(path)).Trim().ToLowerInvariant(), Is.EqualTo(repopulatedHash));
+                    Assert.That(nativeApi.GetPlaceholderIdentity(path), Is.EqualTo(repopulatedIdentity.ToBytes()));
+                }
             }
             finally
             {

@@ -399,6 +399,10 @@ jobs:
         timeout-minutes: 4
         run: dotnet test src/Cotton.Sync.Desktop.Tests/Cotton.Sync.Desktop.Tests.csproj -c Release -p:RestoreLockedMode=true --filter "FullyQualifiedName~RunOnceAsync_PinnedRegularFileRegainsCloudIdentity|FullyQualifiedName~ReconnectSyncRoot_PreservesDirectoryAndFileCloudIdentity|FullyQualifiedName~HydratePlaceholder_WhileExternalProcessReads|FullyQualifiedName~HydratePlaceholder_DownloadExceedsNativeTimeout|FullyQualifiedName~RunOnceAsync_LargePinnedFolderRemainsPending|FullyQualifiedName~HydratePlaceholder_InterruptedResponseBody"
 
+      - name: Verify Cloud Files metadata updates
+        timeout-minutes: 2
+        run: dotnet test src/Cotton.Sync.Desktop.Tests/Cotton.Sync.Desktop.Tests.csproj -c Release --no-build --no-restore --filter "FullyQualifiedName~UpdatePlaceholder_ExternalReaderSeesOnlyNewVersion"
+
       - name: Smoke desktop Windows self-test
         timeout-minutes: 4
         shell: pwsh

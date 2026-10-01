@@ -26,6 +26,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         private const uint CfUpdateFlagMarkInSync = 0x00000002;
         private const uint CfUpdateFlagDehydrate = 0x00000004;
         private const uint CfUpdateFlagDisableOnDemandPopulation = 0x00000010;
+        private const uint CfUpdateFlagPassthroughFsMetadata = 0x00000100;
         private const uint CfUpdateFlagAllowPartial = 0x00000400;
         private string _tempDirectory = string.Empty;
 
@@ -65,6 +66,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Is.EqualTo(
                     CfUpdateFlagVerifyInSync
                     | CfUpdateFlagMarkInSync
+                    | CfUpdateFlagPassthroughFsMetadata
                     | CfUpdateFlagDisableOnDemandPopulation));
         }
 
@@ -78,6 +80,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Is.EqualTo(
                     CfUpdateFlagVerifyInSync
                     | CfUpdateFlagMarkInSync
+                    | CfUpdateFlagPassthroughFsMetadata
                     | CfUpdateFlagDehydrate
                     | CfUpdateFlagAllowPartial));
         }

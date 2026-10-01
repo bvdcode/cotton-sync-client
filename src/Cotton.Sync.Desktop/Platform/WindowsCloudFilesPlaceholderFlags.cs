@@ -11,6 +11,7 @@ namespace Cotton.Sync.Desktop.Platform
         private const uint UpdateMarkInSync = 0x00000002;
         private const uint UpdateDehydrate = 0x00000004;
         private const uint UpdateDisableOnDemandPopulation = 0x00000010;
+        private const uint UpdatePassthroughFsMetadata = 0x00000100;
         private const uint UpdateAllowPartial = 0x00000400;
 
         public static uint CreatePlaceholderCreateFlags(bool isDirectory)
@@ -23,7 +24,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         public static uint CreateUpdateFlags(bool isDirectory)
         {
-            uint flags = UpdateVerifyInSync | UpdateMarkInSync;
+            uint flags = UpdateVerifyInSync | UpdateMarkInSync | UpdatePassthroughFsMetadata;
             return isDirectory
                 ? flags | UpdateDisableOnDemandPopulation
                 : flags | UpdateDehydrate | UpdateAllowPartial;

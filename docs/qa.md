@@ -38,7 +38,7 @@ Desktop and CLI HTTP clients return redirect responses to the SDK instead of fol
 
 Regular downloads and replacements now use the same materialization lifecycle as remote conflict copies. Windows virtual-files clients receive the before-write notification and durable provider-file marker after a successful write. Failed downloads retain the old baseline and do not issue the completion notification.
 
-Four focused core checks passed. Four native Windows checks passed for replacing hydrated placeholders, with and without pinning, and refreshing a placeholder with same-size or larger remote content. The isolated two-client virtual-files acceptance passed 23 checks, including automatic rename/content edits and trash restoration. An earlier release-gate run failed rename/content convergence; publication remains dependent on the updated mandatory gate.
+Four focused core checks passed. Native Windows checks passed for replacing hydrated placeholders, with and without pinning, and refreshing a placeholder with same-size, larger, smaller and empty remote content. Empty metadata updates pass zero values through to the filesystem. The six update cases also cover an online-only original, a new nonempty version after an empty version, and rejection of an update over a genuine local edit. The strengthened isolated two-client virtual-files acceptance passed 27 checks, including automatic rename/content edits and restoration before delete-event application. Publication remains dependent on the mandatory installer gate.
 
 ## Observed Local Changes During Full Reconciliation — 2026-09-30
 
