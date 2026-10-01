@@ -92,12 +92,14 @@ namespace Cotton.Sync.App.Tests.Runners
             });
         }
 
-        [Test]
-        public async Task SyncNowAsync_ScopedRequestSupersedesBackgroundFullPass()
+        [TestCase(SyncRunCause.Periodic)]
+        [TestCase(SyncRunCause.RealtimeRemoteChange)]
+        [TestCase(SyncRunCause.Resume)]
+        public async Task SyncNowAsync_ScopedRequestSupersedesAndRetainsBackgroundFullPass(SyncRunCause cause)
         {
             PreemptibleSyncPairWork work = new();
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work);
-            SyncRunRequest backgroundRequest = SyncRunRequest.ForFull(SyncRunCause.Periodic);
+            SyncRunRequest backgroundRequest = SyncRunRequest.ForFull(cause);
             SyncRunRequest scopedRequest = SyncRunRequest.ForLocalChangedPaths(["Pictures/album"]);
 
             Task backgroundSync = runner.SyncNowAsync(backgroundRequest);
@@ -109,7 +111,9 @@ namespace Cotton.Sync.App.Tests.Runners
             {
                 Assert.That(work.Requests, Has.Count.EqualTo(2));
                 Assert.That(work.Requests[0], Is.SameAs(backgroundRequest));
-                Assert.That(work.Requests[1], Is.SameAs(scopedRequest));
+                Assert.That(work.Requests[1].IsFull, Is.True);
+                Assert.That(work.Requests[1].Causes, Is.EqualTo(cause | SyncRunCause.LocalChange));
+                Assert.That(work.Requests[1].LocalChangedPaths, Is.EqualTo(scopedRequest.LocalChangedPaths));
                 Assert.That(work.FirstRunCancellationObserved, Is.True);
                 Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Idle));
             });

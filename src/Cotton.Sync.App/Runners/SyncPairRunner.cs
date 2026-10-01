@@ -302,6 +302,7 @@ namespace Cotton.Sync.App.Runners
 
         private void HandleSupersededSync(Exception exception)
         {
+            _requestQueue.RequeueSupersededRequest();
             _statusController.SetIdleOrActionRequiredState();
             _logger.LogDebug(
                 exception,

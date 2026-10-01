@@ -7,6 +7,43 @@ namespace Cotton.Sync.App.Tests.Runners
 {
     public class SyncPairRequestQueueTests
     {
+        [TestCase(false)]
+        [TestCase(true)]
+        public void SupersedeRemoteCheck_KeepsCancelledRequestAndLocalEvidence(bool cancellationAssignedFirst)
+        {
+            SyncPairRequestQueue queue = new(isBlocked: false);
+            SyncRunRequest remote = SyncRunRequest.ForFull(SyncRunCause.RealtimeRemoteChange);
+            LocalPathRename rename = new("original.txt", "renamed.txt");
+            SyncRunRequest local = SyncRunRequest.ForLocalChangedPaths(
+                ["downloaded.txt", "original.txt", "renamed.txt", "deleted.txt"], ["deleted.txt"],
+                localRenames: [rename]);
+            using CancellationTokenSource cancellation = new();
+            Assert.That(queue.TryStart(remote), Is.True);
+            if (cancellationAssignedFirst)
+            {
+                queue.SetActiveCancellation(cancellation);
+            }
+            Assert.That(queue.TryStart(local), Is.False);
+            if (!cancellationAssignedFirst)
+            {
+                queue.SetActiveCancellation(cancellation);
+            }
+            queue.RequeueSupersededRequest();
+            queue.ClearActiveCancellation(cancellation);
+            Assert.That(queue.CompletePassOrTakeQueued(), Is.True);
+            SyncRunRequest pending = queue.GetActiveRequest();
+            Assert.Multiple(() =>
+            {
+                Assert.That(cancellation.IsCancellationRequested, Is.True);
+                Assert.That(pending.IsFull, Is.True);
+                Assert.That(pending.Causes, Is.EqualTo(SyncRunCause.RealtimeRemoteChange | SyncRunCause.LocalChange));
+                Assert.That(pending.LocalChangedPaths, Is.EqualTo(local.LocalChangedPaths));
+                Assert.That(pending.LocalDeletedPaths, Is.EqualTo(local.LocalDeletedPaths));
+                Assert.That(pending.LocalRenames, Is.EqualTo(new[] { rename }));
+            });
+            Assert.That(queue.CompletePassOrTakeQueued(), Is.False);
+        }
+
         [TestCase(SyncRunCause.RealtimeRemoteChange, false)]
         [TestCase(SyncRunCause.RealtimeRemoteChange, true)]
         [TestCase(SyncRunCause.Periodic, false)]

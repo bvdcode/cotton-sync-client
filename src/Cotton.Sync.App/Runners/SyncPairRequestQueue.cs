@@ -152,6 +152,18 @@ namespace Cotton.Sync.App.Runners
             }
         }
 
+        public void RequeueSupersededRequest()
+        {
+            lock (_gate)
+            {
+                if (_activeRequest is not null
+                    && _activeCancellationReason == ActiveSyncCancellationReason.Superseded)
+                {
+                    QueuePending(_activeRequest);
+                }
+            }
+        }
+
         public void SetActiveCancellation(CancellationTokenSource cancellation)
         {
             lock (_gate)
