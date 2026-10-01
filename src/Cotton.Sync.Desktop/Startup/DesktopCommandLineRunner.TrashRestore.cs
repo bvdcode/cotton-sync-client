@@ -93,7 +93,12 @@ namespace Cotton.Sync.Desktop.Startup
             await output.WriteLineAsync(FormatCheck(passed,
                 "Eleven trash restores across a held manifest preserved IDs and bytes automatically on both clients."))
                 .ConfigureAwait(false);
-            return passed ? 0 : 1;
+            if (!passed)
+            {
+                return 1;
+            }
+            return await RunLiveRestoreBeforeDeleteApplicationAsync(
+                options, session, client, files, output, cancellationToken).ConfigureAwait(false);
         }
 
         private static async Task<bool> WaitForLiveRestoreFilesAsync(

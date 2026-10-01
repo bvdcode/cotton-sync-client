@@ -7,10 +7,26 @@ namespace Cotton.Sync.Desktop.Startup
     {
         private readonly object _gate = new();
         private string? _path;
+        private HttpMethod _method = HttpMethod.Get;
         private TaskCompletionSource _blocked = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public void Arm(Guid remoteRootNodeId)
+        {
+            ArmPath($"/api/v1/layouts/nodes/{remoteRootNodeId:D}/children", HttpMethod.Get);
+        }
+
+        public void ArmChangeFeed()
+        {
+            ArmPath("/api/v1/sync/changes", HttpMethod.Get);
+        }
+
+        public void ArmRename(Guid remoteFileId)
+        {
+            ArmPath($"/api/v1/files/{remoteFileId:D}/rename", HttpMethod.Patch);
+        }
+
+        private void ArmPath(string path, HttpMethod method)
         {
             lock (_gate)
             {
@@ -18,7 +34,8 @@ namespace Cotton.Sync.Desktop.Startup
                 {
                     throw new InvalidOperationException("The manifest barrier is already armed.");
                 }
-                _path = $"/api/v1/layouts/nodes/{remoteRootNodeId:D}/children";
+                _path = path;
+                _method = method;
                 _blocked = new(TaskCreationOptions.RunContinuationsAsynchronously);
                 _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
             }
@@ -41,7 +58,7 @@ namespace Cotton.Sync.Desktop.Startup
             Task released;
             lock (_gate)
             {
-                if (_path is null || request.Method != HttpMethod.Get || !response.IsSuccessStatusCode
+                if (_path is null || request.Method != _method || !response.IsSuccessStatusCode
                     || !string.Equals(request.RequestUri?.AbsolutePath, _path, StringComparison.Ordinal))
                 {
                     return;

@@ -233,6 +233,20 @@ namespace Cotton.Sync
                 return;
             }
 
+            if (ContentMatches(context.Local.ContentHash, context.State.RemoteContentHash))
+            {
+                await fileMaterializer.DownloadAsync(
+                        context.SyncPair,
+                        context.Options,
+                        context.Result,
+                        context.RelativePath,
+                        context.Remote.File,
+                        context.CancellationToken,
+                        context.Local.ContentHash)
+                    .ConfigureAwait(false);
+                return;
+            }
+
             await conflictResolver.PreserveAsync(
                     context.SyncPair,
                     context.Options,

@@ -48,19 +48,53 @@ namespace Cotton.Sync.Desktop.Startup
             {
                 return failure;
             }
+            string originalContent = await ReadAllTextThroughExternalProcessAsync(
+                FullPath(root, oldPath), cancellationToken).ConfigureAwait(false);
+            LiveSyncManifestBarrier sourceBarrier = session.FirstManifestBarrier;
+            string receiverRoot = options.SecondLocalRoot!;
+            Guid receiverPairId = session.SecondPair!.Id;
+            SqliteSyncStateStore receiverStore = secondStore;
             if (fromSecondClient)
             {
-                File.Move(FullPath(root, oldPath), FullPath(root, temporaryPath));
-                File.Move(FullPath(root, temporaryPath), FullPath(root, newPath));
+                sourceBarrier = session.SecondManifestBarrier;
+                receiverRoot = options.LocalRoot!;
+                receiverPairId = session.FirstPair.Id;
+                receiverStore = firstStore;
             }
-            else
+            sourceBarrier.ArmRename(fileId);
+            string expectedHash;
+            try
             {
-                File.Move(FullPath(root, oldPath), FullPath(root, newPath));
+                if (fromSecondClient)
+                {
+                    File.Move(FullPath(root, oldPath), FullPath(root, temporaryPath));
+                    File.Move(FullPath(root, temporaryPath), FullPath(root, newPath));
+                }
+                else
+                {
+                    File.Move(FullPath(root, oldPath), FullPath(root, newPath));
+                }
+                await WriteFileAsync(root, newPath, content, cancellationToken).ConfigureAwait(false);
+                byte[] expectedBytes = await File.ReadAllBytesAsync(FullPath(root, newPath), cancellationToken)
+                    .ConfigureAwait(false);
+                expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedBytes));
+                await sourceBarrier.WaitUntilBlockedAsync(RestoreManifestHoldTimeout, cancellationToken)
+                    .ConfigureAwait(false);
+                bool previousVersionRead = await WaitForLiveRenamedPreviousVersionAsync(
+                    receiverRoot, receiverPairId, receiverStore, newPath, fileId,
+                    originalContent, cancellationToken).ConfigureAwait(false);
+                await output.WriteLineAsync(FormatCheck(previousVersionRead,
+                    "Receiver read the renamed previous version while the content update was held: " + newPath))
+                    .ConfigureAwait(false);
+                if (!previousVersionRead)
+                {
+                    return 1;
+                }
             }
-            await WriteFileAsync(root, newPath, content, cancellationToken).ConfigureAwait(false);
-            byte[] expectedBytes = await File.ReadAllBytesAsync(FullPath(root, newPath), cancellationToken)
-                .ConfigureAwait(false);
-            string expectedHash = Convert.ToHexStringLower(SHA256.HashData(expectedBytes));
+            finally
+            {
+                sourceBarrier.Release();
+            }
             DateTime deadline = DateTime.UtcNow + PropagationTimeout;
             int stableObservations = 0;
             string details = string.Empty;
