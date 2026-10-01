@@ -59,7 +59,12 @@ namespace Cotton.Sync.App.State
             try
             {
                 await using SyncAppDbContext context = Create();
-                await context.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
+                IEnumerable<string> pendingMigrations = await context.Database
+                    .GetPendingMigrationsAsync(cancellationToken).ConfigureAwait(false);
+                if (pendingMigrations.Any())
+                {
+                    await context.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
+                }
             }
             finally
             {

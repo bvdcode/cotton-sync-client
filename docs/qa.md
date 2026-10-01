@@ -44,6 +44,10 @@ Four focused core checks passed. Four native Windows checks passed for replacing
 
 Full reconciliation retains the concrete local changes, deletions and renames that were merged into its request. Files affected by those changes are read again even when their size and modification time match the previous baseline. Unaffected files retain the metadata fast path. Explicit local deletion remains a deletion when missing-placeholder recovery is enabled.
 
+## Database Initialization During Cleanup — 2026-09-30
+
+Opening an already migrated settings or state database does not request the migration lock. Pending migrations still run through Entity Framework. Fourteen focused checks passed, including reopening both databases while their migration lock is held, preserving settings and the change cursor, and upgrading older schemas. Desktop Release build passed without warnings or errors. Recovery from termination during a pending schema migration remains a separate scenario.
+
 Core checks passed for same-size edits with restored timestamps in scoped and full passes, a changed parent directory, and an observed online-only file deletion during full reconciliation. Application checks passed for forwarding merged local events and handling a root metadata event. This does not establish detection when every filesystem notification is lost and the file metadata is unchanged.
 
 ## Folder Deletion To Trash — 2026-09-20

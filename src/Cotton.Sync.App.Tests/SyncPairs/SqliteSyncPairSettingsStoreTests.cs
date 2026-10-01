@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Cotton.Sync.App.Tests.SyncPairs
 {
-    public class SqliteSyncPairSettingsStoreTests
+    public partial class SqliteSyncPairSettingsStoreTests
     {
         private string _tempDirectory = string.Empty;
 

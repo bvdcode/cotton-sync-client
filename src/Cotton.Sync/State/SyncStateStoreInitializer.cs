@@ -30,7 +30,12 @@ namespace Cotton.Sync.State
                 }
 
                 await using SyncStateDbContext context = contextFactory.Create();
-                await context.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
+                IEnumerable<string> pendingMigrations = await context.Database
+                    .GetPendingMigrationsAsync(cancellationToken).ConfigureAwait(false);
+                if (pendingMigrations.Any())
+                {
+                    await context.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
+                }
                 _initialized = true;
             }
             finally
