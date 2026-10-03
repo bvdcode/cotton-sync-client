@@ -8,6 +8,7 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>Cotton.Sync.Desktop</AssemblyName>
     <Title>Cotton Sync</Title>
+    <AssemblyTitle>$(Title)</AssemblyTitle>
     <Authors>Vadim Belov</Authors>
     <Company>bvdcode</Company>
     <Product>Cotton Sync</Product>
