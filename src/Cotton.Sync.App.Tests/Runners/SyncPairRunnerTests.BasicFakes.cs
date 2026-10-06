@@ -9,6 +9,7 @@ using Cotton.Sync;
 using Cotton.Sync.Local;
 using Cotton.Sync.Remote;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 
 namespace Cotton.Sync.App.Tests.Runners
@@ -71,7 +72,7 @@ namespace Cotton.Sync.App.Tests.Runners
 
         private class RecordingLogger<T> : ILogger<T>
         {
-            public List<(LogLevel Level, string Message)> Entries { get; } = [];
+            public ConcurrentQueue<(LogLevel Level, string Message)> Entries { get; } = new();
 
             public IDisposable? BeginScope<TState>(TState state)
                 where TState : notnull
@@ -91,7 +92,7 @@ namespace Cotton.Sync.App.Tests.Runners
                 Exception? exception,
                 Func<TState, Exception?, string> formatter)
             {
-                Entries.Add((logLevel, formatter(state, exception)));
+                Entries.Enqueue((logLevel, formatter(state, exception)));
             }
         }
 

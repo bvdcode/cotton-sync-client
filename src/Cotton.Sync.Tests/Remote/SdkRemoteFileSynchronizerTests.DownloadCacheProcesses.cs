@@ -9,6 +9,8 @@ namespace Cotton.Sync.Tests.Remote
 {
     public partial class SdkRemoteFileSynchronizerTests
     {
+        private static readonly TimeSpan CacheLeaseProcessTimeout = TimeSpan.FromSeconds(30);
+
         [Test]
         [Platform("Win")]
         public async Task DownloadFileAsync_WaitsForOtherProcessAndDoesNotPruneItsActiveCache()
@@ -53,7 +55,7 @@ namespace Cotton.Sync.Tests.Remote
             Task? download = null;
             try
             {
-                await WaitForLeaseReadyAsync(process, readyPath);
+                await WaitForLeaseReadyAsync(process, readyPath, errorOutput);
                 download = CreateDownloader(client).DownloadFileAsync(
                     new RemoteFileDownloadIdentity(fileId, content.Length, ETag(content)),
                     "shared.bin", destination, null);
@@ -70,7 +72,18 @@ namespace Cotton.Sync.Tests.Remote
             finally
             {
                 await File.WriteAllTextAsync(releasePath, "release");
-                await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                try
+                {
+                    await process.WaitForExitAsync().WaitAsync(CacheLeaseProcessTimeout);
+                }
+                finally
+                {
+                    if (!process.HasExited)
+                    {
+                        process.Kill(entireProcessTree: true);
+                        await process.WaitForExitAsync();
+                    }
+                }
                 if (download is not null)
                 {
                     await download.WaitAsync(TimeSpan.FromSeconds(5));
@@ -89,14 +102,20 @@ namespace Cotton.Sync.Tests.Remote
             });
         }
 
-        private static async Task WaitForLeaseReadyAsync(Process process, string readyPath)
+        private static async Task WaitForLeaseReadyAsync(Process process, string readyPath, Task<string> errorOutput)
         {
             long started = Stopwatch.GetTimestamp();
             while (!File.Exists(readyPath))
             {
-                if (process.HasExited || Stopwatch.GetElapsedTime(started) > TimeSpan.FromSeconds(5))
+                if (process.HasExited)
                 {
-                    throw new AssertionException("The cache reservation process did not become ready.");
+                    string errors = await errorOutput;
+                    throw new AssertionException(
+                        $"The cache reservation process exited with code {process.ExitCode} before becoming ready: {errors}");
+                }
+                if (Stopwatch.GetElapsedTime(started) > CacheLeaseProcessTimeout)
+                {
+                    throw new AssertionException("The cache reservation process did not become ready within the startup timeout.");
                 }
                 await Task.Delay(TimeSpan.FromMilliseconds(10));
             }
