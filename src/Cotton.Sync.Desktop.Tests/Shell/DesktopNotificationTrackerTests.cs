@@ -222,6 +222,29 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public void RestoreInitialSyncCompletion_DoesNotSuppressNewPairOrErrors()
+        {
+            Guid completedPairId = Guid.NewGuid();
+            Guid newPairId = Guid.NewGuid();
+            DesktopNotificationTracker tracker = new();
+            tracker.RestoreInitialSyncCompletion([completedPairId]);
+
+            _ = tracker.Apply(CreateStatus(newPairId, "Syncing"), DisplayNames(newPairId));
+            IReadOnlyList<DesktopNotificationRequest> completion = tracker.Apply(
+                CreateStatus(newPairId, "Idle", lastSyncedAtUtc: DateTime.UtcNow),
+                DisplayNames(newPairId));
+            IReadOnlyList<DesktopNotificationRequest> error = tracker.Apply(
+                CreateStatus(completedPairId, "Error", "Local folder is unavailable."),
+                DisplayNames(completedPairId));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(completion.Single().Kind, Is.EqualTo(DesktopNotificationKind.InitialSyncComplete));
+                Assert.That(error.Single().Kind, Is.EqualTo(DesktopNotificationKind.ActionRequiredError));
+            });
+        }
+
+        [Test]
         public void Apply_DoesNotFloodChangingErrorsUntilPairRecovers()
         {
             Guid syncPairId = Guid.NewGuid();

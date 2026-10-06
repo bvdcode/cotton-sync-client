@@ -8,6 +8,47 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
+        [TestCase(true, true)]
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        [TestCase(false, false)]
+        public async Task Initialize_InitialSyncToastDependsOnPersistedCompletion(
+            bool hasCompletedFullReconcile,
+            bool hasPersistedFileTimestamp)
+        {
+            Guid pairId = Guid.NewGuid();
+            DateTime completedAt = new(2026, 10, 4, 12, 0, 0, DateTimeKind.Utc);
+            DesktopSyncPairSnapshot pair = CreatePair(pairId, "Notes", "Idle",
+                lastSyncedAtUtc: hasPersistedFileTimestamp ? completedAt : null) with
+            {
+                HasCompletedFullReconcile = hasCompletedFullReconcile,
+            };
+            FakeDesktopShellController controller = new(CreateSignedInSnapshot(pair));
+            CollectingDesktopNotificationService notificationService = new();
+            using ShellViewModel viewModel = CreateViewModel(controller, notificationService: notificationService);
+            await viewModel.InitializeAsync();
+
+            for (int run = 0; run < 2; run++)
+            {
+                controller.ReportStatus(new DesktopSyncStatusSnapshot(
+                    [new DesktopSyncPairStatusSnapshot(pairId, "Syncing", null)]));
+                controller.ReportStatus(new DesktopSyncStatusSnapshot(
+                    [new DesktopSyncPairStatusSnapshot(pairId, "Idle", null, LastSyncedAtUtc: completedAt.AddDays(1))]));
+            }
+
+            bool hasPreviousSync = hasCompletedFullReconcile || hasPersistedFileTimestamp;
+            int expectedCount = hasPreviousSync ? 0 : 1;
+            Assert.That(notificationService.Notifications, Has.Count.EqualTo(expectedCount));
+            if (!hasPreviousSync)
+            {
+                Assert.Multiple(() =>
+                {
+                    Assert.That(notificationService.Notifications[0].Title, Is.EqualTo("Initial sync complete"));
+                    Assert.That(notificationService.Notifications[0].Message, Is.EqualTo("Notes is up to date."));
+                });
+            }
+        }
+
         [Test]
         public async Task StoppedWorker_DoesNotShowEnabledFolderAsDisabledOrPaused()
         {

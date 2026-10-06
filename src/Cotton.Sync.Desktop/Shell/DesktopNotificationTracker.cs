@@ -8,6 +8,12 @@ namespace Cotton.Sync.Desktop.Shell
         private readonly HashSet<Guid> _initialSyncCompleted = [];
         private readonly Dictionary<Guid, string> _previousStatuses = [];
 
+        public void RestoreInitialSyncCompletion(IEnumerable<Guid> syncPairIds)
+        {
+            ArgumentNullException.ThrowIfNull(syncPairIds);
+            _initialSyncCompleted.UnionWith(syncPairIds);
+        }
+
         public IReadOnlyList<DesktopNotificationRequest> Apply(
             DesktopSyncStatusSnapshot status,
             IReadOnlyDictionary<Guid, string> displayNames)

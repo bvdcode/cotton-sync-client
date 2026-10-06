@@ -249,6 +249,9 @@ namespace Cotton.Sync.Desktop.ViewModels
             ApplyInitialPlatformSettings(snapshot);
             ApplyInitialDataPaths(snapshot);
             ReplaceSyncPairs(snapshot.SyncPairs);
+            _notificationTracker.RestoreInitialSyncCompletion(snapshot.SyncPairs
+                .Where(static syncPair => syncPair.HasCompletedFullReconcile || syncPair.LastSyncedAtUtc.HasValue)
+                .Select(static syncPair => syncPair.Id));
             ApplyInitialSessionState(snapshot);
             RefreshCurrentProgressText();
             AddActivity("App", string.Empty, "Settings loaded");
