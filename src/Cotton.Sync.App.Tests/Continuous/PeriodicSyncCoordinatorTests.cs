@@ -6,6 +6,7 @@ using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.Status;
 using Cotton.Sync.App.Supervision;
 using Cotton.Sdk;
+using Cotton.Sync.Remote;
 
 namespace Cotton.Sync.App.Tests.Continuous
 {
@@ -65,15 +66,18 @@ namespace Cotton.Sync.App.Tests.Continuous
             Assert.That(supervisor.SyncAllCallCount, Is.Zero);
         }
 
-        [Test]
-        public async Task TransientServerFailure_RetriesBeforeNormalPeriodicInterval()
+        [TestCase(false)]
+        [TestCase(true)]
+        public async Task TransientServerFailure_RetriesBeforeNormalPeriodicInterval(bool remoteListingChanges)
         {
             FakeSyncSupervisor supervisor = new FakeSyncSupervisor();
-            supervisor.SyncAllFailures.Enqueue(new AggregateException(
-                new CottonApiException(
+            Exception failure = remoteListingChanges
+                ? new RemoteDirectoryListingUnavailableException("Remote listing changed.")
+                : new CottonApiException(
                     System.Net.HttpStatusCode.BadGateway,
                     "502 Bad Gateway",
-                    "Cotton API request failed with status 502.")));
+                    "Cotton API request failed with status 502.");
+            supervisor.SyncAllFailures.Enqueue(new AggregateException(failure));
             PeriodicSyncCoordinator coordinator = new PeriodicSyncCoordinator(
                 supervisor,
                 interval: TimeSpan.FromMinutes(10),

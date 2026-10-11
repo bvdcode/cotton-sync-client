@@ -13,6 +13,34 @@ namespace Cotton.Sync.App.Runners
     public static class SyncFailureClassifier
     {
         /// <summary>
+        /// Returns whether a failed sync request should be retained for automatic recovery.
+        /// </summary>
+        public static bool IsTransientSyncFailure(Exception exception)
+        {
+            ArgumentNullException.ThrowIfNull(exception);
+            return exception switch
+            {
+                AggregateException aggregateException when aggregateException.InnerExceptions.Count > 0
+                    => aggregateException.InnerExceptions.All(IsTransientSyncFailure),
+                RemoteDirectoryListingUnavailableException => true,
+                _ => IsTransientConnectionFailure(exception),
+            };
+        }
+
+        internal static bool IsTransientRemoteListingFailure(Exception exception)
+        {
+            ArgumentNullException.ThrowIfNull(exception);
+            return exception switch
+            {
+                RemoteDirectoryListingUnavailableException => true,
+                AggregateException aggregateException when aggregateException.InnerExceptions.Count > 0
+                    => aggregateException.InnerExceptions.All(IsTransientSyncFailure)
+                        && aggregateException.InnerExceptions.Any(IsTransientRemoteListingFailure),
+                _ => false,
+            };
+        }
+
+        /// <summary>
         /// Returns whether a failure should remain in automatic connection recovery.
         /// </summary>
         public static bool IsTransientConnectionFailure(Exception exception)

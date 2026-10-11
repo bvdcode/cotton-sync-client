@@ -44,7 +44,7 @@ namespace Cotton.Sync.Remote
             stopwatch.Stop();
             if (expectedTotalCount.HasValue && result.TotalCount != expectedTotalCount.Value)
             {
-                throw new IOException(
+                throw new RemoteDirectoryListingUnavailableException(
                     $"Remote directory listing for node {nodeId:D} changed on page {page}: "
                     + $"expected total {expectedTotalCount.Value}, received {result.TotalCount}.");
             }
@@ -53,7 +53,7 @@ namespace Cotton.Sync.Remote
             int expectedPageCount = Math.Min(_pageSize, Math.Max(0, result.TotalCount - loaded));
             if (result.TotalCount < loaded || count != expectedPageCount)
             {
-                throw new IOException(
+                throw new RemoteDirectoryListingUnavailableException(
                     $"Remote directory listing for node {nodeId:D} is incomplete or inconsistent on page {page}: "
                     + $"expected {expectedPageCount} entries, received {count}.");
             }

@@ -43,11 +43,11 @@ namespace Cotton.Sync.App.LocalChanges
                 {
                     throw;
                 }
-                catch (Exception exception) when (SyncFailureClassifier.IsTransientConnectionFailure(exception))
+                catch (Exception exception) when (SyncFailureClassifier.IsTransientSyncFailure(exception))
                 {
                     _logger.LogWarning(
                         exception,
-                        "{Operation} for {SyncPairId} could not reach Cotton Cloud; retrying after {RetryInterval}.",
+                        "{Operation} for {SyncPairId} encountered a temporary sync failure; retrying after {RetryInterval}.",
                         operation,
                         syncPairId,
                         _retryInterval);

@@ -331,7 +331,11 @@ namespace Cotton.Sync.App.Runners
         private void HandleFailedSync(Exception exception)
         {
             SyncPairRunState failureState = SyncPairRunState.Error;
-            if (SyncFailureClassifier.IsTransientConnectionFailure(exception))
+            if (SyncFailureClassifier.IsTransientRemoteListingFailure(exception))
+            {
+                failureState = SyncPairRunState.Waiting;
+            }
+            else if (SyncFailureClassifier.IsTransientConnectionFailure(exception))
             {
                 failureState = SyncPairRunState.Offline;
             }

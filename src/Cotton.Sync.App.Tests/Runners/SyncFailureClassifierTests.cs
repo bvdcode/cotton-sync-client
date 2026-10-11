@@ -4,11 +4,41 @@
 using System.Net;
 using Cotton.Sdk;
 using Cotton.Sync.App.Runners;
+using Cotton.Sync.Remote;
 
 namespace Cotton.Sync.App.Tests.Runners
 {
     public class SyncFailureClassifierTests
     {
+        [Test]
+        public void IsTransientSyncFailure_RetriesRemoteListingWithoutReportingConnectionLoss()
+        {
+            RemoteDirectoryListingUnavailableException exception = new("Remote listing changed.");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(SyncFailureClassifier.IsTransientSyncFailure(exception), Is.True);
+                Assert.That(SyncFailureClassifier.IsTransientRemoteListingFailure(exception), Is.True);
+                Assert.That(SyncFailureClassifier.IsTransientConnectionFailure(exception), Is.False);
+                Assert.That(SyncFailureClassifier.IsTransientSyncFailure(new IOException("Disk failure.")), Is.False);
+            });
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void IsTransientSyncFailure_RetriesAggregateOnlyWhenEveryFailureCanRecover(bool includeLocalFailure)
+        {
+            AggregateException exception = new(
+                new RemoteDirectoryListingUnavailableException("Remote listing changed."),
+                includeLocalFailure ? new IOException("Disk failure.") : new TimeoutException());
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(SyncFailureClassifier.IsTransientSyncFailure(exception), Is.EqualTo(!includeLocalFailure));
+                Assert.That(SyncFailureClassifier.IsTransientRemoteListingFailure(exception), Is.EqualTo(!includeLocalFailure));
+            });
+        }
+
         [TestCase(HttpRequestError.ResponseEnded, true)]
         [TestCase(HttpRequestError.InvalidResponse, false)]
         [TestCase(HttpRequestError.Unknown, false)]

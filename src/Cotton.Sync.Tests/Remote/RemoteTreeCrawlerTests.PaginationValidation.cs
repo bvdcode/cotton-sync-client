@@ -7,6 +7,32 @@ namespace Cotton.Sync.Tests.Remote
 {
     public partial class RemoteTreeCrawlerTests
     {
+        [TestCase(false)]
+        [TestCase(true)]
+        public void CrawlAsync_RejectsExtraEntryAddedDuringFirstPage(bool useLookups)
+        {
+            Guid rootId = Guid.NewGuid();
+            FakeNodeClient client = new();
+            client.Nodes[rootId] = Node(rootId, null, "root");
+            client.Children[(rootId, 1)] = CreateFilePage(rootId, 0, 235, totalCount: 234);
+            RemoteTreeCrawler crawler = new(client);
+
+            RemoteDirectoryListingUnavailableException? exception = Assert.ThrowsAsync<RemoteDirectoryListingUnavailableException>(async () =>
+            {
+                if (useLookups)
+                {
+                    await crawler.CrawlLookupsAsync(rootId, null);
+                }
+                else
+                {
+                    await crawler.CrawlAsync(rootId);
+                }
+            });
+
+            AssertFailedListing(exception, client, rootId, requestedPages: 1);
+            Assert.That(exception!.Message, Does.Contain("expected 234 entries, received 235"));
+        }
+
         [TestCase(500, false)]
         [TestCase(501, false)]
         [TestCase(502, false)]
@@ -19,7 +45,7 @@ namespace Cotton.Sync.Tests.Remote
             FakeNodeClient client = CreateIncompleteListingClient(rootId, 500, nextTotalCount);
             RemoteTreeCrawler crawler = new(client);
 
-            IOException? exception = Assert.ThrowsAsync<IOException>(async () =>
+            RemoteDirectoryListingUnavailableException? exception = Assert.ThrowsAsync<RemoteDirectoryListingUnavailableException>(async () =>
             {
                 if (useLookups)
                 {
@@ -43,7 +69,7 @@ namespace Cotton.Sync.Tests.Remote
             FakeNodeClient client = CreateIncompleteListingClient(rootId, 500, nextTotalCount);
             RemoteTreeCrawler crawler = new(client);
 
-            IOException? exception = Assert.ThrowsAsync<IOException>(
+            RemoteDirectoryListingUnavailableException? exception = Assert.ThrowsAsync<RemoteDirectoryListingUnavailableException>(
                 () => crawler.CrawlPathLookupsAsync(rootId, ["file-500.txt"], null));
 
             AssertFailedListing(exception, client, rootId, requestedPages: 2);
@@ -60,7 +86,7 @@ namespace Cotton.Sync.Tests.Remote
             RecordingStreamSink sink = new();
             using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(10));
 
-            IOException? exception = Assert.ThrowsAsync<IOException>(
+            RemoteDirectoryListingUnavailableException? exception = Assert.ThrowsAsync<RemoteDirectoryListingUnavailableException>(
                 () => crawler.CrawlStreamingAsync(rootId, sink, null, cancellation.Token));
 
             AssertFailedListing(exception, client, rootId, requestedPages: 2);
@@ -75,7 +101,7 @@ namespace Cotton.Sync.Tests.Remote
             FakeNodeClient client = CreateIncompleteListingClient(rootId, firstPageCount, 501);
             RemoteTreeCrawler crawler = new(client);
 
-            IOException? exception = Assert.ThrowsAsync<IOException>(() => crawler.CrawlAsync(rootId));
+            RemoteDirectoryListingUnavailableException? exception = Assert.ThrowsAsync<RemoteDirectoryListingUnavailableException>(() => crawler.CrawlAsync(rootId));
 
             AssertFailedListing(exception, client, rootId, requestedPages: 1);
         }
@@ -88,7 +114,7 @@ namespace Cotton.Sync.Tests.Remote
             FakeNodeClient client = CreateIncompleteListingClient(rootId, firstPageCount, 501);
             RemoteTreeCrawler crawler = new(client);
 
-            IOException? exception = Assert.ThrowsAsync<IOException>(
+            RemoteDirectoryListingUnavailableException? exception = Assert.ThrowsAsync<RemoteDirectoryListingUnavailableException>(
                 () => crawler.CrawlPathLookupsAsync(rootId, ["file-500.txt"], null));
 
             AssertFailedListing(exception, client, rootId, requestedPages: 1);
@@ -104,7 +130,7 @@ namespace Cotton.Sync.Tests.Remote
             RecordingStreamSink sink = new();
             using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(10));
 
-            IOException? exception = Assert.ThrowsAsync<IOException>(
+            RemoteDirectoryListingUnavailableException? exception = Assert.ThrowsAsync<RemoteDirectoryListingUnavailableException>(
                 () => crawler.CrawlStreamingAsync(rootId, sink, null, cancellation.Token));
 
             AssertFailedListing(exception, client, rootId, requestedPages: 1);
@@ -120,7 +146,7 @@ namespace Cotton.Sync.Tests.Remote
             FakeNodeClient client = CreateIncompleteListingClient(rootId, firstPageCount, nextTotalCount);
             RemoteDirectoryPathResolver resolver = new(client, pageSize: 500);
 
-            IOException? exception = Assert.ThrowsAsync<IOException>(
+            RemoteDirectoryListingUnavailableException? exception = Assert.ThrowsAsync<RemoteDirectoryListingUnavailableException>(
                 () => resolver.EnsureParentAsync(rootId, "Missing/file.txt", CancellationToken.None));
 
             AssertFailedListing(exception, client, rootId, requestedPages: firstPageCount == 500 ? 2 : 1);
@@ -135,7 +161,7 @@ namespace Cotton.Sync.Tests.Remote
             FakeNodeClient client = CreateIncompleteListingClient(rootId, firstPageCount, nextTotalCount);
             SdkRemoteDirectorySynchronizer synchronizer = new(client, directoryPageSize: 500);
 
-            IOException? exception = Assert.ThrowsAsync<IOException>(
+            RemoteDirectoryListingUnavailableException? exception = Assert.ThrowsAsync<RemoteDirectoryListingUnavailableException>(
                 () => synchronizer.FindChildDirectoryAsync(rootId, "Missing"));
 
             AssertFailedListing(exception, client, rootId, requestedPages: firstPageCount == 500 ? 2 : 1);
@@ -151,7 +177,7 @@ namespace Cotton.Sync.Tests.Remote
         }
 
         private static void AssertFailedListing(
-            IOException? exception,
+            RemoteDirectoryListingUnavailableException? exception,
             FakeNodeClient client,
             Guid rootId,
             int requestedPages)

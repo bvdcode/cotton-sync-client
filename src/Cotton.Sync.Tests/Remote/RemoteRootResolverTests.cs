@@ -29,7 +29,7 @@ namespace Cotton.Sync.Tests.Remote
             client.Children[(rootId, 2)] = new FakeNodePage { TotalCount = nextTotalCount };
             RemoteRootResolver resolver = new(client, pageSize: 500);
 
-            IOException? exception = Assert.ThrowsAsync<IOException>(() => resolver.EnsureAsync("Missing"));
+            RemoteDirectoryListingUnavailableException? exception = Assert.ThrowsAsync<RemoteDirectoryListingUnavailableException>(() => resolver.EnsureAsync("Missing"));
 
             Assert.Multiple(() =>
             {

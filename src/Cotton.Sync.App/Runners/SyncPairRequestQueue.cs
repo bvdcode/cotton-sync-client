@@ -131,7 +131,7 @@ namespace Cotton.Sync.App.Runners
                 _actionRequiredRequest = exception is SyncActionRequiredException
                     ? _activeRequest
                     : null;
-                _failedRequest = SyncFailureClassifier.IsTransientConnectionFailure(exception)
+                _failedRequest = SyncFailureClassifier.IsTransientSyncFailure(exception)
                     ? _activeRequest
                     : null;
                 if (_failedRequest?.IsFull == true && _pendingFullRequest is not null)

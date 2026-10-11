@@ -75,6 +75,8 @@ namespace Cotton.Sync.App.Runners
                 RemoteChangeFeedUnavailableException unavailableException => unavailableException.Message,
                 CottonApiException apiException when apiException.StatusCode == HttpStatusCode.Locked
                     => "Cotton Cloud reports that the server is locked. Cotton Sync will retry automatically.",
+                _ when SyncFailureClassifier.IsTransientRemoteListingFailure(exception)
+                    => "Waiting for a consistent remote folder listing. Cotton Sync will retry automatically.",
                 _ when SyncFailureClassifier.IsTransientConnectionFailure(exception)
                     => "Cotton Cloud is temporarily unavailable. Cotton Sync will retry automatically.",
                 CottonApiException apiException when apiException.StatusCode == HttpStatusCode.Unauthorized
@@ -223,21 +225,25 @@ namespace Cotton.Sync.App.Runners
 
         private static bool IsRetriableSyncFailure(Exception exception)
         {
-            return SyncFailureClassifier.IsTransientConnectionFailure(exception)
+            return SyncFailureClassifier.IsTransientSyncFailure(exception)
                 || exception is DirectoryNotFoundException
                 || exception is LocalFileUnavailableException;
         }
 
         private static SyncPairRunState GetRetriableFailureState(Exception exception)
         {
-            if (exception is LocalFileUnavailableException)
+            if (exception is LocalFileUnavailableException
+                || SyncFailureClassifier.IsTransientRemoteListingFailure(exception))
             {
                 return SyncPairRunState.Waiting;
             }
 
-            return SyncFailureClassifier.IsTransientConnectionFailure(exception)
-                ? SyncPairRunState.Offline
-                : SyncPairRunState.Error;
+            if (SyncFailureClassifier.IsTransientConnectionFailure(exception))
+            {
+                return SyncPairRunState.Offline;
+            }
+
+            return SyncPairRunState.Error;
         }
     }
 }

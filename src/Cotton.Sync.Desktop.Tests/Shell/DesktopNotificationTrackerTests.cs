@@ -69,6 +69,20 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public void Apply_DoesNotNotifyWhileRemoteListingWaitsForAutomaticRecovery()
+        {
+            Guid syncPairId = Guid.NewGuid();
+            DesktopNotificationTracker tracker = new();
+            _ = tracker.Apply(CreateStatus(syncPairId, "Syncing"), DisplayNames(syncPairId));
+
+            IReadOnlyList<DesktopNotificationRequest> notifications = tracker.Apply(
+                CreateStatus(syncPairId, "Waiting", "Waiting for a consistent remote folder listing. Cotton Sync will retry automatically."),
+                DisplayNames(syncPairId));
+
+            Assert.That(notifications, Is.Empty);
+        }
+
+        [Test]
         public void Apply_EmitsConflictNotification()
         {
             Guid syncPairId = Guid.NewGuid();

@@ -54,7 +54,7 @@ namespace Cotton.Sync.App.Status
         Error = 8,
 
         /// <summary>
-        /// The sync pair is waiting for a transient local resource to become available.
+        /// The sync pair is waiting for a transient resource to become available.
         /// </summary>
         Waiting = 9,
 

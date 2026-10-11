@@ -201,12 +201,12 @@ namespace Cotton.Sync.App.Continuous
             }
             catch (Exception exception)
             {
-                bool transientFailure = SyncFailureClassifier.IsTransientConnectionFailure(exception);
+                bool transientFailure = SyncFailureClassifier.IsTransientSyncFailure(exception);
                 if (transientFailure)
                 {
                     _logger.LogWarning(
                         exception,
-                        "Periodic change-feed check could not reach Cotton Cloud; retrying after {RetryInterval}.",
+                        "Periodic change-feed check encountered a temporary sync failure; retrying after {RetryInterval}.",
                         _connectionRetryInterval);
                 }
                 else
