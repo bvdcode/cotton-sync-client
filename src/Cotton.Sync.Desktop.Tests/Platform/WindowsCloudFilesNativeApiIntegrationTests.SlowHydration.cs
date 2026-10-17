@@ -9,9 +9,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 {
     public partial class WindowsCloudFilesNativeApiIntegrationTests
     {
-        [Test]
+        [TestCase(false)]
+        [TestCase(true)]
         [Explicit("Registers a temporary Windows Cloud Files sync root and downloads for more than one minute.")]
-        public async Task HydratePlaceholder_DownloadExceedsNativeTimeout_ReportsProgressAndCompletes()
+        public async Task HydratePlaceholder_DownloadExceedsNativeTimeout_ReportsProgressAndCompletes(bool silentPreparation)
         {
             string root = Path.Combine(Path.GetTempPath(), "cotton-cloud-files-slow-" + Guid.NewGuid().ToString("N"));
             Guid pairId = Guid.NewGuid();
@@ -25,7 +26,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             byte[] content = RandomNumberGenerator.GetBytes(14 * 4096);
             string hash = Convert.ToHexStringLower(SHA256.HashData(content));
             WindowsCloudFilesDiagnostics diagnostics = new();
-            WindowsCloudFilesHydrationCoordinator handler = new(new SlowHydrationContentProvider(content), nativeApi, diagnostics: diagnostics);
+            WindowsCloudFilesHydrationCoordinator handler = new(new SlowHydrationContentProvider(content, silentPreparation), nativeApi, diagnostics: diagnostics);
             try
             {
                 using WindowsCloudFilesConnection connection = nativeApi.ConnectSyncRoot(new(root, handler));
@@ -37,7 +38,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 nativeApi.CreatePlaceholder(new(root, identity.RelativePath, identity.ToBytes(), content.Length, timestamp, timestamp));
                 nativeApi.SetPinState(path, WindowsCloudFilesPinState.Pinned);
                 Stopwatch elapsed = Stopwatch.StartNew();
-                await Task.Run(() => nativeApi.HydratePlaceholder(path)).WaitAsync(TimeSpan.FromMinutes(2));
+                await Task.Run(() => nativeApi.HydratePlaceholder(path)).WaitAsync(TimeSpan.FromMinutes(3));
                 elapsed.Stop();
                 byte[] actualContent = await File.ReadAllBytesAsync(path);
                 Assert.Multiple(() =>

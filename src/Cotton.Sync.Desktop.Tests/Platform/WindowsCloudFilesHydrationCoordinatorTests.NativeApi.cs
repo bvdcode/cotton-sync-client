@@ -8,6 +8,7 @@ using Cotton.Sync.Local;
 using Cotton.Sync.Remote;
 using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
@@ -16,7 +17,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 {
     public partial class WindowsCloudFilesHydrationCoordinatorTests
     {
-        private class RecordingProgress<T> : IProgress<T>
+        internal class RecordingProgress<T> : IProgress<T>
         {
             public List<T> Values { get; } = [];
 
@@ -45,15 +46,18 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private class FakeCloudFilesNativeApi : IWindowsCloudFilesNativeApi
+        internal class FakeCloudFilesNativeApi : IWindowsCloudFilesNativeApi
         {
             public List<WindowsCloudFilesTransferData> Transfers { get; } = [];
 
-            public List<WindowsCloudFilesProviderProgress> ProviderProgress { get; } = [];
+            public ConcurrentQueue<WindowsCloudFilesProviderProgress> ProviderProgress { get; } = new();
+
+            public Action<WindowsCloudFilesProviderProgress>? OnProviderProgress { get; set; }
 
             public void ReportProviderProgress(WindowsCloudFilesProviderProgress progress)
             {
-                ProviderProgress.Add(progress);
+                ProviderProgress.Enqueue(progress);
+                OnProviderProgress?.Invoke(progress);
             }
 
             public List<WindowsCloudFilesAckDehydrateData> Dehydrates { get; } = [];

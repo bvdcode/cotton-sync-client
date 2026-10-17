@@ -5,7 +5,7 @@ using Cotton.Sync.Desktop.Platform;
 
 namespace Cotton.Sync.Desktop.Tests.Platform
 {
-    internal class SlowHydrationContentProvider(byte[] content) : IWindowsCloudFilesRemoteContentProvider
+    internal class SlowHydrationContentProvider(byte[] content, bool silentPreparation = false) : IWindowsCloudFilesRemoteContentProvider
     {
         private const int ChunkCount = 14;
         private static readonly TimeSpan ChunkDelay = TimeSpan.FromSeconds(5);
@@ -16,6 +16,17 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             IProgress<SyncTransferProgress>? transferProgress = null,
             CancellationToken cancellationToken = default)
         {
+            if (silentPreparation)
+            {
+                TimeSpan silentDelay = ChunkDelay * ChunkCount;
+                await Task.Delay(silentDelay, cancellationToken);
+                await destination.WriteAsync(content, cancellationToken);
+                transferProgress?.Report(new(SyncTransferDirection.Download, identity.RelativePath,
+                    content.Length, content.Length, isCompleted: true));
+                await Task.Delay(silentDelay, cancellationToken);
+                return;
+            }
+
             int offset = 0;
             while (offset < content.Length)
             {

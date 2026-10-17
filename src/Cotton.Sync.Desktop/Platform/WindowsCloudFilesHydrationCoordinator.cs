@@ -67,11 +67,14 @@ namespace Cotton.Sync.Desktop.Platform
                 transferProgress = _transferProgressFactory(identity.SyncPairId);
                 WindowsCloudFilesProviderProgressReporter providerProgress = new(
                     _nativeApi, request, transferProgress, cancellationToken);
-                await DownloadWithRetryAsync(
-                    identity, stream,
-                    () => _contentProvider.DownloadAsync(identity, stream, providerProgress, cancellationToken),
-                    cancellationToken).ConfigureAwait(false);
-                await ValidateDownloadedContentAsync(identity, stream, cancellationToken).ConfigureAwait(false);
+                await providerProgress.RunAsync(async token =>
+                {
+                    await DownloadWithRetryAsync(
+                        identity, stream,
+                        () => _contentProvider.DownloadAsync(identity, stream, providerProgress, token),
+                        token).ConfigureAwait(false);
+                    await ValidateDownloadedContentAsync(identity, stream, token).ConfigureAwait(false);
+                }).ConfigureAwait(false);
                 await TransferRequestedRangeAsync(request, stream, cancellationToken).ConfigureAwait(false);
                 TryMarkInSync(request, identity, stream.Length);
             }
@@ -241,11 +244,11 @@ namespace Cotton.Sync.Desktop.Platform
 
                 transferProgress = _transferProgressFactory(identity.SyncPairId);
                 WindowsCloudFilesProviderProgressReporter providerProgress = new(
-                    _nativeApi, request, transferProgress, cancellationToken);
-                await DownloadWithRetryAsync(
+                    _nativeApi, request, transferProgress, cancellationToken, totalBytes: length);
+                await providerProgress.RunAsync(token => DownloadWithRetryAsync(
                     identity, stream,
-                    () => rangeProvider.DownloadVerifiedRangeAsync(identity, stream, start, length, providerProgress, cancellationToken),
-                    cancellationToken).ConfigureAwait(false);
+                    () => rangeProvider.DownloadVerifiedRangeAsync(identity, stream, start, length, providerProgress, token),
+                    token)).ConfigureAwait(false);
                 if (stream.Length != length)
                 {
                     throw new InvalidOperationException("Downloaded cloud-file range size does not match the requested range.");
