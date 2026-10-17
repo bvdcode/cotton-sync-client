@@ -8,7 +8,6 @@ using Cotton.Sync.Local;
 using Cotton.Sync.Remote;
 using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
@@ -17,7 +16,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 {
     public partial class WindowsCloudFilesHydrationCoordinatorTests
     {
-        internal class RecordingProgress<T> : IProgress<T>
+        private class RecordingProgress<T> : IProgress<T>
         {
             public List<T> Values { get; } = [];
 
@@ -50,18 +49,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             public List<WindowsCloudFilesTransferData> Transfers { get; } = [];
 
-            public ConcurrentQueue<WindowsCloudFilesTransferData> KeepAliveTransfers { get; } = new();
-
-            public Action<WindowsCloudFilesTransferData>? OnKeepAlive { get; set; }
-
-            public ConcurrentQueue<WindowsCloudFilesProviderProgress> ProviderProgress { get; } = new();
-
-            public Action<WindowsCloudFilesProviderProgress>? OnProviderProgress { get; set; }
+            public List<WindowsCloudFilesProviderProgress> ProviderProgress { get; } = [];
 
             public void ReportProviderProgress(WindowsCloudFilesProviderProgress progress)
             {
-                ProviderProgress.Enqueue(progress);
-                OnProviderProgress?.Invoke(progress);
+                ProviderProgress.Add(progress);
             }
 
             public List<WindowsCloudFilesAckDehydrateData> Dehydrates { get; } = [];
@@ -125,14 +117,6 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public void TransferData(WindowsCloudFilesTransferData transfer)
             {
-                if (transfer.Length == 0 && transfer.Buffer.Length > 0
-                    && transfer.CompletionStatus == WindowsCloudFilesTransferData.StatusSuccess)
-                {
-                    KeepAliveTransfers.Enqueue(transfer);
-                    OnKeepAlive?.Invoke(transfer);
-                    return;
-                }
-
                 Transfers.Add(transfer with { Buffer = transfer.Buffer.ToArray() });
             }
 

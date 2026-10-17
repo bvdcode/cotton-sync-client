@@ -75,7 +75,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     stateStore.UpsertEntry(state);
                 }
                 nativeApi.SetInSyncState(directory);
-                WindowsVirtualFilesDehydrationPairWork work = new(new RecordingSyncPairWork(), stateStore, adapter);
+                WindowsVirtualFilesDehydrationPairWork work = new(new RecordingSyncPairWork(), stateStore, adapter, new WindowsCloudFilesHydrator(adapter, handler));
                 run = Task.Run(() => work.RunOnceAsync(pair, SyncRunRequest.ForLocalChangedPaths(["Photos"])));
                 await provider.Started.Task.WaitAsync(TimeSpan.FromSeconds(20));
                 Assert.Multiple(() =>

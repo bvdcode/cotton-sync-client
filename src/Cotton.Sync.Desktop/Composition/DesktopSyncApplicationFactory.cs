@@ -132,6 +132,7 @@ namespace Cotton.Sync.Desktop.Composition
                     stateStore),
                 stateStore,
                 cloudFilesAdapter,
+                new WindowsCloudFilesHydrator(cloudFilesAdapter, cloudFilesHydration),
                 new LocalFileScanner(),
                 localChangeSuppression: localChangeSuppression,
                 runProgressPublisher: runProgressPublisher);

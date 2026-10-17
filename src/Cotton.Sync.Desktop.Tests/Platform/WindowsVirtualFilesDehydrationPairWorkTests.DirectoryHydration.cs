@@ -29,7 +29,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             RecordingSyncPairWork inner = new RecordingSyncPairWork();
             RecordingLocalChangeSuppression suppression = new RecordingLocalChangeSuppression();
             Dictionary<string, int> fileReads = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            WindowsVirtualFilesDehydrationPairWork work = new WindowsVirtualFilesDehydrationPairWork(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -88,7 +88,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             WindowsCloudFilesDiagnostics diagnostics = new();
             RecordingSyncPairWork inner = new();
             RecordingLocalChangeSuppression suppression = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -133,7 +133,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             FakeCloudFilesAdapter cloudFiles = new();
             RecordingSyncPairWork inner = new();
             RecordingLocalChangeSuppression suppression = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -168,7 +168,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Music/track-two.mp3"));
             RecordingRunProgressPublisher progressPublisher = new();
             Dictionary<string, int> fileReads = new(StringComparer.OrdinalIgnoreCase);
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 new RecordingSyncPairWork(),
                 stateStore,
                 new FakeCloudFilesAdapter(),
@@ -223,7 +223,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Music/track-one.mp3"));
             stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Music/track-two.mp3"));
             RecordingRunProgressPublisher progressPublisher = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 new RecordingSyncPairWork(),
                 stateStore,
                 new FakeCloudFilesAdapter(),

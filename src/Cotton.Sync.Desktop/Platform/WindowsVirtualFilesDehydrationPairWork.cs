@@ -22,6 +22,7 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly ISyncPairWork _inner;
         private readonly ISyncStateStore _stateStore;
         private readonly IWindowsCloudFilesAdapter _cloudFiles;
+        private readonly IWindowsCloudFilesHydrator _hydrator;
         private readonly ILocalFileContentHasher _contentHasher;
         private readonly IWindowsCloudFilesDiagnostics _diagnostics;
         private readonly ILocalChangeSuppression? _localChangeSuppression;
@@ -33,6 +34,7 @@ namespace Cotton.Sync.Desktop.Platform
             ISyncPairWork inner,
             ISyncStateStore stateStore,
             IWindowsCloudFilesAdapter cloudFiles,
+            IWindowsCloudFilesHydrator hydrator,
             ILocalFileContentHasher? contentHasher = null,
             IWindowsCloudFilesDiagnostics? diagnostics = null,
             Func<string, WindowsVirtualFileDiskState?>? readDiskState = null,
@@ -42,6 +44,7 @@ namespace Cotton.Sync.Desktop.Platform
             _inner = inner ?? throw new ArgumentNullException(nameof(inner));
             _stateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
             _cloudFiles = cloudFiles ?? throw new ArgumentNullException(nameof(cloudFiles));
+            _hydrator = hydrator ?? throw new ArgumentNullException(nameof(hydrator));
             _contentHasher = contentHasher ?? new LocalFileScanner();
             _diagnostics = diagnostics ?? WindowsCloudFilesDiagnostics.Shared;
             _localChangeSuppression = localChangeSuppression;

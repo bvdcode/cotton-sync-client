@@ -16,7 +16,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             SyncPairSettings pair = CreateVirtualFilesPair();
             RecordingSyncPairWork inner = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner, new FakeSyncStateStore(), new FakeCloudFilesAdapter(),
                 readDiskState: static _ => null);
             LocalPathRename rename = new("original.pdf", "final.pdf");

@@ -255,7 +255,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             });
         }
 
-        private static WindowsCloudFilesFetchDataRequest CreateFetchRequest(
+        internal static WindowsCloudFilesFetchDataRequest CreateFetchRequest(
             byte[] content,
             long offset,
             long length,

@@ -25,7 +25,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             FakeCloudFilesAdapter cloudFiles = new FakeCloudFilesAdapter();
             RecordingSyncPairWork inner = new RecordingSyncPairWork();
             Dictionary<string, int> diskReads = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            WindowsVirtualFilesDehydrationPairWork work = new WindowsVirtualFilesDehydrationPairWork(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -69,7 +69,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             RecordingSyncPairWork inner = new();
             WindowsCloudFilesDiagnostics diagnostics = new();
             int diskReads = 0;
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -108,7 +108,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             stateStore.UpsertEntry(CreatePlaceholderState(secondPair, "pinned.txt"));
             FakeCloudFilesAdapter cloudFiles = new FakeCloudFilesAdapter();
             Dictionary<string, int> diskReads = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            WindowsVirtualFilesDehydrationPairWork work = new WindowsVirtualFilesDehydrationPairWork(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 new RecordingSyncPairWork(),
                 stateStore,
                 cloudFiles,

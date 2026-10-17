@@ -25,7 +25,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             WindowsCloudFilesDiagnostics diagnostics = new WindowsCloudFilesDiagnostics();
             RecordingSyncPairWork inner = new RecordingSyncPairWork();
             RecordingLocalChangeSuppression suppression = new RecordingLocalChangeSuppression();
-            WindowsVirtualFilesDehydrationPairWork work = new WindowsVirtualFilesDehydrationPairWork(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -68,7 +68,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             FakeCloudFilesAdapter cloudFiles = new();
             WindowsCloudFilesDiagnostics diagnostics = new();
             RecordingSyncPairWork inner = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -101,7 +101,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             stateStore.UpsertEntry(CreateDirectoryState(syncPair, "Music"));
             FakeCloudFilesAdapter cloudFiles = new();
             RecordingSyncPairWork inner = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -130,7 +130,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             stateStore.UpsertEntry(fileState);
             RecordingSyncPairWork inner = new();
             RecordingRunProgressPublisher progressPublisher = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 new FakeCloudFilesAdapter(),
@@ -164,7 +164,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             fileState.LocalLastWriteUtc = new DateTime(2026, 06, 16, 10, 05, 00, DateTimeKind.Utc);
             stateStore.UpsertEntry(fileState);
             RecordingSyncPairWork inner = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 new FakeCloudFilesAdapter(),
@@ -198,7 +198,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             };
             RecordingSyncPairWork inner = new RecordingSyncPairWork();
             RecordingRunProgressPublisher progressPublisher = new();
-            WindowsVirtualFilesDehydrationPairWork work = new WindowsVirtualFilesDehydrationPairWork(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -225,7 +225,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             FakeSyncStateStore stateStore = new();
             stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Docs/report.xlsx"));
             RecordingSyncPairWork inner = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 new FakeCloudFilesAdapter
@@ -259,7 +259,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Docs/report.txt"));
             FakeCloudFilesAdapter cloudFiles = new FakeCloudFilesAdapter();
             RecordingSyncPairWork inner = new RecordingSyncPairWork();
-            WindowsVirtualFilesDehydrationPairWork work = new WindowsVirtualFilesDehydrationPairWork(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -290,7 +290,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             FakeSyncStateStore stateStore = new FakeSyncStateStore();
             stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Docs/report.txt"));
             RecordingSyncPairWork inner = new RecordingSyncPairWork();
-            WindowsVirtualFilesDehydrationPairWork work = new WindowsVirtualFilesDehydrationPairWork(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 new FakeCloudFilesAdapter(),
@@ -318,7 +318,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             SyncPairSettings syncPair = CreateVirtualFilesPair();
             RecordingSyncPairWork inner = new RecordingSyncPairWork();
-            WindowsVirtualFilesDehydrationPairWork work = new WindowsVirtualFilesDehydrationPairWork(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 new FakeSyncStateStore(),
                 new FakeCloudFilesAdapter());
@@ -341,7 +341,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             FakeCloudFilesAdapter cloudFiles = new FakeCloudFilesAdapter();
             RecordingSyncPairWork inner = new RecordingSyncPairWork();
             int diskReads = 0;
-            WindowsVirtualFilesDehydrationPairWork work = new WindowsVirtualFilesDehydrationPairWork(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,

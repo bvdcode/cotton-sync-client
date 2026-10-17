@@ -87,6 +87,7 @@ namespace Cotton.Sync.Desktop.Startup
                 new FailOnInnerSyncPairWork("Always keep during population smoke must not run inner sync for availability-only changes."),
                 stateStore,
                 cloudFiles,
+                new WindowsCloudFilesHydrator(cloudFiles, callbackHandler),
                 new LocalFileScanner(),
                 diagnostics,
                 localChangeSuppression: localChangeSuppression);

@@ -25,7 +25,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     throw new IOException("Download failed.");
                 }
             };
-            WindowsVirtualFilesDehydrationPairWork work = new(new RecordingSyncPairWork(), stateStore, cloudFiles,
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(new RecordingSyncPairWork(), stateStore, cloudFiles,
                 new FakeContentHasher("remote-hash"), readDiskState: _ => CreatePinnedHydratedDiskState());
 
             await work.RunOnceAsync(pair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
@@ -59,7 +59,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     throw new IOException("Download failed.");
                 }
             };
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 new RecordingSyncPairWork(), stateStore, cloudFiles, new FakeContentHasher("remote-hash"),
                 readDiskState: path => Path.HasExtension(path)
                     ? CreatePinnedHydratedDiskState()

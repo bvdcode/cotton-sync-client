@@ -152,6 +152,7 @@ namespace Cotton.Sync.Desktop.Startup
                     new FailOnInnerSyncPairWork("Explorer Always keep smoke must not run inner sync for availability-only changes."),
                     stateStore,
                     cloudFiles,
+                    new WindowsCloudFilesHydrator(cloudFiles, callbackHandler),
                     new LocalFileScanner(),
                     diagnostics);
                 await hydrationWork

@@ -26,7 +26,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             RecordingSyncPairWork inner = new RecordingSyncPairWork();
             RecordingLocalChangeSuppression suppression = new RecordingLocalChangeSuppression();
             int diskReads = 0;
-            WindowsVirtualFilesDehydrationPairWork work = new WindowsVirtualFilesDehydrationPairWork(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -72,7 +72,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             };
             RecordingSyncPairWork inner = new();
             RecordingLocalChangeSuppression suppression = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -111,7 +111,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             FakeCloudFilesAdapter cloudFiles = new();
             RecordingSyncPairWork inner = new();
             WindowsCloudFilesDiagnostics diagnostics = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -144,7 +144,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             stateStore.UpsertEntry(state);
             FakeCloudFilesAdapter cloudFiles = new();
             RecordingSyncPairWork inner = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -171,7 +171,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             FakeCloudFilesAdapter cloudFiles = new();
             WindowsCloudFilesDiagnostics diagnostics = new();
             RecordingSyncPairWork inner = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -206,7 +206,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             FakeCloudFilesAdapter cloudFiles = new();
             WindowsCloudFilesDiagnostics diagnostics = new();
             RecordingSyncPairWork inner = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,

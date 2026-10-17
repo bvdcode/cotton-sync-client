@@ -360,7 +360,7 @@ namespace Cotton.Sync.Desktop.Platform
             }
             try
             {
-                _cloudFiles.HydratePlaceholder(syncPair, normalizedPath);
+                await _hydrator.HydratePlaceholderAsync(syncPair, normalizedPath, cancellationToken).ConfigureAwait(false);
             }
             catch (WindowsCloudFilesNativeException)
                 when (selectedDirectoryPath is not null && !IsSelectedDirectoryPinned(selectedDirectoryPath))

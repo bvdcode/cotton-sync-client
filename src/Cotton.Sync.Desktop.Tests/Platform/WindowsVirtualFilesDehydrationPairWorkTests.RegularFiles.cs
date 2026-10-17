@@ -27,7 +27,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             stateStore.UpsertEntry(state);
             FakeCloudFilesAdapter cloudFiles = new();
             RecordingSyncPairWork inner = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner, stateStore, cloudFiles, new FakeContentHasher("remote-hash"),
                 readDiskState: path => path.EndsWith("Pictures", StringComparison.OrdinalIgnoreCase)
                     ? CreatePinnedDirectoryDiskState()
@@ -60,7 +60,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             state.RemoteSizeBytes = CreatePinnedRegularFileDiskState().Length;
             stateStore.UpsertEntry(state);
             FakeCloudFilesAdapter cloudFiles = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 new RecordingSyncPairWork(), stateStore, cloudFiles, new FakeContentHasher("edited-local-hash"),
                 readDiskState: path => path.EndsWith("Pictures", StringComparison.OrdinalIgnoreCase)
                     ? CreatePinnedDirectoryDiskState()

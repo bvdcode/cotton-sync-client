@@ -148,6 +148,7 @@ namespace Cotton.Sync.Desktop.Startup
                         NoopSyncPairWork.Instance,
                         stateStore,
                         cloudFiles,
+                        new WindowsCloudFilesHydrator(cloudFiles, callbackHandler),
                         new LocalFileScanner(),
                         diagnostics);
                     await dehydrationWork

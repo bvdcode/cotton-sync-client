@@ -116,7 +116,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private class FakeCloudFilesAdapter : IWindowsCloudFilesAdapter
+        private class FakeCloudFilesAdapter : IWindowsCloudFilesAdapter, IWindowsCloudFilesHydrator
         {
             public List<string> DehydratedPaths { get; } = [];
 
@@ -176,6 +176,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 contentValidated?.Invoke();
                 DehydratedPaths.Add(relativePath);
                 return Task.FromResult(true);
+            }
+
+            public Task HydratePlaceholderAsync(SyncPairSettings syncPair, string relativePath, CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                HydratePlaceholder(syncPair, relativePath);
+                return Task.CompletedTask;
             }
 
             public void HydratePlaceholder(SyncPairSettings syncPair, string relativePath)

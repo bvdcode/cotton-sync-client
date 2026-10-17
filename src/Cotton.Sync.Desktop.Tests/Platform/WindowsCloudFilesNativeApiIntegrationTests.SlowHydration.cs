@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.Desktop.Platform;
+using Cotton.Sync.App.SyncPairs;
 using System.Diagnostics;
 using System.Security.Cryptography;
 
@@ -38,7 +39,21 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 nativeApi.CreatePlaceholder(new(root, identity.RelativePath, identity.ToBytes(), content.Length, timestamp, timestamp));
                 nativeApi.SetPinState(path, WindowsCloudFilesPinState.Pinned);
                 Stopwatch elapsed = Stopwatch.StartNew();
-                await Task.Run(() => nativeApi.HydratePlaceholder(path)).WaitAsync(TimeSpan.FromMinutes(3));
+                if (silentPreparation)
+                {
+                    WindowsCloudFilesAdapter adapter = new(nativeApi: nativeApi, storageProviderRegistrar: registrar);
+                    WindowsCloudFilesHydrator hydrator = new(adapter, handler);
+                    SyncPairSettings pair = new()
+                    {
+                        Id = pairId, LocalRootPath = root, RemoteRootNodeId = identity.RemoteRootNodeId,
+                        DisplayName = "Slow hydration", RemoteDisplayPath = "/", Mode = SyncPairMode.WindowsVirtualFiles,
+                    };
+                    await hydrator.HydratePlaceholderAsync(pair, identity.RelativePath).WaitAsync(TimeSpan.FromMinutes(3));
+                }
+                else
+                {
+                    await Task.Run(() => nativeApi.HydratePlaceholder(path)).WaitAsync(TimeSpan.FromMinutes(3));
+                }
                 elapsed.Stop();
                 byte[] actualContent = await File.ReadAllBytesAsync(path);
                 Assert.Multiple(() =>

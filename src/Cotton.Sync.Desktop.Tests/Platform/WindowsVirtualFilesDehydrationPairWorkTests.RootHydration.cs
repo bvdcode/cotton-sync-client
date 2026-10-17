@@ -30,7 +30,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             Dictionary<string, int> fileReads = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             string rootPath = Path.GetFullPath(syncPair.LocalRootPath)
                 .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            WindowsVirtualFilesDehydrationPairWork work = new WindowsVirtualFilesDehydrationPairWork(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -95,7 +95,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             RecordingSyncPairWork inner = new();
             string rootPath = Path.GetFullPath(syncPair.LocalRootPath)
                 .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -127,7 +127,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             RecordingSyncPairWork inner = new();
             string rootPath = Path.GetFullPath(syncPair.LocalRootPath)
                 .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 new FakeSyncStateStore(),
                 cloudFiles,
@@ -164,7 +164,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             RecordingSyncPairWork inner = new();
             string rootPath = Path.GetFullPath(syncPair.LocalRootPath)
                 .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -207,7 +207,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             FakeCloudFilesAdapter cloudFiles = new FakeCloudFilesAdapter();
             RecordingSyncPairWork inner = new RecordingSyncPairWork();
             int fileReads = 0;
-            WindowsVirtualFilesDehydrationPairWork work = new WindowsVirtualFilesDehydrationPairWork(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,

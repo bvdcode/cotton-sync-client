@@ -38,10 +38,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 root, WindowsCloudFilesAdapter.ProviderName, "finalization-integration-test",
                 WindowsCloudFilesProviderMetadata.ProviderGuid,
                 WindowsCloudFilesPlaceholderFactory.CreateSyncRootIdentity(pair.Id, pair.RemoteRootNodeId)));
+            WindowsCloudFilesHydrationCoordinator handler = new(
+                new WindowsCloudFilesHydrationCoordinatorTests.FakeContentProvider(content), nativeApi);
             try
             {
                 using WindowsCloudFilesConnection connection = nativeApi.ConnectSyncRoot(
-                    new WindowsCloudFilesConnectionRequest(root, new NoopWindowsCloudFilesCallbackHandler()));
+                    new WindowsCloudFilesConnectionRequest(root, handler));
                 nativeApi.CreatePlaceholder(new WindowsCloudFilesNativePlaceholder(
                     root, "Pictures", [1], 0, DateTime.UtcNow, DateTime.UtcNow, IsDirectory: true));
                 await File.WriteAllBytesAsync(filePath, content);
@@ -61,7 +63,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 }
                 stateStore.UpsertEntry(state);
                 RecordingSyncPairWork inner = new();
-                WindowsVirtualFilesDehydrationPairWork work = new(inner, stateStore, adapter);
+                WindowsVirtualFilesDehydrationPairWork work = new(inner, stateStore, adapter, new WindowsCloudFilesHydrator(adapter, handler));
                 SyncRunRequest request = startupRecovery
                     ? SyncRunRequest.ForFull(SyncRunCause.Periodic)
                     : SyncRunRequest.ForLocalChangedPaths(["Pictures"]);

@@ -7,14 +7,6 @@ namespace Cotton.Sync.Desktop.Tests.Platform
     {
         private long _timestamp;
 
-        public HydrationProgressTimer? Timer { get; private set; }
-
-        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
-        {
-            Timer = new(callback, state);
-            return Timer;
-        }
-
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
         public override long GetTimestamp() => _timestamp;
@@ -22,7 +14,6 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public void Advance(TimeSpan elapsed)
         {
             _timestamp += elapsed.Ticks;
-            Timer?.Tick();
         }
     }
 }

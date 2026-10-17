@@ -26,7 +26,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             };
             RecordingSyncPairWork inner = new();
             WindowsCloudFilesDiagnostics diagnostics = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 cloudFiles,
@@ -80,7 +80,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             FakeSyncStateStore stateStore = new();
             stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Music/second.mp3"));
             RecordingSyncPairWork inner = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 new FakeCloudFilesAdapter(),
@@ -101,7 +101,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             FakeSyncStateStore stateStore = new();
             stateStore.UpsertEntry(CreatePlaceholderState(syncPair, "Music/second.mp3"));
             RecordingSyncPairWork inner = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
                 stateStore,
                 new FakeCloudFilesAdapter
@@ -137,7 +137,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             };
             RecordingSyncPairWork inner = new();
             WindowsCloudFilesDiagnostics diagnostics = new();
-            WindowsVirtualFilesDehydrationPairWork work = new(
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner, stateStore, cloudFiles, diagnostics: diagnostics,
                 readDiskState: path => path.EndsWith(Path.DirectorySeparatorChar + "Music", StringComparison.OrdinalIgnoreCase)
                     ? directoryPinned ? CreatePinnedDirectoryDiskState() : CreateNeutralDirectoryDiskState()

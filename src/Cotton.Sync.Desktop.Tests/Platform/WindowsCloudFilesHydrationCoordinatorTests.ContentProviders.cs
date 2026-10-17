@@ -16,7 +16,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 {
     public partial class WindowsCloudFilesHydrationCoordinatorTests
     {
-        private class FakeContentProvider : IWindowsCloudFilesRemoteContentProvider
+        internal class FakeContentProvider : IWindowsCloudFilesRemoteContentProvider
         {
             private readonly byte[] _content;
 
