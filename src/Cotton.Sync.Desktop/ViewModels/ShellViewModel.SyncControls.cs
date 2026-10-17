@@ -95,7 +95,6 @@ namespace Cotton.Sync.Desktop.ViewModels
         private async Task SyncNowAsync()
         {
             int sessionRevision = Volatile.Read(ref _sessionEventRevision);
-            IsBusy = true;
             try
             {
                 await _controller.SyncAllAsync().ConfigureAwait(true);
@@ -124,13 +123,6 @@ namespace Cotton.Sync.Desktop.ViewModels
             catch (Exception exception) when (!IsCurrentSessionRevision(sessionRevision))
             {
                 Trace.TraceError(exception.ToString());
-            }
-            finally
-            {
-                if (IsCurrentSessionRevision(sessionRevision))
-                {
-                    IsBusy = false;
-                }
             }
         }
 

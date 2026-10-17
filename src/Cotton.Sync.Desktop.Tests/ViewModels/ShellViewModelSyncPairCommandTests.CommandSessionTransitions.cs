@@ -52,7 +52,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 : viewModel.SyncNowCommand;
             Task syncCommand = ExecuteTrackedCommandAsync(command);
             Assert.That(controller.SyncAllCalls, Is.EqualTo(1));
-            Assert.That(viewModel.IsBusy, Is.True);
+            Assert.That(viewModel.IsBusy, Is.EqualTo(approveRemoteDelete));
             await ExecuteTrackedCommandAsync(viewModel.SignOutCommand);
             Assert.That(command.IsRunning, Is.True);
             Assert.That(viewModel.IsBusy, Is.False);
@@ -132,7 +132,7 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 : viewModel.SyncNowCommand;
             Task syncCommand = ExecuteTrackedCommandAsync(command);
             Assert.That(controller.SyncAllCalls, Is.EqualTo(1));
-            Assert.That(viewModel.IsBusy, Is.True);
+            Assert.That(viewModel.IsBusy, Is.EqualTo(approveRemoteDelete));
             controller.ReportSessionRevoked(new DesktopSessionRevocationSnapshot(DateTime.UtcNow));
             bool canSignInAfterRevocation = viewModel.SignInWithBrowserCommand.CanExecute(null);
             if (failSync)

@@ -175,11 +175,14 @@ namespace Cotton.Sync.App.Tests.LocalChanges
 
             public List<Guid> DetectedPairs { get; } = [];
 
+            public Action<CancellationToken>? BeforeDetect { get; set; }
+
             public Task<SyncRunRequest?> DetectAsync(
                 SyncPairSettings syncPair,
                 CancellationToken cancellationToken = default)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                BeforeDetect?.Invoke(cancellationToken);
                 DetectedPairs.Add(syncPair.Id);
                 return _exception is null
                     ? Task.FromResult(_request)

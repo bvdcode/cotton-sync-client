@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.App.Supervision;
@@ -144,7 +144,7 @@ namespace Cotton.Sync.App.LocalChanges
                     {
                         foreach (SyncPairSettings syncPair in enabledSyncPairs)
                         {
-                            await StartOfflineReconciliationAsync(syncPair, cancellationToken).ConfigureAwait(false);
+                            StartOfflineReconciliation(syncPair);
                         }
                     }
                 }
@@ -213,9 +213,7 @@ namespace Cotton.Sync.App.LocalChanges
             _syncPairModes.Clear();
         }
 
-        private async Task StartOfflineReconciliationAsync(
-            SyncPairSettings syncPair,
-            CancellationToken cancellationToken)
+        private void StartOfflineReconciliation(SyncPairSettings syncPair)
         {
             if (_offlineReconciler is null || syncPair.Mode != SyncPairMode.WindowsVirtualFiles)
             {
@@ -233,7 +231,9 @@ namespace Cotton.Sync.App.LocalChanges
                 lifetimeToken = _lifetime.Token;
             }
 
-            Task reconciliation = _offlineReconciler.ReconcileAsync(syncPair, lifetimeToken);
+            Task reconciliation = Task.Run(
+                () => _offlineReconciler.ReconcileAsync(syncPair, lifetimeToken),
+                lifetimeToken);
             lock (_pendingGate)
             {
                 _offlineReconciliationTasks.Add(reconciliation);

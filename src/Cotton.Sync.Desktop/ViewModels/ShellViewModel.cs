@@ -271,7 +271,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             ShowAddSyncPairCommand = new AsyncRelayCommand(ShowAddSyncPairAsync, CanShowAddSyncPair, HandleCommandError);
             ShowSettingsCommand = new AsyncRelayCommand(ShowSettingsAsync, () => IsSignedIn, HandleCommandError);
             CloseSettingsCommand = new AsyncRelayCommand(CloseSettingsAsync, () => IsSettingsVisible, HandleCommandError);
-            SyncNowCommand = new AsyncRelayCommand(SyncNowAsync, () => CanSyncNow, HandleCommandError);
+            SyncNowCommand = new AsyncRelayCommand(SyncNowAsync, () => CanSyncNow, ReportCommandError);
             ApproveRemoteMassDeleteCommand = new AsyncRelayCommand(
                 ApproveRemoteMassDeleteAsync,
                 () => CanApproveRemoteMassDelete,

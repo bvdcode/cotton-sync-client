@@ -81,23 +81,27 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             await viewModel.InitializeAsync();
 
             viewModel.SyncNowCommand.Execute(null);
-            await WaitForAsync(() => viewModel.IsBusy && controller.SyncAllCalls == 1);
+            await WaitForAsync(() => viewModel.SyncNowCommand.IsRunning && controller.SyncAllCalls == 1);
 
             Assert.Multiple(() =>
             {
                 Assert.That(viewModel.SyncNowCommand.CanExecute(null), Is.False);
+                Assert.That(viewModel.CanSyncNow, Is.True);
+                Assert.That(viewModel.ShowSelectedSyncPairEditorCommand.CanExecute(viewModel.SyncPairs[0]), Is.True);
                 Assert.That(viewModel.ShowSettingsCommand.CanExecute(null), Is.True);
                 Assert.That(viewModel.CanPauseSync, Is.True);
                 Assert.That(viewModel.CanTogglePauseResumeSync, Is.True);
                 Assert.That(viewModel.PauseResumeCommand.CanExecute(null), Is.True);
             });
 
+            await ExecuteAsync(viewModel.ShowSelectedSyncPairEditorCommand, viewModel.SyncPairs[0]);
+            Assert.That(viewModel.SyncPairs[0].IsEditorVisible, Is.True);
             await ExecuteAsync(viewModel.PauseResumeCommand);
 
             Assert.Multiple(() =>
             {
                 Assert.That(controller.PauseAllCalls, Is.EqualTo(1));
-                Assert.That(viewModel.IsBusy, Is.True);
+                Assert.That(viewModel.IsBusy, Is.False);
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Paused"));
                 Assert.That(viewModel.PauseResumeTrayLabel, Is.EqualTo("Resume"));
             });

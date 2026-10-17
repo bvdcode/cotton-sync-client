@@ -31,6 +31,45 @@ namespace Cotton.Sync.App.Tests.LocalChanges
         }
 
         [Test]
+        public async Task StartAsync_DoesNotWaitForSynchronousOfflineScan()
+        {
+            SyncPairSettings pair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);
+            FakeWatcherFactory watchers = new();
+            FakeSyncSupervisor supervisor = new();
+            using ManualResetEventSlim releaseScan = new();
+            TaskCompletionSource scanEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            FakeOfflineChangeDetector detector = new(SyncRunRequest.ForLocalChangedPaths(["pending.bin"]))
+            {
+                BeforeDetect = token =>
+                {
+                    scanEntered.TrySetResult();
+                    releaseScan.Wait(token);
+                },
+            };
+            LocalChangeSyncCoordinator coordinator = new(
+                new FakeSyncPairSettingsStore([pair]), supervisor, watchers, offlineChangeDetector: detector);
+            Task startup = Task.Run(() => coordinator.StartAsync());
+            try
+            {
+                await scanEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await startup.WaitAsync(TimeSpan.FromSeconds(2));
+                Assert.Multiple(() =>
+                {
+                    Assert.That(watchers.CreatedWatchers[pair.Id].StartCallCount, Is.EqualTo(1));
+                    Assert.That(supervisor.SyncNowCallCount, Is.Zero);
+                });
+                releaseScan.Set();
+                Assert.That(await supervisor.WaitForSyncAsync(TimeSpan.FromSeconds(2)), Is.True);
+            }
+            finally
+            {
+                releaseScan.Set();
+                await startup.WaitAsync(TimeSpan.FromSeconds(5));
+                await coordinator.StopAsync();
+            }
+        }
+
+        [Test]
         public async Task StartAsync_RequestsDetectedOfflineChangesAfterWatcherStarts()
         {
             SyncPairSettings syncPair = CreatePair(isEnabled: true, SyncPairMode.WindowsVirtualFiles);

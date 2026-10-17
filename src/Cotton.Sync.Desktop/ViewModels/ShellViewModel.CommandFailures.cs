@@ -24,6 +24,12 @@ namespace Cotton.Sync.Desktop.ViewModels
     {
         private void HandleCommandError(Exception exception)
         {
+            ReportCommandError(exception);
+            IsBusy = false;
+        }
+
+        private void ReportCommandError(Exception exception)
+        {
             Trace.TraceError(exception.ToString());
             if (SyncFailureClassifier.IsTransientConnectionFailure(exception))
             {
@@ -32,7 +38,6 @@ namespace Cotton.Sync.Desktop.ViewModels
                 ActionRequiredMessage = string.Empty;
                 AddActivity("Warning", string.Empty, message);
                 RefreshCurrentProgressText();
-                IsBusy = false;
                 return;
             }
 
@@ -41,7 +46,6 @@ namespace Cotton.Sync.Desktop.ViewModels
             ActionRequiredMessage = actionRequiredMessage;
             AddActivity("Error", string.Empty, actionRequiredMessage);
             RefreshCurrentProgressText();
-            IsBusy = false;
         }
 
         private static string ResolveTransientConnectionMessage(Exception exception)
