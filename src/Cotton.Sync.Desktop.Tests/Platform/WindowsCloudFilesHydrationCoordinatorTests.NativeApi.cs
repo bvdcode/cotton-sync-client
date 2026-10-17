@@ -50,6 +50,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             public List<WindowsCloudFilesTransferData> Transfers { get; } = [];
 
+            public ConcurrentQueue<WindowsCloudFilesTransferData> KeepAliveTransfers { get; } = new();
+
+            public Action<WindowsCloudFilesTransferData>? OnKeepAlive { get; set; }
+
             public ConcurrentQueue<WindowsCloudFilesProviderProgress> ProviderProgress { get; } = new();
 
             public Action<WindowsCloudFilesProviderProgress>? OnProviderProgress { get; set; }
@@ -121,6 +125,14 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public void TransferData(WindowsCloudFilesTransferData transfer)
             {
+                if (transfer.Length == 0 && transfer.Buffer.Length > 0
+                    && transfer.CompletionStatus == WindowsCloudFilesTransferData.StatusSuccess)
+                {
+                    KeepAliveTransfers.Enqueue(transfer);
+                    OnKeepAlive?.Invoke(transfer);
+                    return;
+                }
+
                 Transfers.Add(transfer with { Buffer = transfer.Buffer.ToArray() });
             }
 

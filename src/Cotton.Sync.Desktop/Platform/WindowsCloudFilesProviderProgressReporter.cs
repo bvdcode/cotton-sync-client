@@ -20,6 +20,7 @@ namespace Cotton.Sync.Desktop.Platform
             request.ConnectionKey, request.TransferKey, totalBytes ?? request.FileSizeBytes, 0);
         private long _lastReportedTimestamp;
         private bool _hasReported;
+        private bool _hasPendingProgress;
 
         public async Task RunAsync(Func<CancellationToken, Task> prepareContent)
         {
@@ -52,6 +53,7 @@ namespace Cotton.Sync.Desktop.Platform
                 cancellationToken.ThrowIfCancellationRequested();
                 long total = Math.Max(value.TotalBytes ?? request.FileSizeBytes, value.TransferredBytes);
                 _latestProgress = new(request.ConnectionKey, request.TransferKey, total, value.TransferredBytes);
+                _hasPendingProgress = true;
                 if (!_hasReported || value.IsCompleted
                     || _timeProvider.GetElapsedTime(_lastReportedTimestamp) >= ReportInterval)
                 {
@@ -75,16 +77,22 @@ namespace Cotton.Sync.Desktop.Platform
                             return;
                         }
 
-                        if (_timeProvider.GetElapsedTime(_lastReportedTimestamp) >= ReportInterval)
+                        RunNativeOperation(() => nativeApi.TransferData(
+                            WindowsCloudFilesTransferData.Success(request, [0], offset: 0, length: 0)));
+                        if (_hasPendingProgress)
                         {
                             ReportLatestProgress();
                         }
                     }
                 }
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                Trace.TraceInformation("Windows Cloud Files preparation stopped after request cancellation.");
+            }
             catch (Exception exception)
             {
-                Trace.TraceError("Windows Cloud Files progress failed: {0}", exception);
+                Trace.TraceError("Windows Cloud Files preparation failed: {0}", exception);
                 await preparation.CancelAsync().ConfigureAwait(false);
                 throw;
             }
@@ -94,7 +102,21 @@ namespace Cotton.Sync.Desktop.Platform
         {
             _lastReportedTimestamp = _timeProvider.GetTimestamp();
             _hasReported = true;
-            nativeApi.ReportProviderProgress(_latestProgress);
+            _hasPendingProgress = false;
+            RunNativeOperation(() => nativeApi.ReportProviderProgress(_latestProgress));
+        }
+
+        private void RunNativeOperation(Action operation)
+        {
+            try
+            {
+                operation();
+            }
+            catch (Exception exception) when (cancellationToken.IsCancellationRequested)
+            {
+                Trace.TraceInformation("Windows Cloud Files request was rejected after request cancellation: {0}", exception.Message);
+                throw new OperationCanceledException("Cloud-file hydration was canceled.", exception, cancellationToken);
+            }
         }
     }
 }

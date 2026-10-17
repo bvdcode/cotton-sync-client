@@ -36,7 +36,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 for (int tick = 0; tick < 70; tick++)
                 {
                     TaskCompletionSource reported = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                    nativeApi.OnProviderProgress = _ => reported.TrySetResult();
+                    nativeApi.OnKeepAlive = _ => reported.TrySetResult();
                     clock.Advance(TimeSpan.FromSeconds(1));
                     await reported.Task.WaitAsync(TimeSpan.FromSeconds(5));
                 }
@@ -45,7 +45,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 {
                     Assert.That(preparation.IsCompleted, Is.False);
                     Assert.That(nativeApi.ProviderProgress.Last().CompletedBytes, Is.EqualTo(bytes));
-                    Assert.That(nativeApi.ProviderProgress.Count, Is.GreaterThanOrEqualTo(71));
+                    Assert.That(nativeApi.KeepAliveTransfers.Count, Is.EqualTo(70));
+                    Assert.That(nativeApi.KeepAliveTransfers.Select(static transfer => transfer.Length), Is.All.Zero);
+                    Assert.That(nativeApi.KeepAliveTransfers.Select(static transfer => transfer.Offset), Is.All.Zero);
+                    Assert.That(nativeApi.KeepAliveTransfers.Select(static transfer => transfer.ConnectionKey), Is.All.EqualTo(new WindowsCloudFilesConnectionKey(1)));
+                    Assert.That(nativeApi.KeepAliveTransfers.Select(static transfer => transfer.TransferKey), Is.All.EqualTo(new WindowsCloudFilesTransferKey(2)));
+                    Assert.That(nativeApi.KeepAliveTransfers.Select(static transfer => transfer.RequestKey), Is.All.EqualTo(new WindowsCloudFilesRequestKey(3)));
+                    Assert.That(nativeApi.Transfers, Is.Empty);
                     Assert.That(appProgress.Values.Count, Is.EqualTo(bytes > 0 ? 1 : 0));
                 });
             }
@@ -55,11 +61,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 await preparation.WaitAsync(TimeSpan.FromSeconds(5));
             }
 
-            int finalCount = nativeApi.ProviderProgress.Count;
+            int finalCount = nativeApi.KeepAliveTransfers.Count;
             clock.Advance(TimeSpan.FromMinutes(2));
             Assert.Multiple(() =>
             {
-                Assert.That(nativeApi.ProviderProgress.Count, Is.EqualTo(finalCount));
+                Assert.That(nativeApi.KeepAliveTransfers.Count, Is.EqualTo(finalCount));
                 Assert.That(clock.Timer!.IsDisposed, Is.True);
             });
         }
@@ -80,9 +86,30 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             clock.Advance(TimeSpan.FromMinutes(2));
             Assert.Multiple(() =>
             {
-                Assert.That(nativeApi.ProviderProgress.Count, Is.EqualTo(1));
+                Assert.That(nativeApi.KeepAliveTransfers, Is.Empty);
                 Assert.That(clock.Timer!.IsDisposed, Is.True);
             });
+        }
+
+        [Test]
+        public void ProviderProgressReporter_NativeHeartbeatRejectedDuringCancellationRemainsCancellation()
+        {
+            NativeApi nativeApi = new();
+            HydrationProgressTimeProvider clock = new();
+            using CancellationTokenSource cancellation = new();
+            WindowsCloudFilesProviderProgressReporter reporter = new(
+                nativeApi, CreateRequest(), null, cancellation.Token, clock);
+            Task preparation = reporter.RunAsync(token => Task.Delay(Timeout.InfiniteTimeSpan, token));
+            nativeApi.OnKeepAlive = _ =>
+            {
+                cancellation.Cancel();
+                throw new IOException("Native request is no longer active.");
+            };
+
+            clock.Advance(TimeSpan.FromSeconds(1));
+
+            Assert.CatchAsync<OperationCanceledException>(async () => await preparation.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.That(clock.Timer!.IsDisposed, Is.True);
         }
 
         [Test]
@@ -101,7 +128,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             Assert.Multiple(() =>
             {
                 Assert.That(actual, Is.SameAs(expected));
-                Assert.That(nativeApi.ProviderProgress.Count, Is.EqualTo(1));
+                Assert.That(nativeApi.KeepAliveTransfers, Is.Empty);
                 Assert.That(clock.Timer!.IsDisposed, Is.True);
             });
         }
@@ -125,8 +152,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     preparationStopped = true;
                 }
             });
-            IOException expected = new("Native progress failed.");
-            nativeApi.OnProviderProgress = _ => throw expected;
+            IOException expected = new("Native request renewal failed.");
+            nativeApi.OnKeepAlive = _ => throw expected;
 
             clock.Advance(TimeSpan.FromSeconds(1));
 
