@@ -116,7 +116,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private class FakeCloudFilesAdapter : IWindowsCloudFilesAdapter, IWindowsCloudFilesHydrator
+        internal class FakeCloudFilesAdapter : IWindowsCloudFilesAdapter, IWindowsCloudFilesHydrator
         {
             public List<string> DehydratedPaths { get; } = [];
 

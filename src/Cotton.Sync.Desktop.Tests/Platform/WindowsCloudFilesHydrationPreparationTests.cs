@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.Desktop.Platform;
+using Cotton.Sync.App.SyncPairs;
 using static Cotton.Sync.Desktop.Tests.Platform.WindowsCloudFilesHydrationCoordinatorTests;
 
 namespace Cotton.Sync.Desktop.Tests.Platform
@@ -21,6 +22,25 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         public void TearDown()
         {
             Directory.Delete(_directory, recursive: true);
+        }
+
+        [Test]
+        public async Task HydratePlaceholderAsync_AlreadyAvailableContentDoesNotDownloadAgain()
+        {
+            FakeContentProvider provider = new([]);
+            WindowsCloudFilesHydrationCoordinator coordinator = new(provider, new FakeCloudFilesNativeApi(), _directory);
+            WindowsVirtualFilesDehydrationPairWorkTests.FakeCloudFilesAdapter adapter = new();
+            WindowsCloudFilesHydrator hydrator = new(adapter, coordinator);
+            SyncPairSettings pair = new() { LocalRootPath = _directory };
+
+            await hydrator.HydratePlaceholderAsync(pair, "already-downloaded.bin");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(provider.DownloadedIdentities, Is.Empty);
+                Assert.That(adapter.HydratedPaths, Is.EqualTo(new[] { "already-downloaded.bin" }));
+                Assert.That(Directory.GetFiles(_directory), Is.Empty);
+            });
         }
 
         [TestCase(0, 16)]

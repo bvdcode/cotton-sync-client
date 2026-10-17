@@ -17,6 +17,7 @@ namespace Cotton.Sync.Desktop.Platform
             cancellationToken.ThrowIfCancellationRequested();
             WindowsCloudFilesPlaceholderState state = adapter.GetPlaceholderState(syncPair, relativePath);
             if (state.HasFlag(WindowsCloudFilesPlaceholderState.Placeholder)
+                && state.HasFlag(WindowsCloudFilesPlaceholderState.Partial)
                 && state != WindowsCloudFilesPlaceholderState.Invalid)
             {
                 WindowsCloudFilesPlaceholderIdentity identity = WindowsCloudFilesPlaceholderIdentity.Parse(
