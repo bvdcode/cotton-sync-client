@@ -178,6 +178,9 @@ namespace Cotton.Sync.Desktop
                 case nameof(ShellViewModel.IsSignInStepVisible):
                     ApplyWindowMode(viewModel);
                     return;
+                case nameof(ShellViewModel.IsActivityVisible):
+                    UpdateActivityPanel(viewModel.IsActivityVisible);
+                    return;
                 case nameof(ShellViewModel.IsAddSyncPairWizardVisible):
                     FocusOverlayAction(viewModel.IsAddSyncPairWizardVisible, CancelAddSyncPairButton);
                     return;

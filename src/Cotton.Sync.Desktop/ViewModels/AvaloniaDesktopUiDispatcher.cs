@@ -15,7 +15,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         public void Post(Action action)
         {
             ArgumentNullException.ThrowIfNull(action);
-            Dispatcher.UIThread.Post(action);
+            Dispatcher.UIThread.Post(action, DispatcherPriority.Background);
         }
 
         public async Task InvokeAsync(Action action, CancellationToken cancellationToken = default)

@@ -28,7 +28,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             IsBusy = false;
         }
 
-        private void ReportCommandError(Exception exception)
+        internal void ReportCommandError(Exception exception)
         {
             Trace.TraceError(exception.ToString());
             if (SyncFailureClassifier.IsTransientConnectionFailure(exception))

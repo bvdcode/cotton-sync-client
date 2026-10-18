@@ -631,11 +631,15 @@
 
       </StackPanel>
 
-      <Grid Grid.Row="1"
-            RowDefinitions="*,Auto"
-            RowSpacing="8"
+      <Grid x:Name="FoldersAndActivityGrid"
+            Grid.Row="1"
             IsEnabled="{Binding IsDashboardChromeVisible}"
             MinHeight="0">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="*" MinHeight="80" />
+          <RowDefinition Height="0" />
+          <RowDefinition Height="0" />
+        </Grid.RowDefinitions>
         <Border Grid.Row="0"
                 Padding="10"
                 CornerRadius="6"
@@ -1006,14 +1010,21 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="1"
+        <GridSplitter Grid.Row="1"
+                      ResizeDirection="Rows"
+                      ResizeBehavior="PreviousAndNext"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch"
+                      Background="{DynamicResource CottonBorderBrush}"
+                      AutomationProperties.Name="Resize activity panel"
+                      IsVisible="{Binding IsActivityVisible}" />
+        <Border Grid.Row="2"
                 Padding="10"
                 CornerRadius="6"
                 Background="{DynamicResource CottonSurfaceBrush}"
                 BorderBrush="{DynamicResource CottonBorderBrush}"
                 BorderThickness="1"
                 ClipToBounds="True"
-                MaxHeight="150"
                 MinHeight="0"
                 IsVisible="{Binding IsActivityVisible}">
             <Grid RowDefinitions="Auto,*"
@@ -1044,7 +1055,7 @@
                   <ItemsControl ItemsSource="{Binding Activities}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate>
-                        <Grid ColumnDefinitions="42,*"
+                        <Grid ColumnDefinitions="42,*,Auto"
                               RowDefinitions="Auto,Auto,Auto"
                               ColumnSpacing="8"
                               Margin="0,4"
@@ -1057,23 +1068,27 @@
                                      FontSize="12"
                                      FontWeight="SemiBold"
                                      TextTrimming="CharacterEllipsis" />
-                          <TextBlock Grid.Row="1"
-                                     Grid.Column="1"
-                                     Text="{Binding Details}"
-                                     ToolTip.Tip="{Binding Details}"
-                                     FontSize="11"
-                                     TextWrapping="NoWrap"
-                                     TextTrimming="CharacterEllipsis"
-                                     MaxLines="1"
-                                     Opacity="0.78" />
-                          <TextBlock Grid.Row="2"
-                                     Grid.Column="1"
-                                     Text="{Binding Path}"
-                                     ToolTip.Tip="{Binding Path}"
-                                     FontSize="11"
-                                     TextTrimming="CharacterEllipsis"
-                                     IsVisible="{Binding HasPath}"
-                                     Opacity="0.68" />
+                          <Button Grid.Column="2"
+                                  Classes="icon flatIcon"
+                                  ToolTip.Tip="Copy full activity entry"
+                                  AutomationProperties.Name="Copy full activity entry"
+                                  Click="CopyActivity_Click">
+                            <materialIcons:MaterialIcon Kind="ContentCopy" Width="16" Height="16" />
+                          </Button>
+                          <SelectableTextBlock Grid.Row="1"
+                                               Grid.Column="1"
+                                               Grid.ColumnSpan="2"
+                                               Text="{Binding Details}"
+                                               FontSize="11"
+                                               TextWrapping="Wrap" />
+                          <SelectableTextBlock Grid.Row="2"
+                                               Grid.Column="1"
+                                               Grid.ColumnSpan="2"
+                                               Text="{Binding Path}"
+                                               FontSize="11"
+                                               TextWrapping="Wrap"
+                                               IsVisible="{Binding HasPath}"
+                                               Classes="secondary" />
                         </Grid>
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>

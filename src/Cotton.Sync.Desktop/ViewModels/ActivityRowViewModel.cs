@@ -17,5 +17,8 @@ namespace Cotton.Sync.Desktop.ViewModels
         public string Details { get; init; } = string.Empty;
 
         public bool HasPath => !string.IsNullOrWhiteSpace(Path);
+
+        public string CopyText => string.Join(Environment.NewLine,
+            new[] { Time + " " + Kind, Path, Details }.Where(static value => !string.IsNullOrWhiteSpace(value)));
     }
 }

@@ -164,7 +164,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 Path = path,
                 Details = string.IsNullOrWhiteSpace(details)
                     ? string.Empty
-                    : DesktopUserMessageFormatter.Compact(details),
+                    : details.Trim(),
             };
         }
 
@@ -200,6 +200,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private static bool IsHighVolumeActivity(string kind)
         {
             return string.Equals(kind, "Uploaded", StringComparison.Ordinal)
+                || string.Equals(kind, "Converged", StringComparison.Ordinal)
                 || string.Equals(kind, "Downloaded", StringComparison.Ordinal)
                 || string.Equals(kind, "Deleted local copy", StringComparison.Ordinal)
                 || string.Equals(kind, "Deleted remote copy", StringComparison.Ordinal)

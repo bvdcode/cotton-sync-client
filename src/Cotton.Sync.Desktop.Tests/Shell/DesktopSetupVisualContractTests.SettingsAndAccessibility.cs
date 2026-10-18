@@ -55,7 +55,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
-        public void DashboardContent_KeepsFoldersPrimaryAndActivityCollapsible()
+        public void DashboardContent_KeepsFoldersAndActivityIndependentlyScrollableAndResizable()
         {
             string mainWindowXaml = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml"));
             string dashboardView = GetSlice(
@@ -68,13 +68,19 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(dashboardView, Does.Contain("<RowDefinition Height=\"Auto\" />"));
                 Assert.That(dashboardView, Does.Contain("<RowDefinition Height=\"*\" MinHeight=\"132\" />"));
                 Assert.That(dashboardView, Does.Contain("<Grid Grid.Row=\"1\""));
-                Assert.That(dashboardView, Does.Contain("RowDefinitions=\"*,Auto\""));
+                Assert.That(dashboardView, Does.Contain("x:Name=\"FoldersAndActivityGrid\""));
                 Assert.That(dashboardView, Does.Contain("<StackPanel Grid.Row=\"0\""));
                 Assert.That(dashboardView, Does.Contain("IsVisible=\"{Binding IsDashboardChromeVisible}\""));
                 Assert.That(dashboardView, Does.Contain("<Border Grid.Row=\"0\""));
-                Assert.That(dashboardView, Does.Contain("<Border Grid.Row=\"1\""));
+                Assert.That(dashboardView, Does.Contain("<Border Grid.Row=\"2\""));
                 Assert.That(dashboardView, Does.Contain("Padding=\"10\""));
-                Assert.That(dashboardView, Does.Contain("MaxHeight=\"150\""));
+                Assert.That(dashboardView, Does.Contain("<GridSplitter Grid.Row=\"1\""));
+                Assert.That(dashboardView, Does.Contain("ResizeDirection=\"Rows\""));
+                Assert.That(dashboardView, Does.Contain("ResizeBehavior=\"PreviousAndNext\""));
+                System.Xml.Linq.XElement activityPanel = System.Xml.Linq.XDocument.Parse(mainWindowXaml)
+                    .Descendants().Single(element => element.Name.LocalName == "Border"
+                        && element.Attribute("IsVisible")?.Value == "{Binding IsActivityVisible}");
+                Assert.That(activityPanel.Attribute("MaxHeight"), Is.Null);
                 Assert.That(dashboardView, Does.Contain("IsVisible=\"{Binding IsActivityVisible}\""));
                 Assert.That(dashboardView, Does.Contain("VerticalScrollBarVisibility=\"Auto\""));
                 Assert.That(dashboardView, Does.Contain("Grid.RowSpan=\"2\""));
@@ -94,7 +100,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
-        public void ActivityRows_UseShortEventKindAsTitle()
+        public void ActivityRows_ExposeSelectableFullDetailsAndCopyAction()
         {
             string mainWindowXaml = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml"));
             string activitySection = GetSlice(
@@ -107,11 +113,21 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(activitySection, Does.Contain("Text=\"{Binding Kind}\""));
                 Assert.That(activitySection, Does.Contain("FontWeight=\"SemiBold\""));
                 Assert.That(activitySection, Does.Contain("Text=\"{Binding Details}\""));
-                Assert.That(activitySection, Does.Contain("ToolTip.Tip=\"{Binding Details}\""));
-                Assert.That(activitySection, Does.Contain("TextWrapping=\"NoWrap\""));
-                Assert.That(activitySection, Does.Contain("MaxLines=\"1\""));
+                System.Xml.Linq.XDocument document = System.Xml.Linq.XDocument.Parse(mainWindowXaml);
+                foreach (string binding in new[] { "{Binding Details}", "{Binding Path}" })
+                {
+                    System.Xml.Linq.XElement text = document.Descendants()
+                        .Single(element => element.Name.LocalName == "SelectableTextBlock"
+                            && element.Attribute("Text")?.Value == binding);
+                    Assert.That(text.Attribute("TextWrapping")?.Value, Is.EqualTo("Wrap"));
+                    Assert.That(text.Attribute("TextTrimming"), Is.Null);
+                    Assert.That(text.Attribute("MaxLines"), Is.Null);
+                }
+                Assert.That(activitySection, Does.Contain("TextWrapping=\"Wrap\""));
+                Assert.That(activitySection, Does.Not.Contain("MaxLines=\"1\""));
+                Assert.That(activitySection, Does.Contain("Click=\"CopyActivity_Click\""));
+                Assert.That(activitySection, Does.Contain("AutomationProperties.Name=\"Copy full activity entry\""));
                 Assert.That(activitySection, Does.Contain("Text=\"{Binding Path}\""));
-                Assert.That(activitySection, Does.Contain("ToolTip.Tip=\"{Binding Path}\""));
                 Assert.That(activitySection, Does.Contain("IsVisible=\"{Binding HasPath}\""));
             });
         }

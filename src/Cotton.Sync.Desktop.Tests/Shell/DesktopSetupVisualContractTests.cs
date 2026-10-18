@@ -52,7 +52,12 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             {
                 Assert.That(mainWindowXaml, Does.Not.Contain("Kind=\"RefreshCircle\""));
                 Assert.That(CountOccurrences(mainWindowXaml, "Kind=\"Refresh\""), Is.EqualTo(4));
-                Assert.That(CountOccurrences(mainWindowXaml, "Classes=\"icon flatIcon\""), Is.EqualTo(2));
+                System.Xml.Linq.XDocument document = System.Xml.Linq.XDocument.Parse(mainWindowXaml);
+                int flatRefreshButtons = document.Descendants()
+                    .Count(element => element.Name.LocalName == "Button"
+                        && element.Attribute("Classes")?.Value.Split(' ').Contains("flatIcon") == true
+                        && element.Descendants().Any(child => child.Attribute("Kind")?.Value == "Refresh"));
+                Assert.That(flatRefreshButtons, Is.EqualTo(2));
                 Assert.That(CountOccurrences(mainWindowXaml, "Foreground=\"{DynamicResource CottonPrimaryBrush}\""), Is.EqualTo(3));
                 Assert.That(appXaml, Does.Contain("Style Selector=\"Button.flatIcon\""));
                 Assert.That(appXaml, Does.Contain("Property=\"Background\" Value=\"Transparent\""));

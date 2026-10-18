@@ -135,7 +135,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(dashboardView, Does.Contain("<RowDefinition Height=\"Auto\" />"));
                 Assert.That(dashboardView, Does.Contain("<RowDefinition Height=\"*\" MinHeight=\"132\" />"));
                 Assert.That(dashboardView, Does.Contain("<Grid Grid.Row=\"1\""));
-                Assert.That(dashboardView, Does.Contain("RowDefinitions=\"*,Auto\""));
+                Assert.That(dashboardView, Does.Contain("x:Name=\"FoldersAndActivityGrid\""));
+                Assert.That(dashboardView, Does.Contain("<RowDefinition Height=\"*\" MinHeight=\"80\" />"));
                 Assert.That(dashboardView, Does.Contain("IsVisible=\"{Binding IsActivityVisible}\""));
                 Assert.That(dashboardView, Does.Not.Contain("Height=\"Auto\" MaxHeight=\"236\""));
                 Assert.That(dashboardView, Does.Not.Contain("Height=\"2*\""));
