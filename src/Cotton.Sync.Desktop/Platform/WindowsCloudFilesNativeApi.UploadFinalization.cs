@@ -2,7 +2,6 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Microsoft.Win32.SafeHandles;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
 namespace Cotton.Sync.Desktop.Platform
@@ -24,7 +23,6 @@ namespace Cotton.Sync.Desktop.Platform
                 IntegrityHashBufferSize,
                 FileOptions.SequentialScan);
             long localSizeBytes = stream.Length;
-            DateTime localCreatedAtUtc = File.GetCreationTimeUtc(filePath);
             DateTime localLastWriteUtc = File.GetLastWriteTimeUtc(filePath);
             if (localSizeBytes != request.ExpectedSizeBytes
                 || localLastWriteUtc != request.ExpectedLastWriteUtc.ToUniversalTime())
@@ -53,12 +51,7 @@ namespace Cotton.Sync.Desktop.Platform
                     ConvertUploadedFileToPlaceholder(stream.SafeFileHandle, placeholder.FileIdentity);
                     break;
                 case WindowsCloudFilesUploadedFileFinalizationMode.UpdateExistingPlaceholder:
-                    UpdateUploadedFilePlaceholder(
-                        stream.SafeFileHandle,
-                        placeholder.FileIdentity,
-                        localSizeBytes,
-                        localCreatedAtUtc,
-                        localLastWriteUtc);
+                    UpdateUploadedFilePlaceholder(stream.SafeFileHandle, placeholder.FileIdentity);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(
@@ -95,21 +88,14 @@ namespace Cotton.Sync.Desktop.Platform
 
         private static void UpdateUploadedFilePlaceholder(
             SafeFileHandle handle,
-            byte[] identity,
-            long fileSizeBytes,
-            DateTime createdAtUtc,
-            DateTime updatedAtUtc)
+            byte[] identity)
         {
             PinnedBuffer fileIdentity = PinnedBuffer.Pin(identity);
             try
             {
-                CfFsMetadata metadata = CfFsMetadata.CreateFile(
-                    fileSizeBytes,
-                    createdAtUtc,
-                    updatedAtUtc);
-                int result = CfUpdatePlaceholder(
+                int result = CfUpdatePlaceholderIdentity(
                     handle.DangerousGetHandle(),
-                    ref metadata,
+                    IntPtr.Zero,
                     fileIdentity.Pointer,
                     fileIdentity.Length,
                     IntPtr.Zero,

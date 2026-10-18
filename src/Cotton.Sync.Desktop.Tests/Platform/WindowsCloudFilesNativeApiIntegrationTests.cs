@@ -74,8 +74,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 if (pinned)
                 {
                     nativeApi.SetPinState(filePath, WindowsCloudFilesPinState.Pinned);
+                    Assert.That(File.GetAttributes(filePath).HasFlag(pinnedAttribute), Is.True);
                 }
 
+                DateTime createdAtUtc = File.GetCreationTimeUtc(filePath);
                 DateTime lastWriteUtc = File.GetLastWriteTimeUtc(filePath);
                 await using FileStream editor = new(
                     filePath,
@@ -108,6 +110,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     Assert.That(actualIdentity, Is.EqualTo(updatedIdentity));
                     Assert.That(bytesRead, Is.EqualTo(content.Length));
                     Assert.That(actualContent, Is.EqualTo(content));
+                    Assert.That(File.GetCreationTimeUtc(filePath), Is.EqualTo(createdAtUtc));
+                    Assert.That(File.GetLastWriteTimeUtc(filePath), Is.EqualTo(lastWriteUtc));
                     Assert.That(editor.CanRead, Is.True);
                     Assert.That(nativeApi.GetPlaceholderState(filePath)
                         .HasFlag(WindowsCloudFilesPlaceholderState.InSync), Is.True);
