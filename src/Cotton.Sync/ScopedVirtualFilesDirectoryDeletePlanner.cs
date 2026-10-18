@@ -17,8 +17,7 @@ namespace Cotton.Sync
             SyncRunOptions options,
             ScopedVirtualFilesDirectoryDeleteContext context)
         {
-            if (options.Scope.IsFull
-                || syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles)
+            if (syncPair.MaterializationMode != SyncPairMaterializationMode.WindowsVirtualFiles)
             {
                 return null;
             }
@@ -51,12 +50,17 @@ namespace Cotton.Sync
                     rootKey);
                 if (root is null)
                 {
-                    return null;
+                    continue;
                 }
 
                 rootPaths.Add(root.RelativePath);
                 directoryKeys.UnionWith(root.DirectoryKeys);
                 fileKeys.UnionWith(root.FileKeys);
+            }
+
+            if (rootPaths.Count == 0)
+            {
+                return null;
             }
 
             return new ScopedVirtualFilesDirectoryDeletePlan(

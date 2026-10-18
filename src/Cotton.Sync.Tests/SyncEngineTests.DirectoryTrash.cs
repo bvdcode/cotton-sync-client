@@ -34,9 +34,12 @@ namespace Cotton.Sync.Tests
             });
         }
 
-        [TestCase(SyncPlaceholderHydrationState.RemoteOnly)]
-        [TestCase(SyncPlaceholderHydrationState.Hydrated)]
-        public async Task RunOnceAsync_DeletedFolderWith238FilesUsesOneTrashOperation(SyncPlaceholderHydrationState hydrationState)
+        [TestCase(SyncPlaceholderHydrationState.RemoteOnly, false)]
+        [TestCase(SyncPlaceholderHydrationState.Hydrated, false)]
+        [TestCase(SyncPlaceholderHydrationState.RemoteOnly, true)]
+        [TestCase(SyncPlaceholderHydrationState.Hydrated, true)]
+        public async Task RunOnceAsync_DeletedFolderWith238FilesUsesOneTrashOperation(
+            SyncPlaceholderHydrationState hydrationState, bool fullScan)
         {
             RemoteDirectorySnapshot root = RemoteDirectory("Pictures");
             NodeFileManifestDto[] files = Enumerable.Range(0, 238)
@@ -51,15 +54,43 @@ namespace Cotton.Sync.Tests
             await InsertDirectoryBaselineAsync(store, root.RelativePath, root.Node);
             foreach (NodeFileManifestDto file in files)
             {
-                await InsertPlaceholderBaselineAsync(store, "Pictures/" + file.Name, file, hydrationState);
+                if (hydrationState == SyncPlaceholderHydrationState.Hydrated)
+                {
+                    await InsertBaselineAsync(store, "Pictures/" + file.Name, file.ContentHash!, file);
+                }
+                else
+                {
+                    await InsertPlaceholderBaselineAsync(store, "Pictures/" + file.Name, file, hydrationState);
+                }
             }
-            SyncEngine engine = new(new FakeLocalFileScanner(), crawler, remoteFiles, store,
+            FakeLocalFileScanner scanner = new();
+            SyncEngine engine = new(scanner, crawler, remoteFiles, store,
                 remoteDirectories: remoteDirectories);
+            if (fullScan)
+            {
+                scanner.Directories.Add(LocalDirectory("Pictures"));
+                string[] movedFiles = files.Select(file => "Pictures/" + file.Name).ToArray();
+                SyncRunResult partialMove = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
+                    new SyncRunOptions
+                    {
+                        Scope = SyncRunScope.ForFull(movedFiles, movedFiles, []),
+                        MaximumRemoteDeletesPerRun = 1,
+                    });
+                Assert.Multiple(() =>
+                {
+                    Assert.That(partialMove.RequiresUserAction, Is.True);
+                    Assert.That(remoteDirectories.Deletes, Is.Empty);
+                    Assert.That(remoteFiles.Deletes, Is.Empty);
+                });
+                scanner.Directories.Clear();
+            }
 
             SyncRunResult result = await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles),
                 new SyncRunOptions
                 {
-                    Scope = SyncRunScope.ForLocalChangedPaths(["Pictures"], ["Pictures"]),
+                    Scope = fullScan
+                        ? SyncRunScope.ForFull(["Pictures"], ["Pictures"], [])
+                        : SyncRunScope.ForLocalChangedPaths(["Pictures"], ["Pictures"]),
                     MaximumRemoteDeletesPerRun = 1,
                 });
 
@@ -72,8 +103,39 @@ namespace Cotton.Sync.Tests
                 Assert.That(remoteFiles.Deletes, Is.Empty);
                 Assert.That(remoteFiles.Downloads, Is.Empty);
                 Assert.That(remoteDirectories.Deletes, Is.EqualTo(new[] { (root.Node.Id, false) }));
-                Assert.That(crawler.FullCrawlCalls, Is.Zero);
+                Assert.That(crawler.FullCrawlCalls, Is.EqualTo(fullScan ? 2 : 0));
                 Assert.That(remaining, Is.Empty);
+            });
+        }
+
+        [Test]
+        public async Task RunOnceAsync_DeletedFolderIsGroupedIndependentlyOfDivergedSibling()
+        {
+            RemoteDirectorySnapshot ready = RemoteDirectory("Ready");
+            RemoteDirectorySnapshot changed = RemoteDirectory("Changed");
+            NodeFileManifestDto readyFile = RemoteFile("Ready/photo.jpg", HashText("photo"), sizeBytes: 1024);
+            NodeFileManifestDto changedFile = RemoteFile("Changed/photo.jpg", HashText("new photo"), sizeBytes: 1024);
+            RemoteTreeSnapshot tree = RemoteTree(readyFile, changedFile);
+            tree.Directories.AddRange([ready, changed]);
+            SqliteSyncStateStore store = new(_databasePath);
+            await InsertDirectoryBaselineAsync(store, ready.RelativePath, ready.Node);
+            await InsertDirectoryBaselineAsync(store, changed.RelativePath, changed.Node);
+            await InsertPlaceholderBaselineAsync(store, "Ready/photo.jpg", readyFile);
+            await InsertBaselineAsync(store, "Changed/photo.jpg", HashText("local photo"), changedFile);
+            FakeRemoteFileSynchronizer files = new();
+            FakeRemoteDirectorySynchronizer directories = new();
+            SyncEngine engine = new(new FakeLocalFileScanner(), new DescendantPathRemoteTreeCrawler(tree), files, store,
+                remoteDirectories: directories);
+
+            await engine.RunOnceAsync(Pair(SyncPairMaterializationMode.WindowsVirtualFiles), new SyncRunOptions
+            {
+                Scope = SyncRunScope.ForLocalChangedPaths(["Ready", "Changed"], ["Ready", "Changed"]),
+            });
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(directories.Deletes, Is.EqualTo(new[] { (ready.Node.Id, false) }));
+                Assert.That(files.Deletes, Is.Empty);
             });
         }
 

@@ -163,7 +163,6 @@ namespace Cotton.Sync
             string directoryKey)
         {
             return context.SyncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
-                && !context.Options.Scope.IsFull
                 && context.ScopedLocalDeletedKeys.Contains(directoryKey)
                 && context.PlannedScopedDeleteKeys?.Contains(directoryKey) != true;
         }
