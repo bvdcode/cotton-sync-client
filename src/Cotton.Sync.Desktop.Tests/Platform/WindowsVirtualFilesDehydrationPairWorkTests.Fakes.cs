@@ -135,6 +135,14 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public WindowsCloudFilesPlaceholderState PlaceholderState { get; init; } =
                 WindowsCloudFilesPlaceholderState.Placeholder | WindowsCloudFilesPlaceholderState.InSync;
 
+            public List<RemoteDirectoryMaterializationRequest> CreatedDirectories { get; } = [];
+
+            public void CreateDirectoryPlaceholder(RemoteDirectoryMaterializationRequest request)
+            {
+                CreatedDirectories.Add(request);
+                InSyncPaths.Add(request.RelativePath);
+            }
+
             public RemoteFilePlaceholderResult CreateFilePlaceholder(RemoteFilePlaceholderRequest request)
             {
                 throw new NotSupportedException();

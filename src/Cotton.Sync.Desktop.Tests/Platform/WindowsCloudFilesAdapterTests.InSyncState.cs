@@ -105,6 +105,28 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             });
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void SetInSyncState_SkipsRegularDirectoryBeforeItBecomesAPlaceholder(bool inSync)
+        {
+            FakeCloudFilesNativeApi nativeApi = new() { InitialPlaceholderState = WindowsCloudFilesPlaceholderState.None };
+            WindowsCloudFilesDiagnostics diagnostics = new();
+            WindowsCloudFilesAdapter adapter = new(
+                CreatePolicy(), nativeApi, diagnostics: diagnostics, isReparsePoint: _ => false);
+            string root = Path.Combine(_tempDirectory, "root");
+            Directory.CreateDirectory(Path.Combine(root, "Projects"));
+
+            adapter.SetInSyncState(CreateSyncPair(root), "Projects", inSync);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.InSyncPaths, Is.Empty);
+                Assert.That(nativeApi.PendingPaths, Is.Empty);
+                Assert.That(diagnostics.Snapshot().Single().Status, Is.EqualTo("skipped"));
+                Assert.That(Directory.Exists(Path.Combine(root, "Projects")), Is.True);
+            });
+        }
+
         [Test]
         public void PlaceholderIdentityMethods_UseValidatedPathAndNotifyExplorer()
         {

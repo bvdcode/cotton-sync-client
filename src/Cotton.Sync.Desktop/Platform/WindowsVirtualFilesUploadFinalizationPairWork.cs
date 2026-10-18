@@ -6,7 +6,6 @@ using Cotton.Sync.App.LocalChanges;
 using Cotton.Sync.App.Progress;
 using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.SyncPairs;
-using Cotton.Nodes;
 using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
 
@@ -310,24 +309,13 @@ namespace Cotton.Sync.Desktop.Platform
             string relativePath,
             SyncStateEntry directoryState)
         {
-            if (directoryState.RemoteNodeId is not Guid remoteNodeId)
+            if (directoryState.RemoteNodeId is null)
             {
                 _cloudFiles.SetInSyncState(syncPair, relativePath);
                 return;
             }
 
-            _cloudFiles.CreateDirectoryPlaceholder(new RemoteDirectoryMaterializationRequest(
-                syncPair.Id.ToString("D"),
-                syncPair.LocalRootPath,
-                syncPair.RemoteRootNodeId,
-                relativePath,
-                new NodeDto
-                {
-                    Id = remoteNodeId,
-                    Name = relativePath.Split('/')[^1],
-                    CreatedAt = directoryState.SyncedAtUtc,
-                    UpdatedAt = directoryState.SyncedAtUtc,
-                }));
+            _cloudFiles.CreateDirectoryPlaceholder(WindowsCloudFilesDirectoryRequestFactory.Create(syncPair, directoryState, relativePath));
         }
 
         private void PublishFinalizationProgress(

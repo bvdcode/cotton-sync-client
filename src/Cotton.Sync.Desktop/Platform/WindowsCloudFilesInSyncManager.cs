@@ -58,6 +58,18 @@ namespace Cotton.Sync.Desktop.Platform
 
             try
             {
+                if (isDirectory)
+                {
+                    WindowsCloudFilesPlaceholderState state = nativeApi.GetPlaceholderState(fullPlaceholderPath);
+                    if (state == WindowsCloudFilesPlaceholderState.None)
+                    {
+                        diagnostics.Record(
+                            operation, "skipped", syncPair.Id.ToString(), registration.LocalRootPath, normalizedPath,
+                            "Windows Cloud Files in-sync state was skipped for a non-placeholder directory.");
+                        return;
+                    }
+                }
+
                 operationExecutor.ExecuteWithTransientPathRetry(
                     () =>
                     {

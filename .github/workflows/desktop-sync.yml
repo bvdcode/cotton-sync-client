@@ -90,7 +90,7 @@ jobs:
 
       - name: Verify Cloud Files finalization and directory moves
         timeout-minutes: 5
-        run: dotnet test src/Cotton.Sync.Desktop.Tests/Cotton.Sync.Desktop.Tests.csproj -c Release --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~FinalizeUploadedFile_PreservesContentWithAnOpenHandle|FullyQualifiedName~FinalizeUploadedFile_PreservesLargePinnedFile|FullyQualifiedName~RefreshPlaceholders_AfterDirectoryMove" --logger "trx;LogFileName=cloud-files-finalization.trx" --results-directory "${{ runner.temp }}/cloud-files-finalization"
+        run: dotnet test src/Cotton.Sync.Desktop.Tests/Cotton.Sync.Desktop.Tests.csproj -c Release --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~FinalizeUploadedFile_PreservesContentWithAnOpenHandle|FullyQualifiedName~FinalizeUploadedFile_PreservesLargePinnedFile|FullyQualifiedName~RefreshPlaceholders_AfterDirectoryMove|FullyQualifiedName~RunOnceAsync_PinnedRegularFileRegainsCloudIdentity" --logger "trx;LogFileName=cloud-files-finalization.trx" --results-directory "${{ runner.temp }}/cloud-files-finalization"
 
       - name: Upload Cloud Files finalization results
         if: always()

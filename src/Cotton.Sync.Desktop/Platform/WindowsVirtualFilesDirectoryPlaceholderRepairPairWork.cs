@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
-using Cotton.Nodes;
 using Cotton.Sync.App.LocalChanges;
 using Cotton.Sync.App.Progress;
 using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.State;
-using Cotton.Sync.VirtualFiles;
 using System.Diagnostics;
 
 namespace Cotton.Sync.Desktop.Platform
@@ -124,7 +122,7 @@ namespace Cotton.Sync.Desktop.Platform
                         syncPair.Id,
                         syncPair.LocalRootPath,
                         directory.RelativePath);
-                    _cloudFiles.CreateDirectoryPlaceholder(CreateRequest(syncPair, directory));
+                    _cloudFiles.CreateDirectoryPlaceholder(WindowsCloudFilesDirectoryRequestFactory.Create(syncPair, directory, directory.RelativePath));
                     repairedCount++;
                     PublishRepairProgress(syncPair.Id, request, startedAtUtc, repairedCount, directories.Count, isCompleted: false);
                 }
@@ -304,24 +302,6 @@ namespace Cotton.Sync.Desktop.Platform
             }
         }
 
-        private static RemoteDirectoryMaterializationRequest CreateRequest(
-            SyncPairSettings syncPair,
-            SyncStateEntry directory)
-        {
-            return new RemoteDirectoryMaterializationRequest(
-                syncPair.Id.ToString("D"),
-                syncPair.LocalRootPath,
-                syncPair.RemoteRootNodeId,
-                directory.RelativePath,
-                new NodeDto
-                {
-                    Id = directory.RemoteNodeId!.Value,
-                    Name = GetLeafName(directory.RelativePath),
-                    CreatedAt = directory.SyncedAtUtc,
-                    UpdatedAt = directory.SyncedAtUtc,
-                });
-        }
-
         private static int GetDirectoryDepth(string relativePath)
         {
             int depth = 1;
@@ -334,13 +314,6 @@ namespace Cotton.Sync.Desktop.Platform
             }
 
             return depth;
-        }
-
-        private static string GetLeafName(string relativePath)
-        {
-            string normalized = SyncPath.Normalize(relativePath);
-            int lastSlashIndex = normalized.LastIndexOf('/');
-            return lastSlashIndex < 0 ? normalized : normalized[(lastSlashIndex + 1)..];
         }
     }
 }

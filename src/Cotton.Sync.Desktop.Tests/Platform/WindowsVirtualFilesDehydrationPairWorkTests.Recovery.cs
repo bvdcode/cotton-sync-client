@@ -60,6 +60,35 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
+        public async Task RunOnceAsync_RecoveryCreatesCloudIdentityForRegularParentOfHydratedFile()
+        {
+            SyncPairSettings pair = CreateVirtualFilesPair();
+            FakeSyncStateStore store = new();
+            SyncStateEntry directory = CreateDirectoryState(pair, "Lessons");
+            store.UpsertEntry(directory);
+            SyncStateEntry file = CreatePlaceholderState(pair, "Lessons/video.mp4");
+            file.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
+            store.UpsertEntry(file);
+            FakeCloudFilesAdapter cloudFiles = new() { PlaceholderState = WindowsCloudFilesPlaceholderState.None };
+            RecordingSyncPairWork inner = new();
+            WindowsVirtualFilesDehydrationPairWork work = CreateWork(
+                inner, store, cloudFiles, new FakeContentHasher("remote-hash"),
+                readDiskState: _ => CreatePinnedHydratedDiskState());
+
+            await work.RunOnceAsync(pair, SyncRunRequest.ForFull(SyncRunCause.Periodic));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(cloudFiles.CreatedDirectories, Has.Count.EqualTo(1));
+                Assert.That(cloudFiles.CreatedDirectories[0].RelativePath, Is.EqualTo("Lessons"));
+                Assert.That(cloudFiles.CreatedDirectories[0].RemoteDirectory.Id, Is.EqualTo(directory.RemoteNodeId));
+                Assert.That(cloudFiles.InSyncPaths, Is.EqualTo(new[] { "Lessons" }));
+                Assert.That(inner.Requests, Has.Count.EqualTo(1));
+                Assert.That(cloudFiles.HydratedPaths, Is.Empty);
+            });
+        }
+
+        [Test]
         public async Task RunOnceAsync_StalePinnedRecoveryYieldsToPrimarySync()
         {
             SyncPairSettings syncPair = CreateVirtualFilesPair();

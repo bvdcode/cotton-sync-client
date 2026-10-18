@@ -35,6 +35,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<string> IdentityUpdatedPaths { get; } = [];
 
+            public WindowsCloudFilesPlaceholderState InitialPlaceholderState { get; set; } = WindowsCloudFilesPlaceholderState.Placeholder;
+
             public WindowsCloudFilesPlaceholderState InSyncStateAfterSet { get; set; } =
                 WindowsCloudFilesPlaceholderState.Placeholder | WindowsCloudFilesPlaceholderState.InSync;
 
@@ -217,7 +219,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 return InSyncPaths.Contains(filePath, StringComparer.OrdinalIgnoreCase)
                     ? InSyncStateAfterSet
-                    : WindowsCloudFilesPlaceholderState.None;
+                    : InitialPlaceholderState;
             }
 
             public byte[] GetPlaceholderIdentity(string filePath)

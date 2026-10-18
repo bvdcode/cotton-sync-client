@@ -174,7 +174,17 @@ namespace Cotton.Sync.Desktop.Platform
             foreach (SyncStateEntry entry in completedDirectories)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                _cloudFiles.SetInSyncState(syncPair, entry.RelativePath);
+                WindowsCloudFilesPlaceholderState placeholderState = _cloudFiles.GetPlaceholderState(syncPair, entry.RelativePath);
+                if (placeholderState != WindowsCloudFilesPlaceholderState.Invalid
+                    && placeholderState.HasFlag(WindowsCloudFilesPlaceholderState.Placeholder))
+                {
+                    _cloudFiles.SetInSyncState(syncPair, entry.RelativePath);
+                }
+                else
+                {
+                    _localChangeSuppression?.SuppressProviderDirectoryWrite(syncPair.Id, syncPair.LocalRootPath, entry.RelativePath);
+                    _cloudFiles.CreateDirectoryPlaceholder(WindowsCloudFilesDirectoryRequestFactory.Create(syncPair, entry, entry.RelativePath));
+                }
             }
 
             return completedDirectories.Length;

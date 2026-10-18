@@ -13,11 +13,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 {
     public partial class WindowsVirtualFilesDehydrationPairWorkTests
     {
-        [TestCase(false)]
-        [TestCase(true)]
+        [TestCase(false, false)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
         [Platform(Include = "Win")]
         [Explicit("Registers a temporary Windows Cloud Files sync root.")]
-        public async Task RunOnceAsync_PinnedRegularFileRegainsCloudIdentity(bool startupRecovery)
+        public async Task RunOnceAsync_PinnedRegularFileRegainsCloudIdentity(bool startupRecovery, bool regularDirectory)
         {
             string root = Path.Combine(Path.GetTempPath(), "cotton-cloud-files-finalization-" + Guid.NewGuid().ToString("N"));
             string directoryPath = Path.Combine(root, "Pictures");
@@ -31,26 +32,34 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             WindowsStorageProviderSyncRootRegistrar registrar = new(WindowsCloudFilesNativeApiIntegrationTests.GetShellHelperPath());
             WindowsCloudFilesAdapter adapter = new(nativeApi: nativeApi, storageProviderRegistrar: registrar);
             Directory.CreateDirectory(root);
-            registrar.Register(new WindowsStorageProviderSyncRootRegistration(
-                pair.Id, root, "finalization-integration-test",
-                Path.Combine(AppContext.BaseDirectory, "Cotton.Sync.Desktop.exe")));
-            nativeApi.RegisterSyncRoot(new WindowsCloudFilesNativeSyncRootRegistration(
-                root, WindowsCloudFilesAdapter.ProviderName, "finalization-integration-test",
-                WindowsCloudFilesProviderMetadata.ProviderGuid,
-                WindowsCloudFilesPlaceholderFactory.CreateSyncRootIdentity(pair.Id, pair.RemoteRootNodeId)));
             WindowsCloudFilesHydrationCoordinator handler = new(
                 new WindowsCloudFilesHydrationCoordinatorTests.FakeContentProvider(content), nativeApi);
             try
             {
-                using WindowsCloudFilesConnection connection = nativeApi.ConnectSyncRoot(
-                    new WindowsCloudFilesConnectionRequest(root, handler));
-                nativeApi.CreatePlaceholder(new WindowsCloudFilesNativePlaceholder(
-                    root, "Pictures", [1], 0, DateTime.UtcNow, DateTime.UtcNow, IsDirectory: true));
+                using WindowsCloudFilesConnection connection = adapter.ConnectSyncRoot(pair, handler);
+                if (regularDirectory)
+                {
+                    Directory.CreateDirectory(directoryPath);
+                }
+                else
+                {
+                    nativeApi.CreatePlaceholder(new WindowsCloudFilesNativePlaceholder(
+                        root, "Pictures", [1], 0, DateTime.UtcNow, DateTime.UtcNow, IsDirectory: true));
+                    nativeApi.SetPinState(directoryPath, WindowsCloudFilesPinState.Pinned);
+                }
                 await File.WriteAllBytesAsync(filePath, content);
-                nativeApi.SetPinState(directoryPath, WindowsCloudFilesPinState.Pinned);
                 nativeApi.SetPinState(filePath, WindowsCloudFilesPinState.Pinned);
                 Assert.That((int)File.GetAttributes(filePath), Is.EqualTo(524320));
-                Assert.That(await ReadStorageProviderStateAsync(filePath), Is.EqualTo("4"));
+                if (regularDirectory)
+                {
+                    WindowsCloudFilesNativeException? failure = Assert.Throws<WindowsCloudFilesNativeException>(
+                        () => nativeApi.SetInSyncState(directoryPath));
+                    Assert.That(failure!.HResult, Is.EqualTo(unchecked((int)0x80070178)));
+                }
+                else
+                {
+                    Assert.That(await ReadStorageProviderStateAsync(filePath), Is.EqualTo("4"));
+                }
                 FakeSyncStateStore stateStore = new();
                 stateStore.UpsertEntry(CreateDirectoryState(pair, "Pictures"));
                 SyncStateEntry state = CreatePlaceholderState(pair, "Pictures/photo.jpg");
@@ -83,6 +92,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     Assert.That(File.ReadAllBytes(filePath), Is.EqualTo(content));
                     Assert.That(File.GetAttributes(filePath).HasFlag((FileAttributes)FileAttributePinned), Is.True);
                     Assert.That(inner.Requests.Count, Is.EqualTo(startupRecovery ? 1 : 0));
+                    Assert.That(nativeApi.GetPlaceholderState(directoryPath).HasFlag(WindowsCloudFilesPlaceholderState.Placeholder), Is.True);
+                    Assert.That(nativeApi.GetPlaceholderState(directoryPath).HasFlag(WindowsCloudFilesPlaceholderState.InSync), Is.True);
                 });
             }
             finally
