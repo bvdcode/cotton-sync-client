@@ -50,7 +50,6 @@ namespace Cotton.Sync.Desktop.Platform
                 ValidateExistingDirectoryPlaceholderIdentity(
                     request,
                     syncPairId,
-                    normalizedPath,
                     fullPlaceholderPath);
 
                 try
@@ -104,7 +103,6 @@ namespace Cotton.Sync.Desktop.Platform
         private void ValidateExistingDirectoryPlaceholderIdentity(
             RemoteDirectoryMaterializationRequest request,
             Guid syncPairId,
-            string normalizedPath,
             string fullPlaceholderPath)
         {
             WindowsCloudFilesDirectoryPlaceholderIdentity identity =
@@ -112,11 +110,7 @@ namespace Cotton.Sync.Desktop.Platform
                     nativeApi.GetPlaceholderIdentity(fullPlaceholderPath));
             if (identity.SyncPairId != syncPairId
                 || identity.RemoteRootNodeId != request.RemoteRootNodeId
-                || identity.NodeId != request.RemoteDirectory.Id
-                || !string.Equals(
-                    SyncPath.ToKey(identity.RelativePath),
-                    SyncPath.ToKey(normalizedPath),
-                    StringComparison.Ordinal))
+                || identity.NodeId != request.RemoteDirectory.Id)
             {
                 throw new InvalidOperationException(
                     "Existing Cloud Files directory placeholder has a foreign or stale identity.");

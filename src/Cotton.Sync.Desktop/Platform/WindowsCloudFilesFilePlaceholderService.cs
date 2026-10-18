@@ -394,11 +394,7 @@ namespace Cotton.Sync.Desktop.Platform
                 nativeApi.GetPlaceholderIdentity(fullPlaceholderPath));
             if (identity.SyncPairId != syncPairId
                 || identity.RemoteRootNodeId != request.RemoteRootNodeId
-                || identity.NodeFileId != request.RemoteFile.Id
-                || !string.Equals(
-                    SyncPath.ToKey(identity.RelativePath),
-                    SyncPath.ToKey(normalizedPath),
-                    StringComparison.Ordinal))
+                || identity.NodeFileId != request.RemoteFile.Id)
             {
                 throw new RemoteFilePlaceholderUnavailableException(
                     normalizedPath,
