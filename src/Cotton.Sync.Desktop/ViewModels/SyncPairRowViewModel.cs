@@ -85,6 +85,11 @@ namespace Cotton.Sync.Desktop.ViewModels
             get
             {
                 string status = Status.Trim();
+                if (status is "Scanning" or "Syncing" && !string.IsNullOrWhiteSpace(LastError))
+                {
+                    return "Error";
+                }
+
                 return IsDecorativeIdleStatus(status) ? string.Empty : status;
             }
         }
@@ -196,7 +201,18 @@ namespace Cotton.Sync.Desktop.ViewModels
         public string? LastError
         {
             get => _lastError;
-            set => SetProperty(ref _lastError, value);
+            set
+            {
+                if (SetProperty(ref _lastError, value))
+                {
+                    OnPropertyChanged(nameof(DisplayStatus));
+                    OnPropertyChanged(nameof(HasDisplayStatus));
+                    OnPropertyChanged(nameof(IsStatusIndicatorVisible));
+                    OnPropertyChanged(nameof(IsStatusActive));
+                    OnPropertyChanged(nameof(IsStatusAttention));
+                    OnPropertyChanged(nameof(StatusIndicatorToolTip));
+                }
+            }
         }
 
         public Guid? RemoteRootNodeId

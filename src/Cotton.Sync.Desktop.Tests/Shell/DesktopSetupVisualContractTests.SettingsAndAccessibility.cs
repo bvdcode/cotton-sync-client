@@ -141,12 +141,12 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             {
                 Assert.That(mainWindowXaml, Does.Contain("Text=\"{Binding ServerUrl}\""));
                 Assert.That(mainWindowXaml, Does.Contain("ToolTip.Tip=\"{Binding ServerUrl}\""));
-                Assert.That(mainWindowXaml, Does.Contain("Text=\"{Binding StatusCardDetailText}\""));
-                Assert.That(mainWindowXaml, Does.Contain("ToolTip.Tip=\"{Binding StatusCardDetailText}\""));
-                Assert.That(mainWindowXaml, Does.Contain("Text=\"{Binding CurrentWorkProgressDetails}\""));
-                Assert.That(mainWindowXaml, Does.Contain("ToolTip.Tip=\"{Binding CurrentWorkProgressDetails}\""));
-                Assert.That(mainWindowXaml, Does.Contain("Text=\"{Binding CurrentWorkProgressSecondaryDetails}\""));
-                Assert.That(mainWindowXaml, Does.Contain("ToolTip.Tip=\"{Binding CurrentWorkProgressSecondaryDetails}\""));
+                Assert.That(mainWindowXaml, Does.Contain("Text=\"{Binding DashboardStatusDetails}\""));
+                Assert.That(mainWindowXaml, Does.Contain("ToolTip.Tip=\"{Binding DashboardStatusDetails}\""));
+                Assert.That(mainWindowXaml, Does.Contain("Text=\"{Binding DashboardWorkDetails}\""));
+                Assert.That(mainWindowXaml, Does.Contain("ToolTip.Tip=\"{Binding DashboardWorkDetails}\""));
+                Assert.That(mainWindowXaml, Does.Contain("Text=\"{Binding CurrentWorkProgressHeaderDetails}\""));
+                Assert.That(mainWindowXaml, Does.Contain("ToolTip.Tip=\"{Binding CurrentWorkProgressHeaderDetails}\""));
                 Assert.That(mainWindowXaml, Does.Contain("Text=\"{Binding Message}\""));
                 Assert.That(mainWindowXaml, Does.Contain("ToolTip.Tip=\"{Binding Message}\""));
                 Assert.That(mainWindowXaml, Does.Contain("Text=\"{Binding CurrentOperation}\""));
@@ -293,7 +293,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 "<Grid Grid.Row=\"2\"");
             string actionRequiredRow = GetSlice(
                 mainWindowXaml,
-                "<TextBlock Text=\"Action required\"",
+                "<TextBlock Text=\"{Binding DashboardStatusTitle}\"",
                 "<Border MaxHeight=\"94\"");
             string conflictsHeader = GetSlice(
                 mainWindowXaml,
@@ -327,9 +327,9 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(actionRequiredRow, Does.Contain("Kind=\"CheckCircleOutline\""));
                 Assert.That(actionRequiredRow, Does.Contain("Grid.Row=\"1\""));
                 Assert.That(actionRequiredRow, Does.Contain("HorizontalAlignment=\"Right\""));
-                Assert.That(actionRequiredRow, Does.Contain("MaxLines=\"4\""));
+                Assert.That(actionRequiredRow, Does.Contain("MaxLines=\"2\""));
                 Assert.That(actionRequiredRow, Does.Contain("TextWrapping=\"Wrap\""));
-                Assert.That(actionRequiredRow, Does.Contain("ToolTip.Tip=\"{Binding ActionRequiredMessage}\""));
+                Assert.That(actionRequiredRow, Does.Contain("ToolTip.Tip=\"{Binding DashboardStatusDetails}\""));
                 Assert.That(actionRequiredRow, Does.Contain("Text=\"Retry\""));
                 Assert.That(actionRequiredRow, Does.Contain("Text=\"Diagnostics\""));
                 Assert.That(actionRequiredRow, Does.Not.Contain("Content=\"Retry\""));

@@ -72,6 +72,10 @@
       <Setter Property="BorderBrush" Value="{DynamicResource CottonPrimarySoftBrush}" />
       <Setter Property="BorderThickness" Value="1" />
     </Style>
+    <Style Selector="Border.statusCard.dashboard">
+      <Setter Property="Background" Value="{DynamicResource CottonSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CottonBorderBrush}" />
+    </Style>
     <Style Selector="Border.statusCard.actionRequired">
       <Setter Property="Background" Value="{DynamicResource CottonErrorSoftBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource CottonErrorBrush}" />

@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.Desktop.Shell;
@@ -7,6 +7,23 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 {
     public class DesktopNotificationTrackerTests
     {
+        [Test]
+        public void Apply_BackgroundRetriesDoNotRepeatUnresolvedErrorNotification()
+        {
+            Guid pairId = Guid.NewGuid();
+            DesktopNotificationTracker tracker = new();
+            Dictionary<Guid, string> names = new() { [pairId] = "Cloud" };
+            const string error = "Remote delete blocked by mass-delete guard. 677 pending deletes exceed limit 100.";
+            List<DesktopNotificationRequest> notifications = [];
+            foreach (string state in new[] { "Error", "Syncing", "Error", "Scanning", "Syncing", "Error" })
+            {
+                notifications.AddRange(tracker.Apply(new([new(pairId, state, error)]), names));
+            }
+            Assert.That(notifications, Has.Count.EqualTo(1));
+            tracker.Apply(new([new(pairId, "Idle", null)]), names);
+            Assert.That(tracker.Apply(new([new(pairId, "Error", error)]), names), Has.Count.EqualTo(1));
+        }
+
         [Test]
         public void NotificationRequest_RejectsUnknownKind()
         {

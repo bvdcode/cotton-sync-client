@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 namespace Cotton.Sync.Desktop.Shell
@@ -7,6 +7,7 @@ namespace Cotton.Sync.Desktop.Shell
     {
         private readonly HashSet<Guid> _initialSyncCompleted = [];
         private readonly Dictionary<Guid, string> _previousStatuses = [];
+        private readonly Dictionary<Guid, string> _previousErrors = [];
 
         public void RestoreInitialSyncCompletion(IEnumerable<Guid> syncPairIds)
         {
@@ -58,6 +59,7 @@ namespace Cotton.Sync.Desktop.Shell
         {
             _initialSyncCompleted.Clear();
             _previousStatuses.Clear();
+            _previousErrors.Clear();
         }
 
         private bool ShouldSuppressInitialSyncComplete(
@@ -80,10 +82,11 @@ namespace Cotton.Sync.Desktop.Shell
             string displayName,
             bool suppressInitialSyncComplete)
         {
-            if (string.Equals(pair.Status, "Error", StringComparison.Ordinal)
-                && !string.IsNullOrWhiteSpace(currentError))
+            string previousError = _previousErrors.GetValueOrDefault(pair.Id, string.Empty);
+            _previousErrors[pair.Id] = currentError;
+            if (!string.IsNullOrWhiteSpace(currentError))
             {
-                if (!string.Equals(previousStatus, pair.Status, StringComparison.Ordinal))
+                if (string.IsNullOrWhiteSpace(previousError))
                 {
                     notifications.Add(new DesktopNotificationRequest(
                         DesktopNotificationKind.ActionRequiredError,

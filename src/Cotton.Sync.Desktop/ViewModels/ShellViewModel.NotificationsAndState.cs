@@ -95,7 +95,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 return "Signed out";
             }
 
-            if (status.SyncPairs.Any(static pair => string.Equals(pair.Status, "Error", StringComparison.Ordinal)))
+            if (status.SyncPairs.Any(DesktopActionRequiredMessageResolver.RequiresUserAction))
             {
                 return "Action required";
             }

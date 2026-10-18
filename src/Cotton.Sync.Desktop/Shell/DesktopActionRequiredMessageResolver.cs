@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Globalization;
@@ -73,8 +73,7 @@ namespace Cotton.Sync.Desktop.Shell
         {
             ArgumentNullException.ThrowIfNull(status);
             DesktopSyncPairStatusSnapshot? failedPair = status.SyncPairs
-                .FirstOrDefault(static pair => string.Equals(pair.Status, "Error", StringComparison.Ordinal)
-                    && !string.IsNullOrWhiteSpace(pair.LastError));
+                .FirstOrDefault(static pair => RequiresUserAction(pair) && !string.IsNullOrWhiteSpace(pair.LastError));
             if (failedPair is not null)
             {
                 return Normalize(failedPair.LastError) ?? GenericSyncErrorMessage;
@@ -87,9 +86,15 @@ namespace Cotton.Sync.Desktop.Shell
 
         public static string FromSyncPairStatus(DesktopSyncPairStatusSnapshot pair)
         {
-            return string.Equals(pair.Status, "Error", StringComparison.Ordinal)
+            return RequiresUserAction(pair)
                 ? Normalize(pair.LastError) ?? GenericSyncErrorMessage
                 : string.Empty;
+        }
+
+        internal static bool RequiresUserAction(DesktopSyncPairStatusSnapshot pair)
+        {
+            return pair.Status == "Error"
+                || (pair.Status is "Scanning" or "Syncing" && !string.IsNullOrWhiteSpace(pair.LastError));
         }
 
         public static string FromSelfTest(DesktopSelfTestSnapshot selfTest)

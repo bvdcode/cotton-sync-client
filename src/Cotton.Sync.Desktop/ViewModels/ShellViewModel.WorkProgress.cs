@@ -304,6 +304,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         private void RaiseCurrentWorkProgressProperties()
         {
+            RaiseDashboardStatusProperties();
             OnPropertyChanged(nameof(HasCurrentWorkProgress));
             OnPropertyChanged(nameof(CurrentTrayActivityKind));
             OnPropertyChanged(nameof(HeaderStatusText));

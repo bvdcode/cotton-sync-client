@@ -124,7 +124,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(foldersSection, Does.Contain("Text=\"Remove\""));
                 Assert.That(foldersSection, Does.Contain("Classes=\"compact danger\""));
                 Assert.That(foldersSection, Does.Contain("Grid.Row=\"5\""));
-                Assert.That(foldersSection, Does.Contain("RowDefinitions=\"Auto,Auto,Auto,Auto,Auto,Auto\""));
+                Assert.That(foldersSection, Does.Contain("RowDefinitions=\"Auto,16,6,Auto,Auto,Auto\""));
                 Assert.That(foldersSection, Does.Not.Contain("<Path Data="));
                 Assert.That(foldersSection, Does.Not.Contain("Content=\"{Binding ToggleEnabledIcon}\""));
                 Assert.That(foldersSection, Does.Not.Contain("Content=\"💾\""));

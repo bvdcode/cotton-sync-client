@@ -35,6 +35,11 @@ namespace Cotton.Sync.App.Runners
         {
             lock (_gate)
             {
+                if (state is SyncPairRunState.Scanning or SyncPairRunState.Syncing)
+                {
+                    lastError ??= _retainedActionRequiredError;
+                }
+
                 _status = CreateStatus(state, lastError);
             }
         }

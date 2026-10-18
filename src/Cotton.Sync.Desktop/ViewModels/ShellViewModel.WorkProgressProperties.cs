@@ -29,6 +29,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             {
                 if (SetProperty(ref _currentProgressText, value))
                 {
+                    RaiseDashboardStatusProperties();
                     OnPropertyChanged(nameof(StatusCardTitle));
                     OnPropertyChanged(nameof(StatusCardDetailText));
                     OnPropertyChanged(nameof(HasStatusCardDetail));
@@ -300,6 +301,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                     OnPropertyChanged(nameof(IsStatusCardVisible));
                     OnPropertyChanged(nameof(HasDashboardNotifications));
                     OnPropertyChanged(nameof(HeaderStatusText));
+                    RaiseDashboardStatusProperties();
                     OnPropertyChanged(nameof(StatusCardTitle));
                     OnPropertyChanged(nameof(StatusCardDetailText));
                     OnPropertyChanged(nameof(HasStatusCardDetail));

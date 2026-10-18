@@ -324,6 +324,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                         SetDesktopSyncChangesApiUnavailable(true);
                     }
 
+                    RaiseDashboardStatusProperties();
                     OnPropertyChanged(nameof(HasActionRequired));
                     OnPropertyChanged(nameof(HasStatusAttention));
                     OnPropertyChanged(nameof(HeaderStatusText));
@@ -353,6 +354,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                 if (SetProperty(ref _globalStatus, value))
                 {
                     _statusPresentationRevision++;
+                    RaiseDashboardStatusProperties();
                     OnPropertyChanged(nameof(HeaderStatusText));
                     OnPropertyChanged(nameof(StatusCardTitle));
                 }

@@ -73,6 +73,44 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
+        [Test]
+        public async Task ActionRequired_RemainsVisibleThroughoutBackgroundTransfers()
+        {
+            Guid pairId = Guid.NewGuid();
+            const string error = "Remote delete blocked by mass-delete guard. 677 pending deletes exceed limit 100.";
+            FakeDesktopShellController controller = new(CreateSignedInSnapshot(CreatePair(pairId, "Cloud", "Idle")));
+            using ShellViewModel viewModel = CreateViewModel(controller);
+            await viewModel.InitializeAsync();
+            List<bool> warningVisibility = [];
+            controller.ReportStatus(new([new(pairId, "Error", error)]));
+            viewModel.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(viewModel.HasActionRequired))
+                {
+                    warningVisibility.Add(viewModel.HasActionRequired);
+                }
+            };
+            for (int index = 0; index < 10; index++)
+            {
+                controller.ReportStatus(new([new(pairId, "Syncing", error)]));
+                DesktopTransferProgressSnapshot transfer = new(pairId, SyncTransferDirection.Download,
+                    $"photo-{index}.jpg", 0, 4096, false, DateTime.UtcNow);
+                controller.ReportTransferProgress(transfer);
+                Assert.Multiple(() =>
+                {
+                    Assert.That(viewModel.DashboardStatusTitle, Is.EqualTo("Action required"));
+                    Assert.That(viewModel.DashboardStatusDetails, Does.Contain("677"));
+                    Assert.That(viewModel.DashboardWorkDetails, Does.Contain($"photo-{index}.jpg"));
+                    Assert.That(viewModel.HeaderStatusText, Is.EqualTo("Action required"));
+                });
+                controller.ReportTransferProgress(transfer with { TransferredBytes = 4096, IsCompleted = true });
+                controller.ReportStatus(new([new(pairId, "Error", error)]));
+            }
+            Assert.That(warningVisibility, Does.Not.Contain(false));
+            controller.ReportStatus(new([new(pairId, "Idle", null)]));
+            Assert.That(viewModel.HasActionRequired, Is.False);
+        }
+
         [TestCase("Paused")]
         [TestCase("Disabled")]
         [TestCase("Error")]

@@ -120,6 +120,25 @@ namespace Cotton.Sync.App.Tests.Runners
         }
 
         [Test]
+        public void ActionRequired_RemainsInActiveStatusUntilSuccessfulManualRetry()
+        {
+            SyncPairStatusController controller = new(CreatePair(isEnabled: true));
+            const string error = "Remote delete blocked by mass-delete guard.";
+            controller.SetActionRequiredState(error);
+            foreach (SyncPairRunState state in new[] { SyncPairRunState.Scanning, SyncPairRunState.Syncing })
+            {
+                controller.SetState(state);
+                Assert.Multiple(() =>
+                {
+                    Assert.That(controller.Status.State, Is.EqualTo(state));
+                    Assert.That(controller.Status.LastError, Is.EqualTo(error));
+                });
+            }
+            controller.SetSuccessfulSyncState(SyncRunRequest.ForFull(SyncRunCause.Manual));
+            Assert.That(controller.Status.LastError, Is.Null);
+        }
+
+        [Test]
         public async Task SyncNowAsync_PreservesActionRequiredStateUntilManualFullRetrySucceeds()
         {
             FakeSyncPairWork work = new()

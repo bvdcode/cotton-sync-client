@@ -50,57 +50,21 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
-        public void StatusCard_UsesAttentionStateForActionRequired()
+        public void DashboardStatus_KeepsOneLayoutForIdleTransferAndAttention()
         {
             string mainWindowXaml = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml"));
-            string statusCard = GetSlice(
-                mainWindowXaml,
-                "Classes=\"statusCard\"",
-                "<TextBlock Text=\"Action required\"");
-
+            string statusCard = GetSlice(mainWindowXaml,
+                "Classes=\"statusCard dashboard\"", "IsVisible=\"{Binding HasDashboardNotifications}\"");
             Assert.Multiple(() =>
             {
-                Assert.That(mainWindowXaml, Does.Contain("Text=\"{Binding HeaderTitleText}\""));
-                Assert.That(mainWindowXaml, Does.Contain("Text=\"{Binding HeaderStatusText}\""));
-                Assert.That(mainWindowXaml, Does.Not.Contain("Text=\"{Binding GlobalStatus}\""));
-                Assert.That(statusCard, Does.Contain("IsVisible=\"{Binding IsStatusCardVisible}\""));
+                Assert.That(statusCard, Does.Contain("IsVisible=\"{Binding HasSyncPairs}\""));
+                Assert.That(statusCard, Does.Contain("RowDefinitions=\"20,32,32,4,32\""));
                 Assert.That(statusCard, Does.Contain("Classes.actionRequired=\"{Binding HasStatusAttention}\""));
-                Assert.That(statusCard, Does.Contain("Classes.offline=\"{Binding HasOfflineStatus}\""));
-                Assert.That(statusCard, Does.Contain("Classes.waiting=\"{Binding HasWaitingStatus}\""));
-                Assert.That(statusCard, Does.Not.Contain("Classes.actionRequired=\"{Binding HasActionRequired}\""));
-                Assert.That(statusCard, Does.Contain("Text=\"{Binding StatusCardDetailText}\""));
-                Assert.That(statusCard, Does.Contain("IsVisible=\"{Binding HasStatusCardDetail}\""));
-                Assert.That(statusCard, Does.Not.Contain("Text=\"{Binding AccountName}\""));
-                Assert.That(statusCard, Does.Not.Contain("Text=\"{Binding CurrentProgressText}\""));
-            });
-        }
-
-        [Test]
-        public void DashboardProgressCards_ExposeRunAndTransferProgress()
-        {
-            string mainWindowXaml = File.ReadAllText(GetDesktopFilePath("MainWindow.axaml"));
-            string dashboardView = GetSlice(
-                mainWindowXaml,
-                "IsVisible=\"{Binding IsDashboardVisible}\">",
-                "<TextBlock Text=\"Action required\"");
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(dashboardView, Does.Contain("IsVisible=\"{Binding HasCurrentWorkProgress}\""));
-                Assert.That(dashboardView, Does.Contain("ColumnDefinitions=\"*,Auto\""));
-                Assert.That(dashboardView, Does.Contain("Text=\"{Binding CurrentWorkProgressTitle}\""));
-                Assert.That(dashboardView, Does.Not.Contain("Text=\"{Binding CurrentWorkProgressHeaderDetails}\""));
-                Assert.That(dashboardView, Does.Contain("Text=\"{Binding CurrentWorkProgressHeaderSizeDetails}\""));
-                Assert.That(dashboardView, Does.Contain("Text=\"{Binding CurrentWorkProgressHeaderRateDetails}\""));
-                Assert.That(dashboardView, Does.Contain("HorizontalAlignment=\"Right\""));
-                Assert.That(dashboardView, Does.Contain("MinHeight=\"15\""));
-                Assert.That(dashboardView, Does.Contain("Text=\"{Binding CurrentWorkProgressDetails}\""));
-                Assert.That(dashboardView, Does.Contain("Text=\"{Binding CurrentWorkProgressSecondaryDetails}\""));
-                Assert.That(dashboardView, Does.Contain("MinHeight=\"16\""));
-                Assert.That(dashboardView, Does.Contain("Value=\"{Binding CurrentWorkProgressValue}\""));
-                Assert.That(dashboardView, Does.Contain("IsIndeterminate=\"{Binding IsCurrentWorkProgressIndeterminate}\""));
-                Assert.That(dashboardView, Does.Not.Contain("IsVisible=\"{Binding HasCurrentRunProgress}\""));
-                Assert.That(dashboardView, Does.Not.Contain("IsVisible=\"{Binding HasCurrentTransfer}\""));
+                Assert.That(statusCard, Does.Contain("Text=\"{Binding DashboardStatusDetails}\""));
+                Assert.That(statusCard, Does.Contain("Text=\"{Binding DashboardWorkDetails}\""));
+                Assert.That(statusCard, Does.Contain("Value=\"{Binding CurrentWorkProgressValue}\""));
+                Assert.That(statusCard, Does.Contain("Command=\"{Binding ApproveRemoteMassDeleteCommand}\""));
+                Assert.That(statusCard, Does.Not.Contain("IsVisible=\"{Binding IsStatusCardVisible}\""));
             });
         }
 
