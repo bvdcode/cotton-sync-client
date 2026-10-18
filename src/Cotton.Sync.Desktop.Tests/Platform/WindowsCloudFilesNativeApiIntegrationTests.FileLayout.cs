@@ -11,10 +11,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 {
     public partial class WindowsCloudFilesNativeApiIntegrationTests
     {
-        [TestCase(false)]
-        [TestCase(true)]
+        [TestCase(false, false)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
         [Explicit("Registers a temporary Windows Cloud Files sync root and writes large local files.")]
-        public async Task FinalizeUploadedFile_PreservesLargePinnedFile(bool interleaveAllocations)
+        public async Task FinalizeUploadedFile_PreservesLargePinnedFile(bool interleaveAllocations, bool optimizeMetadata)
         {
             const FileAttributes pinnedAttribute = (FileAttributes)0x00080000;
             const string fileName = "Учебное видео с длинным названием для проверки метаданных.mp4";
@@ -74,6 +75,15 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     Assert.That(file.Attributes.HasFlag(FileAttributes.SparseFile), Is.False);
                     Assert.That(file.Attributes.HasFlag(FileAttributes.ReparsePoint), Is.False);
                 });
+
+                if (optimizeMetadata)
+                {
+                    string optimization = await DesktopPowerShellFileReader.ReadAsync(
+                        "& fsutil file optimizemetadata /A $env:COTTON_SYNC_EXTERNAL_READ_PATH; "
+                        + "if ($LASTEXITCODE -ne 0) { throw 'Optimizing the test file metadata failed.' }",
+                        filePath, TimeSpan.FromSeconds(30), CancellationToken.None);
+                    TestContext.Out.WriteLine(optimization);
+                }
 
                 WindowsCloudFilesUploadedFileFinalizationResult result = await nativeApi.FinalizeUploadedFileAsync(
                     new WindowsCloudFilesUploadedFileFinalizationRequest(

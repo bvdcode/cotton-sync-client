@@ -180,6 +180,10 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public List<SyncRunRequest> Requests { get; } = [];
 
+            public IReadOnlyList<string> AdditionalUploadedPaths { get; init; } = [];
+
+            public Exception? Failure { get; init; }
+
             public Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
             {
                 return RunOnceAsync(syncPair, SyncRunRequest.Full, cancellationToken);
@@ -198,6 +202,17 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     _uploadedPath,
                     "Uploaded " + _uploadedPath,
                     DateTime.UtcNow));
+                foreach (string path in AdditionalUploadedPaths)
+                {
+                    _activityPublisher.Publish(new AppSyncActivity(
+                        Guid.NewGuid(), syncPair.Id, _activityKind, path, "Uploaded " + path, DateTime.UtcNow));
+                }
+
+                if (Failure is not null)
+                {
+                    throw Failure;
+                }
+
                 return Task.CompletedTask;
             }
         }
@@ -228,6 +243,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             public Exception? Exception { get; init; }
 
             public Exception? DirectoryException { get; init; }
+
+            public Dictionary<string, Exception> FileFailures { get; } = [];
 
             public RemoteFilePlaceholderResult CreateFilePlaceholder(RemoteFilePlaceholderRequest request)
             {
@@ -268,6 +285,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 CancellationToken cancellationToken = default)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (FileFailures.TryGetValue(fileState.RelativePath, out Exception? failure))
+                {
+                    throw failure;
+                }
+
                 SetInSyncState(syncPair, fileState.RelativePath);
                 return Task.FromResult(new RemoteFilePlaceholderResult(
                     [1, 2, 3],

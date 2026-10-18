@@ -70,13 +70,28 @@ namespace Cotton.Sync.Desktop.Platform
         {
             CloudFilesFinalizationActivityCollector collector = new(syncPair.Id);
             using IDisposable subscription = _activityPublisher.Subscribe(collector);
-            await runInnerAsync().ConfigureAwait(false);
+            SyncActionRequiredException? syncFailure = null;
+            try
+            {
+                await runInnerAsync().ConfigureAwait(false);
+            }
+            catch (SyncActionRequiredException exception)
+            {
+                System.Diagnostics.Trace.TraceWarning(
+                    "Finishing completed Cloud Files transfers after a partial sync failure: {0}", exception);
+                syncFailure = exception;
+            }
 
             HashSet<string> finalizedPaths = new(StringComparer.OrdinalIgnoreCase);
             IReadOnlyList<string> finalizationPaths = await GetFinalizationPathsAsync(syncPair, collector, cancellationToken)
                 .ConfigureAwait(false);
             if (finalizationPaths.Count == 0)
             {
+                if (syncFailure is not null)
+                {
+                    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(syncFailure).Throw();
+                }
+
                 return;
             }
 
@@ -84,26 +99,54 @@ namespace Cotton.Sync.Desktop.Platform
             int finalizedCount = 0;
             int totalCount = CountFinalizationItems(finalizationPaths);
             PublishFinalizationProgress(syncPair.Id, request, startedAtUtc, finalizedCount, totalCount, isCompleted: false);
+            void RecordFinalizedPath()
+            {
+                finalizedCount++;
+                PublishFinalizationProgress(
+                    syncPair.Id, request, startedAtUtc, finalizedCount, totalCount, isCompleted: false);
+            }
+
             try
             {
+                List<string> failures = [];
                 foreach (string relativePath in finalizationPaths)
                 {
-                    await FinalizeUploadedPathAsync(
-                            syncPair,
-                            relativePath,
-                            finalizedPaths,
-                            () =>
-                            {
-                                finalizedCount++;
-                                PublishFinalizationProgress(
-                                    syncPair.Id,
-                                    request,
-                                    startedAtUtc,
-                                    finalizedCount,
-                                    totalCount,
-                                    isCompleted: false);
-                            },
-                            cancellationToken)
+                    try
+                    {
+                        await FinalizeTrackedPathAsync(syncPair, relativePath, cancellationToken).ConfigureAwait(false);
+                        finalizedPaths.Add(relativePath);
+                        RecordFinalizedPath();
+                    }
+                    catch (WindowsCloudFilesNativeException exception)
+                        when (WindowsCloudFilesNativeOperationExecutor.IsFileSystemLimitation(exception))
+                    {
+                        System.Diagnostics.Trace.TraceError(
+                            "Cloud Files metadata could not be finalized for {0}: {1}", relativePath, exception);
+                        failures.Add(relativePath + ": Windows could not update Cloud Files metadata "
+                            + "because of a file system limitation (0x80070299). The local file was kept.");
+                    }
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                if (failures.Count > 0)
+                {
+                    if (syncFailure is not null)
+                    {
+                        failures.Add(syncFailure.Message);
+                    }
+
+                    throw new SyncActionRequiredException(string.Join(Environment.NewLine, failures));
+                }
+
+                if (syncFailure is not null)
+                {
+                    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(syncFailure).Throw();
+                }
+
+                foreach (string relativePath in finalizationPaths)
+                {
+                    await FinalizeAncestorDirectoriesAsync(
+                            syncPair, relativePath, finalizedPaths, RecordFinalizedPath, cancellationToken)
                         .ConfigureAwait(false);
                 }
 
@@ -121,28 +164,6 @@ namespace Cotton.Sync.Desktop.Platform
                     totalCount,
                     isCompleted: true);
             }
-        }
-
-        private async Task FinalizeUploadedPathAsync(
-            SyncPairSettings syncPair,
-            string relativePath,
-            HashSet<string> finalizedPaths,
-            Action recordFinalizedPath,
-            CancellationToken cancellationToken)
-        {
-            if (finalizedPaths.Add(relativePath))
-            {
-                await FinalizeTrackedPathAsync(syncPair, relativePath, cancellationToken).ConfigureAwait(false);
-                recordFinalizedPath();
-            }
-
-            await FinalizeAncestorDirectoriesAsync(
-                    syncPair,
-                    relativePath,
-                    finalizedPaths,
-                    recordFinalizedPath,
-                    cancellationToken)
-                .ConfigureAwait(false);
         }
 
         private async Task<IReadOnlyList<string>> GetFinalizationPathsAsync(

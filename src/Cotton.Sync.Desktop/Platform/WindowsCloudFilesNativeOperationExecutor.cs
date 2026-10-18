@@ -11,6 +11,7 @@ namespace Cotton.Sync.Desktop.Platform
         private const int HResultPathNotFound = unchecked((int)0x80070003);
         private const int HResultSharingViolation = unchecked((int)0x80070020);
         private const int HResultLockViolation = unchecked((int)0x80070021);
+        private const int HResultFileSystemLimitation = unchecked((int)0x80070299);
         private static readonly TimeSpan[] TransientPathRetryDelays =
         [
             TimeSpan.FromMilliseconds(25),
@@ -71,6 +72,11 @@ namespace Cotton.Sync.Desktop.Platform
         public static bool IsSharingViolation(WindowsCloudFilesNativeException exception)
         {
             return exception.HResult is HResultSharingViolation or HResultLockViolation;
+        }
+
+        public static bool IsFileSystemLimitation(WindowsCloudFilesNativeException exception)
+        {
+            return exception.HResult == HResultFileSystemLimitation;
         }
 
         private static bool IsTransientPathOpenFailure(WindowsCloudFilesNativeException exception)
