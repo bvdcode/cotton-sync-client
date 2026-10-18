@@ -25,7 +25,7 @@ namespace Cotton.Sync
             IReadOnlySet<string> deletedKeys = BuildExactScopedPathKeys(options.Scope.LocalDeletedPaths);
             List<string> candidateKeys = context.DirectoryStateByPath.Keys
                 .Where(key =>
-                    deletedKeys.Contains(key)
+                    (options.Scope.IsFull || deletedKeys.Contains(key))
                     && !context.LocalDirectoriesByPath.ContainsKey(key)
                     && context.RemoteDirectoriesByPath.ContainsKey(key))
                 .ToList();
@@ -48,7 +48,8 @@ namespace Cotton.Sync
                 ScopedVirtualFilesDirectoryDeleteRoot? root = TryCreateConfirmedScopedDirectoryDeleteRoot(
                     context,
                     rootKey);
-                if (root is null)
+                if (root is null || (!deletedKeys.Contains(rootKey)
+                    && !AreAllFilesPlannedForRemoteDeletion(context, root.FileKeys, deletedKeys)))
                 {
                     continue;
                 }
@@ -67,6 +68,18 @@ namespace Cotton.Sync
                 rootPaths,
                 directoryKeys,
                 fileKeys);
+        }
+
+        private static bool AreAllFilesPlannedForRemoteDeletion(
+            ScopedVirtualFilesDirectoryDeleteContext context,
+            IEnumerable<string> fileKeys,
+            IReadOnlySet<string> deletedKeys)
+        {
+            return fileKeys.All(key => SyncDeletePlanner.GetPlannedDeleteDirection(
+                context.FileStateByPath[key],
+                local: null,
+                context.RemoteFilesByPath[key],
+                exactLocalDelete: deletedKeys.Contains(key)) == SyncDeleteDirection.Remote);
         }
 
         private static ScopedVirtualFilesDirectoryDeleteRoot? TryCreateConfirmedScopedDirectoryDeleteRoot(

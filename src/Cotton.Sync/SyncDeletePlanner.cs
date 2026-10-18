@@ -272,7 +272,7 @@ namespace Cotton.Sync
                 : SyncDeleteDirection.Remote;
         }
 
-        private static SyncDeleteDirection GetPlannedDeleteDirection(
+        public static SyncDeleteDirection GetPlannedDeleteDirection(
             SyncStateEntry? state,
             LocalFileSnapshot? local,
             RemoteFileSnapshot? remote,
