@@ -98,7 +98,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("workflow_dispatch:"));
                 Assert.That(workflow, Does.Contain("refs/heads/main"));
                 Assert.That(workflow, Does.Not.Contain("    paths:"));
-                Assert.That(workflow, Does.Contain("github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release)"));
+                Assert.That(workflow, Does.Contain("(github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'workflow_dispatch' && inputs.publish_release)"));
                 Assert.That(workflow, Does.Contain("github.ref != 'refs/heads/main'"));
                 Assert.That(workflow, Does.Contain("Pushes to main and v* tags produce and publish release assets automatically."));
                 Assert.That(workflow, Does.Contain("fetch-depth: 0"));
