@@ -3,6 +3,7 @@
 
 using Cotton.Files;
 using Cotton.Nodes;
+using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.VirtualFiles;
 
@@ -35,9 +36,13 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 });
             try
             {
+                using WindowsCloudFilesConnection connection = adapter.ConnectSyncRoot(
+                    new SyncPairSettings
+                    {
+                        Id = pairId, LocalRootPath = root, RemoteRootNodeId = rootId,
+                        Mode = SyncPairMode.WindowsVirtualFiles, IsEnabled = true,
+                    }, new NoopWindowsCloudFilesCallbackHandler());
                 adapter.CreateDirectoryPlaceholder(directoryRequest);
-                using WindowsCloudFilesConnection connection = nativeApi.ConnectSyncRoot(
-                    new WindowsCloudFilesConnectionRequest(root, new NoopWindowsCloudFilesCallbackHandler()));
                 adapter.CreateFilePlaceholder(fileRequest);
                 Directory.CreateDirectory(Path.Combine(root, "Archive"));
                 Directory.Move(Path.Combine(root, "Projects"), Path.Combine(root, "Archive", "Projects"));
