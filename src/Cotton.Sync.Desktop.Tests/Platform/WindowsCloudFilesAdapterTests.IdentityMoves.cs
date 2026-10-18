@@ -44,6 +44,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             string target = Path.GetFullPath(Path.Combine(root, newPath));
             Directory.CreateDirectory(target);
             TrackExistingDirectoryPlaceholder(nativeApi, target, CreateDirectoryRequest(root, oldPath));
+            nativeApi.InSyncPaths.Add(target);
             WindowsCloudFilesAdapter adapter = new(
                 CreatePolicy(), nativeApi,
                 isReparsePoint: path => path == target,
