@@ -91,7 +91,7 @@ namespace Cotton.Sync.Desktop.Shell
                     notifications.Add(new DesktopNotificationRequest(
                         DesktopNotificationKind.ActionRequiredError,
                         pair.Id,
-                        "Action required",
+                        DesktopActionRequiredMessageResolver.GetIssueTitle(currentError),
                         displayName + ": " + currentError));
                 }
 

@@ -24,6 +24,7 @@ namespace Cotton.Sync.Desktop.Startup
         Settings,
         SettingsDiagnostics,
         Error,
+        MetadataIncomplete,
         Offline,
         MissingLocalRoot,
         Conflict,

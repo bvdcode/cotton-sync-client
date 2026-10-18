@@ -97,7 +97,8 @@ namespace Cotton.Sync.Desktop.ViewModels
 
             if (status.SyncPairs.Any(DesktopActionRequiredMessageResolver.RequiresUserAction))
             {
-                return "Action required";
+                return DesktopActionRequiredMessageResolver.GetIssueTitle(
+                    DesktopActionRequiredMessageResolver.FromStatus(status));
             }
 
             if (status.SyncPairs.Any(static pair => string.Equals(pair.Status, "Syncing", StringComparison.Ordinal)

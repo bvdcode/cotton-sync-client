@@ -7,6 +7,7 @@ using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Platform;
 using Cotton.Sync.State;
+using Cotton.Sync.VirtualFiles;
 
 namespace Cotton.Sync.Desktop.Tests.Platform
 {
@@ -41,6 +42,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             Assert.Multiple(() =>
             {
                 Assert.That(failure!.Message, Does.Contain("Docs/a.mp4").And.Contain("Docs/c.mp4").And.Contain("0x80070299"));
+                Assert.That(VirtualFileUserFacingCopy.IsMetadataIncompleteMessage(failure.Message), Is.True);
                 Assert.That(cloudFiles.InSyncPaths, Is.EqualTo(new[] { "Docs/b.txt" }));
                 Assert.That(cloudFiles.SyncRootInSyncPairs, Is.Empty);
                 Assert.That(cloudFiles.DirectoryPlaceholders, Is.Empty);
@@ -83,6 +85,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             if (hasFinalizationFailure)
             {
                 Assert.That(failure.Message, Does.Contain("Docs/report.txt"));
+                Assert.That(VirtualFileUserFacingCopy.IsMetadataIncompleteMessage(failure.Message), Is.False);
                 Assert.That(state!.PlaceholderIdentity, Is.Null);
             }
             else

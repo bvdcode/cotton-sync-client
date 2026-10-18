@@ -120,6 +120,13 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             switch (scenario)
             {
+                case DesktopVisualSmokeScenario.MetadataIncomplete:
+                    string metadataMessage = VirtualFileUserFacingCopy.CreateMetadataIncompleteMessage(
+                        ["Library/Lessons/Video editing/Advanced course/2026/30.1 Комплексная работа по всем пройденным темам.mp4",
+                         "Library/Lessons/Video editing/Advanced course/2026/30.2 Follow-up lesson.mp4"]);
+                    ApplyStatus(new DesktopSyncStatusSnapshot(
+                        [new DesktopSyncPairStatusSnapshot(SyncPairs[0].Id, "Error", metadataMessage)]));
+                    return true;
                 case DesktopVisualSmokeScenario.Error:
                     GlobalStatus = "Action required";
                     ActionRequiredMessage = DesktopActionRequiredMessageResolver.MissingDesktopSyncChangesApiMessage;

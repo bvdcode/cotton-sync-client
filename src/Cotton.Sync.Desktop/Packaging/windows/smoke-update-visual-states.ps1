@@ -136,6 +136,7 @@ function Assert-VisualStateSnapshot {
         [string]$ExpectedDetailsPattern,
         [string[]]$ExpectedNames,
         [bool]$RequireSettingsActions,
+        [bool]$RequireProgressBar,
         [string[]]$UnexpectedNames,
         [string]$ExpectedProgressBarName = ""
     )
@@ -152,7 +153,9 @@ function Assert-VisualStateSnapshot {
         Assert-NamePresent -Names $names -ExpectedName $expectedName -Scenario $Scenario
     }
     Assert-NameMatches -Names $names -Pattern $ExpectedDetailsPattern -Scenario $Scenario
-    Assert-ProgressBarPresent -Elements $elements -Scenario $Scenario -ExpectedName $ExpectedProgressBarName
+    if ($RequireProgressBar) {
+        Assert-ProgressBarPresent -Elements $elements -Scenario $Scenario -ExpectedName $ExpectedProgressBarName
+    }
     foreach ($unexpectedName in $UnexpectedNames) {
         Assert-NameMissing -Names $names -UnexpectedName $unexpectedName -Scenario $Scenario
     }
@@ -165,6 +168,7 @@ function Test-VisualState {
         [string]$ExpectedDetailsPattern,
         [string[]]$ExpectedNames = @(),
         [bool]$RequireSettingsActions = $true,
+        [bool]$RequireProgressBar = $true,
         [string[]]$UnexpectedNames = @("Download", "Update"),
         [string]$ExpectedProgressBarName = "",
         [int]$StableObservationSeconds = 0
@@ -195,6 +199,7 @@ function Test-VisualState {
                 -ExpectedDetailsPattern $ExpectedDetailsPattern `
                 -ExpectedNames $ExpectedNames `
                 -RequireSettingsActions $RequireSettingsActions `
+                -RequireProgressBar $RequireProgressBar `
                 -UnexpectedNames $UnexpectedNames `
                 -ExpectedProgressBarName $ExpectedProgressBarName
             $snapshotStopwatch.Stop()
@@ -248,6 +253,15 @@ Test-VisualState `
     -UnexpectedNames @("Download", "Update", "Processing queued changes", "Preparing cloud files 118054 of 500000", "118054 of 500000") `
     -ExpectedProgressBarName "Open-ended cloud file progress" `
     -StableObservationSeconds 30
+
+Test-VisualState `
+    -Scenario "metadata-incomplete" `
+    -ExpectedStatus "Sync incomplete" `
+    -ExpectedDetailsPattern "(?s)^Windows could not finish cloud file setup.*0x80070299.*30\.1.*30\.2 Follow-up lesson\.mp4$" `
+    -RequireSettingsActions $false `
+    -RequireProgressBar $false `
+    -UnexpectedNames @("Action required", "Retry", "Run synchronization again") `
+    -StableObservationSeconds 5
 
 if (-not [string]::IsNullOrWhiteSpace($ReportPath)) {
     $reportDirectory = Split-Path -Parent $ReportPath

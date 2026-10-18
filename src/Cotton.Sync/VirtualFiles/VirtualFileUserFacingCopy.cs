@@ -23,6 +23,21 @@ namespace Cotton.Sync.VirtualFiles
         public const string CloudFilesPlaceholderFailedMessage =
             "Windows virtual files could not make a cloud file available in File Explorer. Check diagnostics and retry sync.";
 
+        public const string CloudFilesMetadataIncompleteMessage =
+            "Windows could not finish cloud file setup (0x80070299). "
+            + "Affected files remain on this device. Other files can still sync.";
+
+        public static string CreateMetadataIncompleteMessage(IReadOnlyList<string> paths)
+        {
+            return CloudFilesMetadataIncompleteMessage + Environment.NewLine + Environment.NewLine
+                + string.Join(Environment.NewLine, paths);
+        }
+
+        public static bool IsMetadataIncompleteMessage(string? message)
+        {
+            return message?.StartsWith(CloudFilesMetadataIncompleteMessage, StringComparison.Ordinal) == true;
+        }
+
         public static string GetHydrationStateLabel(SyncPlaceholderHydrationState state)
         {
             return state switch

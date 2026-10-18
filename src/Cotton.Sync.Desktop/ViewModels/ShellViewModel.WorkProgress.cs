@@ -117,6 +117,11 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             if (HasActionRequired)
             {
+                if (VirtualFileUserFacingCopy.IsMetadataIncompleteMessage(ActionRequiredMessage))
+                {
+                    return "Some cloud files could not be set up. Other files can still sync.";
+                }
+
                 return "Fix the issue below to continue syncing.";
             }
 

@@ -11,7 +11,7 @@ using static Cotton.Sync.Desktop.Shell.DesktopActionRequiredMessageClassifier;
 
 namespace Cotton.Sync.Desktop.Shell
 {
-    internal static class DesktopActionRequiredMessageResolver
+    internal static partial class DesktopActionRequiredMessageResolver
     {
         internal const string MissingDesktopSyncChangesApiMessage =
             "Cotton Cloud desktop change feed is unavailable. Check the server deployment; Cotton Sync will retry automatically.";
@@ -73,6 +73,7 @@ namespace Cotton.Sync.Desktop.Shell
         {
             ArgumentNullException.ThrowIfNull(status);
             DesktopSyncPairStatusSnapshot? failedPair = status.SyncPairs
+                .OrderBy(static pair => VirtualFileUserFacingCopy.IsMetadataIncompleteMessage(pair.LastError))
                 .FirstOrDefault(static pair => RequiresUserAction(pair) && !string.IsNullOrWhiteSpace(pair.LastError));
             if (failedPair is not null)
             {
@@ -195,6 +196,11 @@ namespace Cotton.Sync.Desktop.Shell
                 return null;
             }
 
+            if (message.Contains(VirtualFileUserFacingCopy.CloudFilesMetadataIncompleteMessage, StringComparison.Ordinal))
+            {
+                return message.Trim();
+            }
+
             if (LooksLikeMissingDesktopSyncChangesApi(message, responseBody))
             {
                 return MissingDesktopSyncChangesApiMessage;
@@ -215,7 +221,7 @@ namespace Cotton.Sync.Desktop.Shell
                 ?? NormalizeLocalStateMessage(message)
                 ?? NormalizeCloudFilesNativeMessage(message)
                 ?? NormalizeEmbeddedApiFailureMessage(message)
-                ?? DesktopUserMessageFormatter.Compact(message);
+                ?? message.Trim();
         }
 
         private static string? NormalizeLocalFileMessage(string message)

@@ -122,20 +122,20 @@ namespace Cotton.Sync.Desktop.Platform
                     {
                         System.Diagnostics.Trace.TraceError(
                             "Cloud Files metadata could not be finalized for {0}: {1}", relativePath, exception);
-                        failures.Add(relativePath + ": Windows could not update Cloud Files metadata "
-                            + "because of a file system limitation (0x80070299). The local file was kept.");
+                        failures.Add(relativePath);
                     }
                 }
 
                 cancellationToken.ThrowIfCancellationRequested();
                 if (failures.Count > 0)
                 {
+                    string message = VirtualFileUserFacingCopy.CreateMetadataIncompleteMessage(failures);
                     if (syncFailure is not null)
                     {
-                        failures.Add(syncFailure.Message);
+                        message = syncFailure.Message + Environment.NewLine + Environment.NewLine + message;
                     }
 
-                    throw new SyncActionRequiredException(string.Join(Environment.NewLine, failures));
+                    throw new SyncActionRequiredException(message);
                 }
 
                 if (syncFailure is not null)

@@ -174,6 +174,9 @@ namespace Cotton.Sync.Desktop
 
             switch (e.PropertyName)
             {
+                case nameof(ShellViewModel.ActionRequiredMessage):
+                    DashboardDetailsScrollViewer.Offset = default;
+                    return;
                 case nameof(ShellViewModel.IsDashboardVisible):
                 case nameof(ShellViewModel.IsSignInStepVisible):
                     ApplyWindowMode(viewModel);

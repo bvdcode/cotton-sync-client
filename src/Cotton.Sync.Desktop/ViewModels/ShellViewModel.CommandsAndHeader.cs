@@ -377,7 +377,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                         return "Offline";
                     }
 
-                    return "Action required";
+                    return DesktopActionRequiredMessageResolver.GetIssueTitle(ActionRequiredMessage);
                 }
 
                 if (IsSyncPaused || IsSyncPausePending)

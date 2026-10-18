@@ -25,6 +25,11 @@ namespace Cotton.Sync.Desktop.Shell
 
             if (hasStatusAttention || Contains(statusText, "action") || Contains(statusText, "failed"))
             {
+                if (string.Equals(statusText, "Sync incomplete", StringComparison.Ordinal))
+                {
+                    return Create(DesktopTrayStatusKind.Error, statusText);
+                }
+
                 return Create(
                     DesktopTrayStatusKind.Error,
                     Contains(statusText, "conflict") ? "Conflicts need review" : "Action required");
