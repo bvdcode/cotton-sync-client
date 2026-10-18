@@ -72,11 +72,7 @@ namespace Cotton.Sync.App.Runners
 
                 if (deferredRetryCount >= MaximumDeferredLocalRetries)
                 {
-                    throw new SyncActionRequiredException(
-                        "Local files remained unavailable after "
-                        + MaximumDeferredLocalRetries
-                        + " retry passes. Close applications using these files and retry sync: "
-                        + string.Join(", ", result.DeferredLocalPaths.Take(8)));
+                    throw new SyncActionRequiredException(CreateDeferredLocalFailureMessage(result));
                 }
 
                 currentRequest = SyncRunRequest.ForLocalChangedPaths(
@@ -226,6 +222,24 @@ namespace Cotton.Sync.App.Runners
                 SyncPairMode.FullMirror => CoreSyncPairMaterializationMode.FullMirror,
                 _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unsupported synchronization mode."),
             };
+        }
+
+        private static string CreateDeferredLocalFailureMessage(CoreSyncRunResult result)
+        {
+            IEnumerable<string> details = result.DeferredLocalPaths.Take(8).Select(path =>
+            {
+                SyncActivity? activity = result.Activities.LastOrDefault(activity =>
+                    activity.Kind == SyncActivityKind.Skipped
+                    && string.Equals(activity.RelativePath, path, StringComparison.OrdinalIgnoreCase));
+                if (string.IsNullOrWhiteSpace(activity?.Details))
+                {
+                    return path;
+                }
+
+                return path + ": " + activity.Details.Trim();
+            });
+            return "Local files could not be processed after " + MaximumDeferredLocalRetries
+                + " retry passes: " + string.Join("; ", details);
         }
 
         private static string CreateActionRequiredMessage(CoreSyncRunResult result)

@@ -166,6 +166,11 @@ namespace Cotton.Sync.Desktop.Shell
 
         private void OnActivityReported(AppSyncActivity activity)
         {
+            if (activity.Type == SyncActivityKind.Skipped)
+            {
+                Trace.TraceWarning("Sync item deferred for {0}: {1}", activity.SyncPairId, activity.Message);
+            }
+
             ActivityReported?.Invoke(this, ToActivitySnapshot(activity));
         }
 

@@ -55,6 +55,9 @@ namespace Cotton.Sync.Desktop.Platform
             string? relativePath,
             Exception exception)
         {
+            System.Diagnostics.Trace.TraceError(
+                "Cloud Files operation {0} failed for {1}, path {2}: {3}",
+                operation, syncPairId, relativePath, exception);
             diagnostics.Record(
                 operation,
                 "failed",
