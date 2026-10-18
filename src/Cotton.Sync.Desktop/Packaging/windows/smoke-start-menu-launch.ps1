@@ -5,6 +5,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ExpectedExecutablePath,
 
+    [Parameter(Mandatory = $true)]
+    [string]$StartupLogPath,
+
     [int]$TimeoutSeconds = 30
 )
 
@@ -43,6 +46,7 @@ foreach ($process in $existingProcesses) {
     Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
 }
 
+$existingLogLines = @(Get-Content -LiteralPath $StartupLogPath -ErrorAction SilentlyContinue)
 $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
 Write-Host "Launching Start Menu shortcut: $resolvedShortcut"
 $null = Start-Process -FilePath $resolvedShortcut -PassThru
@@ -60,15 +64,39 @@ if ($launchedProcesses.Count -eq 0) {
     throw "Start Menu shortcut did not launch $resolvedExecutable within $TimeoutSeconds second(s)."
 }
 
-Start-Sleep -Seconds 2
 $launchedProcessIds = @($launchedProcesses | ForEach-Object { [int]$_.ProcessId })
-$stillRunning = @(Get-TargetProcess | Where-Object { $launchedProcessIds -contains [int]$_.ProcessId })
-if ($stillRunning.Count -eq 0) {
-    throw "Start Menu shortcut launched $resolvedExecutable, but the process exited immediately."
-}
+$storageReady = $false
+try {
+    do {
+        $stillRunning = @(Get-TargetProcess | Where-Object { $launchedProcessIds -contains [int]$_.ProcessId })
+        if ($stillRunning.Count -eq 0) {
+            throw "Start Menu shortcut launched $resolvedExecutable, but the process exited immediately."
+        }
 
-foreach ($process in $stillRunning) {
-    Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+        $newLogLines = @(Get-Content -LiteralPath $StartupLogPath -Tail 100 -ErrorAction SilentlyContinue |
+            Where-Object { $existingLogLines -notcontains $_ })
+        $readyProcesses = @($stillRunning | Where-Object {
+            $marker = "Desktop local storage initialized. ProcessId=$($_.ProcessId)."
+            @($newLogLines | Where-Object { $_.Contains($marker) }).Count -gt 0
+        })
+        if ($readyProcesses.Count -eq $stillRunning.Count) {
+            $storageReady = $true
+            break
+        }
+
+        Start-Sleep -Milliseconds 250
+    } while ([DateTime]::UtcNow -lt $deadline)
+
+    if (-not $storageReady) {
+        $newLogLines | ForEach-Object { Write-Host $_ }
+        throw "Start Menu shortcut-launched process did not initialize local storage within $TimeoutSeconds second(s)."
+    }
+    Write-Host "Verified Start Menu launch completed local storage initialization."
+}
+finally {
+    foreach ($process in @(Get-TargetProcess | Where-Object { $launchedProcessIds -contains [int]$_.ProcessId })) {
+        Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+    }
 }
 
 $stopDeadline = [DateTime]::UtcNow.AddSeconds(10)

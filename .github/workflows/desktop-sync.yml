@@ -567,7 +567,8 @@ jobs:
             -DataDirectory (Join-Path $env:RUNNER_TEMP "cotton-sync-notification-identity-data")
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-start-menu-launch.ps1" `
             -ShortcutPath $startMenuShortcut `
-            -ExpectedExecutablePath $installedExe
+            -ExpectedExecutablePath $installedExe `
+            -StartupLogPath (Join-Path $env:APPDATA "Cotton/Sync/cotton-sync.log")
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-cloud-files-self-test-truthfulness.ps1" `
             -AppExecutable $installedExe `
             -DataDirectory $dataDir `

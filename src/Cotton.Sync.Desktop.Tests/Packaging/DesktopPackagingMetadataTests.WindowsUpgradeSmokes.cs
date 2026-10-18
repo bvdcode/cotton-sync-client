@@ -20,6 +20,11 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             {
                 Assert.That(script, Does.Contain("[string]$ShortcutPath"));
                 Assert.That(script, Does.Contain("[string]$ExpectedExecutablePath"));
+                Assert.That(script, Does.Contain("[string]$StartupLogPath"));
+                Assert.That(script, Does.Contain("Desktop local storage initialized. ProcessId="));
+                Assert.That(script, Does.Contain("$existingLogLines -notcontains $_"));
+                Assert.That(script, Does.Contain("did not initialize local storage"));
+                Assert.That(script, Does.Not.Contain("Start-Sleep -Seconds 2"));
                 Assert.That(script, Does.Contain("WScript.Shell"));
                 Assert.That(script, Does.Contain("CreateShortcut($resolvedShortcut)"));
                 Assert.That(script, Does.Contain("Start Menu shortcut target was"));

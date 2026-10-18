@@ -37,6 +37,7 @@ namespace Cotton.Sync.Desktop.Shell
             await _preferencesStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
             await _syncPairStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
             await InitializeSyncStateStoreAsync(cancellationToken).ConfigureAwait(false);
+            Trace.TraceInformation("Desktop local storage initialized. ProcessId={0}.", Environment.ProcessId);
             AppPreferences preferences = await _preferencesStore.GetAsync(cancellationToken).ConfigureAwait(false);
             bool startWithOperatingSystem = await ResolveStartWithOperatingSystemAsync(
                 preferences,
