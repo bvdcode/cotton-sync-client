@@ -12,6 +12,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         private class FakeSyncStateStore : ISyncStateStore
         {
             private readonly Dictionary<string, SyncStateEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
+            private readonly Dictionary<string, SyncChangeCursor> _cursors = [];
 
             public void UpsertDirectory(SyncPairSettings syncPair, string relativePath, Guid remoteNodeId)
             {
@@ -73,7 +74,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public Task<SyncChangeCursor> GetChangeCursorAsync(string syncPairId, CancellationToken cancellationToken = default)
             {
-                return Task.FromResult(new SyncChangeCursor { SyncPairId = syncPairId });
+                return Task.FromResult(_cursors.GetValueOrDefault(syncPairId) ?? new SyncChangeCursor { SyncPairId = syncPairId });
             }
 
             public Task<SyncStateEntry?> GetAsync(string syncPairId, string relativePath, CancellationToken cancellationToken = default)
@@ -90,6 +91,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public Task SaveChangeCursorAsync(SyncChangeCursor cursor, CancellationToken cancellationToken = default)
             {
+                _cursors[cursor.SyncPairId] = cursor;
                 return Task.CompletedTask;
             }
 

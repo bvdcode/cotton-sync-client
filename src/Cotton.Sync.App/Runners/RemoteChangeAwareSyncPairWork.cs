@@ -11,7 +11,7 @@ namespace Cotton.Sync.App.Runners
     /// <summary>
     /// Wraps sync pair work with durable remote change-feed checkpoint handling.
     /// </summary>
-    public class RemoteChangeAwareSyncPairWork : ISyncPairWork
+    public partial class RemoteChangeAwareSyncPairWork : ISyncPairWork
     {
         private const int MaximumAccumulatedRemoteChanges = 1_000;
         private readonly ISyncPairWork _inner;
@@ -56,14 +56,20 @@ namespace Cotton.Sync.App.Runners
                     cancellationToken)
                 .ConfigureAwait(false);
 
+            effectiveRequest = await AddPendingMetadataPathsAsync(syncPair, effectiveRequest, cancellationToken)
+                .ConfigureAwait(false);
+            List<SyncFileMetadataPendingException> metadataFailures = [];
+
             if (remoteBatch.CursorExpired)
             {
                 await RunInnerAsync(
                         syncPair,
                         effectiveRequest.Merge(SyncRunRequest.ForFull(SyncRunCause.RemoteCursorExpired)),
+                        metadataFailures,
                         cancellationToken)
                     .ConfigureAwait(false);
                 await _remoteChanges.AcknowledgeFullResyncAsync(remoteBatch, cancellationToken).ConfigureAwait(false);
+                ThrowPendingMetadataFailure(metadataFailures);
                 return;
             }
 
@@ -71,6 +77,7 @@ namespace Cotton.Sync.App.Runners
                     syncPair,
                     effectiveRequest,
                     remoteRead,
+                    metadataFailures,
                     cancellationToken)
                 .ConfigureAwait(false);
 
@@ -82,12 +89,15 @@ namespace Cotton.Sync.App.Runners
             {
                 await _remoteChanges.AcknowledgeAsync(remoteBatch, cancellationToken).ConfigureAwait(false);
             }
+
+            ThrowPendingMetadataFailure(metadataFailures);
         }
 
         private async Task<InnerRequestPlan> ExecuteInnerPlanAsync(
             SyncPairSettings syncPair,
             SyncRunRequest request,
             RemoteChangeFeedReadResult remoteRead,
+            List<SyncFileMetadataPendingException> metadataFailures,
             CancellationToken cancellationToken)
         {
             if (CanSkipInnerSync(syncPair, request, remoteRead))
@@ -103,7 +113,7 @@ namespace Cotton.Sync.App.Runners
                 .ConfigureAwait(false);
             if (innerPlan.Request is not null)
             {
-                await RunInnerAsync(syncPair, innerPlan.Request, cancellationToken).ConfigureAwait(false);
+                await RunInnerAsync(syncPair, innerPlan.Request, metadataFailures, cancellationToken).ConfigureAwait(false);
             }
 
             if (innerPlan.RemoteChangesCovered)
@@ -124,7 +134,7 @@ namespace Cotton.Sync.App.Runners
                 .ConfigureAwait(false);
             if (replayRequest is not null)
             {
-                await RunInnerAsync(syncPair, replayRequest, cancellationToken).ConfigureAwait(false);
+                await RunInnerAsync(syncPair, replayRequest, metadataFailures, cancellationToken).ConfigureAwait(false);
             }
 
             return new InnerRequestPlan(replayRequest, RemoteChangesCovered: true);
@@ -153,9 +163,21 @@ namespace Cotton.Sync.App.Runners
         private async Task RunInnerAsync(
             SyncPairSettings syncPair,
             SyncRunRequest request,
+            List<SyncFileMetadataPendingException> metadataFailures,
             CancellationToken cancellationToken)
         {
-            await _inner.RunOnceAsync(syncPair, request, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await _inner.RunOnceAsync(syncPair, request, cancellationToken).ConfigureAwait(false);
+            }
+            catch (SyncFileMetadataPendingException exception)
+                when (syncPair.Mode == SyncPairMode.WindowsVirtualFiles && _stateStore is not null)
+            {
+                System.Diagnostics.Trace.TraceWarning(
+                    "Content reconciliation completed with pending Cloud Files metadata: {0}", exception);
+                metadataFailures.Add(exception);
+            }
+
             if (syncPair.Mode != SyncPairMode.WindowsVirtualFiles
                 || !request.IsFull
                 || _stateStore is null)

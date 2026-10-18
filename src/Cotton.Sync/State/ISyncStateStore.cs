@@ -28,6 +28,23 @@ namespace Cotton.Sync.State
             CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Streams completed file transfers whose first Cloud Files identity has not been saved.
+        /// </summary>
+        async IAsyncEnumerable<string> LoadPendingPlaceholderConversionPathsAsync(
+            string syncPairId,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await foreach (SyncStateEntry entry in LoadPairEntriesAsync(syncPairId, cancellationToken)
+                               .WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                if (entry.NeedsPlaceholderConversion)
+                {
+                    yield return entry.RelativePath;
+                }
+            }
+        }
+
+        /// <summary>
         /// Streams directory entries for a sync pair.
         /// </summary>
         async IAsyncEnumerable<SyncStateEntry> LoadPairDirectoryEntriesAsync(

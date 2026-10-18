@@ -58,6 +58,14 @@ namespace Cotton.Sync.State
         }
 
         /// <inheritdoc />
+        public IAsyncEnumerable<string> LoadPendingPlaceholderConversionPathsAsync(
+            string syncPairId,
+            CancellationToken cancellationToken = default)
+        {
+            return _reader.LoadPendingPlaceholderConversionPathsAsync(syncPairId, cancellationToken);
+        }
+
+        /// <inheritdoc />
         public IAsyncEnumerable<SyncStateEntry> LoadPairDirectoryEntriesAsync(
             string syncPairId,
             CancellationToken cancellationToken = default)

@@ -84,6 +84,19 @@ namespace Cotton.Sync.State
         public SyncPlaceholderHydrationState PlaceholderHydrationState { get; set; }
 
         /// <summary>
+        /// Gets whether a completed content transfer still needs its first Cloud Files identity.
+        /// </summary>
+        public bool NeedsPlaceholderConversion => Kind == SyncEntryKind.File
+            && PlaceholderIdentity is null
+            && RemoteNodeId.HasValue
+            && RemoteFileId.HasValue
+            && RemoteFileManifestId.HasValue
+            && LocalSizeBytes.HasValue
+            && LocalLastWriteUtc.HasValue
+            && !string.IsNullOrWhiteSpace(LocalContentHash)
+            && string.Equals(LocalContentHash, RemoteContentHash, StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
         /// Gets or sets the timestamp when this baseline was recorded.
         /// </summary>
         public DateTime SyncedAtUtc { get; set; } = DateTime.UtcNow;

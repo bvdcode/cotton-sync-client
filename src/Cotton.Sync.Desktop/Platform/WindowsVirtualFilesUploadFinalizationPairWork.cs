@@ -109,6 +109,7 @@ namespace Cotton.Sync.Desktop.Platform
             try
             {
                 List<string> failures = [];
+                bool canResumeFromState = true;
                 foreach (string relativePath in finalizationPaths)
                 {
                     try
@@ -123,6 +124,10 @@ namespace Cotton.Sync.Desktop.Platform
                         System.Diagnostics.Trace.TraceError(
                             "Cloud Files metadata could not be finalized for {0}: {1}", relativePath, exception);
                         failures.Add(relativePath);
+                        SyncStateEntry? failedState = await _stateStore
+                            .GetAsync(syncPair.Id.ToString("D"), relativePath, cancellationToken)
+                            .ConfigureAwait(false);
+                        canResumeFromState &= failedState?.NeedsPlaceholderConversion == true;
                     }
                 }
 
@@ -133,6 +138,11 @@ namespace Cotton.Sync.Desktop.Platform
                     if (syncFailure is not null)
                     {
                         message = syncFailure.Message + Environment.NewLine + Environment.NewLine + message;
+                    }
+
+                    if (syncFailure is null && canResumeFromState)
+                    {
+                        throw new SyncFileMetadataPendingException(message);
                     }
 
                     throw new SyncActionRequiredException(message);

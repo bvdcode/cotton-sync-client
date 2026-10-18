@@ -47,6 +47,35 @@ namespace Cotton.Sync.State
             }
         }
 
+        public async IAsyncEnumerable<string> LoadPendingPlaceholderConversionPathsAsync(
+            string syncPairId,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(syncPairId);
+            await initializer.EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+            await using SyncStateDbContext context = contextFactory.Create();
+            IAsyncEnumerable<string> paths = context.SyncEntries.AsNoTracking()
+                .Where(entry => entry.SyncPairId == syncPairId
+                    && entry.Kind == SyncEntryKind.File
+                    && entry.PlaceholderIdentity == null
+                    && entry.RemoteNodeId.HasValue
+                    && entry.RemoteFileId.HasValue
+                    && entry.RemoteFileManifestId.HasValue
+                    && entry.LocalSizeBytes.HasValue
+                    && entry.LocalLastWriteAt.HasValue
+                    && entry.LocalContentHash != null
+                    && entry.LocalContentHash.Trim() != ""
+                    && entry.RemoteContentHash != null
+                    && entry.LocalContentHash.ToLower() == entry.RemoteContentHash.ToLower())
+                .OrderBy(entry => entry.RelativePathKey)
+                .Select(entry => entry.RelativePath)
+                .AsAsyncEnumerable();
+            await foreach (string path in paths.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                yield return path;
+            }
+        }
+
         public async IAsyncEnumerable<SyncStateEntry> LoadPairDirectoryEntriesAsync(
             string syncPairId,
             [EnumeratorCancellation] CancellationToken cancellationToken)

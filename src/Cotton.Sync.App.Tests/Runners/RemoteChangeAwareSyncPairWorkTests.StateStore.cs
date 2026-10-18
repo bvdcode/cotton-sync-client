@@ -68,6 +68,18 @@ namespace Cotton.Sync.App.Tests.Runners
                 }
             }
 
+            public async IAsyncEnumerable<string> LoadPendingPlaceholderConversionPathsAsync(
+                string syncPairId,
+                [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+            {
+                await Task.Yield();
+                foreach (SyncStateEntry entry in _entries.Where(entry => entry.SyncPairId == syncPairId && entry.NeedsPlaceholderConversion))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    yield return entry.RelativePath;
+                }
+            }
+
             public async IAsyncEnumerable<SyncStateEntry> LoadEntriesByRemoteIdsAsync(
                 string syncPairId,
                 IEnumerable<Guid> remoteNodeIds,
