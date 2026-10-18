@@ -6,16 +6,18 @@ using Cotton.Sync.Desktop.Startup;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 
 namespace Cotton.Sync.Desktop.Tests.Platform
 {
     public partial class WindowsCloudFilesNativeApiIntegrationTests
     {
-        [TestCase(false, false)]
-        [TestCase(true, false)]
-        [TestCase(true, true)]
+        [TestCase(false, false, 128)]
+        [TestCase(true, false, 128)]
+        [TestCase(true, true, 128)]
+        [TestCase(true, false, 256)]
         [Explicit("Registers a temporary Windows Cloud Files sync root and writes large local files.")]
-        public async Task FinalizeUploadedFile_PreservesLargePinnedFile(bool interleaveAllocations, bool optimizeMetadata)
+        public async Task FinalizeUploadedFile_PreservesLargePinnedFile(bool interleaveAllocations, bool optimizeMetadata, int blockCount)
         {
             const FileAttributes pinnedAttribute = (FileAttributes)0x00080000;
             const string fileName = "Учебное видео с длинным названием для проверки метаданных.mp4";
@@ -45,7 +47,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             {
                 using WindowsCloudFilesConnection connection = nativeApi.ConnectSyncRoot(
                     new WindowsCloudFilesConnectionRequest(root, new NoopWindowsCloudFilesCallbackHandler()));
-                string expectedHash = await CreateLargeFileAsync(filePath, interleaveAllocations);
+                string expectedHash = await CreateLargeFileAsync(filePath, interleaveAllocations, blockCount);
                 nativeApi.SetPinState(filePath, WindowsCloudFilesPinState.Pinned);
                 FileInfo file = new(filePath);
                 long size = file.Length;
@@ -67,6 +69,17 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 {
                     Assert.That(layout, Does.Contain("::$ATTRIBUTE_LIST"),
                         "The fragmented fixture must span multiple NTFS file records before conversion.");
+                }
+
+                if (blockCount > 128)
+                {
+                    Match attributeList = Regex.Match(layout, @"::\$ATTRIBUTE_LIST[\s\S]*?\bSize\s*:\s*([\d,]+)");
+                    Assert.That(attributeList.Success, Is.True);
+                    int attributeListBytes = int.Parse(attributeList.Groups[1].Value,
+                        System.Globalization.NumberStyles.AllowThousands,
+                        System.Globalization.CultureInfo.InvariantCulture);
+                    Assert.That(attributeListBytes, Is.GreaterThanOrEqualTo(160),
+                        "The file must retain more than four entries in its NTFS attribute list before conversion.");
                 }
 
                 Assert.Multiple(() =>
@@ -111,10 +124,9 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             }
         }
 
-        private static async Task<string> CreateLargeFileAsync(string filePath, bool interleaveAllocations)
+        private static async Task<string> CreateLargeFileAsync(string filePath, bool interleaveAllocations, int blockCount)
         {
             const int blockSize = 4 * 1024 * 1024;
-            const int blockCount = 128;
             byte[] block = RandomNumberGenerator.GetBytes(blockSize);
             using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
             for (int index = 0; index < blockCount; index++)
