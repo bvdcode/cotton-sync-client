@@ -29,6 +29,11 @@ on:
         required: false
         default: false
         type: boolean
+      native_finalization_only:
+        description: "Run only native finalization tests during non-publishing quick checks."
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: desktop-sync-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.package_target || 'push' }}-${{ github.event_name == 'workflow_dispatch' && inputs.publish_release || false }}
@@ -77,6 +82,7 @@ jobs:
         run: dotnet restore src/Cotton.sln --locked-mode
 
       - name: Test solution
+        if: github.event_name != 'workflow_dispatch' || !inputs.native_finalization_only || inputs.publish_release || inputs.package_target != 'quick-checks'
         run: dotnet test src/Cotton.sln --no-restore -p:UseSharedCompilation=false
 
       - name: Build Windows shell helper for native finalization tests
