@@ -79,6 +79,13 @@ jobs:
       - name: Test solution
         run: dotnet test src/Cotton.sln --no-restore -p:UseSharedCompilation=false
 
+      - name: Build Windows shell helper for native finalization tests
+        run: dotnet build src/Cotton.Sync.WindowsShell/Cotton.Sync.WindowsShell.csproj -c Release --no-restore -p:UseSharedCompilation=false
+
+      - name: Verify Cloud Files finalization with open file handles
+        timeout-minutes: 3
+        run: dotnet test src/Cotton.Sync.Desktop.Tests/Cotton.Sync.Desktop.Tests.csproj -c Release --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~FinalizeUploadedFile_PreservesContentWithAnOpenHandle"
+
   live-acceptance:
     name: Desktop Live Server Acceptance
     if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && (inputs.publish_release || inputs.package_target != 'quick-checks')))

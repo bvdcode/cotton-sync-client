@@ -11,11 +11,20 @@ namespace Cotton.Sync.Desktop.Tests.Platform
     [Platform(Include = "Win")]
     public partial class WindowsCloudFilesNativeApiIntegrationTests
     {
-        [TestCase(false)]
-        [TestCase(true)]
+        [TestCase(false, false, FileAccess.ReadWrite, FileShare.ReadWrite)]
+        [TestCase(true, false, FileAccess.ReadWrite, FileShare.ReadWrite)]
+        [TestCase(false, true, FileAccess.Read, FileShare.Read)]
+        [TestCase(false, true, FileAccess.Read, FileShare.ReadWrite)]
+        [TestCase(false, true, FileAccess.ReadWrite, FileShare.ReadWrite)]
+        [TestCase(true, true, FileAccess.Read, FileShare.Read)]
         [Explicit("Registers a temporary Windows Cloud Files sync root.")]
-        public async Task FinalizeUploadedFile_AllowsAnEditorToKeepTheFileOpen(bool existingPlaceholder)
+        public async Task FinalizeUploadedFile_PreservesContentWithAnOpenHandle(
+            bool existingPlaceholder,
+            bool pinned,
+            FileAccess access,
+            FileShare share)
         {
+            const FileAttributes pinnedAttribute = (FileAttributes)0x00080000;
             string root = Path.Combine(
                 Path.GetTempPath(),
                 "cotton-cloud-files-open-editor-" + Guid.NewGuid().ToString("N"));
@@ -55,17 +64,24 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             try
             {
+                using WindowsCloudFilesConnection connection = nativeApi.ConnectSyncRoot(
+                    new WindowsCloudFilesConnectionRequest(root, new NoopWindowsCloudFilesCallbackHandler()));
                 if (existingPlaceholder)
                 {
                     nativeApi.ConvertToPlaceholder(filePath, oldIdentity, isDirectory: false, markInSync: false);
+                }
+
+                if (pinned)
+                {
+                    nativeApi.SetPinState(filePath, WindowsCloudFilesPinState.Pinned);
                 }
 
                 DateTime lastWriteUtc = File.GetLastWriteTimeUtc(filePath);
                 await using FileStream editor = new(
                     filePath,
                     FileMode.Open,
-                    FileAccess.ReadWrite,
-                    FileShare.ReadWrite);
+                    access,
+                    share);
                 WindowsCloudFilesUploadedFileFinalizationResult result = await nativeApi.FinalizeUploadedFileAsync(
                     new WindowsCloudFilesUploadedFileFinalizationRequest(
                         new WindowsCloudFilesNativePlaceholder(
@@ -93,7 +109,12 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     Assert.That(bytesRead, Is.EqualTo(content.Length));
                     Assert.That(actualContent, Is.EqualTo(content));
                     Assert.That(editor.CanRead, Is.True);
-                    Assert.That(editor.CanWrite, Is.True);
+                    Assert.That(nativeApi.GetPlaceholderState(filePath)
+                        .HasFlag(WindowsCloudFilesPlaceholderState.InSync), Is.True);
+                    if (pinned)
+                    {
+                        Assert.That(File.GetAttributes(filePath).HasFlag(pinnedAttribute), Is.True);
+                    }
                 });
             }
             finally
