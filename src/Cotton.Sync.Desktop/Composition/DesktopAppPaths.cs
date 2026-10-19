@@ -20,6 +20,7 @@ namespace Cotton.Sync.Desktop.Composition
             TokenStorePath = Path.Combine(DataDirectory, "tokens.json");
             SingleInstanceLockPath = Path.Combine(DataDirectory, "cotton-sync.lock");
             LogFilePath = Path.Combine(DataDirectory, "cotton-sync.log");
+            CloudFilesLogFilePath = Path.Combine(DataDirectory, "cloud-files.log");
             UpdateCacheDirectory = Path.Combine(DataDirectory, "updates");
         }
 
@@ -36,6 +37,8 @@ namespace Cotton.Sync.Desktop.Composition
         public string SingleInstanceLockPath { get; }
 
         public string LogFilePath { get; }
+
+        public string CloudFilesLogFilePath { get; }
 
         public string UpdateCacheDirectory { get; }
 

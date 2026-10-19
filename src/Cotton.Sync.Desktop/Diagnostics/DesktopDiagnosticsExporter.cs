@@ -85,18 +85,23 @@ namespace Cotton.Sync.Desktop.Diagnostics
             DesktopDiagnosticsExportOptions options,
             CancellationToken cancellationToken)
         {
-            await AddFileIfExistsAsync(archive, paths.LogFilePath, "cotton-sync.log", paths, bundle, options, cancellationToken)
-                .ConfigureAwait(false);
-            for (int index = 1; index <= 3; index++)
+            foreach (string logPath in new[] { paths.LogFilePath, paths.CloudFilesLogFilePath })
             {
-                await AddFileIfExistsAsync(
-                    archive,
-                    paths.LogFilePath + "." + index.ToString(CultureInfo.InvariantCulture),
-                    "cotton-sync.log." + index.ToString(CultureInfo.InvariantCulture),
-                    paths,
-                    bundle,
-                    options,
-                    cancellationToken).ConfigureAwait(false);
+                string entryName = Path.GetFileName(logPath);
+                await AddFileIfExistsAsync(archive, logPath, entryName, paths, bundle, options, cancellationToken)
+                    .ConfigureAwait(false);
+                for (int index = 1; index <= DesktopLogRetention.RetainedFileCount; index++)
+                {
+                    string suffix = "." + index.ToString(CultureInfo.InvariantCulture);
+                    await AddFileIfExistsAsync(
+                        archive,
+                        logPath + suffix,
+                        entryName + suffix,
+                        paths,
+                        bundle,
+                        options,
+                        cancellationToken).ConfigureAwait(false);
+                }
             }
         }
 

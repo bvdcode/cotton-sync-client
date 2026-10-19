@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using Cotton.Sync.Desktop.Diagnostics;
+
 namespace Cotton.Sync.Desktop.Platform
 {
     internal class WindowsCloudFilesDiagnostics : IWindowsCloudFilesDiagnostics
@@ -9,6 +11,7 @@ namespace Cotton.Sync.Desktop.Platform
         private readonly object _gate = new();
         private readonly Queue<WindowsCloudFilesDiagnosticEvent> _events = [];
         private readonly int _capacity;
+        private WindowsCloudFilesDiagnosticLog? _fileLog;
 
         public WindowsCloudFilesDiagnostics(int capacity = DefaultCapacity)
         {
@@ -17,6 +20,25 @@ namespace Cotton.Sync.Desktop.Platform
         }
 
         public static WindowsCloudFilesDiagnostics Shared { get; } = new();
+
+        public void EnableFileLogging(string path)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
+            lock (_gate)
+            {
+                if (string.Equals(_fileLog?.Path, path, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                _fileLog?.Dispose();
+                _fileLog = new WindowsCloudFilesDiagnosticLog(path);
+                foreach (WindowsCloudFilesDiagnosticEvent item in _events)
+                {
+                    _fileLog.Write(item);
+                }
+            }
+        }
 
         public void Record(
             string operation,
@@ -46,6 +68,7 @@ namespace Cotton.Sync.Desktop.Platform
                 }
 
                 _events.Enqueue(item);
+                _fileLog?.Write(item);
             }
         }
 

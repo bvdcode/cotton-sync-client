@@ -9,15 +9,13 @@ namespace Cotton.Sync.Desktop.Diagnostics
 {
     internal class RotatingFileTraceListener : TraceListener
     {
-        private const int DefaultRetainedFileCount = 3;
-
         private readonly object _gate = new();
         private readonly string _path;
         private readonly int _retainedFileCount;
         private readonly long _maxFileSizeBytes;
 
         public RotatingFileTraceListener(string path, long maxFileSizeBytes)
-            : this(path, maxFileSizeBytes, DefaultRetainedFileCount)
+            : this(path, maxFileSizeBytes, DesktopLogRetention.RetainedFileCount)
         {
         }
 
@@ -62,7 +60,6 @@ namespace Cotton.Sync.Desktop.Diagnostics
             byte[] bytes = Encoding.UTF8.GetBytes(message);
             lock (_gate)
             {
-                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(_path) ?? ".");
                 TryRotate(bytes.LongLength);
                 TryAppend(message);
             }
@@ -72,6 +69,7 @@ namespace Cotton.Sync.Desktop.Diagnostics
         {
             try
             {
+                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(_path) ?? ".");
                 using FileStream stream = new(
                     _path,
                     FileMode.Append,

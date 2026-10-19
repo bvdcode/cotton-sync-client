@@ -3,17 +3,17 @@
 
 using System.Diagnostics;
 using Cotton.Sync.Desktop.Composition;
+using Cotton.Sync.Desktop.Platform;
 
 namespace Cotton.Sync.Desktop.Diagnostics
 {
     internal static class DesktopTraceLogging
     {
-        private const long MaxLogFileSizeBytes = 5L * 1024L * 1024L;
-
         public static void Install(DesktopAppPaths paths)
         {
             ArgumentNullException.ThrowIfNull(paths);
             Directory.CreateDirectory(paths.DataDirectory);
+            WindowsCloudFilesDiagnostics.Shared.EnableFileLogging(paths.CloudFilesLogFilePath);
             if (Trace.Listeners
                 .OfType<RotatingFileTraceListener>()
                 .Any(listener => string.Equals(listener.Path, paths.LogFilePath, StringComparison.Ordinal)))
@@ -21,7 +21,7 @@ namespace Cotton.Sync.Desktop.Diagnostics
                 return;
             }
 
-            Trace.Listeners.Add(new RotatingFileTraceListener(paths.LogFilePath, MaxLogFileSizeBytes));
+            Trace.Listeners.Add(new RotatingFileTraceListener(paths.LogFilePath, DesktopLogRetention.MaxFileSizeBytes));
             Trace.AutoFlush = true;
             Trace.TraceInformation("Cotton Sync desktop logging initialized.");
         }
