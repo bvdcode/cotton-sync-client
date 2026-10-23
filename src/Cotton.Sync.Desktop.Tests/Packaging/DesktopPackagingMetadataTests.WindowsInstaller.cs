@@ -151,7 +151,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("-LocalRoot $vfsLocalRoot"));
                 Assert.That(
                     workflow,
-                    Does.Contain("-AdditionalVfsSmokePhases @(\"desktop-session-restore\", \"shell-share-link-targets\", \"initial-streaming-logging\", \"steady-state-repeat\", \"replace-cloud-only-upload\", \"excel-atomic-save\", \"provider-metadata-user-edit\", \"local-rename-after-provider-write\", \"local-move-after-provider-write\", \"explorer-always-keep\", \"explorer-always-keep-missing-placeholder\", \"explorer-always-keep-during-population\")"));
+                    Does.Contain("-AdditionalVfsSmokePhases @(\"remote-delete-late-edit\", \"desktop-session-restore\", \"shell-share-link-targets\", \"initial-streaming-logging\", \"steady-state-repeat\", \"replace-cloud-only-upload\", \"excel-atomic-save\", \"provider-metadata-user-edit\", \"local-rename-after-provider-write\", \"local-move-after-provider-write\", \"explorer-always-keep\", \"explorer-always-keep-missing-placeholder\", \"explorer-always-keep-during-population\")"));
                 Assert.That(workflow, Does.Contain("timeout-minutes: 20"));
                 Assert.That(workflow, Does.Contain("-InitialStreamingPlaceholderCount $ciVfsPlaceholderCount"));
                 Assert.That(workflow, Does.Contain("-SteadyStateRepeatPlaceholderCount $ciVfsPlaceholderCount"));
