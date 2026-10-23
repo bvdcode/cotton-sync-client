@@ -1,6 +1,8 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using Cotton.Sync.Remote;
+
 namespace Cotton.Sync.App.Runners
 {
     /// <summary>
@@ -53,6 +55,23 @@ namespace Cotton.Sync.App.Runners
         /// Gets the exact remote delete plan explicitly approved for this pass.
         /// </summary>
         public RemoteDeletePlanApproval? ApprovedRemoteDeletePlan { get; }
+
+        /// <summary>
+        /// Gets the server change evidence read for this execution.
+        /// </summary>
+        public RemoteChangeFeedSnapshot RemoteChanges { get; private init; } = RemoteChangeFeedSnapshot.Empty;
+
+        internal SyncRunRequest WithRemoteChanges(RemoteChangeFeedSnapshot changes)
+        {
+            ArgumentNullException.ThrowIfNull(changes);
+            if (ReferenceEquals(changes, RemoteChanges))
+            {
+                return this;
+            }
+
+            return new SyncRunRequest(IsFull, LocalChangedPaths, LocalDeletedPaths, Causes,
+                ApprovedRemoteDeletePlan, LocalRenames) { RemoteChanges = changes };
+        }
 
         /// <summary>
         /// Gets local relative paths that should be reconciled.

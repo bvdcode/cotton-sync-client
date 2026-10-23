@@ -375,7 +375,7 @@ namespace Cotton.Sync
                 return;
             }
 
-            if (!deleteGuard.CanDeleteLocal(out string? details))
+            if (!deleteGuard.CanDeleteLocal(relativePath, out string? details))
             {
                 SyncActivityReporter.Record(
                     result,

@@ -65,6 +65,7 @@ namespace Cotton.Sync.App.Runners
                 await RunInnerAsync(
                         syncPair,
                         effectiveRequest.Merge(SyncRunRequest.ForFull(SyncRunCause.RemoteCursorExpired)),
+                        RemoteChangeFeedSnapshot.Empty,
                         metadataFailures,
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -113,7 +114,7 @@ namespace Cotton.Sync.App.Runners
                 .ConfigureAwait(false);
             if (innerPlan.Request is not null)
             {
-                await RunInnerAsync(syncPair, innerPlan.Request, metadataFailures, cancellationToken).ConfigureAwait(false);
+                await RunInnerAsync(syncPair, innerPlan.Request, remoteRead.Snapshot, metadataFailures, cancellationToken).ConfigureAwait(false);
             }
 
             if (innerPlan.RemoteChangesCovered)
@@ -134,7 +135,7 @@ namespace Cotton.Sync.App.Runners
                 .ConfigureAwait(false);
             if (replayRequest is not null)
             {
-                await RunInnerAsync(syncPair, replayRequest, metadataFailures, cancellationToken).ConfigureAwait(false);
+                await RunInnerAsync(syncPair, replayRequest, remoteRead.Snapshot, metadataFailures, cancellationToken).ConfigureAwait(false);
             }
 
             return new InnerRequestPlan(replayRequest, RemoteChangesCovered: true);
@@ -163,12 +164,13 @@ namespace Cotton.Sync.App.Runners
         private async Task RunInnerAsync(
             SyncPairSettings syncPair,
             SyncRunRequest request,
+            RemoteChangeFeedSnapshot remoteChanges,
             List<SyncFileMetadataPendingException> metadataFailures,
             CancellationToken cancellationToken)
         {
             try
             {
-                await _inner.RunOnceAsync(syncPair, request, cancellationToken).ConfigureAwait(false);
+                await _inner.RunOnceAsync(syncPair, request.WithRemoteChanges(remoteChanges), cancellationToken).ConfigureAwait(false);
             }
             catch (SyncFileMetadataPendingException exception)
                 when (syncPair.Mode == SyncPairMode.WindowsVirtualFiles && _stateStore is not null)

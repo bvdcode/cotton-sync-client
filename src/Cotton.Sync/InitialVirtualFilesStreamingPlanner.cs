@@ -122,6 +122,7 @@ namespace Cotton.Sync
             return syncPair.MaterializationMode == SyncPairMaterializationMode.WindowsVirtualFiles
                 && options.Scope.IsFull
                 && options.AllowInitialVirtualFilesStreaming
+                && !options.RemoteChanges.ContainsDeletes
                 && remoteStreamingCrawler is not null
                 && placeholderWriter is not null;
         }
@@ -356,6 +357,7 @@ namespace Cotton.Sync
                 MaximumLocalDeletesPerRun = options.MaximumLocalDeletesPerRun,
                 MaximumRemoteDeletesPerRun = options.MaximumRemoteDeletesPerRun,
                 ApprovedRemoteDeletePlan = options.ApprovedRemoteDeletePlan,
+                RemoteChanges = options.RemoteChanges,
                 MaximumStoredResultActivities = options.MaximumStoredResultActivities,
                 InitialVirtualFilesPopulationQueueCapacity = options.InitialVirtualFilesPopulationQueueCapacity,
                 InitialVirtualFilesStateBatchSize = options.InitialVirtualFilesStateBatchSize,

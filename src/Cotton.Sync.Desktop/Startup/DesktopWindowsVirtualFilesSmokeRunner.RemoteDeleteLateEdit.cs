@@ -45,6 +45,8 @@ namespace Cotton.Sync.Desktop.Startup
                 SinglePathRemoteTreeCrawler crawler = new(remoteTree);
                 RecordingUploadRemoteFileSynchronizer remoteFiles = new();
                 SyncEngine engine = new(new LocalFileScanner(), crawler, remoteFiles, stateStore);
+                failures += await RunConfirmedRemoteSubtreeDeleteAsync(context, engine, stateStore, contentProvider, originalContent)
+                    .ConfigureAwait(false);
                 failures += await RunRemoteDeleteCaseAsync(context, engine, stateStore, crawler, remoteTree,
                     remoteFiles, contentProvider, originalContent, "untouched-online.txt",
                     hydrateBeforePlanning: false, editAfterPlanning: false).ConfigureAwait(false);

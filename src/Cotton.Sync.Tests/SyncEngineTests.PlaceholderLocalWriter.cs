@@ -7,7 +7,7 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-        private class PlaceholderLocalWriter(LocalFileSnapshot placeholder) : ILocalFileSyncWriter
+        private class PlaceholderLocalWriter(params LocalFileSnapshot[] placeholders) : ILocalFileSyncWriter
         {
             private readonly AtomicLocalFileSyncWriter _writer = new();
 
@@ -23,6 +23,7 @@ namespace Cotton.Sync.Tests
             public async Task DeleteFileAsync(string rootPath, string relativePath, LocalFileSnapshot? expectedLocalFile,
                 CancellationToken cancellationToken = default)
             {
+                LocalFileSnapshot placeholder = placeholders.Single(file => file.RelativePath == relativePath);
                 Assert.Multiple(() =>
                 {
                     Assert.That(expectedLocalFile, Is.SameAs(placeholder));

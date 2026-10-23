@@ -1,6 +1,8 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using Cotton.Sync.Remote;
+
 namespace Cotton.Sync
 {
     /// <summary>
@@ -19,6 +21,11 @@ namespace Cotton.Sync
         /// Gets or sets the filesystem surface reconciled by this pass.
         /// </summary>
         public SyncRunScope Scope { get; set; } = SyncRunScope.Full;
+
+        /// <summary>
+        /// Gets or sets current server change evidence for local reconciliation.
+        /// </summary>
+        public RemoteChangeFeedSnapshot RemoteChanges { get; set; } = RemoteChangeFeedSnapshot.Empty;
 
         /// <summary>
         /// Gets or sets a value indicating whether remote file deletes bypass trash.

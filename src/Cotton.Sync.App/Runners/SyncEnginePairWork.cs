@@ -79,7 +79,7 @@ namespace Cotton.Sync.App.Runners
                     result.DeferredLocalPaths,
                     [],
                     request.Causes | SyncRunCause.LocalChange,
-                    currentRequest.LocalRenames);
+                    currentRequest.LocalRenames).WithRemoteChanges(currentRequest.RemoteChanges);
                 deferredRetryCount++;
                 await _delayAsync(BackgroundMinimumLocalUploadAge, cancellationToken).ConfigureAwait(false);
             }
@@ -147,7 +147,8 @@ namespace Cotton.Sync.App.Runners
                 && request.LocalRenames.Count == 0
                 && allowInitialVirtualFilesStreaming
                 && (request.Causes & SyncRunCause.InitialPopulation) == SyncRunCause.None
-                && request.ApprovedRemoteDeletePlan is null;
+                && request.ApprovedRemoteDeletePlan is null
+                && request.RemoteChanges.IsEmpty;
         }
 
         private CoreSyncRunOptions CreateOptions(
@@ -167,6 +168,7 @@ namespace Cotton.Sync.App.Runners
                     : CoreSyncRunScope.ForLocalChangedPaths(request.LocalChangedPaths, request.LocalDeletedPaths, request.LocalRenames),
                 MinimumLocalUploadAge = BackgroundMinimumLocalUploadAge,
                 ApprovedRemoteDeletePlan = request.ApprovedRemoteDeletePlan,
+                RemoteChanges = request.RemoteChanges,
                 AllowInitialVirtualFilesStreaming = allowInitialVirtualFilesStreaming,
                 RestoreMissingRemoteOnlyPlaceholders = request.IsFull
                     && (request.Causes & SyncRunCause.InitialPopulation) != SyncRunCause.None,

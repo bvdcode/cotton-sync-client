@@ -33,13 +33,16 @@ namespace Cotton.Sync
                 return new SyncDeleteGuard(options, plannedLocalDeletes: 0, []);
             }
 
+            IReadOnlySet<string> confirmedRemoteDeletePaths = RemoteDeleteConfirmation.CreatePathKeys(
+                options.RemoteChanges, stateByPath, directoryStateByPath);
             (int LocalDeletes, IReadOnlyList<string> RemoteDeleteItems) fileDeletes = CountPlannedFileDeletes(
                 stateByPath,
                 localByPath,
                 remoteByPath,
                 scopedFileDeleteKeys,
                 scopedLocalDeletedFileKeys,
-                scopedDirectoryDelete);
+                scopedDirectoryDelete,
+                confirmedRemoteDeletePaths);
             (int LocalDeletes, IReadOnlyList<string> RemoteDeleteItems) directoryDeletes = CountPlannedDirectoryDeletes(
                 directoryStateByPath,
                 localDirectoriesByPath,
@@ -47,7 +50,8 @@ namespace Cotton.Sync
                 localDirectoryContentIndex,
                 remoteDirectoryContentIndex,
                 scopedDirectoryDeleteKeys,
-                scopedDirectoryDelete);
+                scopedDirectoryDelete,
+                confirmedRemoteDeletePaths);
             List<string> remoteDeletePlanItems = [.. fileDeletes.RemoteDeleteItems, .. directoryDeletes.RemoteDeleteItems];
             if (scopedDirectoryDelete is not null)
             {
@@ -70,7 +74,8 @@ namespace Cotton.Sync
             return new SyncDeleteGuard(
                 options,
                 fileDeletes.LocalDeletes + directoryDeletes.LocalDeletes,
-                remoteDeletePlanItems);
+                remoteDeletePlanItems,
+                confirmedRemoteDeletePaths);
         }
 
         private static (int LocalDeletes, IReadOnlyList<string> RemoteDeleteItems) CountPlannedFileDeletes(
@@ -79,7 +84,8 @@ namespace Cotton.Sync
             IReadOnlyDictionary<string, RemoteFileSnapshot> remoteByPath,
             IReadOnlySet<string>? scopedFileDeleteKeys,
             IReadOnlySet<string> scopedLocalDeletedFileKeys,
-            ScopedVirtualFilesDirectoryDeletePlan? scopedDirectoryDelete)
+            ScopedVirtualFilesDirectoryDeletePlan? scopedDirectoryDelete,
+            IReadOnlySet<string> confirmedRemoteDeletePaths)
         {
             int localDeletes = 0;
             List<string> remoteDeleteItems = [];
@@ -107,7 +113,10 @@ namespace Cotton.Sync
                     case SyncDeleteDirection.None:
                         break;
                     case SyncDeleteDirection.Local:
-                        localDeletes++;
+                        if (!confirmedRemoteDeletePaths.Contains(state.Key))
+                        {
+                            localDeletes++;
+                        }
                         break;
                     case SyncDeleteDirection.Remote:
                         remoteDeleteItems.Add(RemoteDeletePlanFingerprint.CreateFileItem(
@@ -129,7 +138,8 @@ namespace Cotton.Sync
             DirectoryContentIndex localDirectoryContentIndex,
             DirectoryContentIndex remoteDirectoryContentIndex,
             IReadOnlySet<string>? scopedDirectoryDeleteKeys,
-            ScopedVirtualFilesDirectoryDeletePlan? scopedDirectoryDelete)
+            ScopedVirtualFilesDirectoryDeletePlan? scopedDirectoryDelete,
+            IReadOnlySet<string> confirmedRemoteDeletePaths)
         {
             int localDeletes = 0;
             List<string> remoteDeleteItems = [];
@@ -157,7 +167,10 @@ namespace Cotton.Sync
                     case SyncDeleteDirection.None:
                         break;
                     case SyncDeleteDirection.Local:
-                        localDeletes++;
+                        if (!confirmedRemoteDeletePaths.Contains(state.Key))
+                        {
+                            localDeletes++;
+                        }
                         break;
                     case SyncDeleteDirection.Remote:
                         remoteDeleteItems.Add(RemoteDeletePlanFingerprint.CreateDirectoryItem(
@@ -286,6 +299,16 @@ namespace Cotton.Sync
             if (IsMissingOnlineOnlyPlaceholder(state, local, remote))
             {
                 return exactLocalDelete ? SyncDeleteDirection.Remote : SyncDeleteDirection.None;
+            }
+
+            if (remote is null && IsOnlineOnlyPlaceholderState(state))
+            {
+                if (local?.IsCloudFilesOnlineOnlyPlaceholder == true)
+                {
+                    return SyncDeleteDirection.Local;
+                }
+
+                return SyncDeleteDirection.None;
             }
 
             if (LocalAndRemoteContentMatches(local, remote))

@@ -95,7 +95,7 @@ namespace Cotton.Sync.App.Tests.Runners
             Assert.Multiple(() =>
             {
                 Assert.That(inner.RunCallCount, Is.EqualTo(1));
-                Assert.That(inner.LastRequest, Is.SameAs(request));
+                Assert.That(inner.LastRequest?.RemoteChanges.Changes.Single().Cursor, Is.EqualTo(11));
                 Assert.That(inner.LastRequest?.IsFull, Is.True);
                 Assert.That(inner.LastRequest?.Causes, Is.EqualTo(SyncRunCause.InitialPopulation));
                 Assert.That(inner.LastRequest?.LocalChangedPaths, Is.Empty);

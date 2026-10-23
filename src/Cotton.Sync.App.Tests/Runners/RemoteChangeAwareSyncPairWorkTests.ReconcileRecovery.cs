@@ -369,7 +369,10 @@ namespace Cotton.Sync.App.Tests.Runners
             Assert.Multiple(() =>
             {
                 Assert.That(inner.RunCallCount, Is.EqualTo(1));
-                Assert.That(inner.LastRequest, Is.SameAs(request));
+                Assert.That(inner.LastRequest?.IsFull, Is.EqualTo(request.IsFull));
+                Assert.That(inner.LastRequest?.LocalChangedPaths, Is.EqualTo(request.LocalChangedPaths));
+                Assert.That(inner.LastRequest?.Causes, Is.EqualTo(request.Causes));
+                Assert.That(inner.LastRequest?.RemoteChanges.IsEmpty, Is.False);
                 Assert.That(inner.LastRequest?.IsFull, Is.False);
                 Assert.That(stateStore.RemoteIdLookupCallCount, Is.EqualTo(2));
                 Assert.That(remoteChanges.AcknowledgedBatches, Is.Empty);

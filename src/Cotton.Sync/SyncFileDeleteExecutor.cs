@@ -79,7 +79,7 @@ namespace Cotton.Sync
             LocalFileSnapshot? expectedLocalFile,
             CancellationToken cancellationToken)
         {
-            if (!deleteGuard.CanDeleteLocal(out string? details))
+            if (!deleteGuard.CanDeleteLocal(relativePath, out string? details))
             {
                 SyncActivityReporter.ReportActivity(
                     result,

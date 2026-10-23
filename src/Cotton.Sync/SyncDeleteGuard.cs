@@ -1,10 +1,13 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using Cotton.Sync.State;
+
 namespace Cotton.Sync
 {
     internal class SyncDeleteGuard
     {
+        private readonly IReadOnlySet<string> _confirmedRemoteDeletePaths;
         private readonly int _maximumLocalDeletes;
         private readonly int _maximumRemoteDeletes;
         private readonly RemoteDeletePlanApproval? _approvedRemoteDeletePlan;
@@ -15,9 +18,11 @@ namespace Cotton.Sync
         public SyncDeleteGuard(
             SyncRunOptions options,
             int plannedLocalDeletes,
-            IReadOnlyCollection<string> plannedRemoteDeleteItems)
+            IReadOnlyCollection<string> plannedRemoteDeleteItems,
+            IReadOnlySet<string>? confirmedRemoteDeletePaths = null)
         {
             ArgumentNullException.ThrowIfNull(plannedRemoteDeleteItems);
+            _confirmedRemoteDeletePaths = confirmedRemoteDeletePaths ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             _maximumLocalDeletes = options.MaximumLocalDeletesPerRun;
             _maximumRemoteDeletes = options.MaximumRemoteDeletesPerRun;
             _approvedRemoteDeletePlan = options.ApprovedRemoteDeletePlan;
@@ -26,8 +31,14 @@ namespace Cotton.Sync
             _plannedRemoteDeleteFingerprint = RemoteDeletePlanFingerprint.Create(plannedRemoteDeleteItems);
         }
 
-        public bool CanDeleteLocal(out string? details)
+        public bool CanDeleteLocal(string relativePath, out string? details)
         {
+            if (_confirmedRemoteDeletePaths.Contains(SyncPath.ToKey(relativePath)))
+            {
+                details = null;
+                return true;
+            }
+
             return CanDelete(
                 _plannedLocalDeletes,
                 _maximumLocalDeletes,
