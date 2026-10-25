@@ -18,6 +18,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             public List<SyncRunRequest> Requests { get; } = [];
 
+            public Exception? Failure { get; init; }
+
             public Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
             {
                 Requests.Add(SyncRunRequest.Full);
@@ -30,6 +32,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 CancellationToken cancellationToken = default)
             {
                 Requests.Add(request);
+                if (Failure is not null)
+                {
+                    return Task.FromException(Failure);
+                }
+
                 return Task.CompletedTask;
             }
         }
@@ -132,6 +139,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
             public bool ContentMatchesForDehydration { get; init; } = true;
 
+            public Action<string>? Dehydrating { get; init; }
+
             public WindowsCloudFilesPlaceholderState PlaceholderState { get; init; } =
                 WindowsCloudFilesPlaceholderState.Placeholder | WindowsCloudFilesPlaceholderState.InSync;
 
@@ -182,6 +191,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 }
 
                 contentValidated?.Invoke();
+                Dehydrating?.Invoke(relativePath);
                 DehydratedPaths.Add(relativePath);
                 return Task.FromResult(true);
             }

@@ -9,6 +9,11 @@ namespace Cotton.Sync.Desktop.Shell
     {
         internal static string GetIssueTitle(string? message)
         {
+            if (VirtualFileUserFacingCopy.IsDehydrationIncompleteMessage(message))
+            {
+                return VirtualFileUserFacingCopy.CloudFilesDehydrationIncompleteTitle;
+            }
+
             return VirtualFileUserFacingCopy.IsMetadataIncompleteMessage(message)
                 ? "Sync incomplete"
                 : "Action required";

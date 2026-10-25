@@ -23,6 +23,8 @@ namespace Cotton.Sync.Desktop.Platform
 
         public List<string> RemainingPaths { get; } = [];
 
+        public List<string> DeferredDehydrationPaths { get; } = [];
+
         public HashSet<string> HandledAvailabilityPathKeys { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         public bool HandledRootAvailability { get; set; }

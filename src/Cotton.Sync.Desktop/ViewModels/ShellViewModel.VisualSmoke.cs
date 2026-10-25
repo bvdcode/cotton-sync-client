@@ -120,6 +120,13 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             switch (scenario)
             {
+                case DesktopVisualSmokeScenario.DehydrationIncomplete:
+                    string dehydrationMessage = VirtualFileUserFacingCopy.CreateDehydrationIncompleteMessage(
+                        ["Library/Lessons/Video editing/Advanced course/2026/Day 2.mp4",
+                         "Library/Lessons/Video editing/Advanced course/2026/Day 3.mp4"]);
+                    ApplyStatus(new DesktopSyncStatusSnapshot(
+                        [new DesktopSyncPairStatusSnapshot(SyncPairs[0].Id, "Error", dehydrationMessage)]));
+                    return true;
                 case DesktopVisualSmokeScenario.MetadataIncomplete:
                     string metadataMessage = VirtualFileUserFacingCopy.CreateMetadataIncompleteMessage(
                         ["Library/Lessons/Video editing/Advanced course/2026/30.1 Комплексная работа по всем пройденным темам.mp4",

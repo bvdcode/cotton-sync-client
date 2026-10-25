@@ -21,7 +21,7 @@ if [ -z "${DISPLAY:-}" ]; then
 fi
 
 if [ "$#" -eq 0 ]; then
-  set -- connecting sign-in-error empty-dashboard add-folder dashboard folder-controls progress many-small-download settings settings-diagnostics error metadata-incomplete conflict
+  set -- connecting sign-in-error empty-dashboard add-folder dashboard folder-controls progress many-small-download settings settings-diagnostics error metadata-incomplete dehydration-incomplete conflict
 fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

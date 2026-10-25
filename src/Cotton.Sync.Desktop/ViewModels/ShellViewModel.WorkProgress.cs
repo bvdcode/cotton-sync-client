@@ -117,6 +117,11 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             if (HasActionRequired)
             {
+                if (VirtualFileUserFacingCopy.IsDehydrationIncompleteMessage(ActionRequiredMessage))
+                {
+                    return "Some files still use local disk space. File synchronization can continue.";
+                }
+
                 if (VirtualFileUserFacingCopy.IsMetadataIncompleteMessage(ActionRequiredMessage))
                 {
                     return "Some cloud files could not be set up. Other files can still sync.";

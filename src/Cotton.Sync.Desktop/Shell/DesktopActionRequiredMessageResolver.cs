@@ -73,7 +73,7 @@ namespace Cotton.Sync.Desktop.Shell
         {
             ArgumentNullException.ThrowIfNull(status);
             DesktopSyncPairStatusSnapshot? failedPair = status.SyncPairs
-                .OrderBy(static pair => VirtualFileUserFacingCopy.IsMetadataIncompleteMessage(pair.LastError))
+                .OrderBy(static pair => VirtualFileUserFacingCopy.IsCloudFilesIncompleteMessage(pair.LastError))
                 .FirstOrDefault(static pair => RequiresUserAction(pair) && !string.IsNullOrWhiteSpace(pair.LastError));
             if (failedPair is not null)
             {
@@ -196,7 +196,8 @@ namespace Cotton.Sync.Desktop.Shell
                 return null;
             }
 
-            if (message.Contains(VirtualFileUserFacingCopy.CloudFilesMetadataIncompleteMessage, StringComparison.Ordinal))
+            if (message.Contains(VirtualFileUserFacingCopy.CloudFilesMetadataIncompleteMessage, StringComparison.Ordinal)
+                || message.Contains(VirtualFileUserFacingCopy.CloudFilesDehydrationIncompleteMessage, StringComparison.Ordinal))
             {
                 return message.Trim();
             }

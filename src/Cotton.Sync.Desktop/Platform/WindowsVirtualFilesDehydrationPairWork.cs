@@ -78,6 +78,12 @@ namespace Cotton.Sync.Desktop.Platform
                 .ConfigureAwait(false);
             await ProcessAvailabilityPathsAsync(syncPair, run, cancellationToken).ConfigureAwait(false);
             await RunRemainingSyncAsync(syncPair, run, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (run.DeferredDehydrationPaths.Count > 0)
+            {
+                throw new SyncActionRequiredException(
+                    VirtualFileUserFacingCopy.CreateDehydrationIncompleteMessage(run.DeferredDehydrationPaths));
+            }
         }
 
 

@@ -145,7 +145,7 @@ namespace Cotton.Sync.Desktop.ViewModels
 
         public bool CanRetryActionRequired => HasActionRequired
             && IsSignedIn
-            && !VirtualFileUserFacingCopy.IsMetadataIncompleteMessage(ActionRequiredMessage)
+            && !VirtualFileUserFacingCopy.IsCloudFilesIncompleteMessage(ActionRequiredMessage)
             && !HasRemoteMassDeleteGuard();
 
         public bool CanApproveRemoteMassDelete => HasActionRequired

@@ -192,8 +192,9 @@ namespace Cotton.Sync.Desktop.Platform
                 run,
                 manualDehydrationPath);
             bool dehydrated = !hydrated
-                && await TryHandleManualDehydrationAsync(
+                && await TryHandleDehydrationWithFailureIsolationAsync(
                         syncPair,
+                        run,
                         relativePath,
                         onDehydrationStarting,
                         cancellationToken)

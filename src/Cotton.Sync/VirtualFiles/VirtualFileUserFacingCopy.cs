@@ -27,6 +27,28 @@ namespace Cotton.Sync.VirtualFiles
             "Windows could not finish cloud file setup (0x80070299). "
             + "Affected files remain on this device. Other files can still sync.";
 
+        public const string CloudFilesDehydrationIncompleteTitle = "Free up space incomplete";
+
+        public const string CloudFilesDehydrationIncompleteMessage =
+            "Windows could not free up space for the files below (0x80070299). "
+            + "File synchronization can continue.";
+
+        public static string CreateDehydrationIncompleteMessage(IReadOnlyList<string> paths)
+        {
+            return CloudFilesDehydrationIncompleteMessage + Environment.NewLine + Environment.NewLine
+                + string.Join(Environment.NewLine, paths);
+        }
+
+        public static bool IsDehydrationIncompleteMessage(string? message)
+        {
+            return message?.StartsWith(CloudFilesDehydrationIncompleteMessage, StringComparison.Ordinal) == true;
+        }
+
+        public static bool IsCloudFilesIncompleteMessage(string? message)
+        {
+            return IsMetadataIncompleteMessage(message) || IsDehydrationIncompleteMessage(message);
+        }
+
         public static string CreateMetadataIncompleteMessage(IReadOnlyList<string> paths)
         {
             return CloudFilesMetadataIncompleteMessage + Environment.NewLine + Environment.NewLine

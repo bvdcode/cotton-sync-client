@@ -1,6 +1,8 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using Cotton.Sync.VirtualFiles;
+
 namespace Cotton.Sync.Desktop.Shell
 {
     internal static class DesktopTrayStatusResolver
@@ -25,7 +27,8 @@ namespace Cotton.Sync.Desktop.Shell
 
             if (hasStatusAttention || Contains(statusText, "action") || Contains(statusText, "failed"))
             {
-                if (string.Equals(statusText, "Sync incomplete", StringComparison.Ordinal))
+                if (string.Equals(statusText, "Sync incomplete", StringComparison.Ordinal)
+                    || string.Equals(statusText, VirtualFileUserFacingCopy.CloudFilesDehydrationIncompleteTitle, StringComparison.Ordinal))
                 {
                     return Create(DesktopTrayStatusKind.Error, statusText);
                 }
