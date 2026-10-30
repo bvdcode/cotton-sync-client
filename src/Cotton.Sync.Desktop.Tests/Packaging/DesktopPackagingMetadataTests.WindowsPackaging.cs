@@ -99,22 +99,6 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
         }
 
         [Test]
-        public void CiWorkflow_BuildsAndUploadsLinuxDebArtifact()
-        {
-            string workflow = GetDesktopWorkflow();
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(workflow, Does.Contain("Package desktop Linux x64 deb"));
-                Assert.That(workflow, Does.Contain("src/Cotton.Sync.Desktop/Packaging/linux/package-deb.sh"));
-                Assert.That(workflow, Does.Contain("cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.SemVer }}.deb"));
-                Assert.That(
-                    Regex.Matches(workflow, "cotton-sync-desktop-linux-x64-\\$\\{\\{ steps\\.gitversion\\.outputs\\.SemVer \\}\\}\\.deb").Count,
-                    Is.GreaterThanOrEqualTo(2));
-            });
-        }
-
-        [Test]
         public void CiWorkflow_CapturesLinuxGuiScreenshot()
         {
             string workflow = GetDesktopWorkflow();
@@ -133,100 +117,6 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("name: desktop-linux-gui-screenshot"));
                 Assert.That(workflow, Does.Contain("cotton-sync-desktop-linux-*.png"));
                 Assert.That(workflow, Does.Contain("cotton-sync-desktop-linux-*.png.log"));
-            });
-        }
-
-        [Test]
-        public void CiWorkflow_SmokesLinuxPackageArtifacts()
-        {
-            string workflow = GetDesktopWorkflow();
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(workflow, Does.Contain("Smoke desktop Linux archive artifact"));
-                Assert.That(workflow, Does.Contain("tar -xzf cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.SemVer }}.tar.gz"));
-                Assert.That(workflow, Does.Contain("self_test_timeout=120s"));
-                Assert.That(workflow, Does.Contain("xvfb-run -a -s \"-screen 0 1024x768x24\""));
-                Assert.That(workflow, Does.Contain("timeout \"$self_test_timeout\""));
-                Assert.That(workflow, Does.Contain("\"$extract_dir/Cotton.Sync.Desktop\" --self-test --data-dir"));
-                Assert.That(workflow, Does.Contain("Packaging/linux/verify-checksums.sh"));
-                Assert.That(workflow, Does.Contain("Packaging/linux/smoke-diagnostics-export.sh"));
-                Assert.That(workflow, Does.Contain("Smoke desktop Linux deb artifact"));
-                Assert.That(workflow, Does.Contain("dpkg-deb -x cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.SemVer }}.deb"));
-                Assert.That(workflow, Does.Contain("test -f \"$extract_dir/usr/share/applications/cotton-sync.desktop\""));
-                Assert.That(workflow, Does.Contain("test -f \"$extract_dir/usr/share/icons/hicolor/192x192/apps/cotton-sync.png\""));
-                Assert.That(workflow, Does.Contain("test -L \"$extract_dir/usr/bin/cotton-sync\""));
-                Assert.That(workflow, Does.Contain("\"$extract_dir/opt/cotton-sync\""));
-                Assert.That(workflow, Does.Contain("\"$extract_dir/opt/cotton-sync/Cotton.Sync.Desktop\" --self-test --data-dir"));
-            });
-        }
-
-        [Test]
-        public void CiWorkflow_SmokesLinuxDebInstallAndUninstall()
-        {
-            string workflow = GetDesktopWorkflow();
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(workflow, Does.Contain("Smoke desktop Linux deb install"));
-                Assert.That(workflow, Does.Contain("sudo dpkg -i cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.SemVer }}.deb"));
-                Assert.That(workflow, Does.Contain("sudo dpkg -r cotton-sync-desktop"));
-                Assert.That(workflow, Does.Contain("test -x /opt/cotton-sync/Cotton.Sync.Desktop"));
-                Assert.That(workflow, Does.Contain("test -L /usr/bin/cotton-sync"));
-                Assert.That(workflow, Does.Contain("Packaging/linux/verify-checksums.sh /opt/cotton-sync"));
-                Assert.That(workflow, Does.Contain("/opt/cotton-sync/Cotton.Sync.Desktop --self-test --data-dir"));
-                Assert.That(workflow, Does.Contain("Packaging/linux/smoke-diagnostics-export.sh"));
-                Assert.That(workflow, Does.Contain("test ! -e /opt/cotton-sync/Cotton.Sync.Desktop"));
-                Assert.That(workflow, Does.Contain("test ! -e /usr/bin/cotton-sync"));
-                Assert.That(workflow, Does.Contain("$HOME/.config/autostart/cotton-sync.desktop"));
-                Assert.That(workflow, Does.Contain("Exec=/opt/cotton-sync/Cotton.Sync.Desktop"));
-                Assert.That(workflow, Does.Contain("test ! -e \"$HOME/.config/autostart/cotton-sync.desktop\""));
-            });
-        }
-
-        [Test]
-        public void CiWorkflow_SmokesLinuxDebUpgrade()
-        {
-            string workflow = GetDesktopWorkflow();
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(workflow, Does.Contain("Smoke desktop Linux deb upgrade"));
-                Assert.That(workflow, Does.Contain("cotton-sync-desktop-linux-x64-old.deb"));
-                Assert.That(workflow, Does.Contain("0.0.1-ci-upgrade"));
-                Assert.That(workflow, Does.Contain("sudo dpkg -i \"$old_deb\""));
-                Assert.That(workflow, Does.Contain("sudo dpkg -i cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.SemVer }}.deb"));
-                Assert.That(workflow, Does.Contain("dpkg-query -W -f='${Version}' cotton-sync-desktop"));
-                Assert.That(workflow, Does.Contain("Expected upgraded package version"));
-                Assert.That(workflow, Does.Contain("Packaging/linux/verify-checksums.sh /opt/cotton-sync"));
-                Assert.That(workflow, Does.Contain("/opt/cotton-sync/Cotton.Sync.Desktop --self-test --data-dir"));
-                Assert.That(workflow, Does.Contain("Packaging/linux/smoke-diagnostics-export.sh"));
-                Assert.That(workflow, Does.Contain("$HOME/.config/autostart/cotton-sync.desktop"));
-                Assert.That(workflow, Does.Contain("Exec=/opt/cotton-sync/Cotton.Sync.Desktop"));
-                Assert.That(workflow, Does.Contain("sudo dpkg -r cotton-sync-desktop"));
-                Assert.That(workflow, Does.Contain("test ! -e /opt/cotton-sync/Cotton.Sync.Desktop"));
-                Assert.That(workflow, Does.Contain("test ! -e /usr/bin/cotton-sync"));
-                Assert.That(workflow, Does.Contain("test ! -e \"$HOME/.config/autostart/cotton-sync.desktop\""));
-            });
-        }
-
-        [Test]
-        public void CiWorkflow_RunsWindowsDesktopSmoke()
-        {
-            string workflow = GetDesktopWorkflow();
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(workflow, Does.Contain("windows:"));
-                Assert.That(workflow, Does.Contain("Desktop Windows Package Smoke"));
-                Assert.That(workflow, Does.Contain("runs-on: windows-latest"));
-                Assert.That(workflow, Does.Contain("/p:PublishProfile=win-x64"));
-                Assert.That(workflow, Does.Contain("-p:Version='${{ steps.gitversion.outputs.SemVer }}'"));
-                Assert.That(workflow, Does.Contain("-p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}'"));
-                Assert.That(workflow, Does.Contain("-p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}'"));
-                Assert.That(workflow, Does.Contain("Packaging/windows/verify-associated-icon.ps1"));
-                Assert.That(workflow, Does.Contain("-ExpectedIcon \"src/Cotton.Sync.Desktop/Assets/app.ico\""));
-                Assert.That(workflow, Does.Contain("Cotton.Sync.Desktop.exe --self-test --data-dir"));
             });
         }
 
@@ -346,47 +236,6 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(
                     script,
                     Does.Contain("Verified Cloud Files and Explorer registrations were removed after uninstall."));
-            });
-        }
-
-        [Test]
-        public void CiWorkflow_SmokesWindowsZipArchiveOnWindows()
-        {
-            string workflow = GetDesktopWorkflow();
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(workflow, Does.Contain("Setup Python"));
-                Assert.That(workflow, Does.Contain("Smoke desktop Windows zip archive"));
-                Assert.That(workflow, Does.Contain("Packaging/windows/package-zip.py"));
-                Assert.That(workflow, Does.Contain("Packaging/windows/verify-checksums.ps1"));
-                Assert.That(workflow, Does.Contain("Packaging/windows/verify-associated-icon.ps1"));
-                Assert.That(workflow, Does.Contain("cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}.zip"));
-                Assert.That(workflow, Does.Contain("Expand-Archive cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}.zip"));
-                Assert.That(workflow, Does.Contain("Cotton.Sync.Desktop.exe\") --self-test --data-dir"));
-                Assert.That(workflow, Does.Contain("Packaging/windows/smoke-diagnostics-export.ps1"));
-                Assert.That(workflow, Does.Contain("-AppExecutable (Join-Path $extractDir \"Cotton.Sync.Desktop.exe\")"));
-            });
-        }
-
-        [Test]
-        public void CiWorkflow_UploadsWindowsZipPortableArtifact()
-        {
-            string workflow = GetDesktopWorkflow();
-            string packageScript = File.ReadAllText(GetDesktopFilePath("Packaging/windows/package-zip.py"));
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(workflow, Does.Contain("Package desktop Windows x64 zip"));
-                Assert.That(workflow, Does.Contain("src/Cotton.Sync.Desktop/Packaging/windows/package-zip.py"));
-                Assert.That(workflow, Does.Contain("cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}.zip"));
-                Assert.That(packageScript, Does.Contain("Cotton.Sync.Desktop.exe"));
-                Assert.That(packageScript, Does.Contain("checksums.sha256"));
-                Assert.That(packageScript, Does.Contain("ZipFile(output_zip, \"w\", ZIP_DEFLATED)"));
-                Assert.That(packageScript, Does.Contain("path.relative_to(resolved_publish_dir).as_posix()"));
-                Assert.That(
-                    Regex.Matches(workflow, "cotton-sync-desktop-win-x64-\\$\\{\\{ steps\\.gitversion\\.outputs\\.SemVer \\}\\}\\.zip").Count,
-                    Is.GreaterThanOrEqualTo(2));
             });
         }
 

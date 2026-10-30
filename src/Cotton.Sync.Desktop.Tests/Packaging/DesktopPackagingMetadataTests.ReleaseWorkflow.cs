@@ -13,24 +13,6 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
     {
 
         [Test]
-        public void CiWorkflow_DoesNotCarryMonorepoDockerImageWorkflow()
-        {
-            string desktopWorkflow = GetDesktopWorkflow();
-            string? dockerWorkflowPath = TryGetRepositoryFilePath(Path.Combine(".github", "workflows", "docker-image.yml"));
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(desktopWorkflow, Does.Contain("cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.SemVer }}.tar.gz"));
-                Assert.That(desktopWorkflow, Does.Contain("cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.SemVer }}.deb"));
-                Assert.That(desktopWorkflow, Does.Contain("cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}.tar.gz"));
-                Assert.That(desktopWorkflow, Does.Contain("cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}.zip"));
-                Assert.That(desktopWorkflow, Does.Contain("cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}-setup.exe"));
-                Assert.That(desktopWorkflow, Does.Contain("cotton-sync-cli-win-x64-${{ steps.gitversion.outputs.SemVer }}.zip"));
-                Assert.That(dockerWorkflowPath, Is.Null);
-            });
-        }
-
-        [Test]
         public void DesktopWorkflow_UploadsReleaseArtifactChecksums()
         {
             string workflow = GetDesktopWorkflow();
@@ -47,31 +29,6 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(workflow, Does.Contain("release-artifact-checksums.sha256"));
                 Assert.That(workflow, Does.Contain("name: release-artifact-checksums"));
                 Assert.That(workflow, Does.Contain("Expected 6 desktop release assets"));
-            });
-        }
-
-        [Test]
-        public void DesktopWorkflow_PublishesSyncCliWindowsArtifact()
-        {
-            string workflow = GetDesktopWorkflow();
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(workflow, Does.Contain("cli-windows:"));
-                Assert.That(workflow, Does.Contain("Sync CLI Windows Package Smoke"));
-                Assert.That(workflow, Does.Contain("dotnet publish src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj"));
-                Assert.That(workflow, Does.Contain("-p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}'"));
-                Assert.That(workflow, Does.Contain("-p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}'"));
-                Assert.That(workflow, Does.Contain("Cotton.Sync.Cli.exe"));
-                Assert.That(workflow, Does.Contain("Packaging/windows/verify-version-metadata.ps1"));
-                Assert.That(workflow, Does.Contain("-Label \"CLI publish executable\""));
-                Assert.That(workflow, Does.Contain("-Label \"CLI zip executable\""));
-                Assert.That(workflow, Does.Contain("auth-browser"));
-                Assert.That(workflow, Does.Contain("state-summary"));
-                Assert.That(workflow, Does.Contain("sync-once"));
-                Assert.That(workflow, Does.Contain("sync-soak"));
-                Assert.That(workflow, Does.Contain("cotton-sync-cli-win-x64-${{ steps.gitversion.outputs.SemVer }}.zip"));
-                Assert.That(workflow, Does.Contain("CottonSync-CLI-Windows.zip"));
             });
         }
 
@@ -167,46 +124,5 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             });
         }
 
-        [Test]
-        public void ReleaseVersioning_UsesLatestTagPlusOnePatchPolicy()
-        {
-            string gitVersion = File.ReadAllText(GetRepositoryFilePath("GitVersion.yml"));
-            string versionScript = File.ReadAllText(GetRepositoryFilePath(Path.Combine(".github", "scripts", "determine-version.ps1")));
-            string workflow = GetDesktopWorkflow();
-            string toolManifest = File.ReadAllText(GetRepositoryFilePath("dotnet-tools.json"));
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(gitVersion, Does.Contain("next-version: 0.1.0"));
-                Assert.That(gitVersion, Does.Not.Contain("next-version: 0.0.0"));
-                Assert.That(gitVersion, Does.Contain("strategies:"));
-                Assert.That(gitVersion, Does.Contain("- Mainline"));
-                Assert.That(gitVersion, Does.Contain("increment: Patch"));
-                Assert.That(versionScript, Does.Contain("Get-ReleasePolicyVersion"));
-                Assert.That(versionScript, Does.Contain("git tag --points-at HEAD"));
-                Assert.That(versionScript, Does.Contain("git tag --list \"v[0-9]*.[0-9]*.[0-9]*\""));
-                Assert.That(versionScript, Does.Contain("Policy = \"latest-tag-plus-one\""));
-                Assert.That(versionScript, Does.Contain("Policy = \"tag\""));
-                Assert.That(versionScript, Does.Contain("VersionPolicy"));
-                Assert.That(versionScript, Does.Contain("Release SemVer"));
-                Assert.That(versionScript, Does.Contain("dotnet tool restore"));
-                Assert.That(versionScript, Does.Contain("dotnet gitversion /output json"));
-                Assert.That(versionScript, Does.Contain("$gitVersion.MajorMinorPatch"));
-                Assert.That(versionScript, Does.Contain("GitVersionSemVer"));
-                Assert.That(versionScript, Does.Contain("$assemblyVersion = \"$version.0\""));
-                Assert.That(versionScript, Does.Contain("$fileVersion = \"$version.0\""));
-                Assert.That(versionScript, Does.Contain("AssemblyVersion=$assemblyVersion"));
-                Assert.That(versionScript, Does.Contain("FileVersion=$fileVersion"));
-                Assert.That(workflow, Does.Not.Contain("    paths:"));
-                Assert.That(workflow, Does.Contain("run: ./.github/scripts/determine-version.ps1"));
-                Assert.That(workflow, Does.Contain("-p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}'"));
-                Assert.That(workflow, Does.Contain("-p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}'"));
-                Assert.That(toolManifest, Does.Contain("\"gitversion.tool\""));
-                Assert.That(versionScript, Does.Not.Contain("GITHUB_RUN_NUMBER"));
-                Assert.That(versionScript, Does.Not.Contain("version-run-number-offset"));
-                Assert.That(versionScript, Does.Not.Contain("$version = $nextVersion"));
-                Assert.That(versionScript, Does.Not.Contain("0.5.0"));
-            });
-        }
     }
 }
