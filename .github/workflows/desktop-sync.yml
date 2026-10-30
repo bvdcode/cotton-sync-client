@@ -161,7 +161,7 @@ jobs:
       - tests
       - live-acceptance
     outputs:
-      Version: ${{ steps.gitversion.outputs.SemVer }}
+      Version: ${{ steps.gitversion.outputs.MajorMinorPatch }}
     permissions:
       contents: read
     steps:
@@ -199,7 +199,7 @@ jobs:
         run: dotnet restore src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --locked-mode
 
       - name: Publish desktop Linux x64
-        run: dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --no-restore /p:PublishProfile=linux-x64 -p:Version='${{ steps.gitversion.outputs.SemVer }}' -p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}' -p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}' -p:InformationalVersion='${{ steps.gitversion.outputs.SemVer }}'
+        run: dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --no-restore /p:PublishProfile=linux-x64 -p:Version='${{ steps.gitversion.outputs.MajorMinorPatch }}' -p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}' -p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}' -p:InformationalVersion='${{ steps.gitversion.outputs.MajorMinorPatch }}'
 
       - name: Smoke desktop Linux self-test
         run: |
@@ -235,14 +235,14 @@ jobs:
           if-no-files-found: ignore
 
       - name: Package desktop Linux x64 archive
-        run: tar -czf cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.SemVer }}.tar.gz -C src/Cotton.Sync.Desktop/bin/Release/net10.0/publish/linux-x64 .
+        run: tar -czf cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}.tar.gz -C src/Cotton.Sync.Desktop/bin/Release/net10.0/publish/linux-x64 .
 
       - name: Package desktop Linux x64 deb
         run: |
           src/Cotton.Sync.Desktop/Packaging/linux/package-deb.sh \
             src/Cotton.Sync.Desktop/bin/Release/net10.0/publish/linux-x64 \
-            cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.SemVer }}.deb \
-            '${{ steps.gitversion.outputs.SemVer }}'
+            cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}.deb \
+            '${{ steps.gitversion.outputs.MajorMinorPatch }}'
 
       - name: Smoke desktop Linux archive artifact
         run: |
@@ -254,7 +254,7 @@ jobs:
           data_dir="$temp_dir/data"
           self_test_timeout=120s
           mkdir -p "$extract_dir" "$data_dir"
-          tar -xzf cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.SemVer }}.tar.gz -C "$extract_dir"
+          tar -xzf cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}.tar.gz -C "$extract_dir"
           src/Cotton.Sync.Desktop/Packaging/linux/verify-checksums.sh "$extract_dir"
           . src/Cotton.Sync.Desktop/Packaging/linux/start-secret-service.sh
           timeout "$self_test_timeout" "$extract_dir/Cotton.Sync.Desktop" --self-test --data-dir "$data_dir"
@@ -273,7 +273,7 @@ jobs:
           data_dir="$temp_dir/data"
           self_test_timeout=120s
           mkdir -p "$extract_dir" "$data_dir"
-          dpkg-deb -x cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.SemVer }}.deb "$extract_dir"
+          dpkg-deb -x cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}.deb "$extract_dir"
           test -f "$extract_dir/usr/share/applications/cotton-sync.desktop"
           test -f "$extract_dir/usr/share/icons/hicolor/192x192/apps/cotton-sync.png"
           test -L "$extract_dir/usr/bin/cotton-sync"
@@ -284,7 +284,7 @@ jobs:
 
       - name: Smoke desktop Linux deb install
         run: |
-          sudo dpkg -i cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.SemVer }}.deb
+          sudo dpkg -i cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}.deb
           cleanup() {
             sudo dpkg -r cotton-sync-desktop >/dev/null 2>&1 || true
           }
@@ -343,11 +343,11 @@ jobs:
           X-GNOME-Autostart-enabled=true
           EOF
 
-          sudo dpkg -i cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.SemVer }}.deb
+          sudo dpkg -i cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}.deb
           src/Cotton.Sync.Desktop/Packaging/linux/verify-checksums.sh /opt/cotton-sync
           installed_version="$(dpkg-query -W -f='${Version}' cotton-sync-desktop)"
-          if [ "$installed_version" != "${{ steps.gitversion.outputs.SemVer }}" ]; then
-            echo "Expected upgraded package version ${{ steps.gitversion.outputs.SemVer }}, got $installed_version." >&2
+          if [ "$installed_version" != "${{ steps.gitversion.outputs.MajorMinorPatch }}" ]; then
+            echo "Expected upgraded package version ${{ steps.gitversion.outputs.MajorMinorPatch }}, got $installed_version." >&2
             exit 1
           fi
 
@@ -374,8 +374,8 @@ jobs:
         with:
           name: desktop-linux-x64
           path: |
-            cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.SemVer }}.tar.gz
-            cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.SemVer }}.deb
+            cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}.tar.gz
+            cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}.deb
 
   windows:
     name: Desktop Windows Package Smoke
@@ -385,7 +385,7 @@ jobs:
       - tests
       - live-acceptance
     outputs:
-      Version: ${{ steps.gitversion.outputs.SemVer }}
+      Version: ${{ steps.gitversion.outputs.MajorMinorPatch }}
     permissions:
       contents: read
     steps:
@@ -414,7 +414,7 @@ jobs:
         run: dotnet restore src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --locked-mode
 
       - name: Publish desktop Windows x64
-        run: dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --no-restore /p:PublishProfile=win-x64 -p:Version='${{ steps.gitversion.outputs.SemVer }}' -p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}' -p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}' -p:InformationalVersion='${{ steps.gitversion.outputs.SemVer }}'
+        run: dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --no-restore /p:PublishProfile=win-x64 -p:Version='${{ steps.gitversion.outputs.MajorMinorPatch }}' -p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}' -p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}' -p:InformationalVersion='${{ steps.gitversion.outputs.MajorMinorPatch }}'
 
       - name: Verify Cloud Files availability and downloads
         timeout-minutes: 7
@@ -437,18 +437,18 @@ jobs:
             -ExpectedIcon "src/Cotton.Sync.Desktop/Assets/app.ico"
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-version-metadata.ps1" `
             -Executable "src/Cotton.Sync.Desktop/bin/Release/net10.0/publish/win-x64/Cotton.Sync.Desktop.exe" `
-            -ExpectedProductVersion "${{ steps.gitversion.outputs.SemVer }}" `
+            -ExpectedProductVersion "${{ steps.gitversion.outputs.MajorMinorPatch }}" `
             -Label "desktop publish executable"
           src/Cotton.Sync.Desktop/bin/Release/net10.0/publish/win-x64/Cotton.Sync.Desktop.exe --self-test --data-dir "$dataDir"
 
       - name: Package desktop Windows x64 archive
-        run: tar -czf cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}.tar.gz -C src/Cotton.Sync.Desktop/bin/Release/net10.0/publish/win-x64 .
+        run: tar -czf cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}.tar.gz -C src/Cotton.Sync.Desktop/bin/Release/net10.0/publish/win-x64 .
 
       - name: Package desktop Windows x64 zip
         run: >
           python src/Cotton.Sync.Desktop/Packaging/windows/package-zip.py
           src/Cotton.Sync.Desktop/bin/Release/net10.0/publish/win-x64
-          cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}.zip
+          cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}.zip
 
       - name: Smoke desktop Windows zip archive
         timeout-minutes: 5
@@ -458,7 +458,7 @@ jobs:
           $dataDir = Join-Path $env:RUNNER_TEMP "cotton-sync-win-zip-data"
           New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
           New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
-          Expand-Archive cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}.zip -DestinationPath $extractDir -Force
+          Expand-Archive cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}.zip -DestinationPath $extractDir -Force
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-checksums.ps1" `
             -PublishDirectory $extractDir
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-associated-icon.ps1" `
@@ -466,13 +466,13 @@ jobs:
             -ExpectedIcon "src/Cotton.Sync.Desktop/Assets/app.ico"
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-version-metadata.ps1" `
             -Executable (Join-Path $extractDir "Cotton.Sync.Desktop.exe") `
-            -ExpectedProductVersion "${{ steps.gitversion.outputs.SemVer }}" `
+            -ExpectedProductVersion "${{ steps.gitversion.outputs.MajorMinorPatch }}" `
             -Label "desktop zip executable"
           & (Join-Path $extractDir "Cotton.Sync.Desktop.exe") --self-test --data-dir "$dataDir"
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-diagnostics-export.ps1" `
             -AppExecutable (Join-Path $extractDir "Cotton.Sync.Desktop.exe") `
             -DataDirectory $dataDir `
-            -ExpectedAppVersion "${{ steps.gitversion.outputs.SemVer }}"
+            -ExpectedAppVersion "${{ steps.gitversion.outputs.MajorMinorPatch }}"
 
       - name: Install Inno Setup
         timeout-minutes: 10
@@ -493,13 +493,13 @@ jobs:
           $publishDir = Resolve-Path "src/Cotton.Sync.Desktop/bin/Release/net10.0/publish/win-x64"
           $iconFile = Resolve-Path "src/Cotton.Sync.Desktop/Assets/app.ico"
           $outputDir = Resolve-Path "."
-          $installerName = "cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}-setup.exe"
+          $installerName = "cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}-setup.exe"
           & "$env:INNO_SETUP_COMPILER" `
             "/DSourceDir=$publishDir" `
             "/DIconFile=$iconFile" `
             "/DOutputDir=$outputDir" `
-            "/DAppVersion=${{ steps.gitversion.outputs.SemVer }}" `
-            "/DOutputBaseFilename=cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}-setup" `
+            "/DAppVersion=${{ steps.gitversion.outputs.MajorMinorPatch }}" `
+            "/DOutputBaseFilename=cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}-setup" `
             "src/Cotton.Sync.Desktop/Packaging/windows/cotton-sync.iss"
 
           if (-not (Test-Path $installerName)) {
@@ -530,10 +530,10 @@ jobs:
           New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
           New-Item -ItemType Directory -Path $evidenceDir -Force | Out-Null
           New-Item -ItemType Directory -Path $vfsLocalRoot -Force | Out-Null
-          $installerPath = ".\cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}-setup.exe"
+          $installerPath = ".\cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}-setup.exe"
           @(
             "StartedAt: $((Get-Date).ToString('O'))",
-            "Version: ${{ steps.gitversion.outputs.SemVer }}",
+            "Version: ${{ steps.gitversion.outputs.MajorMinorPatch }}",
             "InstallDir: $installDir",
             "DataDir: $dataDir",
             "VfsLocalRoot: $vfsLocalRoot",
@@ -558,7 +558,7 @@ jobs:
           }
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-version-metadata.ps1" `
             -Executable $installedExe `
-            -ExpectedProductVersion "${{ steps.gitversion.outputs.SemVer }}" `
+            -ExpectedProductVersion "${{ steps.gitversion.outputs.MajorMinorPatch }}" `
             -Label "installed desktop executable"
 
           $startMenuShortcut = Join-Path ([Environment]::GetFolderPath("Programs")) "Cotton Sync\Cotton Sync.lnk"
@@ -646,7 +646,7 @@ jobs:
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-diagnostics-export.ps1" `
             -AppExecutable $installedExe `
             -DataDirectory $dataDir `
-            -ExpectedAppVersion "${{ steps.gitversion.outputs.SemVer }}"
+            -ExpectedAppVersion "${{ steps.gitversion.outputs.MajorMinorPatch }}"
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-update-discovery.ps1" `
             -AppExecutable $installedExe `
             -DataDirectory (Join-Path $env:RUNNER_TEMP "cotton-sync-update-discovery-data")
@@ -821,7 +821,7 @@ jobs:
           if (-not (Test-Path $installedExe)) {
             throw "Old installed desktop executable was not found."
           }
-          $currentInstallerPath = ".\cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}-setup.exe"
+          $currentInstallerPath = ".\cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}-setup.exe"
 
           $currentInstallStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
           $currentInstallStartInfo.FileName = (Resolve-Path $currentInstallerPath).Path
@@ -890,7 +890,7 @@ jobs:
           & "src/Cotton.Sync.Desktop/Packaging/windows/smoke-diagnostics-export.ps1" `
             -AppExecutable $installedExe `
             -DataDirectory $dataDir `
-            -ExpectedAppVersion "${{ steps.gitversion.outputs.SemVer }}"
+            -ExpectedAppVersion "${{ steps.gitversion.outputs.MajorMinorPatch }}"
 
           $uninstaller = Join-Path $installDir "unins000.exe"
           if (-not (Test-Path $uninstaller)) {
@@ -933,14 +933,14 @@ jobs:
         with:
           name: desktop-win-x64
           path: |
-            cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}.tar.gz
-            cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}.zip
+            cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}.tar.gz
+            cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}.zip
 
       - name: Upload desktop Windows installer artifact
         uses: actions/upload-artifact@v5
         with:
           name: desktop-windows-installer
-          path: cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.SemVer }}-setup.exe
+          path: cotton-sync-desktop-win-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}-setup.exe
 
       - name: Upload desktop Windows installer evidence
         if: always()
@@ -981,7 +981,7 @@ jobs:
         run: dotnet restore src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj --locked-mode
 
       - name: Publish sync CLI Windows x64
-        run: dotnet publish src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj --no-restore -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:PublishTrimmed=false -p:PublishReadyToRun=false -p:Version='${{ steps.gitversion.outputs.SemVer }}' -p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}' -p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}' -p:InformationalVersion='${{ steps.gitversion.outputs.SemVer }}' -o src/Cotton.Sync.Cli/bin/Release/net10.0/publish/win-x64
+        run: dotnet publish src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj --no-restore -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:PublishTrimmed=false -p:PublishReadyToRun=false -p:Version='${{ steps.gitversion.outputs.MajorMinorPatch }}' -p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}' -p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}' -p:InformationalVersion='${{ steps.gitversion.outputs.MajorMinorPatch }}' -o src/Cotton.Sync.Cli/bin/Release/net10.0/publish/win-x64
 
       - name: Smoke sync CLI Windows package
         shell: pwsh
@@ -993,7 +993,7 @@ jobs:
           }
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-version-metadata.ps1" `
             -Executable $cliExe `
-            -ExpectedProductVersion "${{ steps.gitversion.outputs.SemVer }}" `
+            -ExpectedProductVersion "${{ steps.gitversion.outputs.MajorMinorPatch }}" `
             -Label "CLI publish executable"
 
           $help = & $cliExe --help
@@ -1030,20 +1030,20 @@ jobs:
         shell: pwsh
         run: |
           $publishDir = Resolve-Path "src/Cotton.Sync.Cli/bin/Release/net10.0/publish/win-x64"
-          Compress-Archive -Path (Join-Path $publishDir "*") -DestinationPath "cotton-sync-cli-win-x64-${{ steps.gitversion.outputs.SemVer }}.zip" -Force
+          Compress-Archive -Path (Join-Path $publishDir "*") -DestinationPath "cotton-sync-cli-win-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}.zip" -Force
 
       - name: Smoke sync CLI Windows zip archive
         shell: pwsh
         run: |
           $extractDir = Join-Path $env:RUNNER_TEMP "cotton-sync-cli-win-zip"
-          Expand-Archive "cotton-sync-cli-win-x64-${{ steps.gitversion.outputs.SemVer }}.zip" -DestinationPath $extractDir -Force
+          Expand-Archive "cotton-sync-cli-win-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}.zip" -DestinationPath $extractDir -Force
           $cliExe = Join-Path $extractDir "Cotton.Sync.Cli.exe"
           if (-not (Test-Path $cliExe)) {
             throw "CLI executable was not found in the release zip."
           }
           & "src/Cotton.Sync.Desktop/Packaging/windows/verify-version-metadata.ps1" `
             -Executable $cliExe `
-            -ExpectedProductVersion "${{ steps.gitversion.outputs.SemVer }}" `
+            -ExpectedProductVersion "${{ steps.gitversion.outputs.MajorMinorPatch }}" `
             -Label "CLI zip executable"
           & $cliExe --help | Out-Host
           if ($LASTEXITCODE -ne 0) {
@@ -1054,7 +1054,7 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: sync-cli-windows-x64
-          path: cotton-sync-cli-win-x64-${{ steps.gitversion.outputs.SemVer }}.zip
+          path: cotton-sync-cli-win-x64-${{ steps.gitversion.outputs.MajorMinorPatch }}.zip
 
   release-checksums:
     name: Desktop Release Artifact Checksums
