@@ -57,10 +57,18 @@ namespace Cotton.Sync.Desktop.Platform
             SyncStateEntry state,
             WindowsVirtualFileDiskState diskState)
         {
+            return state.PlaceholderHydrationState is
+                    SyncPlaceholderHydrationState.RemoteOnly or SyncPlaceholderHydrationState.Dehydrated
+                && IsMatchingOnlineOnlyPlaceholder(syncPair, state, diskState);
+        }
+
+        private bool IsMatchingOnlineOnlyPlaceholder(
+            SyncPairSettings syncPair,
+            SyncStateEntry state,
+            WindowsVirtualFileDiskState diskState)
+        {
             FileAttributes attributes = diskState.Attributes;
-            if (state.PlaceholderHydrationState is not
-                    (SyncPlaceholderHydrationState.RemoteOnly or SyncPlaceholderHydrationState.Dehydrated)
-                || (attributes & FileAttributes.ReparsePoint) == 0
+            if ((attributes & FileAttributes.ReparsePoint) == 0
                 || (attributes & FileAttributes.Directory) != 0
                 || HasRawAttribute(attributes, FileAttributePinned)
                 || HasRawAttribute(attributes, FileAttributeUnpinned)
@@ -186,6 +194,15 @@ namespace Cotton.Sync.Desktop.Platform
         private static bool RequiresLostAvailabilityRecovery(SyncRunCause causes)
         {
             return (causes & (SyncRunCause.LocalChangeOverflow | SyncRunCause.LocalWatcherError)) != SyncRunCause.None;
+        }
+
+        private static bool RequiresExternalDehydrationRecovery(SyncRunCause causes)
+        {
+            const SyncRunCause recoveryCauses = SyncRunCause.InternalMaintenance
+                | SyncRunCause.Manual
+                | SyncRunCause.CheckNow
+                | SyncRunCause.Resume;
+            return (causes & recoveryCauses) != SyncRunCause.None;
         }
 
         private static void AddAncestorDirectoryKeys(string relativePath, ISet<string> directoryKeys)

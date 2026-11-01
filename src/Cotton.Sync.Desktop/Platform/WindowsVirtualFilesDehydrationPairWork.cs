@@ -54,7 +54,7 @@ namespace Cotton.Sync.Desktop.Platform
 
         public Task RunOnceAsync(SyncPairSettings syncPair, CancellationToken cancellationToken = default)
         {
-            return _inner.RunOnceAsync(syncPair, cancellationToken);
+            return RunOnceAsync(syncPair, SyncRunRequest.Full, cancellationToken);
         }
 
         public async Task RunOnceAsync(

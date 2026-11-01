@@ -16,7 +16,8 @@ namespace Cotton.Sync.Desktop.Platform
     {
         private async Task RecoverPersistedAvailabilityAsync(
             SyncPairSettings syncPair,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            bool recoverPinnedFiles = true)
         {
             using IDisposable? providerWriteBurst = _localChangeSuppression?
                 .SuppressProviderWriteBurst(syncPair.Id, syncPair.LocalRootPath);
@@ -33,6 +34,11 @@ namespace Cotton.Sync.Desktop.Platform
                                .WithCancellation(cancellationToken)
                                .ConfigureAwait(false))
             {
+                if (!recoverPinnedFiles && entry.PlaceholderHydrationState != SyncPlaceholderHydrationState.Hydrated)
+                {
+                    continue;
+                }
+
                 WindowsVirtualFilesAvailabilityRecoveryOutcome outcome;
                 try
                 {
@@ -43,6 +49,7 @@ namespace Cotton.Sync.Desktop.Platform
                                 directoryEntries,
                                 completedDirectoryKeys,
                                 pendingDirectoryKeys,
+                                recoverPinnedFiles,
                                 cancellationToken)
                             .ConfigureAwait(false);
                 }
@@ -93,6 +100,7 @@ namespace Cotton.Sync.Desktop.Platform
             IDictionary<string, SyncStateEntry> directoryEntries,
             ISet<string> completedDirectoryKeys,
             ISet<string> pendingDirectoryKeys,
+            bool recoverPinnedFiles,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -103,6 +111,11 @@ namespace Cotton.Sync.Desktop.Platform
 
             if (entry.Kind == SyncEntryKind.Directory)
             {
+                if (!recoverPinnedFiles)
+                {
+                    return WindowsVirtualFilesAvailabilityRecoveryOutcome.Ignored;
+                }
+
                 directoryEntries[SyncPath.ToKey(entry.RelativePath)] = entry;
                 return WindowsVirtualFilesAvailabilityRecoveryOutcome.DirectoryTracked;
             }
@@ -114,7 +127,15 @@ namespace Cotton.Sync.Desktop.Platform
 
             string filePath = ResolveFullPath(syncPair.LocalRootPath, entry.RelativePath);
             WindowsVirtualFileDiskState? fileState = TryReadDiskState(filePath);
-            if (fileState is null || !HasRawAttribute(fileState.Attributes, FileAttributePinned))
+            if (fileState is null)
+            {
+                return WindowsVirtualFilesAvailabilityRecoveryOutcome.Ignored;
+            }
+
+            if (await TryCompleteExternalDehydrationAsync(syncPair, entry, fileState, cancellationToken)
+                .ConfigureAwait(false)
+                || !recoverPinnedFiles
+                || !HasRawAttribute(fileState.Attributes, FileAttributePinned))
             {
                 return WindowsVirtualFilesAvailabilityRecoveryOutcome.Ignored;
             }

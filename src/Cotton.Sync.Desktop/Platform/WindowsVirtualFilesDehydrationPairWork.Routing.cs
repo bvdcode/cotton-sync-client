@@ -24,9 +24,14 @@ namespace Cotton.Sync.Desktop.Platform
                 && !_availabilityRecoveryCompleted.ContainsKey(syncPair.Id);
             bool lostAvailabilityRecoveryRequired = request.IsFull
                 && RequiresLostAvailabilityRecovery(request.Causes);
-            if (startupRecoveryRequired || lostAvailabilityRecoveryRequired)
+            bool externalDehydrationRecoveryRequired = request.IsFull
+                && RequiresExternalDehydrationRecovery(request.Causes);
+            if (startupRecoveryRequired || lostAvailabilityRecoveryRequired || externalDehydrationRecoveryRequired)
             {
-                await RecoverPersistedAvailabilityAsync(syncPair, cancellationToken).ConfigureAwait(false);
+                await RecoverPersistedAvailabilityAsync(
+                        syncPair, cancellationToken,
+                        recoverPinnedFiles: startupRecoveryRequired || lostAvailabilityRecoveryRequired)
+                    .ConfigureAwait(false);
                 if (startupRecoveryRequired)
                 {
                     _availabilityRecoveryCompleted.TryAdd(syncPair.Id, 0);

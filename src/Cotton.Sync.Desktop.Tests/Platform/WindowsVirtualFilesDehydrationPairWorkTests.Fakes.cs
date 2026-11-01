@@ -45,6 +45,8 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         {
             private readonly string _hash;
 
+            public int Calls { get; private set; }
+
             public FakeContentHasher(string hash)
             {
                 _hash = hash;
@@ -54,6 +56,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 LocalFileSnapshot localFile,
                 CancellationToken cancellationToken = default)
             {
+                Calls++;
                 return Task.FromResult(_hash);
             }
         }

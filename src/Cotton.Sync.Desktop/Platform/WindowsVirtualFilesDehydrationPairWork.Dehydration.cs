@@ -31,6 +31,12 @@ namespace Cotton.Sync.Desktop.Platform
             (string normalizedPath, string fullPath, SyncStateEntry state, WindowsVirtualFileDiskState diskState) =
                 context.Value;
 
+            if (await TryCompleteExternalDehydrationAsync(syncPair, state, diskState, cancellationToken)
+                .ConfigureAwait(false))
+            {
+                return true;
+            }
+
             if (IsCompletedManualFreeUpSpaceCandidate(diskState.Attributes))
             {
                 return await CompleteAlreadyDehydratedFileAsync(
