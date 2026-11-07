@@ -75,6 +75,16 @@ namespace Cotton.Sync.Remote
         }
 
         /// <inheritdoc />
+        public Task<NodeDto> RenameDirectoryAsync(
+            Guid nodeId,
+            string name,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(name);
+            return _nodes.RenameAsync(nodeId, name.Trim(), cancellationToken);
+        }
+
+        /// <inheritdoc />
         public Task DeleteDirectoryAsync(
             Guid nodeId,
             bool skipTrash = false,

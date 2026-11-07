@@ -12,6 +12,25 @@ namespace Cotton.Sync.Tests.Remote
     public class SdkRemoteDirectorySynchronizerTests
     {
         [Test]
+        public async Task RenameDirectoryAsync_PreservesNodeIdAndDelegatesToSdk()
+        {
+            Guid nodeId = Guid.NewGuid();
+            FakeNodeClient client = new();
+            SdkRemoteDirectorySynchronizer synchronizer = new(client);
+
+            NodeDto renamed = await synchronizer.RenameDirectoryAsync(nodeId, " Reports ");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(renamed.Id, Is.EqualTo(nodeId));
+                Assert.That(renamed.Name, Is.EqualTo("Reports"));
+                Assert.That(client.RenamedDirectories, Is.EqualTo(new[] { (nodeId, "Reports") }));
+                Assert.That(client.CreatedDirectories, Is.Empty);
+                Assert.That(client.DeletedDirectories, Is.Empty);
+            });
+        }
+
+        [Test]
         public async Task CreateDirectoryAsync_And_DeleteDirectoryAsync_DelegateToSdkNodeClient()
         {
             Guid parentId = Guid.NewGuid();
@@ -109,6 +128,8 @@ namespace Cotton.Sync.Tests.Remote
 
             public List<(Guid NodeId, bool SkipTrash)> DeletedDirectories { get; } = [];
 
+            public List<(Guid NodeId, string Name)> RenamedDirectories { get; } = [];
+
             public Dictionary<Guid, List<NodeDto>> Children { get; } = [];
 
             public List<(Guid NodeId, int Page, int PageSize, int Depth)> GetChildrenCalls { get; } = [];
@@ -158,7 +179,9 @@ namespace Cotton.Sync.Tests.Remote
 
             public Task<NodeDto> RenameAsync(Guid nodeId, string name, CancellationToken cancellationToken = default)
             {
-                throw new NotSupportedException();
+                cancellationToken.ThrowIfCancellationRequested();
+                RenamedDirectories.Add((nodeId, name));
+                return Task.FromResult(new NodeDto { Id = nodeId, Name = name });
             }
 
             public Task<NodeDto> UpdateMetadataAsync(

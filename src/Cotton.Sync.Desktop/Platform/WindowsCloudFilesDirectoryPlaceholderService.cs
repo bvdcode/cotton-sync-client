@@ -47,13 +47,12 @@ namespace Cotton.Sync.Desktop.Platform
                     throw new InvalidOperationException("Virtual-files directory placeholder path cannot replace a non-Cloud Files reparse point.");
                 }
 
-                ValidateExistingDirectoryPlaceholderIdentity(
-                    request,
-                    syncPairId,
-                    fullPlaceholderPath);
-
                 try
                 {
+                    ValidateExistingDirectoryPlaceholderIdentity(
+                        request,
+                        syncPairId,
+                        fullPlaceholderPath);
                     RepairExistingDirectoryPlaceholder(
                         request,
                         safety.FullPath,
@@ -112,8 +111,12 @@ namespace Cotton.Sync.Desktop.Platform
                 || identity.RemoteRootNodeId != request.RemoteRootNodeId
                 || identity.NodeId != request.RemoteDirectory.Id)
             {
+                diagnostics.Record("validate-directory-identity", "mismatch", request.SyncPairId,
+                    request.LocalRootPath, request.RelativePath,
+                    $"Expected pair={syncPairId:D}, root={request.RemoteRootNodeId:D}, node={request.RemoteDirectory.Id:D}; "
+                    + $"found pair={identity.SyncPairId:D}, root={identity.RemoteRootNodeId:D}, node={identity.NodeId:D}, path={identity.RelativePath}.");
                 throw new InvalidOperationException(
-                    "Existing Cloud Files directory placeholder has a foreign or stale identity.");
+                    $"{request.RelativePath}: Existing Cloud Files directory placeholder has a foreign or stale identity.");
             }
         }
 

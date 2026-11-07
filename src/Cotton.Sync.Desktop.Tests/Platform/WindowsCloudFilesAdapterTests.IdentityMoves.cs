@@ -111,13 +111,24 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 _ => throw new ArgumentOutOfRangeException(nameof(changedIdentity)),
             };
             nativeApi.PlaceholderIdentities[target] = identity.ToBytes();
+            WindowsCloudFilesDiagnostics diagnostics = new();
             WindowsCloudFilesAdapter adapter = new(
                 CreatePolicy(), nativeApi,
+                diagnostics: diagnostics,
                 isReparsePoint: path => path == target,
                 isCloudFilesReparsePoint: path => path == target);
 
-            Assert.Throws<InvalidOperationException>(() => adapter.CreateDirectoryPlaceholder(request));
-            Assert.That(nativeApi.UpdatedPlaceholders, Is.Empty);
+            InvalidOperationException? exception =
+                Assert.Throws<InvalidOperationException>(() => adapter.CreateDirectoryPlaceholder(request));
+            Assert.Multiple(() =>
+            {
+                Assert.That(nativeApi.UpdatedPlaceholders, Is.Empty);
+                Assert.That(exception?.Message, Does.Contain(request.RelativePath));
+                Assert.That(diagnostics.Snapshot().Any(entry => entry.Operation == "validate-directory-identity"
+                    && entry.RelativePath == request.RelativePath && entry.Details?.Contains(identity.NodeId.ToString("D")) == true), Is.True);
+                Assert.That(diagnostics.Snapshot().Any(entry => entry.Operation == "convert-directory-placeholder"
+                    && entry.RelativePath == request.RelativePath && entry.Status == "failed"), Is.True);
+            });
         }
     }
 }

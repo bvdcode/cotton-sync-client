@@ -86,6 +86,19 @@ namespace Cotton.Sync.Desktop.Startup
                 return Task.FromResult(node);
             }
 
+            public Task<NodeDto> RenameDirectoryAsync(
+                Guid nodeId,
+                string name,
+                CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                NodeDto node = _children.Values.Single(child => child.Id == nodeId);
+                _children.Remove((node.ParentId!.Value, node.Name));
+                node.Name = name;
+                _children[(node.ParentId.Value, node.Name)] = node;
+                return Task.FromResult(node);
+            }
+
             public Task DeleteDirectoryAsync(
                 Guid nodeId,
                 bool skipTrash = false,

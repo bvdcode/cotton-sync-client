@@ -27,6 +27,14 @@ namespace Cotton.Sync.Remote
             CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Renames an existing remote directory without replacing its identity.
+        /// </summary>
+        Task<NodeDto> RenameDirectoryAsync(
+            Guid nodeId,
+            string name,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Deletes a remote directory entry.
         /// </summary>
         Task DeleteDirectoryAsync(

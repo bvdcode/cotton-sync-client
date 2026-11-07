@@ -17,6 +17,7 @@ namespace Cotton.Sync
         ScopedVirtualFilesDirectoryRenamePlanner scopedDirectoryRenamePlanner,
         RemoteDirectoryDuplicateCoalescer remoteDirectoryDuplicateCoalescer,
         RemoteDirectoryMoveCoordinator remoteDirectoryMoveCoordinator,
+        ObservedEmptyDirectoryRenameCoordinator observedDirectoryRenameCoordinator,
         SyncDirectoryReconciler directoryReconciler,
         SyncStateFileHashLoader stateFileHashLoader,
         SyncOnlineOnlyPlaceholderMoveCoordinator onlineOnlyPlaceholderMoveCoordinator,
@@ -82,6 +83,7 @@ namespace Cotton.Sync
 
         public async Task<IReadOnlyList<string>> ReconcileDirectoriesAsync(SyncRunContext context)
         {
+            await observedDirectoryRenameCoordinator.CoalesceAsync(context).ConfigureAwait(false);
             await remoteDirectoryDuplicateCoalescer.CoalesceAsync(context).ConfigureAwait(false);
             await remoteDirectoryMoveCoordinator.CoalesceAsync(
                     context.SyncPair,

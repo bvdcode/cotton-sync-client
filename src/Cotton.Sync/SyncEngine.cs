@@ -248,6 +248,7 @@ namespace Cotton.Sync
                 _scopedDirectoryRenamePlanner,
                 _remoteDirectoryDuplicateCoalescer,
                 _remoteDirectoryMoveCoordinator,
+                new ObservedEmptyDirectoryRenameCoordinator(_remoteDirectories, _stateStore),
                 _directoryReconciler,
                 _stateFileHashLoader,
                 _onlineOnlyPlaceholderMoveCoordinator,

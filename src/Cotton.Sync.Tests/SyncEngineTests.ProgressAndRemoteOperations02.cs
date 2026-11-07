@@ -254,6 +254,25 @@ namespace Cotton.Sync.Tests
 
             public List<(Guid NodeId, bool SkipTrash)> Deletes { get; } = [];
 
+            public List<(Guid NodeId, string Name)> Renames { get; } = [];
+
+            public Task<NodeDto> RenameDirectoryAsync(Guid nodeId, string name,
+                CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Renames.Add((nodeId, name));
+                NodeDto original = ExistingDirectories.Concat(Creates.Select(call => call.ReturnedNode))
+                    .Single(node => node.Id == nodeId);
+                return Task.FromResult(new NodeDto
+                {
+                    Id = nodeId,
+                    ParentId = original.ParentId,
+                    Name = name,
+                    CreatedAt = original.CreatedAt,
+                    UpdatedAt = original.UpdatedAt,
+                });
+            }
+
             public List<(Guid ParentNodeId, string Name)> ConflictCreates { get; } = [];
 
             public List<NodeDto> ExistingDirectories { get; } = [];
