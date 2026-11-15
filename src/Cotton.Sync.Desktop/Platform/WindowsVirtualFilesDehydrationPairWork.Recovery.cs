@@ -116,6 +116,12 @@ namespace Cotton.Sync.Desktop.Platform
                     return WindowsVirtualFilesAvailabilityRecoveryOutcome.Ignored;
                 }
 
+                if (await TryHandleManualDirectoryDehydrationAsync(syncPair, entry.RelativePath, cancellationToken)
+                    .ConfigureAwait(false))
+                {
+                    return WindowsVirtualFilesAvailabilityRecoveryOutcome.Ignored;
+                }
+
                 directoryEntries[SyncPath.ToKey(entry.RelativePath)] = entry;
                 return WindowsVirtualFilesAvailabilityRecoveryOutcome.DirectoryTracked;
             }

@@ -402,13 +402,23 @@ namespace Cotton.Sync.Desktop.Platform
                 return false;
             }
 
+            WindowsCloudFilesPlaceholderState placeholderState = _cloudFiles.GetPlaceholderState(syncPair, normalizedPath);
+            if (!placeholderState.HasFlag(WindowsCloudFilesPlaceholderState.InSync))
+            {
+                _localChangeSuppression?.SuppressProviderMetadataWrite(
+                    syncPair.Id,
+                    syncPair.LocalRootPath,
+                    normalizedPath);
+                _cloudFiles.SetInSyncState(syncPair, normalizedPath);
+            }
+
             _diagnostics.Record(
                 "manual-free-up-space-directory",
                 "completed",
                 syncPair.Id.ToString("D"),
                 syncPair.LocalRootPath,
                 normalizedPath,
-                "Explorer Free up space unpinned the tracked directory placeholder.");
+                "Explorer Free up space completed the tracked directory placeholder's availability metadata.");
             return true;
         }
     }

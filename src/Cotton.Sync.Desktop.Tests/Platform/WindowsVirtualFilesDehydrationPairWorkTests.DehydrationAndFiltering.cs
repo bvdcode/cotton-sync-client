@@ -93,13 +93,24 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             });
         }
 
-        [Test]
-        public async Task RunOnceAsync_SuppressesInnerSyncForUnpinnedTrackedDirectoryPlaceholder()
+        [TestCase(false, false)]
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        [TestCase(true, true)]
+        public async Task RunOnceAsync_CompletesUnpinnedTrackedDirectoryPlaceholder(bool startupRecovery, bool alreadyInSync)
         {
             SyncPairSettings syncPair = CreateVirtualFilesPair();
             FakeSyncStateStore stateStore = new();
             stateStore.UpsertEntry(CreateDirectoryState(syncPair, "Music"));
-            FakeCloudFilesAdapter cloudFiles = new();
+            WindowsCloudFilesPlaceholderState placeholderState = WindowsCloudFilesPlaceholderState.Placeholder;
+            if (alreadyInSync)
+            {
+                placeholderState |= WindowsCloudFilesPlaceholderState.InSync;
+            }
+            FakeCloudFilesAdapter cloudFiles = new()
+            {
+                PlaceholderState = placeholderState,
+            };
             RecordingSyncPairWork inner = new();
             WindowsVirtualFilesDehydrationPairWork work = CreateWork(
                 inner,
@@ -107,12 +118,16 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 cloudFiles,
                 readDiskState: _ => CreateUnpinnedDirectoryDiskState());
 
-            await work.RunOnceAsync(syncPair, SyncRunRequest.ForLocalChangedPaths(["Music"]));
+            SyncRunRequest request = startupRecovery
+                ? SyncRunRequest.ForFull(SyncRunCause.Periodic)
+                : SyncRunRequest.ForLocalChangedPaths(["Music"]);
+            await work.RunOnceAsync(syncPair, request);
 
             Assert.Multiple(() =>
             {
-                Assert.That(inner.Requests, Is.Empty);
+                Assert.That(inner.Requests.Count, Is.EqualTo(startupRecovery ? 1 : 0));
                 Assert.That(cloudFiles.DehydratedPaths, Is.Empty);
+                Assert.That(cloudFiles.InSyncPaths.Count, Is.EqualTo(alreadyInSync ? 0 : 1));
             });
         }
 
