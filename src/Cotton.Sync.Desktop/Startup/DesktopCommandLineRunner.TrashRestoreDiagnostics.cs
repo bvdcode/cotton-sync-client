@@ -18,13 +18,15 @@ namespace Cotton.Sync.Desktop.Startup
         {
             SqliteSyncStateStore firstStore = new(session.FirstPaths.SyncStateDatabasePath);
             SqliteSyncStateStore secondStore = new(session.SecondPaths.SyncStateDatabasePath);
+            IReadOnlyDictionary<string, LiveSyncSmokeFileHashReadResult> hashes =
+                await ReadLiveRestoreHashesAsync(options, files, restored, cancellationToken).ConfigureAwait(false);
             foreach (LiveSyncSmokeRestoreFile file in files)
             {
                 bool firstCorrect = await IsLiveRestoreFileCorrectAsync(
-                    options.LocalRoot!, session.FirstPair!.Id, firstStore, file, restored, cancellationToken)
+                    options.LocalRoot!, session.FirstPair!.Id, firstStore, file, restored, hashes, cancellationToken)
                     .ConfigureAwait(false);
                 bool secondCorrect = await IsLiveRestoreFileCorrectAsync(
-                    options.SecondLocalRoot!, session.SecondPair!.Id, secondStore, file, restored, cancellationToken)
+                    options.SecondLocalRoot!, session.SecondPair!.Id, secondStore, file, restored, hashes, cancellationToken)
                     .ConfigureAwait(false);
                 SyncStateEntry? first = await firstStore.GetAsync(
                     session.FirstPair.Id.ToString("D"), file.RelativePath, cancellationToken).ConfigureAwait(false);

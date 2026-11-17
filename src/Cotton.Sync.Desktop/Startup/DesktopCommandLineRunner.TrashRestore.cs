@@ -118,14 +118,16 @@ namespace Cotton.Sync.Desktop.Startup
             int observations = 0;
             do
             {
+                IReadOnlyDictionary<string, LiveSyncSmokeFileHashReadResult> hashes =
+                    await ReadLiveRestoreHashesAsync(options, files, restored, cancellationToken).ConfigureAwait(false);
                 bool correct = true;
                 foreach (LiveSyncSmokeRestoreFile file in files)
                 {
                     correct &= await IsLiveRestoreFileCorrectAsync(
-                        options.LocalRoot!, session.FirstPair!.Id, firstStore, file, restored, cancellationToken)
+                        options.LocalRoot!, session.FirstPair!.Id, firstStore, file, restored, hashes, cancellationToken)
                         .ConfigureAwait(false);
                     correct &= await IsLiveRestoreFileCorrectAsync(
-                        options.SecondLocalRoot!, session.SecondPair!.Id, secondStore, file, restored, cancellationToken)
+                        options.SecondLocalRoot!, session.SecondPair!.Id, secondStore, file, restored, hashes, cancellationToken)
                         .ConfigureAwait(false);
                 }
                 DesktopShellSnapshot firstShell = await session.FirstController.LoadAsync(cancellationToken).ConfigureAwait(false);
@@ -165,6 +167,7 @@ namespace Cotton.Sync.Desktop.Startup
             SqliteSyncStateStore store,
             LiveSyncSmokeRestoreFile file,
             bool restored,
+            IReadOnlyDictionary<string, LiveSyncSmokeFileHashReadResult> hashes,
             CancellationToken cancellationToken)
         {
             SyncStateEntry? entry = await store.GetAsync(pairId.ToString("D"), file.RelativePath, cancellationToken)
@@ -178,9 +181,26 @@ namespace Cotton.Sync.Desktop.Startup
             {
                 return false;
             }
-            TextReadSnapshot read = await TryReadAllTextForLiveSmokeAsync(path, cancellationToken).ConfigureAwait(false);
-            return read.Exists && read.Read
-                && await ComputeFileSha256Async(path, cancellationToken).ConfigureAwait(false) == file.Sha256;
+            return hashes.TryGetValue(path, out LiveSyncSmokeFileHashReadResult? read)
+                && read.Error is null && read.Sha256 == file.Sha256;
+        }
+
+        private static Task<IReadOnlyDictionary<string, LiveSyncSmokeFileHashReadResult>> ReadLiveRestoreHashesAsync(
+            DesktopStartupOptions options,
+            IReadOnlyList<LiveSyncSmokeRestoreFile> files,
+            bool restored,
+            CancellationToken cancellationToken)
+        {
+            IEnumerable<string> paths = [];
+            if (restored)
+            {
+                paths = files.SelectMany(file => new[]
+                {
+                    FullPath(options.LocalRoot!, file.RelativePath),
+                    FullPath(options.SecondLocalRoot!, file.RelativePath),
+                });
+            }
+            return LiveSyncSmokeFileHashReader.ReadAsync(paths, cancellationToken);
         }
     }
 }
