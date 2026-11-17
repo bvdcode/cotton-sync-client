@@ -144,7 +144,7 @@ print('PASS: Tray activation accepted', flush=True)
 Path(sys.argv[1], 'tray-service.txt').write_text(service)
 PY
 window="$(timeout 30s xdotool search --sync --onlyvisible --pid "$app_pid" --name 'Cotton Sync' | head -1)"
-timeout 30s xdotool windowactivate --sync "$window" key alt+F4
+timeout 3s wmctrl -i -c "$window"
 sleep 1
 kill -0 "$app_pid"
 if xdotool search --onlyvisible --pid "$app_pid" --name 'Cotton Sync' >/dev/null 2>&1; then
@@ -164,7 +164,7 @@ for attempt in $(seq 1 30); do
   sleep 0.2
 done
 sleep 1
-timeout 30s xdotool windowactivate --sync "$window" key alt+F4
+timeout 3s wmctrl -i -c "$window"
 sleep 1
 kill -0 "$app_pid"
 if xdotool search --onlyvisible --pid "$app_pid" --name 'Cotton Sync' >/dev/null 2>&1; then
