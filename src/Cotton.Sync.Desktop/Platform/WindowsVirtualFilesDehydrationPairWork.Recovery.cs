@@ -111,19 +111,8 @@ namespace Cotton.Sync.Desktop.Platform
 
             if (entry.Kind == SyncEntryKind.Directory)
             {
-                if (!recoverPinnedFiles)
-                {
-                    return WindowsVirtualFilesAvailabilityRecoveryOutcome.Ignored;
-                }
-
-                if (await TryHandleManualDirectoryDehydrationAsync(syncPair, entry.RelativePath, cancellationToken)
-                    .ConfigureAwait(false))
-                {
-                    return WindowsVirtualFilesAvailabilityRecoveryOutcome.Ignored;
-                }
-
-                directoryEntries[SyncPath.ToKey(entry.RelativePath)] = entry;
-                return WindowsVirtualFilesAvailabilityRecoveryOutcome.DirectoryTracked;
+                return await RecoverAvailabilityDirectoryAsync(syncPair, entry, directoryEntries, recoverPinnedFiles, cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             if (!IsTrackedVirtualFile(entry))
@@ -172,6 +161,26 @@ namespace Cotton.Sync.Desktop.Platform
             hydratedEntries.Add(entry);
             AddAncestorDirectoryKeys(entry.RelativePath, completedDirectoryKeys);
             return WindowsVirtualFilesAvailabilityRecoveryOutcome.Hydrated;
+        }
+
+        private async Task<WindowsVirtualFilesAvailabilityRecoveryOutcome> RecoverAvailabilityDirectoryAsync(
+            SyncPairSettings syncPair, SyncStateEntry entry,
+            IDictionary<string, SyncStateEntry> directoryEntries, bool recoverPinnedFiles,
+            CancellationToken cancellationToken)
+        {
+            if (!recoverPinnedFiles)
+            {
+                return WindowsVirtualFilesAvailabilityRecoveryOutcome.Ignored;
+            }
+
+            if (await TryHandleManualDirectoryDehydrationAsync(syncPair, entry.RelativePath, cancellationToken)
+                .ConfigureAwait(false))
+            {
+                return WindowsVirtualFilesAvailabilityRecoveryOutcome.Ignored;
+            }
+
+            directoryEntries[SyncPath.ToKey(entry.RelativePath)] = entry;
+            return WindowsVirtualFilesAvailabilityRecoveryOutcome.DirectoryTracked;
         }
 
         private async Task FlushAvailabilityStateAsync(

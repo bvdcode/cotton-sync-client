@@ -97,57 +97,57 @@ namespace Cotton.Sync.Desktop.Startup
             {
                 sourceBarrier.Release();
             }
+            return await WaitForRenameAndEditConvergenceAsync(options, session, firstStore, secondStore,
+                (oldPath, newPath, temporaryPath), content, expectedHash, fileId, output, cancellationToken).ConfigureAwait(false);
+        }
+
+        private static async Task<int> WaitForRenameAndEditConvergenceAsync(
+            DesktopStartupOptions options, DesktopLiveSyncSmokeSession session,
+            SqliteSyncStateStore firstStore, SqliteSyncStateStore secondStore,
+            (string OldPath, string NewPath, string TemporaryPath) paths,
+            string content, string expectedHash, Guid fileId, TextWriter output, CancellationToken cancellationToken)
+        {
+            string firstPairId = session.FirstPair!.Id.ToString("D");
+            string secondPairId = session.SecondPair!.Id.ToString("D");
             DateTime deadline = DateTime.UtcNow + PropagationTimeout;
             int stableObservations = 0;
             string details = string.Empty;
             do
             {
                 PresenceSnapshot presence = await CapturePresenceAsync(
-                    options.LocalRoot!, options.SecondLocalRoot!, newPath, content, cancellationToken).ConfigureAwait(false);
-                SyncStateEntry? first = await firstStore.GetAsync(firstPairId, newPath, cancellationToken)
+                    options.LocalRoot!, options.SecondLocalRoot!, paths.NewPath, content, cancellationToken).ConfigureAwait(false);
+                SyncStateEntry? first = await firstStore.GetAsync(firstPairId, paths.NewPath, cancellationToken)
                     .ConfigureAwait(false);
-                SyncStateEntry? second = await secondStore.GetAsync(secondPairId, newPath, cancellationToken)
+                SyncStateEntry? second = await secondStore.GetAsync(secondPairId, paths.NewPath, cancellationToken)
                     .ConfigureAwait(false);
-                bool oldStateRemoved = await firstStore.GetAsync(firstPairId, oldPath, cancellationToken).ConfigureAwait(false) is null
-                    && await secondStore.GetAsync(secondPairId, oldPath, cancellationToken).ConfigureAwait(false) is null;
+                bool oldStateRemoved = await firstStore.GetAsync(firstPairId, paths.OldPath, cancellationToken).ConfigureAwait(false) is null
+                    && await secondStore.GetAsync(secondPairId, paths.OldPath, cancellationToken).ConfigureAwait(false) is null;
                 DesktopShellSnapshot firstShell = await session.FirstController.LoadAsync(cancellationToken).ConfigureAwait(false);
                 DesktopShellSnapshot secondShell = await session.SecondController.LoadAsync(cancellationToken).ConfigureAwait(false);
                 bool idle = AreLiveSmokePairsIdle(
                     firstShell.SyncPairs.FirstOrDefault(item => item.Id == session.FirstPair.Id),
                     secondShell.SyncPairs.FirstOrDefault(item => item.Id == session.SecondPair.Id));
                 details = presence.Details + ", oldStateRemoved=" + oldStateRemoved + ", idle=" + idle
-                    + ", originalId=" + fileId + ", firstId=" + first?.RemoteFileId + ", secondId=" + second?.RemoteFileId
-                    + ", expectedHash=" + expectedHash + ", firstHash=" + first?.RemoteContentHash
-                    + ", secondHash=" + second?.RemoteContentHash
-                    + ", firstLocalHash=" + first?.LocalContentHash + ", secondLocalHash=" + second?.LocalContentHash
-                    + ", firstLocalSize=" + first?.LocalSizeBytes + ", secondLocalSize=" + second?.LocalSizeBytes
-                    + ", firstHydration=" + first?.PlaceholderHydrationState
-                    + ", secondHydration=" + second?.PlaceholderHydrationState
-                    + ", firstStatus=" + firstShell.SyncPairs.FirstOrDefault(item => item.Id == session.FirstPair.Id)?.Status
-                    + ", secondStatus=" + secondShell.SyncPairs.FirstOrDefault(item => item.Id == session.SecondPair.Id)?.Status
-                    + ", firstError=" + firstShell.SyncPairs.FirstOrDefault(item => item.Id == session.FirstPair.Id)?.LastError
-                    + ", secondError=" + secondShell.SyncPairs.FirstOrDefault(item => item.Id == session.SecondPair.Id)?.LastError;
+                    + ", originalId=" + fileId + ", expectedHash=" + expectedHash
+                    + FormatRenameEntry("first", first) + FormatRenameEntry("second", second)
+                    + FormatRenamePair("first", firstShell, session.FirstPair!.Id)
+                    + FormatRenamePair("second", secondShell, session.SecondPair!.Id);
                 bool correct = presence.Passed && oldStateRemoved && idle
-                    && first is not null && second is not null
-                    && first.RemoteFileId == fileId && second.RemoteFileId == fileId
-                    && first.RemoteContentHash == expectedHash && second.RemoteContentHash == expectedHash
-                    && !File.Exists(FullPath(options.LocalRoot!, oldPath))
-                    && !File.Exists(FullPath(options.SecondLocalRoot!, oldPath))
-                    && !File.Exists(FullPath(options.LocalRoot!, temporaryPath))
-                    && !File.Exists(FullPath(options.SecondLocalRoot!, temporaryPath));
+                    && HasExpectedRenameIdentity(first, second, fileId, expectedHash)
+                    && AreRenameSourcePathsRemoved(options, paths.OldPath, paths.TemporaryPath);
                 stableObservations = correct ? stableObservations + 1 : 0;
                 if (stableObservations >= 2)
                 {
                     await output.WriteLineAsync(FormatCheck(true,
-                        "Rename and immediate edit preserved remote ID and exact content automatically: " + newPath))
+                        "Rename and immediate edit preserved remote ID and exact content automatically: " + paths.NewPath))
                         .ConfigureAwait(false);
                     return 0;
                 }
                 await Task.Delay(PropagationPollInterval, cancellationToken).ConfigureAwait(false);
             }
             while (DateTime.UtcNow < deadline);
-            details += ", firstPlaceholder=" + ReadLivePlaceholderVersion(FullPath(options.LocalRoot!, newPath))
-                + ", secondPlaceholder=" + ReadLivePlaceholderVersion(FullPath(options.SecondLocalRoot!, newPath));
+            details += ", firstPlaceholder=" + ReadLivePlaceholderVersion(FullPath(options.LocalRoot!, paths.NewPath))
+                + ", secondPlaceholder=" + ReadLivePlaceholderVersion(FullPath(options.SecondLocalRoot!, paths.NewPath));
             SyncChangeCursor firstCursor = await firstStore.GetChangeCursorAsync(firstPairId, cancellationToken)
                 .ConfigureAwait(false);
             SyncChangeCursor secondCursor = await secondStore.GetChangeCursorAsync(secondPairId, cancellationToken)
@@ -156,9 +156,38 @@ namespace Cotton.Sync.Desktop.Startup
                 + ", firstResponses=" + session.FirstManifestBarrier.ReadFileResponses(fileId)
                 + ", secondResponses=" + session.SecondManifestBarrier.ReadFileResponses(fileId);
             await output.WriteLineAsync(FormatCheck(false,
-                "Rename and immediate edit did not preserve identity, bytes and idle state: " + newPath) + " " + details)
+                "Rename and immediate edit did not preserve identity, bytes and idle state: " + paths.NewPath) + " " + details)
                 .ConfigureAwait(false);
             return 1;
+        }
+
+        private static string FormatRenameEntry(string name, SyncStateEntry? entry)
+        {
+            return ", " + name + "Id=" + entry?.RemoteFileId + ", " + name + "Hash=" + entry?.RemoteContentHash
+                + ", " + name + "LocalHash=" + entry?.LocalContentHash + ", " + name + "LocalSize=" + entry?.LocalSizeBytes
+                + ", " + name + "Hydration=" + entry?.PlaceholderHydrationState;
+        }
+
+        private static string FormatRenamePair(string name, DesktopShellSnapshot shell, Guid pairId)
+        {
+            DesktopSyncPairSnapshot? pair = shell.SyncPairs.FirstOrDefault(item => item.Id == pairId);
+            return ", " + name + "Status=" + pair?.Status + ", " + name + "Error=" + pair?.LastError;
+        }
+
+        private static bool HasExpectedRenameIdentity(SyncStateEntry? first, SyncStateEntry? second,
+            Guid fileId, string expectedHash)
+        {
+            return first is not null && second is not null
+                && first.RemoteFileId == fileId && second.RemoteFileId == fileId
+                && first.RemoteContentHash == expectedHash && second.RemoteContentHash == expectedHash;
+        }
+
+        private static bool AreRenameSourcePathsRemoved(DesktopStartupOptions options, string oldPath, string temporaryPath)
+        {
+            return !File.Exists(FullPath(options.LocalRoot!, oldPath))
+                && !File.Exists(FullPath(options.SecondLocalRoot!, oldPath))
+                && !File.Exists(FullPath(options.LocalRoot!, temporaryPath))
+                && !File.Exists(FullPath(options.SecondLocalRoot!, temporaryPath));
         }
 
         private static string ReadLivePlaceholderVersion(string path)

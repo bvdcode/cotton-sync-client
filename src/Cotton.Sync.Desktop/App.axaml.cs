@@ -81,22 +81,7 @@ namespace Cotton.Sync.Desktop
                     _trayController = new DesktopTrayController(this, window, desktop);
                 }
 
-                if (OperatingSystem.IsLinux())
-                {
-                    _trayMonitorCancellation = new CancellationTokenSource();
-                    _ = LinuxTrayHostMonitor.RunAsync(available => Dispatcher.UIThread.Post(() =>
-                    {
-                        if (_trayMonitorCancellation.IsCancellationRequested)
-                        {
-                            return;
-                        }
-
-                        DesktopPlatformCapabilities.SetLinuxTrayHostAvailability(available);
-                        _trayController?.SetHostAvailability(available);
-                        desktop.ShutdownMode = available ? ShutdownMode.OnExplicitShutdown : ShutdownMode.OnLastWindowClose;
-                        window.SetTrayLifecycleAvailable(available);
-                    }), _trayMonitorCancellation.Token);
-                }
+                StartTrayHostMonitor(desktop, window);
 
                 _singleInstanceActivationServer = DesktopSingleInstanceActivation.StartServer(
                     paths.SingleInstanceLockPath,
@@ -110,6 +95,26 @@ namespace Cotton.Sync.Desktop
             }
 
             base.OnFrameworkInitializationCompleted();
+        }
+        private void StartTrayHostMonitor(IClassicDesktopStyleApplicationLifetime desktop, MainWindow window)
+        {
+            if (!OperatingSystem.IsLinux())
+            {
+                return;
+            }
+            _trayMonitorCancellation = new CancellationTokenSource();
+            _ = LinuxTrayHostMonitor.RunAsync(available => Dispatcher.UIThread.Post(() =>
+            {
+                if (_trayMonitorCancellation.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                DesktopPlatformCapabilities.SetLinuxTrayHostAvailability(available);
+                _trayController?.SetHostAvailability(available);
+                desktop.ShutdownMode = available ? ShutdownMode.OnExplicitShutdown : ShutdownMode.OnLastWindowClose;
+                window.SetTrayLifecycleAvailable(available);
+            }), _trayMonitorCancellation.Token);
         }
     }
 }

@@ -22,7 +22,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             nativeApi.RegisterSyncRoot(new(root, WindowsCloudFilesAdapter.ProviderName, "interrupted-hydration-test",
                 WindowsCloudFilesProviderMetadata.ProviderGuid,
                 WindowsCloudFilesPlaceholderFactory.CreateSyncRootIdentity(pairId, Guid.NewGuid())));
-            byte[] content = RandomNumberGenerator.GetBytes(13 * 1024 * 1024 + 123);
+            byte[] content = RandomNumberGenerator.GetBytes((13 * 1024 * 1024) + 123);
             string hash = Convert.ToHexStringLower(SHA256.HashData(content));
             await using InterruptedHydrationContentProvider provider = new(content);
             WindowsCloudFilesDiagnostics diagnostics = new();

@@ -107,28 +107,8 @@ namespace Cotton.Sync.Desktop.Platform
 
             try
             {
-                List<string> failures = [];
-                bool canResumeFromState = true;
-                foreach (string relativePath in finalizationPaths)
-                {
-                    try
-                    {
-                        await FinalizeTrackedPathAsync(syncPair, relativePath, cancellationToken).ConfigureAwait(false);
-                        finalizedPaths.Add(relativePath);
-                        RecordFinalizedPath();
-                    }
-                    catch (WindowsCloudFilesNativeException exception)
-                        when (WindowsCloudFilesNativeOperationExecutor.IsFileSystemLimitation(exception))
-                    {
-                        System.Diagnostics.Trace.TraceError(
-                            "Cloud Files metadata could not be finalized for {0}: {1}", relativePath, exception);
-                        failures.Add(relativePath);
-                        SyncStateEntry? failedState = await _stateStore
-                            .GetAsync(syncPair.Id.ToString("D"), relativePath, cancellationToken)
-                            .ConfigureAwait(false);
-                        canResumeFromState &= failedState?.NeedsPlaceholderConversion == true;
-                    }
-                }
+                (List<string> failures, bool canResumeFromState) = await FinalizePathsAsync(
+                    syncPair, finalizationPaths, finalizedPaths, RecordFinalizedPath, cancellationToken).ConfigureAwait(false);
 
                 cancellationToken.ThrowIfCancellationRequested();
                 if (failures.Count > 0)
@@ -173,6 +153,36 @@ namespace Cotton.Sync.Desktop.Platform
                     totalCount,
                     isCompleted: true);
             }
+        }
+
+        private async Task<(List<string> Failures, bool CanResumeFromState)> FinalizePathsAsync(
+            SyncPairSettings syncPair, IReadOnlyList<string> finalizationPaths, ISet<string> finalizedPaths,
+            Action recordFinalizedPath, CancellationToken cancellationToken)
+        {
+            List<string> failures = [];
+            bool canResumeFromState = true;
+            foreach (string relativePath in finalizationPaths)
+            {
+                try
+                {
+                    await FinalizeTrackedPathAsync(syncPair, relativePath, cancellationToken).ConfigureAwait(false);
+                    finalizedPaths.Add(relativePath);
+                    recordFinalizedPath();
+                }
+                catch (WindowsCloudFilesNativeException exception)
+                    when (WindowsCloudFilesNativeOperationExecutor.IsFileSystemLimitation(exception))
+                {
+                    System.Diagnostics.Trace.TraceError(
+                        "Cloud Files metadata could not be finalized for {0}: {1}", relativePath, exception);
+                    failures.Add(relativePath);
+                    SyncStateEntry? failedState = await _stateStore
+                        .GetAsync(syncPair.Id.ToString("D"), relativePath, cancellationToken)
+                        .ConfigureAwait(false);
+                    canResumeFromState &= failedState?.NeedsPlaceholderConversion == true;
+                }
+            }
+
+            return (failures, canResumeFromState);
         }
 
         private async Task<IReadOnlyList<string>> GetFinalizationPathsAsync(
