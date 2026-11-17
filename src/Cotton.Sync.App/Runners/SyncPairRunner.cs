@@ -345,7 +345,7 @@ namespace Cotton.Sync.App.Runners
         private void HandleFailedSync(Exception exception)
         {
             SyncPairRunState failureState = SyncPairRunState.Error;
-            if (SyncFailureClassifier.IsTransientRemoteListingFailure(exception))
+            if (SyncFailureClassifier.IsTransientRemoteStateFailure(exception))
             {
                 failureState = SyncPairRunState.Waiting;
             }

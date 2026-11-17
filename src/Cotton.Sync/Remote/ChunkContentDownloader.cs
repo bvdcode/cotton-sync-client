@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Net;
+using System.Net.Sockets;
 using Cotton.Sdk;
 using Cotton.Sdk.Files;
 
@@ -157,6 +158,7 @@ namespace Cotton.Sync.Remote
             {
                 EndOfStreamException => true,
                 HttpIOException { HttpRequestError: HttpRequestError.ResponseEnded } => true,
+                IOException { InnerException: SocketException } => true,
                 CottonApiException apiException => apiException.StatusCode is HttpStatusCode.OK
                     or HttpStatusCode.RequestTimeout
                     or HttpStatusCode.TooManyRequests

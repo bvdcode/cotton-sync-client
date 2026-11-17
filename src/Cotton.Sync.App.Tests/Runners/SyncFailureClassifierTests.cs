@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Net;
+using System.Net.Sockets;
 using Cotton.Sdk;
 using Cotton.Sync.App.Runners;
 using Cotton.Sync.Remote;
@@ -18,7 +19,7 @@ namespace Cotton.Sync.App.Tests.Runners
             Assert.Multiple(() =>
             {
                 Assert.That(SyncFailureClassifier.IsTransientSyncFailure(exception), Is.True);
-                Assert.That(SyncFailureClassifier.IsTransientRemoteListingFailure(exception), Is.True);
+                Assert.That(SyncFailureClassifier.IsTransientRemoteStateFailure(exception), Is.True);
                 Assert.That(SyncFailureClassifier.IsTransientConnectionFailure(exception), Is.False);
                 Assert.That(SyncFailureClassifier.IsTransientSyncFailure(new IOException("Disk failure.")), Is.False);
             });
@@ -35,7 +36,7 @@ namespace Cotton.Sync.App.Tests.Runners
             Assert.Multiple(() =>
             {
                 Assert.That(SyncFailureClassifier.IsTransientSyncFailure(exception), Is.EqualTo(!includeLocalFailure));
-                Assert.That(SyncFailureClassifier.IsTransientRemoteListingFailure(exception), Is.EqualTo(!includeLocalFailure));
+                Assert.That(SyncFailureClassifier.IsTransientRemoteStateFailure(exception), Is.EqualTo(!includeLocalFailure));
             });
         }
 
@@ -51,6 +52,28 @@ namespace Cotton.Sync.App.Tests.Runners
             bool transient = SyncFailureClassifier.IsTransientConnectionFailure(exception);
 
             Assert.That(transient, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void IsTransientConnectionFailure_RetriesSocketFailureDuringBodyRead()
+        {
+            IOException exception = new("Transport read failed.", new SocketException((int)SocketError.ConnectionReset));
+            Assert.That(SyncFailureClassifier.IsTransientConnectionFailure(exception), Is.True);
+            Assert.That(SyncFailureClassifier.IsTransientSyncFailure(exception), Is.True);
+        }
+
+        [Test]
+        public void IsTransientSyncFailure_RetriesOnlyDownloadVersionChanges()
+        {
+            CottonApiException precondition = new(HttpStatusCode.PreconditionFailed, null, "Content changed.");
+            RemoteFileVersionChangedException exception = new("file.bin", precondition);
+            Assert.Multiple(() =>
+            {
+                Assert.That(SyncFailureClassifier.IsTransientSyncFailure(exception), Is.True);
+                Assert.That(SyncFailureClassifier.IsTransientRemoteStateFailure(exception), Is.True);
+                Assert.That(SyncFailureClassifier.IsTransientConnectionFailure(exception), Is.False);
+                Assert.That(SyncFailureClassifier.IsTransientSyncFailure(precondition), Is.False);
+            });
         }
 
         [Test]

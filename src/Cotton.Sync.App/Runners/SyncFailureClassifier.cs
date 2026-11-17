@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Net;
+using System.Net.Sockets;
 using Cotton.Sdk;
 using Cotton.Sync.Remote;
 
@@ -22,20 +23,20 @@ namespace Cotton.Sync.App.Runners
             {
                 AggregateException aggregateException when aggregateException.InnerExceptions.Count > 0
                     => aggregateException.InnerExceptions.All(IsTransientSyncFailure),
-                RemoteDirectoryListingUnavailableException => true,
+                RemoteDirectoryListingUnavailableException or RemoteFileVersionChangedException => true,
                 _ => IsTransientConnectionFailure(exception),
             };
         }
 
-        internal static bool IsTransientRemoteListingFailure(Exception exception)
+        internal static bool IsTransientRemoteStateFailure(Exception exception)
         {
             ArgumentNullException.ThrowIfNull(exception);
             return exception switch
             {
-                RemoteDirectoryListingUnavailableException => true,
+                RemoteDirectoryListingUnavailableException or RemoteFileVersionChangedException => true,
                 AggregateException aggregateException when aggregateException.InnerExceptions.Count > 0
                     => aggregateException.InnerExceptions.All(IsTransientSyncFailure)
-                        && aggregateException.InnerExceptions.Any(IsTransientRemoteListingFailure),
+                        && aggregateException.InnerExceptions.Any(IsTransientRemoteStateFailure),
                 _ => false,
             };
         }
@@ -54,6 +55,7 @@ namespace Cotton.Sync.App.Runners
                 CottonApiException apiException => IsTransientApiFailure(apiException),
                 HttpRequestException requestException => IsTransientStatusCode(requestException.StatusCode),
                 HttpIOException { HttpRequestError: HttpRequestError.ResponseEnded } => true,
+                IOException { InnerException: SocketException } => true,
                 TimeoutException => true,
                 TaskCanceledException => true,
                 _ => false,

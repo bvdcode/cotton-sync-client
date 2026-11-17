@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using System.Diagnostics;
 using Cotton.Files;
 using Cotton.Sync.Local;
 using Cotton.Sync.Remote;
@@ -213,8 +214,16 @@ namespace Cotton.Sync
             CancellationToken cancellationToken)
         {
             await using VerifyingDownloadStream verifiedDestination = new VerifyingDownloadStream(destination);
-            await DownloadFileWithProgressAsync(remoteFile, relativePath, options, verifiedDestination, cancellationToken)
-                .ConfigureAwait(false);
+            try
+            {
+                await DownloadFileWithProgressAsync(remoteFile, relativePath, options, verifiedDestination, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (HttpRequestException exception) when (RemoteSyncErrorClassifier.IsPreconditionFailed(exception))
+            {
+                Trace.TraceWarning("Remote file changed during download of {0}: {1}", relativePath, exception.Message);
+                throw new RemoteFileVersionChangedException(relativePath, exception);
+            }
             verifiedDestination.Verify(remoteFile.ContentHash, remoteFile.SizeBytes, relativePath);
         }
 
