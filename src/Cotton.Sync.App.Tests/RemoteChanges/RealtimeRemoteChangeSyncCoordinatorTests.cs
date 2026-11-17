@@ -295,7 +295,10 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
             private readonly TaskCompletionSource _releaseSyncAll = new(TaskCreationOptions.RunContinuationsAsynchronously);
             private readonly TaskCompletionSource _syncCanceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            public IReadOnlyList<SyncPairStatus> CurrentStatuses => [];
+            public IReadOnlyList<SyncPairStatus> CurrentStatuses { get; set; } =
+                [new(Guid.NewGuid(), "Test", SyncPairRunState.Idle, null, null, DateTime.UtcNow)];
+
+            public Func<Guid, CancellationToken, Task>? OnSyncPair { get; set; }
 
             public bool BlockSyncAll { get; set; }
 
@@ -366,7 +369,12 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
                 SyncRunRequest request,
                 CancellationToken cancellationToken = default)
             {
-                return SyncNowAsync(syncPairId, cancellationToken);
+                LastSyncAllRequest = request;
+                if (OnSyncPair is not null)
+                {
+                    return OnSyncPair(syncPairId, cancellationToken);
+                }
+                return SyncAllAsync(request, cancellationToken);
             }
 
             public async Task<bool> WaitForSyncAsync(TimeSpan timeout)

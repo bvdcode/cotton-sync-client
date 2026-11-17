@@ -33,17 +33,20 @@ namespace Cotton.Sync.App.Tests.Runners
             });
         }
 
-        [Test]
-        public async Task SyncNowAsync_PersistentRemoteListingChangesWaitAndPreserveScopedWorkForPeriodicRecovery()
+        [TestCase(false)]
+        [TestCase(true)]
+        public async Task SyncNowAsync_PersistentRemoteChangesWaitAndPreserveScopedWorkForPeriodicRecovery(bool fileVersionChanged)
         {
-            RemoteDirectoryListingUnavailableException failure = new("Expected 234 entries, received 235.");
+            IOException failure = fileVersionChanged
+                ? new RemoteFileVersionChangedException("file.bin", new HttpRequestException())
+                : new RemoteDirectoryListingUnavailableException("Expected 234 entries, received 235.");
             FakeSyncPairWork work = new() { Failures = [failure, failure] };
             SyncPairRunner runner = CreateRunner(CreatePair(isEnabled: true), work, NoDelayRetryOptions(maxAttempts: 2));
             LocalPathRename rename = new("original.txt", "renamed.txt");
             SyncRunRequest original = SyncRunRequest.ForLocalChangedPaths(
                 ["renamed.txt", "deleted.txt"], ["deleted.txt"], localRenames: [rename]);
 
-            Assert.ThrowsAsync<RemoteDirectoryListingUnavailableException>(() => runner.SyncNowAsync(original));
+            Assert.That(async () => await runner.SyncNowAsync(original), Throws.InstanceOf<IOException>());
 
             Assert.Multiple(() =>
             {
