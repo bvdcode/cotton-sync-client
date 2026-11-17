@@ -298,6 +298,10 @@ namespace Cotton.Sync.Tests.Remote
 
             public Dictionary<(Guid NodeId, int Page), FakeNodePage> Children { get; } = [];
 
+            public Dictionary<(Guid NodeId, int Page), Exception> ChildrenFailures { get; } = [];
+
+            public Exception? GetFailure { get; set; }
+
             public List<(Guid NodeId, int Page)> GetChildrenCalls { get; } = [];
 
             public TimeSpan GetChildrenDelay { get; set; }
@@ -311,6 +315,10 @@ namespace Cotton.Sync.Tests.Remote
 
             public Task<NodeDto> GetAsync(Guid nodeId, CancellationToken cancellationToken = default)
             {
+                if (GetFailure is not null)
+                {
+                    return Task.FromException<NodeDto>(GetFailure);
+                }
                 return Task.FromResult(Nodes[nodeId]);
             }
 
@@ -333,6 +341,10 @@ namespace Cotton.Sync.Tests.Remote
                     {
                         MaxConcurrentGetChildrenCalls = Math.Max(MaxConcurrentGetChildrenCalls, active);
                         GetChildrenCalls.Add((nodeId, page));
+                        if (ChildrenFailures.TryGetValue((nodeId, page), out Exception? failure))
+                        {
+                            throw failure;
+                        }
                         FakeNodePage content = Children.TryGetValue((nodeId, page), out FakeNodePage? configured)
                             ? configured
                             : new FakeNodePage { TotalCount = 0 };
