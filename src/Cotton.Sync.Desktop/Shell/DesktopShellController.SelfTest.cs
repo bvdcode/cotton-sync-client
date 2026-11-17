@@ -131,7 +131,8 @@ namespace Cotton.Sync.Desktop.Shell
             run.Items.Add(new DesktopSelfTestItemSnapshot(
                 "Tray lifecycle",
                 true,
-                platformCapabilities.TrayLifecycleDetails));
+                platformCapabilities.TrayLifecycleDetails,
+                Skipped: !platformCapabilities.IsTrayLifecycleSupported));
 
             Func<string>? cloudFilesProbeRootFactory = CreateCloudFilesSelfTestProbeRootFactory();
             DesktopCloudFilesSelfTestCapabilitySnapshot modeCapabilities =

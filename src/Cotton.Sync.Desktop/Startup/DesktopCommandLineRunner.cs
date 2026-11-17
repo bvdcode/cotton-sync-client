@@ -31,7 +31,7 @@ namespace Cotton.Sync.Desktop.Startup
         private const string PreExistingClientBPath = "pre-existing/client-b/original-b.txt";
         private static readonly Guid ShellShareLinkSmokePairId = Guid.Parse("22222222-2222-2222-2222-222222222222");
         private static readonly TimeSpan DesktopLocalQuietWindow = TimeSpan.FromMilliseconds(2300);
-        private static readonly TimeSpan InitialConvergenceTimeout = TimeSpan.FromMinutes(2);
+        private static readonly TimeSpan InitialConvergenceTimeout = TimeSpan.FromMinutes(5);
         private static readonly TimeSpan PropagationTimeout = TimeSpan.FromSeconds(45);
         private static readonly TimeSpan PropagationPollInterval = TimeSpan.FromSeconds(1);
         private const int InitialConvergenceSyncRefreshInterval = 10;

@@ -184,7 +184,7 @@ namespace Cotton.Sync.Tests.Remote
                 progress?.Report(length);
             }
 
-            public async Task<int> DownloadContentChunkAsync(
+            public async Task<CottonContentChunkDownloadResult> DownloadContentChunkAsync(
                 Guid nodeFileId,
                 int chunkNumber,
                 Stream destination,
@@ -210,8 +210,9 @@ namespace Cotton.Sync.Tests.Remote
 
                     if (OnChunkDownloadAsync is not null)
                     {
-                        return await OnChunkDownloadAsync(chunkNumber, destination, progress, cancellationToken)
+                        int chunkCount = await OnChunkDownloadAsync(chunkNumber, destination, progress, cancellationToken)
                             .ConfigureAwait(false);
+                        return new CottonContentChunkDownloadResult(chunkCount, expectedETag ?? "test-etag");
                     }
 
                     if (ChunkDownloadDelay > TimeSpan.Zero)
@@ -236,12 +237,12 @@ namespace Cotton.Sync.Tests.Remote
                         byte[] corrupted = bytes.AsSpan(offset, length).ToArray();
                         corrupted[0] ^= 0xff;
                         await destination.WriteAsync(corrupted, cancellationToken);
-                        return count;
+                        return new CottonContentChunkDownloadResult(count, expectedETag ?? "test-etag");
                     }
 
                     await destination.WriteAsync(bytes.AsMemory(offset, length), cancellationToken);
                     progress?.Report(length);
-                    return count;
+                    return new CottonContentChunkDownloadResult(count, expectedETag ?? "test-etag");
                 }
                 finally
                 {

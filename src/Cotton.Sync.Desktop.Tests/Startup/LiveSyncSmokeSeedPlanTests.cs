@@ -23,6 +23,10 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(files[1].UseFirstClient, Is.False);
                 Assert.That(files[0].RelativePath, Is.EqualTo("pre-existing/burst/client-a/file-00000.bin"));
                 Assert.That(files[1].RelativePath, Is.EqualTo("pre-existing/burst/client-b/file-00001.bin"));
+                Assert.That(files[2].RelativePath, Does.Contain("Проверка синхронизации"));
+                Assert.That(files[3].RelativePath, Does.Contain("Names with spaces"));
+                Assert.That(files[6].RelativePath, Does.Contain("📁"));
+                Assert.That(files[7].Content.Length, Is.GreaterThanOrEqualTo(8 * 1024 * 1024));
                 Assert.That(files.Skip(1).Select(static file => file.Content), Is.All.Contains("2026-07-16T23:00:00.0000000Z"));
             });
         }

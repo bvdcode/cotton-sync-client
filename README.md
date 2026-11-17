@@ -23,6 +23,10 @@ dotnet publish src/Cotton.Sync.Cli/Cotton.Sync.Cli.csproj -c Release -r win-x64 
 
 The first public Windows release is a normal full-mirror sync client. Windows virtual files/placeholders are tracked separately in the QA report and must not be treated as release-ready without the relevant installed-client evidence. See `docs/qa.md`.
 
+## Linux Desktop
+
+Linux supports full-mirror synchronization, native notifications, XDG autostart and the StatusNotifier tray used by KDE Plasma. Debian packages support in-app update download and installation through the system package manager, with administrator authorization. Archive installations require manual replacement. See [Linux support and validation](docs/linux.md).
+
 ## Diagnostic Logs
 
 The desktop client writes `cotton-sync.log` and a separate `cloud-files.log` in its data directory (`%APPDATA%\Cotton\Sync` on Windows). Cloud Files events are written as they occur, including the operation, status, file path, Windows error code, and details. Exporting diagnostics is not required to save these events.

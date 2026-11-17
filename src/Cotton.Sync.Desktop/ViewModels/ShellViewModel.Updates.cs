@@ -187,9 +187,7 @@ namespace Cotton.Sync.Desktop.ViewModels
                     await _controller.InstallDownloadedUpdateAsync(installerPath).ConfigureAwait(true);
                 IsUpdateInstallHandoffActive = true;
                 UpdateStatusText = "Installing update";
-                UpdateDetailsText = result.ExitedDuringStartupProbe
-                    ? "Update installer launched and handed off to Windows. Cotton Sync will restart after the update is installed."
-                    : "Update installer launched. Cotton Sync will restart after the update is installed.";
+                UpdateDetailsText = "Update installer launched. Cotton Sync will restart after the update is installed.";
                 GlobalStatus = "Installing update";
                 AddActivity("Update", string.Empty, "Silent update installer started");
                 UpdateInstallShutdownRequested?.Invoke(this, EventArgs.Empty);
@@ -241,7 +239,9 @@ namespace Cotton.Sync.Desktop.ViewModels
                 AddActivity("Update", result.ReleaseUrl?.AbsoluteUri ?? string.Empty, result.Details);
                 if (notifyWhenInstallerReady && result.IsInstallerReady)
                 {
-                    ShowNativeNotification("Update ready", "Cotton Sync will install this update on next app start.");
+                    ShowNativeNotification("Update ready", OperatingSystem.IsLinux()
+                        ? "Open Settings to install the update through the system package manager."
+                        : "Cotton Sync will install this update on next app start.");
                 }
             }
             catch (Exception exception) when (exception is not OperationCanceledException)

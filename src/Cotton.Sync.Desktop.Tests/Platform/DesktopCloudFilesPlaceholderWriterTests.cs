@@ -49,7 +49,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             });
         }
 
-        [Test]
+        [Test, Platform("Win")]
         public void CreatePlaceholderAsync_RejectsUnsafeRootBeforeNativeCall()
         {
             DesktopCloudFilesPlaceholderWriter writer = new DesktopCloudFilesPlaceholderWriter(

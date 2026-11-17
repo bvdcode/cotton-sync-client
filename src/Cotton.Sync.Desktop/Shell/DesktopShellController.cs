@@ -117,7 +117,7 @@ namespace Cotton.Sync.Desktop.Shell
                 nameof(resolvedOptions.TokenStorageVerificationTimeout));
             _tokenStorageVerifier = ResolveTokenStorageVerifier(resolvedOptions);
             (_updateService, _updateServiceLifetime) = CreateUpdateService(resolvedOptions.UpdateService, _paths);
-            _updateInstaller = resolvedOptions.UpdateInstaller ?? new DesktopUpdateInstaller(_paths.DataDirectory);
+            _updateInstaller = resolvedOptions.UpdateInstaller ?? DesktopUpdateInstallerFactory.Create(_paths.DataDirectory);
         }
 
         private static TimeSpan ResolvePositiveTimeout(

@@ -121,7 +121,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
 
             Assert.Multiple(() =>
             {
-                Assert.That(workflow, Does.Contain("ffmpeg gnome-keyring libnotify-bin libsecret-tools x11-apps x11-utils xauth xvfb"));
+                Assert.That(workflow, Does.Contain("ffmpeg gnome-keyring libnotify-bin libsecret-tools packagekit pkexec plasma-workspace plasma-desktop kwin-x11 xdotool python3-gi x11-apps x11-utils xauth xvfb"));
                 Assert.That(workflow, Does.Contain("command -v xprop"));
                 Assert.That(workflow, Does.Contain("command -v notify-send"));
                 Assert.That(workflow, Does.Contain("command -v xwd"));

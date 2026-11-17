@@ -32,6 +32,19 @@ namespace Cotton.Sync.Desktop.Tests.Shell
         }
 
         [Test]
+        public void ResolveCloseAction_FollowsTrayHostAvailabilityChanges()
+        {
+            DesktopWindowLifecyclePolicy policy = new(startMinimizedToTray: true, canHideToTray: false);
+            Assert.That(policy.ShouldHideAfterStartup(), Is.False);
+
+            policy.SetTrayAvailability(true);
+            Assert.That(policy.ResolveCloseAction(), Is.EqualTo(DesktopWindowCloseAction.HideToTray));
+
+            policy.SetTrayAvailability(false);
+            Assert.That(policy.ResolveCloseAction(), Is.EqualTo(DesktopWindowCloseAction.Close));
+        }
+
+        [Test]
         public void ResolveCloseAction_ClosesAfterExplicitQuitRequest()
         {
             DesktopWindowLifecyclePolicy policy = new DesktopWindowLifecyclePolicy(

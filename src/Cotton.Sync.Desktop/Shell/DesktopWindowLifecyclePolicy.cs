@@ -5,7 +5,7 @@ namespace Cotton.Sync.Desktop.Shell
 {
     internal class DesktopWindowLifecyclePolicy
     {
-        private readonly bool _canHideToTray;
+        private bool _canHideToTray;
         private readonly bool _startMinimizedToTray;
         private bool _hasExplicitShowRequest;
         private bool _isQuitRequested;
@@ -19,6 +19,11 @@ namespace Cotton.Sync.Desktop.Shell
         public bool ShouldHideAfterStartup()
         {
             return _startMinimizedToTray && !_hasExplicitShowRequest;
+        }
+
+        public void SetTrayAvailability(bool available)
+        {
+            _canHideToTray = available;
         }
 
         public void RequestShow()

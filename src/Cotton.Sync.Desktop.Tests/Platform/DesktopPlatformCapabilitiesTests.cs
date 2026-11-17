@@ -24,21 +24,21 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         }
 
         [Test]
-        public void CreateSnapshot_OnLinux_DoesNotClaimTrayLifecycleSupport()
+        public async Task CreateSnapshot_OnLinux_ReportsActualTrayHostAvailability()
         {
             if (!OperatingSystem.IsLinux())
             {
-                Assert.Pass("Linux tray lifecycle guard is only evaluated on Linux.");
+                Assert.Ignore("Requires a Linux desktop session.");
             }
 
+            await DesktopPlatformCapabilities.InitializeAsync();
+            bool hostAvailable = await LinuxTrayHostProbe.IsAvailableAsync();
             DesktopPlatformCapabilitySnapshot snapshot = DesktopPlatformCapabilities.CreateSnapshot();
-
             Assert.Multiple(() =>
             {
                 Assert.That(snapshot.OperatingSystemName, Is.EqualTo("Linux"));
-                Assert.That(snapshot.IsTrayLifecycleSupported, Is.False);
-                Assert.That(snapshot.TrayLifecycleDetails, Does.Contain("varies by Linux desktop environment"));
-                Assert.That(snapshot.TrayLifecycleDetails, Does.Not.Contain("native Linux tray adapter"));
+                Assert.That(snapshot.IsTrayLifecycleSupported, Is.EqualTo(hostAvailable));
+                Assert.That(snapshot.TrayLifecycleDetails, Does.Contain("StatusNotifier"));
             });
         }
     }

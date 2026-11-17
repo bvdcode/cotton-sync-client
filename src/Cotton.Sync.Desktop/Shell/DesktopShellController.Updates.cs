@@ -101,7 +101,7 @@ namespace Cotton.Sync.Desktop.Shell
             }
         }
 
-        public Task<DesktopUpdateInstallResult> InstallDownloadedUpdateAsync(
+        public async Task<DesktopUpdateInstallResult> InstallDownloadedUpdateAsync(
             string installerPath,
             CancellationToken cancellationToken = default)
         {
@@ -109,14 +109,15 @@ namespace Cotton.Sync.Desktop.Shell
             Trace.TraceInformation("Starting desktop update installer launch.");
             try
             {
-                DesktopUpdateInstallResult result = _updateInstaller.StartSilentInstall(installerPath, launchAfterUpdate: true);
+                DesktopUpdateInstallResult result = await _updateInstaller.StartInstallAsync(
+                    installerPath, launchAfterUpdate: true, cancellationToken).ConfigureAwait(false);
                 _lastUpdateDiagnostics = _lastUpdateDiagnostics.WithInstallLaunch(result, DateTimeOffset.UtcNow);
                 Trace.TraceInformation(
                     "Desktop update installer launch completed: processId={0}, exitedDuringStartupProbe={1}, exitCode={2}.",
                     result.ProcessId,
                     result.ExitedDuringStartupProbe,
                     result.ExitCode?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none");
-                return Task.FromResult(result);
+                return result;
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -164,11 +165,13 @@ namespace Cotton.Sync.Desktop.Shell
             else if (installerReady)
             {
                 details = "Update " + latest
-                    + " is ready. Click Update to install it now, or it will install automatically on next app start.";
+                    + (OperatingSystem.IsLinux()
+                        ? " is ready. Click Update to install it through the system package manager. Administrator authorization may be required."
+                        : " is ready. Click Update to install it now, or it will install automatically on next app start.");
             }
             else if (check.InstallerAsset is null)
             {
-                details = "Update " + latest + " is available, but no Windows installer asset was found.";
+                details = "Update " + latest + " is available, but no installer is available for this installation.";
             }
             else
             {

@@ -103,7 +103,6 @@ namespace Cotton.Sync.Desktop.Tests.Platform
 
                 Assert.Multiple(() =>
                 {
-                    Assert.That(DesktopPlatformCapabilities.IsTrayLifecycleSupported, Is.False);
                     Assert.That(service, Is.TypeOf<UnsupportedAutostartService>());
                     Assert.That(enableAutostart, Throws.TypeOf<NotSupportedException>());
                     Assert.That(File.Exists(desktopFilePath), Is.False);

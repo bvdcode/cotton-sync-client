@@ -29,6 +29,7 @@ namespace Cotton.Sync.Desktop.Startup
 
             DesktopAppPaths paths = DesktopStartupPathResolver.Resolve(startupOptions);
             DesktopTraceLogging.Install(paths);
+            DesktopPlatformCapabilities.InitializeAsync().GetAwaiter().GetResult();
             DesktopUnhandledExceptionReporter.Install();
             DesktopStartupCommand command = DesktopStartupCommandResolver.Resolve(startupOptions);
             if (command == DesktopStartupCommand.None

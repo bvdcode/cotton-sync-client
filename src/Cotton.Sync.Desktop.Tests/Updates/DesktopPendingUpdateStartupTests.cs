@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Security.Cryptography;
@@ -131,6 +131,23 @@ namespace Cotton.Sync.Desktop.Tests.Updates
             });
         }
 
+        [Test]
+        public void TryStartPendingUpdate_OnLinuxKeepsPackageForInteractiveAuthorization()
+        {
+            if (!OperatingSystem.IsLinux())
+            {
+                Assert.Ignore("Requires Linux installation authorization.");
+            }
+
+            DesktopAppPaths paths = DesktopAppPaths.CreateForDataDirectory(_tempDirectory);
+            byte[] bytes = Encoding.UTF8.GetBytes("package");
+            string path = WriteInstaller(paths, bytes);
+            DesktopPendingUpdateStore store = new(paths.UpdateCacheDirectory);
+            store.Save(new DesktopPendingUpdate("0.0.2", path, Sha256(bytes), bytes.Length, DateTime.UtcNow));
+            Assert.That(DesktopPendingUpdateStartup.TryStartPendingUpdate(paths, "0.0.1"), Is.False);
+            Assert.That(store.TryLoad()?.AttemptCount, Is.Zero);
+        }
+
         private static string WriteInstaller(DesktopAppPaths paths, byte[] installerBytes)
         {
             string directory = Path.Combine(paths.UpdateCacheDirectory, "0.0.2");
@@ -151,13 +168,14 @@ namespace Cotton.Sync.Desktop.Tests.Updates
 
             public bool? LaunchAfterUpdate { get; private set; }
 
-            public DesktopUpdateInstallResult StartSilentInstall(
+            public Task<DesktopUpdateInstallResult> StartInstallAsync(
                 string installerPath,
-                bool launchAfterUpdate)
+                bool launchAfterUpdate,
+                CancellationToken cancellationToken = default)
             {
                 InstallerPath = installerPath;
                 LaunchAfterUpdate = launchAfterUpdate;
-                return new DesktopUpdateInstallResult(42, false, null);
+                return Task.FromResult(new DesktopUpdateInstallResult(42, false, null));
             }
         }
     }

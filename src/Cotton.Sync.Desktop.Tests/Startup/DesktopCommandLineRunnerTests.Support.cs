@@ -222,14 +222,15 @@ namespace Cotton.Sync.Desktop.Tests.Startup
 
             public bool? LaunchAfterUpdate { get; private set; }
 
-            public DesktopUpdateInstallResult StartSilentInstall(
+            public Task<DesktopUpdateInstallResult> StartInstallAsync(
                 string installerPath,
-                bool launchAfterUpdate)
+                bool launchAfterUpdate,
+                CancellationToken cancellationToken = default)
             {
                 Calls++;
                 InstallerPath = installerPath;
                 LaunchAfterUpdate = launchAfterUpdate;
-                return new DesktopUpdateInstallResult(42, true, 0);
+                return Task.FromResult(new DesktopUpdateInstallResult(42, true, 0));
             }
         }
     }

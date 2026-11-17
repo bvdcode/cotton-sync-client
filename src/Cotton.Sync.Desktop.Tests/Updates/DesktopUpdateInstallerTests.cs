@@ -48,7 +48,7 @@ namespace Cotton.Sync.Desktop.Tests.Updates
         }
 
         [Test]
-        public void StartSilentInstall_LaunchesInstaller()
+        public async Task StartInstallAsync_LaunchesInstaller()
         {
             string installerPath = CreateUnsignedInstallerPath();
             try
@@ -57,7 +57,7 @@ namespace Cotton.Sync.Desktop.Tests.Updates
                 string dataDirectory = Path.Combine(Path.GetTempPath(), "Cotton profile");
                 DesktopUpdateInstaller installer = new(launcher, dataDirectory);
 
-                DesktopUpdateInstallResult result = installer.StartSilentInstall(installerPath, launchAfterUpdate: true);
+                DesktopUpdateInstallResult result = await installer.StartInstallAsync(installerPath, launchAfterUpdate: true);
 
                 Assert.Multiple(() =>
                 {

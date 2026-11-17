@@ -9,7 +9,7 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
 {
     public class DesktopCloudFilesRegistrationDiagnosticsSnapshotTests
     {
-        [Test]
+        [Test, Platform("Win")]
         public void Create_ReportsRegisteredAndMissingVirtualFilePairs()
         {
             Guid registeredPairId = Guid.NewGuid();
