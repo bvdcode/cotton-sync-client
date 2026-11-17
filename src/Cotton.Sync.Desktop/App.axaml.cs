@@ -92,6 +92,7 @@ namespace Cotton.Sync.Desktop
                         }
 
                         DesktopPlatformCapabilities.SetLinuxTrayHostAvailability(available);
+                        _trayController?.SetHostAvailability(available);
                         desktop.ShutdownMode = available ? ShutdownMode.OnExplicitShutdown : ShutdownMode.OnLastWindowClose;
                         window.SetTrayLifecycleAvailable(available);
                     }), _trayMonitorCancellation.Token);

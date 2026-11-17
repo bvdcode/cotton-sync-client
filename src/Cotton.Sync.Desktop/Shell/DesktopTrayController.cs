@@ -41,6 +41,14 @@ namespace Cotton.Sync.Desktop.Shell
 
         public static bool IsSupportedPlatform => DesktopPlatformCapabilities.IsTrayLifecycleSupported;
 
+        public void SetHostAvailability(bool available)
+        {
+            if (!_disposed)
+            {
+                _trayIcon.IsVisible = available;
+            }
+        }
+
         public void Dispose()
         {
             if (_disposed)
@@ -104,7 +112,7 @@ namespace Cotton.Sync.Desktop.Shell
             {
                 Icon = LoadIcon(_currentIconUri),
                 ToolTipText = "Cotton Sync",
-                IsVisible = true,
+                IsVisible = DesktopPlatformCapabilities.IsTrayLifecycleSupported,
                 Menu = new NativeMenu(),
             };
             trayIcon.Clicked += (_, _) => RunOnUiThread(ShowWindow);
