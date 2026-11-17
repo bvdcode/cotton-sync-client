@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Diagnostics;
+using System.Net;
 using Cotton.Nodes;
 using Cotton.Sdk;
 using Cotton.Sdk.Nodes;
@@ -35,12 +36,21 @@ namespace Cotton.Sync.Remote
             CancellationToken cancellationToken)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
-            CottonPagedResult<NodeContentDto> result = await _nodes.GetChildrenAsync(
-                nodeId,
-                page,
-                _pageSize,
-                depth: 0,
-                cancellationToken).ConfigureAwait(false);
+            CottonPagedResult<NodeContentDto> result;
+            try
+            {
+                result = await _nodes.GetChildrenAsync(
+                    nodeId,
+                    page,
+                    _pageSize,
+                    depth: 0,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (CottonApiException exception) when (exception.StatusCode == HttpStatusCode.NotFound)
+            {
+                throw new RemoteDirectoryListingUnavailableException(
+                    $"Remote directory listing for node {nodeId:D} became unavailable on page {page}.", exception);
+            }
             stopwatch.Stop();
             if (expectedTotalCount.HasValue && result.TotalCount != expectedTotalCount.Value)
             {

@@ -56,7 +56,7 @@ namespace Cotton.Sync.Desktop.Startup
             {
                 await client.Files.DeleteAsync(file.RemoteFileId, cancellationToken: cancellationToken).ConfigureAwait(false);
             }
-            if (!await WaitForLiveRestoreFilesAsync(options, session, files, restored: false, cancellationToken)
+            if (!await WaitForLiveRestoreFilesAsync(options, session, files, restored: false, output, cancellationToken)
                 .ConfigureAwait(false))
             {
                 await output.WriteLineAsync(FormatCheck(false,
@@ -88,7 +88,7 @@ namespace Cotton.Sync.Desktop.Startup
                 session.FirstManifestBarrier.Release();
                 session.SecondManifestBarrier.Release();
             }
-            bool passed = await WaitForLiveRestoreFilesAsync(options, session, files, restored: true, cancellationToken)
+            bool passed = await WaitForLiveRestoreFilesAsync(options, session, files, restored: true, output, cancellationToken)
                 .ConfigureAwait(false);
             await output.WriteLineAsync(FormatCheck(passed,
                 "Eleven trash restores across a held manifest preserved IDs and bytes automatically on both clients."))
@@ -106,22 +106,28 @@ namespace Cotton.Sync.Desktop.Startup
             DesktopLiveSyncSmokeSession session,
             IReadOnlyList<LiveSyncSmokeRestoreFile> files,
             bool restored,
+            TextWriter output,
             CancellationToken cancellationToken)
         {
             SqliteSyncStateStore firstStore = new(session.FirstPaths.SyncStateDatabasePath);
             SqliteSyncStateStore secondStore = new(session.SecondPaths.SyncStateDatabasePath);
             DateTime deadline = DateTime.UtcNow + PropagationTimeout;
             int stableObservations = 0;
+            int correctObservations = 0;
+            int idleObservations = 0;
+            int observations = 0;
             do
             {
+                IReadOnlyDictionary<string, LiveSyncSmokeFileHashReadResult> hashes =
+                    await ReadLiveRestoreHashesAsync(options, files, restored, cancellationToken).ConfigureAwait(false);
                 bool correct = true;
                 foreach (LiveSyncSmokeRestoreFile file in files)
                 {
                     correct &= await IsLiveRestoreFileCorrectAsync(
-                        options.LocalRoot!, session.FirstPair!.Id, firstStore, file, restored, cancellationToken)
+                        options.LocalRoot!, session.FirstPair!.Id, firstStore, file, restored, hashes, cancellationToken)
                         .ConfigureAwait(false);
                     correct &= await IsLiveRestoreFileCorrectAsync(
-                        options.SecondLocalRoot!, session.SecondPair!.Id, secondStore, file, restored, cancellationToken)
+                        options.SecondLocalRoot!, session.SecondPair!.Id, secondStore, file, restored, hashes, cancellationToken)
                         .ConfigureAwait(false);
                 }
                 DesktopShellSnapshot firstShell = await session.FirstController.LoadAsync(cancellationToken).ConfigureAwait(false);
@@ -129,6 +135,15 @@ namespace Cotton.Sync.Desktop.Startup
                 bool idle = AreLiveSmokePairsIdle(
                     firstShell.SyncPairs.FirstOrDefault(item => item.Id == session.FirstPair!.Id),
                     secondShell.SyncPairs.FirstOrDefault(item => item.Id == session.SecondPair!.Id));
+                observations++;
+                if (correct)
+                {
+                    correctObservations++;
+                }
+                if (idle)
+                {
+                    idleObservations++;
+                }
                 stableObservations = correct && idle ? stableObservations + 1 : 0;
                 if (stableObservations >= 2)
                 {
@@ -137,6 +152,12 @@ namespace Cotton.Sync.Desktop.Startup
                 await Task.Delay(PropagationPollInterval, cancellationToken).ConfigureAwait(false);
             }
             while (DateTime.UtcNow < deadline);
+            await output.WriteLineAsync(
+                $"Restore convergence timed out: restored={restored}, observations={observations}, "
+                + $"correct={correctObservations}, idle={idleObservations}, consecutive={stableObservations}.")
+                .ConfigureAwait(false);
+            await WriteLiveRestoreFailureAsync(options, session, files, restored, output, cancellationToken)
+                .ConfigureAwait(false);
             return false;
         }
 
@@ -146,6 +167,7 @@ namespace Cotton.Sync.Desktop.Startup
             SqliteSyncStateStore store,
             LiveSyncSmokeRestoreFile file,
             bool restored,
+            IReadOnlyDictionary<string, LiveSyncSmokeFileHashReadResult> hashes,
             CancellationToken cancellationToken)
         {
             SyncStateEntry? entry = await store.GetAsync(pairId.ToString("D"), file.RelativePath, cancellationToken)
@@ -159,9 +181,26 @@ namespace Cotton.Sync.Desktop.Startup
             {
                 return false;
             }
-            TextReadSnapshot read = await TryReadAllTextForLiveSmokeAsync(path, cancellationToken).ConfigureAwait(false);
-            return read.Exists && read.Read
-                && await ComputeFileSha256Async(path, cancellationToken).ConfigureAwait(false) == file.Sha256;
+            return hashes.TryGetValue(path, out LiveSyncSmokeFileHashReadResult? read)
+                && read.Error is null && read.Sha256 == file.Sha256;
+        }
+
+        private static Task<IReadOnlyDictionary<string, LiveSyncSmokeFileHashReadResult>> ReadLiveRestoreHashesAsync(
+            DesktopStartupOptions options,
+            IReadOnlyList<LiveSyncSmokeRestoreFile> files,
+            bool restored,
+            CancellationToken cancellationToken)
+        {
+            IEnumerable<string> paths = [];
+            if (restored)
+            {
+                paths = files.SelectMany(file => new[]
+                {
+                    FullPath(options.LocalRoot!, file.RelativePath),
+                    FullPath(options.SecondLocalRoot!, file.RelativePath),
+                });
+            }
+            return LiveSyncSmokeFileHashReader.ReadAsync(paths, cancellationToken);
         }
     }
 }

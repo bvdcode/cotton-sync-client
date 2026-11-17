@@ -51,7 +51,7 @@ namespace Cotton.Sync.Desktop.Startup
                 session.SecondManifestBarrier.Release();
             }
             bool restored = await WaitForLiveRestoreFilesAsync(
-                options, session, files, restored: true, cancellationToken).ConfigureAwait(false);
+                options, session, files, restored: true, output, cancellationToken).ConfigureAwait(false);
             bool passed = retained && restored;
             await output.WriteLineAsync(FormatCheck(passed,
                 "Restores before delete-event application preserved all eleven IDs and bytes without another deletion."))

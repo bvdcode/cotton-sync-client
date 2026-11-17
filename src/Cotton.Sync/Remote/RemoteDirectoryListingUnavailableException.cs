@@ -7,7 +7,9 @@ namespace Cotton.Sync.Remote
     /// Indicates that a complete, consistent remote directory listing is temporarily unavailable.
     /// </summary>
     /// <param name="message">The directory listing validation failure.</param>
-    public class RemoteDirectoryListingUnavailableException(string message) : IOException(message)
+    /// <param name="innerException">The failure that invalidated the directory listing.</param>
+    public class RemoteDirectoryListingUnavailableException(string message, Exception? innerException = null)
+        : IOException(message, innerException)
     {
     }
 }
