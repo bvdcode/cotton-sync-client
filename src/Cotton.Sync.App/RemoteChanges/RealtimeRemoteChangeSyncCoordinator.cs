@@ -26,7 +26,7 @@ namespace Cotton.Sync.App.RemoteChanges
         private readonly ILogger<RealtimeRemoteChangeSyncCoordinator> _logger;
         private readonly ICottonRealtimeClient _realtime;
         private readonly ISessionRevocationHandler _sessionRevocationHandler;
-        private readonly ISyncSupervisor _supervisor;
+        private readonly SyncRequestConnectionRetry _syncRequest;
         private CancellationTokenSource? _lifetime;
         private PendingRemoteSyncRequest? _pendingSync;
         private readonly HashSet<PendingRemoteSyncRequest> _pendingRequests = [];
@@ -60,7 +60,7 @@ namespace Cotton.Sync.App.RemoteChanges
             TimeSpan? connectionAttemptTimeout = null)
         {
             _realtime = realtime ?? throw new ArgumentNullException(nameof(realtime));
-            _supervisor = supervisor ?? throw new ArgumentNullException(nameof(supervisor));
+            ArgumentNullException.ThrowIfNull(supervisor);
             _authFlow = authFlow ?? throw new ArgumentNullException(nameof(authFlow));
             _connectionRetryInterval = connectionRetryInterval ?? TimeSpan.FromSeconds(15);
             _connectionAttemptTimeout = connectionAttemptTimeout ?? TimeSpan.FromSeconds(30);
@@ -81,6 +81,8 @@ namespace Cotton.Sync.App.RemoteChanges
 
             _timeProvider = timeProvider ?? TimeProvider.System;
             _logger = logger ?? NullLogger<RealtimeRemoteChangeSyncCoordinator>.Instance;
+            _syncRequest = new SyncRequestConnectionRetry(
+                supervisor, _connectionRetryInterval, Task.Delay, _logger);
         }
 
         /// <inheritdoc />
@@ -274,9 +276,10 @@ namespace Cotton.Sync.App.RemoteChanges
                 _logger.LogDebug(
                     "Requesting remote-change sync after realtime event {MethodName}.",
                     methodName);
-                await _supervisor
-                    .SyncAllAsync(
+                await _syncRequest
+                    .RequestAllAsync(
                         SyncRunRequest.ForFull(SyncRunCause.RealtimeRemoteChange),
+                        "Remote-change sync",
                         request.Cancellation.Token)
                     .ConfigureAwait(false);
             }

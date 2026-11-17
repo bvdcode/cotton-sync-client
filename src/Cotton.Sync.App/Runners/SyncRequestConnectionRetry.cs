@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
-using Cotton.Sync.App.Runners;
 using Cotton.Sync.App.Supervision;
 using Microsoft.Extensions.Logging;
 
-namespace Cotton.Sync.App.LocalChanges
+namespace Cotton.Sync.App.Runners
 {
     internal class SyncRequestConnectionRetry
     {
@@ -24,6 +23,15 @@ namespace Cotton.Sync.App.LocalChanges
             _retryInterval = retryInterval;
             _delayAsync = delayAsync ?? throw new ArgumentNullException(nameof(delayAsync));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        }
+
+        public Task RequestAllAsync(
+            SyncRunRequest request,
+            string operation,
+            CancellationToken cancellationToken)
+        {
+            return Task.WhenAll(_supervisor.CurrentStatuses.Select(status =>
+                RequestAsync(status.SyncPairId, request, operation, cancellationToken)));
         }
 
         public async Task RequestAsync(
