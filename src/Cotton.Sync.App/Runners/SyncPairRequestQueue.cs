@@ -82,8 +82,13 @@ namespace Cotton.Sync.App.Runners
                 return true;
             }
 
-            bool mergeRequest = _failedRequest.IsFull && request.IsFull;
-            _activeRequest = mergeRequest ? _failedRequest.Merge(request) : _failedRequest;
+            return ActivateFailedRequest(request, _failedRequest);
+        }
+
+        private bool ActivateFailedRequest(SyncRunRequest request, SyncRunRequest failedRequest)
+        {
+            bool mergeRequest = failedRequest.IsFull && request.IsFull;
+            _activeRequest = mergeRequest ? failedRequest.Merge(request) : failedRequest;
             _failedRequest = null;
             if (!mergeRequest)
             {

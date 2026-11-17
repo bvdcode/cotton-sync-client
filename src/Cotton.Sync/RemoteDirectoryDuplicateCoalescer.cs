@@ -66,23 +66,9 @@ namespace Cotton.Sync
         {
             string sourceKey = SyncPath.ToKey(sourcePath);
             string targetKey = SyncPath.ToKey(targetPath);
-            if (IsSameOrDescendantPathKey(targetKey, sourceKey)
-                || IsSameOrDescendantPathKey(sourceKey, targetKey)
-                || !AreEquivalentSiblingNames(sourcePath, targetPath)
-                || await stateStore.GetAsync(context.SyncPair.SyncPairId, targetPath, context.CancellationToken)
-                    .ConfigureAwait(false) is not null)
+            if (!await CanCoalesceTargetAsync(context, sourcePath, targetPath, remoteUsesSourcePath).ConfigureAwait(false))
             {
                 return false;
-            }
-
-            if (remoteUsesSourcePath)
-            {
-                await foreach (SyncStateEntry _ in stateStore.LoadEntriesByPathPrefixAsync(
-                                   context.SyncPair.SyncPairId, targetPath, context.CancellationToken)
-                                   .ConfigureAwait(false))
-                {
-                    return false;
-                }
             }
 
             List<SyncStateEntry> states = [];
