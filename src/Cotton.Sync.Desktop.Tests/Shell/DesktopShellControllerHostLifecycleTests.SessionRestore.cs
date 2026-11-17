@@ -295,6 +295,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 .LoadAsync()
                 .WaitAsync(TimeSpan.FromSeconds(10));
 
+            await verificationCancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Multiple(() =>
             {
                 Assert.That(verificationCancelled.Task.IsCompletedSuccessfully, Is.True);

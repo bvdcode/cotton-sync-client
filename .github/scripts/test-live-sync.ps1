@@ -6,6 +6,7 @@ param(
     [Parameter(Mandatory)] [string] $DesktopAssembly,
     [Parameter(Mandatory)] [string] $OutputDirectory,
     [Parameter(Mandatory)] [uri] $ServerUrl,
+    [switch] $AllowPrivateInstance,
     [ValidateRange(1, 100)] [int] $SeedFileCount = 16,
     [ValidateRange(0, 3600)] [int] $SoakSeconds = 60,
     [ValidateSet('full-mirror', 'windows-virtual-files')] [string[]] $Modes = @('full-mirror', 'windows-virtual-files'),
@@ -15,8 +16,8 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-if (-not $IsWindows) {
-    throw 'Live Cloud Files acceptance requires Windows.'
+if (-not $IsWindows -and $Modes.Contains('windows-virtual-files')) {
+    throw 'Cloud Files mode requires Windows. Select full-mirror on Linux.'
 }
 if ($ServerUrl.Scheme -ne 'https' -or $ServerUrl.AbsolutePath -ne '/' -or $ServerUrl.Query -or $ServerUrl.UserInfo) {
     throw 'An HTTPS server origin is required.'
@@ -26,7 +27,7 @@ if ([string]::IsNullOrWhiteSpace($env:COTTON_SYNC_QA_USERNAME) -or [string]::IsN
 }
 $assemblyPath = (Resolve-Path -LiteralPath $DesktopAssembly).Path
 $shellHelper = Join-Path (Split-Path -LiteralPath $assemblyPath) 'WindowsShell/Cotton.Sync.WindowsShell.exe'
-if (-not (Test-Path -LiteralPath $shellHelper -PathType Leaf)) {
+if ($IsWindows -and $Modes.Contains('windows-virtual-files') -and -not (Test-Path -LiteralPath $shellHelper -PathType Leaf)) {
     throw 'The desktop candidate must include its Windows shell helper.'
 }
 $outputPath = [IO.Path]::GetFullPath($OutputDirectory)
@@ -34,6 +35,7 @@ if (Test-Path -LiteralPath $outputPath) {
     throw 'The acceptance output directory must not exist.'
 }
 $server = $ServerUrl.AbsoluteUri.TrimEnd('/')
+Import-Module Microsoft.PowerShell.Utility
 $webSession = [Microsoft.PowerShell.Commands.WebRequestSession]::new()
 $headers = @{}
 
@@ -69,7 +71,7 @@ function Invoke-LiveMode {
     $modeOutput = Join-Path $outputPath $Mode
     [IO.Directory]::CreateDirectory($modeOutput) | Out-Null
     $modeRuntime = Join-Path $RuntimeDirectory $Mode
-    $startInfo = [Diagnostics.ProcessStartInfo]::new((Get-Command dotnet -CommandType Application).Source)
+    $startInfo = [Diagnostics.ProcessStartInfo]::new((Get-Command dotnet -CommandType Application | Select-Object -First 1).Source)
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
@@ -137,7 +139,7 @@ function Invoke-LiveMode {
 }
 
 $info = Invoke-AcceptanceApi -Method Get -Path '/api/v1/server/info'
-if ($info.isPublicInstance -ne $true) {
+if ($info.isPublicInstance -ne $true -and -not $AllowPrivateInstance) {
     throw 'Live acceptance is restricted to a public demo instance.'
 }
 [IO.Directory]::CreateDirectory($outputPath) | Out-Null
@@ -215,7 +217,7 @@ finally {
     $headers.Clear()
     $login = $null
     $summary.Modes = $results.ToArray()
-    $summary.Passed = $null -eq $failure -and $results.Count -eq 2 `
+    $summary.Passed = $null -eq $failure -and $results.Count -eq $Modes.Count `
         -and $summary.RemoteCleanupPassed -and $summary.SessionCleanupPassed
     if ($summary.Passed -and (Test-Path -LiteralPath $runtimeDirectory)) {
         $resolvedRuntime = (Resolve-Path -LiteralPath $runtimeDirectory).Path

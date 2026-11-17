@@ -23,7 +23,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 UseShellExecute = false
             };
             startInfo.ArgumentList.Add("-NoProfile");
-            startInfo.ArgumentList.Add("-File");
+            startInfo.ArgumentList.Add("-CommandWithArgs");
+            startInfo.ArgumentList.Add("$ErrorView = 'NormalView'; $parameters = @{ EvidenceDirectory = $args[2] }; if ($args.Length -gt 3) { $parameters.MinimumVfsPlaceholderCount = [int]$args[4] }; & $args[0] @parameters");
             startInfo.ArgumentList.Add(GetDesktopFilePath("Packaging/windows/verify-vfs-release-evidence.ps1"));
             startInfo.ArgumentList.Add("-EvidenceDirectory");
             startInfo.ArgumentList.Add(evidenceDirectory);
@@ -56,7 +57,8 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 UseShellExecute = false
             };
             startInfo.ArgumentList.Add("-NoProfile");
-            startInfo.ArgumentList.Add("-File");
+            startInfo.ArgumentList.Add("-CommandWithArgs");
+            startInfo.ArgumentList.Add("$ErrorView = 'NormalView'; $parameters = @{ EvidenceDirectory = $args[2] }; if ($args.Length -gt 3) { $parameters.MinimumVfsPlaceholderCount = [int]$args[4] }; & $args[0] @parameters");
             startInfo.ArgumentList.Add(GetDesktopFilePath("Packaging/windows/verify-vfs-logon-evidence.ps1"));
             startInfo.ArgumentList.Add("-EvidenceDirectory");
             startInfo.ArgumentList.Add(evidenceDirectory);

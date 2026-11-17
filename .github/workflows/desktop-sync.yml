@@ -184,7 +184,7 @@ jobs:
       - name: Install desktop Linux smoke dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends dbus-x11 ffmpeg gnome-keyring libnotify-bin libsecret-tools x11-apps x11-utils xauth xvfb
+          sudo apt-get install -y --no-install-recommends dbus-x11 ffmpeg gnome-keyring libnotify-bin libsecret-tools packagekit pkexec plasma-workspace plasma-desktop kwin-x11 xdotool python3-gi x11-apps x11-utils xauth xvfb
           command -v dbus-run-session
           command -v ffmpeg
           command -v gnome-keyring-daemon
@@ -197,6 +197,14 @@ jobs:
 
       - name: Restore desktop project
         run: dotnet restore src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --locked-mode
+
+      - name: Test Linux solution
+        run: |
+          dotnet restore src/Cotton.sln --locked-mode -p:EnableWindowsTargeting=true
+          dbus-run-session -- bash -euo pipefail <<'EOF'
+          . src/Cotton.Sync.Desktop/Packaging/linux/start-secret-service.sh
+          dotnet test src/Cotton.sln -c Release --no-restore -p:EnableWindowsTargeting=true -p:UseSharedCompilation=false --logger "trx;LogFileName=linux-desktop.trx"
+          EOF
 
       - name: Publish desktop Linux x64
         run: dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --no-restore /p:PublishProfile=linux-x64 -p:Version='${{ steps.gitversion.outputs.SemVer }}' -p:AssemblyVersion='${{ steps.gitversion.outputs.AssemblyVersion }}' -p:FileVersion='${{ steps.gitversion.outputs.FileVersion }}' -p:InformationalVersion='${{ steps.gitversion.outputs.SemVer }}'
@@ -213,6 +221,43 @@ jobs:
             src/Cotton.Sync.Desktop/bin/Release/net10.0/publish/linux-x64
           timeout "$self_test_timeout" src/Cotton.Sync.Desktop/bin/Release/net10.0/publish/linux-x64/Cotton.Sync.Desktop --self-test --data-dir "$temp_dir"
           EOF
+
+      - name: Verify Linux full mirror against demo server
+        env:
+          COTTON_SYNC_LIVE_SESSION_TEST: "1"
+          COTTON_SYNC_QA_SERVER: ${{ vars.COTTON_SYNC_QA_SERVER }}
+          COTTON_SYNC_QA_USERNAME: ${{ secrets.COTTON_SYNC_QA_USERNAME }}
+          COTTON_SYNC_QA_PASSWORD: ${{ secrets.COTTON_SYNC_QA_PASSWORD }}
+        run: |
+          dbus-run-session -- bash -euo pipefail <<'EOF'
+          . src/Cotton.Sync.Desktop/Packaging/linux/start-secret-service.sh
+          pwsh -NoProfile -File .github/scripts/test-live-sync.ps1 \
+            -DesktopAssembly src/Cotton.Sync.Desktop/bin/Release/net10.0/publish/linux-x64/Cotton.Sync.Desktop.dll \
+            -OutputDirectory "$RUNNER_TEMP/linux-live-acceptance" \
+            -ServerUrl "$COTTON_SYNC_QA_SERVER" -Modes full-mirror
+          dotnet test src/Cotton.Sync.Desktop.Tests/Cotton.Sync.Desktop.Tests.csproj -c Release --no-build --no-restore \
+            --filter "FullyQualifiedName~LinuxLiveSessionTests" --logger "trx;LogFileName=linux-live-session.trx"
+          EOF
+
+      - name: Verify KDE tray lifecycle
+        run: |
+          xvfb-run -a -s "-screen 0 1280x800x24" \
+            dbus-run-session -- bash src/Cotton.Sync.Desktop/Packaging/linux/smoke-kde-tray.sh \
+            src/Cotton.Sync.Desktop/bin/Release/net10.0/publish/linux-x64/Cotton.Sync.Desktop \
+            "$RUNNER_TEMP/linux-kde-tray"
+
+      - name: Upload Linux acceptance results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: desktop-linux-acceptance
+          path: |
+            ${{ runner.temp }}/linux-live-acceptance/summary.json
+            ${{ runner.temp }}/linux-live-acceptance/*/stdout.log
+            ${{ runner.temp }}/linux-live-acceptance/*/stderr.log
+            ${{ runner.temp }}/linux-kde-tray
+            src/*.Tests/TestResults/*.trx
+          if-no-files-found: ignore
 
       - name: Smoke desktop Linux GUI screenshot
         run: |
@@ -368,6 +413,32 @@ jobs:
           test ! -e /opt/cotton-sync/Cotton.Sync.Desktop
           test ! -e /usr/bin/cotton-sync
           test ! -e "$HOME/.config/autostart/cotton-sync.desktop"
+
+      - name: Verify Linux package updater
+        run: |
+          old_publish="$RUNNER_TEMP/linux-update-old"
+          old_deb="$RUNNER_TEMP/linux-update-old.deb"
+          dotnet publish src/Cotton.Sync.Desktop/Cotton.Sync.Desktop.csproj --no-restore /p:PublishProfile=linux-x64 \
+            -p:Version=0.0.1 -p:AssemblyVersion=0.0.1.0 -p:FileVersion=0.0.1.0 -p:InformationalVersion=0.0.1 \
+            -p:PublishDir="$old_publish/"
+          src/Cotton.Sync.Desktop/Packaging/linux/package-deb.sh "$old_publish" "$old_deb" 0.0.1
+          sudo dpkg -i "$old_deb"
+          cleanup() {
+            sudo dpkg -r cotton-sync-desktop >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          sudo xvfb-run -a -s "-screen 0 1024x768x24" dbus-run-session -- \
+            timeout 300s bash src/Cotton.Sync.Desktop/Packaging/linux/smoke-package-update.sh \
+            "$(pwd)/cotton-sync-desktop-linux-x64-${{ steps.gitversion.outputs.SemVer }}.deb" \
+            '${{ steps.gitversion.outputs.SemVer }}' "$RUNNER_TEMP/linux-package-update"
+
+      - name: Upload Linux updater results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: desktop-linux-update
+          path: ${{ runner.temp }}/linux-package-update/*.log
+          if-no-files-found: ignore
 
       - name: Upload desktop Linux x64 artifact
         uses: actions/upload-artifact@v5
