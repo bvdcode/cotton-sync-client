@@ -9,8 +9,9 @@ namespace Cotton.Sync.Desktop.Platform
     internal static class LinuxTrayHostProbe
     {
         private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(3);
+        private static readonly TimeSpan ObjectReadyInterval = TimeSpan.FromMilliseconds(100);
 
-        public static async Task<bool> IsAvailableAsync()
+        public static async Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default)
         {
             string? address = DBusAddress.Session;
             if (string.IsNullOrWhiteSpace(address))
@@ -21,16 +22,30 @@ namespace Cotton.Sync.Desktop.Platform
             using DBusConnection connection = new(address);
             try
             {
-                await connection.ConnectAsync().AsTask().WaitAsync(ProbeTimeout).ConfigureAwait(false);
-                return await connection.CallMethodAsync(
-                    CreateRequest(connection),
-                    static (Message message, object? state) =>
+                await connection.ConnectAsync().AsTask().WaitAsync(ProbeTimeout, cancellationToken).ConfigureAwait(false);
+                Stopwatch readiness = Stopwatch.StartNew();
+                while (true)
+                {
+                    try
                     {
-                        Reader reader = message.GetBodyReader();
-                        reader.ReadSignature();
-                        return reader.ReadBool();
-                    },
-                    null).WaitAsync(ProbeTimeout).ConfigureAwait(false);
+                        return await connection.CallMethodAsync(
+                            CreateRequest(connection),
+                            static (Message message, object? state) =>
+                            {
+                                Reader reader = message.GetBodyReader();
+                                reader.ReadSignature();
+                                return reader.ReadBool();
+                            },
+                            null).WaitAsync(ProbeTimeout, cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (DBusErrorReplyException exception) when (
+                        exception.ErrorName is "org.freedesktop.DBus.Error.UnknownObject"
+                            or "org.freedesktop.DBus.Error.UnknownMethod"
+                        && readiness.Elapsed < ProbeTimeout)
+                    {
+                        await Task.Delay(ObjectReadyInterval, cancellationToken).ConfigureAwait(false);
+                    }
+                }
             }
             catch (Exception exception) when (exception is DBusErrorReplyException or IOException or TimeoutException
                 or System.Net.Sockets.SocketException or DBusConnectFailedException)

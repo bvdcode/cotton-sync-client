@@ -47,7 +47,7 @@ namespace Cotton.Sync.Desktop.Platform
                 changes.Writer.TryWrite(true);
                 await foreach (bool change in changes.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
                 {
-                    reportAvailability(await LinuxTrayHostProbe.IsAvailableAsync().ConfigureAwait(false));
+                    reportAvailability(await LinuxTrayHostProbe.IsAvailableAsync(cancellationToken).ConfigureAwait(false));
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
