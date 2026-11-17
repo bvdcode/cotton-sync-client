@@ -116,11 +116,12 @@ def names():
 prefix = f'org.kde.StatusNotifierItem-{app_pid}-'
 wait_for(lambda: any(name.startswith(prefix) for name in names()), 'KDE tray service registered')
 service = next(name for name in names() if name.startswith(prefix))
-watcher = call('org.kde.StatusNotifierWatcher', '/StatusNotifierWatcher',
-               'org.freedesktop.DBus.Properties', 'Get',
-               GLib.Variant('(ss)', ('org.kde.StatusNotifierWatcher', 'RegisteredStatusNotifierItems')))[0]
-assert any(service in item for item in watcher), watcher
-print('PASS: KDE watcher contains application tray item', flush=True)
+def watcher_items():
+    return call('org.kde.StatusNotifierWatcher', '/StatusNotifierWatcher',
+                'org.freedesktop.DBus.Properties', 'Get',
+                GLib.Variant('(ss)', ('org.kde.StatusNotifierWatcher', 'RegisteredStatusNotifierItems')))[0]
+wait_for(lambda: any(service in item for item in watcher_items()),
+         'KDE watcher contains application tray item')
 props = call(service, '/StatusNotifierItem', 'org.freedesktop.DBus.Properties',
              'GetAll', GLib.Variant('(s)', ('org.kde.StatusNotifierItem',)))[0]
 assert 'Cotton Sync' in props['Title'], props
