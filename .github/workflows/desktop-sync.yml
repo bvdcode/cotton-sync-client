@@ -261,7 +261,7 @@ jobs:
           . src/Cotton.Sync.Desktop/Packaging/linux/start-secret-service.sh
           dotnet test src/Cotton.Sync.Desktop.Tests/Cotton.Sync.Desktop.Tests.csproj -c Release --no-build --no-restore \
             --filter "FullyQualifiedName~LinuxLiveSyncStressTests.ActiveTransfersRecoverFromMutationsRestartAndNetworkLoss|FullyQualifiedName~LinuxLiveDownloadEditTests" \
-            --logger "trx;LogFileName=linux-active-transfers.trx"
+            --logger "trx;LogFileName=linux-active-transfers.trx" --logger "console;verbosity=normal"
           EOF
 
       - name: Verify Linux large file and many-file load
@@ -277,7 +277,7 @@ jobs:
           . src/Cotton.Sync.Desktop/Packaging/linux/start-secret-service.sh
           dotnet test src/Cotton.Sync.Desktop.Tests/Cotton.Sync.Desktop.Tests.csproj -c Release --no-build --no-restore \
             --filter "FullyQualifiedName~LinuxLiveSyncStressTests.LargeFileAndManyFilesConverge" \
-            --logger "trx;LogFileName=linux-load.trx"
+            --logger "trx;LogFileName=linux-load.trx" --logger "console;verbosity=normal"
           EOF
 
       - name: Upload Linux acceptance results
@@ -290,6 +290,8 @@ jobs:
             ${{ runner.temp }}/linux-live-acceptance/*/stdout.log
             ${{ runner.temp }}/linux-live-acceptance/*/stderr.log
             ${{ runner.temp }}/linux-live-acceptance/runtime/*/state/cotton-sync.log*
+            ${{ runner.temp }}/linux-transfer-acceptance/*/*-state/cotton-sync.log*
+            ${{ runner.temp }}/linux-load-acceptance/*/*-state/cotton-sync.log*
             ${{ runner.temp }}/linux-kde-tray
             src/*.Tests/TestResults/*.trx
           if-no-files-found: ignore

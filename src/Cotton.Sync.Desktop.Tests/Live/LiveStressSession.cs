@@ -17,7 +17,7 @@ using Cotton.Sync.State;
 
 namespace Cotton.Sync.Desktop.Tests.Live
 {
-    internal class LiveStressSession : IAsyncDisposable
+    internal partial class LiveStressSession : IAsyncDisposable
     {
         private readonly HttpClient _http = new();
         private readonly string _server;
@@ -105,6 +105,7 @@ namespace Cotton.Sync.Desktop.Tests.Live
                 }
                 await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
             }
+            await WriteConvergenceFailureAsync(expected, cancellationToken);
             Assert.Fail("Clients did not converge to the exact expected tree within " + convergenceTimeout + ".");
         }
 
