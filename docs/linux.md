@@ -5,7 +5,7 @@ The Linux x64 client synchronizes full local copies with Cotton Cloud. Windows C
 | Feature | Linux behavior |
 | --- | --- |
 | Synchronization | Uploads, downloads, edits, renames, moves, deletion and cloud trash restoration use the shared synchronization engine. Local file watching and server events request automatic synchronization. |
-| Session storage | Refresh credentials use the desktop Secret Service. Cancellation during token refresh preserves the replacement session across restart. |
+| Session storage | The Debian package installs GNOME Keyring to provide Secret Service on desktops without a provider. Refresh credentials use the active desktop Secret Service. A locked or temporarily unavailable keyring keeps the saved session pending and retries restoration after unlock. Protection errors preserve the stored credentials. Cancellation during token refresh preserves the replacement session across restart. |
 | Tray | KDE Plasma and other desktops exposing a StatusNotifier host receive the icon and native Show/Quit menu. Closing the window hides it while the tray is available. Without a host, the window remains accessible and closing it exits the application. Tray host changes are detected while the client runs. |
 | Autostart | The preference manages the user XDG autostart entry. |
 | Notifications | Native desktop notifications use the system notification service. |
@@ -22,4 +22,18 @@ The KDE check starts the client before the tray host, verifies icon pixels and t
 
 The file set includes empty files, an 8 MiB file, Cyrillic and accented names, emoji, spaces and nested directories. Two clients verify content hashes after synchronization, automatic edits, restart, deletion and restoration. Every live run uses a separate remote folder and removes its test data and sessions afterward.
 
-Wayland and a complete Kubuntu login session remain separate validation targets. Headless package installation tests run with administrator privileges; the interactive authorization dialog requires a logged-in desktop session.
+Full Kubuntu 24.04 / Plasma 5.27 validation passed the tray lifecycle in both X11 and Wayland sessions. The stock desktop had no Secret Service provider; installing GNOME Keyring enabled secure sign-in. The complete two-client cycles in X11 and Wayland passed uploads, downloads, edits, pause/resume, session restoration, rename with immediate edit, deletion and trash restoration, with exact contents and final idle state. A normal password login after reboot automatically unlocked the login keyring and restored the application account through XDG autostart.
+
+Full Kubuntu 26.04 desktop validation used Plasma 6.6 with a Wayland login session; the client renders through XWayland. Tray registration, icon pixels, native Show/Quit, close-to-tray, reopening and single-instance activation passed. Native KWallet Secret Service storage was checked without an additional GNOME keyring. A password login after reboot starts the client through XDG autostart. Delaying wallet unlock beyond the startup deadline preserves the saved session and restores synchronization automatically after unlock.
+
+The complete native-KWallet synchronization cycle did not pass on the stock Kubuntu 26.04 wallet packages (KWallet 6.24.0 with libsecret 0.21.7). Repeated Secret Service operations intermittently fail during encrypted session negotiation. KDE fixed the interoperability defect in [KWallet commit 307db62](https://github.com/KDE/kwallet/commit/307db62637ac2ca78ff670d746433be9381a923b), included in KWallet 6.25.0. Installing GNOME Keyring does not switch a running KWallet provider or move existing credentials. Client session preservation does not repair that system dependency; this configuration remains an open validation failure.
+
+Interactive Debian update validation covered cancellation, retry, ordinary-user Polkit authorization, PackageKit replacement, automatic restart, retained login and a subsequent up-to-date check. The older-version update fixture contained the current updater; this does not validate the updater in historical releases.
+
+Extended live load validation synchronized 2000 small files and one 1 GiB random file between two clients. Both exact path sets, all SHA-256 hashes and final idle state passed. The combined two-client test process peaked at approximately 412 MiB. The run overlapped desktop provisioning and temporary server errors, so elapsed time is not a throughput benchmark.
+
+Eight active-transfer cases cover overwrite, deletion, file rename and parent-directory rename during upload and during a receiver's download. Restart during upload, pause/resume and recovery from interrupted HTTP requests passed. A separate full-desktop check disconnected the virtual machine's network adapter, created local and cloud changes during the outage, and verified automatic recovery with exact uploaded content after reconnection.
+
+Two receiving-side cases edit a file during download using an in-place write or atomic replacement, retaining its size and modification time. Both byte versions are preserved; after resolving the conflicting names, both clients converge to exact content. Conflicting edits require resolution rather than silently replacing either version.
+
+The release gate runs active-transfer and receiving-side edit cases. The 2000-file/1-GiB load case is available as the manual `linux_load_validation` workflow input. Full desktop validation uses a virtual GPU and does not establish compatibility with every physical GPU or Linux distribution.
