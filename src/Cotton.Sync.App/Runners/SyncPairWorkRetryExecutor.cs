@@ -203,7 +203,7 @@ namespace Cotton.Sync.App.Runners
         private static bool ShouldWaitForLocalFileAvailability(LocalFileUnavailableException exception)
         {
             return exception.RequiresExclusiveAccess
-                || exception.InnerException is IOException innerException && IsSharingViolation(innerException);
+                || (exception.InnerException is IOException innerException && IsSharingViolation(innerException));
         }
 
         private static bool IsSharingViolation(IOException exception)

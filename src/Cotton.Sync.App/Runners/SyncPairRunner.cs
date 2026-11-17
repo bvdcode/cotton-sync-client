@@ -237,21 +237,11 @@ namespace Cotton.Sync.App.Runners
         {
             if (exception is OperationCanceledException)
             {
-                if (!callerCancellation.IsCancellationRequested
-                    && _requestQueue.IsActiveCancellation(activeSyncCancellation, ActiveSyncCancellationReason.Pause))
+                ActiveSyncFailureKind? cancellationKind = ClassifyCancellation(
+                    activeSyncCancellation, syncCancellation, callerCancellation);
+                if (cancellationKind.HasValue)
                 {
-                    return ActiveSyncFailureKind.PausedCancellation;
-                }
-
-                if (!callerCancellation.IsCancellationRequested
-                    && _requestQueue.IsActiveCancellation(activeSyncCancellation, ActiveSyncCancellationReason.Superseded))
-                {
-                    return ActiveSyncFailureKind.Superseded;
-                }
-
-                if (syncCancellation.IsCancellationRequested)
-                {
-                    return ActiveSyncFailureKind.Canceled;
+                    return cancellationKind.Value;
                 }
             }
 
@@ -283,6 +273,30 @@ namespace Cotton.Sync.App.Runners
             }
 
             return ActiveSyncFailureKind.Failed;
+        }
+
+        private ActiveSyncFailureKind? ClassifyCancellation(
+            CancellationTokenSource activeSyncCancellation,
+            CancellationToken syncCancellation,
+            CancellationToken callerCancellation)
+        {
+            if (!callerCancellation.IsCancellationRequested
+                && _requestQueue.IsActiveCancellation(activeSyncCancellation, ActiveSyncCancellationReason.Pause))
+            {
+                return ActiveSyncFailureKind.PausedCancellation;
+            }
+
+            if (!callerCancellation.IsCancellationRequested
+                && _requestQueue.IsActiveCancellation(activeSyncCancellation, ActiveSyncCancellationReason.Superseded))
+            {
+                return ActiveSyncFailureKind.Superseded;
+            }
+
+            if (syncCancellation.IsCancellationRequested)
+            {
+                return ActiveSyncFailureKind.Canceled;
+            }
+            return null;
         }
 
         private void HandlePausedCancellation()

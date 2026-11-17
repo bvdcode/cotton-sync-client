@@ -48,86 +48,101 @@ namespace Cotton.Sync
 
             foreach (LocalDirectorySnapshot local in candidates)
             {
-                context.CancellationToken.ThrowIfCancellationRequested();
-                string targetPath = local.RelativePath;
-                string targetKey = SyncPath.ToKey(targetPath);
-                if (!context.LocalDirectoriesByPath.ContainsKey(targetKey)
-                    || context.DirectoryStateByPath.ContainsKey(targetKey)
-                    || context.RemoteDirectoriesByPath.ContainsKey(targetKey))
-                {
-                    continue;
-                }
-
-                string parentPath = GetParentPath(targetPath);
-                string parentKey = string.IsNullOrEmpty(parentPath) ? string.Empty : SyncPath.ToKey(parentPath);
-                Guid parentId = context.TreeLookups.RemoteRootNode.Id;
-                if (!string.IsNullOrEmpty(parentKey))
-                {
-                    SyncStateEntry? parentState = await stateStore.GetAsync(
-                        context.SyncPair.SyncPairId, parentPath, context.CancellationToken).ConfigureAwait(false);
-                    parentId = context.RemoteDirectoriesByPath.TryGetValue(parentKey, out RemoteDirectorySnapshot? parent)
-                        ? parent.Node.Id
-                        : parentState?.RemoteNodeId ?? Guid.Empty;
-                }
-                string nameKey = RemoteNameKey.Create(GetFileName(targetPath));
-                remoteByName.TryGetValue((parentKey, nameKey), out RemoteDirectorySnapshot? matched);
-                NodeDto? remoteNode = matched?.Node;
-                if (remoteNode is null
-                    && parentId != Guid.Empty
-                    && !context.Options.Scope.IsFull
-                    && remoteDirectories is not null)
-                {
-                    remoteNode = await remoteDirectories.FindChildDirectoryAsync(
-                        parentId, GetFileName(targetPath), context.CancellationToken).ConfigureAwait(false);
-                }
-
-                if (remoteNode is null || string.Equals(remoteNode.Name, GetFileName(targetPath), StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                SyncStateEntry? sourceState = null;
-                await foreach (SyncStateEntry state in stateStore.LoadEntriesByRemoteIdsAsync(
-                                   context.SyncPair.SyncPairId,
-                                   [remoteNode.Id],
-                                   [],
-                                   context.CancellationToken).ConfigureAwait(false))
-                {
-                    if (state.Kind == SyncEntryKind.Directory)
-                    {
-                        sourceState = state;
-                        break;
-                    }
-                }
-
-                if (sourceState is null)
-                {
-                    throw new InvalidOperationException(
-                        $"Local folder '{targetPath}' has the same cloud name as '{remoteNode.Name}', "
-                        + "but the existing cloud folder has no local sync baseline. The local folder was kept.");
-                }
-
-                if (!AreEquivalentSiblingNames(sourceState.RelativePath, targetPath)
-                    || !Directory.Exists(GetFullPath(context.SyncPair.LocalRootPath, sourceState.RelativePath)))
-                {
-                    throw new InvalidOperationException(
-                        $"Local folder '{targetPath}' has the same cloud name as '{sourceState.RelativePath}', "
-                        + "but the original local folder could not be verified. The local folder was kept.");
-                }
-
-                if (!await TryCoalesceAsync(context, sourceState.RelativePath, targetPath, remoteUsesSourcePath: true)
-                        .ConfigureAwait(false))
-                {
-                    throw new InvalidOperationException(
-                        $"Local folders '{sourceState.RelativePath}' and '{targetPath}' have equivalent cloud names, "
-                        + "but their contents could not be verified as identical. Both folders were kept.");
-                }
-
-                logger.LogInformation(
-                    "Kept identical local directory at {DuplicatePath}; cloud folder remains {SourcePath}.",
-                    targetPath,
-                    sourceState.RelativePath);
+                await CoalesceUntrackedCandidateAsync(context, local, remoteByName).ConfigureAwait(false);
             }
+        }
+
+        private async Task CoalesceUntrackedCandidateAsync(SyncRunContext context, LocalDirectorySnapshot local,
+            IReadOnlyDictionary<(string ParentKey, string NameKey), RemoteDirectorySnapshot> remoteByName)
+        {
+            context.CancellationToken.ThrowIfCancellationRequested();
+            string targetPath = local.RelativePath;
+            string targetKey = SyncPath.ToKey(targetPath);
+            if (!context.LocalDirectoriesByPath.ContainsKey(targetKey)
+                || context.DirectoryStateByPath.ContainsKey(targetKey)
+                || context.RemoteDirectoriesByPath.ContainsKey(targetKey))
+            {
+                return;
+            }
+
+            NodeDto? remoteNode = await FindCollisionRemoteNodeAsync(context, targetPath, remoteByName)
+                .ConfigureAwait(false);
+
+            if (remoteNode is null || string.Equals(remoteNode.Name, GetFileName(targetPath), StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            SyncStateEntry? sourceState = null;
+            await foreach (SyncStateEntry state in stateStore.LoadEntriesByRemoteIdsAsync(
+                               context.SyncPair.SyncPairId,
+                               [remoteNode.Id],
+                               [],
+                               context.CancellationToken).ConfigureAwait(false))
+            {
+                if (state.Kind == SyncEntryKind.Directory)
+                {
+                    sourceState = state;
+                    break;
+                }
+            }
+
+            if (sourceState is null)
+            {
+                throw new InvalidOperationException(
+                    $"Local folder '{targetPath}' has the same cloud name as '{remoteNode.Name}', "
+                    + "but the existing cloud folder has no local sync baseline. The local folder was kept.");
+            }
+
+            if (!AreEquivalentSiblingNames(sourceState.RelativePath, targetPath)
+                || !Directory.Exists(GetFullPath(context.SyncPair.LocalRootPath, sourceState.RelativePath)))
+            {
+                throw new InvalidOperationException(
+                    $"Local folder '{targetPath}' has the same cloud name as '{sourceState.RelativePath}', "
+                    + "but the original local folder could not be verified. The local folder was kept.");
+            }
+
+            if (!await TryCoalesceAsync(context, sourceState.RelativePath, targetPath, remoteUsesSourcePath: true)
+                    .ConfigureAwait(false))
+            {
+                throw new InvalidOperationException(
+                    $"Local folders '{sourceState.RelativePath}' and '{targetPath}' have equivalent cloud names, "
+                    + "but their contents could not be verified as identical. Both folders were kept.");
+            }
+
+            logger.LogInformation(
+                "Kept identical local directory at {DuplicatePath}; cloud folder remains {SourcePath}.",
+                targetPath,
+                sourceState.RelativePath);
+        }
+
+        private async Task<NodeDto?> FindCollisionRemoteNodeAsync(SyncRunContext context, string targetPath,
+            IReadOnlyDictionary<(string ParentKey, string NameKey), RemoteDirectorySnapshot> remoteByName)
+        {
+            string parentPath = GetParentPath(targetPath);
+            string parentKey = string.IsNullOrEmpty(parentPath) ? string.Empty : SyncPath.ToKey(parentPath);
+            Guid parentId = context.TreeLookups.RemoteRootNode.Id;
+            if (!string.IsNullOrEmpty(parentKey))
+            {
+                SyncStateEntry? parentState = await stateStore.GetAsync(
+                    context.SyncPair.SyncPairId, parentPath, context.CancellationToken).ConfigureAwait(false);
+                parentId = context.RemoteDirectoriesByPath.TryGetValue(parentKey, out RemoteDirectorySnapshot? parent)
+                    ? parent.Node.Id
+                    : parentState?.RemoteNodeId ?? Guid.Empty;
+            }
+            string nameKey = RemoteNameKey.Create(GetFileName(targetPath));
+            remoteByName.TryGetValue((parentKey, nameKey), out RemoteDirectorySnapshot? matched);
+            NodeDto? remoteNode = matched?.Node;
+            if (remoteNode is null
+                && parentId != Guid.Empty
+                && !context.Options.Scope.IsFull
+                && remoteDirectories is not null)
+            {
+                remoteNode = await remoteDirectories.FindChildDirectoryAsync(
+                    parentId, GetFileName(targetPath), context.CancellationToken).ConfigureAwait(false);
+            }
+
+            return remoteNode;
         }
 
         private static RemoteTreeLookupSnapshot RebaseRemote(

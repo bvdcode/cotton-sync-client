@@ -125,40 +125,10 @@ namespace Cotton.Sync
                 return false;
             }
 
-            foreach (SyncStateEntry state in states.Where(entry => entry.Kind == SyncEntryKind.File))
+            if (!await FileContentsMatchAsync(context, sourcePath, targetPath, states, localSource, localTarget, remoteTarget)
+                .ConfigureAwait(false))
             {
-                context.CancellationToken.ThrowIfCancellationRequested();
-                string sourceFileKey = SyncPath.ToKey(state.RelativePath);
-                string targetFilePath = ReplacePathPrefix(state.RelativePath, sourcePath, targetPath);
-                string targetFileKey = SyncPath.ToKey(targetFilePath);
-                LocalFileSnapshot sourceFile = localSource.FilesByPath[sourceFileKey];
-                LocalFileSnapshot targetFile = localTarget.FilesByPath[targetFileKey];
-                RemoteFileSnapshot remoteFile = remoteTarget.FilesByPath[targetFileKey];
-                if (!RemoteMatchesBaseline(remoteFile.File, state)
-                    || state.RemoteFileId != remoteFile.File.Id
-                    || remoteFile.File.SizeBytes != targetFile.SizeBytes
-                    || sourceFile.SizeBytes != targetFile.SizeBytes)
-                {
-                    return false;
-                }
-
-                if (sourceFile.IsCloudFilesOnlineOnlyPlaceholder)
-                {
-                    await contentHashResolver.EnsureForBaselineComparisonAsync(
-                        sourceFile, state, context.Options, context.CancellationToken).ConfigureAwait(false);
-                }
-                else
-                {
-                    await contentHashResolver.EnsureAsync(
-                        sourceFile, context.Options, context.CancellationToken).ConfigureAwait(false);
-                }
-                await contentHashResolver.EnsureAsync(targetFile, context.Options, context.CancellationToken)
-                    .ConfigureAwait(false);
-                if (!ContentMatches(sourceFile.ContentHash, remoteFile.File.ContentHash)
-                    || !ContentMatches(targetFile.ContentHash, remoteFile.File.ContentHash))
-                {
-                    return false;
-                }
+                return false;
             }
 
             context.CancellationToken.ThrowIfCancellationRequested();
@@ -178,33 +148,24 @@ namespace Cotton.Sync
             await stateStore.DeleteByPathPrefixAsync(context.SyncPair.SyncPairId, sourcePath, context.CancellationToken)
                 .ConfigureAwait(false);
 
-            List<SyncStateEntry> targetStates = [];
-            foreach (SyncStateEntry state in states)
-            {
-                string path = ReplacePathPrefix(state.RelativePath, sourcePath, targetPath);
-                string key = SyncPath.ToKey(path);
-                switch (state.Kind)
-                {
-                    case SyncEntryKind.Directory:
-                        targetStates.Add(BuildDirectoryBaseline(
-                            context.SyncPair, path, remoteTarget.DirectoriesByPath[key].Node));
-                        break;
-                    case SyncEntryKind.File:
-                        LocalFileSnapshot local = localTarget.FilesByPath[key];
-                        targetStates.Add(BuildBaseline(
-                            context.SyncPair,
-                            path,
-                            local.ContentHash,
-                            local.LastWriteUtc,
-                            local.SizeBytes,
-                            remoteTarget.FilesByPath[key].File));
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(state), state.Kind, "Unknown sync entry kind.");
-                }
-            }
+            List<SyncStateEntry> targetStates = BuildTargetStates(context, sourcePath, targetPath, states, localTarget, remoteTarget);
 
             await stateStore.UpsertManyAsync(targetStates, context.CancellationToken).ConfigureAwait(false);
+            ApplyCoalescedTree(context, sourceKey, localTarget, remoteTarget, targetStates);
+
+            SyncActivityReporter.Record(
+                context.Result,
+                context.Options,
+                SyncActivityKind.Converged,
+                targetPath,
+                "Matched identical local folders to the existing cloud folder.");
+            return true;
+        }
+
+        private static void ApplyCoalescedTree(
+            SyncRunContext context, string sourceKey, LocalTreeLookupSnapshot localTarget,
+            RemoteTreeLookupSnapshot remoteTarget, IReadOnlyList<SyncStateEntry> targetStates)
+        {
             RemoveSubtree(context.LocalDirectoriesByPath, sourceKey);
             RemoveSubtree(context.LocalFilesByPath, sourceKey);
             RemoveSubtree(context.DirectoryStateByPath, sourceKey);
@@ -244,13 +205,83 @@ namespace Cotton.Sync
                         throw new ArgumentOutOfRangeException(nameof(state), state.Kind, "Unknown sync entry kind.");
                 }
             }
+        }
 
-            SyncActivityReporter.Record(
-                context.Result,
-                context.Options,
-                SyncActivityKind.Converged,
-                targetPath,
-                "Matched identical local folders to the existing cloud folder.");
+        private static List<SyncStateEntry> BuildTargetStates(
+            SyncRunContext context, string sourcePath, string targetPath,
+            IReadOnlyList<SyncStateEntry> states, LocalTreeLookupSnapshot localTarget,
+            RemoteTreeLookupSnapshot remoteTarget)
+        {
+            List<SyncStateEntry> targetStates = [];
+            foreach (SyncStateEntry state in states)
+            {
+                string path = ReplacePathPrefix(state.RelativePath, sourcePath, targetPath);
+                string key = SyncPath.ToKey(path);
+                switch (state.Kind)
+                {
+                    case SyncEntryKind.Directory:
+                        targetStates.Add(BuildDirectoryBaseline(
+                            context.SyncPair, path, remoteTarget.DirectoriesByPath[key].Node));
+                        break;
+                    case SyncEntryKind.File:
+                        LocalFileSnapshot local = localTarget.FilesByPath[key];
+                        targetStates.Add(BuildBaseline(
+                            context.SyncPair,
+                            path,
+                            local.ContentHash,
+                            local.LastWriteUtc,
+                            local.SizeBytes,
+                            remoteTarget.FilesByPath[key].File));
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(state), state.Kind, "Unknown sync entry kind.");
+                }
+            }
+
+            return targetStates;
+        }
+
+        private async Task<bool> FileContentsMatchAsync(
+            SyncRunContext context, string sourcePath, string targetPath,
+            IReadOnlyList<SyncStateEntry> states, LocalTreeLookupSnapshot localSource,
+            LocalTreeLookupSnapshot localTarget, RemoteTreeLookupSnapshot remoteTarget)
+        {
+            foreach (SyncStateEntry state in states.Where(entry => entry.Kind == SyncEntryKind.File))
+            {
+                context.CancellationToken.ThrowIfCancellationRequested();
+                string sourceFileKey = SyncPath.ToKey(state.RelativePath);
+                string targetFilePath = ReplacePathPrefix(state.RelativePath, sourcePath, targetPath);
+                string targetFileKey = SyncPath.ToKey(targetFilePath);
+                LocalFileSnapshot sourceFile = localSource.FilesByPath[sourceFileKey];
+                LocalFileSnapshot targetFile = localTarget.FilesByPath[targetFileKey];
+                RemoteFileSnapshot remoteFile = remoteTarget.FilesByPath[targetFileKey];
+                if (!RemoteMatchesBaseline(remoteFile.File, state)
+                    || state.RemoteFileId != remoteFile.File.Id
+                    || remoteFile.File.SizeBytes != targetFile.SizeBytes
+                    || sourceFile.SizeBytes != targetFile.SizeBytes)
+                {
+                    return false;
+                }
+
+                if (sourceFile.IsCloudFilesOnlineOnlyPlaceholder)
+                {
+                    await contentHashResolver.EnsureForBaselineComparisonAsync(
+                        sourceFile, state, context.Options, context.CancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    await contentHashResolver.EnsureAsync(
+                        sourceFile, context.Options, context.CancellationToken).ConfigureAwait(false);
+                }
+                await contentHashResolver.EnsureAsync(targetFile, context.Options, context.CancellationToken)
+                    .ConfigureAwait(false);
+                if (!ContentMatches(sourceFile.ContentHash, remoteFile.File.ContentHash)
+                    || !ContentMatches(targetFile.ContentHash, remoteFile.File.ContentHash))
+                {
+                    return false;
+                }
+            }
+
             return true;
         }
 

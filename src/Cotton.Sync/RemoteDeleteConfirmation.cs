@@ -39,31 +39,8 @@ namespace Cotton.Sync
 
             foreach (SyncStateEntry state in fileStateByPath.Values.Concat(directoryStateByPath.Values))
             {
-                RemoteChangeImpact? latestChange = null;
-                if (state.Kind == SyncEntryKind.File && state.RemoteFileId.HasValue)
-                {
-                    fileChanges.TryGetValue(state.RemoteFileId.Value, out latestChange);
-                }
-
-                string ancestorPath = state.Kind switch
-                {
-                    SyncEntryKind.File => GetParentPath(state.RelativePath),
-                    SyncEntryKind.Directory => state.RelativePath,
-                    _ => throw new ArgumentOutOfRangeException(nameof(state), state.Kind, null),
-                };
-                while (latestChange?.Action != RemoteChangeAction.Deleted && !string.IsNullOrEmpty(ancestorPath))
-                {
-                    if (directoryStateByPath.TryGetValue(SyncPath.ToKey(ancestorPath), out SyncStateEntry? directory)
-                        && directory.RemoteNodeId.HasValue
-                        && directoryChanges.TryGetValue(directory.RemoteNodeId.Value, out RemoteChangeImpact? change)
-                        && (latestChange is null || change.Cursor > latestChange.Cursor))
-                    {
-                        latestChange = change;
-                    }
-
-                    ancestorPath = GetParentPath(ancestorPath);
-                }
-
+                RemoteChangeImpact? latestChange = FindLatestChange(
+                    state, fileChanges, directoryChanges, directoryStateByPath);
                 if (latestChange?.Action == RemoteChangeAction.Deleted)
                 {
                     confirmed.Add(SyncPath.ToKey(state.RelativePath));
@@ -71,6 +48,37 @@ namespace Cotton.Sync
             }
 
             return confirmed;
+        }
+
+        private static RemoteChangeImpact? FindLatestChange(
+            SyncStateEntry state,
+            IReadOnlyDictionary<Guid, RemoteChangeImpact> fileChanges,
+            IReadOnlyDictionary<Guid, RemoteChangeImpact> directoryChanges,
+            IReadOnlyDictionary<string, SyncStateEntry> directoryStateByPath)
+        {
+            RemoteChangeImpact? latestChange = null;
+            if (state.Kind == SyncEntryKind.File && state.RemoteFileId.HasValue)
+            {
+                fileChanges.TryGetValue(state.RemoteFileId.Value, out latestChange);
+            }
+            string ancestorPath = state.Kind switch
+            {
+                SyncEntryKind.File => GetParentPath(state.RelativePath),
+                SyncEntryKind.Directory => state.RelativePath,
+                _ => throw new ArgumentOutOfRangeException(nameof(state), state.Kind, null),
+            };
+            while (latestChange?.Action != RemoteChangeAction.Deleted && !string.IsNullOrEmpty(ancestorPath))
+            {
+                if (directoryStateByPath.TryGetValue(SyncPath.ToKey(ancestorPath), out SyncStateEntry? directory)
+                    && directory.RemoteNodeId.HasValue
+                    && directoryChanges.TryGetValue(directory.RemoteNodeId.Value, out RemoteChangeImpact? change)
+                    && (latestChange is null || change.Cursor > latestChange.Cursor))
+                {
+                    latestChange = change;
+                }
+                ancestorPath = GetParentPath(ancestorPath);
+            }
+            return latestChange;
         }
     }
 }

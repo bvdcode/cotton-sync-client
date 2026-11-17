@@ -102,12 +102,7 @@ namespace Cotton.Sync
         {
             if (local is null && remote is null)
             {
-                if (context.ScopedLocalDeletedKeys.Contains(key)
-                    && !context.LocalByPath.Keys.Any(child => IsSameOrDescendantPathKey(child, key))
-                    && !context.RemoteByPath.Keys.Any(child => IsSameOrDescendantPathKey(child, key))
-                    && !context.LocalFilesByPath.Keys.Any(child => IsSameOrDescendantPathKey(child, key))
-                    && !context.RemoteFilesByPath.Keys.Any(child => IsSameOrDescendantPathKey(child, key))
-                    && !Path.Exists(ResolveLocalPath(context.SyncPair.LocalRootPath, relativePath)))
+                if (IsDeletedSubtreeAbsent(context, key, relativePath))
                 {
                     await stateStore.DeleteByPathPrefixAsync(
                             context.SyncPair.SyncPairId,
@@ -156,6 +151,16 @@ namespace Cotton.Sync
             {
                 await ReconcileRemoteDeletedDirectoryAsync(context, key, relativePath, local).ConfigureAwait(false);
             }
+        }
+
+        private static bool IsDeletedSubtreeAbsent(DirectoryDeleteContext context, string key, string relativePath)
+        {
+            return context.ScopedLocalDeletedKeys.Contains(key)
+                && !context.LocalByPath.Keys.Any(child => IsSameOrDescendantPathKey(child, key))
+                && !context.RemoteByPath.Keys.Any(child => IsSameOrDescendantPathKey(child, key))
+                && !context.LocalFilesByPath.Keys.Any(child => IsSameOrDescendantPathKey(child, key))
+                && !context.RemoteFilesByPath.Keys.Any(child => IsSameOrDescendantPathKey(child, key))
+                && !Path.Exists(ResolveLocalPath(context.SyncPair.LocalRootPath, relativePath));
         }
 
         private static bool IsUnconfirmedScopedVirtualFilesDirectoryDelete(
