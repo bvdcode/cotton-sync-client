@@ -102,21 +102,7 @@ namespace Cotton.Sync
         {
             if (local is null && remote is null)
             {
-                if (IsDeletedSubtreeAbsent(context, key, relativePath))
-                {
-                    await stateStore.DeleteByPathPrefixAsync(
-                            context.SyncPair.SyncPairId,
-                            relativePath,
-                            context.CancellationToken)
-                        .ConfigureAwait(false);
-                    return;
-                }
-
-                await stateStore.DeleteAsync(
-                        context.SyncPair.SyncPairId,
-                        relativePath,
-                        context.CancellationToken)
-                    .ConfigureAwait(false);
+                await RemoveAbsentDirectoryStateAsync(context, key, relativePath).ConfigureAwait(false);
                 return;
             }
 
@@ -151,6 +137,26 @@ namespace Cotton.Sync
             {
                 await ReconcileRemoteDeletedDirectoryAsync(context, key, relativePath, local).ConfigureAwait(false);
             }
+        }
+
+        private async Task RemoveAbsentDirectoryStateAsync(
+            DirectoryDeleteContext context, string key, string relativePath)
+        {
+            if (IsDeletedSubtreeAbsent(context, key, relativePath))
+            {
+                await stateStore.DeleteByPathPrefixAsync(
+                        context.SyncPair.SyncPairId,
+                        relativePath,
+                        context.CancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            await stateStore.DeleteAsync(
+                    context.SyncPair.SyncPairId,
+                    relativePath,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
         }
 
         private static bool IsDeletedSubtreeAbsent(DirectoryDeleteContext context, string key, string relativePath)

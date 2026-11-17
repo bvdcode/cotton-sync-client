@@ -111,26 +111,7 @@ namespace Cotton.Sync.Desktop.Platform
                     syncPair, finalizationPaths, finalizedPaths, RecordFinalizedPath, cancellationToken).ConfigureAwait(false);
 
                 cancellationToken.ThrowIfCancellationRequested();
-                if (failures.Count > 0)
-                {
-                    string message = VirtualFileUserFacingCopy.CreateMetadataIncompleteMessage(failures);
-                    if (syncFailure is not null)
-                    {
-                        message = syncFailure.Message + Environment.NewLine + Environment.NewLine + message;
-                    }
-
-                    if (syncFailure is null && canResumeFromState)
-                    {
-                        throw new SyncFileMetadataPendingException(message);
-                    }
-
-                    throw new SyncActionRequiredException(message);
-                }
-
-                if (syncFailure is not null)
-                {
-                    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(syncFailure).Throw();
-                }
+                ThrowIfFinalizationFailed(failures, canResumeFromState, syncFailure);
 
                 foreach (string relativePath in finalizationPaths)
                 {
@@ -152,6 +133,31 @@ namespace Cotton.Sync.Desktop.Platform
                     finalizedCount,
                     totalCount,
                     isCompleted: true);
+            }
+        }
+
+        private static void ThrowIfFinalizationFailed(
+            List<string> failures, bool canResumeFromState, SyncActionRequiredException? syncFailure)
+        {
+            if (failures.Count > 0)
+            {
+                string message = VirtualFileUserFacingCopy.CreateMetadataIncompleteMessage(failures);
+                if (syncFailure is not null)
+                {
+                    message = syncFailure.Message + Environment.NewLine + Environment.NewLine + message;
+                }
+
+                if (syncFailure is null && canResumeFromState)
+                {
+                    throw new SyncFileMetadataPendingException(message);
+                }
+
+                throw new SyncActionRequiredException(message);
+            }
+
+            if (syncFailure is not null)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(syncFailure).Throw();
             }
         }
 

@@ -159,7 +159,7 @@ namespace Cotton.Sync.Desktop.Tests.Live
             switch (action)
             {
                 case "overwrite":
-                    expected[path] = await LiveStressFiles.WriteAsync(fullPath, 17L * 1024 * 1024 + 31, token);
+                    expected[path] = await LiveStressFiles.WriteAsync(fullPath, (17L * 1024 * 1024) + 31, token);
                     break;
                 case "delete":
                     File.Delete(fullPath);

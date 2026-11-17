@@ -12,6 +12,33 @@ namespace Cotton.Sync
 {
     internal partial class RemoteDirectoryDuplicateCoalescer
     {
+        private async Task<bool> CanCoalesceTargetAsync(
+            SyncRunContext context, string sourcePath, string targetPath, bool remoteUsesSourcePath)
+        {
+            string sourceKey = SyncPath.ToKey(sourcePath);
+            string targetKey = SyncPath.ToKey(targetPath);
+            if (IsSameOrDescendantPathKey(targetKey, sourceKey)
+                || IsSameOrDescendantPathKey(sourceKey, targetKey)
+                || !AreEquivalentSiblingNames(sourcePath, targetPath)
+                || await stateStore.GetAsync(context.SyncPair.SyncPairId, targetPath, context.CancellationToken)
+                    .ConfigureAwait(false) is not null)
+            {
+                return false;
+            }
+
+            if (remoteUsesSourcePath)
+            {
+                await foreach (SyncStateEntry _ in stateStore.LoadEntriesByPathPrefixAsync(
+                                   context.SyncPair.SyncPairId, targetPath, context.CancellationToken)
+                                   .ConfigureAwait(false))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private async Task CoalesceUntrackedNameCollisionsAsync(SyncRunContext context)
         {
             LocalDirectorySnapshot[] candidates = context.LocalDirectoriesByPath.Values
@@ -73,20 +100,7 @@ namespace Cotton.Sync
                 return;
             }
 
-            SyncStateEntry? sourceState = null;
-            await foreach (SyncStateEntry state in stateStore.LoadEntriesByRemoteIdsAsync(
-                               context.SyncPair.SyncPairId,
-                               [remoteNode.Id],
-                               [],
-                               context.CancellationToken).ConfigureAwait(false))
-            {
-                if (state.Kind == SyncEntryKind.Directory)
-                {
-                    sourceState = state;
-                    break;
-                }
-            }
-
+            SyncStateEntry? sourceState = await FindDirectoryStateAsync(context, remoteNode.Id).ConfigureAwait(false);
             if (sourceState is null)
             {
                 throw new InvalidOperationException(
@@ -114,6 +128,23 @@ namespace Cotton.Sync
                 "Kept identical local directory at {DuplicatePath}; cloud folder remains {SourcePath}.",
                 targetPath,
                 sourceState.RelativePath);
+        }
+
+        private async Task<SyncStateEntry?> FindDirectoryStateAsync(SyncRunContext context, Guid remoteId)
+        {
+            await foreach (SyncStateEntry state in stateStore.LoadEntriesByRemoteIdsAsync(
+                               context.SyncPair.SyncPairId,
+                               [remoteId],
+                               [],
+                               context.CancellationToken).ConfigureAwait(false))
+            {
+                if (state.Kind == SyncEntryKind.Directory)
+                {
+                    return state;
+                }
+            }
+
+            return null;
         }
 
         private async Task<NodeDto?> FindCollisionRemoteNodeAsync(SyncRunContext context, string targetPath,
