@@ -56,8 +56,9 @@ namespace Cotton.Sync.Remote
                 0,
                 async (stream, token) =>
                 {
-                    chunkCount = await _files.DownloadContentChunkAsync(
+                    CottonContentChunkDownloadResult result = await _files.DownloadContentChunkAsync(
                         file.NodeFileId, 0, stream, file.ETag, firstProgress, token).ConfigureAwait(false);
+                    chunkCount = result.ChunkCount;
                 },
                 refresh: true,
                 cancellationToken).ConfigureAwait(false);
@@ -85,14 +86,14 @@ namespace Cotton.Sync.Remote
                         chunkNumber,
                         async (stream, downloadToken) =>
                         {
-                            int receivedCount = await _files.DownloadContentChunkAsync(
+                            CottonContentChunkDownloadResult result = await _files.DownloadContentChunkAsync(
                                 file.NodeFileId,
                                 chunkNumber,
                                 stream,
                                 file.ETag,
                                 chunkProgress,
                                 cancellationToken: downloadToken).ConfigureAwait(false);
-                            if (receivedCount != chunkCount)
+                            if (result.ChunkCount != chunkCount)
                             {
                                 throw new InvalidDataException("Content chunk count changed during download.");
                             }
