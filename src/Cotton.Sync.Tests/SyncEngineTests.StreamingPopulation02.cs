@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesResumesStreamingPopulationWhenOnlyTrackedPlaceholdersExist()
         {
@@ -67,7 +66,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesRecreatesPlaceholderMissingAfterResumeInspection()
         {
@@ -101,7 +99,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(placeholderWriter.Requests.Select(request => request.RelativePath), Is.EqualTo(new[] { relativePath }));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesResumeLoadsStateWithoutScanningLocalPlaceholderTree()
@@ -152,7 +149,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesStreamingRefreshesTrackedPlaceholderWhenRemoteChanged()
         {
@@ -200,7 +196,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(state.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesStreamingRefreshesHydratedPlaceholderBaseline()
@@ -267,7 +262,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(state.PlaceholderIdentity, Is.Not.Null.And.Not.Empty);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesStreamingPreservesFileThatReplacedDeletedRemotePlaceholder()

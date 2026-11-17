@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_RecoversAfterTransientUploadFailureWithoutStaleBaseline()
         {
@@ -49,7 +48,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(recoveredEntry.RemoteContentHash, Is.EqualTo(local.ContentHash));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_SkipsChangedLocalFileDuringUploadAndContinuesPass()
@@ -83,7 +81,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_DefersFreshLocalUploadUntilQuietWindow()
         {
@@ -114,7 +111,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(uploadedEntry.RemoteContentHash, Is.EqualTo(freshLocal.ContentHash));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_UploadsAccumulatedLocalChangesAfterTransientUploadFailure()
@@ -150,7 +146,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_DownloadsRemoteChangeWhenLocalBaselineIsUnchanged()
         {
@@ -176,7 +171,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry.RemoteContentHash, Is.EqualTo(remote.ContentHash));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_DoesNotUpdateBaselineWhenRemoteDownloadFails()
@@ -212,7 +206,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry.RemoteContentHash, Is.EqualTo(local.ContentHash));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_RecoversAfterTransientDownloadFailureWithoutStalePartial()
@@ -275,7 +268,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(recoveredEntry.RemoteContentHash, Is.EqualTo(remote.ContentHash));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_DownloadsAccumulatedRemoteChangesAfterTransientDownloadFailure()

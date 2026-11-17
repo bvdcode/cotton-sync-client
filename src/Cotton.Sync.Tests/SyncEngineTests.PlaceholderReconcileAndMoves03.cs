@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesDoesNotRenameChangedNameAcrossDirectories()
         {
@@ -54,7 +53,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(newState, Is.Null);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesMovesNestedDirectorySubtreeInOnePass()
@@ -155,7 +153,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesDoesNotDeleteSubtreeWithUntrackedRemoteDescendant()
         {
@@ -212,7 +209,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesDoesNotGuessAmbiguousOnlineOnlyPlaceholderMove()
         {
@@ -249,7 +245,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(secondEntry, Is.Null);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesDoesNotUploadRenamedRemoteOnlyPlaceholder()

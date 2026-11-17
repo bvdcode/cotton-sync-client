@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesRestoresMissingRemoteOnlyPlaceholderDuringFullReconcile()
         {
@@ -54,7 +53,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesKeepsExistingCloudFilesPlaceholderDuringUnrelatedLocalCreate()
         {
@@ -84,7 +82,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(placeholderEntry.RemoteContentHash, Is.EqualTo(existingRemote.ContentHash));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesRefreshesRemoteOnlyPlaceholderWhenRemoteChanges()
@@ -120,7 +117,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesRefreshesExistingCloudFilesPlaceholderWhenRemoteChanges()
         {
@@ -155,7 +151,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesAdoptsUnchangedHydratedPlaceholderWithoutUpload()
@@ -196,7 +191,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesUploadsMaterializedCloudFileOverRemoteOnlyBaseline()
         {
@@ -231,7 +225,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry.PlaceholderIdentity, Is.Null);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesRefreshesDehydratedPlaceholderWhenRemoteChanges()
@@ -270,7 +263,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.Dehydrated));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesRemovesLocalPlaceholderWhenRemoteIsDeleted()

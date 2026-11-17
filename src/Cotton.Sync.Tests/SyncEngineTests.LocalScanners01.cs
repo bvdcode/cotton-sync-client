@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         private class FakeLocalFileScanner :
             ILocalFileScanner,
             ILocalTreeScanner,
@@ -140,7 +139,6 @@ namespace Cotton.Sync.Tests
             }
         }
 
-
         private class MetadataOnlyLocalFileScanner :
             ILocalFileScanner,
             ILocalTreeScanner,
@@ -224,7 +222,6 @@ namespace Cotton.Sync.Tests
                 return Task.FromResult("precomputed-content-hash");
             }
         }
-
 
         private class LookupOnlyLocalFileScanner :
             ILocalFileScanner,

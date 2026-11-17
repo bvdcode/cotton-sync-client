@@ -14,6 +14,5 @@ namespace Cotton.Sync.App.Tests.LocalChanges
     public partial class LocalChangeSyncCoordinatorTests
     {
         private static readonly TimeSpan DebounceInterval = TimeSpan.FromMilliseconds(25);
-
     }
 }

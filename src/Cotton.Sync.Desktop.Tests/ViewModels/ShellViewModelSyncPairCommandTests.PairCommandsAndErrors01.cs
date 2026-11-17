@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public void SelfTestItemRowViewModel_TracksDetailsAvailability()
         {
@@ -32,7 +31,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             Assert.That(item.HasDetails, Is.False);
         }
-
 
         [Test]
         public async Task ToggleSelectedSyncPairEnabledCommand_DisablesSelectedPair()
@@ -56,7 +54,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Folder disabled"));
             });
         }
-
 
         [Test]
         public async Task ToggleSelectedSyncPairEnabledCommand_KeepsOtherPairsPausedWhenDisablingDuringGlobalPause()
@@ -87,7 +84,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Sync is paused."));
             });
         }
-
 
         [Test]
         public async Task RemoveSelectedSyncPairCommand_RequiresConfirmationBeforeRemovingPair()
@@ -142,7 +138,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task RemoveSelectedSyncPairCommand_NotifiesConfirmationActionsVisibility()
         {
@@ -166,7 +161,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task RemoveSelectedSyncPairCommand_WarnsBeforeRemovingVirtualFilesPair()
         {
@@ -184,7 +178,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.RemoveSyncPairConfirmationMessage, Is.EqualTo("Stops syncing this folder. Cloud files stay online; the local placeholder folder is removed when it has no regular local files."));
             });
         }
-
 
         [Test]
         public async Task ConfirmRemoveSelectedSyncPairCommand_ShowsProgressWhileVirtualFilesRootIsRemoved()
@@ -230,7 +223,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task ConfirmRemoveSelectedSyncPairCommand_RunsRemovalAwayFromCallerThread()
         {
@@ -258,7 +250,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             controller.RemoveSyncPairCompletion.SetResult();
             await WaitForAsync(() => !viewModel.ConfirmRemoveSelectedSyncPairCommand.IsRunning);
         }
-
 
         [Test]
         public async Task ShowSelectedSyncPairEditorCommand_OpensControlsForCommandParameter()
@@ -306,7 +297,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CancelSelectedSyncPairEditorCommand.CanExecute(null), Is.False);
             });
         }
-
 
         [Test]
         public async Task SaveSelectedSyncPairNameCommand_PersistsTrimmedName()

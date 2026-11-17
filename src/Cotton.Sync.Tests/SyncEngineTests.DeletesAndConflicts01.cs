@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_DeletesRemoteOnlyWhenBaselineKnowsLocalDelete()
         {
@@ -38,7 +37,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_CanBypassRemoteTrashWhenExplicitlyConfigured()
         {
@@ -57,7 +55,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry, Is.Null);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_DoesNotDeleteBaselineWhenRemoteDeleteFails()
@@ -82,7 +79,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry.RemoteContentHash, Is.EqualTo(remote.ContentHash));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_RecoversAfterRemoteDeleteBeforeBaselineDelete()
@@ -120,7 +116,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry, Is.Null);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_RecoversAfterLocalDeleteBeforeBaselineDelete()
@@ -163,7 +158,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_BlocksRemoteDeletesOverRunLimit()
         {
@@ -199,7 +193,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_DownloadsRemoteFileInsteadOfDeletingWhenBaselineIsMissing()
         {
@@ -218,7 +211,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(result.Activities.Select(x => x.Kind), Is.EqualTo(new[] { SyncActivityKind.Downloaded }));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_DeletesLocalWhenBaselineKnowsRemoteDelete()
@@ -240,7 +232,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry, Is.Null);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_BlocksLocalDeletesOverRunLimit()
@@ -280,7 +271,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(secondEntry, Is.Not.Null);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_PreservesBothVersionsWhenLocalAndRemoteChanged()

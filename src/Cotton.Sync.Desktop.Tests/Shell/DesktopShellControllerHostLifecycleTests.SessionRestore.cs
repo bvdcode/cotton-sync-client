@@ -300,6 +300,8 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             {
                 Assert.That(verificationCancelled.Task.IsCompletedSuccessfully, Is.True);
                 Assert.That(snapshot.IsSignedIn, Is.False);
+                Assert.That(snapshot.HasStoredSession, Is.False);
+                Assert.That(snapshot.StartupErrorMessage, Is.Null);
                 Assert.That(snapshot.ServerUrl, Is.EqualTo(serverUrl));
                 Assert.That(factory.CreatedServerUrls, Is.Empty);
             });
@@ -380,6 +382,5 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(autostartService.LastSetEnabled, Is.True);
             });
         }
-
     }
 }

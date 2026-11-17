@@ -289,6 +289,5 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(File.ReadAllText(localFilePath), Is.EqualTo("keep me local"));
             });
         }
-
     }
 }

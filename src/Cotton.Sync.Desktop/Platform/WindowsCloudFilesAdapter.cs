@@ -139,21 +139,6 @@ namespace Cotton.Sync.Desktop.Platform
             return _filePlaceholderService.CreateFilePlaceholders(requests);
         }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         public void UnregisterSyncRoot(SyncPairSettings syncPair)
         {
             _registrationManager.Unregister(syncPair);
@@ -163,14 +148,6 @@ namespace Cotton.Sync.Desktop.Platform
         {
             _directoryPlaceholderService.CreateDirectoryPlaceholder(request);
         }
-
-
-
-
-
-
-
-
 
         public void DehydratePlaceholder(SyncPairSettings syncPair, string relativePath)
         {
@@ -288,14 +265,6 @@ namespace Cotton.Sync.Desktop.Platform
                 finalization.LocalLastWriteUtc);
         }
 
-
-
-
-
-
-
-
-
         public void SetSyncRootInSyncState(SyncPairSettings syncPair)
         {
             _inSyncManager.SetSyncRootInSyncState(syncPair);
@@ -321,11 +290,6 @@ namespace Cotton.Sync.Desktop.Platform
             _placeholderInspector.UpdateIdentity(syncPair, relativePath, placeholderIdentity);
         }
 
-
-
-
-
-
         public WindowsCloudFilesConnection ConnectSyncRoot(
             SyncPairSettings syncPair,
             IWindowsCloudFilesCallbackHandler callbackHandler)
@@ -338,13 +302,6 @@ namespace Cotton.Sync.Desktop.Platform
             _nativeApi.TransferData(transfer);
         }
 
-
-
-
-
-
-
-
         internal static string CreateReparseTagOpenPath(string fullPath)
         {
             return WindowsCloudFilesReparsePointProbe.CreateOpenPath(fullPath);
@@ -354,11 +311,5 @@ namespace Cotton.Sync.Desktop.Platform
         {
             return WindowsCloudFilesReparsePointProbe.CreateOpenFlags(fullPath);
         }
-
-
-
-
-
-
     }
 }

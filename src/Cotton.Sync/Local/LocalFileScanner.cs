@@ -383,6 +383,5 @@ namespace Cotton.Sync.Local
         {
             return LocalFilePlatformProbe.CreateReparseTagOpenPath(fullPath);
         }
-
     }
 }

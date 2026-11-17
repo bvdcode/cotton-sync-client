@@ -68,6 +68,17 @@ namespace Cotton.Sync.Remote
             RemoteTreeLookupSnapshot snapshot,
             Stack<RemotePathLookupFrame> pending)
         {
+            AddDirectories(frame, children, remaining, snapshot, pending);
+            AddFiles(frame, children, remaining, snapshot);
+        }
+
+        private static void AddDirectories(
+            RemotePathLookupFrame frame,
+            NodeContentDto children,
+            HashSet<string> remaining,
+            RemoteTreeLookupSnapshot snapshot,
+            Stack<RemotePathLookupFrame> pending)
+        {
             foreach (NodeDto node in children.Nodes)
             {
                 RemotePathLookupScope childScope = frame.Scope;
@@ -96,7 +107,14 @@ namespace Cotton.Sync.Remote
                     pending.Push(new RemotePathLookupFrame(node, path, childScope));
                 }
             }
+        }
 
+        private static void AddFiles(
+            RemotePathLookupFrame frame,
+            NodeContentDto children,
+            HashSet<string> remaining,
+            RemoteTreeLookupSnapshot snapshot)
+        {
             foreach (NodeFileManifestDto file in children.Files)
             {
                 if (!frame.Scope.IncludesDescendants

@@ -210,6 +210,5 @@ namespace Cotton.Sync.Tests.State
                 Assert.That(entries.Single(entry => entry.RelativePath == "new.txt").RemoteContentHash, Is.EqualTo("new-file-hash"));
             });
         }
-
     }
 }

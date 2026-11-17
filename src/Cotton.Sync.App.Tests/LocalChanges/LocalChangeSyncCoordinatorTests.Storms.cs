@@ -300,6 +300,5 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 Assert.That(supervisor.LastRequest?.Causes, Is.EqualTo(SyncRunCause.LocalChange));
             });
         }
-
     }
 }

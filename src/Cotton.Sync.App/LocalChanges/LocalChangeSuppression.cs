@@ -423,6 +423,5 @@ namespace Cotton.Sync.App.LocalChanges
         {
             return LocalChangeSuppressionPath.IsOnlineOnlyAttributes(attributes);
         }
-
     }
 }

@@ -284,7 +284,6 @@ namespace Cotton.Sync.Desktop.Startup
                 || value.Contains("\u0425\u0440\u0430\u043d\u0438\u0442\u044c \u044d\u0442\u0438 \u0444\u0430\u0439\u043b\u044b \u043d\u0430 \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0435", StringComparison.OrdinalIgnoreCase);
         }
 
-
         private record ShellStatusColumn(
             int Index,
             string Name,

@@ -21,7 +21,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
     {
         private partial class FakeDesktopShellController : IDesktopShellController
         {
-
             public Task<DesktopUpdateStatusSnapshot> CheckForUpdateAsync(
                 DesktopUpdateCheckSource source = DesktopUpdateCheckSource.Manual,
                 CancellationToken cancellationToken = default)
@@ -36,7 +35,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
                 return Task.FromResult(UpdateCheckSnapshot);
             }
-
 
             public Task<DesktopUpdateStatusSnapshot> DownloadUpdateAsync(
                 DesktopUpdateCheckSource source = DesktopUpdateCheckSource.Download,
@@ -69,7 +67,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 return Task.FromResult(UpdateDownloadSnapshot ?? UpdateCheckSnapshot);
             }
 
-
             public Task<DesktopUpdateInstallResult> InstallDownloadedUpdateAsync(string installerPath, CancellationToken cancellationToken = default)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -97,12 +94,10 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 return Task.FromResult(new DesktopUpdateInstallResult(42, false, null));
             }
 
-
             public Task<string> ExportDiagnosticsAsync(CancellationToken cancellationToken = default)
             {
                 return ExportDiagnosticsAsync(DesktopDiagnosticsExportOptions.Public, cancellationToken);
             }
-
 
             public Task<string> ExportDiagnosticsAsync(
                 DesktopDiagnosticsExportOptions options,
@@ -124,11 +119,9 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 return Task.FromResult(ExportDiagnosticsPath);
             }
 
-
             public void Dispose()
             {
             }
-
 
             public ValueTask DisposeAsync()
             {

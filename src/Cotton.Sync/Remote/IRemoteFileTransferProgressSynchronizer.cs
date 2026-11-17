@@ -32,5 +32,4 @@ namespace Cotton.Sync.Remote
             IProgress<SyncTransferProgress>? transferProgress,
             CancellationToken cancellationToken = default);
     }
-
 }

@@ -44,6 +44,5 @@ namespace Cotton.Sync.App.Tests.LocalChanges
             {
             }
         }
-
     }
 }

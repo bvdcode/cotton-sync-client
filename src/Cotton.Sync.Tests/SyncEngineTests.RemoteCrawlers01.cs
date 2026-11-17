@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         internal class FakeRemoteTreeCrawler : IRemoteTreeCrawler, IRemotePathLookupCrawler
         {
             private readonly Queue<RemoteTreeSnapshot> _snapshots;
@@ -95,7 +94,6 @@ namespace Cotton.Sync.Tests
             }
         }
 
-
         private class FakeRemoteTreeProgressCrawler : IRemoteTreeProgressCrawler
         {
             private readonly RemoteTreeSnapshot _snapshot;
@@ -142,7 +140,6 @@ namespace Cotton.Sync.Tests
                 return Task.FromResult(_snapshot);
             }
         }
-
 
         private class BlockingStreamingRemoteTreeCrawler : IRemoteTreeStreamingCrawler
         {
@@ -247,7 +244,6 @@ namespace Cotton.Sync.Tests
                 return root;
             }
         }
-
 
         private class StreamingRemoteTreeCrawler : IRemoteTreeStreamingCrawler
         {

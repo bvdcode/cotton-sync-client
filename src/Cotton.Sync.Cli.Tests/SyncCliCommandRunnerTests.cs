@@ -33,6 +33,5 @@ namespace Cotton.Sync.Cli.Tests
                 Directory.Delete(_tempDirectory, recursive: true);
             }
         }
-
     }
 }

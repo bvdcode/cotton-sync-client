@@ -13,7 +13,6 @@ namespace Cotton.Sync.App.Tests.Supervision
 {
     public partial class SyncSupervisorTests
     {
-
         [Test]
         public async Task StartAsync_StopsExistingRunnersBeforeReplacingThem()
         {

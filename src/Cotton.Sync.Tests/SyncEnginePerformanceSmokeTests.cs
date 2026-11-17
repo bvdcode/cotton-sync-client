@@ -36,6 +36,5 @@ namespace Cotton.Sync.Tests
                 Directory.Delete(_root, recursive: true);
             }
         }
-
     }
 }

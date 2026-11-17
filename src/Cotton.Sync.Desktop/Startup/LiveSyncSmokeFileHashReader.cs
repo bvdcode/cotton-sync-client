@@ -129,5 +129,4 @@ namespace Cotton.Sync.Desktop.Startup
             return output;
         }
     }
-
 }

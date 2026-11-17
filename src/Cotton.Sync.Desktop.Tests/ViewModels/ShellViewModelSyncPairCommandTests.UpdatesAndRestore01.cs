@@ -19,14 +19,12 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public void AppVersion_UsesInformationalVersionWithoutBuildMetadata()
         {
             using ShellViewModel viewModel = CreateViewModel(new FakeDesktopShellController(CreateSignedOutSnapshot()));
             Assert.That(viewModel.AppVersion, Is.EqualTo(DesktopProductVersion.Current));
         }
-
 
         [Test]
         public async Task CheckForUpdatesCommand_ShowsAvailableUpdateWithoutBlockingSyncCommands()
@@ -57,7 +55,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CanSyncNow, Is.True);
             });
         }
-
 
         [Test]
         public async Task DownloadUpdateCommand_MarksUpdateReadyForInstallNowOrNextStartup()
@@ -98,7 +95,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsUpdateDownloadVisible, Is.False);
             });
         }
-
 
         [Test]
         public async Task DownloadUpdateCommand_ShowsDownloadProgressUntilInstallerIsReady()
@@ -161,7 +157,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task DownloadUpdateCommand_ShowsPreparingStateBeforeFirstProgress()
         {
@@ -213,7 +208,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Assert.That(viewModel.IsUpdateDownloadProgressVisible, Is.False);
         }
 
-
         [Test]
         public async Task InitializeAsync_AutoDownloadsUpdateOnStartupWithoutBlockingSyncCommands()
         {
@@ -251,7 +245,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(notificationService.Notifications[0].Title, Is.EqualTo("Update ready"));
             });
         }
-
 
         [Test]
         public async Task InitializeAsync_WhenStartupUpdateIsCurrentDoesNotShowDownloadProgress()

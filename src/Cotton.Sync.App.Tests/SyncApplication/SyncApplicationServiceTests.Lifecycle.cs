@@ -240,6 +240,5 @@ namespace Cotton.Sync.App.Tests.SyncApplication
                 "cloud-files:stop",
             }));
         }
-
     }
 }

@@ -24,7 +24,6 @@ namespace Cotton.Sync.Tests
 
         private string _databasePath = string.Empty;
 
-
         public enum MatrixFileState
         {
             Missing,

@@ -11,7 +11,6 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
 {
     public partial class DesktopPackagingMetadataTests
     {
-
         [Test]
         public void CiWorkflow_DoesNotCarryMonorepoDockerImageWorkflow()
         {

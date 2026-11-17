@@ -226,6 +226,5 @@ namespace Cotton.Sync.Tests
                 throw new InvalidOperationException("Initial upload performance smoke must not move files.");
             }
         }
-
     }
 }

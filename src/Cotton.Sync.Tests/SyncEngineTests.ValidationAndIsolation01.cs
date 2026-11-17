@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public void RunOnceAsync_HonorsCancellationBeforeScanning()
         {
@@ -30,7 +29,6 @@ namespace Cotton.Sync.Tests
             Assert.ThrowsAsync<OperationCanceledException>(() => engine.RunOnceAsync(Pair(), cancellationToken: cancellation.Token));
             Assert.That(scanner.ScanCalls, Is.Zero);
         }
-
 
         [Test]
         public void RunOnceAsync_RejectsLocalCaseInsensitivePathCollision()
@@ -53,7 +51,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public void RunOnceAsync_RejectsLocalFileDirectoryCaseInsensitivePathCollision()
         {
@@ -71,7 +68,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(exception.Message, Does.Contain("Case-insensitive path collision"));
             });
         }
-
 
         [Test]
         public void RunOnceAsync_RejectsRemoteCaseInsensitivePathCollision()
@@ -94,7 +90,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public void RunOnceAsync_RejectsRemoteFileDirectoryCaseInsensitivePathCollision()
         {
@@ -112,7 +107,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(exception.Message, Does.Contain("Case-insensitive path collision"));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_IgnoresRemoteMetadataPathsAtEngineBoundary()
@@ -141,7 +135,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(File.Exists(Path.Combine(_root, ".cotton-sync", "remote-file.txt")), Is.False);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesIgnoresRemoteMetadataPathsAtEngineBoundary()
@@ -181,7 +174,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(File.Exists(Path.Combine(_root, ".cotton-sync", "remote-placeholder.txt")), Is.False);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_DoesNotLeakStateAcrossSyncPairsSharingDatabaseAndRelativePath()

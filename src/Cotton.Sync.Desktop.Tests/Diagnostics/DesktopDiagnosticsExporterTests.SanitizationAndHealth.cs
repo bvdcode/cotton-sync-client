@@ -338,6 +338,5 @@ namespace Cotton.Sync.Desktop.Tests.Diagnostics
                 Assert.That(diagnosticsJson, Does.Not.Contain(paths.DataDirectory));
             });
         }
-
     }
 }

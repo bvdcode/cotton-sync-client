@@ -262,6 +262,5 @@ namespace Cotton.Sync.Tests.Remote
                 Interlocked.Decrement(ref _activeOperations);
             }
         }
-
     }
 }

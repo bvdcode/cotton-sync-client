@@ -35,31 +35,8 @@ namespace Cotton.Sync
 
             IReadOnlyDictionary<string, string> knownTargets = LocalRenameTargetResolver.Resolve(
                 moveSources, options.Scope.LocalRenames);
-            foreach (KeyValuePair<string, SyncStateEntry> source in moveSources)
-            {
-                if (!knownTargets.TryGetValue(source.Key, out string? targetKey)
-                    || !localByPath.TryGetValue(targetKey, out LocalFileSnapshot? local)
-                    || local.IsCloudFilesOnlineOnlyPlaceholder
-                    || stateByPath.ContainsKey(targetKey)
-                    || remoteByPath.ContainsKey(targetKey))
-                {
-                    continue;
-                }
-
-                try
-                {
-                    await contentHashResolver.EnsureAsync(local, options, cancellationToken).ConfigureAwait(false);
-                }
-                catch (LocalFileUnavailableException exception)
-                {
-                    ReportUnavailable(result, options, local.RelativePath, exception);
-                    result.RecordDeferredLocalPath(source.Value.RelativePath);
-                    continue;
-                }
-
-                await MoveRemoteFileAsync(syncPair, options, result, source.Key, source.Value, local,
-                    remoteByPath[source.Key], remoteByPath, stateByPath, cancellationToken).ConfigureAwait(false);
-            }
+            await CoalesceKnownTargetsAsync(syncPair, options, result, moveSources, knownTargets,
+                localByPath, remoteByPath, stateByPath, cancellationToken).ConfigureAwait(false);
 
             Dictionary<MoveCandidateKey, Queue<LocalFileSnapshot>> candidates =
                 await BuildLocalMoveCandidateBucketsAsync(
@@ -105,6 +82,42 @@ namespace Cotton.Sync
                     remoteByPath,
                     stateByPath,
                     cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        private async Task CoalesceKnownTargetsAsync(
+            SyncPair syncPair, SyncRunOptions options, SyncRunResult result,
+            IReadOnlyList<KeyValuePair<string, SyncStateEntry>> moveSources,
+            IReadOnlyDictionary<string, string> knownTargets,
+            IReadOnlyDictionary<string, LocalFileSnapshot> localByPath,
+            IDictionary<string, RemoteFileSnapshot> remoteByPath,
+            IDictionary<string, SyncStateEntry> stateByPath,
+            CancellationToken cancellationToken)
+        {
+            foreach (KeyValuePair<string, SyncStateEntry> source in moveSources)
+            {
+                if (!knownTargets.TryGetValue(source.Key, out string? targetKey)
+                    || !localByPath.TryGetValue(targetKey, out LocalFileSnapshot? local)
+                    || local.IsCloudFilesOnlineOnlyPlaceholder
+                    || stateByPath.ContainsKey(targetKey)
+                    || remoteByPath.ContainsKey(targetKey))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    await contentHashResolver.EnsureAsync(local, options, cancellationToken).ConfigureAwait(false);
+                }
+                catch (LocalFileUnavailableException exception)
+                {
+                    ReportUnavailable(result, options, local.RelativePath, exception);
+                    result.RecordDeferredLocalPath(source.Value.RelativePath);
+                    continue;
+                }
+
+                await MoveRemoteFileAsync(syncPair, options, result, source.Key, source.Value, local,
+                    remoteByPath[source.Key], remoteByPath, stateByPath, cancellationToken).ConfigureAwait(false);
             }
         }
 

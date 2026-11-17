@@ -129,14 +129,5 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(openPath, Is.EqualTo(extendedPathPrefix + longPath));
             });
         }
-
-
-
-
-
-
-
-
-
     }
 }

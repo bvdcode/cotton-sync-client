@@ -27,7 +27,7 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 root, WindowsCloudFilesAdapter.ProviderName, "concurrent-hydration-test",
                 WindowsCloudFilesProviderMetadata.ProviderGuid,
                 WindowsCloudFilesPlaceholderFactory.CreateSyncRootIdentity(pairId, Guid.NewGuid())));
-            byte[] content = RandomNumberGenerator.GetBytes(8 * 1024 * 1024 + 123);
+            byte[] content = RandomNumberGenerator.GetBytes((8 * 1024 * 1024) + 123);
             string hash = Convert.ToHexString(SHA256.HashData(content));
             ConcurrentHydrationContentProvider provider = new(content, waitForConcurrentDownloads: differentFile);
             WindowsCloudFilesDiagnostics diagnostics = new(2000);

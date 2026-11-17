@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_MovesRemoteFileWhenLocalPathChangesWithoutContentChange()
         {
@@ -57,7 +56,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_LocalMovesDoNotTripRemoteMassDeleteGuard()
         {
@@ -93,7 +91,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(secondNewEntry, Is.Not.Null);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_MovePreconditionFailureFallsBackToConflictAndUploadWithoutDeletingRemote()
@@ -133,7 +130,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_HashesMetadataSnapshotWhenBaselineNeedsComparison()
         {
@@ -161,7 +157,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(result.Activities, Is.Empty);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_ReusesBaselineHashWhenMetadataIsUnchanged()
@@ -211,7 +206,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_ReportsAggregateRunProgressFileCounts()
         {
@@ -242,7 +236,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(progress.Values[^1].IsCompleted, Is.True);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithMixedWindowsVirtualFilesProgressCountsOnlyPlaceholders()
@@ -288,7 +281,6 @@ namespace Cotton.Sync.Tests
                     Is.EqualTo(new[] { "Docs/remote-only.txt" }));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_ReportsLocalScanFileDiscoveryProgress()

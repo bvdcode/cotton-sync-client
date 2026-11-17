@@ -58,34 +58,39 @@ namespace Cotton.Sync.App.Runners
                 }
 
                 _isSyncInProgress = true;
-                if (request.ApprovedRemoteDeletePlan is not null && _actionRequiredRequest is not null)
-                {
-                    _activeRequest = _actionRequiredRequest.WithApprovedRemoteDeletePlan(
-                        request.ApprovedRemoteDeletePlan);
-                    _actionRequiredRequest = null;
-                    _failedRequest = null;
-                    return true;
-                }
+                return ActivateRequest(request);
+            }
+        }
 
-                if (_failedRequest is null)
-                {
-                    _activeRequest = _actionRequiredRequest is not null
-                        && (request.Causes & SyncRunCause.CheckNow) != SyncRunCause.None
-                        ? request.Merge(SyncRunRequest.ForFull(SyncRunCause.Manual))
-                        : request;
-                    return true;
-                }
-
-                bool mergeRequest = _failedRequest.IsFull && request.IsFull;
-                _activeRequest = mergeRequest ? _failedRequest.Merge(request) : _failedRequest;
+        private bool ActivateRequest(SyncRunRequest request)
+        {
+            if (request.ApprovedRemoteDeletePlan is not null && _actionRequiredRequest is not null)
+            {
+                _activeRequest = _actionRequiredRequest.WithApprovedRemoteDeletePlan(
+                    request.ApprovedRemoteDeletePlan);
+                _actionRequiredRequest = null;
                 _failedRequest = null;
-                if (!mergeRequest)
-                {
-                    QueuePending(request);
-                }
-
                 return true;
             }
+
+            if (_failedRequest is null)
+            {
+                _activeRequest = _actionRequiredRequest is not null
+                    && (request.Causes & SyncRunCause.CheckNow) != SyncRunCause.None
+                    ? request.Merge(SyncRunRequest.ForFull(SyncRunCause.Manual))
+                    : request;
+                return true;
+            }
+
+            bool mergeRequest = _failedRequest.IsFull && request.IsFull;
+            _activeRequest = mergeRequest ? _failedRequest.Merge(request) : _failedRequest;
+            _failedRequest = null;
+            if (!mergeRequest)
+            {
+                QueuePending(request);
+            }
+
+            return true;
         }
 
         public SyncRunRequest GetActiveRequest()

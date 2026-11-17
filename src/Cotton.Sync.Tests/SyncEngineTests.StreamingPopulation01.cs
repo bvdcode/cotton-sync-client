@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_DownloadsRemoteOnlyFileAndStoresBaseline()
         {
@@ -41,7 +40,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry.RemoteFileId, Is.EqualTo(remote.Id));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesCreatesRemoteOnlyPlaceholderWithoutDownloadingContent()
@@ -93,7 +91,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public void RunOnceAsync_WithWindowsVirtualFilesStreamingRejectsCaseInsensitivePathCollision()
         {
@@ -121,7 +118,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(remoteCrawler.StreamingCrawlCalls, Is.EqualTo(1));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesStreamingKeepsAccentedNamesDistinct()
@@ -151,7 +147,6 @@ namespace Cotton.Sync.Tests
                     Is.EquivalentTo(new[] { "Cafe.txt", "Café.txt" }));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesStartsPlaceholderCreationBeforeRemoteStreamingCompletes()
@@ -245,7 +240,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(syncCompletionLog, Does.Contain("0 file content transfers"));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesUsesBatchPlaceholderWriterDuringStreamingPopulation()

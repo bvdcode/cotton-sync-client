@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesRemoteOnlyPlaceholderChurnDoesNotRequireAction()
         {
@@ -51,7 +50,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesLocalDeletedRemoteOnlyPlaceholderDeletesRemote()
         {
@@ -79,7 +77,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry, Is.Null);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesLocalDeletedRemoteOnlyPlaceholdersHonorsRemoteDeleteLimit()
@@ -161,7 +158,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesRemoteCreateUsesPathLookupAndCreatesPlaceholder()
         {
@@ -198,7 +194,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesRepairsPlaceholderWhoseBaselineWasInterrupted()
@@ -240,7 +235,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesRefreshesInterruptedPlaceholderMetadataWithoutHashing()

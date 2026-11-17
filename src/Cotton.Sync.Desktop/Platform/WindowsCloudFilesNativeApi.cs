@@ -14,10 +14,6 @@ namespace Cotton.Sync.Desktop.Platform
         private static readonly int PlaceholderBasicInfoIdentityLengthOffset =
             Marshal.OffsetOf<CfPlaceholderBasicInfo>(nameof(CfPlaceholderBasicInfo.FileIdentityLength)).ToInt32();
 
-
-
-
-
         private static void ThrowIfFailed(int hresult, string operation)
         {
             if (hresult < Succeeded)
@@ -113,7 +109,6 @@ namespace Cotton.Sync.Desktop.Platform
 
             public readonly ushort Modifier;
         }
-
 
         [Flags]
         private enum CfRegisterFlags : uint
@@ -288,8 +283,5 @@ namespace Cotton.Sync.Desktop.Platform
         {
             None = 0x00000000,
         }
-
-
-
     }
 }

@@ -38,7 +38,7 @@ namespace Cotton.Sync.Tests.Remote
             {
                 Assert.That(snapshot.FilesByPath, Has.Count.EqualTo(fileCount));
                 Assert.That(snapshot.DirectoriesByPath, Has.Count.EqualTo(1));
-                Assert.That(client.GetChildrenCalls, Has.Count.EqualTo(1 + fileCount / pageSize));
+                Assert.That(client.GetChildrenCalls, Has.Count.EqualTo(1 + (fileCount / pageSize)));
                 Assert.That(client.GetChildrenCalls.Distinct().Count(), Is.EqualTo(client.GetChildrenCalls.Count));
                 Assert.That(progress.Values[^1].FilesScanned, Is.EqualTo(fileCount));
             });

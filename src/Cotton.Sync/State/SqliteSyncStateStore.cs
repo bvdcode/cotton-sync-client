@@ -443,6 +443,5 @@ namespace Cotton.Sync.State
                 Path.GetFullPath(_contextFactory.DatabasePath),
                 static _ => new SemaphoreSlim(1, 1));
         }
-
     }
 }

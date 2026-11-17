@@ -300,6 +300,5 @@ namespace Cotton.Sync.Tests.State
                     Is.EqualTo(new[] { "Music %_Live", "Music %_Live/set.mp3" }));
             });
         }
-
     }
 }

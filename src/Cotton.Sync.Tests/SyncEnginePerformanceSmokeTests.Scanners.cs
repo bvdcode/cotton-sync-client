@@ -254,6 +254,5 @@ namespace Cotton.Sync.Tests
                 return Task.FromResult(localFile.ContentHash);
             }
         }
-
     }
 }

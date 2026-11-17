@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task PauseResumeCommands_AreMutuallyAvailable()
         {
@@ -68,7 +67,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task GlobalControls_RemainAvailableWhileManualSyncIsRunning()
         {
@@ -112,7 +110,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Assert.That(viewModel.IsBusy, Is.False);
         }
 
-
         [Test]
         public async Task PauseResumeCommand_ShowsPausingWhilePauseRequestIsRunning()
         {
@@ -154,7 +151,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task PauseResumeCommand_RemainsAvailableDuringBackgroundSyncProgress()
         {
@@ -191,7 +187,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.PauseResumeTrayLabel, Is.EqualTo("Pause"));
             });
         }
-
 
         [Test]
         public async Task PauseResumeCommand_OffersPauseWhileResumedSyncIsStillRunning()
@@ -237,7 +232,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task GlobalSyncCommands_DoNotChangeDisabledPairRows()
         {
@@ -279,7 +273,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task OpenFolderCommand_UsesRowParameterWhenProvided()
         {
@@ -294,7 +287,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             Assert.That(controller.OpenedFolderPath, Is.EqualTo("/home/vadim/Pictures"));
         }
-
 
         [Test]
         public async Task OpenTrayFolderCommand_OpensSingleSyncPair()
@@ -316,7 +308,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Assert.That(controller.OpenedFolderPath, Is.EqualTo("/home/vadim/Documents"));
         }
 
-
         [Test]
         public async Task OpenTrayFolderCommand_IsDisabledForMultipleSyncPairs()
         {
@@ -334,7 +325,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.OpenTrayFolderCommand.CanExecute(null), Is.False);
             });
         }
-
 
         [Test]
         public async Task StatusChanged_UpdatesCurrentProgressText()
@@ -361,7 +351,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Documents: Uploading report.txt"));
             });
         }
-
 
         [Test]
         public async Task StatusChanged_TreatsDisabledPairsAsOutOfScopeForPausedGlobalStatus()

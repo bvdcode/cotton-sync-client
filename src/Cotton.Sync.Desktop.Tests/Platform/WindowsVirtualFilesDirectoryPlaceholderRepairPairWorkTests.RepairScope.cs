@@ -122,6 +122,5 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     Is.EqualTo(new[] { syncPair.Id }));
             });
         }
-
     }
 }

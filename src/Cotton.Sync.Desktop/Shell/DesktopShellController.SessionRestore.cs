@@ -50,9 +50,15 @@ namespace Cotton.Sync.Desktop.Shell
                 return activeSession;
             }
 
-            if (!await CanUseStoredSessionAsync(cancellationToken).ConfigureAwait(false))
+            string? storageError = await GetStoredSessionStorageErrorAsync(cancellationToken).ConfigureAwait(false);
+            if (storageError is not null)
             {
-                return new DesktopStoredSessionRestoreSnapshot(null, false, null);
+                if (!File.Exists(_paths.TokenStorePath))
+                {
+                    return new DesktopStoredSessionRestoreSnapshot(null, false, null);
+                }
+
+                return new DesktopStoredSessionRestoreSnapshot(null, true, storageError);
             }
 
             DesktopSyncApplicationHost host = _factory.Create(serverUrl);
@@ -76,7 +82,7 @@ namespace Cotton.Sync.Desktop.Shell
             Uri serverUrl,
             CancellationToken cancellationToken)
         {
-            bool hasStoredSession = false;
+            bool hasStoredSession = File.Exists(_paths.TokenStorePath);
             try
             {
                 if (await host.TokenStore.GetAsync(cancellationToken).ConfigureAwait(false) is null)

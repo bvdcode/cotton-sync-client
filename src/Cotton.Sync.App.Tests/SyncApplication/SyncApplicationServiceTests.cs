@@ -211,7 +211,5 @@ namespace Cotton.Sync.App.Tests.SyncApplication
                 Assert.That(platformCommands.LastOpenedUrl, Is.EqualTo(url));
             });
         }
-
-
     }
 }

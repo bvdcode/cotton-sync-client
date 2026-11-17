@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task TransferProgressChanged_KeepsRunMetricsAfterCompletedSmallTransfers()
         {
@@ -83,7 +82,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task RunProgressChanged_ShowsGlobalFileRateWhenByteRateIsUnavailable()
         {
@@ -121,7 +119,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task RunProgressChanged_ShowsFolderRateForCloudFileFinalization()
         {
@@ -157,7 +154,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Finalizing cloud file status · 1400 of 8570 folders"));
             });
         }
-
 
         [Test]
         public async Task RunProgressChanged_DoesNotShowPlaceholderEtaForGrowingStreamingTotal()
@@ -196,7 +192,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressDetails, Does.Not.Contain("of 1100"));
             });
         }
-
 
         [Test]
         public async Task RunProgressChanged_KeepsPlaceholderRowOperationStableDuringStreamingBurst()
@@ -244,7 +239,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.True);
             });
         }
-
 
         [Test]
         public async Task RunProgressChanged_ShowsGlobalFileRateAfterShortManyFileProgress()

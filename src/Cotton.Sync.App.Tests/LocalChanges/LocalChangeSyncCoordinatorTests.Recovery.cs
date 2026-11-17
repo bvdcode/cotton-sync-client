@@ -52,6 +52,5 @@ namespace Cotton.Sync.App.Tests.LocalChanges
                 Assert.That(logger.Entries.Any(entry => entry.Level == LogLevel.Error), Is.False);
             });
         }
-
     }
 }

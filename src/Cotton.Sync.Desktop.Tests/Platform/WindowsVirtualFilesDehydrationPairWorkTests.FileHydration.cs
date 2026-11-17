@@ -228,6 +228,5 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(diagnostics.Snapshot(), Is.Empty);
             });
         }
-
     }
 }

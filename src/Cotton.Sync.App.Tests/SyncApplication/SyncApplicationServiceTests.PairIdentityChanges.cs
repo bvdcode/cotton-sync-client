@@ -277,6 +277,5 @@ namespace Cotton.Sync.App.Tests.SyncApplication
 
             Assert.That(prerequisites.CallCount, Is.EqualTo(1));
         }
-
     }
 }

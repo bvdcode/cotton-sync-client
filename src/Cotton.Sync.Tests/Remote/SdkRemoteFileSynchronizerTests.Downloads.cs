@@ -385,6 +385,5 @@ namespace Cotton.Sync.Tests.Remote
         {
             return "sha256-" + Hash(bytes);
         }
-
     }
 }

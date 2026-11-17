@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_UploadsUnicodeNamedLocalFileAndStoresBaseline()
         {
@@ -42,7 +41,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry.RemoteContentHash, Is.EqualTo(local.ContentHash));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_UploadsMixedUnicodeNamedLocalFileWithNormalizedBaseline()
@@ -69,7 +67,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_DownloadsUnicodeNamedRemoteFileAndStoresBaseline()
         {
@@ -94,7 +91,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_UploadsLocalChangeWhenRemoteBaselineIsUnchanged()
         {
@@ -116,7 +112,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry.RemoteContentHash, Is.EqualTo(local.ContentHash));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_DoesNotUpdateBaselineWhenRemoteUploadFails()
@@ -142,7 +137,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(remoteFiles.Uploads, Is.Empty);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_RecoversAfterRemoteUploadBeforeBaselineUpdate()
@@ -174,7 +168,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry.RemoteFileId, Is.EqualTo(uploaded.Id));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_ReusesSharedStateAcrossSequentialClientSurfaces()
@@ -231,7 +224,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_CliInterruptedUploadCanBeRecoveredByDesktopSurface()
         {
@@ -269,7 +261,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry.RemoteFileId, Is.EqualTo(uploaded.Id));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_DesktopInterruptedDownloadCanBeRecoveredByCliSurface()

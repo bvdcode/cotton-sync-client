@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task TransferProgressChanged_KeepsGlobalRunByteProgressPrimaryForOneFolder()
         {
@@ -75,7 +74,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task TransferProgressChanged_AggregatesHeaderMetricsForMultipleActiveTransfers()
         {
@@ -114,7 +112,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressValue, Is.EqualTo(30).Within(0.01));
             });
         }
-
 
         [TestCase(SyncTransferDirection.Download, "Downloading")]
         [TestCase(SyncTransferDirection.Upload, "Uploading")]
@@ -189,7 +186,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task TransferProgressChanged_OmitsTransferEstimateFromAggregateRunHeader()
         {
@@ -224,7 +220,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Assert.That(viewModel.CurrentWorkProgressHeaderDetails, Is.EqualTo("2.0 KB · 768 B/s · 20s left"));
         }
 
-
         [Test]
         public async Task TransferProgressChanged_DoesNotDuplicateAggregateRunDetailsAfterTransferCompletes()
         {
@@ -252,7 +247,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressSecondaryDetails, Is.Empty);
             });
         }
-
 
         [Test]
         public async Task TransferProgressChanged_DoesNotCountUntransferredBytesOnTerminalSample()

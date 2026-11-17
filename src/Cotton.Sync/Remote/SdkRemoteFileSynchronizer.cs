@@ -312,6 +312,5 @@ namespace Cotton.Sync.Remote
                 _ => DefaultContentType,
             };
         }
-
     }
 }

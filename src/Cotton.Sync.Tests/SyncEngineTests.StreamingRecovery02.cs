@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesRefreshesCurrentUntrackedCloudFilesPlaceholderIdentity()
         {
@@ -63,7 +62,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesRefreshesUntrackedCloudFilesPlaceholderWhenRemoteMetadataDiffers()
         {
@@ -103,7 +101,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(state[0].PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesStreamsWhenUntrackedDirectoriesAndPlaceholdersRemain()
@@ -148,7 +145,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(state.Select(entry => entry.RelativePath), Is.EquivalentTo(new[] { "Desktop", relativePath }));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesStreamingPublishesDiscoveryAsPlaceholderProgress()
@@ -200,7 +196,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(remoteCrawler.SnapshotCrawlCalls, Is.Zero);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesCreatesLocalFolderForNestedRemoteOnlyPlaceholder()

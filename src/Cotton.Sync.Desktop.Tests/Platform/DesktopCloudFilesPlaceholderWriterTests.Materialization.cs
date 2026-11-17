@@ -177,6 +177,5 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     }));
             });
         }
-
     }
 }

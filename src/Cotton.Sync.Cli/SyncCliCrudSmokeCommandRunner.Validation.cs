@@ -9,7 +9,6 @@ namespace Cotton.Sync.Cli
 {
     internal static partial class SyncCliCrudSmokeCommandRunner
     {
-
         private static SyncCliConnectionOptions? ReadSecondClientOptions(
             IReadOnlyList<string> args,
             SyncCliConnectionOptions firstOptions,
@@ -47,7 +46,6 @@ namespace Cotton.Sync.Cli
             };
         }
 
-
         private static string? ValidateLocalRoots(string firstRoot, string secondRoot)
         {
             if (SyncCliPath.AreSameOrNested(firstRoot, secondRoot))
@@ -64,7 +62,6 @@ namespace Cotton.Sync.Cli
             return ValidateEmptyOrMissingDirectory(secondRoot, "--second-local-root");
         }
 
-
         private static string? ValidateEmptyOrMissingDirectory(string path, string optionName)
         {
             if (!Directory.Exists(path))
@@ -77,12 +74,10 @@ namespace Cotton.Sync.Cli
                 : null;
         }
 
-
         private static string FormatRemoteRoot(SyncCliConnectionOptions options)
         {
             return options.RemoteRootNodeId?.ToString("D") ?? options.RemoteRootPath ?? "<not resolved>";
         }
-
 
         private static string CleanSingleLine(string? message)
         {
@@ -98,24 +93,20 @@ namespace Cotton.Sync.Cli
                 .Trim();
         }
 
-
         private static bool IsIdle(SyncCliPassResult pass)
         {
             return GetActivityCount(pass) == 0 && !pass.Result.HasDeferredLocalPaths;
         }
-
 
         private static int GetActivityCount(SyncCliPassResult pass)
         {
             return pass.Result.TotalActivityCount;
         }
 
-
         private static int GetDeferredLocalPathCount(SyncCliPassResult pass)
         {
             return pass.Result.DeferredLocalPaths.Count;
         }
-
 
         private static string FormatYesNo(bool value)
         {

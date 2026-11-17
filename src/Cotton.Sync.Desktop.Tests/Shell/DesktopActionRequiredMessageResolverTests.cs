@@ -427,6 +427,5 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             Assert.That(message, Is.Empty);
         }
-
     }
 }

@@ -9,7 +9,6 @@ namespace Cotton.Sync.Cli
 {
     internal static partial class SyncCliCrudSmokeCommandRunner
     {
-
         private static async Task<int> RunInitialConvergenceAsync(
             SyncCliRuntime firstRuntime,
             SyncCliRuntime secondRuntime,
@@ -23,7 +22,6 @@ namespace Cotton.Sync.Cli
             await output.WriteLineAsync(FormatInitialConvergenceLine(first, second)).ConfigureAwait(false);
             return first.Converged && second.Converged ? 0 : 1;
         }
-
 
         private static async Task<int> RunClientACreateAsync(
             SyncCliConnectionOptions firstOptions,
@@ -47,7 +45,6 @@ namespace Cotton.Sync.Cli
                 cancellationToken).ConfigureAwait(false);
         }
 
-
         private static async Task<int> RunClientBCreateAsync(
             SyncCliConnectionOptions firstOptions,
             SyncCliConnectionOptions secondOptions,
@@ -70,7 +67,6 @@ namespace Cotton.Sync.Cli
                 cancellationToken).ConfigureAwait(false);
         }
 
-
         private static async Task<int> RunClientARenameAsync(
             SyncCliConnectionOptions firstOptions,
             SyncCliConnectionOptions secondOptions,
@@ -91,7 +87,6 @@ namespace Cotton.Sync.Cli
                 "Local rename propagated to the second client.",
                 output);
         }
-
 
         private static async Task<int> RunClientBRenameAsync(
             SyncCliConnectionOptions firstOptions,
@@ -114,7 +109,6 @@ namespace Cotton.Sync.Cli
                 output);
         }
 
-
         private static async Task<int> RunClientADeleteAsync(
             SyncCliConnectionOptions firstOptions,
             SyncCliConnectionOptions secondOptions,
@@ -132,7 +126,6 @@ namespace Cotton.Sync.Cli
                 "Local delete propagated to the second client.",
                 output);
         }
-
 
         private static async Task<int> RunClientBDeleteAsync(
             SyncCliConnectionOptions firstOptions,
@@ -152,7 +145,6 @@ namespace Cotton.Sync.Cli
                 output);
         }
 
-
         private static async Task RunSourceThenTargetAsync(
             SyncCliRuntime sourceRuntime,
             SyncCliRuntime targetRuntime,
@@ -164,7 +156,6 @@ namespace Cotton.Sync.Cli
             await RunFinalConvergenceAsync(targetRuntime, cancellationToken).ConfigureAwait(false);
         }
 
-
         private static async Task<SyncCliPassResult> RunFinalConvergenceAsync(
             SyncCliRuntime runtime,
             CancellationToken cancellationToken)
@@ -172,7 +163,6 @@ namespace Cotton.Sync.Cli
             SyncCliConvergenceResult result = await RunConvergenceAsync(runtime, cancellationToken).ConfigureAwait(false);
             return result.Pass;
         }
-
 
         private static async Task<SyncCliConvergenceResult> RunConvergenceAsync(
             SyncCliRuntime runtime,
@@ -194,7 +184,6 @@ namespace Cotton.Sync.Cli
                 MaxFinalConvergencePasses);
         }
 
-
         private static async Task WriteFileAsync(
             string localRoot,
             string relativePath,
@@ -205,7 +194,6 @@ namespace Cotton.Sync.Cli
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
             await File.WriteAllTextAsync(fullPath, content, Encoding.UTF8, cancellationToken).ConfigureAwait(false);
         }
-
 
         private static async Task<int> VerifyPresentAsync(
             SyncCliConnectionOptions firstOptions,
@@ -235,7 +223,6 @@ namespace Cotton.Sync.Cli
             return passed ? 0 : 1;
         }
 
-
         private static int VerifyRename(
             SyncCliConnectionOptions firstOptions,
             SyncCliConnectionOptions secondOptions,
@@ -252,7 +239,6 @@ namespace Cotton.Sync.Cli
             return passed ? 0 : 1;
         }
 
-
         private static int VerifyAbsent(
             SyncCliConnectionOptions firstOptions,
             SyncCliConnectionOptions secondOptions,
@@ -266,12 +252,10 @@ namespace Cotton.Sync.Cli
             return passed ? 0 : 1;
         }
 
-
         private static string FormatCheck(bool passed, string label)
         {
             return (passed ? "PASS: " : "FAIL: ") + label;
         }
-
 
         internal static string FormatInitialConvergenceLine(
             SyncCliConvergenceResult first,
@@ -290,7 +274,6 @@ namespace Cotton.Sync.Cli
                 + ", clientBPasses=" + second.Passes.ToStringInvariant()
                 + ", clientBConverged=" + FormatYesNo(second.Converged);
         }
-
 
         private static string FullPath(string localRoot, string relativePath)
         {

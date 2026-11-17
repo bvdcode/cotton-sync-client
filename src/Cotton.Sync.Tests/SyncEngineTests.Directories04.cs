@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_PropagatesRemoteEmptyDirectoryMoveAsCreateAndDelete()
         {
@@ -57,7 +56,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Downloaded, SyncActivityKind.DeletedLocal }));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_PreservesBothDirectoryRenamesWhenLocalAndRemoteRenameDiverge()

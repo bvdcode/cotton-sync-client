@@ -283,6 +283,5 @@ namespace Cotton.Sync.App.Tests.Runners
                 Assert.That(remoteChanges.AcknowledgedBatches, Is.EqualTo(new[] { batch }));
             });
         }
-
     }
 }

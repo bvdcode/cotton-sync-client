@@ -124,6 +124,5 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(output.ToString(), Does.Contain("Result: failed"));
             });
         }
-
     }
 }

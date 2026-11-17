@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task TransferProgressChanged_CoalescedCompletionDoesNotLeaveStaleTransfer()
         {
@@ -58,7 +57,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(row.HasCurrentProgress, Is.True);
             });
         }
-
 
         [Test]
         public async Task TransferProgressChanged_CompletionKeepsAnotherFolderTransferVisible()

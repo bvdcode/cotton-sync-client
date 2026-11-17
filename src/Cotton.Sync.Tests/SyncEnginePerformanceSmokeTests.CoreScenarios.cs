@@ -275,6 +275,5 @@ namespace Cotton.Sync.Tests
                     Is.LessThan(managedHeapDeltaTargetBytes));
             });
         }
-
     }
 }

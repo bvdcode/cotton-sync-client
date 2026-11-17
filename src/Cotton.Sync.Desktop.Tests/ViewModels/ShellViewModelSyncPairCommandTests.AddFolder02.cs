@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task MissingDesktopSyncChangesApi_BlocksAddFolderFlowWithoutReplacingTheServerError()
         {
@@ -82,7 +81,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task SelfTestPass_ClearsMissingDesktopSyncChangesApiAddFolderBlock()
         {
@@ -120,7 +118,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task SelfTest_BlocksAddFolderWhenMissingSyncApiFailureIsNotFirst()
         {
@@ -151,7 +148,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.AddSyncPairCommand.CanExecute(null), Is.False);
             });
         }
-
 
         [Test]
         public async Task StatusChanged_MissingDesktopSyncChangesApiBlocksAddFolderFlow()
@@ -186,7 +182,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task CancelAddSyncPairCommand_ClearsLocalFolderOverlapError()
         {
@@ -218,7 +213,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task CreateRemoteFolderCommand_CreatesFolderAndUsesItAsCurrentCloudTarget()
         {
@@ -245,7 +239,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.HasActionRequired, Is.False);
             });
         }
-
 
         [Test]
         public async Task OpenRemoteFolderCommand_NavigatesToSelectedCloudFolder()
@@ -282,7 +275,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.RemoteFolderUpCommand.CanExecute(null), Is.True);
             });
         }
-
 
         [Test]
         public async Task UseRemoteFolderCommand_AddsSyncPairInAddMode()

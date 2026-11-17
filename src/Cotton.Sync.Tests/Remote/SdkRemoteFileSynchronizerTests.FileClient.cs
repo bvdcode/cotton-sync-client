@@ -288,6 +288,5 @@ namespace Cotton.Sync.Tests.Remote
                 };
             }
         }
-
     }
 }

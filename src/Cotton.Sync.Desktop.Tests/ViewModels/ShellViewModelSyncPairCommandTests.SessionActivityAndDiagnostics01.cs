@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task InitializeAsync_UsesRememberedUsernameWhenRestoredAccountNameIsBlank()
         {
@@ -44,7 +43,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task InitializeAsync_UsesSnapshotDeviceName()
         {
@@ -58,7 +56,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             Assert.That(viewModel.DeviceName, Is.EqualTo("Cotton Sync Desktop (QA-WIN11)"));
         }
-
 
         [Test]
         public async Task ActivityReported_AddsRecentActivityRow()
@@ -81,7 +78,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(activity.Details, Is.EqualTo("Uploaded Documents/report.txt"));
             });
         }
-
 
         [Test]
         public async Task ActivityReported_CoalescesHighVolumeTransferBurst()
@@ -113,7 +109,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(activity.Details, Is.EqualTo("Uploaded Documents/file-099.txt"));
             });
         }
-
 
         [Test]
         public async Task ActivityReported_CoalescesHighVolumeTransferBurstBeforeUiQueue()
@@ -155,7 +150,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task ActivityReported_CoalescesHighVolumePlaceholderBurst()
         {
@@ -186,7 +180,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(activity.Details, Is.EqualTo("Made cloud file available Cloud/link-099.txt"));
             });
         }
-
 
         [Test]
         public async Task ActivityReported_CoalescesHighVolumePlaceholderBurstBeforeUiQueue()
@@ -228,7 +221,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task ActivityReported_DoesNotCoalesceDifferentSyncPairTransferRows()
         {
@@ -263,7 +255,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.Activities[1].Path, Is.EqualTo("Documents/report.txt"));
             });
         }
-
 
         [Test]
         public async Task ActivityReported_DoesNotCoalesceDifferentSyncPairTransfersBeforeUiQueue()
@@ -304,7 +295,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.Activities[1].Path, Is.EqualTo("Documents/report.txt"));
             });
         }
-
 
         [Test]
         public async Task InitializeAsync_AddsDataPathsToDiagnostics()

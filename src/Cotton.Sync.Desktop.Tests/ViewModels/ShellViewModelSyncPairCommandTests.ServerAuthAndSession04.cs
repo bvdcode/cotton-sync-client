@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task SessionRevoked_DuringTransferClearsProgressAndReturnsToRecoverableSignIn()
         {
@@ -80,7 +79,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(notificationService.Notifications[0].Title, Is.EqualTo("Session expired"));
             });
         }
-
 
         [Test]
         public async Task FutureSyncModesVisibility_UsesDefaultOnFeatureFlagAndCloudFilesCapability()

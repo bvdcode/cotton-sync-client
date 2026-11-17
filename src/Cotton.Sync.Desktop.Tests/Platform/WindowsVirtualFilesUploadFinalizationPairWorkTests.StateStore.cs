@@ -144,6 +144,5 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 return syncPairId + "|" + SyncPath.ToKey(relativePath);
             }
         }
-
     }
 }

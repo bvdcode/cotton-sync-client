@@ -131,6 +131,5 @@ namespace Cotton.Sync.Tests
             File.WriteAllBytes(fullPath, content);
             File.SetLastWriteTimeUtc(fullPath, new DateTime(2026, 6, 3, 12, 0, 0, DateTimeKind.Utc));
         }
-
     }
 }

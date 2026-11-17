@@ -34,6 +34,11 @@ on:
         required: false
         default: false
         type: boolean
+      linux_load_validation:
+        description: "Include the Linux 2000-file and 1 GiB live load check."
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: desktop-sync-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.package_target || 'push' }}-${{ github.event_name == 'workflow_dispatch' && inputs.publish_release || false }}
@@ -241,6 +246,37 @@ jobs:
             -ServerUrl "$COTTON_SYNC_QA_SERVER" -Modes full-mirror
           dotnet test src/Cotton.Sync.Desktop.Tests/Cotton.Sync.Desktop.Tests.csproj -c Release --no-build --no-restore \
             --filter "FullyQualifiedName~LinuxLiveSessionTests" --logger "trx;LogFileName=linux-live-session.trx"
+          EOF
+
+      - name: Verify Linux changes during active transfers
+        env:
+          COTTON_SYNC_LIVE_STRESS_TEST: "1"
+          COTTON_SYNC_QA_SERVER: ${{ vars.COTTON_SYNC_QA_SERVER }}
+          COTTON_SYNC_QA_USERNAME: ${{ secrets.COTTON_SYNC_QA_USERNAME }}
+          COTTON_SYNC_QA_PASSWORD: ${{ secrets.COTTON_SYNC_QA_PASSWORD }}
+          COTTON_SYNC_STRESS_DIRECTORY: ${{ runner.temp }}/linux-transfer-acceptance
+        run: |
+          dbus-run-session -- bash -euo pipefail <<'EOF'
+          . src/Cotton.Sync.Desktop/Packaging/linux/start-secret-service.sh
+          dotnet test src/Cotton.Sync.Desktop.Tests/Cotton.Sync.Desktop.Tests.csproj -c Release --no-build --no-restore \
+            --filter "FullyQualifiedName~LinuxLiveSyncStressTests.ActiveTransfersRecoverFromMutationsRestartAndNetworkLoss|FullyQualifiedName~LinuxLiveDownloadEditTests" \
+            --logger "trx;LogFileName=linux-active-transfers.trx"
+          EOF
+
+      - name: Verify Linux large file and many-file load
+        if: github.event_name == 'workflow_dispatch' && inputs.linux_load_validation
+        env:
+          COTTON_SYNC_LIVE_STRESS_TEST: "1"
+          COTTON_SYNC_QA_SERVER: ${{ vars.COTTON_SYNC_QA_SERVER }}
+          COTTON_SYNC_QA_USERNAME: ${{ secrets.COTTON_SYNC_QA_USERNAME }}
+          COTTON_SYNC_QA_PASSWORD: ${{ secrets.COTTON_SYNC_QA_PASSWORD }}
+          COTTON_SYNC_STRESS_DIRECTORY: ${{ runner.temp }}/linux-load-acceptance
+        run: |
+          dbus-run-session -- bash -euo pipefail <<'EOF'
+          . src/Cotton.Sync.Desktop/Packaging/linux/start-secret-service.sh
+          dotnet test src/Cotton.Sync.Desktop.Tests/Cotton.Sync.Desktop.Tests.csproj -c Release --no-build --no-restore \
+            --filter "FullyQualifiedName~LinuxLiveSyncStressTests.LargeFileAndManyFilesConverge" \
+            --logger "trx;LogFileName=linux-load.trx"
           EOF
 
       - name: Upload Linux acceptance results

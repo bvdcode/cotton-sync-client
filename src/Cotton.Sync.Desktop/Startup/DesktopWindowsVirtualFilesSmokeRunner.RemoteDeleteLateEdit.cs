@@ -97,15 +97,8 @@ namespace Cotton.Sync.Desktop.Startup
             int initialDownloads = contentProvider.DownloadCount;
             if (hydrateBeforePlanning)
             {
-                string text = await context.ReadAllTextAsync(fullPath, cancellationToken).ConfigureAwait(false);
-                context.CloudFiles.SetInSyncState(context.SyncPair, relativePath);
-                baseline.LocalContentHash = originalHash;
-                baseline.LocalSizeBytes = originalContent.LongLength;
-                baseline.LocalLastWriteUtc = File.GetLastWriteTimeUtc(fullPath);
-                baseline.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
-                failures += await WritePassFailAsync(context.Output,
-                    text == Encoding.UTF8.GetString(originalContent) && contentProvider.DownloadCount == initialDownloads + 1,
-                    "Remote-delete baseline hydrated through the native provider.", " path=" + relativePath).ConfigureAwait(false);
+                failures += await HydrateDeleteBaselineAsync(context, baseline, originalContent,
+                    originalHash, contentProvider, initialDownloads, cancellationToken).ConfigureAwait(false);
             }
 
             await stateStore.UpsertAsync(baseline, cancellationToken).ConfigureAwait(false);
@@ -124,17 +117,8 @@ namespace Cotton.Sync.Desktop.Startup
                 }
 
                 changed = true;
-                if (!hydrateBeforePlanning)
-                {
-                    string hydrated = await context.ReadAllTextAsync(fullPath, token).ConfigureAwait(false);
-                    if (hydrated != Encoding.UTF8.GetString(originalContent))
-                    {
-                        throw new IOException("Late native hydration returned unexpected bytes.");
-                    }
-                }
-
-                await File.WriteAllBytesAsync(fullPath, editedContent, token).ConfigureAwait(false);
-                File.SetLastWriteTimeUtc(fullPath, originalWriteTime);
+                await ApplyLateDeleteEditAsync(context, fullPath, hydrateBeforePlanning,
+                    originalContent, editedContent, originalWriteTime, token).ConfigureAwait(false);
             };
             SyncPair pair = new()
             {
@@ -149,19 +133,9 @@ namespace Cotton.Sync.Desktop.Startup
             SyncStateEntry? storedAfter = await stateStore.GetAsync(pairId, relativePath, cancellationToken).ConfigureAwait(false);
             if (!editAfterPlanning)
             {
-                string[] preserved = Directory.GetFiles(Path.Combine(context.SyncPair.LocalRootPath, ".cotton-sync", "deleted"),
-                    relativePath, SearchOption.AllDirectories);
-                bool retainedPlaceholder = preserved.Length == 1
-                    && HasRecallOnDataAccess(File.GetAttributes(preserved[0]))
-                    && (File.GetAttributes(preserved[0]) & FileAttributes.ReparsePoint) != 0
-                    && new FileInfo(preserved[0]).Length == originalContent.LongLength;
-                failures += await WritePassFailAsync(context.Output,
-                    !File.Exists(fullPath) && storedAfter is null && !result.HasDeferredLocalPaths && !result.RequiresUserAction
-                    && result.Activities.Any(activity => activity.RelativePath == relativePath && activity.Kind == SyncActivityKind.DeletedLocal)
-                    && contentProvider.DownloadCount == downloadsBeforeRun && remoteFiles.Uploads.Count == uploadsBeforeRun
-                    && retainedPlaceholder,
-                    "Untouched online-only remote deletion preserved its placeholder without hydration.",
-                    " downloads=" + (contentProvider.DownloadCount - downloadsBeforeRun) + ", preserved=" + preserved.Length).ConfigureAwait(false);
+                failures += await VerifyUntouchedRemoteDeletionAsync(context, relativePath, originalContent.LongLength,
+                    storedAfter, result, contentProvider.DownloadCount - downloadsBeforeRun,
+                    remoteFiles.Uploads.Count - uploadsBeforeRun).ConfigureAwait(false);
                 return failures;
             }
 
@@ -173,10 +147,7 @@ namespace Cotton.Sync.Desktop.Startup
             }
 
             failures += await WritePassFailAsync(context.Output,
-                changed && actual.SequenceEqual(editedContent) && JsonSerializer.Serialize(storedAfter) == serializedBefore
-                && result.DeferredLocalPaths.Contains(relativePath) && !result.RequiresUserAction
-                && !result.Activities.Any(activity => activity.RelativePath == relativePath && activity.Kind == SyncActivityKind.DeletedLocal)
-                && result.Activities.Any(activity => activity.RelativePath == relativePath && activity.Kind == SyncActivityKind.Skipped)
+                changed && actual.SequenceEqual(editedContent) && IsLocalEditDeferred(result, relativePath, storedAfter, serializedBefore)
                 && remoteFiles.Uploads.Count == uploadsBeforeRun && contentProvider.DownloadCount == expectedDownloads,
                 "Late local edit survived remote deletion with its baseline retained and path deferred.",
                 " path=" + relativePath + ", downloads=" + contentProvider.DownloadCount
@@ -190,21 +161,100 @@ namespace Cotton.Sync.Desktop.Startup
             actual = await File.ReadAllBytesAsync(fullPath, cancellationToken).ConfigureAwait(false);
             string editedHash = Convert.ToHexStringLower(SHA256.HashData(editedContent));
             SyncStateEntry? recovered = await stateStore.GetAsync(pairId, relativePath, cancellationToken).ConfigureAwait(false);
-            bool uploaded = remoteFiles.Uploads.Count == uploadsBeforeRun + 1
-                && remoteFiles.Uploads[^1].RelativePath == relativePath
-                && remoteFiles.Uploads[^1].Returned.ContentHash == editedHash;
+            bool uploaded = IsLateEditUploaded(remoteFiles, uploadsBeforeRun, relativePath, editedHash);
             failures += await WritePassFailAsync(context.Output,
-                uploaded && actual.SequenceEqual(editedContent) && !repeated.HasDeferredLocalPaths
-                && repeated.Activities.Any(activity => activity.RelativePath == relativePath && activity.Kind == SyncActivityKind.Conflict)
-                && recovered?.LocalContentHash == editedHash && recovered.RemoteContentHash == editedHash,
+                uploaded && actual.SequenceEqual(editedContent) && IsLateEditRetryComplete(repeated, relativePath, recovered, editedHash),
                 "Scoped retry recovered the preserved user bytes through the remote-deletion conflict path.",
                 " path=" + relativePath + ", uploads=" + (remoteFiles.Uploads.Count - uploadsBeforeRun)).ConfigureAwait(false);
+            RecordRecoveredFile(remoteTree, remoteFiles, relativePath, uploaded);
+
+            return failures;
+        }
+        private static async Task<int> VerifyUntouchedRemoteDeletionAsync(
+            WindowsVirtualFilesSmokeContext context, string relativePath, long originalLength,
+            SyncStateEntry? storedAfter, SyncRunResult result, int downloadDelta, int uploadDelta)
+        {
+            string fullPath = Path.Combine(context.SyncPair.LocalRootPath, relativePath);
+            string[] preserved = Directory.GetFiles(Path.Combine(context.SyncPair.LocalRootPath, ".cotton-sync", "deleted"),
+                relativePath, SearchOption.AllDirectories);
+            bool retainedPlaceholder = preserved.Length == 1
+                && HasRecallOnDataAccess(File.GetAttributes(preserved[0]))
+                && (File.GetAttributes(preserved[0]) & FileAttributes.ReparsePoint) != 0
+                && new FileInfo(preserved[0]).Length == originalLength;
+            return await WritePassFailAsync(context.Output,
+                !File.Exists(fullPath) && storedAfter is null && !result.HasDeferredLocalPaths && !result.RequiresUserAction
+                && result.Activities.Any(activity => activity.RelativePath == relativePath && activity.Kind == SyncActivityKind.DeletedLocal)
+                && downloadDelta == 0 && uploadDelta == 0
+                && retainedPlaceholder,
+                "Untouched online-only remote deletion preserved its placeholder without hydration.",
+                " downloads=" + downloadDelta + ", preserved=" + preserved.Length).ConfigureAwait(false);
+        }
+
+        private static bool IsLocalEditDeferred(SyncRunResult result, string relativePath, SyncStateEntry? storedAfter, string serializedBefore)
+        {
+            return JsonSerializer.Serialize(storedAfter) == serializedBefore
+                && result.DeferredLocalPaths.Contains(relativePath) && !result.RequiresUserAction
+                && !result.Activities.Any(activity => activity.RelativePath == relativePath && activity.Kind == SyncActivityKind.DeletedLocal)
+                && result.Activities.Any(activity => activity.RelativePath == relativePath && activity.Kind == SyncActivityKind.Skipped);
+        }
+
+        private static bool IsLateEditUploaded(RecordingUploadRemoteFileSynchronizer remoteFiles,
+            int uploadsBeforeRun, string relativePath, string editedHash)
+        {
+            return remoteFiles.Uploads.Count == uploadsBeforeRun + 1
+                && remoteFiles.Uploads[^1].RelativePath == relativePath
+                && remoteFiles.Uploads[^1].Returned.ContentHash == editedHash;
+        }
+
+        private static bool IsLateEditRetryComplete(SyncRunResult repeated, string relativePath,
+            SyncStateEntry? recovered, string editedHash)
+        {
+            return !repeated.HasDeferredLocalPaths
+                && repeated.Activities.Any(activity => activity.RelativePath == relativePath && activity.Kind == SyncActivityKind.Conflict)
+                && recovered?.LocalContentHash == editedHash && recovered.RemoteContentHash == editedHash;
+        }
+
+        private static async Task ApplyLateDeleteEditAsync(WindowsVirtualFilesSmokeContext context,
+            string fullPath, bool hydrateBeforePlanning, byte[] originalContent,
+            byte[] editedContent, DateTime originalWriteTime, CancellationToken token)
+        {
+            if (!hydrateBeforePlanning)
+            {
+                string hydrated = await context.ReadAllTextAsync(fullPath, token).ConfigureAwait(false);
+                if (hydrated != Encoding.UTF8.GetString(originalContent))
+                {
+                    throw new IOException("Late native hydration returned unexpected bytes.");
+                }
+            }
+
+            await File.WriteAllBytesAsync(fullPath, editedContent, token).ConfigureAwait(false);
+            File.SetLastWriteTimeUtc(fullPath, originalWriteTime);
+        }
+
+        private static async Task<int> HydrateDeleteBaselineAsync(WindowsVirtualFilesSmokeContext context,
+            SyncStateEntry baseline, byte[] originalContent, string originalHash,
+            StaticSmokeContentProvider contentProvider, int initialDownloads, CancellationToken cancellationToken)
+        {
+            string relativePath = baseline.RelativePath;
+            string fullPath = Path.Combine(context.SyncPair.LocalRootPath, relativePath);
+            string text = await context.ReadAllTextAsync(fullPath, cancellationToken).ConfigureAwait(false);
+            context.CloudFiles.SetInSyncState(context.SyncPair, relativePath);
+            baseline.LocalContentHash = originalHash;
+            baseline.LocalSizeBytes = originalContent.LongLength;
+            baseline.LocalLastWriteUtc = File.GetLastWriteTimeUtc(fullPath);
+            baseline.PlaceholderHydrationState = SyncPlaceholderHydrationState.Hydrated;
+            return await WritePassFailAsync(context.Output,
+                text == Encoding.UTF8.GetString(originalContent) && contentProvider.DownloadCount == initialDownloads + 1,
+                "Remote-delete baseline hydrated through the native provider.", " path=" + relativePath).ConfigureAwait(false);
+        }
+
+        private static void RecordRecoveredFile(RemoteTreeSnapshot remoteTree,
+            RecordingUploadRemoteFileSynchronizer remoteFiles, string relativePath, bool uploaded)
+        {
             if (uploaded)
             {
                 remoteTree.Files.Add(new RemoteFileSnapshot { RelativePath = relativePath, File = remoteFiles.Uploads[^1].Returned });
             }
-
-            return failures;
         }
     }
 }

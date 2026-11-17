@@ -337,6 +337,5 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 await Task.Delay(10, timeout.Token).ConfigureAwait(false);
             }
         }
-
     }
 }

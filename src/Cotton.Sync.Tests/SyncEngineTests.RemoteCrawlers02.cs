@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         private class LookupOnlyRemoteTreeCrawler : IRemoteTreeLookupCrawler
         {
             private readonly RemoteTreeSnapshot _snapshot;
@@ -73,7 +72,6 @@ namespace Cotton.Sync.Tests
             }
         }
 
-
         private class PathOnlyRemoteTreeCrawler : IRemoteTreeCrawler, IRemotePathLookupCrawler
         {
             private readonly RemoteTreeSnapshot _snapshot;
@@ -123,7 +121,6 @@ namespace Cotton.Sync.Tests
                 return Task.FromResult(snapshot);
             }
         }
-
 
         private class DescendantPathRemoteTreeCrawler : IRemoteTreeCrawler, IRemotePathLookupCrawler
         {

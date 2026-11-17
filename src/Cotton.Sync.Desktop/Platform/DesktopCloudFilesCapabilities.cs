@@ -217,6 +217,5 @@ namespace Cotton.Sync.Desktop.Platform
                     Metadata = new Dictionary<string, string> { ["relativePath"] = SelfTestPlaceholderPath },
                 });
         }
-
     }
 }

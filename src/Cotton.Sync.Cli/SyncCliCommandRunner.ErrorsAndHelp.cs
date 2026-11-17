@@ -11,7 +11,6 @@ namespace Cotton.Sync.Cli
 {
     public static partial class SyncCliCommandRunner
     {
-
         private static bool IsSupportableSyncOnceException(Exception exception)
         {
             return exception is CottonApiException
@@ -22,7 +21,6 @@ namespace Cotton.Sync.Cli
                 or UnauthorizedAccessException
                 or SyncPathValidationException;
         }
-
 
         private static bool IsRetriableSyncOnceException(Exception exception)
         {
@@ -36,12 +34,10 @@ namespace Cotton.Sync.Cli
             };
         }
 
-
         private static bool IsRetriableBrowserSignInException(AppCodeBrowserSignInException exception)
         {
             return string.Equals(exception.Error, "network_unavailable", StringComparison.OrdinalIgnoreCase);
         }
-
 
         private static TimeSpan GetSyncOnceRetryDelay(int completedAttempts)
         {
@@ -57,7 +53,6 @@ namespace Cotton.Sync.Cli
             return TimeSpan.FromMilliseconds(milliseconds);
         }
 
-
         private static string FormatRetryDelay(TimeSpan delay)
         {
             if (delay.TotalMilliseconds < 1000)
@@ -67,7 +62,6 @@ namespace Cotton.Sync.Cli
 
             return delay.TotalSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "s";
         }
-
 
         private static async Task WriteSyncOnceFailureAsync(
             TextWriter error,
@@ -82,7 +76,6 @@ namespace Cotton.Sync.Cli
             await error.WriteLineAsync("Database: " + options.DatabasePath).ConfigureAwait(false);
             await error.WriteLineAsync("Error: " + FormatSyncOnceFailure(exception)).ConfigureAwait(false);
         }
-
 
         private static string FormatSyncOnceFailure(Exception exception)
         {
@@ -110,12 +103,10 @@ namespace Cotton.Sync.Cli
             return CleanSingleLine(exception.Message);
         }
 
-
         private static string FormatRemoteRoot(SyncCliConnectionOptions options)
         {
             return options.RemoteRootNodeId?.ToString("D") ?? options.RemoteRootPath ?? "<not resolved>";
         }
-
 
         private static bool IsTransientStatusCode(HttpStatusCode? statusCode)
         {
@@ -127,7 +118,6 @@ namespace Cotton.Sync.Cli
                 or HttpStatusCode.ServiceUnavailable
                 or HttpStatusCode.GatewayTimeout;
         }
-
 
         private static string CleanSingleLine(string? message)
         {
@@ -143,7 +133,6 @@ namespace Cotton.Sync.Cli
                 .Trim();
         }
 
-
         private static bool IsHelp(string value)
         {
             return string.Equals(value, "--help", StringComparison.OrdinalIgnoreCase)
@@ -151,14 +140,12 @@ namespace Cotton.Sync.Cli
                 || string.Equals(value, "help", StringComparison.OrdinalIgnoreCase);
         }
 
-
         private static bool IsVersion(string value)
         {
             return string.Equals(value, "--version", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(value, "-v", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(value, "version", StringComparison.OrdinalIgnoreCase);
         }
-
 
         private static Task WriteHelpAsync(TextWriter writer)
         {

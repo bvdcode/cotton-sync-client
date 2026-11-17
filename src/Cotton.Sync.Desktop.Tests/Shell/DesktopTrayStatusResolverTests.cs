@@ -249,6 +249,5 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             Assert.Throws<ArgumentOutOfRangeException>(
                 () => DesktopTrayIconAssetResolver.Resolve(DesktopTrayStatusKind.Unknown));
         }
-
     }
 }

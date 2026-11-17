@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         private static async Task ExecuteAsync(AsyncRelayCommand command, object? parameter = null)
         {
             Assert.That(command.CanExecute(parameter), Is.True);
@@ -31,7 +30,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             Assert.That(command.IsRunning, Is.False);
         }
-
 
         private static async Task WaitForAsync(Func<bool> condition, int attempts = 100)
         {
@@ -48,7 +46,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Assert.Fail("Condition was not met before timeout.");
         }
 
-
         private static DesktopShellSnapshot CreateSignedOutSnapshot(bool enableNotifications = true)
         {
             return new DesktopShellSnapshot(
@@ -63,7 +60,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 false,
                 []);
         }
-
 
         private static DesktopShellSnapshot CreateStoredSessionWaitingSnapshot()
         {
@@ -83,13 +79,11 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 HasStoredSession: true);
         }
 
-
         private static DesktopShellSnapshot CreateSignedInSnapshot(
             params DesktopSyncPairSnapshot[] syncPairs)
         {
             return CreateSignedInSnapshotWithNotifications(enableNotifications: true, syncPairs);
         }
-
 
         private static DesktopShellSnapshot CreateSignedInSnapshot(
             DesktopPlatformCapabilitySnapshot platformCapabilities,
@@ -101,7 +95,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 syncPairs);
         }
 
-
         private static DesktopShellSnapshot CreateSignedInSnapshotWithNotifications(
             bool enableNotifications,
             params DesktopSyncPairSnapshot[] syncPairs)
@@ -111,7 +104,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 CreatePlatformCapabilities(),
                 syncPairs);
         }
-
 
         private static DesktopShellSnapshot CreateSignedInSnapshotWithNotificationsAndCapabilities(
             bool enableNotifications,
@@ -131,7 +123,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 syncPairs);
         }
 
-
         private static DesktopPlatformCapabilitySnapshot CreatePlatformCapabilities(
             bool windowsVirtualFilesSupported = false)
         {
@@ -150,7 +141,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     : "Windows virtual files require the Windows Cloud Files API.");
         }
 
-
         private static DesktopDataPathSnapshot CreateTestDataPathSnapshot()
         {
             string dataDirectory = Path.Combine(Path.GetTempPath(), "cotton-sync-test-data");
@@ -160,7 +150,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Path.Combine(dataDirectory, "sync-state.db"),
                 Path.Combine(dataDirectory, "tokens.json"));
         }
-
 
         private static DesktopSyncPairSnapshot CreatePair(
             Guid id,
@@ -182,7 +171,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Mode: mode);
         }
 
-
         private static FakeDesktopShellController CreateTwoFolderSyncingController(Guid documentsPairId, Guid videosPairId)
         {
             return new FakeDesktopShellController(
@@ -190,7 +178,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     CreatePair(documentsPairId, "Documents", "Syncing"),
                     CreatePair(videosPairId, "Videos", "Syncing")));
         }
-
 
         private static void ReportTwoFolderCheckingProgress(
             FakeDesktopShellController controller,

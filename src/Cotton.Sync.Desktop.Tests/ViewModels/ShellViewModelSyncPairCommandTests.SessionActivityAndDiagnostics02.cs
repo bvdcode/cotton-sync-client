@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task InitializeAsync_AddsCloudFilesCapabilityAndSyncRootDiagnostics()
         {
@@ -52,7 +51,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task OpenDataFolderCommand_OpensDiagnosticsDataDirectory()
         {
@@ -74,7 +72,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(activity.Details, Is.EqualTo("Data folder opened"));
             });
         }
-
 
         [Test]
         public async Task ExportDiagnosticsCommand_AddsStatusAndRecentActivity()
@@ -109,7 +106,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Is.EqualTo(Path.GetDirectoryName(controller.ExportDiagnosticsPath)));
         }
 
-
         [Test]
         public async Task ExportDiagnosticsCommand_RunsDuringBackgroundSyncProgress()
         {
@@ -142,7 +138,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.Activities.First().Kind, Is.EqualTo("Diagnostics"));
             });
         }
-
 
         [Test]
         public async Task ExportDiagnosticsCommand_ShowsProgressWithoutBlockingGlobalControls()
@@ -184,7 +179,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task ExportDiagnosticsCommand_DoesNotRestoreResolvedActionRequiredState()
         {
@@ -220,7 +214,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task ExportDiagnosticsCommand_YieldsProgressBeforeStartingExport()
         {
@@ -249,7 +242,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             await WaitForAsync(() => !viewModel.ExportDiagnosticsCommand.IsRunning);
         }
 
-
         [Test]
         public async Task ExportDiagnosticsCommand_ReportsFailureAsActionRequired()
         {
@@ -277,7 +269,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(activity.Details, Is.EqualTo(viewModel.ActionRequiredMessage));
             });
         }
-
 
         [Test]
         public async Task ConflictActivity_AddsConflictRow()

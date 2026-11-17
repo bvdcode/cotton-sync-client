@@ -50,10 +50,5 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Directory.Delete(_tempDirectory, recursive: true);
             }
         }
-
-
-
-
-
     }
 }

@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task StatusChanged_ShowsOfflineAsDistinctGlobalStatus()
         {
@@ -46,7 +45,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(row.LastError, Is.EqualTo("Cannot reach Cotton Cloud"));
             });
         }
-
 
         [Test]
         public async Task StatusChanged_ShowsWaitingForLocalFileWithoutActionRequired()
@@ -79,7 +77,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task StatusChanged_ActionRequiredTakesVisualPriorityOverWaiting()
         {
@@ -104,7 +101,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.HasWaitingStatus, Is.False);
             });
         }
-
 
         [Test]
         public async Task StatusChanged_ClearsOfflineStateAfterConnectionRecovers()
@@ -138,7 +134,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task StatusChanged_UsesHumanDiskFullActionRequiredMessage()
         {
@@ -165,7 +160,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsHydrationProgressStartingState()
         {
@@ -190,7 +184,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsDehydrationProgressStartingState()
         {
@@ -214,7 +207,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(row.HasCurrentProgress, Is.True);
             });
         }
-
 
         [Test]
         public async Task StatusChanged_UsesHumanRemoteMassDeleteGuardActionRequiredMessage()
@@ -251,7 +243,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task StatusChanged_AddsHumanErrorActivityMessage()
         {
@@ -280,7 +271,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(errorActivity.Details, Is.EqualTo(expectedMessage));
             });
         }
-
 
         [Test]
         public async Task StatusChanged_DeduplicatesUnchangedErrorActivityMessage()

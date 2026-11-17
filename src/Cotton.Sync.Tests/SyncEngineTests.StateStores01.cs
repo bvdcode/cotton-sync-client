@@ -18,9 +18,7 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         private record CreateDirectoryCall(Guid ParentNodeId, string Name, NodeDto ReturnedNode);
-
 
         private record UploadCall(
             Guid RootNodeId,
@@ -29,13 +27,11 @@ namespace Cotton.Sync.Tests
             NodeFileManifestDto? ExistingRemoteFile,
             NodeFileManifestDto ReturnedFile);
 
-
         private record MoveCall(
             Guid RootNodeId,
             string RelativePath,
             NodeFileManifestDto ExistingRemoteFile,
             NodeFileManifestDto ReturnedFile);
-
 
         private abstract class DelegatingStateStore : ISyncStateStore
         {
@@ -117,7 +113,6 @@ namespace Cotton.Sync.Tests
             }
         }
 
-
         private class FailingUpsertStateStore : DelegatingStateStore
         {
             public FailingUpsertStateStore(ISyncStateStore inner)
@@ -130,7 +125,6 @@ namespace Cotton.Sync.Tests
                 throw new InvalidOperationException("State write failed.");
             }
         }
-
 
         private class FailingDeleteStateStore : DelegatingStateStore
         {
@@ -149,7 +143,6 @@ namespace Cotton.Sync.Tests
                 throw new InvalidOperationException("State subtree delete failed.");
             }
         }
-
 
         private class StreamingOnlyStateStore : DelegatingStateStore
         {

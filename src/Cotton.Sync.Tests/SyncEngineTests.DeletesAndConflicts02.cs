@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_PreservesBothVersionsWhenNearSimultaneousLocalAndRemoteEditsDiverge()
         {
@@ -60,7 +59,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry.LocalContentHash, Is.Not.EqualTo(entry.RemoteContentHash));
             });
         }
-
 
         [TestCase(MatrixFileState.Missing, MatrixFileState.Missing, 0)]
         [TestCase(MatrixFileState.Missing, MatrixFileState.Baseline, (int)SyncActivityKind.DeletedRemote)]
@@ -112,7 +110,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_PreservesBothVersionsWhenStaleUploadLosesRemoteRace()
         {
@@ -152,7 +149,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_FailsBeforeRaceConflictDownloadWhenRemoteVersionExceedsFreeSpace()
         {
@@ -185,7 +181,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(Directory.GetFiles(_root, "*Cotton conflict*", SearchOption.AllDirectories), Is.Empty);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_RestoresRemoteVersionWhenStaleDeleteLosesRemoteRace()
@@ -221,7 +216,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_DoesNotDuplicateConflictCopiesWhenUnresolvedConflictIsUnchanged()
         {
@@ -245,7 +239,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(File.ReadAllText(Path.Combine(_root, relativePath)), Is.EqualTo("local-new"));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_PreservesUnresolvedConflictWhenRemoteChangesAgain()

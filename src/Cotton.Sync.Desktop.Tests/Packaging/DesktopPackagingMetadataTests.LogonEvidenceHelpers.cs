@@ -116,6 +116,5 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
 
             return evidenceDirectory;
         }
-
     }
 }

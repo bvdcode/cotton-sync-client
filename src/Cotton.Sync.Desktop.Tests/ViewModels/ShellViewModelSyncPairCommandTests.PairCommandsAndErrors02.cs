@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task SaveSelectedSyncPairNameCommand_RejectsEmptyName()
         {
@@ -40,7 +39,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Fix the issue below to continue syncing."));
             });
         }
-
 
         [Test]
         public async Task SyncNowCommand_RetriesActionRequiredSyncAndClearsMessage()
@@ -81,7 +79,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Checked for changes"));
             });
         }
-
 
         [Test]
         public async Task ApproveRemoteMassDeleteCommand_TargetsExactGuardedPlanWithoutRetryLoop()
@@ -131,7 +128,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task StatusChanged_WithMultipleMassDeleteGuardsOffersNoAmbiguousAction()
         {
@@ -166,7 +162,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task Initialize_TreatsSyncPairErrorAsAttentionBeforeErrorMessageIsResolved()
         {
@@ -186,7 +181,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Fix the folder issue to continue syncing."));
             });
         }
-
 
         [Test]
         public async Task SelfTestPass_PreservesCurrentSyncPairErrorActionRequired()
@@ -223,7 +217,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task CommandFailure_UpdatesProgressTextInsteadOfReportingUpToDate()
         {
@@ -251,7 +244,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Fix the issue below to continue syncing."));
             });
         }
-
 
         [Test]
         public async Task CommandTransientServerFailure_ShowsOfflineWithoutActionRequired()

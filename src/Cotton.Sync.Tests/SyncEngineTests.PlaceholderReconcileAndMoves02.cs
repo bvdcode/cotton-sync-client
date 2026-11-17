@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesPreservesMaterializedLocalWhenRemotePlaceholderIsDeleted()
         {
@@ -57,7 +56,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry.PlaceholderIdentity, Is.Null);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesMovesRemoteOnlyPlaceholderWhenRemotePathChanges()
@@ -110,7 +108,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(newEntry.PlaceholderHydrationState, Is.EqualTo(SyncPlaceholderHydrationState.RemoteOnly));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesMovesOnlineOnlyPlaceholderDuringParentRename()
@@ -183,7 +180,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesRenamesOnlineOnlyPlaceholderWithinDirectory()
         {
@@ -235,7 +231,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesRenamesRootLevelOnlineOnlyPlaceholder()
         {
@@ -277,7 +272,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(newState!.RemoteFileId, Is.EqualTo(remoteFileId));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesDoesNotRenameExplicitlyDeletedPlaceholder()

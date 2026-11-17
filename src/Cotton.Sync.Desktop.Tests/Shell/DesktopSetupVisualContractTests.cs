@@ -99,7 +99,6 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             });
         }
 
-
         [Test]
         public void SetupErrorArea_ReservesSpaceWithoutReflowingTheForm()
         {
@@ -239,7 +238,6 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(cloudFolderPicker, Does.Not.Contain("Content=\"Open\""));
             });
         }
-
 
         private static string GetDesktopFilePath(string fileName)
         {

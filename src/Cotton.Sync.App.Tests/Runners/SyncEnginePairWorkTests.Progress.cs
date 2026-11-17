@@ -167,6 +167,5 @@ namespace Cotton.Sync.App.Tests.Runners
                 Assert.That(observer.Values[1].FilesCompleted, Is.EqualTo(391_639));
             });
         }
-
     }
 }

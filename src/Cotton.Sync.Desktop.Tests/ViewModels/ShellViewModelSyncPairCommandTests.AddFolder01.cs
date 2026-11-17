@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task ShowAddSyncPairCommand_LoadsRemoteRootFolders()
         {
@@ -50,7 +49,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(controller.ListRemoteFolderPaths, Is.EqualTo(new[] { "/" }));
             });
         }
-
 
         [Test]
         public async Task ShowAddSyncPairCommand_ShowsCloudFolderLoadingStateWhileRemoteFoldersLoad()
@@ -94,7 +92,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.UseRemoteFolderCommand.CanExecute(null), Is.True);
             });
         }
-
 
         [Test]
         public async Task RemoteFolderFilter_FiltersLoadedCloudFoldersAndKeepsCurrentFolderSelectable()
@@ -148,7 +145,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task ShowAddSyncPairCommand_OpensLocalStepWithoutPromptingForFolder()
         {
@@ -173,7 +169,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(controller.ListRemoteFolderPaths, Is.Empty);
             });
         }
-
 
         [Test]
         public async Task BrowseLocalFolderCommand_StaysOnLocalStepWhenFolderSelectionIsCanceled()
@@ -200,7 +195,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(controller.ListRemoteFolderPaths, Is.Empty);
             });
         }
-
 
         [Test]
         public async Task BrowseLocalFolderCommand_LoadsCloudStepAfterSelection()
@@ -230,7 +224,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(controller.ListRemoteFolderPaths, Is.EqualTo(new[] { "/" }));
             });
         }
-
 
         [TestCase("/home/user/Downloads", "/home/user/Downloads", "This folder is already syncing.")]
         [TestCase("/home/user/Downloads", "/home/user/Downloads/Work", "Sync folders cannot be inside each other.")]
@@ -272,7 +265,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.AddSyncPairCommand.CanExecute(null), Is.False);
             });
         }
-
 
         [Test]
         public async Task BrowseLocalFolderCommand_ClearsOverlapErrorWhenNextSelectionIsValid()

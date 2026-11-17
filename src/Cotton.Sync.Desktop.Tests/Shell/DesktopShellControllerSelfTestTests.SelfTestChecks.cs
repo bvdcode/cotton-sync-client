@@ -344,6 +344,5 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(localRoot.Details, Is.EqualTo("Cotton Sync cannot find the local sync folder. Restore or reconnect the folder, then retry sync."));
             });
         }
-
     }
 }

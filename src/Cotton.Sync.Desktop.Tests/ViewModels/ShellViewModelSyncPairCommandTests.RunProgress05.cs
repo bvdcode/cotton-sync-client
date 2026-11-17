@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task TransferProgressChanged_CompletionRestoresInitialPopulationProgress()
         {
@@ -115,7 +114,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressHeaderRateDetails, Does.Not.Contain("MB/s"));
             });
         }
-
 
         [Test]
         public async Task RunProgressChanged_ShowsFreeingUpSpaceProgress()

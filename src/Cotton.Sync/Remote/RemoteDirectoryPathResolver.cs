@@ -15,13 +15,13 @@ namespace Cotton.Sync.Remote
         private readonly ConcurrentDictionary<string, Guid> _directoryCache =
             new(StringComparer.OrdinalIgnoreCase);
         private readonly ICottonNodeClient _nodes;
-        private readonly RemoteTreePageReader _pages;
+        private readonly RemoteChildDirectoryFinder _directories;
 
         public RemoteDirectoryPathResolver(ICottonNodeClient nodes, int pageSize)
         {
             _nodes = nodes ?? throw new ArgumentNullException(nameof(nodes));
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(pageSize);
-            _pages = new RemoteTreePageReader(nodes, pageSize);
+            _directories = new RemoteChildDirectoryFinder(nodes, pageSize);
         }
 
         public async Task<Guid> EnsureParentAsync(
@@ -122,41 +122,9 @@ namespace Cotton.Sync.Remote
             return cachedNode.Id;
         }
 
-        private async Task<NodeDto?> FindChildAsync(
-            Guid parentNodeId,
-            string name,
-            CancellationToken cancellationToken)
+        private Task<NodeDto?> FindChildAsync(Guid parentNodeId, string name, CancellationToken cancellationToken)
         {
-            string nameKey = RemoteNameKey.Create(name);
-            int page = 1;
-            int loaded = 0;
-            int? expectedTotalCount = null;
-            while (true)
-            {
-                RemoteTreePageReadResult pageResult = await _pages.ReadAsync(
-                    parentNodeId,
-                    page,
-                    loaded,
-                    expectedTotalCount,
-                    cancellationToken).ConfigureAwait(false);
-                NodeContentDto content = pageResult.Children;
-                NodeDto? match = content.Nodes.FirstOrDefault(node =>
-                    string.Equals(RemoteNameKey.Create(node.Name), nameKey, StringComparison.Ordinal));
-                if (match is not null)
-                {
-                    return match;
-                }
-
-                int count = content.Nodes.Count + content.Files.Count;
-                loaded += count;
-                if (loaded == pageResult.TotalCount)
-                {
-                    return null;
-                }
-
-                expectedTotalCount = pageResult.TotalCount;
-                page++;
-            }
+            return _directories.FindAsync(parentNodeId, name, cancellationToken);
         }
     }
 }

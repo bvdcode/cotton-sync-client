@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_WritesStructuredStartAndCompletionLogs()
         {
@@ -40,7 +39,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_LoadsBaselineThroughStreamingStateApi()
         {
@@ -56,7 +54,6 @@ namespace Cotton.Sync.Tests
             Assert.That(stateStore.LoadPairEntriesCallCount, Is.EqualTo(1));
         }
 
-
         [SetUp]
         public void SetUp()
         {
@@ -64,7 +61,6 @@ namespace Cotton.Sync.Tests
             Directory.CreateDirectory(_root);
             _databasePath = Path.Combine(_root, ".cotton-sync", "state.sqlite");
         }
-
 
         [TearDown]
         public void TearDown()
@@ -74,7 +70,6 @@ namespace Cotton.Sync.Tests
                 Directory.Delete(_root, recursive: true);
             }
         }
-
 
         [Test]
         public async Task RunOnceAsync_UploadsLocalOnlyFileAndStoresBaseline()
@@ -103,7 +98,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry.RemoteFileId, Is.EqualTo(remoteFiles.Uploads[0].ReturnedFile.Id));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesUploadsLocalOnlyFileAndStoresBaseline()
@@ -136,7 +130,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_UploadsLocalOnlyMetadataSnapshotAfterLazyHashing()
         {
@@ -166,7 +159,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesReportsMatchingMaterializedFileForFinalization()
         {
@@ -193,7 +185,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry.RemoteContentHash, Is.EqualTo(remote.ContentHash));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_ReusesMatchingRemoteFileAfterCreateConflictWithoutFullRecoveryCrawl()
@@ -227,7 +218,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_UsesMetadataLookupScannerWhenAvailable()
         {
@@ -258,7 +248,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_UsesRemoteLookupCrawlerWhenAvailable()
         {
@@ -276,7 +265,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(crawler.SnapshotCrawlCalls, Is.Zero);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithLocalChangedPathUsesScopedScanners()
@@ -303,7 +291,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(crawler.FullCrawlCalls, Is.Zero);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithNestedLocalChangedFileDoesNotScanSiblingFiles()
