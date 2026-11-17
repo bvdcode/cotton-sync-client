@@ -36,4 +36,6 @@ Eight active-transfer cases cover overwrite, deletion, file rename and parent-di
 
 Two receiving-side cases edit a file during download using an in-place write or atomic replacement, retaining its size and modification time. Both byte versions are preserved; after resolving the conflicting names, both clients converge to exact content. Conflicting edits require resolution rather than silently replacing either version.
 
+Download recovery checks cover a remote version changing between chunks, a socket reset after a partial response, and an interrupted synchronization started by a server event. A changed remote version preserves the previous local file and baseline until a fresh download completes. Temporary failures retry automatically for the affected folder; successful folders and permission failures are not repeatedly retried.
+
 The release gate runs active-transfer and receiving-side edit cases. The 2000-file/1-GiB load case is available as the manual `linux_load_validation` workflow input. Full desktop validation uses a virtual GPU and does not establish compatibility with every physical GPU or Linux distribution.
