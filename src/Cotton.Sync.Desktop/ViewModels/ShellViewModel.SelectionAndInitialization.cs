@@ -63,6 +63,8 @@ namespace Cotton.Sync.Desktop.ViewModels
                 if (SetProperty(ref _selectedRemoteFolder, value))
                 {
                     OpenRemoteFolderCommand.RaiseCanExecuteChanged();
+                    OnPropertyChanged(nameof(RemoteFolderWizardPrimaryActionText));
+                    OnPropertyChanged(nameof(RemoteFolderWizardPrimaryActionToolTip));
                 }
             }
         }

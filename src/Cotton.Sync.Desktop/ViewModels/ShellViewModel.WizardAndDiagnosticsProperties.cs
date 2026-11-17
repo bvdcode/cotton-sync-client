@@ -87,13 +87,33 @@ namespace Cotton.Sync.Desktop.ViewModels
             ? "Pick where this computer folder should sync in Cotton Cloud."
             : "Start with the folder on this computer.";
 
-        public string RemoteFolderWizardPrimaryActionText => IsRemoteFolderLoading
-            ? RemoteFolderLoadingMessage
-            : "Use this folder";
+        public string RemoteFolderWizardPrimaryActionText
+        {
+            get
+            {
+                if (IsRemoteFolderLoading)
+                {
+                    return RemoteFolderLoadingMessage;
+                }
 
-        public string RemoteFolderWizardPrimaryActionToolTip => IsRemoteFolderLoading
-            ? "Loading cloud folders"
-            : "Start syncing with the current cloud folder";
+                return SelectedRemoteFolder is null ? "Use this folder" : "Use selected folder";
+            }
+        }
+
+        public string RemoteFolderWizardPrimaryActionToolTip
+        {
+            get
+            {
+                if (IsRemoteFolderLoading)
+                {
+                    return "Loading cloud folders";
+                }
+
+                return SelectedRemoteFolder is null
+                    ? "Start syncing with the current cloud folder"
+                    : "Start syncing with the selected cloud folder";
+            }
+        }
 
         public bool IsFutureSyncModesVisible => _featureFlags.ShowFutureSyncModes && IsWindowsVirtualFilesSupported;
 
