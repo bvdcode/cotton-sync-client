@@ -29,7 +29,7 @@ namespace Cotton.Sync.Desktop.Tests.Startup
         [Test]
         public async Task ReadAsync_ReturnsExactHashesAndPerFileErrorsInOneBatch()
         {
-            string contentPath = Path.Combine(_tempDirectory, "content with spaces.bin");
+            string contentPath = Path.Combine(_tempDirectory, "café Проверка 📁 with spaces.bin");
             string emptyPath = Path.Combine(_tempDirectory, "empty.bin");
             string missingPath = Path.Combine(_tempDirectory, "missing.bin");
             byte[] content = [0, 1, 2, 127, 128, 255];
