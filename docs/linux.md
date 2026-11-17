@@ -12,6 +12,8 @@ The Linux x64 client synchronizes full local copies with Cotton Cloud. Windows C
 | Debian updates | The installed `/opt/cotton-sync` package checks for releases and downloads the Debian update, verifies its size and SHA-256, then installs on request through PackageKit. Polkit requests administrator authorization. The client restarts after successful installation. |
 | Archive updates | Release checks are available; replace the extracted archive manually. |
 
+Linux versions through 0.1.133 cannot install updates from the application. Install the current Debian package once to enable package updates from the client.
+
 ## Validation
 
 Linux CI runs the solution tests with an unlocked Secret Service, real-server full-mirror acceptance, session rotation and restart checks, KDE Plasma/X11 tray lifecycle checks, GUI screenshots, package installation/removal and package update discovery, download, installation and restart.

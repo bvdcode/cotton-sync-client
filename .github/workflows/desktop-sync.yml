@@ -184,7 +184,7 @@ jobs:
       - name: Install desktop Linux smoke dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends dbus-x11 ffmpeg gnome-keyring libnotify-bin libsecret-tools packagekit pkexec plasma-workspace plasma-desktop kwin-x11 xdotool python3-gi x11-apps x11-utils xauth xvfb
+          sudo apt-get install -y --no-install-recommends dbus-x11 ffmpeg gnome-keyring libnotify-bin libsecret-tools packagekit plasma-workspace plasma-desktop kwin-x11 xdotool python3-gi x11-apps x11-utils xauth xvfb
           command -v dbus-run-session
           command -v ffmpeg
           command -v gnome-keyring-daemon
@@ -244,7 +244,7 @@ jobs:
           xvfb-run -a -s "-screen 0 1280x800x24" \
             dbus-run-session -- bash src/Cotton.Sync.Desktop/Packaging/linux/smoke-kde-tray.sh \
             src/Cotton.Sync.Desktop/bin/Release/net10.0/publish/linux-x64/Cotton.Sync.Desktop \
-            "$RUNNER_TEMP/linux-kde-tray"
+            "$RUNNER_TEMP/linux-kde-tray" 6
 
       - name: Upload Linux acceptance results
         if: always()

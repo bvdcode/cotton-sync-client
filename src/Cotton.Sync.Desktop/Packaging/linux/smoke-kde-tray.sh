@@ -4,11 +4,17 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 app="$(realpath "$1")"
 evidence="$(realpath -m "$2")"
+kde_version="$3"
+case "$kde_version" in
+  5|6) ;;
+  *) echo "Supported KDE versions: 5, 6" >&2; exit 2 ;;
+esac
+kded_service="org.kde.kded$kde_version"
 mkdir -p "$evidence/profile"
 export HOME="$evidence/profile"
 export XDG_CONFIG_HOME="$HOME/.config" XDG_CACHE_HOME="$HOME/.cache" XDG_DATA_HOME="$HOME/.local/share"
 export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_TYPE=x11 QT_QUICK_BACKEND=software KWIN_COMPOSE=N
-export XDG_CONFIG_DIRS=/etc/xdg XDG_MENU_PREFIX=plasma- KDE_SESSION_VERSION=5
+export XDG_CONFIG_DIRS=/etc/xdg XDG_MENU_PREFIX=plasma- KDE_SESSION_VERSION="$kde_version"
 export XDG_RUNTIME_DIR="$(mktemp -d)"
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
@@ -33,11 +39,11 @@ pids+=("$app_pid")
 export COTTON_TRAY_TEST_PID="$app_pid"
 timeout 30s xdotool search --sync --onlyvisible --pid "$app_pid" --name 'Cotton Sync' >/dev/null
 echo 'PASS: Window remains reachable before KDE tray host starts'
-kded5 > "$evidence/kded.log" 2>&1 &
+"kded$kde_version" > "$evidence/kded.log" 2>&1 &
 pids+=("$!")
 for attempt in $(seq 1 30); do
-  if timeout 3s gdbus call --session --dest org.kde.kded5 --object-path /kded \
-    --method org.kde.kded5.loadModule statusnotifierwatcher >/dev/null 2>&1; then break; fi
+  if timeout 3s gdbus call --session --dest "$kded_service" --object-path /kded \
+    --method "$kded_service.loadModule" statusnotifierwatcher >/dev/null 2>&1; then break; fi
   sleep 0.2
 done
 mkdir -p "$XDG_CONFIG_HOME"
@@ -138,12 +144,12 @@ kill -0 "$app_pid"
 if xdotool search --onlyvisible --pid "$app_pid" --name 'Cotton Sync' >/dev/null 2>&1; then
   echo 'Window did not hide to tray' >&2; exit 1
 fi
-timeout 3s gdbus call --session --dest org.kde.kded5 --object-path /kded \
-  --method org.kde.kded5.unloadModule statusnotifierwatcher >/dev/null
+timeout 3s gdbus call --session --dest "$kded_service" --object-path /kded \
+  --method "$kded_service.unloadModule" statusnotifierwatcher >/dev/null
 timeout 30s xdotool search --sync --onlyvisible --pid "$app_pid" --name 'Cotton Sync' >/dev/null
 echo 'PASS: Hidden window reopens when KDE tray host disappears'
-timeout 3s gdbus call --session --dest org.kde.kded5 --object-path /kded \
-  --method org.kde.kded5.loadModule statusnotifierwatcher >/dev/null
+timeout 3s gdbus call --session --dest "$kded_service" --object-path /kded \
+  --method "$kded_service.loadModule" statusnotifierwatcher >/dev/null
 for attempt in $(seq 1 30); do
   if timeout 3s gdbus call --session --dest org.kde.StatusNotifierWatcher --object-path /StatusNotifierWatcher \
     --method org.freedesktop.DBus.Properties.Get org.kde.StatusNotifierWatcher IsStatusNotifierHostRegistered \
