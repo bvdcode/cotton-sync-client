@@ -9,7 +9,23 @@ namespace Cotton.Sync.Desktop.Platform
     {
         public static bool IsAutostartSupported => OperatingSystem.IsWindows() || OperatingSystem.IsLinux();
 
-        public static bool IsTrayLifecycleSupported => OperatingSystem.IsWindows();
+        private static bool _linuxTrayHostAvailable;
+
+        public static bool IsTrayLifecycleSupported => OperatingSystem.IsWindows()
+            || (OperatingSystem.IsLinux() && _linuxTrayHostAvailable);
+
+        internal static void SetLinuxTrayHostAvailability(bool available)
+        {
+            _linuxTrayHostAvailable = available;
+        }
+
+        public static async Task InitializeAsync()
+        {
+            if (OperatingSystem.IsLinux())
+            {
+                _linuxTrayHostAvailable = await LinuxTrayHostProbe.IsAvailableAsync().ConfigureAwait(false);
+            }
+        }
 
         public static DesktopPlatformCapabilitySnapshot CreateSnapshot()
         {
@@ -54,7 +70,9 @@ namespace Cotton.Sync.Desktop.Platform
 
             if (OperatingSystem.IsLinux())
             {
-                return "Tray availability varies by Linux desktop environment, so Cotton Sync opens as a normal window on this system.";
+                return _linuxTrayHostAvailable
+                    ? "Supported through the desktop StatusNotifier host."
+                    : "No StatusNotifier host is available in this desktop session; the application stays in a normal window.";
             }
 
             return "Tray lifecycle is not supported on this platform yet.";

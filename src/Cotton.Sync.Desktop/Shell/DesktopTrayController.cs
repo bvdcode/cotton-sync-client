@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.ComponentModel;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform;
@@ -13,6 +14,7 @@ namespace Cotton.Sync.Desktop.Shell
 {
     internal class DesktopTrayController : IDisposable
     {
+        private readonly Application _application;
         private readonly IClassicDesktopStyleApplicationLifetime _lifetime;
         private readonly MainWindow _window;
         private readonly TrayIcon _trayIcon;
@@ -27,12 +29,14 @@ namespace Cotton.Sync.Desktop.Shell
         private ShellViewModel? _viewModel;
         private bool _disposed;
 
-        public DesktopTrayController(MainWindow window, IClassicDesktopStyleApplicationLifetime lifetime)
+        public DesktopTrayController(Application application, MainWindow window, IClassicDesktopStyleApplicationLifetime lifetime)
         {
+            _application = application ?? throw new ArgumentNullException(nameof(application));
             _window = window ?? throw new ArgumentNullException(nameof(window));
             _lifetime = lifetime ?? throw new ArgumentNullException(nameof(lifetime));
             _trayIcon = CreateTrayIcon();
             AttachViewModel(_window.DataContext as ShellViewModel);
+            TrayIcon.SetIcons(_application, new TrayIcons { _trayIcon });
         }
 
         public static bool IsSupportedPlatform => DesktopPlatformCapabilities.IsTrayLifecycleSupported;
@@ -46,6 +50,7 @@ namespace Cotton.Sync.Desktop.Shell
 
             _disposed = true;
             AttachViewModel(null);
+            TrayIcon.SetIcons(_application, null);
             _trayIcon.Dispose();
         }
 

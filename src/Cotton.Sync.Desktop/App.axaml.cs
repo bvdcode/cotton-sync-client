@@ -21,6 +21,7 @@ namespace Cotton.Sync.Desktop
     {
         private DesktopSingleInstanceActivationServer? _singleInstanceActivationServer;
         private DesktopTrayController? _trayController;
+        private CancellationTokenSource? _trayMonitorCancellation;
 
         internal static DesktopStartupOptions StartupOptions { get; set; } = DesktopStartupOptions.Empty;
 
@@ -75,9 +76,25 @@ namespace Cotton.Sync.Desktop
                     }
                 }
 
-                if (useTrayLifecycle)
+                if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
                 {
-                    _trayController = new DesktopTrayController(window, desktop);
+                    _trayController = new DesktopTrayController(this, window, desktop);
+                }
+
+                if (OperatingSystem.IsLinux())
+                {
+                    _trayMonitorCancellation = new CancellationTokenSource();
+                    _ = LinuxTrayHostMonitor.RunAsync(available => Dispatcher.UIThread.Post(() =>
+                    {
+                        if (_trayMonitorCancellation.IsCancellationRequested)
+                        {
+                            return;
+                        }
+
+                        DesktopPlatformCapabilities.SetLinuxTrayHostAvailability(available);
+                        desktop.ShutdownMode = available ? ShutdownMode.OnExplicitShutdown : ShutdownMode.OnLastWindowClose;
+                        window.SetTrayLifecycleAvailable(available);
+                    }), _trayMonitorCancellation.Token);
                 }
 
                 _singleInstanceActivationServer = DesktopSingleInstanceActivation.StartServer(
@@ -85,6 +102,7 @@ namespace Cotton.Sync.Desktop
                     () => Dispatcher.UIThread.Post(window.ShowShell));
                 desktop.Exit += (_, _) =>
                 {
+                    _trayMonitorCancellation?.Cancel();
                     _trayController?.Dispose();
                     _singleInstanceActivationServer?.Dispose();
                 };

@@ -96,6 +96,15 @@ namespace Cotton.Sync.Desktop
             _lifecyclePolicy.RequestQuit();
         }
 
+        internal void SetTrayLifecycleAvailable(bool available)
+        {
+            _lifecyclePolicy.SetTrayAvailability(available);
+            if (!available && !IsVisible)
+            {
+                ShowShell();
+            }
+        }
+
         internal void ShowShell()
         {
             _lifecyclePolicy.RequestShow();
