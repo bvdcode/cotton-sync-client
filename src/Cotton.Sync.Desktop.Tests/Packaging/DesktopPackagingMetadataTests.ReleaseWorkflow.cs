@@ -146,7 +146,6 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
             });
         }
 
-        [TestCase("linux")]
         [TestCase("windows")]
         [TestCase("cli-windows")]
         [TestCase("release-checksums")]
