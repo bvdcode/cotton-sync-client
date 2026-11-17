@@ -55,8 +55,15 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             public int ClearAsyncCalls { get; private set; }
 
+            public Queue<Exception> ReadExceptions { get; } = new();
+
             public Task<TokenPairDto?> GetAsync(CancellationToken cancellationToken = default)
             {
+                if (ReadExceptions.TryDequeue(out Exception? exception))
+                {
+                    return Task.FromException<TokenPairDto?>(exception);
+                }
+
                 return Task.FromResult(_tokens is null ? null : Clone(_tokens));
             }
 

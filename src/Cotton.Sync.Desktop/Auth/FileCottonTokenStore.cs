@@ -52,6 +52,11 @@ namespace Cotton.Sync.Desktop.Auth
                     TokenPairDto? tokens = await ReadTokensAsync(envelope, cancellationToken).ConfigureAwait(false);
                     return tokens is not null && IsUsable(tokens) ? Clone(tokens) : null;
                 }
+                catch (Exception exception) when (exception is CryptographicException or PlatformNotSupportedException)
+                {
+                    Trace.TraceWarning("Could not read protected Cotton session payload: {0}", exception);
+                    throw;
+                }
                 catch (Exception exception) when (IsUnreadableTokenFileException(exception))
                 {
                     Trace.TraceWarning("Stored Cotton token file is unreadable and will be ignored: {0}", exception);
@@ -133,10 +138,7 @@ namespace Cotton.Sync.Desktop.Auth
 
         private static bool IsUnreadableTokenFileException(Exception exception)
         {
-            return exception is JsonException
-                or FormatException
-                or CryptographicException
-                or PlatformNotSupportedException;
+            return exception is JsonException or FormatException;
         }
 
         private async Task<StoredTokenEnvelope> CreateEnvelopeAsync(

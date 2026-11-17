@@ -132,7 +132,7 @@ namespace Cotton.Sync.Desktop.Tests.Auth
         }
 
         [Test]
-        public async Task GetAsync_ReturnsNullForUnreadableProtectedPayload()
+        public async Task GetAsync_PropagatesProtectionFailureWithoutLosingStoredSession()
         {
             string directory = CreateTempDirectory();
             try
@@ -145,12 +145,14 @@ namespace Cotton.Sync.Desktop.Tests.Auth
                         RefreshToken = "refresh-token",
                     });
 
-                TokenPairDto? loaded = await new FileCottonTokenStore(
-                        path,
-                        new ThrowingTokenPayloadProtector("broken-scheme"))
-                    .GetAsync();
+                FileCottonTokenStore unavailable = new(path, new ThrowingTokenPayloadProtector("broken-scheme"));
+                string originalEnvelope = await File.ReadAllTextAsync(path);
 
-                Assert.That(loaded, Is.Null);
+                Assert.ThrowsAsync<CryptographicException>(async () => await unavailable.GetAsync());
+                Assert.That(await File.ReadAllTextAsync(path), Is.EqualTo(originalEnvelope));
+                TokenPairDto? restored = await new FileCottonTokenStore(
+                    path, new ReversingTokenPayloadProtector("broken-scheme")).GetAsync();
+                Assert.That(restored?.RefreshToken, Is.EqualTo("refresh-token"));
             }
             finally
             {

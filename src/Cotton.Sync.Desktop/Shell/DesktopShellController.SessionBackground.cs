@@ -116,7 +116,7 @@ namespace Cotton.Sync.Desktop.Shell
             throw new InvalidOperationException(CreateTokenStorageUnavailableMessage(tokenStorage));
         }
 
-        private async Task<bool> CanUseStoredSessionAsync(CancellationToken cancellationToken)
+        private async Task<string?> GetStoredSessionStorageErrorAsync(CancellationToken cancellationToken)
         {
             DesktopTokenStorageCapabilitySnapshot tokenStorage;
             using CancellationTokenSource verificationCancellation =
@@ -134,19 +134,20 @@ namespace Cotton.Sync.Desktop.Shell
                     "Skipping desktop session restore because token storage verification timed out after {0} seconds.",
                     _tokenStorageVerificationTimeout.TotalSeconds);
                 DesktopAuthDiagnosticsState.RecordSessionRestoreSkipped("skippedTokenStorageVerificationTimeout");
-                return false;
+                return "Saved session storage is not ready. If prompted, unlock your desktop keyring. "
+                    + "Cotton Sync will retry automatically.";
             }
 
             if (tokenStorage.IsReleaseSecure)
             {
-                return true;
+                return null;
             }
 
             Trace.TraceWarning(
                 "Skipping desktop session restore because token storage is not release secure: {0}",
                 tokenStorage.Details);
             DesktopAuthDiagnosticsState.RecordSessionRestoreSkipped("skippedTokenStorageUnavailable");
-            return false;
+            return CreateTokenStorageUnavailableMessage(tokenStorage);
         }
 
         private static string CreateTokenStorageUnavailableMessage(DesktopTokenStorageCapabilitySnapshot tokenStorage)
