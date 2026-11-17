@@ -25,6 +25,15 @@ cleanup() {
 trap cleanup EXIT
 old_version="$($app --version)"
 test "$old_version" != "$expected_version"
+printf 'invalid Debian package\n' > "$evidence/invalid.deb"
+if timeout 30s "$app" --update-install-smoke --data-dir "$evidence/rejected-state" \
+  --update-installer-path "$evidence/invalid.deb" > "$evidence/rejected-install.log" 2>&1; then
+  echo 'Invalid package installation unexpectedly succeeded.' >&2
+  exit 1
+fi
+grep -q 'Result: failed' "$evidence/rejected-install.log"
+test "$($app --version)" = "$old_version"
+test "$(dpkg-query -W -f='${Version}' cotton-sync-desktop)" = "$old_version"
 ln -s "$package" "$evidence/fixture/CottonSync-Linux.deb"
 python3 - "$evidence" "$expected_version" <<'PY' > "$evidence/server.log" 2>&1 &
 import functools
@@ -101,5 +110,5 @@ test "$(cat "$state/profile-marker.txt")" = preserve-update-profile
 test -f "$XDG_CONFIG_HOME/autostart/cotton-sync.desktop"
 test ! -e "$state/updates/pending-update.json"
 "$script_dir/verify-checksums.sh" /opt/cotton-sync > "$evidence/checksums.log"
-printf 'PASS: %s -> %s; discovery, verified download, authorized package install, restart and profile preservation\n' \
+printf 'PASS: %s -> %s; invalid package rejection, discovery, verified download, authorized package install, restart and profile preservation\n' \
   "$old_version" "$expected_version"
