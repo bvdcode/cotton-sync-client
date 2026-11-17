@@ -274,7 +274,7 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                 Assert.That(packageScript, Does.Contain("Exec=/opt/cotton-sync/Cotton.Sync.Desktop"));
                 Assert.That(packageScript, Does.Contain("chmod 755 \"$package_root/DEBIAN/postrm\""));
                 Assert.That(packageScript, Does.Contain("Architecture: amd64"));
-                Assert.That(packageScript, Does.Contain("Depends: libnotify-bin, libsecret-tools"));
+                Assert.That(packageScript, Does.Contain("Depends: gnome-keyring | kwallet6, libnotify-bin, libsecret-tools, packagekit"));
                 Assert.That(packageScript, Does.Contain("dpkg-deb --root-owner-group --build"));
             });
         }
