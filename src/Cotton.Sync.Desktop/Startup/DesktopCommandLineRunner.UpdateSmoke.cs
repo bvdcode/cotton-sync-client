@@ -110,10 +110,25 @@ namespace Cotton.Sync.Desktop.Startup
                 DesktopAppVersion.Current,
                 paths.UpdateCacheDirectory,
                 startupOptions.UpdateManifestUri,
-                DesktopUpdatePlatform.WindowsX64,
+                ResolveUpdateSmokePlatform(),
                 DesktopUpdateSourceTrustPolicy.CreateForSmokeManifest(startupOptions.UpdateManifestUri!),
                 disposeHttpClient: true);
             return (service, service);
+        }
+
+        private static DesktopUpdatePlatform ResolveUpdateSmokePlatform()
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                return DesktopUpdatePlatform.WindowsX64;
+            }
+
+            if (OperatingSystem.IsLinux())
+            {
+                return DesktopUpdatePlatform.LinuxDebX64;
+            }
+
+            return DesktopUpdatePlatform.Unsupported;
         }
 
         private static async Task<int> RunUpdateDiscoveryWorkflowAsync(
@@ -358,11 +373,9 @@ namespace Cotton.Sync.Desktop.Startup
                 });
         }
 
-        private static DesktopUpdateInstaller CreateUpdateInstallSmokeInstaller(string dataDirectory)
+        private static IDesktopUpdateInstaller CreateUpdateInstallSmokeInstaller(string dataDirectory)
         {
-            return new DesktopUpdateInstaller(
-                new DesktopUpdateInstallerProcessLauncher(TimeSpan.FromSeconds(2)),
-                dataDirectory);
+            return DesktopUpdateInstallerFactory.Create(dataDirectory);
         }
 
         private static string? ValidateUpdateDiscoverySmokeOptions(DesktopStartupOptions startupOptions)

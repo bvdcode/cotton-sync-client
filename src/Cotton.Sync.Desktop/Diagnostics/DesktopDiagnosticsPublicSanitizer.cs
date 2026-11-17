@@ -40,7 +40,13 @@ namespace Cotton.Sync.Desktop.Diagnostics
                     .Select(item => SanitizeSelfTestItem(item, replacements))
                     .ToArray(),
                 Auth = SanitizeAuth(bundle.Auth, replacements),
-                Update = SanitizeUpdate(bundle.Update, replacements),
+                Update = bundle.Update with
+                {
+                    FailureMessage = bundle.Update.FailureMessage is { } checkFailure
+                        ? SanitizeText(checkFailure, paths, bundle) : null,
+                    LastInstallFailureMessage = bundle.Update.LastInstallFailureMessage is { } installFailure
+                        ? SanitizeText(installFailure, paths, bundle) : null,
+                },
                 CloudFilesRegistration = SanitizeCloudFilesRegistration(bundle.CloudFilesRegistration, replacements),
                 CloudFilesEvents = bundle.CloudFilesEvents
                     .Select(item => SanitizeCloudFilesEvent(item, replacements))
@@ -150,27 +156,6 @@ namespace Cotton.Sync.Desktop.Diagnostics
             }
 
             return item with { Details = DesktopSecretRedactor.Redact(details) };
-        }
-
-        private static DesktopUpdateDiagnosticsSnapshot SanitizeUpdate(
-            DesktopUpdateDiagnosticsSnapshot update,
-            IReadOnlyList<KnownValueReplacement> replacements)
-        {
-            string? failureMessage = update.FailureMessage;
-            if (!string.IsNullOrWhiteSpace(failureMessage))
-            {
-                foreach (KnownValueReplacement replacement in replacements)
-                {
-                    failureMessage = failureMessage.Replace(
-                        replacement.Value,
-                        replacement.Placeholder,
-                        StringComparison.OrdinalIgnoreCase);
-                }
-
-                failureMessage = DesktopSecretRedactor.Redact(failureMessage);
-            }
-
-            return update with { FailureMessage = failureMessage };
         }
 
         private static DesktopAuthDiagnosticsSnapshot SanitizeAuth(

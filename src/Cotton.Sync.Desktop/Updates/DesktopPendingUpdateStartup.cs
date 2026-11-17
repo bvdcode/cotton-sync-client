@@ -33,6 +33,11 @@ namespace Cotton.Sync.Desktop.Updates
                     return false;
                 }
 
+                if (OperatingSystem.IsLinux() && installer is null)
+                {
+                    return false;
+                }
+
                 if (update.AttemptCount >= MaxStartupAttempts)
                 {
                     store.Delete();
@@ -47,9 +52,9 @@ namespace Cotton.Sync.Desktop.Updates
                 }
 
                 store.Save(update with { AttemptCount = update.AttemptCount + 1 });
-                (installer ?? new DesktopUpdateInstaller(paths.DataDirectory)).StartSilentInstall(
+                (installer ?? new DesktopUpdateInstaller(paths.DataDirectory)).StartInstallAsync(
                     update.InstallerPath,
-                    launchAfterUpdate: true);
+                    launchAfterUpdate: true).GetAwaiter().GetResult();
                 return true;
             }
             catch (Exception exception) when (exception is not OperationCanceledException)

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Globalization;
@@ -15,6 +15,7 @@ namespace Cotton.Sync.Desktop.Updates
             "https://github.com/bvdcode/cotton-sync-client/releases/latest/download/release-manifest.json");
 
         private const string WindowsInstallerAssetName = "CottonSync-Windows-Setup.exe";
+        private const string LinuxInstallerAssetName = "CottonSync-Linux.deb";
         private const int DownloadBufferSize = 128 * 1024;
 
         private readonly HttpClient _httpClient;
@@ -277,7 +278,10 @@ namespace Cotton.Sync.Desktop.Updates
             {
                 DesktopUpdatePlatform.WindowsX64 => manifest.Assets.FirstOrDefault(static asset =>
                     string.Equals(asset.Name, WindowsInstallerAssetName, StringComparison.OrdinalIgnoreCase)),
-                _ => null,
+                DesktopUpdatePlatform.LinuxDebX64 => manifest.Assets.FirstOrDefault(static asset =>
+                    string.Equals(asset.Name, LinuxInstallerAssetName, StringComparison.Ordinal)),
+                DesktopUpdatePlatform.Unsupported => null,
+                _ => throw new ArgumentOutOfRangeException(nameof(platform), platform, "Unsupported update platform."),
             };
         }
 
@@ -364,9 +368,24 @@ namespace Cotton.Sync.Desktop.Updates
 
         private static DesktopUpdatePlatform GetCurrentPlatform()
         {
-            return OperatingSystem.IsWindows()
-                ? DesktopUpdatePlatform.WindowsX64
-                : DesktopUpdatePlatform.Unsupported;
+            if (System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture
+                != System.Runtime.InteropServices.Architecture.X64)
+            {
+                return DesktopUpdatePlatform.Unsupported;
+            }
+
+            if (OperatingSystem.IsWindows())
+            {
+                return DesktopUpdatePlatform.WindowsX64;
+            }
+
+            if (OperatingSystem.IsLinux() && File.Exists("/usr/bin/dpkg")
+                && Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory) == LinuxDesktopUpdateInstaller.InstallDirectory)
+            {
+                return DesktopUpdatePlatform.LinuxDebX64;
+            }
+
+            return DesktopUpdatePlatform.Unsupported;
         }
 
         private static string SanitizePathSegment(string value)

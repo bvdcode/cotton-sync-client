@@ -24,9 +24,10 @@ namespace Cotton.Sync.Desktop.Updates
             _launchDataDirectory = Path.GetFullPath(launchDataDirectory);
         }
 
-        public DesktopUpdateInstallResult StartSilentInstall(
+        public Task<DesktopUpdateInstallResult> StartInstallAsync(
             string installerPath,
-            bool launchAfterUpdate)
+            bool launchAfterUpdate,
+            CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(installerPath);
             if (!File.Exists(installerPath))
@@ -34,14 +35,15 @@ namespace Cotton.Sync.Desktop.Updates
                 throw new FileNotFoundException("Cotton Sync update installer was not found.", installerPath);
             }
 
-            return _processLauncher.Start(new System.Diagnostics.ProcessStartInfo
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(_processLauncher.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = installerPath,
                 Arguments = BuildSilentInstallArguments(launchAfterUpdate, _launchDataDirectory),
                 UseShellExecute = true,
                 ErrorDialog = false,
                 WorkingDirectory = Path.GetDirectoryName(installerPath) ?? AppContext.BaseDirectory,
-            });
+            }));
         }
 
         internal static string BuildSilentInstallArguments(

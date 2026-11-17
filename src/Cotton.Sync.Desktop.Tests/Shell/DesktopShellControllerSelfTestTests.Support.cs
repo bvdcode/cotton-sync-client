@@ -306,9 +306,10 @@ namespace Cotton.Sync.Desktop.Tests.Shell
 
             public Exception? Exception { get; set; }
 
-            public DesktopUpdateInstallResult StartSilentInstall(
+            public Task<DesktopUpdateInstallResult> StartInstallAsync(
                 string installerPath,
-                bool launchAfterUpdate)
+                bool launchAfterUpdate,
+                CancellationToken cancellationToken = default)
             {
                 InstallerPath = installerPath;
                 LaunchAfterUpdate = launchAfterUpdate;
@@ -317,7 +318,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                     throw Exception;
                 }
 
-                return Result;
+                return Task.FromResult(Result);
             }
         }
     }

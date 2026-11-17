@@ -154,8 +154,9 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(result.InstallerPath, Is.EqualTo(installerPath));
                 Assert.That(
                     result.Details,
-                    Is.EqualTo(
-                        "Update 0.0.2 is ready. Click Update to install it now, or it will install automatically on next app start."));
+                    Is.EqualTo(OperatingSystem.IsLinux()
+                        ? "Update 0.0.2 is ready. Click Update to install it through the system package manager. Administrator authorization may be required."
+                        : "Update 0.0.2 is ready. Click Update to install it now, or it will install automatically on next app start."));
                 Assert.That(pending?.Version, Is.EqualTo("0.0.2"));
                 Assert.That(pending?.InstallerPath, Is.EqualTo(installerPath));
             });

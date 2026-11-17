@@ -7,5 +7,6 @@ namespace Cotton.Sync.Desktop.Updates
     {
         Unsupported = 0,
         WindowsX64 = 1,
+        LinuxDebX64 = 2,
     }
 }
