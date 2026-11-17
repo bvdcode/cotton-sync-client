@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace Cotton.Sync.Desktop.Startup
@@ -11,6 +12,8 @@ namespace Cotton.Sync.Desktop.Startup
     {
         private const string WindowsHashScript =
             "$ErrorActionPreference='Stop'; "
+            + "$utf8=[Text.UTF8Encoding]::new($false); "
+            + "[Console]::InputEncoding=$utf8; [Console]::OutputEncoding=$utf8; "
             + "$paths=[Console]::In.ReadToEnd() | ConvertFrom-Json; "
             + "$results=@(); "
             + "foreach($path in $paths){ "
@@ -88,6 +91,9 @@ namespace Cotton.Sync.Desktop.Startup
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                StandardInputEncoding = Encoding.UTF8,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
                 CreateNoWindow = true,
             };
             startInfo.ArgumentList.Add("-NoProfile");
