@@ -10,6 +10,15 @@ case "$kde_version" in
   *) echo "Supported KDE versions: 5, 6" >&2; exit 2 ;;
 esac
 kded_service="org.kde.kded$kde_version"
+load_watcher() {
+  for attempt in $(seq 1 30); do
+    if timeout 3s gdbus call --session --dest "$kded_service" --object-path /kded \
+      --method "$kded_service.loadModule" statusnotifierwatcher >/dev/null 2>&1; then return; fi
+    sleep 0.2
+  done
+  echo 'KDE watcher module did not load.' >&2
+  return 1
+}
 mkdir -p "$evidence/profile"
 export HOME="$evidence/profile"
 export XDG_CONFIG_HOME="$HOME/.config" XDG_CACHE_HOME="$HOME/.cache" XDG_DATA_HOME="$HOME/.local/share"
@@ -41,11 +50,7 @@ timeout 30s xdotool search --sync --onlyvisible --pid "$app_pid" --name 'Cotton 
 echo 'PASS: Window remains reachable before KDE tray host starts'
 "kded$kde_version" > "$evidence/kded.log" 2>&1 &
 pids+=("$!")
-for attempt in $(seq 1 30); do
-  if timeout 3s gdbus call --session --dest "$kded_service" --object-path /kded \
-    --method "$kded_service.loadModule" statusnotifierwatcher >/dev/null 2>&1; then break; fi
-  sleep 0.2
-done
+load_watcher
 mkdir -p "$XDG_CONFIG_HOME"
 cat > "$XDG_CONFIG_HOME/plasma-org.kde.plasma.desktop-appletsrc" <<'EOF'
 [Containments][1]
@@ -146,11 +151,12 @@ if xdotool search --onlyvisible --pid "$app_pid" --name 'Cotton Sync' >/dev/null
   echo 'Window did not hide to tray' >&2; exit 1
 fi
 timeout 3s gdbus call --session --dest "$kded_service" --object-path /kded \
-  --method "$kded_service.unloadModule" statusnotifierwatcher >/dev/null
+  --method "$kded_service.quit" >/dev/null
 timeout 30s xdotool search --sync --onlyvisible --pid "$app_pid" --name 'Cotton Sync' >/dev/null
 echo 'PASS: Hidden window reopens when KDE tray host disappears'
-timeout 3s gdbus call --session --dest "$kded_service" --object-path /kded \
-  --method "$kded_service.loadModule" statusnotifierwatcher >/dev/null
+"kded$kde_version" >> "$evidence/kded.log" 2>&1 &
+pids+=("$!")
+load_watcher
 for attempt in $(seq 1 30); do
   if timeout 3s gdbus call --session --dest org.kde.StatusNotifierWatcher --object-path /StatusNotifierWatcher \
     --method org.freedesktop.DBus.Properties.Get org.kde.StatusNotifierWatcher IsStatusNotifierHostRegistered \
