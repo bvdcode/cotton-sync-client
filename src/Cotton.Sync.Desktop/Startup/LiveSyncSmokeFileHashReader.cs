@@ -84,6 +84,7 @@ namespace Cotton.Sync.Desktop.Startup
 
         private static async Task<string> RunWindowsReaderAsync(string input, CancellationToken cancellationToken)
         {
+            Encoding pipeEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
             ProcessStartInfo startInfo = new()
             {
                 FileName = "powershell.exe",
@@ -91,9 +92,9 @@ namespace Cotton.Sync.Desktop.Startup
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
-                StandardInputEncoding = Encoding.UTF8,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8,
+                StandardInputEncoding = pipeEncoding,
+                StandardOutputEncoding = pipeEncoding,
+                StandardErrorEncoding = pipeEncoding,
                 CreateNoWindow = true,
             };
             startInfo.ArgumentList.Add("-NoProfile");
