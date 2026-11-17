@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task SignInCommand_ShowsSetupErrorWhenAuthenticationFails()
         {
@@ -50,7 +49,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.ActionRequiredMessage, Is.EqualTo("Invalid username, password, or two-factor code."));
             });
         }
-
 
         [Test]
         public async Task SignInCommand_ShowsHumanTotpRequiredMessage()
@@ -85,7 +83,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Sign in to continue."));
             });
         }
-
 
         [Test]
         public async Task SignInCommand_RetriesSuccessfullyAfterTotpRequired()
@@ -129,7 +126,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task SignInCommand_ShowsHumanInvalidPasswordMessage()
         {
@@ -165,7 +161,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task SignOutCommand_ClearsSensitiveSetupState()
         {
@@ -192,7 +187,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.SignOutCommand.CanExecute(null), Is.False);
             });
         }
-
 
         [Test]
         public async Task SignOutThenSignInAgain_ReusesSameInstallationFlow()
@@ -227,7 +221,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task SignOutCommand_ShowsNativeNotificationWhenSupported()
         {
@@ -245,7 +238,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(notificationService.Notifications[0].Message, Is.EqualTo("Cotton Sync is signed out."));
             });
         }
-
 
         [Test]
         public async Task SessionRevoked_SignsOutAndShowsNativeNotificationWhenSupported()

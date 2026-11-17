@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task AddSyncPairFlow_CreatesDesktopPairAndRequestsInitialSync()
         {
@@ -53,7 +52,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task AddSyncPairFlow_CanCreateWindowsVirtualFilesPairWhenSupported()
         {
@@ -83,7 +81,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Sync requested"));
             });
         }
-
 
         [Test]
         public async Task UseRemoteFolderCommand_ClosesWizardAndShowsGlobalSetupProgressWhileAddPairIsPending()

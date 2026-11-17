@@ -237,6 +237,5 @@ namespace Cotton.Sync.App.Runners
                 return false;
             }
         }
-
     }
 }

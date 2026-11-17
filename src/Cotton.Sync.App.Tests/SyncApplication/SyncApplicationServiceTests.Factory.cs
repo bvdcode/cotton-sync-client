@@ -82,6 +82,5 @@ namespace Cotton.Sync.App.Tests.SyncApplication
                 UpdatedAtUtc = source.UpdatedAtUtc,
             };
         }
-
     }
 }

@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task RunProgressChanged_ThrottlesVisibleUpdates()
         {
@@ -71,7 +70,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task RunProgressChanged_UpdatesDirectoryRunProgressState()
         {
@@ -106,7 +104,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Documents: Preparing folders 3 of 10"));
             });
         }
-
 
         [Test]
         public async Task RunProgressChanged_CoalescesBurstBeforeUiQueue()
@@ -150,7 +147,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task RunProgressChanged_ShowsLocalScanDiscoveryCount()
         {
@@ -182,7 +178,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task RunProgressChanged_ShowsLocalScanCurrentPathBeforeFilesAreFound()
         {
@@ -209,7 +204,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.True);
             });
         }
-
 
         [Test]
         public async Task RunProgressChanged_ShowsRemoteScanDiscoveryCount()
@@ -242,7 +236,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task RunProgressChanged_KeepsQueuedWorkIndicatorOffForLargeRemoteScan()
         {
@@ -268,7 +261,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressSecondaryDetails, Is.Empty);
             });
         }
-
 
         [Test]
         public async Task RunProgressChanged_KeepsQueuedWorkIndicatorOffForLargePlaceholderCreation()

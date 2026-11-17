@@ -9,7 +9,6 @@ namespace Cotton.Sync.Cli
 {
     internal static partial class SyncCliCrudSmokeCommandRunner
     {
-
         public static async Task<int> RunAsync(
             IReadOnlyList<string> args,
             TextWriter output,
@@ -51,7 +50,6 @@ namespace Cotton.Sync.Cli
                 cancellationToken).ConfigureAwait(false);
         }
 
-
         private static async Task<int> RunWithErrorHandlingAsync(
             SyncCliConnectionOptions firstOptions,
             SyncCliConnectionOptions secondOptions,
@@ -77,7 +75,6 @@ namespace Cotton.Sync.Cli
                 return 1;
             }
         }
-
 
         private static async Task<int> RunSmokeAsync(
             SyncCliConnectionOptions firstOptions,
@@ -112,7 +109,6 @@ namespace Cotton.Sync.Cli
                 .ConfigureAwait(false);
         }
 
-
         private static async Task WriteHeaderAsync(
             SyncCliConnectionOptions firstOptions,
             SyncCliConnectionOptions secondOptions,
@@ -125,7 +121,6 @@ namespace Cotton.Sync.Cli
             await output.WriteLineAsync("Local root: " + firstOptions.LocalRoot).ConfigureAwait(false);
             await output.WriteLineAsync("Second local root: " + secondOptions.LocalRoot).ConfigureAwait(false);
         }
-
 
         private static async Task<int> RunScenariosAsync(
             SyncCliConnectionOptions firstOptions,
@@ -153,7 +148,6 @@ namespace Cotton.Sync.Cli
             return failures;
         }
 
-
         private static async Task<int> WriteFinalResultAsync(
             SyncCliRuntime firstRuntime,
             SyncCliRuntime secondRuntime,
@@ -180,7 +174,6 @@ namespace Cotton.Sync.Cli
             await output.WriteLineAsync("Failures: " + failures.ToStringInvariant()).ConfigureAwait(false);
             return failures == 0 ? 0 : 1;
         }
-
 
         private static Task<SyncCliRuntime> CreateRuntimeAsync(
             SyncCliConnectionOptions options,

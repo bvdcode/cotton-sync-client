@@ -359,6 +359,5 @@ namespace Cotton.Sync.Remote
 
             return value;
         }
-
     }
 }

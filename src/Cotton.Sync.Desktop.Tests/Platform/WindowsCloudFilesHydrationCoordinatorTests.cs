@@ -337,6 +337,5 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 Assert.That(observer.Values[1].IsCompleted, Is.True);
             });
         }
-
     }
 }

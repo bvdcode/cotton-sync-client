@@ -66,7 +66,5 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(names, Does.Contain("Desktop sync change feed"));
             });
         }
-
-
     }
 }

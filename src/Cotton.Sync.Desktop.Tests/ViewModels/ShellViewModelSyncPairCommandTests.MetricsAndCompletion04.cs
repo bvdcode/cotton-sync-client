@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task StatusChanged_RecordsCompletionNotificationWithoutDashboardCard()
         {
@@ -64,7 +63,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Sync is paused."));
             });
         }
-
 
         [Test]
         public async Task StatusChanged_DelaysVirtualFilesCompletionNotificationWhileCloudFilesProgressIsFresh()
@@ -141,7 +139,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task StatusChanged_DelaysVirtualFilesCompletionNotificationWhileCloudFilesStatusIsFinalizing()
         {
@@ -210,7 +207,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task RunProgressChanged_HidesCompletionNotificationWhileAnotherFolderIsActive()
         {
@@ -257,7 +253,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressTitle, Is.EqualTo("Videos"));
             });
         }
-
 
         [Test]
         public async Task Initialize_AsksToEnableFolderWhenAllPairsAreDisabled()

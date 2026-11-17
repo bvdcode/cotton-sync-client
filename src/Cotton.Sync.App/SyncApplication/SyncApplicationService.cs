@@ -478,6 +478,5 @@ namespace Cotton.Sync.App.SyncApplication
             IReadOnlyList<SyncPairSettings> syncPairs = await _syncPairs.ListAsync(cancellationToken).ConfigureAwait(false);
             return syncPairs.Count > 0;
         }
-
     }
 }

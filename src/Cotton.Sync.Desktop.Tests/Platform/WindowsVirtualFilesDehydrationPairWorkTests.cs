@@ -31,10 +31,5 @@ namespace Cotton.Sync.Desktop.Tests.Platform
         private const int FileAttributePinned = 0x00080000;
         private const int FileAttributeUnpinned = 0x00100000;
         private const int FileAttributeRecallOnDataAccess = 0x00400000;
-
-
-
-
-
     }
 }

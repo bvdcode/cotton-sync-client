@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_PropagatesLocalEmptyDirectoryRenameAsCreateAndDelete()
         {
@@ -55,7 +54,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded, SyncActivityKind.DeletedRemote }));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesMovesRemoteDirectorySubtreeByStableIds()
@@ -254,7 +252,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesRemovesRemoteDeletedDirectorySubtreeInOnePass()
         {
@@ -313,7 +310,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_PropagatesRemoteEmptyDirectoryRenameAsCreateAndDelete()
         {
@@ -346,7 +342,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Downloaded, SyncActivityKind.DeletedLocal }));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_PropagatesLocalEmptyDirectoryMoveAsCreateAndDelete()

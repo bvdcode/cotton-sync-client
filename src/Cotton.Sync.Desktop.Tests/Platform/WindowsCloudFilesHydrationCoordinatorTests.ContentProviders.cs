@@ -314,6 +314,5 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 throw new NotSupportedException();
             }
         }
-
     }
 }

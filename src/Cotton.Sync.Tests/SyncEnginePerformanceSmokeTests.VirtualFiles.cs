@@ -248,6 +248,5 @@ namespace Cotton.Sync.Tests
                 Assert.That(stateStore.UpsertManyEntryCounts, Is.All.EqualTo(stateBatchSize));
             });
         }
-
     }
 }

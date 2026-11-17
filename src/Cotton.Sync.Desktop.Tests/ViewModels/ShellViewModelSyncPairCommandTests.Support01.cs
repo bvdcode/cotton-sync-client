@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         private static ShellViewModel CreateViewModel(
             FakeDesktopShellController controller,
             DesktopFeatureFlags? featureFlags = null,
@@ -47,7 +46,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 storedSessionRetryInterval,
                 storedSessionRetryDelayAsync);
         }
-
 
         private class ManualPeriodicUpdateDelay : IDisposable
         {
@@ -91,7 +89,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             }
         }
 
-
         private class FakeLocalFolderPicker : ILocalFolderPicker
         {
             private readonly Queue<string?> _selectedPaths;
@@ -111,7 +108,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             }
         }
 
-
         private class FakeDesktopNotificationService : IDesktopNotificationService
         {
             public bool IsSupported => false;
@@ -121,7 +117,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 throw new NotSupportedException();
             }
         }
-
 
         private class CollectingDesktopNotificationService : IDesktopNotificationService
         {
@@ -135,14 +130,12 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             }
         }
 
-
         private class FakeDesktopThemeService : IDesktopThemeService
         {
             public void Apply(AppThemeMode themeMode)
             {
             }
         }
-
 
         private class InlineDesktopUiDispatcher : IDesktopUiDispatcher
         {
@@ -163,7 +156,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 return Task.CompletedTask;
             }
         }
-
 
         private class QueuedDesktopUiDispatcher : IDesktopUiDispatcher
         {
@@ -199,7 +191,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 }
             }
         }
-
 
         private class QueuedAccessDesktopUiDispatcher : IDesktopUiDispatcher
         {

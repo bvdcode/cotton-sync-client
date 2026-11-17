@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesFinalizesDirectoryTreeAfterPlaceholderPopulation()
         {
@@ -100,7 +99,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesPopulatesLargeRemoteTreeIncrementally()
         {
@@ -166,7 +164,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesDoesNotFallBackToDownloadWhenPlaceholderWriterIsMissing()
         {
@@ -187,7 +184,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(result.ActionRequiredMessage, Does.Contain("placeholder writer"));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesReportsPlaceholderUnavailableAsActionRequired()

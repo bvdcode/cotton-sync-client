@@ -150,6 +150,5 @@ namespace Cotton.Sync.App.SyncPairs
         {
             errors.Add(new SyncPairValidationError(issue, syncPairId, otherSyncPairId, message));
         }
-
     }
 }

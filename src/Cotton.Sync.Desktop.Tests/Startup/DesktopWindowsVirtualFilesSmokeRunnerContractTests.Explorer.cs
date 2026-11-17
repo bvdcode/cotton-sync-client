@@ -137,6 +137,5 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(runner, Does.Contain("VFS shell share-link folder Cloud Files status was finalized."));
             });
         }
-
     }
 }

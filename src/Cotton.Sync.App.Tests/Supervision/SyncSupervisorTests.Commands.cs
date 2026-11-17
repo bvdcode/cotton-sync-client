@@ -294,6 +294,5 @@ namespace Cotton.Sync.App.Tests.Supervision
                     Is.EqualTo(new[] { SyncPairRunState.Error, SyncPairRunState.Idle }));
             });
         }
-
     }
 }

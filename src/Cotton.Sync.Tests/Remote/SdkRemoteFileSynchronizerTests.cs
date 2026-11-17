@@ -423,6 +423,5 @@ namespace Cotton.Sync.Tests.Remote
                     client,
                     new SdkRemoteFileSynchronizerOptions { MaxConcurrentChunkUploads = 0 }));
         }
-
     }
 }

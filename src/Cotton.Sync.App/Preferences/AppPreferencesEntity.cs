@@ -41,6 +41,5 @@ namespace Cotton.Sync.App.Preferences
 
         [Column("theme_mode")]
         public AppThemeMode ThemeMode { get; set; }
-
     }
 }

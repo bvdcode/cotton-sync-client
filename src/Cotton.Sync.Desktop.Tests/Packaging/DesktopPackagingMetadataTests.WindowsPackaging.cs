@@ -389,6 +389,5 @@ namespace Cotton.Sync.Desktop.Tests.Packaging
                     Is.GreaterThanOrEqualTo(2));
             });
         }
-
     }
 }

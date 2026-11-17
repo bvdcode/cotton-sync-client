@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsSettings()
         {
@@ -37,7 +36,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsConnectingStartupState()
         {
@@ -54,7 +52,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsDashboardHeaderVisible, Is.False);
             });
         }
-
 
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsSignInError()
@@ -80,7 +77,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Sign in to continue."));
             });
         }
-
 
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsAddFolderWizard()
@@ -115,7 +111,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsManyRemoteFolders()
         {
@@ -146,7 +141,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsEmptyDashboardWithoutOpeningWizard()
         {
@@ -169,7 +163,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.HeaderStatusText, Is.EqualTo("Connected"));
             });
         }
-
 
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsSettingsDiagnosticsTab()
@@ -200,7 +193,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsActionRequiredError()
         {
@@ -220,7 +212,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     Is.EqualTo("Cotton Cloud desktop change feed is unavailable. Check the server deployment; Cotton Sync will retry automatically."));
             });
         }
-
 
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsMissingLocalRootError()
@@ -244,7 +235,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.Activities.First().Details, Is.EqualTo(message));
             });
         }
-
 
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsOfflineState()
@@ -272,7 +262,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.Activities.First().Details, Is.EqualTo(message));
             });
         }
-
 
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsProgressCards()
@@ -303,7 +292,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.SyncPairs.First().CurrentOperation, Is.EqualTo("Uploading 2 files"));
             });
         }
-
 
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsLongProgressFileName()

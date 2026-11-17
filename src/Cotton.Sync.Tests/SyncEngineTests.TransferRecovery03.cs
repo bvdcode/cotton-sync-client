@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_RejectsDownloadedContentThatDoesNotMatchManifest()
         {
@@ -50,7 +49,6 @@ namespace Cotton.Sync.Tests
                     Is.Empty);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_RecoversAfterRemoteDownloadBeforeBaselineUpdate()

@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_KeepsPlannedByteProgressStableWhenLazyHashCreatesConflict()
         {
@@ -58,7 +57,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_ReportsLocalHashProgressWhenCheckingBaselineFile()
         {
@@ -89,7 +87,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(hashProgress[^1].IsCompleted, Is.True);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesUploadsEditedHydratedFile()
@@ -137,7 +134,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry.RemoteFileId, Is.EqualTo(remote.Id));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesPreservesConflictForEditedHydratedFile()
@@ -208,7 +204,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesTreatsNearSimultaneousHydratedEditsAsConflict()
         {
@@ -258,7 +253,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(File.ReadAllText(conflictFiles[0]), Is.EqualTo("remote-edit"));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesSuppressesWatcherBeforeRestoringRemoteEditAfterLocalDelete()

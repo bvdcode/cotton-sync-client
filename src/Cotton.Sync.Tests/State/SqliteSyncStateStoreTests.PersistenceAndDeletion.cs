@@ -330,6 +330,5 @@ namespace Cotton.Sync.Tests.State
         {
             return Path.Combine(_tempDirectory, "sync-state.sqlite");
         }
-
     }
 }

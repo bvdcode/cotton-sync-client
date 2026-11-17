@@ -324,7 +324,6 @@ namespace Cotton.Sync.App.Tests.Runners
             });
         }
 
-
         [Test]
         public void RunOnceAsync_WithWindowsVirtualFilesReportsUnresolvedRemotePathWithoutFullFallback()
         {

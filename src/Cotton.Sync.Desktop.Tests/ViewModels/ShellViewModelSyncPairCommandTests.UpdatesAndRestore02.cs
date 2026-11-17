@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task InitializeAsync_AutoDownloadShowsProgressUntilInstallerIsReady()
         {
@@ -56,7 +55,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             Assert.That(viewModel.GlobalStatus, Is.EqualTo("Update ready"));
         }
-
 
         [Test]
         public async Task InitializeAsync_RunsPeriodicUpdateCheckAfterStartupUpdatePolicyDelay()
@@ -104,7 +102,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(periodicDelay.RequestedDelays[0], Is.EqualTo(TimeSpan.FromMinutes(30)));
             });
         }
-
 
         [Test]
         public async Task InstallUpdateCommand_StartsDownloadedInstaller()
@@ -155,7 +152,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task InitializeAsync_WithTemporarilyUnavailableStoredSessionHidesSignInAndOffersRetry()
         {
@@ -188,7 +184,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task RetryStoredSessionCommand_RestoresDashboardWithoutNewSignIn()
         {
@@ -214,7 +209,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.ActionRequiredMessage, Is.Empty);
             });
         }
-
 
         [Test]
         public async Task StoredSessionRetry_AutomaticallyRestoresAfterServerUnlocks()
@@ -242,7 +236,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.ActionRequiredMessage, Is.Empty);
             });
         }
-
 
         [Test]
         public async Task InstallUpdateCommand_ShowsInstallingStateBeforeInstallerLaunchCompletes()

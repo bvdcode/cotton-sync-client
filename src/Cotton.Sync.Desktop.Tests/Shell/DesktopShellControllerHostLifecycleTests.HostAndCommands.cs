@@ -386,6 +386,5 @@ namespace Cotton.Sync.Desktop.Tests.Shell
             Assert.ThrowsAsync<ArgumentException>(
                 async () => await controller.SyncAllAsync(approvedRemoteDeletePlan: approval));
         }
-
     }
 }

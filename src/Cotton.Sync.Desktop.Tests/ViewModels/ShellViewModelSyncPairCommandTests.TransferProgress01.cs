@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task TransferProgressChanged_UpdatesCurrentTransferState()
         {
@@ -55,7 +54,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task TransferProgressChanged_ShowsHashProgressAsChecking()
         {
@@ -83,7 +81,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Videos: Checking video.mp4"));
             });
         }
-
 
         [Test]
         public async Task TransferProgressChanged_DoesNotCountHashBytesAsRunTransferBytes()
@@ -127,7 +124,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task TransferProgressChanged_ShowsSyncingHeaderEvenWhenLatestStatusIsIdle()
         {
@@ -153,7 +149,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentTransferTitle, Is.EqualTo("Videos: Downloading 09.7z"));
             });
         }
-
 
         [Test]
         public async Task TransferProgressChanged_ShowsTransferSpeedAndRemainingTime()
@@ -183,7 +178,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.False);
             });
         }
-
 
         [Test]
         public async Task TransferProgressChanged_CoalescesBurstBeforeUiQueue()
@@ -224,7 +218,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressValue, Is.EqualTo(99).Within(0.01));
             });
         }
-
 
         [Test]
         public async Task TransferProgressChanged_ThrottlesVisibleUpdates()
@@ -273,7 +266,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentTransferDetails, Is.EqualTo("60 B / 100 B"));
             });
         }
-
 
         [Test]
         public async Task TransferProgressChanged_ClearsCompletedTransferState()

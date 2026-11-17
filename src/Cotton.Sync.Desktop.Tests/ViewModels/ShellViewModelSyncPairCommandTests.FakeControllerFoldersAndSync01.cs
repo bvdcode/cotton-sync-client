@@ -21,7 +21,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
     {
         private partial class FakeDesktopShellController : IDesktopShellController
         {
-
             public async Task<DesktopRemoteFolderListSnapshot> ListRemoteFoldersAsync(
                 string remotePath,
                 CancellationToken cancellationToken = default)
@@ -37,7 +36,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 return RemoteFoldersByPath.GetValueOrDefault(remotePath, new DesktopRemoteFolderListSnapshot(remotePath, []));
             }
 
-
             private static async Task<DesktopRemoteFolderListSnapshot> WaitForRemoteFoldersAsync(
                 TaskCompletionSource<DesktopRemoteFolderListSnapshot> completion,
                 CancellationToken cancellationToken)
@@ -51,7 +49,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     completion);
                 return await completion.Task.ConfigureAwait(false);
             }
-
 
             public Task<DesktopRemoteFolderSnapshot> CreateRemoteFolderAsync(
                 string parentPath,
@@ -68,14 +65,12 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 return Task.FromResult(folder);
             }
 
-
             public Task SignOutAsync(CancellationToken cancellationToken = default)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 SignOutCalls++;
                 return Task.CompletedTask;
             }
-
 
             public Task<SyncPairSettings> AddSyncPairAsync(
                 DesktopSyncPairRequest request,
@@ -98,7 +93,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     });
                 return addTask.WaitAsync(cancellationToken);
             }
-
 
             public async Task SyncAllAsync(
                 CancellationToken cancellationToken = default,
@@ -125,7 +119,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 }
             }
 
-
             public async Task PauseAllAsync(CancellationToken cancellationToken = default)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -135,7 +128,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     await PauseAllCompletion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
                 }
             }
-
 
             public async Task ResumeAllAsync(CancellationToken cancellationToken = default)
             {
@@ -147,7 +139,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 }
             }
 
-
             public Task OpenFolderAsync(string localPath, CancellationToken cancellationToken = default)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -155,30 +146,25 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 return Task.CompletedTask;
             }
 
-
             public Task OpenWebAsync(CancellationToken cancellationToken = default)
             {
                 throw new NotSupportedException();
             }
-
 
             public Task SetStartWithOperatingSystemAsync(bool enabled, CancellationToken cancellationToken = default)
             {
                 throw new NotSupportedException();
             }
 
-
             public Task SetNotificationsEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
             {
                 throw new NotSupportedException();
             }
 
-
             public Task SetThemeModeAsync(AppThemeMode themeMode, CancellationToken cancellationToken = default)
             {
                 throw new NotSupportedException();
             }
-
 
             public Task<DesktopSelfTestSnapshot> RunSelfTestAsync(CancellationToken cancellationToken = default)
             {

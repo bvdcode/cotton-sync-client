@@ -9,7 +9,6 @@ namespace Cotton.Sync.Cli
 {
     internal static partial class SyncCliSoakCommandRunner
     {
-
         private static SyncCliConnectionOptions? ReadSecondClientOptions(
             IReadOnlyList<string> args,
             SyncCliConnectionOptions firstClientOptions,
@@ -60,14 +59,12 @@ namespace Cotton.Sync.Cli
             };
         }
 
-
         private static bool HasSecondClientOption(IReadOnlyList<string> args)
         {
             return SyncCliOptionsReader.ReadOption(args, "--second-local-root") is not null
                 || SyncCliOptionsReader.ReadOption(args, "--second-sync-pair") is not null
                 || SyncCliOptionsReader.ReadOption(args, "--second-database") is not null;
         }
-
 
         private static bool ShouldRunNextSoakIteration(
             int completedIterations,
@@ -81,7 +78,6 @@ namespace Cotton.Sync.Cli
 
             return !stopAtUtc.HasValue || DateTime.UtcNow < stopAtUtc.Value || completedIterations == 0;
         }
-
 
         private static TimeSpan GetNextSoakDelay(int intervalSeconds, DateTime? stopAtUtc)
         {
@@ -99,7 +95,6 @@ namespace Cotton.Sync.Cli
 
             return remaining >= interval ? interval : remaining;
         }
-
 
         private static async Task WriteIterationAsync(
             TextWriter output,
@@ -138,7 +133,6 @@ namespace Cotton.Sync.Cli
                 .ConfigureAwait(false);
         }
 
-
         private static async Task WriteProbeFileAsync(
             string localRoot,
             string relativePath,
@@ -152,7 +146,6 @@ namespace Cotton.Sync.Cli
                 + "UTC: " + SyncCliFormat.FormatUtc(DateTime.UtcNow) + Environment.NewLine;
             await File.WriteAllTextAsync(fullPath, content, cancellationToken).ConfigureAwait(false);
         }
-
 
         private static async Task WriteSummaryAsync(
             TextWriter output,
@@ -192,24 +185,20 @@ namespace Cotton.Sync.Cli
             await output.WriteLineAsync("Failures: " + statistics.FailureCount.ToStringInvariant()).ConfigureAwait(false);
         }
 
-
         private static string FormatOptionalInt(int? value)
         {
             return value.HasValue ? value.Value.ToStringInvariant() : "not run";
         }
-
 
         private static bool IsIdle(SyncCliPassResult pass)
         {
             return GetActivityCount(pass) == 0 && !pass.Result.HasDeferredLocalPaths;
         }
 
-
         private static int GetActivityCount(SyncCliPassResult pass)
         {
             return pass.Result.TotalActivityCount;
         }
-
 
         private static double CalculateAverageIterationSeconds(TimeSpan totalIterationElapsed, int completedIterations)
         {
@@ -218,14 +207,12 @@ namespace Cotton.Sync.Cli
                 : 0;
         }
 
-
         private static double CalculateCpuUtilizationPercent(TimeSpan cpu, TimeSpan elapsed)
         {
             return elapsed.TotalSeconds > 0
                 ? cpu.TotalSeconds / elapsed.TotalSeconds * 100
                 : 0;
         }
-
 
         private static string FormatException(Exception exception)
         {

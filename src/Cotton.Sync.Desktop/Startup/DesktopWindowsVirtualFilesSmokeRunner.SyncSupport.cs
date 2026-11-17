@@ -39,19 +39,5 @@ namespace Cotton.Sync.Desktop.Startup
 {
     internal static partial class DesktopWindowsVirtualFilesSmokeRunner
     {
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     }
 }

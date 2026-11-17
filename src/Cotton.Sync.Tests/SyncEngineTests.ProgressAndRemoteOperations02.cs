@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         private class FakeRemoteFileSynchronizer : IRemoteFileSynchronizer
         {
             private const string UploadedContentType = "application/octet-stream";
@@ -240,7 +239,6 @@ namespace Cotton.Sync.Tests
                 return Task.CompletedTask;
             }
         }
-
 
         private class FakeRemoteDirectorySynchronizer : IRemoteDirectorySynchronizer
         {

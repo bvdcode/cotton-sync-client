@@ -293,6 +293,5 @@ namespace Cotton.Sync.App.Tests.Runners
                 logger.Entries.Select(entry => entry.Message),
                 Has.Some.Contains(syncPair.Id.ToString()));
         }
-
     }
 }

@@ -136,5 +136,4 @@ namespace Cotton.Sync.Desktop.Diagnostics
                 .Trim();
         }
     }
-
 }

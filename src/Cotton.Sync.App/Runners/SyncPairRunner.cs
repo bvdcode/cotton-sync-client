@@ -430,6 +430,5 @@ namespace Cotton.Sync.App.Runners
                 !_syncPair.IsEnabled || state is SyncPairRunState.Disabled or SyncPairRunState.Stopped || isPaused,
                 queueIncomingRequests: isPaused);
         }
-
     }
 }

@@ -316,6 +316,5 @@ namespace Cotton.Sync.Tests
                 return Task.CompletedTask;
             }
         }
-
     }
 }

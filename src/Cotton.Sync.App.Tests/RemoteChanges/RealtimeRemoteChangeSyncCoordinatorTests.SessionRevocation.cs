@@ -106,6 +106,5 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
                 Assert.That(sessionRevocationHandler.CallCount, Is.EqualTo(1));
             });
         }
-
     }
 }

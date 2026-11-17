@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task RunProgressChanged_KeepsPlaceholderCreationStableBeforeFirstCreatedFile()
         {
@@ -66,7 +65,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task RunProgressChanged_ShowsWhyAFullCloudPassStarted()
         {
@@ -94,7 +92,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     "Making cloud files available · 100 cloud items ready · scanning cloud · saving state · Scheduled check · full folder scope"));
         }
 
-
         [Test]
         public async Task RunProgressChanged_ShowsRemoteScanCurrentPathBeforeFilesAreFound()
         {
@@ -121,7 +118,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.True);
             });
         }
-
 
         [Test]
         public async Task RunProgressChanged_AggregatesMultipleFolderProgress()
@@ -168,7 +164,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task RunProgressChanged_AggregateHidesZeroOfTotalBeforeFirstCountedFile()
         {
@@ -212,7 +207,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task RunProgressChanged_AggregatesMultipleLocalScanCounts()
         {
@@ -254,7 +248,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.True);
             });
         }
-
 
         [Test]
         public async Task RunProgressChanged_AggregatesMultipleRemoteScanCounts()

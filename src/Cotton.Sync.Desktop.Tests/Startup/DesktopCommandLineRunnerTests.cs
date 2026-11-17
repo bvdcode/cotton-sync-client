@@ -122,8 +122,5 @@ namespace Cotton.Sync.Desktop.Tests.Startup
                 Assert.That(report, Does.Contain("Result: passed"));
             });
         }
-
-
-
     }
 }

@@ -255,6 +255,5 @@ namespace Cotton.Sync.App.Tests.SyncApplication
                 return Task.FromResult(Session);
             }
         }
-
     }
 }

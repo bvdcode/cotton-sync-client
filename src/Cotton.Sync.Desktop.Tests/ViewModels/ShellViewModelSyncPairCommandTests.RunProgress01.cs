@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task RunProgressChanged_UpdatesCurrentRunProgressState()
         {
@@ -59,7 +58,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task RunProgressChanged_UpdatesPlaceholderCreationProgressState()
         {
@@ -95,7 +93,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task RunProgressChanged_HidesZeroOfTotalBeforeFirstCountedFile()
         {
@@ -126,7 +123,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Documents: Preparing file checks"));
             });
         }
-
 
         [Test]
         public async Task RunProgressChanged_DoesNotFlickerBackToZeroWhenCurrentPathDropsDuringPressure()
@@ -167,7 +163,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task RunProgressChanged_UsesPlannedBytesForGlobalProgress()
         {
@@ -198,7 +193,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressDetails, Is.EqualTo("Checking files · 200 of 29189 files"));
             });
         }
-
 
         [Test]
         public async Task RunProgressChanged_ManySmallDownloadCounterMovesForward()
@@ -249,7 +243,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task RunProgressChanged_KeepsQueuedWorkIndicatorOffForSmallBatches()
         {
@@ -270,7 +263,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             Assert.That(viewModel.CurrentWorkProgressSecondaryDetails, Is.Empty);
         }
-
 
         [Test]
         public async Task RunProgressChanged_UsesGlobalBytesForHeaderSpeedAndEstimate()

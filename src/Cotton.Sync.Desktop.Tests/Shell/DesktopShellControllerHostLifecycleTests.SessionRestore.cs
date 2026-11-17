@@ -380,6 +380,5 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(autostartService.LastSetEnabled, Is.True);
             });
         }
-
     }
 }

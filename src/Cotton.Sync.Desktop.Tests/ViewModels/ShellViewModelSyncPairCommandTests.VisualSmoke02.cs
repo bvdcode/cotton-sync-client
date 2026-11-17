@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsManySmallDownloadProgress()
         {
@@ -47,7 +46,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsHighPressureStartingWithoutZeroCounter()
         {
@@ -73,7 +71,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Documents: Preparing file checks"));
             });
         }
-
 
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsVirtualFilesSeedingWithoutQueuedOrDownloadCopy()
@@ -105,7 +102,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsUpdateDownloadProgress()
         {
@@ -129,7 +125,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsUpdateInstallProgress()
         {
@@ -150,7 +145,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Installing update"));
             });
         }
-
 
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsFolderControls()
@@ -177,7 +171,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsRemoveSyncPairConfirmationVisible, Is.False);
             });
         }
-
 
         [Test]
         public async Task ApplyVisualSmokeScenarioAsync_ShowsConflictList()

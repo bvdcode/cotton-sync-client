@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesRepairsPersistedPlaceholderBaselineWithoutIdentity()
         {
@@ -73,7 +72,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesFolderChangeDoesNotExpandLocalDirectoryTarget()
         {
@@ -108,7 +106,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(result.RequiresUserAction, Is.False);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesFolderChangeDoesNotPlanRemoteDeletesForUnscannedMaterializedDescendants()
@@ -159,7 +156,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(secondEntry, Is.Not.Null);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesLocalAddsDoNotPlanMassRemoteDeletesForUnscannedLargeTree()
@@ -256,7 +252,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(finalEntries, Has.Count.EqualTo(existingFileCount + 2 + newPaths.Length));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesPreservesRemoteOnlyPlaceholderStateAfterEngineRestart()

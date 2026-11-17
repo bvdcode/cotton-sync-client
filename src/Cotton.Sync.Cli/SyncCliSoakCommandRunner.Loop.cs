@@ -9,7 +9,6 @@ namespace Cotton.Sync.Cli
 {
     internal static partial class SyncCliSoakCommandRunner
     {
-
         private static async Task<int> RunLoopAsync(
             SyncCliSoakSettings settings,
             SyncCliRuntime runtime,
@@ -36,7 +35,6 @@ namespace Cotton.Sync.Cli
             return statistics.IsConverged ? 0 : 1;
         }
 
-
         private static async Task WriteRunHeaderAsync(
             SyncCliSoakSettings settings,
             SyncCliSoakStatistics statistics,
@@ -53,7 +51,6 @@ namespace Cotton.Sync.Cli
             await output.WriteLineAsync("Started UTC: " + SyncCliFormat.FormatUtc(statistics.StartedAt))
                 .ConfigureAwait(false);
         }
-
 
         private static async Task RunIterationsAsync(
             SyncCliSoakSettings settings,
@@ -87,7 +84,6 @@ namespace Cotton.Sync.Cli
             }
         }
 
-
         private static async Task WriteProbeFileIfConfiguredAsync(
             SyncCliSoakSettings settings,
             int iteration,
@@ -106,14 +102,12 @@ namespace Cotton.Sync.Cli
                 .ConfigureAwait(false);
         }
 
-
         private static Task<SyncCliPassResult> RunSoakPassAsync(
             SyncCliRuntime runtime,
             CancellationToken cancellationToken)
         {
             return SyncCliRuntimeFactory.RunSinglePassAsync(runtime, CreateSoakRunOptions(), cancellationToken);
         }
-
 
         private static async Task<SyncCliPassResult?> RunOptionalSoakPassAsync(
             SyncCliRuntime? runtime,
@@ -123,7 +117,6 @@ namespace Cotton.Sync.Cli
                 ? null
                 : await RunSoakPassAsync(runtime, cancellationToken).ConfigureAwait(false);
         }
-
 
         private static async Task CaptureFinalConvergenceAsync(
             SyncCliRuntime runtime,
@@ -137,7 +130,6 @@ namespace Cotton.Sync.Cli
                 : await RunFinalConvergenceAsync(secondRuntime, cancellationToken).ConfigureAwait(false);
             statistics.RecordConvergence(pass, secondPass);
         }
-
 
         private static async Task<SyncCliPassResult> RunFinalConvergenceAsync(
             SyncCliRuntime runtime,
@@ -167,7 +159,6 @@ namespace Cotton.Sync.Cli
 
             return lastPass ?? throw new InvalidOperationException("Final convergence pass did not run.");
         }
-
 
         private static SyncRunOptions CreateSoakRunOptions()
         {

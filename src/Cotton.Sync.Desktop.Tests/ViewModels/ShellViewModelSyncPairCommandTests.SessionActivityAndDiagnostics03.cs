@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task OpenConflictCommand_OpensRequestedConflictParentFolder()
         {
@@ -47,7 +46,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Assert.That(controller.OpenedFolderPath, Is.EqualTo(Path.GetFullPath("/home/vadim/Documents/Finance")));
         }
 
-
         [Test]
         public async Task OpenConflictCommand_RejectsConflictPathOutsideSyncRoot()
         {
@@ -66,7 +64,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             Assert.That(controller.OpenedFolderPath, Is.EqualTo(Path.GetFullPath("/home/vadim/Documents")));
         }
-
 
         [Test]
         public void ActivityEmptyState_UpdatesWhenActivityIsReported()
@@ -92,7 +89,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.HasActivities, Is.True);
             });
         }
-
 
         [Test]
         public async Task ToggleActivityCommand_TogglesDashboardActivityVisibility()

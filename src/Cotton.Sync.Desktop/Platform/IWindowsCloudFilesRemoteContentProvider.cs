@@ -13,5 +13,4 @@ namespace Cotton.Sync.Desktop.Platform
             IProgress<SyncTransferProgress>? transferProgress = null,
             CancellationToken cancellationToken = default);
     }
-
 }

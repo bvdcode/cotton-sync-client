@@ -40,5 +40,4 @@ namespace Cotton.Sync.Desktop.Platform
             return _remoteFiles.DownloadFileAsync(identity.NodeFileId, destination, cancellationToken);
         }
     }
-
 }

@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [TestCase(false)]
         [TestCase(true)]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesDeletesLocalDirectorySubtreeInOnePass(bool includeDescendantEvents)
@@ -84,7 +83,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesDoesNotCascadeDeletedSubtreeWithUntrackedRemoteFile()
         {
@@ -129,7 +127,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesDoesNotCascadeDeletedSubtreeWithChangedRemoteFile()
         {
@@ -173,7 +170,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(fileState, Is.Not.Null);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithScopedWindowsVirtualFilesCountsSeparateDeletedRootsInRemoteDeleteGuard()
@@ -261,7 +257,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_DoesNotCascadeRemoteDirectoryDeletesInsideOneRun()
         {
@@ -291,7 +286,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(result.Activities[1].Details, Does.Contain("not empty"));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_BlocksWholeRemoteDeletedDirectorySubtreeOverRunLimit()
@@ -325,7 +319,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(result.Activities.Select(activity => activity.Details), Is.All.Contains("2 pending deletes exceed limit 1"));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_PreservesLocalFolderWhenRemoteFileInsideIsDeleted()

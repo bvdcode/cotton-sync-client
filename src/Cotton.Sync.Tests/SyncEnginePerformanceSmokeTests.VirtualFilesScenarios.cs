@@ -342,6 +342,5 @@ namespace Cotton.Sync.Tests
             bytes[15] = salt;
             return new Guid(bytes);
         }
-
     }
 }

@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_ReportsRemoteScanFileDiscoveryProgress()
         {
@@ -49,7 +48,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public void RunOnceAsync_WithScopedRequestRejectsMissingPathLookupCapabilities()
         {
@@ -71,7 +69,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(crawler.SnapshotCrawlCalls, Is.Zero);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithScopedFileChangeDoesNotDeleteImplicitRemoteParentDirectory()
@@ -111,7 +108,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithScopedRemoteFolderDeletePreservesUnobservedLocalChildren()
         {
@@ -145,7 +141,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(result.Activities[0].Details, Does.Contain("not empty"));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_ReportsDirectoryReconcileProgressWithFolderCounts()
@@ -182,7 +177,6 @@ namespace Cotton.Sync.Tests
                     Is.EqualTo(new[] { "Projects", "Projects/Archive" }));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_ThrottlesLargeFileReconcileProgress()
@@ -227,7 +221,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_ThrottlesLargeDirectoryReconcileProgress()
         {
@@ -265,7 +258,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(completedCounts[^1], Is.EqualTo(directoryCount));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_ReportsRunTransferAndActivityProgressForUpload()

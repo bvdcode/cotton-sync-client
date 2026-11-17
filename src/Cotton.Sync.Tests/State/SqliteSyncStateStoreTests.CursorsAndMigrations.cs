@@ -260,6 +260,5 @@ namespace Cotton.Sync.Tests.State
                 Assert.That(pairB.EarliestAvailableCursor, Is.Null);
             });
         }
-
     }
 }

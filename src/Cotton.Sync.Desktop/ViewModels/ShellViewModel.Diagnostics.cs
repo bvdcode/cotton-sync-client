@@ -98,6 +98,5 @@ namespace Cotton.Sync.Desktop.ViewModels
             int lastSlash = normalized.LastIndexOf('/');
             return lastSlash <= 0 ? "/" : normalized[..lastSlash];
         }
-
     }
 }

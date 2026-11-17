@@ -473,6 +473,5 @@ namespace Cotton.Sync.Desktop.Shell
 
             return responseMessage;
         }
-
     }
 }

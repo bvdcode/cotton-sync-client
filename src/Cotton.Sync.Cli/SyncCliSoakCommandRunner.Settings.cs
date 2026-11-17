@@ -9,7 +9,6 @@ namespace Cotton.Sync.Cli
 {
     internal static partial class SyncCliSoakCommandRunner
     {
-
         public static async Task<int> RunAsync(
             IReadOnlyList<string> args,
             TextWriter output,
@@ -35,7 +34,6 @@ namespace Cotton.Sync.Cli
                 return 1;
             }
         }
-
 
         private static async Task<SyncCliSoakSettings?> ReadSettingsAsync(
             IReadOnlyList<string> args,
@@ -73,7 +71,6 @@ namespace Cotton.Sync.Cli
                 normalizedProbeFile);
         }
 
-
         private static bool TryReadRunLimits(
             IReadOnlyList<string> args,
             TextWriter error,
@@ -101,7 +98,6 @@ namespace Cotton.Sync.Cli
             return true;
         }
 
-
         private static bool TryReadProbeFile(
             IReadOnlyList<string> args,
             string localRoot,
@@ -122,7 +118,6 @@ namespace Cotton.Sync.Cli
                 out normalizedProbeFile,
                 out error);
         }
-
 
         private static async Task<int> RunWithRuntimesAsync(
             SyncCliSoakSettings settings,
@@ -148,7 +143,6 @@ namespace Cotton.Sync.Cli
                 cancellationToken).ConfigureAwait(false);
             return await RunLoopAsync(settings, runtime, secondRuntime, output, cancellationToken).ConfigureAwait(false);
         }
-
 
         private static Task<SyncCliRuntime> CreateRuntimeAsync(
             SyncCliConnectionOptions options,

@@ -41,6 +41,5 @@ namespace Cotton.Sync.Desktop.Platform
         {
             return string.IsNullOrWhiteSpace(value) ? "unknown" : value;
         }
-
     }
 }

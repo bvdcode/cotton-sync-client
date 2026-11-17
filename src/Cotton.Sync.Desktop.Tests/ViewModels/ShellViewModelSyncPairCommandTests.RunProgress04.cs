@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task RunProgressChanged_ClearsCompletedRunProgressBeforeIdleStatusArrives()
         {
@@ -60,7 +59,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(row.CurrentProgressValue, Is.Zero);
             });
         }
-
 
         [Test]
         public async Task RunProgressChanged_RemovesCompletedFolderFromAggregateProgress()
@@ -116,7 +114,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task TransferProgressChanged_KeepsAggregateRunProgressPrimaryForMultipleFolders()
         {
@@ -147,7 +144,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.False);
             });
         }
-
 
         [Test]
         public async Task TransferProgressChanged_KeepsRunProgressPrimaryForOneFolder()
@@ -196,7 +192,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsCurrentWorkProgressIndeterminate, Is.False);
             });
         }
-
 
         [Test]
         public async Task TransferProgressChanged_KeepsAvailabilityRunProgressPrimaryForOneFolder()

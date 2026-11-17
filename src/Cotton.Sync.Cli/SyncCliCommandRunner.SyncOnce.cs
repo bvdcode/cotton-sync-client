@@ -11,7 +11,6 @@ namespace Cotton.Sync.Cli
 {
     public static partial class SyncCliCommandRunner
     {
-
         private static async Task<int> RunSyncOnceAsync(
             IReadOnlyList<string> args,
             TextWriter output,
@@ -50,7 +49,6 @@ namespace Cotton.Sync.Cli
             }
         }
 
-
         private static async Task<SyncCliPassResult> RunSyncOnceWithRetryAsync(
             SyncCliConnectionOptions options,
             TextWriter output,
@@ -70,7 +68,6 @@ namespace Cotton.Sync.Cli
 
             return await RunSyncOncePassWithRetryAsync(runtime, output, cancellationToken).ConfigureAwait(false);
         }
-
 
         private static async Task<SyncCliRuntime> CreateSyncCliRuntimeWithRetryAsync(
             SyncCliConnectionOptions options,
@@ -115,7 +112,6 @@ namespace Cotton.Sync.Cli
             throw new InvalidOperationException("sync-once runtime retry attempts were exhausted.");
         }
 
-
         private static async Task<SyncCliPassResult> RunSyncOncePassWithRetryAsync(
             SyncCliRuntime runtime,
             TextWriter output,
@@ -145,7 +141,6 @@ namespace Cotton.Sync.Cli
             throw new InvalidOperationException("sync-once pass retry attempts were exhausted.");
         }
 
-
         private static async Task WriteSyncOnceRetryAsync(
             TextWriter output,
             Exception exception,
@@ -167,7 +162,6 @@ namespace Cotton.Sync.Cli
                 .ConfigureAwait(false);
             await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
         }
-
 
         internal static async Task WriteSyncOnceSuccessAsync(
             TextWriter output,

@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task SignInCommand_LeavesAddFolderWizardClosedWhenNoSyncPairsExist()
         {
@@ -63,7 +62,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task SignInCommand_ShowsNativeNotificationWhenSupported()
         {
@@ -92,7 +90,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(notificationService.Notifications[0].Message, Is.EqualTo("desktop@example.test"));
             });
         }
-
 
         [Test]
         public async Task SignInWithBrowserCommand_UsesVerifiedServerAndAppliesSession()
@@ -125,7 +122,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(controller.SignInRequest, Is.Null);
             });
         }
-
 
         [Test]
         public async Task SignInWithBrowserCommand_AppliesSessionAfterPendingApproval()
@@ -168,7 +164,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.GlobalStatus, Is.EqualTo("Connected"));
             });
         }
-
 
         [Test]
         public async Task SignInWithBrowserCommand_CanCancelPendingApproval()
@@ -217,7 +212,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task DisposeAsync_CancelsPendingBrowserSignIn()
         {
@@ -251,7 +245,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task SignInCommand_DoesNotShowNativeNotificationWhenDisabled()
         {
@@ -276,7 +269,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             Assert.That(notificationService.Notifications, Is.Empty);
         }
 
-
         [Test]
         public async Task InitializeAsync_ShowsSessionRestoredNotificationWhenVisibleLaunchAllowsIt()
         {
@@ -297,7 +289,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task InitializeAsync_DoesNotShowSessionRestoredNotificationWhenStartupNoiseSuppressed()
         {
@@ -312,7 +303,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 
             Assert.That(notificationService.Notifications, Is.Empty);
         }
-
 
         [Test]
         public async Task InitializeAsync_DoesNotShowSessionRestoredNotificationWhenNotificationsDisabled()

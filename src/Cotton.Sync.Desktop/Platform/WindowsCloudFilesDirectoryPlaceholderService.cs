@@ -305,6 +305,5 @@ namespace Cotton.Sync.Desktop.Platform
                 normalizedPath,
                 "Windows Cloud Files directory placeholder already existed and was repaired.");
         }
-
     }
 }

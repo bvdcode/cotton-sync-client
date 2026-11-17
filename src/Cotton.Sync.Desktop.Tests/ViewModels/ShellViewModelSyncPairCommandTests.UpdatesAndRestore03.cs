@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task InstallUpdateCommand_ShowsFailureWhenInstallerLaunchFails()
         {
@@ -68,7 +67,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task CheckForUpdatesCommand_ShowsRetryableNetworkFailure()
         {
@@ -89,7 +87,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CanSyncNow, Is.True);
             });
         }
-
 
         [Test]
         public async Task InitializeAsync_WhenStartupUpdateFailsShowsRetryableStatusWithoutOverridingSyncStatus()
@@ -113,7 +110,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CanCheckForUpdates, Is.True);
             });
         }
-
 
         [Test]
         public async Task CheckForUpdatesCommand_ShowsPublishingRaceForNotFound()
@@ -139,7 +135,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CanCheckForUpdates, Is.True);
             });
         }
-
 
         [Test]
         public async Task DownloadUpdateCommand_ShowsRetryableHashMismatchAndKeepsDownloadAvailable()

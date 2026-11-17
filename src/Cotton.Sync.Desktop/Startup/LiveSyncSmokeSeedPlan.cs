@@ -50,5 +50,4 @@ namespace Cotton.Sync.Desktop.Startup
             return files;
         }
     }
-
 }

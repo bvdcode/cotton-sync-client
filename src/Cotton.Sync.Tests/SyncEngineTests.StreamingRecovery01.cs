@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_WithInitialWindowsVirtualFilesFallsBackToReconcileWhenLocalFilesExist()
         {
@@ -68,7 +67,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesStreamingDisabledUsesFullReconcile()
         {
@@ -103,7 +101,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(state!.RemoteFileId, Is.EqualTo(remote.Id));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithInitialWindowsVirtualFilesCreatesRemoteFoldersForPreservedDirectoryTree()
@@ -157,7 +154,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesLogsStateFirstFallbackWithoutRelativePath()
         {
@@ -204,7 +200,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesFallsBackWhenResumeStateHasMaterializedFile()
         {
@@ -247,7 +242,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entries[0].RemoteContentHash, Is.EqualTo(previousRemote.ContentHash));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithWindowsVirtualFilesDoesNotResumeStreamingWhenTrackedPlaceholderIsMissing()

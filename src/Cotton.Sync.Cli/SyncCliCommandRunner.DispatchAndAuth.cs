@@ -11,7 +11,6 @@ namespace Cotton.Sync.Cli
 {
     public static partial class SyncCliCommandRunner
     {
-
         /// <summary>
         /// Runs a CLI command and returns the process exit code.
         /// </summary>
@@ -24,7 +23,6 @@ namespace Cotton.Sync.Cli
             return await RunAsync(args, output, error, null, cancellationToken)
                 .ConfigureAwait(false);
         }
-
 
         internal static async Task<int> RunAsync(
             IReadOnlyList<string> args,
@@ -87,7 +85,6 @@ namespace Cotton.Sync.Cli
             return 2;
         }
 
-
         private static async Task<int> RunAuthBrowserAsync(
             IReadOnlyList<string> args,
             TextWriter output,
@@ -116,7 +113,6 @@ namespace Cotton.Sync.Cli
             await output.WriteLineAsync("Cotton Sync browser sign-in").ConfigureAwait(false);
             return await RunBrowserSignInAsync(options, client, output, error, cancellationToken).ConfigureAwait(false);
         }
-
 
         private static async Task<int> RunBrowserSignInAsync(
             SyncCliBrowserAuthOptions options,
@@ -166,7 +162,6 @@ namespace Cotton.Sync.Cli
             }
         }
 
-
         private static async Task<int> RunStateSummaryAsync(
             IReadOnlyList<string> args,
             TextWriter output,
@@ -212,7 +207,6 @@ namespace Cotton.Sync.Cli
             await output.WriteLineAsync("Cursor updated UTC: " + SyncCliFormat.FormatUtc(cursor.UpdatedAtUtc)).ConfigureAwait(false);
             return 0;
         }
-
 
         private static bool IsStateDatabaseReadException(Exception exception)
         {

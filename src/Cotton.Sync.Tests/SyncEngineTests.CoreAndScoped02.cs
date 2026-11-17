@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public async Task RunOnceAsync_WithScopedLocalDeletedPathDeletesRemoteWithoutFullCrawl()
         {
@@ -46,7 +45,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(entry, Is.Null);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithScopedLocalRenamePathsUploadsNewAndDeletesOldWithoutFullCrawl()
@@ -84,7 +82,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(newEntry, Is.Not.Null);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WhenLazyHashFileIsUnavailableContinuesWithOtherFiles()
@@ -142,7 +139,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(availableEntry, Is.Not.Null);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_WithScopedRapidRenameEditDeleteDeletesOldRemoteWithoutStaleTarget()

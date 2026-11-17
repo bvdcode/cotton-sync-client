@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         [Test]
         public void RunOnceAsync_FailsBeforeDownloadWhenPlannedDownloadsExceedFreeSpace()
         {
@@ -38,7 +37,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(File.Exists(Path.Combine(_root, "huge.bin")), Is.False);
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_CreatesRemoteFolderForLocalOnlyEmptyDirectoryAndStoresBaseline()
@@ -76,7 +74,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Uploaded, SyncActivityKind.Uploaded }));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_ReusesExistingRemoteFolderWhenLocalCreateHitsConflict()
@@ -123,7 +120,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_CreatesLocalFolderForRemoteOnlyEmptyDirectoryAndStoresBaseline()
         {
@@ -149,7 +145,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.Downloaded }));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_DeletesRemoteEmptyDirectoryWhenBaselineKnowsLocalDelete()
@@ -177,7 +172,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         [Test]
         public async Task RunOnceAsync_DeletesLocalEmptyDirectoryWhenBaselineKnowsRemoteDelete()
         {
@@ -203,7 +197,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(result.Activities.Select(activity => activity.Kind), Is.EqualTo(new[] { SyncActivityKind.DeletedLocal }));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_SkipsLocalDirectoryDeleteWhenFolderIsNotEmpty()
@@ -235,7 +228,6 @@ namespace Cotton.Sync.Tests
                 Assert.That(result.Activities[0].Details, Does.Contain("not empty"));
             });
         }
-
 
         [Test]
         public async Task RunOnceAsync_BlocksRemoteDirectoryDeletesOverRunLimit()

@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         private class RecordingLogger<T> : ILogger<T>
         {
             public List<(LogLevel Level, string Message)> Entries { get; } = [];
@@ -45,7 +44,6 @@ namespace Cotton.Sync.Tests
             }
         }
 
-
         private class RecordingProgress<T> : IProgress<T>
         {
             private readonly Action<T>? _onReport;
@@ -63,7 +61,6 @@ namespace Cotton.Sync.Tests
                 _onReport?.Invoke(value);
             }
         }
-
 
         private class FakeRemoteFilePlaceholderWriter :
             IRemoteFilePlaceholderWriter,
@@ -209,7 +206,6 @@ namespace Cotton.Sync.Tests
             }
         }
 
-
         private class SignalingRemoteFilePlaceholderWriter : IRemoteFilePlaceholderWriter
         {
             private static readonly byte[] PlaceholderIdentity = [0x43, 0x4F, 0x54, 0x54, 0x4F, 0x4E];
@@ -241,7 +237,6 @@ namespace Cotton.Sync.Tests
                 return Task.FromResult(new RemoteFilePlaceholderResult(PlaceholderIdentity, _hydrationState));
             }
         }
-
 
         private class BatchRemoteFilePlaceholderWriter : IRemoteFilePlaceholderBatchWriter
         {

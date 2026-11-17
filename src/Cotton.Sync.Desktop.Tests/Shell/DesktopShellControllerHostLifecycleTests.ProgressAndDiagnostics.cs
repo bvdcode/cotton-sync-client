@@ -227,6 +227,5 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 Assert.That(host.App.DeletedSyncPairId, Is.EqualTo(syncPair.Id));
             });
         }
-
     }
 }

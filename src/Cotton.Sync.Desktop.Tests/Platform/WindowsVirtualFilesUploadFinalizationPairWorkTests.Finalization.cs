@@ -238,6 +238,5 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                     new { Stage = SyncRunProgressStage.FinalizingCloudFiles, FilesCompleted = 4, FilesTotal = (int?)4, IsCompleted = true },
                 }));
         }
-
     }
 }

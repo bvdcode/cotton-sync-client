@@ -336,6 +336,5 @@ namespace Cotton.Sync.App.Tests.Runners
                 Assert.That(runner.Status.CurrentOperation, Is.EqualTo("Action required: " + expected));
             });
         }
-
     }
 }

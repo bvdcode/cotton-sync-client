@@ -373,6 +373,5 @@ namespace Cotton.Sync.App.Tests.Runners
                     Has.Some.Contains("paused while in-flight work was canceling"));
             });
         }
-
     }
 }

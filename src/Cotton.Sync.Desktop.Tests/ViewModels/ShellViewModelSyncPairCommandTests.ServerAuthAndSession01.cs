@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task ServerProbe_NormalizesVerifiedBareHostAndEnablesSignIn()
         {
@@ -52,7 +51,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.SignInCommand.CanExecute(null), Is.True);
             });
         }
-
 
         [Test]
         public async Task ServerProbe_RetriesTransientNetworkFailureAndThenEnablesSignIn()
@@ -89,7 +87,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task ServerProbe_ShowsNetworkFirewallMessageAfterTransientFailuresAreExhausted()
         {
@@ -124,7 +121,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.IsSignInStepVisible, Is.False);
             });
         }
-
 
         [Test]
         public async Task ServerProbe_IgnoresStaleFailureAfterServerUrlChanges()
@@ -166,7 +162,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task SetupFlow_StartsWithServerStepUntilCottonServerIsVerified()
         {
@@ -182,7 +177,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.SignInCommand.CanExecute(null), Is.False);
             });
         }
-
 
         [Test]
         public async Task InitializeAsync_ShowsStartupLoadingInsteadOfSetupWhileRestoringSession()
@@ -218,7 +212,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task InitializeAsync_WhenLoadFailsBeforeSignInStepShowsActionRequired()
         {
@@ -239,7 +232,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("Sign in to continue."));
             });
         }
-
 
         [Test]
         public async Task InitializeAsync_WhenLocalDatabaseIsCorruptShowsRepairGuidance()
@@ -263,7 +255,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.ActionRequiredMessage, Does.Not.Contain("SQLite Error"));
             });
         }
-
 
         [Test]
         public async Task ChangeServerCommand_ReturnsSetupFlowToServerStepAndClearsSecrets()

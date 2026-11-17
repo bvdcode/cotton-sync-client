@@ -299,13 +299,5 @@ namespace Cotton.Sync.Desktop.Shell
         {
             await _progressAnimator.DisposeAsync().ConfigureAwait(false);
         }
-
-
-
-
-
-
-
-
     }
 }

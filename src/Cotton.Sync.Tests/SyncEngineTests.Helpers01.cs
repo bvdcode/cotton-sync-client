@@ -18,7 +18,6 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
-
         private SyncEngine CreateEngine(
             ILocalFileScanner scanner,
             RemoteTreeSnapshot remoteTree,
@@ -30,7 +29,6 @@ namespace Cotton.Sync.Tests
             return CreateEngineWithLogger(scanner, remoteFiles, out stateStore, logger, remoteFilePlaceholderWriter, remoteTree);
         }
 
-
         private SyncEngine CreateEngine(
             ILocalFileScanner scanner,
             FakeRemoteFileSynchronizer remoteFiles,
@@ -39,7 +37,6 @@ namespace Cotton.Sync.Tests
         {
             return CreateEngineWithLogger(scanner, remoteFiles, out stateStore, null, null, remoteTrees);
         }
-
 
         private SyncEngine CreateEngineWithLogger(
             ILocalFileScanner scanner,
@@ -59,7 +56,6 @@ namespace Cotton.Sync.Tests
                 logger: logger);
         }
 
-
         private SyncEngine CreateEngine(
             ILocalFileScanner scanner,
             RemoteTreeSnapshot remoteTree,
@@ -78,7 +74,6 @@ namespace Cotton.Sync.Tests
                 logger: logger);
         }
 
-
         private SyncPair Pair(SyncPairMaterializationMode materializationMode = SyncPairMaterializationMode.FullMirror)
         {
             return new SyncPair
@@ -89,7 +84,6 @@ namespace Cotton.Sync.Tests
                 MaterializationMode = materializationMode,
             };
         }
-
 
         private async Task InsertBaselineAsync(
             SqliteSyncStateStore stateStore,
@@ -115,7 +109,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         private async Task InsertPlaceholderBaselineAsync(
             SqliteSyncStateStore stateStore,
             string relativePath,
@@ -139,7 +132,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         private async Task InsertDirectoryBaselineAsync(
             SqliteSyncStateStore stateStore,
             string relativePath,
@@ -156,7 +148,6 @@ namespace Cotton.Sync.Tests
             });
         }
 
-
         private LocalFileSnapshot LocalFile(string relativePath, string content)
         {
             return new LocalFileSnapshot
@@ -168,7 +159,6 @@ namespace Cotton.Sync.Tests
                 LastWriteUtc = new DateTime(2026, 6, 2, 13, 0, 0, DateTimeKind.Utc),
             };
         }
-
 
         private LocalFileSnapshot CloudFilesPlaceholderLocal(string relativePath, long sizeBytes)
         {
@@ -184,7 +174,6 @@ namespace Cotton.Sync.Tests
             };
         }
 
-
         private LocalDirectorySnapshot LocalDirectory(string relativePath)
         {
             return new LocalDirectorySnapshot
@@ -194,7 +183,6 @@ namespace Cotton.Sync.Tests
             };
         }
 
-
         private void WriteFile(string relativePath, string content)
         {
             string fullPath = Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar));
@@ -202,7 +190,6 @@ namespace Cotton.Sync.Tests
             File.WriteAllText(fullPath, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
             File.SetLastWriteTimeUtc(fullPath, new DateTime(2026, 6, 2, 13, 0, 0, DateTimeKind.Utc));
         }
-
 
         private LocalFileSnapshot? CreateMatrixLocal(string relativePath, MatrixFileState state, string content)
         {
@@ -214,7 +201,6 @@ namespace Cotton.Sync.Tests
             WriteFile(relativePath, content);
             return LocalFile(relativePath, content);
         }
-
 
         private void AssertMatrixSideEffects(
             string relativePath,
@@ -252,7 +238,6 @@ namespace Cotton.Sync.Tests
             }
         }
 
-
         private RemoteTreeSnapshot EmptyRemoteTree()
         {
             return new RemoteTreeSnapshot
@@ -264,7 +249,6 @@ namespace Cotton.Sync.Tests
                 },
             };
         }
-
 
         private RemoteTreeSnapshot RemoteTree(params NodeFileManifestDto[] files)
         {
@@ -281,7 +265,6 @@ namespace Cotton.Sync.Tests
             return tree;
         }
 
-
         private RemoteDirectorySnapshot RemoteDirectory(string relativePath, Guid? parentNodeId = null)
         {
             return new RemoteDirectorySnapshot
@@ -295,7 +278,6 @@ namespace Cotton.Sync.Tests
                 },
             };
         }
-
 
         private NodeFileManifestDto RemoteFile(string relativePath, string contentHash, Guid? id = null, long sizeBytes = 1)
         {
@@ -317,12 +299,10 @@ namespace Cotton.Sync.Tests
             };
         }
 
-
         private static string HashText(string text)
         {
             return Hash(Encoding.UTF8.GetBytes(text));
         }
-
 
         private static string Hash(byte[] bytes)
         {

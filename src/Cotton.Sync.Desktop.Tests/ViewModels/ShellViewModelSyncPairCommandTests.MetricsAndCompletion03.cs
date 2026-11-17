@@ -19,7 +19,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
 {
     public partial class ShellViewModelSyncPairCommandTests
     {
-
         [Test]
         public async Task RunProgressChanged_KeepsGlobalFileRateWhenAggregateTotalGrows()
         {
@@ -68,7 +67,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task TransferProgressChanged_UsesGlobalFileRateWhenActiveTransferHasNoByteRate()
         {
@@ -113,7 +111,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task RunProgressChanged_EstimatesFromRecentFileProgressInsteadOfPassStart()
         {
@@ -149,7 +146,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentWorkProgressHeaderRateDetails, Does.Not.Contain("45m"));
             });
         }
-
 
         [Test]
         public async Task StatusChanged_ClearsCurrentRunProgressWhenSyncBecomesIdle()
@@ -192,7 +188,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task StatusChanged_ClearsCurrentTransferWhenSyncBecomesIdle()
         {
@@ -233,7 +228,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             });
         }
 
-
         [Test]
         public async Task Initialize_ShowsFirstSyncPendingUntilPairHasBaseline()
         {
@@ -250,7 +244,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.HasStatusCardDetail, Is.False);
             });
         }
-
 
         [Test]
         public async Task Initialize_ShowsUpToDateAfterPairHasBaseline()
@@ -270,7 +263,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 Assert.That(viewModel.CurrentProgressText, Is.EqualTo("All folders are up to date."));
             });
         }
-
 
         [Test]
         public async Task StatusChanged_UpdatesBaselineAndShowsUpToDateAfterSuccessfulSync()

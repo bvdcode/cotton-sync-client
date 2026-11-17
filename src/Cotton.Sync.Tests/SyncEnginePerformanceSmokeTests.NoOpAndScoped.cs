@@ -191,6 +191,5 @@ namespace Cotton.Sync.Tests
                 Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(2)));
             });
         }
-
     }
 }

@@ -42,6 +42,5 @@ namespace Cotton.Sync.App.SyncPairs
 
         [Column("mode")]
         public SyncPairMode Mode { get; set; }
-
     }
 }

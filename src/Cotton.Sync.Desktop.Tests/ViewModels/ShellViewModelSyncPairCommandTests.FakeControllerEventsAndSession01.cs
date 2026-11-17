@@ -21,36 +21,30 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
     {
         private partial class FakeDesktopShellController : IDesktopShellController
         {
-
             public void ReportActivity(DesktopActivitySnapshot activity)
             {
                 ActivityReported?.Invoke(this, activity);
             }
-
 
             public void ReportSessionRevoked(DesktopSessionRevocationSnapshot sessionRevocation)
             {
                 SessionRevoked?.Invoke(this, sessionRevocation);
             }
 
-
             public void ReportStatus(DesktopSyncStatusSnapshot status)
             {
                 StatusChanged?.Invoke(this, status);
             }
-
 
             public void ReportTransferProgress(DesktopTransferProgressSnapshot progress)
             {
                 TransferProgressChanged?.Invoke(this, progress);
             }
 
-
             public void ReportRunProgress(DesktopRunProgressSnapshot progress)
             {
                 RunProgressChanged?.Invoke(this, progress);
             }
-
 
             public async Task<DesktopShellSnapshot> LoadAsync(CancellationToken cancellationToken = default)
             {
@@ -69,7 +63,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 return _snapshot;
             }
 
-
             public Task SetSyncPairEnabledAsync(
                 Guid syncPairId,
                 bool enabled,
@@ -80,7 +73,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 EnabledSyncPairValue = enabled;
                 return Task.CompletedTask;
             }
-
 
             public async Task RemoveSyncPairAsync(Guid syncPairId, CancellationToken cancellationToken = default)
             {
@@ -94,7 +86,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 }
             }
 
-
             public Task RenameSyncPairAsync(
                 Guid syncPairId,
                 string displayName,
@@ -105,7 +96,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 RenamedSyncPairDisplayName = displayName;
                 return Task.CompletedTask;
             }
-
 
             public async Task<DesktopServerProbeResult> ProbeServerAsync(
                 string serverUrl,
@@ -138,7 +128,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                 return ServerProbeResult ?? throw new NotSupportedException();
             }
 
-
             public Task<DesktopStoredSessionRestoreSnapshot> RestoreStoredSessionAsync(
                 string serverUrl,
                 CancellationToken cancellationToken = default)
@@ -150,7 +139,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     ? Task.FromResult(StoredSessionRestoreSnapshot)
                     : StoredSessionRestoreCompletion.Task.WaitAsync(cancellationToken);
             }
-
 
             public Task<AuthSession> SignInAsync(
                 DesktopSignInRequest request,
@@ -169,7 +157,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     request.Username,
                     false));
             }
-
 
             public Task<AuthSession> SignInWithBrowserAsync(
                 string serverUrl,
@@ -191,7 +178,6 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
                     ? Task.FromResult(session)
                     : WaitForBrowserSignInAsync(BrowserSignInCompletion, cancellationToken);
             }
-
 
             private static async Task<AuthSession> WaitForBrowserSignInAsync(
                 TaskCompletionSource<AuthSession> completion,

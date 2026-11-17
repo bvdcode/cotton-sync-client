@@ -252,6 +252,5 @@ namespace Cotton.Sync.App.Tests.Runners
                 Assert.That(runner.Status.State, Is.EqualTo(SyncPairRunState.Idle));
             });
         }
-
     }
 }

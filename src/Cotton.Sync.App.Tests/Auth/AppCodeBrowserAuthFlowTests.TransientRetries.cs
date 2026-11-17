@@ -118,6 +118,5 @@ namespace Cotton.Sync.App.Tests.Auth
                 Assert.That(delays, Is.EqualTo(new[] { TimeSpan.FromSeconds(1) }));
             });
         }
-
     }
 }
