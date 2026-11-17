@@ -46,7 +46,26 @@ pids+=("$!")
 app_pid="$!"
 pids+=("$app_pid")
 export COTTON_TRAY_TEST_PID="$app_pid"
-timeout 30s xdotool search --sync --onlyvisible --pid "$app_pid" --name 'Cotton Sync' >/dev/null
+wait_for_window_state() {
+  local expected="$1" window_ids
+  for attempt in $(seq 1 150); do
+    kill -0 "$app_pid" || return 1
+    if window_ids="$(xdotool search --onlyvisible --pid "$app_pid" --name '^Cotton Sync$' \
+      2> "$evidence/window-search.stderr.log")"; then
+      if [ "$expected" = visible ]; then
+        printf '%s\n' "$window_ids" | head -1
+        return 0
+      fi
+    elif [ "$expected" = hidden ] && [ ! -s "$evidence/window-search.stderr.log" ]; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  echo "Application window did not become $expected." >&2
+  cat "$evidence/window-search.stderr.log" >&2
+  return 1
+}
+wait_for_window_state visible >/dev/null
 echo 'PASS: Window remains reachable before KDE tray host starts'
 "kded$kde_version" > "$evidence/kded.log" 2>&1 &
 pids+=("$!")
@@ -138,21 +157,14 @@ items = {child[1].get('label', ''): child[0] for child in layout[2]}
 assert 'Show' in items and 'Quit' in items, items
 print('PASS: Tray icon pixels and native Show/Quit menu exported', flush=True)
 Path(sys.argv[1], 'tray-properties.txt').write_text(str(props) + '\n' + str(layout))
-call(service, '/StatusNotifierItem', 'org.kde.StatusNotifierItem', 'Activate',
-     GLib.Variant('(ii)', (0, 0)))
-print('PASS: Tray activation accepted', flush=True)
 Path(sys.argv[1], 'tray-service.txt').write_text(service)
 PY
-window="$(timeout 30s xdotool search --sync --onlyvisible --pid "$app_pid" --name 'Cotton Sync' | head -1)"
+window="$(wait_for_window_state visible)"
 timeout 3s wmctrl -i -c "$window"
-sleep 1
-kill -0 "$app_pid"
-if xdotool search --onlyvisible --pid "$app_pid" --name 'Cotton Sync' >/dev/null 2>&1; then
-  echo 'Window did not hide to tray' >&2; exit 1
-fi
+wait_for_window_state hidden
 timeout 3s gdbus call --session --dest "$kded_service" --object-path /kded \
   --method "$kded_service.quit" >/dev/null
-timeout 30s xdotool search --sync --onlyvisible --pid "$app_pid" --name 'Cotton Sync' >/dev/null
+window="$(wait_for_window_state visible)"
 echo 'PASS: Hidden window reopens when KDE tray host disappears'
 "kded$kde_version" >> "$evidence/kded.log" 2>&1 &
 pids+=("$!")
@@ -164,12 +176,9 @@ for attempt in $(seq 1 30); do
   sleep 0.2
 done
 sleep 1
+window="$(wait_for_window_state visible)"
 timeout 3s wmctrl -i -c "$window"
-sleep 1
-kill -0 "$app_pid"
-if xdotool search --onlyvisible --pid "$app_pid" --name 'Cotton Sync' >/dev/null 2>&1; then
-  echo 'Window did not hide after KDE tray host returned' >&2; exit 1
-fi
+wait_for_window_state hidden
 echo 'PASS: Hide to tray resumes after KDE tray host returns'
 service="$(/usr/bin/python3 - <<'PYTHON'
 import os
@@ -187,7 +196,7 @@ PYTHON
 )"
 gdbus call --session --dest "$service" --object-path /StatusNotifierItem \
   --method org.kde.StatusNotifierItem.Activate 0 0 >/dev/null
-timeout 30s xdotool search --sync --onlyvisible --pid "$app_pid" --name 'Cotton Sync' >/dev/null
+wait_for_window_state visible >/dev/null
 "$app" --data-dir "$evidence/state" > "$evidence/second-instance.log" 2>&1
 kill -0 "$app_pid"
 sleep 1
