@@ -156,6 +156,7 @@ jobs:
             ${{ runner.temp }}/live-sync-acceptance/summary.json
             ${{ runner.temp }}/live-sync-acceptance/*/stdout.log
             ${{ runner.temp }}/live-sync-acceptance/*/stderr.log
+            ${{ runner.temp }}/live-sync-acceptance/runtime/*/state/cotton-sync.log*
           if-no-files-found: ignore
 
   linux:
@@ -288,6 +289,7 @@ jobs:
             ${{ runner.temp }}/linux-live-acceptance/summary.json
             ${{ runner.temp }}/linux-live-acceptance/*/stdout.log
             ${{ runner.temp }}/linux-live-acceptance/*/stderr.log
+            ${{ runner.temp }}/linux-live-acceptance/runtime/*/state/cotton-sync.log*
             ${{ runner.temp }}/linux-kde-tray
             src/*.Tests/TestResults/*.trx
           if-no-files-found: ignore
