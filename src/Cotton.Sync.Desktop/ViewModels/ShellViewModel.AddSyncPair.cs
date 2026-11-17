@@ -24,7 +24,8 @@ namespace Cotton.Sync.Desktop.ViewModels
     {
         private async Task AddSyncPairAsync()
         {
-            DesktopSyncPairRequest request = new(LocalFolderPath, RemoteFolderPath, SelectedSyncMode);
+            string remotePath = SelectedRemoteFolder?.Path ?? RemoteFolderPath;
+            DesktopSyncPairRequest request = new(LocalFolderPath, remotePath, SelectedSyncMode);
             IsAddingSyncPair = true;
             GlobalStatus = "Adding sync folder";
             RefreshCurrentProgressText();
