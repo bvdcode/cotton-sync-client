@@ -24,7 +24,7 @@ namespace Cotton.Sync.Desktop.Tests.Live
             string firstPath = LiveStressFiles.FullPath(session.FirstRoot, path);
             string secondPath = LiveStressFiles.FullPath(session.SecondRoot, path);
             string initialHash = await LiveStressFiles.WriteAsync(firstPath, size, token);
-            await session.StartAsync(token);
+            await session.StartAsync(token, requiredStorageBytes: 6 * size);
             await session.ConvergeAsync(new Dictionary<string, string> { [path] = initialHash }, token);
             string staging = Path.Combine(session.DirectoryPath, "remote-update.bin");
             string remoteHash = await LiveStressFiles.WriteAsync(staging, size, token);

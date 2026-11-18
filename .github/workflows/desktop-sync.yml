@@ -260,6 +260,7 @@ jobs:
       - name: Verify Linux changes during active transfers
         env:
           COTTON_SYNC_LIVE_STRESS_TEST: "1"
+          COTTON_SYNC_QA_CLEANUP_ABANDONED: "1"
           COTTON_SYNC_QA_SERVER: ${{ vars.COTTON_SYNC_QA_SERVER }}
           COTTON_SYNC_QA_USERNAME: ${{ secrets.COTTON_SYNC_QA_USERNAME }}
           COTTON_SYNC_QA_PASSWORD: ${{ secrets.COTTON_SYNC_QA_PASSWORD }}
@@ -276,6 +277,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.linux_load_validation
         env:
           COTTON_SYNC_LIVE_STRESS_TEST: "1"
+          COTTON_SYNC_QA_CLEANUP_ABANDONED: "1"
           COTTON_SYNC_QA_SERVER: ${{ vars.COTTON_SYNC_QA_SERVER }}
           COTTON_SYNC_QA_USERNAME: ${{ secrets.COTTON_SYNC_QA_USERNAME }}
           COTTON_SYNC_QA_PASSWORD: ${{ secrets.COTTON_SYNC_QA_PASSWORD }}
