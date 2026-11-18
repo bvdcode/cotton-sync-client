@@ -2,6 +2,8 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using Cotton.Sync.Desktop.Auth;
+using Cotton.Sync.App.Auth;
+using Cotton.Sync.Desktop.Shell;
 using Cotton.Sync.Desktop.ViewModels;
 
 namespace Cotton.Sync.Desktop.Tests.ViewModels
@@ -73,6 +75,32 @@ namespace Cotton.Sync.Desktop.Tests.ViewModels
             model.RetryTokenStorageCommand.Execute(null);
             await WaitForAsync(() => !model.RetryTokenStorageCommand.IsRunning);
 
+            Assert.That(model.IsTokenStorageChoiceVisible, Is.False);
+            Assert.That(controller.UnencryptedStorageApprovals, Is.Zero);
+        }
+
+        [Test]
+        public async Task StoredSessionRestoration_HidesPreviousStorageChoice()
+        {
+            if (!OperatingSystem.IsLinux())
+            {
+                Assert.Ignore("Linux storage choices are not shown on Windows.");
+                return;
+            }
+
+            FakeDesktopShellController controller = new(CreateStoredSessionWaitingSnapshot())
+            {
+                TokenStorageStatus = new("unavailable", false, "KWallet is locked."),
+                StoredSessionRestoreSnapshot = new DesktopStoredSessionRestoreSnapshot(
+                    new AuthSession(Guid.NewGuid(), "restored", "restored@example.test", false), true, null),
+            };
+            using ShellViewModel model = CreateViewModel(controller);
+            await model.InitializeAsync();
+            Assert.That(model.IsTokenStorageChoiceVisible, Is.True);
+
+            await ExecuteAsync(model.RetryStoredSessionCommand);
+
+            Assert.That(model.IsSignedIn, Is.True);
             Assert.That(model.IsTokenStorageChoiceVisible, Is.False);
             Assert.That(controller.UnencryptedStorageApprovals, Is.Zero);
         }

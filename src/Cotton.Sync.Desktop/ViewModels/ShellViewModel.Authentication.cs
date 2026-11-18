@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Collections.ObjectModel;
@@ -153,6 +153,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             HasStoredSession = true;
             StoredSessionRestoreMessage = string.Empty;
             IsSignedIn = true;
+            IsTokenStorageChoiceVisible = false;
             AccountName = ResolveAccountDisplayName(session.Email, session.Username);
             Username = AccountName;
             Password = string.Empty;
