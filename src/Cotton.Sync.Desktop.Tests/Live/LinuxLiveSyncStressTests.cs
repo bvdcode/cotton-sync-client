@@ -9,6 +9,8 @@ namespace Cotton.Sync.Desktop.Tests.Live
     [NonParallelizable]
     public class LinuxLiveSyncStressTests
     {
+        private const long TransferFileSize = 64L * 1024 * 1024;
+
         [Test, Category("LiveServer"), Category("Stress")]
         public async Task LargeFileAndManyFilesConverge()
         {
@@ -52,12 +54,13 @@ namespace Cotton.Sync.Desktop.Tests.Live
             await using LiveStressSession session = new();
             Dictionary<string, string> expected = new(StringComparer.Ordinal);
             Stopwatch elapsed = Stopwatch.StartNew();
-            await session.StartAsync(token);
+            await session.StartAsync(token, requiredStorageBytes: 6 * TransferFileSize);
             await session.ConvergeAsync(expected, token);
             foreach (string action in new[] { "overwrite", "delete", "rename", "rename-parent" })
             {
                 await MutateDuringUploadAsync(session, expected, action, token);
             }
+            await session.ClearFilesAsync(expected, token);
             foreach (string action in new[] { "overwrite", "delete", "rename", "rename-parent" })
             {
                 await MutateDuringDownloadAsync(session, expected, action, token);
@@ -86,7 +89,7 @@ namespace Cotton.Sync.Desktop.Tests.Live
         {
             const string path = "restart/active.bin";
             string staging = Path.Combine(session.DirectoryPath, "staging.bin");
-            expected[path] = await LiveStressFiles.WriteAsync(staging, 64L * 1024 * 1024, token);
+            expected[path] = await LiveStressFiles.WriteAsync(staging, TransferFileSize, token);
             string destination = LiveStressFiles.FullPath(session.FirstRoot, path);
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             session.FirstGate.Arm("/chunks/raw");
@@ -109,7 +112,7 @@ namespace Cotton.Sync.Desktop.Tests.Live
         {
             string path = $"upload-{action}/source.bin";
             string staging = Path.Combine(session.DirectoryPath, "staging.bin");
-            string hash = await LiveStressFiles.WriteAsync(staging, 64L * 1024 * 1024, token);
+            string hash = await LiveStressFiles.WriteAsync(staging, TransferFileSize, token);
             string source = LiveStressFiles.FullPath(session.FirstRoot, path);
             Directory.CreateDirectory(Path.GetDirectoryName(source)!);
             session.FirstGate.Arm("/chunks/raw");
@@ -133,7 +136,7 @@ namespace Cotton.Sync.Desktop.Tests.Live
         {
             string path = $"download-{action}/source.bin";
             string staging = Path.Combine(session.DirectoryPath, "staging.bin");
-            string hash = await LiveStressFiles.WriteAsync(staging, 64L * 1024 * 1024, token);
+            string hash = await LiveStressFiles.WriteAsync(staging, TransferFileSize, token);
             string source = LiveStressFiles.FullPath(session.FirstRoot, path);
             Directory.CreateDirectory(Path.GetDirectoryName(source)!);
             session.SecondGate.Arm("/content");

@@ -61,6 +61,18 @@ namespace Cotton.Sync.Desktop.Tests.Live
         }
 
         [Test]
+        public async Task ClearTrashAsync_PreservesActiveNamespaceAndUnrelatedTrash()
+        {
+            await _cleanup.ClearTrashAsync(_handler.FirstNamespaceId, CancellationToken.None);
+
+            Assert.That(_handler.Deletes, Is.EqualTo(new[]
+            {
+                $"/api/v1/files/{_handler.FirstFileId}?skipTrash=true",
+            }));
+            Assert.That(_handler.Reads.Any(path => path.Contains(_handler.RootId.ToString(), StringComparison.Ordinal)), Is.False);
+        }
+
+        [Test]
         public async Task ClearAbandonedAsync_RefusesPrivateServerWithoutDeletingAnything()
         {
             _handler.IsPublic = false;

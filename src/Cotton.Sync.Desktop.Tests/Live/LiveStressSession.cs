@@ -52,7 +52,7 @@ namespace Cotton.Sync.Desktop.Tests.Live
         public DesktopShellController First { get; private set; }
         public DesktopShellController Second { get; }
 
-        public async Task StartAsync(CancellationToken cancellationToken, long requiredStorageBytes = 768L * 1024 * 1024)
+        public async Task StartAsync(CancellationToken cancellationToken, long requiredStorageBytes)
         {
             await _admin.Auth.LoginAsync(new LoginRequestDto { Username = _username, Password = _password },
                 cancellationToken);
@@ -71,6 +71,19 @@ namespace Cotton.Sync.Desktop.Tests.Live
                 cancellationToken);
             await Second.AddSyncPairAsync(new DesktopSyncPairRequest(SecondRoot, _remotePath, SyncPairMode.FullMirror),
                 cancellationToken);
+        }
+
+        public async Task ClearFilesAsync(Dictionary<string, string> expected, CancellationToken cancellationToken)
+        {
+            foreach (string path in expected.Keys)
+            {
+                File.Delete(LiveStressFiles.FullPath(FirstRoot, path));
+            }
+            expected.Clear();
+            await ConvergeAsync(expected, cancellationToken);
+            await _cleanup.ClearTrashAsync(_remoteRoot!.Id, cancellationToken);
+            long usedBytes = await _cleanup.ReadUsedBytesAsync(cancellationToken);
+            Assert.That(usedBytes, Is.EqualTo(_initialUsedBytes), "Completed transfer phases must release their storage.");
         }
 
         public async Task RestartFirstAsync(CancellationToken cancellationToken)
