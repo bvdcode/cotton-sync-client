@@ -9,6 +9,55 @@ namespace Cotton.Sync.Tests
 {
     public partial class SyncEngineTests
     {
+        [Test]
+        public async Task RunOnceAsync_RenameEventPendingAndTargetStillChanging_DefersSourceDeletion()
+        {
+            const string sourcePath = "original.txt";
+            const string targetPath = "renamed.txt";
+            const string originalContent = "original document";
+            const string editedContent = "edited document";
+            WriteFile(targetPath, editedContent);
+            LocalFileSnapshot local = LocalFile(targetPath, editedContent);
+            local.ContentHash = string.Empty;
+            bool unavailable = true;
+            FakeLocalFileScanner scanner = new(local)
+            {
+                ContentHashFactory = file => unavailable
+                    ? throw new LocalFileUnavailableException(file.RelativePath, file.FullPath, "File is being saved.")
+                    : HashText(editedContent),
+            };
+            NodeFileManifestDto original = RemoteFile(sourcePath, HashText(originalContent), sizeBytes: originalContent.Length);
+            FakeRemoteFileSynchronizer remoteFiles = new();
+            SyncEngine engine = CreateEngine(scanner, RemoteTree(original), remoteFiles,
+                out SqliteSyncStateStore stateStore);
+            await InsertBaselineAsync(stateStore, sourcePath, original.ContentHash, original, originalContent.Length);
+
+            SyncRunResult deferred = await engine.RunOnceAsync(Pair(), new SyncRunOptions());
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(deferred.DeferredLocalPaths, Is.EquivalentTo(new[] { sourcePath, targetPath }));
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(remoteFiles.Uploads, Is.Empty);
+            });
+            Assert.That((await stateStore.GetAsync("pair-a", sourcePath))?.RemoteFileId, Is.EqualTo(original.Id));
+
+            unavailable = false;
+            SyncRunOptions options = new()
+            {
+                Scope = SyncRunScope.ForLocalChangedPaths([sourcePath, targetPath], [],
+                    [new LocalPathRename(sourcePath, targetPath)]),
+            };
+            await engine.RunOnceAsync(Pair(), options);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(remoteFiles.Deletes, Is.Empty);
+                Assert.That(remoteFiles.Moves, Has.Count.EqualTo(1));
+                Assert.That(remoteFiles.Uploads.Single().ExistingRemoteFile?.Id, Is.EqualTo(original.Id));
+            });
+        }
+
         [TestCase(SyncPairMaterializationMode.FullMirror, false)]
         [TestCase(SyncPairMaterializationMode.FullMirror, true)]
         [TestCase(SyncPairMaterializationMode.WindowsVirtualFiles, false)]

@@ -47,6 +47,7 @@ namespace Cotton.Sync
                         result,
                         cancellationToken)
                     .ConfigureAwait(false);
+            DeferMovesWithUnavailableTargets(result, moveSources, localByPath, remoteByPath, stateByPath);
             if (candidates.Count == 0)
             {
                 return;
@@ -82,6 +83,31 @@ namespace Cotton.Sync
                     remoteByPath,
                     stateByPath,
                     cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        private static void DeferMovesWithUnavailableTargets(
+            SyncRunResult result,
+            IReadOnlyList<KeyValuePair<string, SyncStateEntry>> moveSources,
+            IReadOnlyDictionary<string, LocalFileSnapshot> localByPath,
+            IDictionary<string, RemoteFileSnapshot> remoteByPath,
+            IDictionary<string, SyncStateEntry> stateByPath)
+        {
+            bool hasUnavailableTarget = localByPath.Any(local =>
+                !stateByPath.ContainsKey(local.Key)
+                && !remoteByPath.ContainsKey(local.Key)
+                && result.IsLocalPathDeferred(local.Key));
+            if (!hasUnavailableTarget)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<string, SyncStateEntry> source in moveSources)
+            {
+                if (stateByPath.ContainsKey(source.Key))
+                {
+                    result.RecordDeferredLocalPath(source.Value.RelativePath);
+                }
             }
         }
 
