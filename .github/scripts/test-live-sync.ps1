@@ -10,7 +10,7 @@ param(
     [ValidateRange(1, 100)] [int] $SeedFileCount = 16,
     [ValidateRange(0, 3600)] [int] $SoakSeconds = 60,
     [ValidateSet('full-mirror', 'windows-virtual-files')] [string[]] $Modes = @('full-mirror', 'windows-virtual-files'),
-    [ValidateRange(60, 1800)] [int] $ModeTimeoutSeconds = 600
+    [ValidateRange(60, 1800)] [int] $ModeTimeoutSeconds = 1800
 )
 
 $ErrorActionPreference = 'Stop'
