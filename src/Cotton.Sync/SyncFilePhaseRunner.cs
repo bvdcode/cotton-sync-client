@@ -107,7 +107,7 @@ namespace Cotton.Sync
                             .ConfigureAwait(false);
                     }
                 }
-                catch (LocalFileUnavailableException exception)
+                catch (LocalFileUnavailableException exception) when (!exception.RequiresExclusiveAccess)
                 {
                     ReportUnavailable(context.Result, context.Options, relativePath, exception);
                 }
