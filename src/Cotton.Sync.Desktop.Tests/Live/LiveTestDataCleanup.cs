@@ -18,6 +18,8 @@ namespace Cotton.Sync.Desktop.Tests.Live
     {
         public const string NamespacePrefix = "SyncLoadAcceptance-";
         private const int PageSize = 100;
+        private const int ReadAttempts = 3;
+        private static readonly TimeSpan ReadRetryDelay = TimeSpan.FromSeconds(1);
         private const string OriginalParentsKey = "originalParentsV1";
 
         public async Task ClearAbandonedAsync(CancellationToken cancellationToken)
@@ -152,8 +154,7 @@ namespace Cotton.Sync.Desktop.Tests.Live
             {
                 string kind = trash ? "trash" : "default";
                 string path = $"api/v1/layouts/nodes/{nodeId}/children?nodeType={kind}&page={page}&pageSize={PageSize}&depth=0";
-                using HttpRequestMessage request = await CreateRequestAsync(path, cancellationToken);
-                using HttpResponseMessage response = await http.SendAsync(request, cancellationToken);
+                using HttpResponseMessage response = await SendReadAsync(path, cancellationToken);
                 response.EnsureSuccessStatusCode();
                 NodeContentDto content = await response.Content.ReadFromJsonAsync<NodeContentDto>(cancellationToken)
                     ?? throw new InvalidDataException("Empty test-account directory listing.");
@@ -174,8 +175,7 @@ namespace Cotton.Sync.Desktop.Tests.Live
 
         private async Task<T> GetAsync<T>(string path, CancellationToken cancellationToken)
         {
-            using HttpRequestMessage request = await CreateRequestAsync(path, cancellationToken);
-            using HttpResponseMessage response = await http.SendAsync(request, cancellationToken);
+            using HttpResponseMessage response = await SendReadAsync(path, cancellationToken);
             response.EnsureSuccessStatusCode();
             return await response.Content.ReadFromJsonAsync<T>(cancellationToken)
                 ?? throw new InvalidDataException("Empty test-account response.");
@@ -188,6 +188,25 @@ namespace Cotton.Sync.Desktop.Tests.Live
             HttpRequestMessage request = new(HttpMethod.Get, new Uri(server, path));
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
             return request;
+        }
+
+        private async Task<HttpResponseMessage> SendReadAsync(string path, CancellationToken cancellationToken)
+        {
+            for (int attempt = 1; ; attempt++)
+            {
+                using HttpRequestMessage request = await CreateRequestAsync(path, cancellationToken);
+                try
+                {
+                    return await http.SendAsync(request, cancellationToken);
+                }
+                catch (HttpRequestException exception) when (exception.StatusCode is null
+                    && attempt < ReadAttempts && !cancellationToken.IsCancellationRequested)
+                {
+                    TestContext.Progress.WriteLine($"Test-account GET {path} lost its connection; "
+                        + $"retrying attempt {attempt + 1} of {ReadAttempts}: {exception.Message}");
+                    await Task.Delay(ReadRetryDelay, cancellationToken);
+                }
+            }
         }
     }
 }
