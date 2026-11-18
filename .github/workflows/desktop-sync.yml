@@ -161,6 +161,7 @@ jobs:
             ${{ runner.temp }}/live-sync-acceptance/*/stdout.log
             ${{ runner.temp }}/live-sync-acceptance/*/stderr.log
             ${{ runner.temp }}/live-sync-acceptance/runtime/*/state/cotton-sync.log*
+            ${{ runner.temp }}/live-sync-acceptance/runtime/**/diagnostics/*.zip
           if-no-files-found: ignore
 
   linux:

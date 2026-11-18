@@ -16,6 +16,13 @@ namespace Cotton.Sync.Desktop.Startup
             TextWriter output,
             CancellationToken cancellationToken)
         {
+            await output.WriteLineAsync("Restore pending requests: first=" + session.FirstManifestBarrier.ReadPendingRequests()
+                + "; second=" + session.SecondManifestBarrier.ReadPendingRequests()).ConfigureAwait(false);
+            await output.WriteLineAsync("Restore diagnostics: first="
+                + await session.FirstController.ExportDiagnosticsAsync(cancellationToken).ConfigureAwait(false)
+                + "; second="
+                + await session.SecondController.ExportDiagnosticsAsync(cancellationToken).ConfigureAwait(false))
+                .ConfigureAwait(false);
             SqliteSyncStateStore firstStore = new(session.FirstPaths.SyncStateDatabasePath);
             SqliteSyncStateStore secondStore = new(session.SecondPaths.SyncStateDatabasePath);
             IReadOnlyDictionary<string, LiveSyncSmokeFileHashReadResult> hashes =

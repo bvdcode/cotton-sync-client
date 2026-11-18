@@ -11,6 +11,20 @@ namespace Cotton.Sync.Desktop.Startup
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
+            barrier.RequestStarted(request);
+            try
+            {
+                return await SendObservedAsync(request, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                barrier.RequestFinished(request);
+            }
+        }
+
+        private async Task<HttpResponseMessage> SendObservedAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
             HttpResponseMessage response = await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
             bool returned = false;
             try
