@@ -6,6 +6,7 @@ using Cotton.Sync.App.Preferences;
 using Cotton.Sync.App.SyncPairs;
 using Cotton.Sync.Desktop.Diagnostics;
 using Cotton.Sync.Desktop.Updates;
+using Cotton.Sync.Desktop.Auth;
 
 namespace Cotton.Sync.Desktop.Shell
 {
@@ -22,6 +23,10 @@ namespace Cotton.Sync.Desktop.Shell
         event EventHandler<DesktopRunProgressSnapshot>? RunProgressChanged;
 
         Task<DesktopShellSnapshot> LoadAsync(CancellationToken cancellationToken = default);
+
+        Task<DesktopTokenStorageCapabilitySnapshot> CheckTokenStorageAsync(CancellationToken cancellationToken = default);
+
+        Task ApproveUnencryptedTokenStorageAsync(CancellationToken cancellationToken = default);
 
         Task<DesktopStoredSessionRestoreSnapshot> RestoreStoredSessionAsync(
             string serverUrl,

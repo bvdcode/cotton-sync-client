@@ -19,11 +19,19 @@ namespace Cotton.Sync.Desktop.Auth
 
         private readonly SemaphoreSlim _gate = new(1, 1);
         private readonly string _path;
-        private readonly ITokenPayloadProtector _protector;
+        private readonly ITokenPayloadProtector? _protector;
+        private readonly DesktopTokenStorage? _storage;
 
         public FileCottonTokenStore(string path)
-            : this(path, DesktopTokenPayloadProtectorFactory.CreateDefault())
+            : this(path, new DesktopTokenStorage(path))
         {
+        }
+
+        internal FileCottonTokenStore(string path, DesktopTokenStorage storage)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
+            _path = path;
+            _storage = storage ?? throw new ArgumentNullException(nameof(storage));
         }
 
         internal FileCottonTokenStore(string path, ITokenPayloadProtector protector)
@@ -84,7 +92,18 @@ namespace Cotton.Sync.Desktop.Auth
                 try
                 {
                     createdEnvelope = await CreateEnvelopeAsync(tokens, cancellationToken).ConfigureAwait(false);
-                    await using (FileStream stream = File.Create(tempPath))
+                    FileStreamOptions options = new()
+                    {
+                        Mode = FileMode.CreateNew,
+                        Access = FileAccess.Write,
+                        Options = FileOptions.Asynchronous,
+                    };
+                    if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+                    {
+                        options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+                    }
+
+                    await using (FileStream stream = new(tempPath, options))
                     {
                         await JsonSerializer.SerializeAsync(stream, createdEnvelope, JsonOptions, cancellationToken)
                             .ConfigureAwait(false);
@@ -146,12 +165,14 @@ namespace Cotton.Sync.Desktop.Auth
             CancellationToken cancellationToken)
         {
             byte[] plaintext = JsonSerializer.SerializeToUtf8Bytes(Clone(tokens), JsonOptions);
-            byte[] protectedPayload = await _protector
+            ITokenPayloadProtector protector = _protector
+                ?? await _storage!.SelectAsync(cancellationToken).ConfigureAwait(false);
+            byte[] protectedPayload = await protector
                 .ProtectAsync(plaintext, cancellationToken)
                 .ConfigureAwait(false);
             return new StoredTokenEnvelope
             {
-                Scheme = _protector.Scheme,
+                Scheme = protector.Scheme,
                 Payload = Convert.ToBase64String(protectedPayload),
             };
         }
@@ -161,7 +182,7 @@ namespace Cotton.Sync.Desktop.Auth
             CancellationToken cancellationToken)
         {
             if (envelope is null
-                || !string.Equals(envelope.Scheme, _protector.Scheme, StringComparison.Ordinal)
+                || (_protector is not null && !string.Equals(envelope.Scheme, _protector.Scheme, StringComparison.Ordinal))
                 || string.IsNullOrWhiteSpace(envelope.Payload))
             {
                 return null;
@@ -177,7 +198,8 @@ namespace Cotton.Sync.Desktop.Auth
                 return null;
             }
 
-            byte[] plaintext = await _protector
+            ITokenPayloadProtector protector = _protector ?? _storage!.Resolve(envelope.Scheme);
+            byte[] plaintext = await protector
                 .UnprotectAsync(protectedPayload, cancellationToken)
                 .ConfigureAwait(false);
             return JsonSerializer.Deserialize<TokenPairDto>(plaintext, JsonOptions);
@@ -208,9 +230,8 @@ namespace Cotton.Sync.Desktop.Auth
             StoredTokenEnvelope? envelope,
             CancellationToken cancellationToken)
         {
-            if (_protector is not IDeletableTokenPayloadProtector deletable
-                || envelope is null
-                || !string.Equals(envelope.Scheme, _protector.Scheme, StringComparison.Ordinal)
+            if (envelope is null
+                || (_protector is not null && !string.Equals(envelope.Scheme, _protector.Scheme, StringComparison.Ordinal))
                 || string.IsNullOrWhiteSpace(envelope.Payload))
             {
                 return;
@@ -229,6 +250,12 @@ namespace Cotton.Sync.Desktop.Auth
 
             try
             {
+                ITokenPayloadProtector protector = _protector ?? _storage!.Resolve(envelope.Scheme);
+                if (protector is not IDeletableTokenPayloadProtector deletable)
+                {
+                    return;
+                }
+
                 await deletable.DeleteAsync(protectedPayload, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception exception) when (IsExternalSecretCleanupException(exception))
@@ -251,7 +278,11 @@ namespace Cotton.Sync.Desktop.Auth
             return exception is CryptographicException
                 or PlatformNotSupportedException
                 or IOException
-                or UnauthorizedAccessException;
+                or UnauthorizedAccessException
+                or TimeoutException
+                or Tmds.DBus.Protocol.DBusErrorReplyException
+                or Tmds.DBus.Protocol.DBusConnectionClosedException
+                or Tmds.DBus.Protocol.DBusConnectFailedException;
         }
 
         private static void RestrictFileAccess(string path)

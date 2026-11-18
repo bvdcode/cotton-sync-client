@@ -19,7 +19,7 @@ namespace Cotton.Sync.Desktop.Tests.Auth
             {
                 Assert.That(snapshot.Scheme, Is.EqualTo("restricted-file-v1"));
                 Assert.That(snapshot.IsReleaseSecure, Is.False);
-                Assert.That(snapshot.Details, Does.Contain("Development fallback"));
+                Assert.That(snapshot.Details, Does.Contain("without cryptographic protection"));
             });
         }
 

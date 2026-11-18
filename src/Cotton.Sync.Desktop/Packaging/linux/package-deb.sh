@@ -65,7 +65,7 @@ Section: net
 Priority: optional
 Architecture: amd64
 Maintainer: Vadim Belov <vadim@belov.us>
-Depends: gnome-keyring | kwallet6, libnotify-bin, libsecret-tools, packagekit
+Depends: libnotify-bin, libsecret-tools, packagekit
 Installed-Size: $installed_size
 Homepage: https://cottoncloud.dev
 Description: Cotton Cloud desktop synchronization client

@@ -1,6 +1,7 @@
 ﻿// SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using Cotton.Sync.Desktop.Auth;
 using Cotton.Sync.App.Auth;
 using Cotton.Sync.App.Preferences;
 using Cotton.Sync.App.SyncPairs;
@@ -28,6 +29,12 @@ namespace Cotton.Sync.Desktop.Shell
             _snapshotFactory = new VisualSmokeSnapshotFactory(scenario);
             _progressAnimator = new VisualSmokeProgressAnimator(scenario, progressAnimationInterval);
         }
+
+        public Task<DesktopTokenStorageCapabilitySnapshot> CheckTokenStorageAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(new DesktopTokenStorageCapabilitySnapshot("visual-preview", true, string.Empty));
+
+        public Task ApproveUnencryptedTokenStorageAsync(CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("Sign-in storage is not used in a visual preview.");
 
         public event EventHandler<DesktopSyncStatusSnapshot>? StatusChanged
         {

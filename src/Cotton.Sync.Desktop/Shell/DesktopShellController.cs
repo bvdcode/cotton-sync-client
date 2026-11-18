@@ -52,6 +52,7 @@ namespace Cotton.Sync.Desktop.Shell
         private readonly IAutostartService _autostartService;
         private readonly DesktopDiagnosticsExporter _diagnosticsExporter;
         private readonly Func<CancellationToken, Task<DesktopTokenStorageCapabilitySnapshot>> _tokenStorageVerifier;
+        private readonly DesktopTokenStorage _tokenStorage;
         private readonly DesktopAppPaths _paths;
         private readonly SqliteAppPreferencesStore _preferencesStore;
         private readonly DesktopStartupOptions _startupOptions;
@@ -98,6 +99,7 @@ namespace Cotton.Sync.Desktop.Shell
             _autostartService = autostartService ?? throw new ArgumentNullException(nameof(autostartService));
             _diagnosticsExporter = new DesktopDiagnosticsExporter();
             DesktopShellControllerOptions resolvedOptions = options ?? new DesktopShellControllerOptions();
+            _tokenStorage = resolvedOptions.TokenStorage ?? new DesktopTokenStorage(paths.TokenStorePath);
             _startupOptions = resolvedOptions.StartupOptions;
             _savedSessionRestoreTimeout = ResolvePositiveTimeout(
                 resolvedOptions.SavedSessionRestoreTimeout,
@@ -140,7 +142,7 @@ namespace Cotton.Sync.Desktop.Shell
             return value;
         }
 
-        private static Func<CancellationToken, Task<DesktopTokenStorageCapabilitySnapshot>> ResolveTokenStorageVerifier(
+        private Func<CancellationToken, Task<DesktopTokenStorageCapabilitySnapshot>> ResolveTokenStorageVerifier(
             DesktopShellControllerOptions options)
         {
             if (options.TokenStorageVerifier is not null)
@@ -153,7 +155,7 @@ namespace Cotton.Sync.Desktop.Shell
                 return cancellationToken => Task.FromResult(options.TokenStorageCapabilities());
             }
 
-            return DesktopTokenStorageCapabilities.CreateVerifiedSnapshotAsync;
+            return _tokenStorage.VerifyAsync;
         }
 
         private static (IDesktopUpdateService Service, IDisposable? Lifetime) CreateUpdateService(

@@ -94,8 +94,8 @@ namespace Cotton.Sync.Desktop.Shell
                 .ConfigureAwait(false);
             run.Items.Add(new DesktopSelfTestItemSnapshot(
                 "Token storage",
-                tokenStorage.IsReleaseSecure,
-                tokenStorage.IsReleaseSecure
+                tokenStorage.IsUsable,
+                tokenStorage.IsUsable
                     ? tokenStorage.Details
                     : tokenStorage.Details + " (not release secure)"));
 

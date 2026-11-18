@@ -229,6 +229,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             {
                 DesktopShellSnapshot snapshot = await _controller.LoadAsync().ConfigureAwait(true);
                 ApplyInitialSnapshot(snapshot);
+                await CheckTokenStorageAsync().ConfigureAwait(true);
                 RefreshDiagnosticsItems();
                 RaiseCommandStates();
                 BeginStartupUpdateCheck();
