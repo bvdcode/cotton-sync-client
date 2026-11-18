@@ -15,6 +15,7 @@ namespace Cotton.Sync.Desktop.Startup
         private const int RestoreBurstFileCount = 11;
         private const int RestoreBurstFirstBatchCount = 4;
         private static readonly TimeSpan RestoreManifestHoldTimeout = TimeSpan.FromSeconds(15);
+        private static readonly TimeSpan RestoreConvergenceTimeout = TimeSpan.FromMinutes(5);
 
         private static async Task<int> RunLiveTrashRestoreBurstAsync(
             DesktopStartupOptions options,
@@ -111,7 +112,7 @@ namespace Cotton.Sync.Desktop.Startup
         {
             SqliteSyncStateStore firstStore = new(session.FirstPaths.SyncStateDatabasePath);
             SqliteSyncStateStore secondStore = new(session.SecondPaths.SyncStateDatabasePath);
-            DateTime deadline = DateTime.UtcNow + PropagationTimeout;
+            DateTime deadline = DateTime.UtcNow + RestoreConvergenceTimeout;
             int stableObservations = 0;
             int correctObservations = 0;
             int idleObservations = 0;
