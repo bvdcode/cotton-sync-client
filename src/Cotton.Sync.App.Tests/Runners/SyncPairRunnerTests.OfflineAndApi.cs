@@ -122,6 +122,7 @@ namespace Cotton.Sync.App.Tests.Runners
         [TestCase(System.Net.HttpStatusCode.InternalServerError)]
         [TestCase(System.Net.HttpStatusCode.BadGateway)]
         [TestCase(System.Net.HttpStatusCode.ServiceUnavailable)]
+        [TestCase((System.Net.HttpStatusCode)521)]
         [TestCase(System.Net.HttpStatusCode.GatewayTimeout)]
         public async Task SyncNowAsync_RetriesTransientApiFailureAndReturnsIdleOnRecovery(
             System.Net.HttpStatusCode statusCode)
@@ -174,13 +175,14 @@ namespace Cotton.Sync.App.Tests.Runners
             });
         }
 
-        [Test]
-        public void SyncNowAsync_TreatsPersistentBadGatewayAsTemporaryOfflineState()
+        [TestCase(System.Net.HttpStatusCode.BadGateway)]
+        [TestCase((System.Net.HttpStatusCode)521)]
+        public void SyncNowAsync_TreatsPersistentServerFailureAsTemporaryOfflineState(System.Net.HttpStatusCode statusCode)
         {
             CottonApiException failure = new CottonApiException(
-                System.Net.HttpStatusCode.BadGateway,
-                "502 Bad Gateway",
-                "Cotton API request failed with status 502.");
+                statusCode,
+                "Server unavailable",
+                "Cotton API request failed with status " + (int)statusCode + ".");
             FakeSyncPairWork work = new FakeSyncPairWork
             {
                 Failures = [failure, failure],
