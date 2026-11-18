@@ -13,7 +13,7 @@ namespace Cotton.Sync.App.Runners
     /// </summary>
     public static class SyncFailureClassifier
     {
-        private const int MaximumServerErrorStatusCode = 599;
+        private const HttpStatusCode OriginWebServerUnavailable = (HttpStatusCode)521;
 
         /// <summary>
         /// Returns whether a failed sync request should be retained for automatic recovery.
@@ -80,7 +80,11 @@ namespace Cotton.Sync.App.Runners
                 or HttpStatusCode.RequestTimeout
                 or HttpStatusCode.Locked
                 or HttpStatusCode.TooManyRequests
-                || (int?)statusCode is >= (int)HttpStatusCode.InternalServerError and <= MaximumServerErrorStatusCode;
+                or HttpStatusCode.InternalServerError
+                or HttpStatusCode.BadGateway
+                or HttpStatusCode.ServiceUnavailable
+                or HttpStatusCode.GatewayTimeout
+                or OriginWebServerUnavailable;
         }
     }
 }
