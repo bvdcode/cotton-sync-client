@@ -42,6 +42,20 @@ namespace Cotton.Sync.Desktop.Tests.Live
             }
             await CollectTrashAsync(namespaceId, folders, files, cancellationToken);
 
+            await DeleteCollectedAsync(folders, files, cancellationToken);
+        }
+
+        public async Task ClearTrashAsync(Guid namespaceId, CancellationToken cancellationToken)
+        {
+            List<NodeDto> folders = [];
+            List<NodeFileManifestDto> files = [];
+            await CollectTrashAsync(namespaceId, folders, files, cancellationToken);
+            await DeleteCollectedAsync(folders, files, cancellationToken);
+        }
+
+        private async Task DeleteCollectedAsync(List<NodeDto> folders, List<NodeFileManifestDto> files,
+            CancellationToken cancellationToken)
+        {
             foreach (NodeFileManifestDto file in files.DistinctBy(file => file.Id))
             {
                 await client.Files.DeleteAsync(file.Id, skipTrash: true, cancellationToken: cancellationToken);
