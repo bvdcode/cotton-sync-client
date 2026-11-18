@@ -73,6 +73,53 @@ namespace Cotton.Sync.Desktop.Tests.Live
         }
 
         [Test]
+        public async Task ClearTrashAsync_RetriesInterruptedListingWithoutRepeatingDeletes()
+        {
+            _handler.FailingPathFragment = "/children";
+            _handler.ReadFailures.Enqueue(new HttpRequestException("Connection reset by peer."));
+
+            await _cleanup.ClearTrashAsync(_handler.FirstNamespaceId, CancellationToken.None);
+
+            Assert.That(_handler.Deletes, Is.EqualTo(new[]
+            {
+                $"/api/v1/files/{_handler.FirstFileId}?skipTrash=true",
+            }));
+            Assert.That(_handler.Reads.Count(path => path.Contains(_handler.TrashId.ToString(), StringComparison.Ordinal)),
+                Is.EqualTo(2));
+        }
+
+        [Test]
+        public async Task ReadUsedBytesAsync_RetriesInterruptedConnection()
+        {
+            _handler.ReadFailures.Enqueue(new HttpRequestException("Connection reset by peer."));
+
+            Assert.That(await _cleanup.ReadUsedBytesAsync(CancellationToken.None), Is.EqualTo(900));
+            Assert.That(_handler.Reads, Has.Count.EqualTo(2));
+        }
+
+        [Test]
+        public void ReadUsedBytesAsync_StopsAfterThreeConnectionFailures()
+        {
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                _handler.ReadFailures.Enqueue(new HttpRequestException("Connection reset by peer."));
+            }
+
+            Assert.ThrowsAsync<HttpRequestException>(() => _cleanup.ReadUsedBytesAsync(CancellationToken.None));
+            Assert.That(_handler.Reads, Has.Count.EqualTo(3));
+        }
+
+        [Test]
+        public void ReadUsedBytesAsync_DoesNotRetryAuthorizationFailure()
+        {
+            _handler.ReadFailures.Enqueue(new HttpRequestException("Unauthorized.", null,
+                System.Net.HttpStatusCode.Unauthorized));
+
+            Assert.ThrowsAsync<HttpRequestException>(() => _cleanup.ReadUsedBytesAsync(CancellationToken.None));
+            Assert.That(_handler.Reads, Has.Count.EqualTo(1));
+        }
+
+        [Test]
         public async Task ClearAbandonedAsync_RefusesPrivateServerWithoutDeletingAnything()
         {
             _handler.IsPublic = false;

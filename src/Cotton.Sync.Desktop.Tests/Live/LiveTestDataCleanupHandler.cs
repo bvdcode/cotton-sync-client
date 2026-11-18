@@ -21,6 +21,8 @@ namespace Cotton.Sync.Desktop.Tests.Live
         public bool IsPublic { get; set; } = true;
         public List<string> Deletes { get; } = [];
         public List<string> Reads { get; } = [];
+        public Queue<HttpRequestException> ReadFailures { get; } = [];
+        public string? FailingPathFragment { get; set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -31,6 +33,11 @@ namespace Cotton.Sync.Desktop.Tests.Live
                 return Task.FromResult(JsonResponse(Guid.NewGuid()));
             }
             Reads.Add(request.RequestUri.PathAndQuery);
+            if ((FailingPathFragment is null || path.Contains(FailingPathFragment, StringComparison.Ordinal))
+                && ReadFailures.TryDequeue(out HttpRequestException? failure))
+            {
+                return Task.FromException<HttpResponseMessage>(failure);
+            }
             if (path.EndsWith("/server/info", StringComparison.Ordinal))
             {
                 return Task.FromResult(JsonResponse(new { isPublicInstance = IsPublic }));
