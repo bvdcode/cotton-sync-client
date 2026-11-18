@@ -114,15 +114,17 @@ namespace Cotton.Sync.Desktop.Shell
         {
             ArgumentNullException.ThrowIfNull(paths);
             DesktopTraceLoggerFactory loggerFactory = new();
+            DesktopTokenStorage tokenStorage = new(paths.TokenStorePath);
             return new DesktopShellController(
                 paths,
-                new DesktopSyncApplicationFactory(paths, loggerFactory),
+                new DesktopSyncApplicationFactory(paths, loggerFactory, tokenStorage: tokenStorage),
                 new SqliteAppPreferencesStore(paths.AppDatabasePath),
                 new SqliteSyncPairSettingsStore(paths.AppDatabasePath),
                 new ProcessPlatformCommandService(loggerFactory.CreateLogger<ProcessPlatformCommandService>()),
                 DesktopAutostartServiceFactory.CreateDefault(),
                 new DesktopShellControllerOptions
                 {
+                    TokenStorage = tokenStorage,
                     StartupOptions = startupOptions ?? DesktopStartupOptions.Empty,
                 });
         }

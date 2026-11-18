@@ -241,6 +241,7 @@ namespace Cotton.Sync.Desktop.ViewModels
             _controller.RunProgressChanged += OnRunProgressChanged;
             _controller.StatusChanged += OnStatusChanged;
             SignInCommand = new AsyncRelayCommand(SignInAsync, CanSignIn, HandleCommandError);
+            InitializeTokenStorageCommands();
             SignInWithBrowserCommand = new AsyncRelayCommand(
                 SignInWithBrowserAsync,
                 CanSignInWithBrowser,

@@ -238,6 +238,8 @@ namespace Cotton.Sync.Desktop.ViewModels
         {
             RaiseSyncStateProperties();
             SignInCommand.RaiseCanExecuteChanged();
+            RetryTokenStorageCommand.RaiseCanExecuteChanged();
+            UseUnencryptedTokenStorageCommand.RaiseCanExecuteChanged();
             SignInWithBrowserCommand.RaiseCanExecuteChanged();
             CancelBrowserSignInCommand.RaiseCanExecuteChanged();
             RetryStoredSessionCommand.RaiseCanExecuteChanged();

@@ -13,6 +13,8 @@ namespace Cotton.Sync.Desktop.Shell
 
         public Func<DesktopTokenStorageCapabilitySnapshot>? TokenStorageCapabilities { get; init; }
 
+        public DesktopTokenStorage? TokenStorage { get; init; }
+
         public Func<CancellationToken, Task<DesktopTokenStorageCapabilitySnapshot>>? TokenStorageVerifier { get; init; }
 
         public TimeSpan? SavedSessionRestoreTimeout { get; init; }

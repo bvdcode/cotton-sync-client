@@ -108,12 +108,12 @@ namespace Cotton.Sync.Desktop.Shell
         {
             DesktopTokenStorageCapabilitySnapshot tokenStorage = await _tokenStorageVerifier(cancellationToken)
                 .ConfigureAwait(false);
-            if (tokenStorage.IsReleaseSecure)
+            if (tokenStorage.IsUsable)
             {
                 return;
             }
 
-            throw new InvalidOperationException(CreateTokenStorageUnavailableMessage(tokenStorage));
+            throw new TokenStorageUnavailableException(CreateTokenStorageUnavailableMessage(tokenStorage));
         }
 
         private async Task<string?> GetStoredSessionStorageErrorAsync(CancellationToken cancellationToken)
@@ -138,7 +138,7 @@ namespace Cotton.Sync.Desktop.Shell
                     + "Cotton Sync will retry automatically.";
             }
 
-            if (tokenStorage.IsReleaseSecure)
+            if (tokenStorage.IsUsable)
             {
                 return null;
             }
@@ -154,7 +154,7 @@ namespace Cotton.Sync.Desktop.Shell
         {
             return "Secure token storage is unavailable: "
                 + tokenStorage.Details
-                + ". Configure Windows DPAPI or Linux Secret Service before signing in.";
+                + ". Check the sign-in storage options before signing in.";
         }
     }
 }

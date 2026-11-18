@@ -17,6 +17,7 @@ using Cotton.Sync.Desktop.Shell;
 using Cotton.Sync.Desktop.Startup;
 using Cotton.Sync.Desktop.Updates;
 using Cotton.Sync.VirtualFiles;
+using Cotton.Sync.Desktop.Auth;
 
 namespace Cotton.Sync.Desktop.ViewModels
 {
@@ -24,6 +25,12 @@ namespace Cotton.Sync.Desktop.ViewModels
     {
         private void HandleCommandError(Exception exception)
         {
+            if (OperatingSystem.IsLinux() && exception is TokenStorageUnavailableException)
+            {
+                IsTokenStorageChoiceVisible = true;
+                TokenStorageFailureDetails = exception.Message;
+            }
+
             ReportCommandError(exception);
             IsBusy = false;
         }

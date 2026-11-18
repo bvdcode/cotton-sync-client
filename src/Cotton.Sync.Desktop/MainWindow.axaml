@@ -180,6 +180,23 @@
                      VerticalAlignment="Center" />
         </Border>
 
+        <Border Padding="10"
+                CornerRadius="6"
+                Background="{DynamicResource CottonErrorSoftBrush}"
+                BorderBrush="{DynamicResource CottonErrorBrush}"
+                BorderThickness="1"
+                IsVisible="{Binding IsTokenStorageChoiceVisible}">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Sign-in storage is unavailable" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <SelectableTextBlock Text="{Binding TokenStorageFailureDetails}" FontSize="12" TextWrapping="Wrap" />
+            <TextBlock Text="Unlock or install KWallet or GNOME Keyring, then retry."
+                       FontSize="12" TextWrapping="Wrap" />
+            <Button Content="Retry secure storage" Command="{Binding RetryTokenStorageCommand}" />
+            <SelectableTextBlock Text="{Binding UnencryptedTokenStorageMessage}" FontSize="12" TextWrapping="Wrap" />
+            <Button Content="Use unencrypted file" Command="{Binding UseUnencryptedTokenStorageCommand}" />
+          </StackPanel>
+        </Border>
+
         <StackPanel Spacing="8"
                     IsVisible="{Binding IsServerStepVisible}">
           <Grid>

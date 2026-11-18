@@ -223,7 +223,7 @@ namespace Cotton.Sync.Desktop.Tests.Shell
                 factory,
                 tokenStorageCapabilities: CreateInsecureTokenStorage);
 
-            InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(
+            Cotton.Sync.Desktop.Auth.TokenStorageUnavailableException? exception = Assert.ThrowsAsync<Cotton.Sync.Desktop.Auth.TokenStorageUnavailableException>(
                 async () => await controller.SignInAsync(
                     new DesktopSignInRequest(
                         "https://cotton.example.test/",

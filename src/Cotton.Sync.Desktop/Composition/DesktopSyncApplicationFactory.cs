@@ -34,14 +34,17 @@ namespace Cotton.Sync.Desktop.Composition
         private readonly Func<HttpClient> _httpClientFactory;
         private readonly ILoggerFactory _loggerFactory;
         private readonly DesktopAppPaths _paths;
+        private readonly DesktopTokenStorage _tokenStorage;
 
         public DesktopSyncApplicationFactory(
             DesktopAppPaths paths,
             ILoggerFactory? loggerFactory = null,
             IPlatformCommandService? browserAuthPlatformCommands = null,
-            Func<HttpClient>? httpClientFactory = null)
+            Func<HttpClient>? httpClientFactory = null,
+            DesktopTokenStorage? tokenStorage = null)
         {
             _paths = paths ?? throw new ArgumentNullException(nameof(paths));
+            _tokenStorage = tokenStorage ?? new DesktopTokenStorage(paths.TokenStorePath);
             _loggerFactory = loggerFactory ?? new DesktopTraceLoggerFactory();
             _browserAuthPlatformCommands = browserAuthPlatformCommands;
             _httpClientFactory = httpClientFactory ?? (() => DesktopHttpClientFactory.Create(HttpRequestTimeout));
@@ -52,7 +55,7 @@ namespace Cotton.Sync.Desktop.Composition
             ArgumentNullException.ThrowIfNull(serverUrl);
 
             HttpClient httpClient = _httpClientFactory();
-            FileCottonTokenStore tokenStore = new(_paths.TokenStorePath);
+            FileCottonTokenStore tokenStore = new(_paths.TokenStorePath, _tokenStorage);
             CottonSdkOptions sdkOptions = new()
             {
                 BaseAddress = serverUrl,

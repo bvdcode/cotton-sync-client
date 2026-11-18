@@ -201,6 +201,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private bool CanSignIn()
         {
             return !IsBusy
+                && !IsTokenStorageChoiceVisible
                 && !string.IsNullOrWhiteSpace(ServerUrl)
                 && !string.IsNullOrWhiteSpace(Username)
                 && !string.IsNullOrEmpty(Password)
@@ -210,6 +211,7 @@ namespace Cotton.Sync.Desktop.ViewModels
         private bool CanSignInWithBrowser()
         {
             return !IsBusy
+                && !IsTokenStorageChoiceVisible
                 && !string.IsNullOrWhiteSpace(ServerUrl)
                 && IsServerVerified;
         }

@@ -4,6 +4,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Security.Cryptography;
+using Tmds.DBus.Protocol;
 
 namespace Cotton.Sync.Desktop.Auth
 {
@@ -35,10 +36,14 @@ namespace Cotton.Sync.Desktop.Auth
                     protector.Scheme,
                     IsReleaseSecure: true,
                     "Linux Secret Service through secret-tool"),
+                LinuxKWalletTokenPayloadProtector => new DesktopTokenStorageCapabilitySnapshot(
+                    protector.Scheme,
+                    IsReleaseSecure: true,
+                    "KWallet through its native desktop API"),
                 RestrictedFileTokenPayloadProtector => new DesktopTokenStorageCapabilitySnapshot(
                     protector.Scheme,
                     IsReleaseSecure: false,
-                    "Development fallback: restricted local file without cryptographic protection"),
+                    "Restricted local file without cryptographic protection"),
                 UnsupportedTokenPayloadProtector unsupported => new DesktopTokenStorageCapabilitySnapshot(
                     unsupported.Scheme,
                     IsReleaseSecure: false,
@@ -141,7 +146,12 @@ namespace Cotton.Sync.Desktop.Auth
                 or IOException
                 or UnauthorizedAccessException
                 or InvalidOperationException
-                or Win32Exception;
+                or Win32Exception
+                or TimeoutException
+                or DBusErrorReplyException
+                or DBusConnectFailedException
+                or DBusConnectionClosedException
+                or System.Net.Sockets.SocketException;
         }
     }
 }
