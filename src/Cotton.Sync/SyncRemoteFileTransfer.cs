@@ -2,6 +2,7 @@
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
 using System.Diagnostics;
+using System.Net;
 using Cotton.Files;
 using Cotton.Sync.Local;
 using Cotton.Sync.Remote;
@@ -219,7 +220,8 @@ namespace Cotton.Sync
                 await DownloadFileWithProgressAsync(remoteFile, relativePath, options, verifiedDestination, cancellationToken)
                     .ConfigureAwait(false);
             }
-            catch (HttpRequestException exception) when (RemoteSyncErrorClassifier.IsPreconditionFailed(exception))
+            catch (HttpRequestException exception) when (
+                exception.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.PreconditionFailed)
             {
                 Trace.TraceWarning("Remote file changed during download of {0}: {1}", relativePath, exception.Message);
                 throw new RemoteFileVersionChangedException(relativePath, exception);
