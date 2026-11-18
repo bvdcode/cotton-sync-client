@@ -33,7 +33,7 @@ namespace Cotton.Sync.Desktop.Tests.Live
             }
             expected["large/random-1GiB.bin"] = await LiveStressFiles.WriteAsync(
                 LiveStressFiles.FullPath(session.FirstRoot, "large/random-1GiB.bin"), largeFileSize, token);
-            await session.StartAsync(token, largeFileSize + (long)smallFileCount * (1024 + smallFileCount));
+            await session.StartAsync(token, largeFileSize + ((long)smallFileCount * (1024 + smallFileCount)));
             await session.ConvergeAsync(expected, token, TimeSpan.FromMinutes(90));
             TestContext.Progress.WriteLine($"Initial load passed: {smallFileCount} small files and {largeFileSize} random bytes; {elapsed.Elapsed}.");
 
