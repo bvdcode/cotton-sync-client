@@ -23,9 +23,11 @@ namespace Cotton.Sync.Desktop.Tests.Live
         private readonly string _server;
         private readonly string _username;
         private readonly string _password;
-        private readonly string _remotePath = "/SyncLoadAcceptance-" + Guid.NewGuid().ToString("N");
+        private readonly string _remotePath = "/" + LiveTestDataCleanup.NamespacePrefix + Guid.NewGuid().ToString("N");
+        private readonly LiveTestDataCleanup _cleanup;
         private readonly CottonCloudClient _admin;
         private NodeDto? _remoteRoot;
+        private long _initialUsedBytes;
 
         public LiveStressSession()
         {
@@ -35,9 +37,9 @@ namespace Cotton.Sync.Desktop.Tests.Live
             string evidenceRoot = RequiredEnvironment("COTTON_SYNC_STRESS_DIRECTORY");
             DirectoryPath = Path.Combine(evidenceRoot, Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(DirectoryPath);
-            _admin = new CottonCloudClient(_http,
-                new FileCottonTokenStore(Path.Combine(DirectoryPath, "admin-tokens.json")),
-                new CottonSdkOptions { BaseAddress = new Uri(_server) });
+            FileCottonTokenStore tokens = new(Path.Combine(DirectoryPath, "admin-tokens.json"));
+            _admin = new CottonCloudClient(_http, tokens, new CottonSdkOptions { BaseAddress = new Uri(_server) });
+            _cleanup = new LiveTestDataCleanup(_admin, _http, tokens, new Uri(_server));
             First = CreateController("first", FirstGate);
             Second = CreateController("second", SecondGate);
         }
@@ -50,10 +52,15 @@ namespace Cotton.Sync.Desktop.Tests.Live
         public DesktopShellController First { get; private set; }
         public DesktopShellController Second { get; }
 
-        public async Task StartAsync(CancellationToken cancellationToken)
+        public async Task StartAsync(CancellationToken cancellationToken, long requiredStorageBytes = 768L * 1024 * 1024)
         {
             await _admin.Auth.LoginAsync(new LoginRequestDto { Username = _username, Password = _password },
                 cancellationToken);
+            if (Environment.GetEnvironmentVariable("COTTON_SYNC_QA_CLEANUP_ABANDONED") == "1")
+            {
+                await _cleanup.ClearAbandonedAsync(cancellationToken);
+            }
+            _initialUsedBytes = await _cleanup.RequireAvailableBytesAsync(requiredStorageBytes, cancellationToken);
             NodeDto root = await _admin.Nodes.ResolveAsync(cancellationToken: cancellationToken);
             _remoteRoot = await _admin.Nodes.CreateAsync(root.Id, _remotePath.TrimStart('/'), cancellationToken);
             Directory.CreateDirectory(FirstRoot);
@@ -138,14 +145,25 @@ namespace Cotton.Sync.Desktop.Tests.Live
             {
                 await First.DisposeAsync();
                 await Second.DisposeAsync();
-                if (_remoteRoot is not null)
+                try
                 {
-                    await _admin.Nodes.DeleteAsync(_remoteRoot.Id, skipTrash: true);
-                    TestContext.Progress.WriteLine("Isolated remote test tree removed.");
+                    if (_remoteRoot is not null)
+                    {
+                        await _cleanup.ClearAsync(_remoteRoot.Id, CancellationToken.None);
+                        long usedBytes = await _cleanup.ReadUsedBytesAsync(CancellationToken.None);
+                        TestContext.Progress.WriteLine($"Isolated test data removed; storage before={_initialUsedBytes}, after={usedBytes} bytes.");
+                        if (Environment.GetEnvironmentVariable("COTTON_SYNC_QA_CLEANUP_ABANDONED") == "1")
+                        {
+                            Assert.That(usedBytes, Is.EqualTo(_initialUsedBytes), "The exclusive QA account must not retain test data.");
+                        }
+                    }
                 }
-                await _admin.Auth.LogoutAsync();
-                await _admin.DisposeAsync();
-                _http.Dispose();
+                finally
+                {
+                    await _admin.Auth.LogoutAsync();
+                    await _admin.DisposeAsync();
+                    _http.Dispose();
+                }
             }
         }
 
