@@ -40,7 +40,22 @@ namespace Cotton.Sync.Desktop.Tests.Live
                 folders.AddRange(page.Nodes.Where(node => IsNamespace(node.Name)
                     && (!namespaceId.HasValue || node.Id == namespaceId.Value)));
             }
+            await CollectTrashAsync(namespaceId, folders, files, cancellationToken);
 
+            foreach (NodeFileManifestDto file in files.DistinctBy(file => file.Id))
+            {
+                await client.Files.DeleteAsync(file.Id, skipTrash: true, cancellationToken: cancellationToken);
+            }
+            foreach (NodeDto folder in folders.DistinctBy(folder => folder.Id))
+            {
+                await client.Nodes.DeleteAsync(folder.Id, skipTrash: true, cancellationToken);
+            }
+            TestContext.Progress.WriteLine($"Test data cleanup: {folders.Count} namespaces/folders and {files.Count} trashed files.");
+        }
+
+        private async Task CollectTrashAsync(Guid? namespaceId, List<NodeDto> folders,
+            List<NodeFileManifestDto> files, CancellationToken cancellationToken)
+        {
             NodeDto trashRoot = await GetAsync<NodeDto>("api/v1/layouts/resolver?nodeType=trash", cancellationToken);
             Queue<Guid> pending = new([trashRoot.Id]);
             HashSet<Guid> visited = [];
@@ -67,16 +82,6 @@ namespace Cotton.Sync.Desktop.Tests.Live
                     }
                 }
             }
-
-            foreach (NodeFileManifestDto file in files.DistinctBy(file => file.Id))
-            {
-                await client.Files.DeleteAsync(file.Id, skipTrash: true, cancellationToken: cancellationToken);
-            }
-            foreach (NodeDto folder in folders.DistinctBy(folder => folder.Id))
-            {
-                await client.Nodes.DeleteAsync(folder.Id, skipTrash: true, cancellationToken);
-            }
-            TestContext.Progress.WriteLine($"Test data cleanup: {folders.Count} namespaces/folders and {files.Count} trashed files.");
         }
 
         public async Task<long> RequireAvailableBytesAsync(long requiredBytes, CancellationToken cancellationToken)
