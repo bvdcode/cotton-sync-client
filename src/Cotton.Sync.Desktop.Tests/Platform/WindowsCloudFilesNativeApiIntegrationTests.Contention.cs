@@ -22,7 +22,11 @@ namespace Cotton.Sync.Desktop.Tests.Platform
             WindowsCloudFilesNativeApi nativeApi = new();
             WindowsStorageProviderSyncRootRegistrar registrar = new(GetShellHelperPath());
             WindowsCloudFilesAdapter adapter = new(nativeApi: nativeApi, storageProviderRegistrar: registrar);
-            DesktopCloudFilesPlaceholderWriter writer = new(cloudFilesAdapter: adapter);
+            DesktopCloudFilesPlaceholderWriter writer = new(
+                cloudFilesAdapter: adapter,
+                getCapabilities: () => new(
+                    registrar.IsSupported(),
+                    "Windows Cloud Files shell helper must support sync-root registration."));
             Directory.CreateDirectory(root);
             NodeFileManifestDto remote = new()
             {
