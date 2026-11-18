@@ -9,7 +9,6 @@ namespace Cotton.Sync.Desktop.Tests.Live
         private TaskCompletionSource _blocked = NewCompletion();
         private TaskCompletionSource _release = NewCompletion();
         private string? _path;
-        private int _started;
         private int _completed;
         private bool _offline;
 
@@ -26,7 +25,6 @@ namespace Cotton.Sync.Desktop.Tests.Live
             lock (_lock)
             {
                 _path = path;
-                _started = 0;
                 _completed = 0;
                 _blocked = NewCompletion();
                 _release = NewCompletion();
@@ -47,17 +45,11 @@ namespace Cotton.Sync.Desktop.Tests.Live
                 {
                     throw new HttpRequestException("The test transport is offline.");
                 }
-                if (_path is not null && request.RequestUri!.AbsolutePath.Contains(_path, StringComparison.Ordinal))
+                if (_completed > 0 && _path is not null
+                    && request.RequestUri!.AbsolutePath.Contains(_path, StringComparison.Ordinal))
                 {
-                    _started++;
-                    if (_started > 1)
-                    {
-                        if (_completed > 0)
-                        {
-                            _blocked.TrySetResult();
-                        }
-                        wait = _release.Task;
-                    }
+                    _blocked.TrySetResult();
+                    wait = _release.Task;
                 }
             }
             if (wait is not null)
@@ -73,10 +65,6 @@ namespace Cotton.Sync.Desktop.Tests.Live
                 if (_path is not null && request.RequestUri!.AbsolutePath.Contains(_path, StringComparison.Ordinal))
                 {
                     _completed++;
-                    if (_started > 1)
-                    {
-                        _blocked.TrySetResult();
-                    }
                 }
             }
         }
