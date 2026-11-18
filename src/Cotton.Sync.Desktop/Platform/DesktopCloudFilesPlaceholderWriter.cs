@@ -3,6 +3,7 @@
 
 using Cotton.Sync.App.LocalChanges;
 using Cotton.Sync.App.SyncPairs;
+using Cotton.Sync.Local;
 using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
 using Microsoft.Extensions.Logging;
@@ -65,6 +66,19 @@ namespace Cotton.Sync.Desktop.Platform
             {
                 SuppressProviderWrite(request.SyncPairId, safety.FullPath, request.RelativePath);
                 return Task.FromResult(_cloudFilesAdapter.CreateFilePlaceholder(request));
+            }
+            catch (WindowsCloudFilesNativeException exception)
+                when (WindowsCloudFilesNativeOperationExecutor.IsSharingViolation(exception))
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Windows Cloud Files placeholder update is waiting for access to {RelativePath}.",
+                    request.RelativePath);
+                throw new LocalFileUnavailableException(
+                    request.RelativePath,
+                    Path.Combine(safety.FullPath, request.RelativePath.Replace('/', Path.DirectorySeparatorChar)),
+                    exception,
+                    requiresExclusiveAccess: true);
             }
             catch (Exception exception) when (IsRecoverablePlaceholderFailure(exception))
             {

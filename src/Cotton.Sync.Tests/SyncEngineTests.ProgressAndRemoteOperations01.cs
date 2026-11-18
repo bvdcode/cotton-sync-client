@@ -95,6 +95,8 @@ namespace Cotton.Sync.Tests
 
             public string? UnavailableReason { get; set; }
 
+            public Exception? Failure { get; set; }
+
             public SyncPlaceholderHydrationState HydrationState { get; set; } = SyncPlaceholderHydrationState.RemoteOnly;
 
             public long? LocalSizeBytes { get; set; }
@@ -172,6 +174,11 @@ namespace Cotton.Sync.Tests
                 lock (_requestsLock)
                 {
                     Requests.Add(request);
+                }
+
+                if (Failure is not null)
+                {
+                    throw Failure;
                 }
 
                 if (!string.IsNullOrWhiteSpace(UnavailableReason))
