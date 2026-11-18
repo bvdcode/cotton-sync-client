@@ -128,6 +128,7 @@ namespace Cotton.Sync.App.Tests.Runners
 
         [TestCase(System.Net.HttpStatusCode.InternalServerError)]
         [TestCase(System.Net.HttpStatusCode.ServiceUnavailable)]
+        [TestCase((System.Net.HttpStatusCode)521)]
         [TestCase(System.Net.HttpStatusCode.Locked)]
         public async Task SyncNowAsync_RetriesTransientServerFailureAndReturnsIdleOnRecovery(System.Net.HttpStatusCode statusCode)
         {
