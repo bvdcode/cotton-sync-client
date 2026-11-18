@@ -11,7 +11,10 @@ namespace Cotton.Sync.Desktop.Tests.Live
         {
             await gate.HoldAsync(request, cancellationToken);
             HttpResponseMessage response = await base.SendAsync(request, cancellationToken);
-            gate.Completed(request);
+            if (response.IsSuccessStatusCode)
+            {
+                gate.Completed(request);
+            }
             return response;
         }
     }
