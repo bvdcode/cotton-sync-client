@@ -170,7 +170,7 @@ namespace Cotton.Sync
 
             if (IsLocalOnlineOnlyPlaceholderBaseline(context.SyncPair, context.Local, context.State))
             {
-                if (changeState.RemoteChanged)
+                if (changeState.RemoteChanged || context.State.RemoteFileId != context.Remote.File.Id)
                 {
                     await fileMaterializer.MaterializeAsync(
                             context.SyncPair,
