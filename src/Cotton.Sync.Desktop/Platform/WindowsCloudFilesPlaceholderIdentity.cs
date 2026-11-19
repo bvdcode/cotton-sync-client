@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2025–2026 Vadim Belov <https://belov.us>
 
+using Cotton.Sync.State;
 using Cotton.Sync.VirtualFiles;
 using System.Text.Json;
 
@@ -25,6 +26,17 @@ namespace Cotton.Sync.Desktop.Platform
         public const int MaximumIdentityLength = 4096;
 
         private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+        public bool CanRefresh(RemoteFilePlaceholderRequest request)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            return Guid.TryParse(request.SyncPairId, out Guid syncPairId)
+                && SyncPairId == syncPairId
+                && RemoteRootNodeId == request.RemoteRootNodeId
+                && (NodeFileId == request.RemoteFile.Id
+                    || string.Equals(SyncPath.Normalize(RelativePath), SyncPath.Normalize(request.RelativePath),
+                        StringComparison.OrdinalIgnoreCase));
+        }
 
         public static WindowsCloudFilesPlaceholderIdentity Create(
             RemoteFilePlaceholderRequest request,

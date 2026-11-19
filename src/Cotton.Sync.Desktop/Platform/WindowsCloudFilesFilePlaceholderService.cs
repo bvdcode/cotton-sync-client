@@ -392,13 +392,22 @@ namespace Cotton.Sync.Desktop.Platform
 
             WindowsCloudFilesPlaceholderIdentity identity = WindowsCloudFilesPlaceholderIdentity.Parse(
                 nativeApi.GetPlaceholderIdentity(fullPlaceholderPath));
-            if (identity.SyncPairId != syncPairId
-                || identity.RemoteRootNodeId != request.RemoteRootNodeId
-                || identity.NodeFileId != request.RemoteFile.Id)
+            if (!identity.CanRefresh(request))
             {
+                diagnostics.Record("validate-file-identity", "mismatch", request.SyncPairId,
+                    request.LocalRootPath, normalizedPath,
+                    $"Expected pair={syncPairId:D}, root={request.RemoteRootNodeId:D}, file={request.RemoteFile.Id:D}, path={normalizedPath}; "
+                    + $"found pair={identity.SyncPairId:D}, root={identity.RemoteRootNodeId:D}, file={identity.NodeFileId:D}, path={identity.RelativePath}.");
                 throw new RemoteFilePlaceholderUnavailableException(
                     normalizedPath,
                     "An existing Cloud Files placeholder has a foreign or stale identity.");
+            }
+
+            if (identity.NodeFileId != request.RemoteFile.Id)
+            {
+                diagnostics.Record("validate-file-identity", "replacement", request.SyncPairId,
+                    request.LocalRootPath, normalizedPath,
+                    $"The remote file at this path was replaced: previous file={identity.NodeFileId:D}, current file={request.RemoteFile.Id:D}.");
             }
         }
     }

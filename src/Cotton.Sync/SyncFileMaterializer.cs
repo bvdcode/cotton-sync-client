@@ -74,7 +74,7 @@ namespace Cotton.Sync
             {
                 placeholder = await placeholderWriter
                     .CreatePlaceholderAsync(
-                        RemoteFilePlaceholderRequestFactory.Create(syncPair, relativePath, remoteFile),
+                        RemoteFilePlaceholderRequestFactory.Create(syncPair, relativePath, remoteFile, existingHydrationState),
                         cancellationToken)
                     .ConfigureAwait(false);
             }
