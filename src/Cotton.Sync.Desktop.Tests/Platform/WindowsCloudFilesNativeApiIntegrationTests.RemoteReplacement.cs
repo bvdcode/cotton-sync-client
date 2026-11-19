@@ -81,9 +81,15 @@ namespace Cotton.Sync.Desktop.Tests.Platform
                 if (locallyEdited)
                 {
                     const string localContent = "Local changes must survive remote replacement";
-                    await File.WriteAllTextAsync(path, localContent);
+                    await using (FileStream stream = new(path, FileMode.Open, FileAccess.Write, FileShare.Read))
+                    {
+                        await stream.WriteAsync(Encoding.UTF8.GetBytes(localContent));
+                    }
 
-                    Assert.Throws<WindowsCloudFilesNativeException>(() => adapter.CreateFilePlaceholder(request));
+                    Assert.That(nativeApi.GetPlaceholderIdentity(path), Is.EqualTo(previous.PlaceholderIdentity));
+                    WindowsCloudFilesNativeException? exception = Assert.Throws<WindowsCloudFilesNativeException>(
+                        () => adapter.CreateFilePlaceholder(request));
+                    Assert.That(exception!.Operation, Is.EqualTo("CfUpdatePlaceholder"));
                     Assert.Multiple(() =>
                     {
                         Assert.That(File.ReadAllText(path), Is.EqualTo(localContent));
