@@ -28,8 +28,8 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.13" />
-    <PackageReference Include="Cotton" Version="0.5.22" />
-    <PackageReference Include="Cotton.Sdk" Version="0.5.22" />
+    <PackageReference Include="Cotton" Version="0.6.3" />
+    <PackageReference Include="Cotton.Sdk" Version="0.6.3" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Common" Version="10.0.13" />
   </ItemGroup>
 
