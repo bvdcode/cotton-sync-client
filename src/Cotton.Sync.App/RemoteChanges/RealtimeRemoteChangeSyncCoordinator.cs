@@ -98,6 +98,8 @@ namespace Cotton.Sync.App.RemoteChanges
                     _lifetime = new CancellationTokenSource();
                     _realtime.RemoteFileTreeChanged += OnRemoteFileTreeChanged;
                     _realtime.SessionRevoked += OnSessionRevoked;
+                    _realtime.Reconnected += OnReconnected;
+                    _realtime.Closed += OnClosed;
                     _isSubscribed = true;
                     _connectionTask = ConnectWithRetryAsync(_lifetime.Token);
                 }
@@ -159,6 +161,8 @@ namespace Cotton.Sync.App.RemoteChanges
             {
                 _realtime.RemoteFileTreeChanged -= OnRemoteFileTreeChanged;
                 _realtime.SessionRevoked -= OnSessionRevoked;
+                _realtime.Reconnected -= OnReconnected;
+                _realtime.Closed -= OnClosed;
                 _isSubscribed = false;
                 await _realtime.StopAsync(cancellationToken).ConfigureAwait(false);
             }

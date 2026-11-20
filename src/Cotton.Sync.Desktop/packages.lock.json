@@ -47,20 +47,20 @@
       },
       "Cotton": {
         "type": "Direct",
-        "requested": "[0.5.22, )",
-        "resolved": "0.5.22",
-        "contentHash": "8urySCW+32Q5r4/XIMkJyNofLSJLgZWu7fdMLsoDB3O6aSb/VxsK1UllQfVllSZVkk7A5XZXHEmYBveIg7biSQ==",
+        "requested": "[0.6.3, )",
+        "resolved": "0.6.3",
+        "contentHash": "TvHBe9DMxGFrAgOf4eSrlg7opQxbKMTfU4/VA4IfMNXFaVI6l+iMhw6+sWaTfklG5WIyfWO1eRdVoeqbYy0InQ==",
         "dependencies": {
-          "EasyExtensions": "3.0.90"
+          "EasyExtensions": "3.0.92"
         }
       },
       "Cotton.Sdk": {
         "type": "Direct",
-        "requested": "[0.5.22, )",
-        "resolved": "0.5.22",
-        "contentHash": "kaZT3FcyleL5fB+5Wr+z5K5M2PNlOP5CM6d4J2J6VclN+z3uksvheFhGFSYt8ej9pcEvJOzVknCfrXSyf8SEFQ==",
+        "requested": "[0.6.3, )",
+        "resolved": "0.6.3",
+        "contentHash": "YrDLbYMbMvSTk4Lq4yvNv/AsYOCD+DC04LnDBth6nVmqAQq/BITnh0MiMHlDg2ykc/jDE4MClydFkr3EJS4wWQ==",
         "dependencies": {
-          "Cotton": "0.5.22",
+          "Cotton": "0.6.3",
           "Microsoft.AspNetCore.SignalR.Client": "10.0.13",
           "Microsoft.Extensions.Logging.Abstractions": "10.0.13"
         }
@@ -174,8 +174,8 @@
       },
       "EasyExtensions": {
         "type": "Transitive",
-        "resolved": "3.0.90",
-        "contentHash": "hLJr3n5wTY1s2vHtPZD/TdInhpJoakfQaWA0JXb1JvwFgwKN8U1RKe1E3Qwz4ZjgUgbecQsVD2U1PJ24ZA/Bsg=="
+        "resolved": "3.0.92",
+        "contentHash": "y/USxNuOrxfok2FoCj2axOShhJEAwEljW5oHGkBmGjf3rpBcTo11agxuOmK89iz5FT/jyCTq0DkArp2bTbm4Ug=="
       },
       "EasyExtensions.EntityFrameworkCore": {
         "type": "Transitive",
@@ -569,8 +569,8 @@
       "cotton.sync": {
         "type": "Project",
         "dependencies": {
-          "Cotton": "[0.5.22, )",
-          "Cotton.Sdk": "[0.5.22, )",
+          "Cotton": "[0.6.3, )",
+          "Cotton.Sdk": "[0.6.3, )",
           "EasyExtensions.EntityFrameworkCore": "[3.0.75, )",
           "Microsoft.AspNetCore.SignalR.Common": "[10.0.13, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.11, )",
@@ -581,7 +581,7 @@
       "cotton.sync.app": {
         "type": "Project",
         "dependencies": {
-          "Cotton.Sdk": "[0.5.22, )",
+          "Cotton.Sdk": "[0.6.3, )",
           "Cotton.Sync": "[1.0.0, )",
           "EasyExtensions.EntityFrameworkCore": "[3.0.75, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.11, )",

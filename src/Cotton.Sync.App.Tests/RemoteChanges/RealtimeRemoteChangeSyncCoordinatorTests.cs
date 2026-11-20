@@ -208,6 +208,14 @@ namespace Cotton.Sync.App.Tests.RemoteChanges
 
             public event EventHandler<CottonRealtimeEvent>? SessionRevoked;
 
+            public event EventHandler? Reconnected;
+
+            public event EventHandler<Exception?>? Closed;
+
+            public void RaiseReconnected() => Reconnected?.Invoke(this, EventArgs.Empty);
+
+            public void RaiseClosed(Exception? exception) => Closed?.Invoke(this, exception);
+
             public event EventHandler<CottonRealtimeEvent>? NotificationReceived
             {
                 add
